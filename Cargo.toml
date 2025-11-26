@@ -7,3 +7,6 @@ members = [
     "crates/cas_cli",
 ]
 resolver = "2"
+[workspace.package]
+license = "MIT"
+authors = ["Javier Gimenez Moya"]
