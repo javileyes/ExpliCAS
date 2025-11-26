@@ -85,6 +85,14 @@ impl Expr {
         Rc::new(Expr::Function("tan".to_string(), vec![expr]))
     }
 
+    pub fn log(base: Rc<Expr>, arg: Rc<Expr>) -> Rc<Self> {
+        Rc::new(Expr::Function("log".to_string(), vec![base, arg]))
+    }
+
+    pub fn ln(arg: Rc<Expr>) -> Rc<Self> {
+        Expr::log(Expr::e(), arg)
+    }
+
     pub fn substitute(&self, var_name: &str, value: &Rc<Expr>) -> Rc<Self> {
         match self {
             Expr::Variable(name) if name == var_name => value.clone(),

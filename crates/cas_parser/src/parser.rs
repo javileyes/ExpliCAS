@@ -51,6 +51,11 @@ fn parse_function(input: &str) -> IResult<&str, Rc<Expr>> {
         parse_expr,
     )(input)?;
     let (input, _) = preceded(multispace0, tag(")"))(input)?;
+    
+    if name == "ln" && args.len() == 1 {
+        return Ok((input, Expr::ln(args[0].clone())));
+    }
+    
     Ok((input, Rc::new(Expr::Function(name.to_string(), args))))
 }
 

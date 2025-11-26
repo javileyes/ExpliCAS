@@ -4,3 +4,4 @@ pub mod exponents;
 pub mod canonicalization;
 pub mod functions;
 pub mod trigonometry;
+pub mod logarithms;
