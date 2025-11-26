@@ -34,11 +34,24 @@ fn parse_parens(input: &str) -> IResult<&str, Rc<Expr>> {
     )(input)
 }
 
-// Factor: number, variable, or (expr)
-fn parse_factor(input: &str) -> IResult<&str, Rc<Expr>> {
+// Atom: number, variable, or (expr)
+fn parse_atom(input: &str) -> IResult<&str, Rc<Expr>> {
     preceded(
         multispace0,
         alt((parse_number, parse_variable, parse_parens)),
+    )(input)
+}
+
+// Factor: atom ^ atom (Power)
+fn parse_factor(input: &str) -> IResult<&str, Rc<Expr>> {
+    let (input, init) = parse_atom(input)?;
+    fold_many0(
+        pair(
+            preceded(multispace0, tag("^")),
+            parse_atom,
+        ),
+        move || init.clone(),
+        |acc, (_, val)| Expr::pow(acc, val),
     )(input)
 }
 
@@ -118,5 +131,14 @@ mod tests {
     fn test_parse_parens() {
         let e = parse("(1 + 2) * x").unwrap();
         assert_eq!(format!("{}", e), "(1 + 2) * x");
+    }
+
+    #[test]
+    fn test_parse_power() {
+        let e = parse("x^2").unwrap();
+        assert_eq!(format!("{}", e), "x^2");
+        
+        let e2 = parse("x^2 * y").unwrap();
+        assert_eq!(format!("{}", e2), "x^2 * y");
     }
 }

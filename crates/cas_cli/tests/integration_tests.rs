@@ -85,3 +85,32 @@ fn test_polynomial_simplification() {
     let (result_simple, _) = simplifier.simplify(expr_simple);
     assert_eq!(format!("{}", result_simple), "5 * x");
 }
+
+#[test]
+fn test_exponent_simplification() {
+    use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule};
+
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(ProductPowerRule));
+    simplifier.add_rule(Box::new(PowerPowerRule));
+    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+
+    // Test 1: Product of Powers (x^2 * x^3 -> x^5)
+    let input1 = "x^2 * x^3";
+    let expr1 = parse(input1).expect("Failed to parse input1");
+    let (result1, _) = simplifier.simplify(expr1);
+    assert_eq!(format!("{}", result1), "x^5");
+
+    // Test 2: Power of Power ((x^2)^3 -> x^6)
+    let input2 = "(x^2)^3";
+    let expr2 = parse(input2).expect("Failed to parse input2");
+    let (result2, _) = simplifier.simplify(expr2);
+    assert_eq!(format!("{}", result2), "x^6");
+    
+    // Test 3: Zero Exponent (x^0 -> 1)
+    let input3 = "x^0";
+    let expr3 = parse(input3).expect("Failed to parse input3");
+    let (result3, _) = simplifier.simplify(expr3);
+    assert_eq!(format!("{}", result3), "1");
+}

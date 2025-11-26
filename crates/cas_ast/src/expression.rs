@@ -115,13 +115,11 @@ impl fmt::Display for Expr {
             },
             Expr::Pow(b, e) => {
                 let b_prec = b.precedence();
+                let e_prec = e.precedence();
                 let my_prec = self.precedence();
                 if b_prec < my_prec { write!(f, "({})", b)? } else { write!(f, "{}", b)? }
-                write!(f, "^{}", e) // Exponent usually doesn't need parens if it's a single token, but let's be safe?
-                // For now, let's assume exponent is self-contained or we wrap it if complex?
-                // Let's just print e. If e is 1+2, it will print 1+2. x^1+2 is x^1 + 2.
-                // So we should wrap exponent if it's lower precedence than Pow?
-                // Actually, standard usually writes x^(y+z).
+                if e_prec < my_prec { write!(f, "^({})", e)? } else { write!(f, "^{}", e)? }
+                Ok(())
             },
             Expr::Neg(e) => {
                 let e_prec = e.precedence();

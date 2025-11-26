@@ -81,7 +81,41 @@ impl Simplifier {
                             changed = true;
                         }
                     }
-                    _ => {} // TODO: Handle other cases like Pow, Neg, Function
+                    Expr::Pow(b, e) => {
+                        let (new_b, b_steps) = self.simplify(b.clone());
+                        let (new_e, e_steps) = self.simplify(e.clone());
+                        if new_b != *b || new_e != *e {
+                            steps.extend(b_steps);
+                            steps.extend(e_steps);
+                            expr = Expr::pow(new_b, new_e);
+                            changed = true;
+                        }
+                    }
+                    Expr::Neg(e) => {
+                        let (new_e, e_steps) = self.simplify(e.clone());
+                        if new_e != *e {
+                            steps.extend(e_steps);
+                            expr = Expr::neg(new_e);
+                            changed = true;
+                        }
+                    }
+                    Expr::Function(name, args) => {
+                        let mut new_args = Vec::new();
+                        let mut args_changed = false;
+                        for arg in args {
+                            let (new_arg, arg_steps) = self.simplify(arg.clone());
+                            if new_arg != *arg {
+                                args_changed = true;
+                                steps.extend(arg_steps);
+                            }
+                            new_args.push(new_arg);
+                        }
+                        if args_changed {
+                            expr = Rc::new(Expr::Function(name.clone(), new_args));
+                            changed = true;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

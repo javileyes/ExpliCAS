@@ -1,6 +1,7 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{DistributeRule, CombineLikeTermsRule, AnnihilationRule};
+use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -9,6 +10,9 @@ fn main() -> rustyline::Result<()> {
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
+    simplifier.add_rule(Box::new(ProductPowerRule));
+    simplifier.add_rule(Box::new(PowerPowerRule));
+    simplifier.add_rule(Box::new(ZeroOnePowerRule));
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
