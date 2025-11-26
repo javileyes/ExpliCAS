@@ -58,6 +58,18 @@ impl Expr {
         Rc::new(Expr::Function("abs".to_string(), vec![expr]))
     }
 
+    pub fn sin(expr: Rc<Expr>) -> Rc<Self> {
+        Rc::new(Expr::Function("sin".to_string(), vec![expr]))
+    }
+
+    pub fn cos(expr: Rc<Expr>) -> Rc<Self> {
+        Rc::new(Expr::Function("cos".to_string(), vec![expr]))
+    }
+
+    pub fn tan(expr: Rc<Expr>) -> Rc<Self> {
+        Rc::new(Expr::Function("tan".to_string(), vec![expr]))
+    }
+
     pub fn substitute(&self, var_name: &str, value: &Rc<Expr>) -> Rc<Self> {
         match self {
             Expr::Variable(name) if name == var_name => value.clone(),

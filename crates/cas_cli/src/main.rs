@@ -4,6 +4,7 @@ use cas_engine::rules::polynomial::{DistributeRule, CombineLikeTermsRule, Annihi
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
+use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -12,6 +13,8 @@ fn main() -> rustyline::Result<()> {
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
+    simplifier.add_rule(Box::new(EvaluateTrigRule));
+    simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
