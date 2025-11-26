@@ -2,6 +2,26 @@ use crate::rule::{Rule, Rewrite};
 use cas_ast::Expr;
 use std::rc::Rc;
 
+pub struct CanonicalizeNegationRule;
+
+impl Rule for CanonicalizeNegationRule {
+    fn name(&self) -> &str {
+        "Canonicalize Negation"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Neg(inner) = expr.as_ref() {
+            if let Expr::Number(n) = inner.as_ref() {
+                return Some(Rewrite {
+                    new_expr: Rc::new(Expr::Number(-n)),
+                    description: format!("-({}) = {}", n, -n),
+                });
+            }
+        }
+        None
+    }
+}
+
 pub struct CanonicalizeRootRule;
 
 impl Rule for CanonicalizeRootRule {
@@ -40,6 +60,22 @@ impl Rule for CanonicalizeRootRule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_parser::parse;
+
+    #[test]
+    fn test_canonicalize_negation() {
+        let rule = CanonicalizeNegationRule;
+        // -5 -> -5 (Number)
+        let expr = parse("-5").unwrap(); // Neg(Number(5))
+        let rewrite = rule.apply(&expr).unwrap();
+        // The display might look the same "-5", but the structure is different.
+        // Let's check if it's a Number.
+        if let Expr::Number(n) = rewrite.new_expr.as_ref() {
+            assert_eq!(format!("{}", n), "-5");
+        } else {
+            panic!("Expected Number, got {:?}", rewrite.new_expr);
+        }
+    }
 
     #[test]
     fn test_canonicalize_sqrt() {
