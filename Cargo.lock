@@ -44,6 +44,7 @@ name = "cas_engine"
 version = "0.1.0"
 dependencies = [
  "cas_ast",
+ "cas_parser",
  "num-bigint",
  "num-integer",
  "num-rational",

@@ -54,6 +54,10 @@ impl Expr {
         Rc::new(Expr::Neg(expr))
     }
 
+    pub fn abs(expr: Rc<Expr>) -> Rc<Self> {
+        Rc::new(Expr::Function("abs".to_string(), vec![expr]))
+    }
+
     pub fn substitute(&self, var_name: &str, value: &Rc<Expr>) -> Rc<Self> {
         match self {
             Expr::Variable(name) if name == var_name => value.clone(),

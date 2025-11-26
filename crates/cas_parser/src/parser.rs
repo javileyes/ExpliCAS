@@ -66,8 +66,8 @@ fn parse_atom(input: &str) -> IResult<&str, Rc<Expr>> {
     )(input)
 }
 
-// Factor: atom ^ atom (Power)
-fn parse_factor(input: &str) -> IResult<&str, Rc<Expr>> {
+// Power: atom ^ atom
+fn parse_power(input: &str) -> IResult<&str, Rc<Expr>> {
     let (input, init) = parse_atom(input)?;
     fold_many0(
         pair(
@@ -79,13 +79,24 @@ fn parse_factor(input: &str) -> IResult<&str, Rc<Expr>> {
     )(input)
 }
 
-// Term: factor * factor or factor / factor
+// Unary: - Unary or Power
+fn parse_unary(input: &str) -> IResult<&str, Rc<Expr>> {
+    alt((
+        map(
+            pair(preceded(multispace0, tag("-")), parse_unary),
+            |(_, expr)| Expr::neg(expr),
+        ),
+        parse_power,
+    ))(input)
+}
+
+// Term: unary * unary or unary / unary
 fn parse_term(input: &str) -> IResult<&str, Rc<Expr>> {
-    let (input, init) = parse_factor(input)?;
+    let (input, init) = parse_unary(input)?;
     fold_many0(
         pair(
             preceded(multispace0, alt((tag("*"), tag("/")))),
-            parse_factor,
+            parse_unary,
         ),
         move || init.clone(),
         |acc, (op, val)| match op {
