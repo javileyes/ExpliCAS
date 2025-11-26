@@ -2,11 +2,13 @@ use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{DistributeRule, CombineLikeTermsRule, AnnihilationRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule};
+use cas_engine::rules::canonicalization::CanonicalizeRootRule;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
 fn main() -> rustyline::Result<()> {
     let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));

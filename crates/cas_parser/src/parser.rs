@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::tag,
     character::complete::{alpha1, digit1, multispace0},
     combinator::{map, map_res},
-    multi::fold_many0,
+    multi::{fold_many0, separated_list0},
     sequence::{delimited, pair, preceded},
     IResult,
 };
@@ -34,11 +34,35 @@ fn parse_parens(input: &str) -> IResult<&str, Rc<Expr>> {
     )(input)
 }
 
-// Atom: number, variable, or (expr)
+// Parser for function calls: name(arg1, arg2, ...)
+fn parse_function(input: &str) -> IResult<&str, Rc<Expr>> {
+    let (input, name) = alpha1(input)?;
+    let (input, _) = preceded(multispace0, tag("("))(input)?;
+    let (input, args) = separated_list0(
+        preceded(multispace0, tag(",")),
+        parse_expr,
+    )(input)?;
+    let (input, _) = preceded(multispace0, tag(")"))(input)?;
+    Ok((input, Rc::new(Expr::Function(name.to_string(), args))))
+}
+
+// Atom: number, variable, function, or (expr)
 fn parse_atom(input: &str) -> IResult<&str, Rc<Expr>> {
     preceded(
         multispace0,
-        alt((parse_number, parse_variable, parse_parens)),
+        alt((
+            parse_number,
+            // Try parse_function before parse_variable because "sqrt" matches alpha1 too
+            // However, parse_function requires '(', so we can try it first.
+            // Actually, alpha1 matches the name in parse_function.
+            // Let's rely on the fact that parse_function expects '(' after name.
+            // But parse_variable just takes the name.
+            // We need to be careful. parse_variable consumes "sqrt" and leaves "(".
+            // So we should try parse_function first.
+            parse_function,
+            parse_variable,
+            parse_parens,
+        )),
     )(input)
 }
 

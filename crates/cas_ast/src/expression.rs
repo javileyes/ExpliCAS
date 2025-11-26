@@ -62,7 +62,8 @@ impl Expr {
             Expr::Mul(_, _) | Expr::Div(_, _) => 2,
             Expr::Pow(_, _) => 3,
             Expr::Neg(_) => 4,
-            Expr::Function(_, _) | Expr::Number(_) | Expr::Variable(_) => 5,
+            Expr::Number(n) => if n.is_integer() { 5 } else { 2 },
+            Expr::Function(_, _) | Expr::Variable(_) => 5,
         }
     }
 }

@@ -52,6 +52,18 @@ Once inside the CLI, try these expressions:
 ```
 *Output:* `1`
 
+**5. Fractions**
+```text
+> 1/2 + 1/3
+```
+*Output:* `5/6`
+
+**6. Roots**
+```text
+> sqrt(x) * sqrt(x)
+```
+*Output:* `x` (Canonicalized to `x^(1/2) * x^(1/2)` then simplified)
+
 ### Running Tests
 
 To verify the correctness of the system, run the test suite:

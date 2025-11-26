@@ -143,3 +143,25 @@ fn test_fraction_simplification() {
     let (result3, _) = simplifier.simplify(expr3);
     assert_eq!(format!("{}", result3), "1/2");
 }
+
+#[test]
+fn test_root_simplification() {
+    use cas_engine::rules::canonicalization::CanonicalizeRootRule;
+    use cas_engine::rules::exponents::{ProductPowerRule, ZeroOnePowerRule, PowerPowerRule};
+    use cas_engine::rules::arithmetic::CombineConstantsRule;
+
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(CanonicalizeRootRule));
+    simplifier.add_rule(Box::new(ProductPowerRule));
+    simplifier.add_rule(Box::new(PowerPowerRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+
+    // Test 1: sqrt(x) * sqrt(x) -> x
+    // sqrt(x) -> x^(1/2)
+    // x^(1/2) * x^(1/2) -> x^(1/2 + 1/2) -> x^1 -> x
+    let input = "sqrt(x) * sqrt(x)";
+    let expr = parse(input).expect("Failed to parse input");
+    let (result, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", result), "x");
+}
