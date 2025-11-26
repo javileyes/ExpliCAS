@@ -4,8 +4,15 @@ use num_rational::BigRational;
 use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Constant {
+    Pi,
+    E,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
     Number(BigRational),
+    Constant(Constant),
     Variable(String),
     Add(Rc<Expr>, Rc<Expr>),
     Sub(Rc<Expr>, Rc<Expr>),
@@ -28,6 +35,14 @@ impl Expr {
 
     pub fn var(name: &str) -> Rc<Self> {
         Rc::new(Expr::Variable(name.to_string()))
+    }
+
+    pub fn pi() -> Rc<Self> {
+        Rc::new(Expr::Constant(Constant::Pi))
+    }
+
+    pub fn e() -> Rc<Self> {
+        Rc::new(Expr::Constant(Constant::E))
     }
 
     pub fn add(lhs: Rc<Expr>, rhs: Rc<Expr>) -> Rc<Self> {
@@ -73,7 +88,7 @@ impl Expr {
     pub fn substitute(&self, var_name: &str, value: &Rc<Expr>) -> Rc<Self> {
         match self {
             Expr::Variable(name) if name == var_name => value.clone(),
-            Expr::Variable(_) | Expr::Number(_) => Rc::new(self.clone()),
+            Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => Rc::new(self.clone()),
             Expr::Add(l, r) => Expr::add(l.substitute(var_name, value), r.substitute(var_name, value)),
             Expr::Sub(l, r) => Expr::sub(l.substitute(var_name, value), r.substitute(var_name, value)),
             Expr::Mul(l, r) => Expr::mul(l.substitute(var_name, value), r.substitute(var_name, value)),
@@ -96,7 +111,7 @@ impl Expr {
             Expr::Pow(_, _) => 3,
             Expr::Neg(_) => 4,
             Expr::Number(n) => if n.is_integer() { 5 } else { 2 },
-            Expr::Function(_, _) | Expr::Variable(_) => 5,
+            Expr::Function(_, _) | Expr::Variable(_) | Expr::Constant(_) => 5,
         }
     }
 }
@@ -110,6 +125,10 @@ impl fmt::Display for Expr {
                 } else {
                     write!(f, "{}", n)
                 }
+            },
+            Expr::Constant(c) => match c {
+                Constant::Pi => write!(f, "pi"),
+                Constant::E => write!(f, "e"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(l, r) => {

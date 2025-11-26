@@ -20,6 +20,14 @@ fn parse_number(input: &str) -> IResult<&str, Rc<Expr>> {
     map(parse_i64, Expr::num)(input)
 }
 
+// Parser for constants -> Expr::Constant
+fn parse_constant(input: &str) -> IResult<&str, Rc<Expr>> {
+    alt((
+        map(tag("pi"), |_| Expr::pi()),
+        map(tag("e"), |_| Expr::e()),
+    ))(input)
+}
+
 // Parser for variables -> Expr::Variable
 fn parse_variable(input: &str) -> IResult<&str, Rc<Expr>> {
     map(alpha1, |s: &str| Expr::var(s))(input)
@@ -60,6 +68,7 @@ fn parse_atom(input: &str) -> IResult<&str, Rc<Expr>> {
             // We need to be careful. parse_variable consumes "sqrt" and leaves "(".
             // So we should try parse_function first.
             parse_function,
+            parse_constant,
             parse_variable,
             parse_parens,
         )),

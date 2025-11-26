@@ -33,19 +33,17 @@ impl Rule for EvaluateTrigRule {
                 }
 
                 // Case 2: Known Values (pi)
-                if let Expr::Variable(var_name) = arg.as_ref() {
-                    if var_name == "pi" {
-                        match name.as_str() {
-                            "sin" | "tan" => return Some(Rewrite {
-                                new_expr: Rc::new(Expr::Number(num_rational::BigRational::zero())), // 0
-                                description: format!("{}(pi) = 0", name),
-                            }),
-                            "cos" => return Some(Rewrite {
-                                new_expr: Rc::new(Expr::Number(-num_rational::BigRational::one())), // -1
-                                description: "cos(pi) = -1".to_string(),
-                            }),
-                            _ => {}
-                        }
+                if let Expr::Constant(cas_ast::Constant::Pi) = arg.as_ref() {
+                    match name.as_str() {
+                        "sin" | "tan" => return Some(Rewrite {
+                            new_expr: Rc::new(Expr::Number(num_rational::BigRational::zero())), // 0
+                            description: format!("{}(pi) = 0", name),
+                        }),
+                        "cos" => return Some(Rewrite {
+                            new_expr: Rc::new(Expr::Number(-num_rational::BigRational::one())), // -1
+                            description: "cos(pi) = -1".to_string(),
+                        }),
+                        _ => {}
                     }
                 }
 

@@ -1,2 +1,2 @@
 pub mod expression;
-pub use expression::Expr;
+pub use expression::{Expr, Constant};
