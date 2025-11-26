@@ -1,7 +1,7 @@
 use crate::rule::{Rule, Rewrite};
 use cas_ast::Expr;
 use std::rc::Rc;
-use num_traits::{Zero, One};
+use num_traits::{Zero, One, ToPrimitive};
 
 pub struct ProductPowerRule;
 
@@ -68,6 +68,82 @@ impl Rule for PowerPowerRule {
                     new_expr: Expr::pow(inner_base.clone(), Expr::mul(inner_exp.clone(), outer_exp.clone())),
                     description: "Multiply exponents".to_string(),
                 });
+            }
+        }
+        None
+    }
+}
+
+use num_rational::BigRational;
+
+pub struct EvaluatePowerRule;
+
+impl Rule for EvaluatePowerRule {
+    fn name(&self) -> &str {
+        "Evaluate Numeric Power"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Pow(base, exp) = expr.as_ref() {
+            if let (Expr::Number(b), Expr::Number(e)) = (base.as_ref(), exp.as_ref()) {
+                // Case 1: Integer Exponent
+                if e.is_integer() {
+                    // We need to be careful with large exponents, but BigInt handles arbitrary size.
+                    // However, BigRational::pow takes i32. 
+                    // If exponent is too large for i32, we might skip or use BigInt pow if base is integer.
+                    // num_rational 0.4 BigRational doesn't have a generic pow that takes BigInt.
+                    // It has `pow(i32)`.
+                    // Let's check if e fits in i32.
+                    if let Some(e_i32) = e.to_integer().to_u32().map(|x| x as i32).or_else(|| e.to_integer().to_i32()) {
+                         // b^e_i32
+                         // BigRational::pow takes i32.
+                         let res = b.pow(e_i32);
+                         return Some(Rewrite {
+                             new_expr: Rc::new(Expr::Number(res)),
+                             description: format!("Evaluate power: {}^{}", b, e),
+                         });
+                    }
+                }
+                
+                // Case 2: Fractional Exponent (Roots)
+                // e = num / den.
+                // We want to check if b is a perfect root.
+                // b^(num/den) = (b^(1/den))^num
+                // Let's try to find nth_root where n = den.
+                let numer = e.numer();
+                let denom = e.denom();
+                
+                // Only handle if numerator is 1 for now (standard roots), or maybe simple fractions.
+                // If we have 27^(1/3), numer=1, denom=3.
+                // We check if b is a perfect 3rd root.
+                // BigRational doesn't have nth_root. We need to work with numerator and denominator of base separately.
+                // base = b_num / b_den.
+                // root = nth_root(b_num) / nth_root(b_den).
+                
+                // We need to convert denom (BigInt) to u32 for nth_root.
+                if let Some(n) = denom.to_u32() {
+                    let b_num = b.numer();
+                    let b_den = b.denom();
+                    
+                    let root_num = b_num.nth_root(n);
+                    let root_den = b_den.nth_root(n);
+                    
+                    // Check if perfect root
+                    if root_num.pow(n) == *b_num && root_den.pow(n) == *b_den {
+                        // It is a perfect root!
+                        // So b^(1/n) = root_num / root_den.
+                        let root = BigRational::new(root_num, root_den);
+                        
+                        // Now raise to numerator power: (b^(1/n))^numer
+                        if let Some(pow_num) = numer.to_i32() {
+                             let res = root.pow(pow_num);
+                             return Some(Rewrite {
+                                 new_expr: Rc::new(Expr::Number(res)),
+                                 description: format!("Evaluate perfect root: {}^{}", b, e),
+                             });
+                        }
+                    }
+                }
             }
         }
         None

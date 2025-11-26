@@ -45,6 +45,7 @@ version = "0.1.0"
 dependencies = [
  "cas_ast",
  "num-bigint",
+ "num-integer",
  "num-rational",
  "num-traits",
 ]

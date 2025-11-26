@@ -8,3 +8,4 @@ cas_ast = { path = "../cas_ast" }
 num-rational = "0.4"
 num-bigint = "0.4"
 num-traits = "0.2"
+num-integer = "0.1"
