@@ -111,12 +111,12 @@ mod tests {
         // Note: Operator precedence is handled by the parser structure (Term before Expr)
         // Term handles * and /, Expr handles + and -
         // So 1 + 2 * x should be 1 + (2 * x)
-        assert_eq!(format!("{}", e), "(1 + (2 * x))");
+        assert_eq!(format!("{}", e), "1 + 2 * x");
     }
 
     #[test]
     fn test_parse_parens() {
         let e = parse("(1 + 2) * x").unwrap();
-        assert_eq!(format!("{}", e), "((1 + 2) * x)");
+        assert_eq!(format!("{}", e), "(1 + 2) * x");
     }
 }

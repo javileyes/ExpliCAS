@@ -1,9 +1,13 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
+use cas_engine::rules::polynomial::{DistributeRule, CombineLikeTermsRule, AnnihilationRule};
 use std::io::{self, Write};
 
 fn main() {
     let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(DistributeRule));
+    simplifier.add_rule(Box::new(CombineLikeTermsRule));
+    simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));

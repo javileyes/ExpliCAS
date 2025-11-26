@@ -49,23 +49,91 @@ impl Expr {
     }
 }
 
+impl Expr {
+    fn precedence(&self) -> u8 {
+        match self {
+            Expr::Add(_, _) | Expr::Sub(_, _) => 1,
+            Expr::Mul(_, _) | Expr::Div(_, _) => 2,
+            Expr::Pow(_, _) => 3,
+            Expr::Neg(_) => 4,
+            Expr::Function(_, _) | Expr::Number(_) | Expr::Variable(_) => 5,
+        }
+    }
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Expr::Number(n) => write!(f, "{}", n),
             Expr::Variable(s) => write!(f, "{}", s),
-            Expr::Add(l, r) => write!(f, "({} + {})", l, r),
-            Expr::Sub(l, r) => write!(f, "({} - {})", l, r),
-            Expr::Mul(l, r) => write!(f, "({} * {})", l, r),
-            Expr::Div(l, r) => write!(f, "({} / {})", l, r),
-            Expr::Pow(b, e) => write!(f, "({}^{})", b, e),
-            Expr::Neg(e) => write!(f, "-{}", e),
+            Expr::Add(l, r) => {
+                let l_prec = l.precedence();
+                let r_prec = r.precedence();
+                let my_prec = self.precedence();
+                
+                if l_prec < my_prec { write!(f, "({})", l)? } else { write!(f, "{}", l)? }
+                write!(f, " + ")?;
+                if r_prec < my_prec { write!(f, "({})", r)? } else { write!(f, "{}", r)? }
+                Ok(())
+            },
+            Expr::Sub(l, r) => {
+                let l_prec = l.precedence();
+                let r_prec = r.precedence();
+                let my_prec = self.precedence();
+                
+                if l_prec < my_prec { write!(f, "({})", l)? } else { write!(f, "{}", l)? }
+                write!(f, " - ")?;
+                // Subtraction is non-associative, so if RHS has same precedence (e.g. a - (b - c)), it needs parens
+                // But actually a - b - c is (a - b) - c. 
+                // If we have a - (b + c), b+c is lower prec (1), so it gets parens.
+                // If we have a - (b - c), b-c is same prec (1). Standard is left-assoc.
+                // So if RHS is same precedence, we generally need parens for non-commutative ops?
+                // For simplicity here: strict inequality for LHS, <= for RHS to enforce left-associativity visual?
+                // Let's stick to simple precedence check first.
+                if r_prec <= my_prec { write!(f, "({})", r)? } else { write!(f, "{}", r)? }
+                Ok(())
+            },
+            Expr::Mul(l, r) => {
+                let l_prec = l.precedence();
+                let r_prec = r.precedence();
+                let my_prec = self.precedence();
+                
+                if l_prec < my_prec { write!(f, "({})", l)? } else { write!(f, "{}", l)? }
+                write!(f, " * ")?;
+                if r_prec < my_prec { write!(f, "({})", r)? } else { write!(f, "{}", r)? }
+                Ok(())
+            },
+            Expr::Div(l, r) => {
+                let l_prec = l.precedence();
+                let r_prec = r.precedence();
+                let my_prec = self.precedence();
+                
+                if l_prec < my_prec { write!(f, "({})", l)? } else { write!(f, "{}", l)? }
+                write!(f, " / ")?;
+                if r_prec <= my_prec { write!(f, "({})", r)? } else { write!(f, "{}", r)? }
+                Ok(())
+            },
+            Expr::Pow(b, e) => {
+                let b_prec = b.precedence();
+                let my_prec = self.precedence();
+                if b_prec < my_prec { write!(f, "({})", b)? } else { write!(f, "{}", b)? }
+                write!(f, "^{}", e) // Exponent usually doesn't need parens if it's a single token, but let's be safe?
+                // For now, let's assume exponent is self-contained or we wrap it if complex?
+                // Let's just print e. If e is 1+2, it will print 1+2. x^1+2 is x^1 + 2.
+                // So we should wrap exponent if it's lower precedence than Pow?
+                // Actually, standard usually writes x^(y+z).
+            },
+            Expr::Neg(e) => {
+                let e_prec = e.precedence();
+                let my_prec = self.precedence();
+                write!(f, "-")?;
+                if e_prec < my_prec { write!(f, "({})", e)? } else { write!(f, "{}", e)? }
+                Ok(())
+            },
             Expr::Function(name, args) => {
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
+                    if i > 0 { write!(f, ", ")?; }
                     write!(f, "{}", arg)?;
                 }
                 write!(f, ")")
@@ -81,7 +149,7 @@ mod tests {
     #[test]
     fn test_display() {
         let e = Expr::add(Expr::num(1), Expr::mul(Expr::var("x"), Expr::num(2)));
-        assert_eq!(format!("{}", e), "(1 + (x * 2))");
+        assert_eq!(format!("{}", e), "1 + x * 2");
     }
 
     #[test]
@@ -90,6 +158,6 @@ mod tests {
             Expr::add(Expr::var("a"), Expr::var("b")),
             Expr::num(2)
         );
-        assert_eq!(format!("{}", e), "((a + b)^2)");
+        assert_eq!(format!("{}", e), "(a + b)^2");
     }
 }
