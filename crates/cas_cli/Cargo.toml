@@ -7,3 +7,4 @@ edition = "2021"
 cas_ast = { path = "../cas_ast" }
 cas_parser = { path = "../cas_parser" }
 cas_engine = { path = "../cas_engine" }
+rustyline = "12.0"

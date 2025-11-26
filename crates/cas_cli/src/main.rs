@@ -1,9 +1,10 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{DistributeRule, CombineLikeTermsRule, AnnihilationRule};
-use std::io::{self, Write};
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 
-fn main() {
+fn main() -> rustyline::Result<()> {
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
@@ -15,37 +16,52 @@ fn main() {
     println!("Rust CAS Step-by-Step Demo");
     println!("Enter an expression (e.g., '2 * 3 + 0'):");
 
+    let mut rl = DefaultEditor::new()?;
+    // Load history if file exists (optional, skipping for simplicity or can add later)
+    
     loop {
-        print!("> ");
-        io::stdout().flush().unwrap();
-
-        let mut input = String::new();
-        if io::stdin().read_line(&mut input).unwrap() == 0 {
-            break;
-        }
-
-        let input = input.trim();
-        if input.is_empty() {
-            continue;
-        }
-
-        match cas_parser::parse(input) {
-            Ok(expr) => {
-                println!("Parsed: {}", expr);
-                let (simplified, steps) = simplifier.simplify(expr);
-                
-                if steps.is_empty() {
-                    println!("No simplification steps needed.");
-                } else {
-                    println!("Steps:");
-                    for (i, step) in steps.iter().enumerate() {
-                        println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                        println!("   -> {}", step.after);
-                    }
+        let readline = rl.readline("> ");
+        match readline {
+            Ok(line) => {
+                let input = line.trim();
+                if input.is_empty() {
+                    continue;
                 }
-                println!("Result: {}", simplified);
+                
+                rl.add_history_entry(input)?;
+
+                match cas_parser::parse(input) {
+                    Ok(expr) => {
+                        println!("Parsed: {}", expr);
+                        let (simplified, steps) = simplifier.simplify(expr);
+                        
+                        if steps.is_empty() {
+                            println!("No simplification steps needed.");
+                        } else {
+                            println!("Steps:");
+                            for (i, step) in steps.iter().enumerate() {
+                                println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                println!("   -> {}", step.after);
+                            }
+                        }
+                        println!("Result: {}", simplified);
+                    }
+                    Err(e) => println!("Error: {}", e),
+                }
+            },
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break;
+            },
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break;
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break;
             }
-            Err(e) => println!("Error: {}", e),
         }
     }
+    Ok(())
 }
