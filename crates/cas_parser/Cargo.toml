@@ -1,0 +1,8 @@
+[package]
+name = "cas_parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cas_ast = { path = "../cas_ast" }
+nom = "7.1" # Using nom for parsing as planned
