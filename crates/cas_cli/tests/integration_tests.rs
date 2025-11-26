@@ -1,4 +1,3 @@
-use cas_ast::Expr;
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
 use cas_parser::parse;
@@ -65,7 +64,7 @@ fn test_polynomial_simplification() {
     let input = "2 * (x + 3) + 4 * x";
     let expr = parse(input).expect("Failed to parse");
 
-    let (result, steps) = simplifier.simplify(expr);
+    let (_result, _steps) = simplifier.simplify(expr);
 
     // Expected: 6x + 6 (or 6 + 6x, order depends on implementation)
     // Steps:
