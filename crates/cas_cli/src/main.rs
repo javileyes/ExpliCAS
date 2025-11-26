@@ -40,6 +40,30 @@ fn main() -> rustyline::Result<()> {
                 
                 rl.add_history_entry(line)?;
 
+                rl.add_history_entry(line)?;
+
+                // Check for "quit" or "exit" command
+                if line == "quit" || line == "exit" {
+                    println!("Goodbye!");
+                    break;
+                }
+
+                // Check for "help" command
+                if line == "help" {
+                    println!("Rust CAS Commands:");
+                    println!("  <expr>                  Evaluate and simplify an expression");
+                    println!("  subst <expr> <var>=<val> Substitute a variable and simplify");
+                    println!("  help                    Show this help message");
+                    println!("  quit / exit             Exit the REPL");
+                    println!();
+                    println!("Examples:");
+                    println!("  2 + 3 * 4");
+                    println!("  x + x");
+                    println!("  sqrt(27, 3)");
+                    println!("  subst x+1 x=2");
+                    continue;
+                }
+
                 // Check for "subst" command
                 if line.starts_with("subst ") {
                     // Format: subst <expr> <var>=<val>
