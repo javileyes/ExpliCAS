@@ -1,9 +1,11 @@
 use std::rc::Rc;
 use std::fmt;
+use num_rational::BigRational;
+use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
-    Number(i64), // Using i64 for simplicity for now, will upgrade to BigInt later
+    Number(BigRational),
     Variable(String),
     Add(Rc<Expr>, Rc<Expr>),
     Sub(Rc<Expr>, Rc<Expr>),
@@ -17,7 +19,11 @@ pub enum Expr {
 impl Expr {
     // Helper constructors for cleaner code
     pub fn num(n: i64) -> Rc<Self> {
-        Rc::new(Expr::Number(n))
+        Rc::new(Expr::Number(BigRational::from_integer(BigInt::from(n))))
+    }
+
+    pub fn rational(num: i64, den: i64) -> Rc<Self> {
+        Rc::new(Expr::Number(BigRational::new(BigInt::from(num), BigInt::from(den))))
     }
 
     pub fn var(name: &str) -> Rc<Self> {
@@ -64,7 +70,13 @@ impl Expr {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expr::Number(n) => write!(f, "{}", n),
+            Expr::Number(n) => {
+                if n.is_integer() {
+                    write!(f, "{}", n.to_integer())
+                } else {
+                    write!(f, "{}", n)
+                }
+            },
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(l, r) => {
                 let l_prec = l.precedence();

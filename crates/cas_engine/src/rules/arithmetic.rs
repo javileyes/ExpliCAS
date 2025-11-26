@@ -1,25 +1,32 @@
 use crate::rule::{Rewrite, Rule};
 use cas_ast::Expr;
 use std::rc::Rc;
+use num_traits::{Zero, One};
 
 pub struct AddZeroRule;
+
 impl Rule for AddZeroRule {
     fn name(&self) -> &str {
         "Identity Property of Addition"
     }
+
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
-        if let Expr::Add(l, r) = expr.as_ref() {
-            if let Expr::Number(0) = l.as_ref() {
-                return Some(Rewrite {
-                    new_expr: r.clone(),
-                    description: "0 + x = x".to_string(),
-                });
+        if let Expr::Add(lhs, rhs) = expr.as_ref() {
+            if let Expr::Number(n) = rhs.as_ref() {
+                if n.is_zero() {
+                    return Some(Rewrite {
+                        new_expr: lhs.clone(),
+                        description: "x + 0 = x".to_string(),
+                    });
+                }
             }
-            if let Expr::Number(0) = r.as_ref() {
-                return Some(Rewrite {
-                    new_expr: l.clone(),
-                    description: "x + 0 = x".to_string(),
-                });
+            if let Expr::Number(n) = lhs.as_ref() {
+                if n.is_zero() {
+                    return Some(Rewrite {
+                        new_expr: rhs.clone(),
+                        description: "0 + x = x".to_string(),
+                    });
+                }
             }
         }
         None
@@ -27,23 +34,29 @@ impl Rule for AddZeroRule {
 }
 
 pub struct MulOneRule;
+
 impl Rule for MulOneRule {
     fn name(&self) -> &str {
         "Identity Property of Multiplication"
     }
+
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
-        if let Expr::Mul(l, r) = expr.as_ref() {
-            if let Expr::Number(1) = l.as_ref() {
-                return Some(Rewrite {
-                    new_expr: r.clone(),
-                    description: "1 * x = x".to_string(),
-                });
+        if let Expr::Mul(lhs, rhs) = expr.as_ref() {
+            if let Expr::Number(n) = rhs.as_ref() {
+                if n.is_one() {
+                    return Some(Rewrite {
+                        new_expr: lhs.clone(),
+                        description: "x * 1 = x".to_string(),
+                    });
+                }
             }
-            if let Expr::Number(1) = r.as_ref() {
-                return Some(Rewrite {
-                    new_expr: l.clone(),
-                    description: "x * 1 = x".to_string(),
-                });
+            if let Expr::Number(n) = lhs.as_ref() {
+                if n.is_one() {
+                    return Some(Rewrite {
+                        new_expr: rhs.clone(),
+                        description: "1 * x = x".to_string(),
+                    });
+                }
             }
         }
         None
@@ -51,26 +64,46 @@ impl Rule for MulOneRule {
 }
 
 pub struct CombineConstantsRule;
+
 impl Rule for CombineConstantsRule {
     fn name(&self) -> &str {
         "Combine Constants"
     }
+
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
         match expr.as_ref() {
-            Expr::Add(l, r) => {
-                if let (Expr::Number(a), Expr::Number(b)) = (l.as_ref(), r.as_ref()) {
+            Expr::Add(lhs, rhs) => {
+                if let (Expr::Number(n1), Expr::Number(n2)) = (lhs.as_ref(), rhs.as_ref()) {
                     return Some(Rewrite {
-                        new_expr: Expr::num(a + b),
-                        description: format!("{} + {} = {}", a, b, a + b),
+                        new_expr: Rc::new(Expr::Number(n1 + n2)),
+                        description: format!("{} + {} = {}", n1, n2, n1 + n2),
                     });
                 }
             }
-            Expr::Mul(l, r) => {
-                if let (Expr::Number(a), Expr::Number(b)) = (l.as_ref(), r.as_ref()) {
+            Expr::Mul(lhs, rhs) => {
+                if let (Expr::Number(n1), Expr::Number(n2)) = (lhs.as_ref(), rhs.as_ref()) {
                     return Some(Rewrite {
-                        new_expr: Expr::num(a * b),
-                        description: format!("{} * {} = {}", a, b, a * b),
+                        new_expr: Rc::new(Expr::Number(n1 * n2)),
+                        description: format!("{} * {} = {}", n1, n2, n1 * n2),
                     });
+                }
+            }
+            Expr::Sub(lhs, rhs) => {
+                if let (Expr::Number(n1), Expr::Number(n2)) = (lhs.as_ref(), rhs.as_ref()) {
+                    return Some(Rewrite {
+                        new_expr: Rc::new(Expr::Number(n1 - n2)),
+                        description: format!("{} - {} = {}", n1, n2, n1 - n2),
+                    });
+                }
+            }
+            Expr::Div(lhs, rhs) => {
+                if let (Expr::Number(n1), Expr::Number(n2)) = (lhs.as_ref(), rhs.as_ref()) {
+                    if !n2.is_zero() {
+                        return Some(Rewrite {
+                            new_expr: Rc::new(Expr::Number(n1 / n2)),
+                            description: format!("{} / {} = {}", n1, n2, n1 / n2),
+                        });
+                    }
                 }
             }
             _ => {}

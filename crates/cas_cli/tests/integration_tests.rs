@@ -114,3 +114,32 @@ fn test_exponent_simplification() {
     let (result3, _) = simplifier.simplify(expr3);
     assert_eq!(format!("{}", result3), "1");
 }
+
+#[test]
+fn test_fraction_simplification() {
+    use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule};
+
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(AddZeroRule));
+    simplifier.add_rule(Box::new(MulOneRule));
+
+    // Test 1: Addition (1/2 + 1/3 -> 5/6)
+    let input1 = "1/2 + 1/3";
+    let expr1 = parse(input1).expect("Failed to parse input1");
+    let (result1, _) = simplifier.simplify(expr1);
+    assert_eq!(format!("{}", result1), "5/6");
+
+    // Test 2: Multiplication (1/2 * 2/3 -> 1/3)
+    // Parses as ((1/2) * 2) / 3 -> 1 / 3 -> 1/3
+    let input2 = "1/2 * 2/3";
+    let expr2 = parse(input2).expect("Failed to parse input2");
+    let (result2, _) = simplifier.simplify(expr2);
+    assert_eq!(format!("{}", result2), "1/3");
+
+    // Test 3: Mixed (2 * (1/4) -> 1/2)
+    let input3 = "2 * (1/4)";
+    let expr3 = parse(input3).expect("Failed to parse input3");
+    let (result3, _) = simplifier.simplify(expr3);
+    assert_eq!(format!("{}", result3), "1/2");
+}

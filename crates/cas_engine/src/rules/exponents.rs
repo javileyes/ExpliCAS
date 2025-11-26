@@ -1,6 +1,7 @@
 use crate::rule::{Rule, Rewrite};
 use cas_ast::Expr;
 use std::rc::Rc;
+use num_traits::{Zero, One};
 
 pub struct ProductPowerRule;
 
@@ -83,18 +84,19 @@ impl Rule for ZeroOnePowerRule {
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
         if let Expr::Pow(base, exp) = expr.as_ref() {
             // x^0 -> 1
-            if let Expr::Number(0) = exp.as_ref() {
-                return Some(Rewrite {
-                    new_expr: Expr::num(1),
-                    description: "Anything to the power of 0 is 1".to_string(),
-                });
-            }
-            // x^1 -> x
-            if let Expr::Number(1) = exp.as_ref() {
-                return Some(Rewrite {
-                    new_expr: base.clone(),
-                    description: "Exponent 1 is identity".to_string(),
-                });
+            if let Expr::Number(n) = exp.as_ref() {
+                if n.is_zero() {
+                    return Some(Rewrite {
+                        new_expr: Expr::num(1),
+                        description: "Anything to the power of 0 is 1".to_string(),
+                    });
+                }
+                if n.is_one() {
+                    return Some(Rewrite {
+                        new_expr: base.clone(),
+                        description: "Exponent 1 is identity".to_string(),
+                    });
+                }
             }
         }
         None

@@ -52,6 +52,9 @@ impl Rule for AnnihilationRule {
     }
 }
 
+use num_rational::BigRational;
+use num_traits::One;
+
 pub struct CombineLikeTermsRule;
 impl Rule for CombineLikeTermsRule {
     fn name(&self) -> &str {
@@ -62,29 +65,29 @@ impl Rule for CombineLikeTermsRule {
             // Helper to extract (coeff, var_part)
             // 2x -> (2, x)
             // x -> (1, x)
-            let get_parts = |e: &Rc<Expr>| -> Option<(i64, Rc<Expr>)> {
+            let get_parts = |e: &Rc<Expr>| -> Option<(BigRational, Rc<Expr>)> {
                 match e.as_ref() {
                     Expr::Mul(a, b) => {
                         if let Expr::Number(n) = a.as_ref() {
-                            Some((*n, b.clone()))
+                            Some((n.clone(), b.clone()))
                         } else if let Expr::Number(n) = b.as_ref() {
-                            Some((*n, a.clone()))
+                            Some((n.clone(), a.clone()))
                         } else {
                             None
                         }
                     }
-                    Expr::Variable(_) => Some((1, e.clone())),
+                    Expr::Variable(_) => Some((BigRational::one(), e.clone())),
                     _ => None,
                 }
             };
 
             if let (Some((c1, v1)), Some((c2, v2))) = (get_parts(l), get_parts(r)) {
                 if v1 == v2 {
-                    let new_coeff = c1 + c2;
-                    let new_term = if new_coeff == 1 {
+                    let new_coeff = &c1 + &c2;
+                    let new_term = if new_coeff.is_one() {
                         v1.clone()
                     } else {
-                        Expr::mul(Expr::num(new_coeff), v1.clone())
+                        Expr::mul(Rc::new(Expr::Number(new_coeff.clone())), v1.clone())
                     };
                     return Some(Rewrite {
                         new_expr: new_term,
