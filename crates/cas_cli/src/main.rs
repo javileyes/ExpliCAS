@@ -30,14 +30,53 @@ fn main() -> rustyline::Result<()> {
         let readline = rl.readline("> ");
         match readline {
             Ok(line) => {
-                let input = line.trim();
-                if input.is_empty() {
+                let line = line.trim();
+                if line.is_empty() {
                     continue;
                 }
                 
-                rl.add_history_entry(input)?;
+                rl.add_history_entry(line)?;
 
-                match cas_parser::parse(input) {
+                // Check for "subst" command
+                if line.starts_with("subst ") {
+                    // Format: subst <expr> <var>=<val>
+                    // Example: subst x+1 x=2
+                    // We need to split by space, but expr might contain spaces.
+                    // Let's assume the LAST argument is the assignment.
+                    if let Some((expr_str, assign_str)) = line[6..].rsplit_once(' ') {
+                        if let Some((var, val_str)) = assign_str.split_once('=') {
+                            let var = var.trim();
+                            let val_str = val_str.trim();
+                            
+                            match cas_parser::parse(expr_str) {
+                                Ok(expr) => {
+                                    match cas_parser::parse(val_str) {
+                                        Ok(val_expr) => {
+                                            println!("Substituting {} = {} into {}", var, val_str, expr_str);
+                                            let subbed = expr.substitute(var, &val_expr);
+                                            println!("After substitution: {}", subbed);
+                                            
+                                            let (result, steps) = simplifier.simplify(subbed);
+                                            println!("Steps:");
+                                            for (i, step) in steps.iter().enumerate() {
+                                                println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                                println!("   -> {}", step.after);
+                                            }
+                                            println!("Result: {}", result);
+                                        },
+                                        Err(e) => println!("Error parsing value: {:?}", e),
+                                    }
+                                },
+                                Err(e) => println!("Error parsing expression: {:?}", e),
+                            }
+                            continue;
+                        }
+                    }
+                    println!("Usage: subst <expression> <var>=<value>");
+                    continue;
+                }
+
+                match cas_parser::parse(line) {
                     Ok(expr) => {
                         println!("Parsed: {}", expr);
                         let (simplified, steps) = simplifier.simplify(expr);

@@ -53,6 +53,23 @@ impl Expr {
     pub fn neg(expr: Rc<Expr>) -> Rc<Self> {
         Rc::new(Expr::Neg(expr))
     }
+
+    pub fn substitute(&self, var_name: &str, value: &Rc<Expr>) -> Rc<Self> {
+        match self {
+            Expr::Variable(name) if name == var_name => value.clone(),
+            Expr::Variable(_) | Expr::Number(_) => Rc::new(self.clone()),
+            Expr::Add(l, r) => Expr::add(l.substitute(var_name, value), r.substitute(var_name, value)),
+            Expr::Sub(l, r) => Expr::sub(l.substitute(var_name, value), r.substitute(var_name, value)),
+            Expr::Mul(l, r) => Expr::mul(l.substitute(var_name, value), r.substitute(var_name, value)),
+            Expr::Div(l, r) => Expr::div(l.substitute(var_name, value), r.substitute(var_name, value)),
+            Expr::Pow(b, e) => Expr::pow(b.substitute(var_name, value), e.substitute(var_name, value)),
+            Expr::Neg(e) => Expr::neg(e.substitute(var_name, value)),
+            Expr::Function(name, args) => {
+                let new_args = args.iter().map(|arg| arg.substitute(var_name, value)).collect();
+                Rc::new(Expr::Function(name.clone(), new_args))
+            }
+        }
+    }
 }
 
 impl Expr {
@@ -170,5 +187,45 @@ mod tests {
             Expr::num(2)
         );
         assert_eq!(format!("{}", e), "(a + b)^2");
+    }
+
+    #[test]
+    fn test_substitute() {
+        // x + 1, sub x = 2 -> 2 + 1
+        let e = Expr::add(Expr::var("x"), Expr::num(1));
+        let sub = e.substitute("x", &Expr::num(2));
+        assert_eq!(format!("{}", sub), "2 + 1");
+
+        // y + 1, sub x = 2 -> y + 1
+        let e2 = Expr::add(Expr::var("y"), Expr::num(1));
+        let sub2 = e2.substitute("x", &Expr::num(2));
+        assert_eq!(format!("{}", sub2), "y + 1");
+
+        // x^2, sub x = 3 -> 3^2
+        let e3 = Expr::pow(Expr::var("x"), Expr::num(2));
+        let sub3 = e3.substitute("x", &Expr::num(3));
+        assert_eq!(format!("{}", sub3), "3^2");
+    }
+
+    #[test]
+    fn test_substitute_nested() {
+        // (x + 1) * x, sub x = 2 -> (2 + 1) * 2
+        let e = Expr::mul(
+            Expr::add(Expr::var("x"), Expr::num(1)),
+            Expr::var("x")
+        );
+        let sub = e.substitute("x", &Expr::num(2));
+        assert_eq!(format!("{}", sub), "(2 + 1) * 2");
+    }
+
+    #[test]
+    fn test_substitute_complex() {
+        // sqrt(x) + x^2, sub x = 4 -> sqrt(4) + 4^2
+        let e = Expr::add(
+            Rc::new(Expr::Function("sqrt".to_string(), vec![Expr::var("x")])),
+            Expr::pow(Expr::var("x"), Expr::num(2))
+        );
+        let sub = e.substitute("x", &Expr::num(4));
+        assert_eq!(format!("{}", sub), "sqrt(4) + 4^2");
     }
 }

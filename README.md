@@ -64,6 +64,24 @@ Once inside the CLI, try these expressions:
 ```
 *Output:* `x` (Canonicalized to `x^(1/2) * x^(1/2)` then simplified)
 
+> sqrt(x) * sqrt(x)
+```
+*Output:* `x` (Canonicalized to `x^(1/2) * x^(1/2)` then simplified)
+```
+
+**7. Variable Substitution**
+Use the `subst` command to evaluate expressions for specific variable values.
+
+```text
+> subst x+1 x=2
+```
+*Output:* `3`
+
+```text
+> subst x^2+x x=3
+```
+*Output:* `12` (Calculated as `3^2 + 3` -> `9 + 3` -> `12`)
+
 ### Running Tests
 
 To verify the correctness of the system, run the test suite:
