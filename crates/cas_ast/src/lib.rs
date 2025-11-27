@@ -12,6 +12,19 @@ pub enum RelOp {
     Geq, // >=
 }
 
+impl std::fmt::Display for RelOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RelOp::Eq => write!(f, "="),
+            RelOp::Neq => write!(f, "!="),
+            RelOp::Lt => write!(f, "<"),
+            RelOp::Gt => write!(f, ">"),
+            RelOp::Leq => write!(f, "<="),
+            RelOp::Geq => write!(f, ">="),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Equation {
     pub lhs: Rc<Expr>, // Left Hand Side

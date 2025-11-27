@@ -196,8 +196,22 @@ fn main() -> rustyline::Result<()> {
                         Ok(cas_parser::Statement::Equation(eq)) => {
                             // Check if variable exists in equation
                             // We should simplify the equation first to handle cases like "ln(x) + ln(x) = 2" -> "2*ln(x) = 2"
-                            let (sim_lhs, _) = simplifier.simplify(eq.lhs.clone());
-                            let (sim_rhs, _) = simplifier.simplify(eq.rhs.clone());
+                            let (sim_lhs, steps_lhs) = simplifier.simplify(eq.lhs.clone());
+                            let (sim_rhs, steps_rhs) = simplifier.simplify(eq.rhs.clone());
+                            
+                            if !steps_lhs.is_empty() || !steps_rhs.is_empty() {
+                                println!("Simplification Steps:");
+                                for (i, step) in steps_lhs.iter().enumerate() {
+                                    println!("LHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                    println!("   -> {}", step.after);
+                                }
+                                for (i, step) in steps_rhs.iter().enumerate() {
+                                    println!("RHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                    println!("   -> {}", step.after);
+                                }
+                                println!("Solving simplified equation: {} {} {}", sim_lhs, eq.op, sim_rhs);
+                            }
+
                             let simplified_eq = cas_ast::Equation {
                                 lhs: sim_lhs.clone(),
                                 rhs: sim_rhs.clone(),
@@ -220,35 +234,17 @@ fn main() -> rustyline::Result<()> {
                                 match cas_engine::solver::solve(&simplified_eq, var) {
                                     Ok((solved_eq, steps)) => {
                                         println!("Steps:");
-                                        for (i, step) in steps.iter().enumerate() {
+                                        for step in steps.iter() {
                                             // Simplify the equation for display
                                             let (sim_lhs, _) = simplifier.simplify(step.equation_after.lhs.clone());
                                             let (sim_rhs, _) = simplifier.simplify(step.equation_after.rhs.clone());
                                             
-                                            let op_str = match step.equation_after.op {
-                                                cas_ast::RelOp::Eq => "=",
-                                                cas_ast::RelOp::Neq => "!=",
-                                                cas_ast::RelOp::Lt => "<",
-                                                cas_ast::RelOp::Gt => ">",
-                                                cas_ast::RelOp::Leq => "<=",
-                                                cas_ast::RelOp::Geq => ">=",
-                                            };
-                                            
-                                            println!("{}. {}", i + 1, step.description);
-                                            println!("   -> {} {} {}", sim_lhs, op_str, sim_rhs);
+                                            println!("   -> {} {} {}", sim_lhs, step.equation_after.op, sim_rhs);
                                         }
 
                                         // Simplify the RHS of the solution
                                         let (simplified_rhs, _) = simplifier.simplify(solved_eq.rhs);
-                                        let op_str = match solved_eq.op {
-                                            cas_ast::RelOp::Eq => "=",
-                                            cas_ast::RelOp::Neq => "!=",
-                                            cas_ast::RelOp::Lt => "<",
-                                            cas_ast::RelOp::Gt => ">",
-                                            cas_ast::RelOp::Leq => "<=",
-                                            cas_ast::RelOp::Geq => ">=",
-                                        };
-                                        println!("Result: {} {} {}", solved_eq.lhs, op_str, simplified_rhs);
+                                        println!("Result: {} {} {}", solved_eq.lhs, solved_eq.op, simplified_rhs);
                                     },
                                     Err(e) => println!("Error solving: {}", e),
                                 }
