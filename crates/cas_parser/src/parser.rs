@@ -138,11 +138,64 @@ fn parse_expr(input: &str) -> IResult<&str, Rc<Expr>> {
     )(input)
 }
 
+use cas_ast::{Equation, RelOp};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Statement {
+    Expression(Rc<Expr>),
+    Equation(Equation),
+}
+
+// Parser for relational operators
+fn parse_relop(input: &str) -> IResult<&str, RelOp> {
+    preceded(
+        multispace0,
+        alt((
+            map(tag("="), |_| RelOp::Eq),
+            map(tag("!="), |_| RelOp::Neq),
+            map(tag("<="), |_| RelOp::Leq),
+            map(tag(">="), |_| RelOp::Geq),
+            map(tag("<"), |_| RelOp::Lt),
+            map(tag(">"), |_| RelOp::Gt),
+        )),
+    )(input)
+}
+
+// Parser for equations: expr op expr
+fn parse_equation(input: &str) -> IResult<&str, Equation> {
+    let (input, lhs) = parse_expr(input)?;
+    let (input, op) = parse_relop(input)?;
+    let (input, rhs) = parse_expr(input)?;
+    Ok((input, Equation { lhs, rhs, op }))
+}
+
 pub fn parse(input: &str) -> Result<Rc<Expr>, String> {
+    // Legacy support for just expressions
     match parse_expr(input) {
         Ok((remaining, expr)) => {
             if remaining.trim().is_empty() {
                 Ok(expr)
+            } else {
+                Err(format!("Unconsumed input: {}", remaining))
+            }
+        }
+        Err(e) => Err(format!("Parse error: {}", e)),
+    }
+}
+
+pub fn parse_statement(input: &str) -> Result<Statement, String> {
+    // Try parsing as equation first
+    if let Ok((remaining, eq)) = parse_equation(input) {
+        if remaining.trim().is_empty() {
+            return Ok(Statement::Equation(eq));
+        }
+    }
+
+    // Fallback to expression
+    match parse_expr(input) {
+        Ok((remaining, expr)) => {
+            if remaining.trim().is_empty() {
+                Ok(Statement::Expression(expr))
             } else {
                 Err(format!("Unconsumed input: {}", remaining))
             }

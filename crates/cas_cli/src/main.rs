@@ -123,6 +123,73 @@ fn main() -> rustyline::Result<()> {
                     continue;
                 }
 
+                // Check for "solve" command
+                if line.starts_with("solve ") {
+                    // solve <equation> <var>
+                    // or solve <equation> (implies x?)
+                    // Let's parse the rest
+                    let rest = line[6..].trim();
+                    // Split by comma or space to get equation and var?
+                    // "x+2=5, x" or "x+2=5 x"
+                    // Simple parsing: split at last space or comma
+                    let (eq_str, var) = if let Some((e, v)) = rest.rsplit_once(',') {
+                        (e.trim(), v.trim())
+                    } else if let Some((e, v)) = rest.rsplit_once(' ') {
+                        // Check if v is a variable name
+                        if v.chars().all(char::is_alphabetic) {
+                            (e.trim(), v.trim())
+                        } else {
+                            // Maybe the whole thing is the equation and we default to x?
+                            (rest, "x")
+                        }
+                    } else {
+                        (rest, "x")
+                    };
+
+                    match cas_parser::parse_statement(eq_str) {
+                        Ok(cas_parser::Statement::Equation(eq)) => {
+                            // Check if variable exists in equation
+                            let lhs_has = cas_engine::solver::contains_var(&eq.lhs, var);
+                            let rhs_has = cas_engine::solver::contains_var(&eq.rhs, var);
+
+                            if !lhs_has && !rhs_has {
+                                // Constant equation (w.r.t var). Evaluate truthiness.
+                                let (sim_lhs, _) = simplifier.simplify(eq.lhs);
+                                let (sim_rhs, _) = simplifier.simplify(eq.rhs);
+                                
+                                if sim_lhs == sim_rhs {
+                                    println!("True (Identity)");
+                                } else {
+                                    println!("False (Contradiction)");
+                                    println!("{} != {}", sim_lhs, sim_rhs);
+                                }
+                            } else {
+                                match cas_engine::solver::solve(&eq, var) {
+                                    Ok(solved_eq) => {
+                                        // Simplify the RHS of the solution
+                                        let (simplified_rhs, _) = simplifier.simplify(solved_eq.rhs);
+                                        let op_str = match solved_eq.op {
+                                            cas_ast::RelOp::Eq => "=",
+                                            cas_ast::RelOp::Neq => "!=",
+                                            cas_ast::RelOp::Lt => "<",
+                                            cas_ast::RelOp::Gt => ">",
+                                            cas_ast::RelOp::Leq => "<=",
+                                            cas_ast::RelOp::Geq => ">=",
+                                        };
+                                        println!("Result: {} {} {}", solved_eq.lhs, op_str, simplified_rhs);
+                                    },
+                                    Err(e) => println!("Error solving: {}", e),
+                                }
+                            }
+                        },
+                        Ok(cas_parser::Statement::Expression(_)) => {
+                            println!("Error: Expected an equation, got an expression.");
+                        },
+                        Err(e) => println!("Error parsing equation: {}", e),
+                    }
+                    continue;
+                }
+
                 match cas_parser::parse(line) {
                     Ok(expr) => {
                         println!("Parsed: {}", expr);
