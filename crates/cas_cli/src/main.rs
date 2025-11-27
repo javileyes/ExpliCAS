@@ -66,6 +66,8 @@ fn main() -> rustyline::Result<()> {
         }
     }
 
+    let mut show_steps = true;
+
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -77,12 +79,21 @@ fn main() -> rustyline::Result<()> {
                 
                 rl.add_history_entry(line)?;
 
-                rl.add_history_entry(line)?;
-
                 // Check for "quit" or "exit" command
                 if line == "quit" || line == "exit" {
                     println!("Goodbye!");
                     break;
+                }
+
+                // Check for "steps" command
+                if line == "steps on" {
+                    show_steps = true;
+                    println!("Step-by-step output enabled.");
+                    continue;
+                } else if line == "steps off" {
+                    show_steps = false;
+                    println!("Step-by-step output disabled.");
+                    continue;
                 }
 
                 // Check for "help" command
@@ -94,6 +105,7 @@ fn main() -> rustyline::Result<()> {
                     println!("  factor <expr>           Factor polynomials");
                     println!("  collect <expr>, <var>   Group terms by variable");
                     println!("  solve <eq>, <var>       Solve equation for variable");
+                    println!("  steps on/off            Toggle step-by-step output");
                     println!("  help                    Show this help message");
                     println!("  quit / exit             Exit the REPL");
                     println!();
@@ -134,15 +146,21 @@ fn main() -> rustyline::Result<()> {
                             Ok(expr) => {
                                 match cas_parser::parse(val_str) {
                                     Ok(val_expr) => {
-                                        println!("Substituting {} = {} into {}", var, val_str, expr_str);
+                                        if show_steps {
+                                            println!("Substituting {} = {} into {}", var, val_str, expr_str);
+                                        }
                                         let subbed = expr.substitute(var, &val_expr);
-                                        println!("After substitution: {}", subbed);
+                                        if show_steps {
+                                            println!("After substitution: {}", subbed);
+                                        }
                                         
                                         let (result, steps) = simplifier.simplify(subbed);
-                                        println!("Steps:");
-                                        for (i, step) in steps.iter().enumerate() {
-                                            println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                                            println!("   -> {}", step.after);
+                                        if show_steps {
+                                            println!("Steps:");
+                                            for (i, step) in steps.iter().enumerate() {
+                                                println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                                println!("   -> {}", step.after);
+                                            }
                                         }
                                         println!("Result: {}", result);
                                     },
@@ -199,7 +217,7 @@ fn main() -> rustyline::Result<()> {
                             let (sim_lhs, steps_lhs) = simplifier.simplify(eq.lhs.clone());
                             let (sim_rhs, steps_rhs) = simplifier.simplify(eq.rhs.clone());
                             
-                            if !steps_lhs.is_empty() || !steps_rhs.is_empty() {
+                            if show_steps && (!steps_lhs.is_empty() || !steps_rhs.is_empty()) {
                                 println!("Simplification Steps:");
                                 for (i, step) in steps_lhs.iter().enumerate() {
                                     println!("LHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
@@ -233,13 +251,15 @@ fn main() -> rustyline::Result<()> {
                             } else {
                                 match cas_engine::solver::solve(&simplified_eq, var) {
                                     Ok((solved_eq, steps)) => {
-                                        println!("Steps:");
-                                        for step in steps.iter() {
-                                            // Simplify the equation for display
-                                            let (sim_lhs, _) = simplifier.simplify(step.equation_after.lhs.clone());
-                                            let (sim_rhs, _) = simplifier.simplify(step.equation_after.rhs.clone());
-                                            
-                                            println!("   -> {} {} {}", sim_lhs, step.equation_after.op, sim_rhs);
+                                        if show_steps {
+                                            println!("Steps:");
+                                            for step in steps.iter() {
+                                                // Simplify the equation for display
+                                                let (sim_lhs, _) = simplifier.simplify(step.equation_after.lhs.clone());
+                                                let (sim_rhs, _) = simplifier.simplify(step.equation_after.rhs.clone());
+                                                
+                                                println!("   -> {} {} {}", sim_lhs, step.equation_after.op, sim_rhs);
+                                            }
                                         }
 
                                         // Simplify the RHS of the solution
@@ -263,13 +283,15 @@ fn main() -> rustyline::Result<()> {
                         println!("Parsed: {}", expr);
                         let (simplified, steps) = simplifier.simplify(expr);
                         
-                        if steps.is_empty() {
-                            println!("No simplification steps needed.");
-                        } else {
-                            println!("Steps:");
-                            for (i, step) in steps.iter().enumerate() {
-                                println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                                println!("   -> {}", step.after);
+                        if show_steps {
+                            if steps.is_empty() {
+                                println!("No simplification steps needed.");
+                            } else {
+                                println!("Steps:");
+                                for (i, step) in steps.iter().enumerate() {
+                                    println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                    println!("   -> {}", step.after);
+                                }
                             }
                         }
                         println!("Result: {}", simplified);
