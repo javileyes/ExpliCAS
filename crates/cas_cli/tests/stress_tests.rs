@@ -112,9 +112,12 @@ fn test_quadratic_solver() {
     
     if let SolutionSet::Discrete(solutions) = result {
         assert!(!solutions.is_empty());
-        let res_rhs = &solutions[0];
-        let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
-        assert_eq!(format!("{}", final_rhs), "2");
+        assert!(!solutions.is_empty());
+        let found = solutions.iter().any(|res_rhs| {
+            let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
+            format!("{}", final_rhs) == "2"
+        });
+        assert!(found, "Expected solution '2' not found");
     } else {
         panic!("Expected Discrete solution");
     }
@@ -132,9 +135,12 @@ fn test_exponential_solver() {
     
     if let SolutionSet::Discrete(solutions) = result {
         assert!(!solutions.is_empty());
-        let res_rhs = &solutions[0];
-        let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
-        assert_eq!(format!("{}", final_rhs), "0");
+        assert!(!solutions.is_empty());
+        let found = solutions.iter().any(|res_rhs| {
+            let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
+            format!("{}", final_rhs) == "0"
+        });
+        assert!(found, "Expected solution '0' not found");
     } else {
         panic!("Expected Discrete solution");
     }

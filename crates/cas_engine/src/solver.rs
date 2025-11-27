@@ -355,34 +355,164 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(Solut
             // We need to return solutions in terms of Expr
             // x = (-b +/- sqrt(delta)) / 2a
             
-            let neg_b = -b;
-            let two_a = BigRational::from_integer(2.into()) * a;
+            let neg_b = -b.clone();
+            let two_a = BigRational::from_integer(2.into()) * a.clone();
             
-            let delta_expr = Rc::new(Expr::Number(delta));
+            let delta_expr = Rc::new(Expr::Number(delta.clone()));
             let neg_b_expr = Rc::new(Expr::Number(neg_b));
-            let two_a_expr = Rc::new(Expr::Number(two_a));
+            let two_a_expr = Rc::new(Expr::Number(two_a.clone()));
             
             // sqrt(delta)
             let sqrt_delta = Expr::pow(delta_expr, Expr::rational(1, 2));
             
-            // x1 = (-b + sqrt(delta)) / 2a
-            let num1 = Expr::add(neg_b_expr.clone(), sqrt_delta.clone());
+            // x1 = (-b - sqrt(delta)) / 2a (Smaller root if a > 0)
+            let num1 = Expr::sub(neg_b_expr.clone(), sqrt_delta.clone());
             let sol1 = Expr::div(num1, two_a_expr.clone());
             
-            // x2 = (-b - sqrt(delta)) / 2a
-            let num2 = Expr::sub(neg_b_expr, sqrt_delta);
+            // x2 = (-b + sqrt(delta)) / 2a (Larger root if a > 0)
+            let num2 = Expr::add(neg_b_expr, sqrt_delta);
             let sol2 = Expr::div(num2, two_a_expr);
             
             let (sim_sol1, _) = simplifier.simplify(sol1);
             let (sim_sol2, _) = simplifier.simplify(sol2);
             
-            let mut solutions = vec![sim_sol1, sim_sol2];
-            // Sort
-            solutions.sort_by(|a, b| format!("{}", a).cmp(&format!("{}", b)));
-            // Deduplicate
-            solutions.dedup();
+            // Ensure r1 <= r2
+            let (r1, r2) = if compare_values(&sim_sol1, &sim_sol2) == Ordering::Greater {
+                (sim_sol2, sim_sol1)
+            } else {
+                (sim_sol1, sim_sol2)
+            };
+
+            // Determine parabola direction
+            let opens_up = a > BigRational::zero();
+
+            // Helper for intervals
+            let mk_interval = |min, min_type, max, max_type| {
+                SolutionSet::Continuous(Interval { min, min_type, max, max_type })
+            };
             
-            return Ok((SolutionSet::Discrete(solutions), steps));
+            let result = if delta > BigRational::zero() {
+                // Two distinct roots r1 < r2
+                match eq.op {
+                    RelOp::Eq => SolutionSet::Discrete(vec![r1, r2]),
+                    RelOp::Neq => {
+                        // (-inf, r1) U (r1, r2) U (r2, inf)
+                        let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1.clone(), max_type: BoundType::Open };
+                        let i2 = Interval { min: r1.clone(), min_type: BoundType::Open, max: r2.clone(), max_type: BoundType::Open };
+                        let i3 = Interval { min: r2.clone(), min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                        SolutionSet::Union(vec![i1, i2, i3])
+                    },
+                    RelOp::Lt => {
+                        if opens_up {
+                            // Parabola < 0 between roots: (r1, r2)
+                            mk_interval(r1, BoundType::Open, r2, BoundType::Open)
+                        } else {
+                            // Parabola < 0 outside roots: (-inf, r1) U (r2, inf)
+                            let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
+                            let i2 = Interval { min: r2, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                            SolutionSet::Union(vec![i1, i2])
+                        }
+                    },
+                    RelOp::Leq => {
+                        if opens_up {
+                            // [r1, r2]
+                            mk_interval(r1, BoundType::Closed, r2, BoundType::Closed)
+                        } else {
+                            // (-inf, r1] U [r2, inf)
+                            let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1, max_type: BoundType::Closed };
+                            let i2 = Interval { min: r2, min_type: BoundType::Closed, max: pos_inf(), max_type: BoundType::Open };
+                            SolutionSet::Union(vec![i1, i2])
+                        }
+                    },
+                    RelOp::Gt => {
+                        if opens_up {
+                            // Parabola > 0 outside roots: (-inf, r1) U (r2, inf)
+                            let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
+                            let i2 = Interval { min: r2, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                            SolutionSet::Union(vec![i1, i2])
+                        } else {
+                            // Parabola > 0 between roots: (r1, r2)
+                            mk_interval(r1, BoundType::Open, r2, BoundType::Open)
+                        }
+                    },
+                    RelOp::Geq => {
+                        if opens_up {
+                            // (-inf, r1] U [r2, inf)
+                            let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1, max_type: BoundType::Closed };
+                            let i2 = Interval { min: r2, min_type: BoundType::Closed, max: pos_inf(), max_type: BoundType::Open };
+                            SolutionSet::Union(vec![i1, i2])
+                        } else {
+                            // [r1, r2]
+                            mk_interval(r1, BoundType::Closed, r2, BoundType::Closed)
+                        }
+                    },
+                }
+            } else if delta == BigRational::zero() {
+                // One repeated root r1
+                match eq.op {
+                    RelOp::Eq => SolutionSet::Discrete(vec![r1]),
+                    RelOp::Neq => {
+                        // (-inf, r1) U (r1, inf)
+                        let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1.clone(), max_type: BoundType::Open };
+                        let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                        SolutionSet::Union(vec![i1, i2])
+                    },
+                    RelOp::Lt => {
+                        if opens_up {
+                            // (x-r)^2 < 0 -> Empty
+                            SolutionSet::Empty
+                        } else {
+                            // -(x-r)^2 < 0 -> All Reals except r
+                            let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1.clone(), max_type: BoundType::Open };
+                            let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                            SolutionSet::Union(vec![i1, i2])
+                        }
+                    },
+                    RelOp::Leq => {
+                        if opens_up {
+                            // (x-r)^2 <= 0 -> x = r
+                            SolutionSet::Discrete(vec![r1])
+                        } else {
+                            // -(x-r)^2 <= 0 -> All Reals
+                            SolutionSet::AllReals
+                        }
+                    },
+                    RelOp::Gt => {
+                        if opens_up {
+                            // (x-r)^2 > 0 -> All Reals except r
+                            let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1.clone(), max_type: BoundType::Open };
+                            let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                            SolutionSet::Union(vec![i1, i2])
+                        } else {
+                            // -(x-r)^2 > 0 -> Empty
+                            SolutionSet::Empty
+                        }
+                    },
+                    RelOp::Geq => {
+                        if opens_up {
+                            // (x-r)^2 >= 0 -> All Reals
+                            SolutionSet::AllReals
+                        } else {
+                            // -(x-r)^2 >= 0 -> x = r
+                            SolutionSet::Discrete(vec![r1])
+                        }
+                    },
+                }
+            } else {
+                // delta < 0, no real roots
+                // Parabola is always positive (if a > 0) or always negative (if a < 0)
+                let always_pos = opens_up;
+                match eq.op {
+                    RelOp::Eq => SolutionSet::Empty,
+                    RelOp::Neq => SolutionSet::AllReals,
+                    RelOp::Lt => if always_pos { SolutionSet::Empty } else { SolutionSet::AllReals },
+                    RelOp::Leq => if always_pos { SolutionSet::Empty } else { SolutionSet::AllReals },
+                    RelOp::Gt => if always_pos { SolutionSet::AllReals } else { SolutionSet::Empty },
+                    RelOp::Geq => if always_pos { SolutionSet::AllReals } else { SolutionSet::Empty },
+                }
+            };
+            
+            return Ok((result, steps));
         }
     }
 
@@ -710,6 +840,22 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                 };
 
                 if is_even {
+                    // Check if RHS is negative
+                    if is_negative(rhs) {
+                        let result = match op {
+                            RelOp::Eq => SolutionSet::Empty,
+                            RelOp::Gt | RelOp::Geq | RelOp::Neq => SolutionSet::AllReals,
+                            RelOp::Lt | RelOp::Leq => SolutionSet::Empty,
+                        };
+                         if simplifier.collect_steps {
+                            steps.push(SolveStep {
+                                description: format!("Even power cannot be negative ({} {} {})", b, op, rhs),
+                                equation_after: Equation { lhs: lhs.clone(), rhs: rhs.clone(), op: op.clone() }, // No change
+                            });
+                        }
+                        return Ok((result, steps));
+                    }
+
                      // B^E = RHS -> |B| = RHS^(1/E)
                      let inv_exp = Expr::div(Expr::num(1), e.clone());
                      let new_rhs = Expr::pow(rhs.clone(), inv_exp);

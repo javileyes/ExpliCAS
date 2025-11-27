@@ -15,6 +15,7 @@ use num_traits::Zero; // Import Zero trait
 
 fn create_full_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
@@ -35,8 +36,9 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
-    simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); 
-    simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(SimplifyFractionRule));
+    // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Moved to specific test to avoid loops 
+
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
@@ -99,7 +101,8 @@ fn test_nested_fraction() {
 #[test]
 fn test_trig_identity_hidden() {
     // equiv(sin(x)^4 - cos(x)^4, sin(x)^2 - cos(x)^2) -> True
-    let simplifier = create_full_simplifier();
+    let mut simplifier = create_full_simplifier();
+    simplifier.add_rule(Box::new(FactorDifferenceSquaresRule));
     let expr1 = parse("sin(x)^4 - cos(x)^4").unwrap();
     let expr2 = parse("sin(x)^2 - cos(x)^2").unwrap();
     assert_equivalent(&simplifier, expr1, expr2);

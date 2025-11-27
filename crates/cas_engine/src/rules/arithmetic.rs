@@ -119,6 +119,17 @@ impl Rule for CombineConstantsRule {
                             });
                         }
                     }
+
+                    // // Handle Add(Number, Mul(Number, Number)) - e.g. 1 + (-1 * 1)
+                    // if let Expr::Mul(ml, mr) = rhs.as_ref() {
+                    //     if let (Expr::Number(n2), Expr::Number(n3)) = (ml.as_ref(), mr.as_ref()) {
+                    //         let product = n2 * n3;
+                    //         return Some(Rewrite {
+                    //             new_expr: Rc::new(Expr::Number(n1 + product.clone())),
+                    //             description: format!("{} + ({} * {}) = {}", n1, n2, n3, n1 + product),
+                    //         });
+                    //     }
+                    // }
                 }
             }
             Expr::Mul(lhs, rhs) => {
