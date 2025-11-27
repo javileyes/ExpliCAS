@@ -66,10 +66,11 @@ fn main() -> rustyline::Result<()> {
                 if line == "help" {
                     println!("Rust CAS Commands:");
                     println!("  <expr>                  Evaluate and simplify an expression");
-                    println!("  subst <expr> <var>=<val> Substitute a variable and simplify");
+                    println!("  subst <expr>, <var>=<val> Substitute a variable and simplify");
                     println!("  expand <expr>           Expand polynomials");
                     println!("  factor <expr>           Factor polynomials");
-                    println!("  collect <expr> <var>    Group terms by variable");
+                    println!("  collect <expr>, <var>   Group terms by variable");
+                    println!("  solve <eq>, <var>       Solve equation for variable");
                     println!("  help                    Show this help message");
                     println!("  quit / exit             Exit the REPL");
                     println!();
@@ -80,58 +81,64 @@ fn main() -> rustyline::Result<()> {
                     println!("  expand((x+1)^2)");
                     println!("  factor(2*x^2 + 4*x)");
                     println!("  collect(a*x + b*x, x)");
-                    println!("  subst x+1 x=2");
+                    println!("  solve x+2=5, x");
+                    println!("  subst x+1, x=2");
                     continue;
                 }
 
                 // Check for "subst" command
                 if line.starts_with("subst ") {
-                    // Format: subst <expr> <var>=<val>
-                    // Example: subst x+1 x=2
-                    // We need to split by space, but expr might contain spaces.
-                    // Let's assume the LAST argument is the assignment.
-                    if let Some((expr_str, assign_str)) = line[6..].rsplit_once(' ') {
-                        if let Some((var, val_str)) = assign_str.split_once('=') {
-                            let var = var.trim();
-                            let val_str = val_str.trim();
-                            
-                            match cas_parser::parse(expr_str) {
-                                Ok(expr) => {
-                                    match cas_parser::parse(val_str) {
-                                        Ok(val_expr) => {
-                                            println!("Substituting {} = {} into {}", var, val_str, expr_str);
-                                            let subbed = expr.substitute(var, &val_expr);
-                                            println!("After substitution: {}", subbed);
-                                            
-                                            let (result, steps) = simplifier.simplify(subbed);
-                                            println!("Steps:");
-                                            for (i, step) in steps.iter().enumerate() {
-                                                println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                                                println!("   -> {}", step.after);
-                                            }
-                                            println!("Result: {}", result);
-                                        },
-                                        Err(e) => println!("Error parsing value: {:?}", e),
-                                    }
-                                },
-                                Err(e) => println!("Error parsing expression: {:?}", e),
-                            }
-                            continue;
+                    // Format: subst <expr>, <var>=<val>
+                    // Example: subst x+1, x=2
+                    let rest = line[6..].trim();
+                    
+                    // Try splitting by comma first (preferred)
+                    let (expr_str, assign_str) = if let Some((e, a)) = rest.rsplit_once(',') {
+                        (e.trim(), a.trim())
+                    } else if let Some((e, a)) = rest.rsplit_once(' ') {
+                        // Fallback to last space
+                        (e.trim(), a.trim())
+                    } else {
+                        println!("Usage: subst <expression>, <var>=<value>");
+                        continue;
+                    };
+
+                    if let Some((var, val_str)) = assign_str.split_once('=') {
+                        let var = var.trim();
+                        let val_str = val_str.trim();
+                        
+                        match cas_parser::parse(expr_str) {
+                            Ok(expr) => {
+                                match cas_parser::parse(val_str) {
+                                    Ok(val_expr) => {
+                                        println!("Substituting {} = {} into {}", var, val_str, expr_str);
+                                        let subbed = expr.substitute(var, &val_expr);
+                                        println!("After substitution: {}", subbed);
+                                        
+                                        let (result, steps) = simplifier.simplify(subbed);
+                                        println!("Steps:");
+                                        for (i, step) in steps.iter().enumerate() {
+                                            println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                            println!("   -> {}", step.after);
+                                        }
+                                        println!("Result: {}", result);
+                                    },
+                                    Err(e) => println!("Error parsing value: {:?}", e),
+                                }
+                            },
+                            Err(e) => println!("Error parsing expression: {:?}", e),
                         }
+                        continue;
                     }
-                    println!("Usage: subst <expression> <var>=<value>");
+                    println!("Usage: subst <expression>, <var>=<value>");
                     continue;
                 }
 
                 // Check for "solve" command
                 if line.starts_with("solve ") {
-                    // solve <equation> <var>
-                    // or solve <equation> (implies x?)
-                    // Let's parse the rest
+                    // solve <equation>, <var>
                     let rest = line[6..].trim();
-                    // Split by comma or space to get equation and var?
-                    // "x+2=5, x" or "x+2=5 x"
-                    // Simple parsing: split at last space or comma
+                    // Split by comma or space to get equation and var
                     let (eq_str, var) = if let Some((e, v)) = rest.rsplit_once(',') {
                         (e.trim(), v.trim())
                     } else if let Some((e, v)) = rest.rsplit_once(' ') {
@@ -139,7 +146,6 @@ fn main() -> rustyline::Result<()> {
                         if v.chars().all(char::is_alphabetic) {
                             (e.trim(), v.trim())
                         } else {
-                            // Maybe the whole thing is the equation and we default to x?
                             (rest, "x")
                         }
                     } else {
