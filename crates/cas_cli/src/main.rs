@@ -195,7 +195,26 @@ fn main() -> rustyline::Result<()> {
                                 }
                             } else {
                                 match cas_engine::solver::solve(&eq, var) {
-                                    Ok(solved_eq) => {
+                                    Ok((solved_eq, steps)) => {
+                                        println!("Steps:");
+                                        for (i, step) in steps.iter().enumerate() {
+                                            // Simplify the equation for display
+                                            let (sim_lhs, _) = simplifier.simplify(step.equation_after.lhs.clone());
+                                            let (sim_rhs, _) = simplifier.simplify(step.equation_after.rhs.clone());
+                                            
+                                            let op_str = match step.equation_after.op {
+                                                cas_ast::RelOp::Eq => "=",
+                                                cas_ast::RelOp::Neq => "!=",
+                                                cas_ast::RelOp::Lt => "<",
+                                                cas_ast::RelOp::Gt => ">",
+                                                cas_ast::RelOp::Leq => "<=",
+                                                cas_ast::RelOp::Geq => ">=",
+                                            };
+                                            
+                                            println!("{}. {}", i + 1, step.description);
+                                            println!("   -> {} {} {}", sim_lhs, op_str, sim_rhs);
+                                        }
+
                                         // Simplify the RHS of the solution
                                         let (simplified_rhs, _) = simplifier.simplify(solved_eq.rhs);
                                         let op_str = match solved_eq.op {

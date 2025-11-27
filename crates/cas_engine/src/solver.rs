@@ -1,12 +1,15 @@
 use cas_ast::{Expr, Equation, RelOp};
 use std::rc::Rc;
 
-pub fn solve(eq: &Equation, var: &str) -> Result<Equation, String> {
+#[derive(Debug, Clone)]
+pub struct SolveStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
+pub fn solve(eq: &Equation, var: &str) -> Result<(Equation, Vec<SolveStep>), String> {
     // We want to isolate 'var' on LHS.
-    // Current strategy:
-    // 1. Check if LHS contains var. If not, swap LHS and RHS (if RHS has var).
-    // 2. If both have var, we need to collect terms (not implemented yet in solver, assume simplified).
-    // 3. Peel operations from LHS until var is isolated.
+    let mut steps = Vec::new();
 
     let lhs_has_var = contains_var(&eq.lhs, var);
     let rhs_has_var = contains_var(&eq.rhs, var);
@@ -17,8 +20,6 @@ pub fn solve(eq: &Equation, var: &str) -> Result<Equation, String> {
 
     if !lhs_has_var && rhs_has_var {
         // Swap to make LHS have the variable
-        // a = x -> x = a
-        // a < x -> x > a
         let new_op = match eq.op {
             RelOp::Eq => RelOp::Eq,
             RelOp::Neq => RelOp::Neq,
@@ -27,125 +28,241 @@ pub fn solve(eq: &Equation, var: &str) -> Result<Equation, String> {
             RelOp::Leq => RelOp::Geq,
             RelOp::Geq => RelOp::Leq,
         };
-        return solve(&Equation { lhs: eq.rhs.clone(), rhs: eq.lhs.clone(), op: new_op }, var);
+        let new_eq = Equation { lhs: eq.rhs.clone(), rhs: eq.lhs.clone(), op: new_op };
+        steps.push(SolveStep {
+            description: "Swap sides to put variable on LHS".to_string(),
+            equation_after: new_eq.clone(),
+        });
+        
+        // Recursive call (tail recursion effectively)
+        // We need to merge steps from recursive call
+        let (final_eq, more_steps) = solve_internal(&new_eq, var)?;
+        steps.extend(more_steps);
+        return Ok((final_eq, steps));
     }
 
     if lhs_has_var && rhs_has_var {
-        // Move all terms to LHS? 
-        // For MVP, let's assume linear/simple equations where we can just subtract RHS from LHS?
-        // Or just fail for now if variable is on both sides (requires 'collect').
-        // Let's try to proceed with peeling LHS, but if we encounter var on RHS during peeling, it's tricky.
-        // Better approach for "both sides": Move everything to LHS: LHS - RHS = 0. Then solve.
-        // But that requires 'collect'.
-        // Let's stick to "peeling" for now. If RHS has var, we might get x = x + 1 which is unsolvable by peeling.
         return Err("Variable appears on both sides. Please simplify/collect first.".to_string());
     }
 
     // Now LHS has var, RHS does not.
+    let (final_eq, more_steps) = isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var)?;
+    steps.extend(more_steps);
+    Ok((final_eq, steps))
+}
+
+// Internal helper to avoid re-checking var presence unnecessarily if we already know it
+fn solve_internal(eq: &Equation, var: &str) -> Result<(Equation, Vec<SolveStep>), String> {
+    // This is just a wrapper to call isolate directly since we know var is on LHS from the swap logic
     isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var)
 }
 
-fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str) -> Result<Equation, String> {
+fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str) -> Result<(Equation, Vec<SolveStep>), String> {
+    let mut steps = Vec::new();
+    
     match lhs.as_ref() {
         Expr::Variable(v) if v == var => {
-            Ok(Equation { lhs: lhs.clone(), rhs: rhs.clone(), op })
+            Ok((Equation { lhs: lhs.clone(), rhs: rhs.clone(), op }, steps))
         }
         Expr::Add(l, r) => {
             // (A + B) = RHS
-            // If var in A: A = RHS - B
-            // If var in B: B = RHS - A
             if contains_var(l, var) {
-                isolate(l, &Expr::sub(rhs.clone(), r.clone()), op, var)
+                // A = RHS - B
+                let new_rhs = Expr::sub(rhs.clone(), r.clone());
+                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Subtract {} from both sides", r),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(l, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             } else {
-                isolate(r, &Expr::sub(rhs.clone(), l.clone()), op, var)
+                // B = RHS - A
+                let new_rhs = Expr::sub(rhs.clone(), l.clone());
+                let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Subtract {} from both sides", l),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(r, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             }
         }
         Expr::Sub(l, r) => {
             // (A - B) = RHS
-            // If var in A: A = RHS + B
-            // If var in B: -B = RHS - A -> B = A - RHS (careful with inequalities)
             if contains_var(l, var) {
-                isolate(l, &Expr::add(rhs.clone(), r.clone()), op, var)
+                // A = RHS + B
+                let new_rhs = Expr::add(rhs.clone(), r.clone());
+                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Add {} to both sides", r),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(l, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             } else {
-                // -B = RHS - A  =>  B = A - RHS
-                // Inequality flips if we multiply by -1
+                // -B = RHS - A -> B = A - RHS
                 let new_rhs = Expr::sub(l.clone(), rhs.clone());
-                // Or: B = -(RHS - A) = A - RHS.
-                // Multiplying by -1 flips inequality.
                 let new_op = flip_inequality(op);
-                isolate(r, &new_rhs, new_op, var)
+                let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: new_op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Move {} and multiply by -1", l),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(r, &new_rhs, new_op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             }
         }
         Expr::Mul(l, r) => {
             // A * B = RHS
-            // If var in A: A = RHS / B
-            // If var in B: B = RHS / A
-            // Note: Division by negative number flips inequality. 
-            // We don't know sign of A or B easily without evaluation.
-            // For MVP, assume positive or ignore inequality flip for variables.
             if contains_var(l, var) {
-                isolate(l, &Expr::div(rhs.clone(), r.clone()), op, var)
+                // A = RHS / B
+                let new_rhs = Expr::div(rhs.clone(), r.clone());
+                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Divide both sides by {}", r),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(l, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             } else {
-                isolate(r, &Expr::div(rhs.clone(), l.clone()), op, var)
+                // B = RHS / A
+                let new_rhs = Expr::div(rhs.clone(), l.clone());
+                let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Divide both sides by {}", l),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(r, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             }
         }
         Expr::Div(l, r) => {
             // A / B = RHS
-            // If var in A: A = RHS * B
-            // If var in B: B = A / RHS (assuming RHS != 0)
             if contains_var(l, var) {
-                // Multiply by B. If B < 0, flip. Unknown sign -> assume positive for now.
-                isolate(l, &Expr::mul(rhs.clone(), r.clone()), op, var)
+                // A = RHS * B
+                let new_rhs = Expr::mul(rhs.clone(), r.clone());
+                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Multiply both sides by {}", r),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(l, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             } else {
                 // B = A / RHS
-                // Effectively: 1/B = RHS/A -> B = A/RHS
-                // Taking reciprocal flips inequality if signs are same (e.g. 2 < 3 -> 1/2 > 1/3).
-                // This is getting complex for inequalities.
-                // Let's just implement Eq for now or assume standard behavior.
-                isolate(r, &Expr::div(l.clone(), rhs.clone()), op, var)
+                let new_rhs = Expr::div(l.clone(), rhs.clone());
+                let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Isolate denominator {}", r),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(r, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             }
         }
         Expr::Pow(b, e) => {
             // B^E = RHS
-            // If var in B: B = RHS^(1/E) (root)
-            // If var in E: E = log(B, RHS)
             if contains_var(b, var) {
                 // B = RHS^(1/E)
                 let inv_exp = Expr::div(Expr::num(1), e.clone());
-                isolate(b, &Expr::pow(rhs.clone(), inv_exp), op, var)
+                let new_rhs = Expr::pow(rhs.clone(), inv_exp);
+                let new_eq = Equation { lhs: b.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Take {}-th root of both sides", e),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(b, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             } else {
                 // E = log(B, RHS)
-                isolate(e, &Expr::log(b.clone(), rhs.clone()), op, var)
+                let new_rhs = Expr::log(b.clone(), rhs.clone());
+                let new_eq = Equation { lhs: e.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                steps.push(SolveStep {
+                    description: format!("Take log base {} of both sides", b),
+                    equation_after: new_eq.clone(),
+                });
+                let (final_eq, more_steps) = isolate(e, &new_rhs, op, var)?;
+                steps.extend(more_steps);
+                Ok((final_eq, steps))
             }
         }
         Expr::Function(name, args) => {
-            // f(x) = RHS -> x = f_inv(RHS)
             if name == "log" && args.len() == 2 {
-                // log(base, arg) = RHS
                 let base = &args[0];
                 let arg = &args[1];
                 
                 if contains_var(arg, var) && !contains_var(base, var) {
                     // log(b, x) = RHS -> x = b^RHS
-                    isolate(arg, &Expr::pow(base.clone(), rhs.clone()), op, var)
+                    let new_rhs = Expr::pow(base.clone(), rhs.clone());
+                    let new_eq = Equation { lhs: arg.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                    steps.push(SolveStep {
+                        description: format!("Exponentiate both sides with base {}", base),
+                        equation_after: new_eq.clone(),
+                    });
+                    let (final_eq, more_steps) = isolate(arg, &new_rhs, op, var)?;
+                    steps.extend(more_steps);
+                    Ok((final_eq, steps))
                 } else if contains_var(base, var) && !contains_var(arg, var) {
-                    // log(x, a) = RHS -> x^RHS = a -> x = a^(1/RHS)
-                    // This is effectively x^RHS = a.
-                    // Isolate x from x^RHS = a.
-                    // x = a^(1/RHS)
                     let inv_rhs = Expr::div(Expr::num(1), rhs.clone());
-                    isolate(base, &Expr::pow(arg.clone(), inv_rhs), op, var)
+                    let new_rhs = Expr::pow(arg.clone(), inv_rhs);
+                    let new_eq = Equation { lhs: base.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                    steps.push(SolveStep {
+                        description: "Isolate base of logarithm".to_string(),
+                        equation_after: new_eq.clone(),
+                    });
+                    let (final_eq, more_steps) = isolate(base, &new_rhs, op, var)?;
+                    steps.extend(more_steps);
+                    Ok((final_eq, steps))
                 } else {
-                     Err(format!("Cannot isolate '{}' from log function (variable in both base and arg?)", var))
+                     Err(format!("Cannot isolate '{}' from log function", var))
                 }
             } else if args.len() == 1 {
                 let arg = &args[0];
                 if contains_var(arg, var) {
                     match name.as_str() {
-                        "ln" => isolate(arg, &Expr::pow(Expr::e(), rhs.clone()), op, var), // Should be parsed as log(e, x) but just in case
-                        "exp" => isolate(arg, &Expr::ln(rhs.clone()), op, var),
-                        "sqrt" => isolate(arg, &Expr::pow(rhs.clone(), Expr::num(2)), op, var),
-                        // Add trig inverses later
+                        "ln" => {
+                            let new_rhs = Expr::pow(Expr::e(), rhs.clone());
+                            let new_eq = Equation { lhs: arg.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                            steps.push(SolveStep {
+                                description: "Exponentiate both sides with base e".to_string(),
+                                equation_after: new_eq.clone(),
+                            });
+                            let (final_eq, more_steps) = isolate(arg, &new_rhs, op, var)?;
+                            steps.extend(more_steps);
+                            Ok((final_eq, steps))
+                        },
+                        "exp" => {
+                            let new_rhs = Expr::ln(rhs.clone());
+                            let new_eq = Equation { lhs: arg.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                            steps.push(SolveStep {
+                                description: "Take natural log of both sides".to_string(),
+                                equation_after: new_eq.clone(),
+                            });
+                            let (final_eq, more_steps) = isolate(arg, &new_rhs, op, var)?;
+                            steps.extend(more_steps);
+                            Ok((final_eq, steps))
+                        },
+                        "sqrt" => {
+                            let new_rhs = Expr::pow(rhs.clone(), Expr::num(2));
+                            let new_eq = Equation { lhs: arg.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                            steps.push(SolveStep {
+                                description: "Square both sides".to_string(),
+                                equation_after: new_eq.clone(),
+                            });
+                            let (final_eq, more_steps) = isolate(arg, &new_rhs, op, var)?;
+                            steps.extend(more_steps);
+                            Ok((final_eq, steps))
+                        },
                         _ => Err(format!("Cannot invert function '{}'", name)),
                     }
                 } else {
@@ -202,7 +319,7 @@ mod tests {
     fn test_solve_linear() {
         // x + 2 = 5 -> x = 3
         let eq = make_eq("x + 2", "5");
-        let res = solve(&eq, "x").unwrap();
+        let (res, _) = solve(&eq, "x").unwrap();
         // Result: x = 5 - 2
         // We don't simplify automatically in solve, so RHS is "5 - 2".
         assert_eq!(format!("{}", res.lhs), "x");
@@ -213,7 +330,7 @@ mod tests {
     fn test_solve_mul() {
         // 2 * x = 6 -> x = 6 / 2
         let eq = make_eq("2 * x", "6");
-        let res = solve(&eq, "x").unwrap();
+        let (res, _) = solve(&eq, "x").unwrap();
         assert_eq!(format!("{}", res.rhs), "6 / 2");
     }
     
@@ -221,7 +338,7 @@ mod tests {
     fn test_solve_pow() {
         // x^2 = 4 -> x = 4^(1/2)
         let eq = make_eq("x^2", "4");
-        let res = solve(&eq, "x").unwrap();
+        let (res, _) = solve(&eq, "x").unwrap();
         assert_eq!(format!("{}", res.rhs), "4^(1 / 2)");
     }
 }
