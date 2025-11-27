@@ -46,20 +46,21 @@ impl Rule for SimplifyFractionRule {
 
             let new_num = new_num_poly.to_expr();
             let new_den = new_den_poly.to_expr();
+            let gcd_expr = gcd.to_expr();
 
             // If denominator is 1, return numerator
             if let Expr::Number(n) = new_den.as_ref() {
                 if n.is_one() {
                     return Some(Rewrite {
                         new_expr: new_num,
-                        description: "Simplified fraction by GCD".to_string(),
+                        description: format!("Simplified fraction by GCD: {}", gcd_expr),
                     });
                 }
             }
 
             return Some(Rewrite {
                 new_expr: Expr::div(new_num, new_den),
-                description: "Simplified fraction by GCD".to_string(),
+                description: format!("Simplified fraction by GCD: {}", gcd_expr),
             });
         }
         None

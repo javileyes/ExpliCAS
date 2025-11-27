@@ -73,15 +73,17 @@ Once inside the CLI, try these expressions:
 *Output:* `5/6`
 
 **6. Roots**
+
 ```text
 > sqrt(x) * sqrt(x)
 ```
 *Output:* `x` (Canonicalized to `x^(1/2) * x^(1/2)` then simplified)
 
+```text
 > sqrt(x) * sqrt(x)
 ```
 *Output:* `x` (Canonicalized to `x^(1/2) * x^(1/2)` then simplified)
-```
+
 
 **7. Variable Substitution**
 Use the `subst` command to evaluate expressions for specific variable values.
