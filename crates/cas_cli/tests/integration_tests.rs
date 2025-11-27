@@ -277,3 +277,52 @@ fn test_logarithm_simplification() {
     let (result3, _) = simplifier.simplify(expr3);
     assert_eq!(format!("{}", result3), "x");
 }
+
+#[test]
+fn test_enhanced_integration() {
+    use cas_engine::rules::calculus::IntegrateRule;
+    use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
+    use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
+    use cas_engine::rules::exponents::EvaluatePowerRule;
+    use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule};
+
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(IntegrateRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(AddZeroRule));
+    simplifier.add_rule(Box::new(MulOneRule));
+    simplifier.add_rule(Box::new(MulZeroRule));
+    simplifier.add_rule(Box::new(CombineLikeTermsRule));
+    simplifier.add_rule(Box::new(EvaluatePowerRule));
+    simplifier.add_rule(Box::new(AssociativityRule));
+    simplifier.add_rule(Box::new(CanonicalizeAddRule));
+    simplifier.add_rule(Box::new(CanonicalizeMulRule));
+
+    // Test 1: integrate(sin(2*x), x) -> -cos(2*x)/2
+    let input1 = "integrate(sin(2*x), x)";
+    let expr1 = parse(input1).expect("Failed to parse");
+    let (result1, _) = simplifier.simplify(expr1);
+    assert_eq!(format!("{}", result1), "-cos(2 * x) / 2");
+
+    // Test 2: integrate(exp(3*x + 1), x) -> exp(3*x + 1)/3
+    let input2 = "integrate(exp(3*x + 1), x)";
+    let expr2 = parse(input2).expect("Failed to parse");
+    let (result2, _) = simplifier.simplify(expr2);
+    assert_eq!(format!("{}", result2), "e^(1 + 3 * x) / 3");
+
+    // Test 3: integrate(1/(2*x + 1), x) -> ln(2*x + 1)/2
+    let input3 = "integrate(1/(2*x + 1), x)";
+    let expr3 = parse(input3).expect("Failed to parse");
+    let (result3, _) = simplifier.simplify(expr3);
+    assert_eq!(format!("{}", result3), "ln(1 + 2 * x) / 2");
+    
+    // Test 4: integrate((3*x)^2, x) -> (3*x)^3 / (3*3) -> (3*x)^3 / 9
+    // Note: (3x)^2 is Power(Mul(3,x), 2).
+    // Our rule handles Pow(base, exp) where base is linear.
+    // Mul(3,x) IS linear.
+    // So it should work.
+    let input4 = "integrate((3*x)^2, x)";
+    let expr4 = parse(input4).expect("Failed to parse");
+    let (result4, _) = simplifier.simplify(expr4);
+    assert_eq!(format!("{}", result4), "(3 * x)^3 / 9");
+}
