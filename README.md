@@ -40,93 +40,87 @@ cargo run -p cas_cli
 
 ### Examples
 
-Once inside the CLI, try these expressions:
+Once inside the CLI, try these expressions to see the step-by-step engine in action:
 
-**1. Arithmetic & Polynomials**
+#### 1. Trigonometric Identities & Canonicalization
+The system automatically reorders terms to match known identities.
+
+```text
+> sin(x)^2 + cos(x)^2 + x
+```
+**Output:**
+```
+Steps:
+1. Reorder addition terms
+   -> cos(x)^2 + sin(x)^2 + x
+2. cos^2(x) + sin^2(x) = 1  [Pythagorean Identity]
+   -> 1 + x
+Result: 1 + x
+```
+
+#### 2. Equation Solving with Steps
+The solver uses the full power of the simplification engine at each step.
+
+```text
+> solve 2 * sin(x) = 1
+```
+**Output:**
+```
+Steps:
+1. Divide both sides by 2
+   -> sin(x) = 1/2
+2. Take arcsin of both sides
+   -> x = arcsin(1/2)
+3. arcsin(1/2) = pi/6  [Evaluate Trigonometric Functions]
+   -> x = pi / 6
+Result: x = pi / 6
+```
+
+#### 3. Complex Algebra & Distribution
 ```text
 > 2 * (x + 3) + 4 * x
 ```
-*Output:* `6 * x + 6` (with steps showing distribution and combining terms)
-
-**2. Exponents**
-```text
-> x^2 * x^3
+**Output:**
 ```
-*Output:* `x^5`
-
-**3. Nested Powers**
-```text
-> (x^2)^3
+Steps:
+1. Distribute 2 over (x + 3)
+   -> 2 * x + 6 + 4 * x
+2. Combine like terms (2x + 4x)
+   -> 6 * x + 6
+Result: 6 * x + 6
 ```
-*Output:* `x^6`
 
-**4. Zero Exponent**
+#### 4. Logarithms & Exponents
 ```text
-> x^0
+> exp(ln(x * y))
 ```
-*Output:* `1`
+**Output:**
+```
+Steps:
+1. b^log(b, x) = x  [Exponential-Log Inverse]
+   -> x * y
+Result: x * y
+```
 
-**5. Fractions**
+#### 5. Fractions
 ```text
 > 1/2 + 1/3
 ```
-*Output:* `5/6`
+**Output:** `5/6`
 
-**6. Roots**
-
+#### 6. Variable Substitution
 ```text
-> sqrt(x) * sqrt(x)
+> subst x^2 + x, x=3
 ```
-*Output:* `x` (Canonicalized to `x^(1/2) * x^(1/2)` then simplified)
+**Output:** `12`
 
-```text
-> sqrt(x) * sqrt(x)
-```
-*Output:* `x` (Canonicalized to `x^(1/2) * x^(1/2)` then simplified)
-
-
-**7. Variable Substitution**
-Use the `subst` command to evaluate expressions for specific variable values.
-
-```text
-> subst x+1, x=2
-```
-*Output:* `3`
-
-```text
-> subst x^2+x, x=3
-```
-*Output:* `12` (Calculated as `3^2 + 3` -> `9 + 3` -> `12`)
-
-**8. Equation Solving**
-Use the `solve` command to isolate a variable in an equation.
-
-```text
-> solve x + 2 = 5, x
-```
-*Output:* `x = 3`
-
-```text
-> solve ln(x) + ln(x) = 2
-```
-*Output:* `x = e` (Simplifies to `2*ln(x)=2` -> `ln(x)=1` -> `x=e`)
-
-**9. Verbose Mode**
-Toggle step-by-step output using `steps on` and `steps off`.
-
+#### 7. Verbose Mode
+Toggle detailed output:
 ```text
 > steps off
 > solve ln(x) = 1
 ```
-*Output:* `x = e` (No intermediate steps shown)
-
-```text
-> steps on
-> solve ln(x) = 1
-```
-*Output:* Shows full derivation steps.
-
-*Note:* Turning steps off improves performance by skipping step collection in the engine.
+*Output:* `x = e` (Instant result)
 
 ### Running Tests
 
