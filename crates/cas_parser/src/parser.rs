@@ -56,6 +56,10 @@ fn parse_function(input: &str) -> IResult<&str, Rc<Expr>> {
         return Ok((input, Expr::ln(args[0].clone())));
     }
     
+    if name == "exp" && args.len() == 1 {
+        return Ok((input, Expr::pow(Expr::e(), args[0].clone())));
+    }
+    
     Ok((input, Rc::new(Expr::Function(name.to_string(), args))))
 }
 
