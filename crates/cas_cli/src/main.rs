@@ -6,6 +6,7 @@ use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNega
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
+use cas_engine::rules::algebra::SimplifyFractionRule;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -18,6 +19,7 @@ fn main() -> rustyline::Result<()> {
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
+    simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
