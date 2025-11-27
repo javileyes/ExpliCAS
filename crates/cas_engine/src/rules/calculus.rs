@@ -1,7 +1,7 @@
 use crate::rule::{Rule, Rewrite};
 use cas_ast::Expr;
 use std::rc::Rc;
-use num_traits::{One, Zero};
+use num_traits::{One};
 use num_rational::BigRational;
 
 pub struct IntegrateRule;

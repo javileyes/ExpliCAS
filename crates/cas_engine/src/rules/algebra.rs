@@ -3,8 +3,8 @@ use cas_ast::Expr;
 use crate::polynomial::Polynomial;
 use std::rc::Rc;
 use std::collections::HashSet;
-use num_traits::{One, Zero};
-use num_rational::BigRational;
+use num_traits::{One};
+
 
 pub struct SimplifyFractionRule;
 

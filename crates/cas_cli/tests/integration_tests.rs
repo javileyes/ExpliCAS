@@ -170,7 +170,7 @@ fn test_root_simplification() {
 fn test_polynomial_factorization_integration() {
     use cas_engine::rules::algebra::FactorRule;
     use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
-    use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
+    use cas_engine::rules::polynomial::{CombineLikeTermsRule};
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(FactorRule));
@@ -282,7 +282,7 @@ fn test_logarithm_simplification() {
 fn test_enhanced_integration() {
     use cas_engine::rules::calculus::IntegrateRule;
     use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
-    use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
+    use cas_engine::rules::polynomial::{CombineLikeTermsRule};
     use cas_engine::rules::exponents::EvaluatePowerRule;
     use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule};
 
