@@ -102,7 +102,34 @@ Basic indefinite integration support.
 Result: x^3 / 3 - cos(x)
 ```
 
-#### 5. Equivalence Checking
+#### 5. Pre-Calculus (Absolute Value & Inequalities)
+The solver handles absolute values (branching) and inequalities (sign flipping).
+
+**Example: Absolute Value Equation**
+```text
+> solve |2*x + 1| = 5, x
+Steps:
+1. Split absolute value (Case 1): 2 * x + 1 = 5
+   -> 2 * x = 4
+   -> x = 2
+2. Split absolute value (Case 2): 2 * x + 1 = -5
+   -> 2 * x = -6
+   -> x = -3
+Result: x = 2
+--- Solution 2 ---
+Result: x = -3
+```
+
+**Example: Inequality**
+```text
+> solve -2*x < 10, x
+Steps:
+1. Divide both sides by -2 (flips inequality)
+   -> x > -5
+Result: x > -5
+```
+
+#### 6. Equivalence Checking
 Verify if two expressions are mathematically equivalent.
 ```text
 > equiv sin(x+y), sin(x)*cos(y) + cos(x)*sin(y)

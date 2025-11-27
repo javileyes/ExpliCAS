@@ -128,6 +128,8 @@ fn main() -> rustyline::Result<()> {
                     println!("  factor(2*x^2 + 4*x)");
                     println!("  collect(a*x + b*x, x)");
                     println!("  solve x+2=5, x");
+                    println!("  solve |x|=5, x");
+                    println!("  solve -2*x < 10, x");
                     println!("  subst x+1, x=2");
                     continue;
                 }
