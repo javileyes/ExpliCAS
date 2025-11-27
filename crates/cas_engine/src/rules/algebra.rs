@@ -81,6 +81,14 @@ impl Rule for ExpandRule {
                 let arg = &args[0];
                 // Try to convert to polynomial
                 let vars = collect_variables(arg);
+                if vars.is_empty() {
+                    // Constant expression. Already expanded.
+                    // Just return the arg (simplification removes the expand wrapper).
+                    return Some(Rewrite {
+                        new_expr: arg.clone(),
+                        description: "expand(constant) -> constant".to_string(),
+                    });
+                }
                 if vars.len() != 1 {
                     return None;
                 }

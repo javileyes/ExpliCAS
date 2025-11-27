@@ -130,11 +130,26 @@ impl Simplifier {
     }
     pub fn are_equivalent(&self, a: Rc<Expr>, b: Rc<Expr>) -> bool {
         let diff = Expr::sub(a, b);
-        // We don't need steps for the equivalence check itself, but simplify generates them.
-        // We can ignore them.
-        let (simplified_diff, _) = self.simplify(diff);
         
-        match simplified_diff.as_ref() {
+        // Force expansion of the difference to handle cases like (x+1)^2 - (x^2+2x+1)
+        // We wrap it in expand() so that ExpandRule (if present) triggers.
+        let expanded_diff = Rc::new(Expr::Function("expand".to_string(), vec![diff]));
+        
+        let (simplified_diff, _) = self.simplify(expanded_diff);
+        
+        // If expansion failed (e.g. non-polynomial), we might get expand(...) back.
+        // In that case, check the inner expression.
+        let result_expr = if let Expr::Function(name, args) = simplified_diff.as_ref() {
+            if name == "expand" && args.len() == 1 {
+                &args[0]
+            } else {
+                &simplified_diff
+            }
+        } else {
+            &simplified_diff
+        };
+
+        match result_expr.as_ref() {
             Expr::Number(n) => n.is_zero(),
             _ => false,
         }

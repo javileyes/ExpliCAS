@@ -6,7 +6,7 @@ use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNega
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule};
 use cas_parser::parse;
 
 fn create_full_simplifier() -> Simplifier {
@@ -38,6 +38,7 @@ fn create_full_simplifier() -> Simplifier {
     
     // Algebra
     simplifier.add_rule(Box::new(SimplifyFractionRule));
+    simplifier.add_rule(Box::new(ExpandRule));
     
     // Arithmetic
     simplifier.add_rule(Box::new(CombineConstantsRule));
