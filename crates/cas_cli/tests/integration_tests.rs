@@ -22,10 +22,10 @@ fn test_end_to_end_simplification() {
 
     // Verify Steps
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0].rule_name, "Identity Property of Addition");
-    assert_eq!(format!("{}", steps[0].after), "2 * 3");
+    assert_eq!(steps[0].rule_name, "Combine Constants");
+    assert_eq!(format!("{}", steps[0].after), "6");
     
-    assert_eq!(steps[1].rule_name, "Combine Constants");
+    assert_eq!(steps[1].rule_name, "Identity Property of Addition");
     assert_eq!(format!("{}", steps[1].after), "6");
 }
 

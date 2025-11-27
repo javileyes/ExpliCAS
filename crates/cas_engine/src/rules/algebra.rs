@@ -112,12 +112,22 @@ impl Rule for NestedFractionRule {
                 multiplier = Expr::mul(multiplier, unique_denoms[i].clone());
             }
             
+            // eprintln!("NestedFractionRule: expr={}, multiplier={}", expr, multiplier);
+
             // Multiply num and den by multiplier
             let new_num = distribute(num, &multiplier);
             let new_den = distribute(den, &multiplier);
             
+            let new_expr = Expr::div(new_num, new_den);
+            if &new_expr == expr {
+                // eprintln!("NestedFractionRule: No change");
+                return None;
+            }
+
+            // eprintln!("NestedFractionRule: Result={}", new_expr);
+
             return Some(Rewrite {
-                new_expr: Expr::div(new_num, new_den),
+                new_expr,
                 description: format!("Multiply by common denominator {}", multiplier),
             });
         }
@@ -129,17 +139,50 @@ fn distribute(target: &Rc<Expr>, multiplier: &Rc<Expr>) -> Rc<Expr> {
     match target.as_ref() {
         Expr::Add(l, r) => Expr::add(distribute(l, multiplier), distribute(r, multiplier)),
         Expr::Sub(l, r) => Expr::sub(distribute(l, multiplier), distribute(r, multiplier)),
-        Expr::Div(l, r) => {
-            // (l / r) * m. If m == r, return l.
-            if r == multiplier {
-                return l.clone();
+        Expr::Mul(l, r) => {
+            // Try to distribute into the side that has denominators
+            let l_denoms = collect_denominators(l);
+            if !l_denoms.is_empty() {
+                 return Expr::mul(distribute(l, multiplier), r.clone());
             }
-            // If m contains r (e.g. m = x*y, r = x), we can simplify.
-            // For now, just return (l*m)/r
+            let r_denoms = collect_denominators(r);
+            if !r_denoms.is_empty() {
+                 return Expr::mul(l.clone(), distribute(r, multiplier));
+            }
+            // If neither has explicit denominators, just multiply
+            Expr::mul(target.clone(), multiplier.clone())
+        },
+        Expr::Div(l, r) => {
+            // (l / r) * m. 
+            // Check if m is a multiple of r.
+            if let Some(quotient) = get_quotient(multiplier, r) {
+                // m = q * r.
+                // (l / r) * (q * r) = l * q
+                // eprintln!("distribute: Cancelled {} in {} * {}", r, target, multiplier);
+                return Expr::mul(l.clone(), quotient);
+            }
+            // If not, we are stuck with (l/r)*m.
+            // eprintln!("distribute: Failed to cancel {} in {} * {}", r, target, multiplier);
             Expr::mul(Expr::div(l.clone(), r.clone()), multiplier.clone())
         },
         _ => Expr::mul(target.clone(), multiplier.clone())
     }
+}
+
+fn get_quotient(dividend: &Rc<Expr>, divisor: &Rc<Expr>) -> Option<Rc<Expr>> {
+    // eprintln!("get_quotient: {} / {}", dividend, divisor);
+    if dividend == divisor {
+        return Some(Rc::new(Expr::Number(num_rational::BigRational::one())));
+    }
+    if let Expr::Mul(l, r) = dividend.as_ref() {
+        if let Some(q) = get_quotient(l, divisor) {
+            return Some(Expr::mul(q, r.clone()));
+        }
+        if let Some(q) = get_quotient(r, divisor) {
+            return Some(Expr::mul(l.clone(), q));
+        }
+    }
+    None
 }
 
 fn collect_denominators(expr: &Rc<Expr>) -> Vec<Rc<Expr>> {
@@ -395,7 +438,11 @@ fn negate_term(expr: &Rc<Expr>) -> Rc<Expr> {
         Expr::Mul(l, r) => {
             if let Expr::Number(n) = l.as_ref() {
                 if n.is_negative() {
-                    return Expr::mul(Expr::num((-n).to_i64().unwrap()), r.clone());
+                    let new_n = (-n).to_i64().unwrap();
+                    if new_n == 1 {
+                        return r.clone();
+                    }
+                    return Expr::mul(Expr::num(new_n), r.clone());
                 }
             }
             Expr::neg(expr.clone())
