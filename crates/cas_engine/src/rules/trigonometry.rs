@@ -112,13 +112,21 @@ impl Rule for PythagoreanIdentityRule {
 
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
         if let Expr::Add(lhs, rhs) = expr.as_ref() {
-            // Canonical order is cos^2(x) + sin^2(x) because "cos" < "sin"
-            // We only need to check this one pattern now.
+            // Check cos^2 + sin^2
             if let (Some(arg_cos), Some(arg_sin)) = (is_trig_square(lhs, "cos"), is_trig_square(rhs, "sin")) {
                 if arg_sin == arg_cos {
                     return Some(Rewrite {
                         new_expr: Rc::new(Expr::Number(num_rational::BigRational::one())),
                         description: "cos^2(x) + sin^2(x) = 1".to_string(),
+                    });
+                }
+            }
+            // Check sin^2 + cos^2
+            if let (Some(arg_sin), Some(arg_cos)) = (is_trig_square(lhs, "sin"), is_trig_square(rhs, "cos")) {
+                if arg_sin == arg_cos {
+                    return Some(Rewrite {
+                        new_expr: Rc::new(Expr::Number(num_rational::BigRational::one())),
+                        description: "sin^2(x) + cos^2(x) = 1".to_string(),
                     });
                 }
             }

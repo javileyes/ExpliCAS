@@ -6,7 +6,7 @@ use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNega
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule}; // FactorDifferenceSquaresRule might not be public or exported
+use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule};
 use cas_parser::parse;
 use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr};
 use cas_engine::solver::solve;
@@ -34,7 +34,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
-    // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); 
+    simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); 
     simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));

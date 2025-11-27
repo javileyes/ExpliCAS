@@ -3,7 +3,7 @@ use cas_ast::Expr;
 use crate::polynomial::Polynomial;
 use std::rc::Rc;
 use std::collections::HashSet;
-use num_traits::{One, Signed};
+use num_traits::{One, Signed, ToPrimitive};
 
 
 pub struct SimplifyFractionRule;
@@ -295,6 +295,153 @@ fn collect_vars_recursive(expr: &Expr, vars: &mut HashSet<String>) {
             }
         },
         _ => {},
+    }
+}
+
+
+pub struct FactorDifferenceSquaresRule;
+
+impl Rule for FactorDifferenceSquaresRule {
+    fn name(&self) -> &str {
+        "Factor Difference of Squares"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        let (l, r) = match expr.as_ref() {
+            Expr::Sub(l, r) => (l.clone(), r.clone()),
+            Expr::Add(a, b) => {
+                // Check if one is negative
+                if is_negative_term(b) {
+                    (a.clone(), negate_term(b))
+                } else if is_negative_term(a) {
+                    (b.clone(), negate_term(a))
+                } else {
+                    return None;
+                }
+            },
+            _ => return None,
+        };
+
+        if let (Some(root_l), Some(root_r)) = (get_square_root(&l), get_square_root(&r)) {
+            // a^2 - b^2 = (a - b)(a + b)
+            let term1 = Expr::sub(root_l.clone(), root_r.clone());
+            
+            // Check for Pythagorean identity in term2 (a + b)
+            // sin^2 + cos^2 = 1
+            let mut term2 = Expr::add(root_l.clone(), root_r.clone());
+            
+            if is_sin_cos_pair(&root_l, &root_r) {
+                 term2 = Rc::new(Expr::Number(num_rational::BigRational::one()));
+            }
+
+            let new_expr = Expr::mul(term1, term2);
+            
+            return Some(Rewrite {
+                new_expr,
+                description: "Factor difference of squares".to_string(),
+            });
+        }
+        None
+    }
+}
+
+fn is_sin_cos_pair(a: &Rc<Expr>, b: &Rc<Expr>) -> bool {
+    (is_trig_pow(a, "sin", 2) && is_trig_pow(b, "cos", 2) && get_trig_arg(a) == get_trig_arg(b)) ||
+    (is_trig_pow(a, "cos", 2) && is_trig_pow(b, "sin", 2) && get_trig_arg(a) == get_trig_arg(b))
+}
+
+fn is_trig_pow(expr: &Rc<Expr>, name: &str, power: i64) -> bool {
+    if let Expr::Pow(base, exp) = expr.as_ref() {
+        if let Expr::Number(n) = exp.as_ref() {
+            if n.is_integer() && n.to_integer() == power.into() {
+                if let Expr::Function(func_name, args) = base.as_ref() {
+                    return func_name == name && args.len() == 1;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn get_trig_arg(expr: &Rc<Expr>) -> Option<Rc<Expr>> {
+    if let Expr::Pow(base, _) = expr.as_ref() {
+        if let Expr::Function(_, args) = base.as_ref() {
+            if args.len() == 1 {
+                return Some(args[0].clone());
+            }
+        }
+    }
+    None
+}
+
+fn is_negative_term(expr: &Rc<Expr>) -> bool {
+    match expr.as_ref() {
+        Expr::Neg(_) => true,
+        Expr::Mul(l, _) => {
+            if let Expr::Number(n) = l.as_ref() {
+                n.is_negative()
+            } else {
+                false
+            }
+        },
+        Expr::Number(n) => n.is_negative(),
+        _ => false
+    }
+}
+
+fn negate_term(expr: &Rc<Expr>) -> Rc<Expr> {
+    match expr.as_ref() {
+        Expr::Neg(inner) => inner.clone(),
+        Expr::Mul(l, r) => {
+            if let Expr::Number(n) = l.as_ref() {
+                if n.is_negative() {
+                    return Expr::mul(Expr::num((-n).to_i64().unwrap()), r.clone());
+                }
+            }
+            Expr::neg(expr.clone())
+        },
+        Expr::Number(n) => Expr::num((-n).to_i64().unwrap()),
+        _ => Expr::neg(expr.clone())
+    }
+}
+
+fn get_square_root(expr: &Rc<Expr>) -> Option<Rc<Expr>> {
+    match expr.as_ref() {
+        Expr::Pow(b, e) => {
+            if let Expr::Number(n) = e.as_ref() {
+                if n.is_integer() {
+                    let val = n.to_integer();
+                    if &val % 2 == 0.into() {
+                        let two = num_bigint::BigInt::from(2);
+                        let new_exp = Expr::num((val / two).to_i64().unwrap());
+                        // If new_exp is 1, simplify to b
+                        if let Expr::Number(ne) = new_exp.as_ref() {
+                            if ne.is_one() {
+                                return Some(b.clone());
+                            }
+                        }
+                        return Some(Expr::pow(b.clone(), new_exp));
+                    }
+                }
+            }
+            None
+        },
+        // Handle sin(x)^4 -> sin(x)^2
+        // Handle 4 -> 2
+        Expr::Number(n) => {
+             // Check if n is a perfect square
+             // For simplicity, only handle positive integers for now
+             if n.is_integer() && !n.is_negative() {
+                 let val = n.to_integer();
+                 // Simple integer sqrt check
+                 let sqrt = val.sqrt();
+                 if &sqrt * &sqrt == val {
+                     return Some(Expr::num(sqrt.to_i64().unwrap()));
+                 }
+             }
+             None
+        },
+        _ => None
     }
 }
 
