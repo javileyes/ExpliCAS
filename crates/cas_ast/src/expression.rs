@@ -7,6 +7,8 @@ use num_bigint::BigInt;
 pub enum Constant {
     Pi,
     E,
+    Infinity,
+    Undefined,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -137,6 +139,8 @@ impl fmt::Display for Expr {
             Expr::Constant(c) => match c {
                 Constant::Pi => write!(f, "pi"),
                 Constant::E => write!(f, "e"),
+                Constant::Infinity => write!(f, "infinity"),
+                Constant::Undefined => write!(f, "undefined"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(l, r) => {

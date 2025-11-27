@@ -16,12 +16,24 @@ impl Rule for EvaluateLogRule {
                 let base = &args[0];
                 let arg = &args[1];
 
-                // 1. log(b, 1) = 0
+                // 1. log(b, 1) = 0, log(b, 0) = -infinity, log(b, neg) = undefined
                 if let Expr::Number(n) = arg.as_ref() {
                     if n.is_one() {
                         return Some(Rewrite {
                             new_expr: Rc::new(Expr::Number(num_rational::BigRational::zero())),
                             description: "log(b, 1) = 0".to_string(),
+                        });
+                    }
+                    if n.is_zero() {
+                        return Some(Rewrite {
+                            new_expr: Expr::neg(Rc::new(Expr::Constant(cas_ast::Constant::Infinity))),
+                            description: "log(b, 0) = -infinity".to_string(),
+                        });
+                    }
+                    if *n < num_rational::BigRational::zero() {
+                         return Some(Rewrite {
+                            new_expr: Rc::new(Expr::Constant(cas_ast::Constant::Undefined)),
+                            description: "log(b, neg) = undefined".to_string(),
                         });
                     }
                 }
