@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 cas_ast = { path = "../cas_ast" }
+num-rational = "0.4"

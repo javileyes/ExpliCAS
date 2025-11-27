@@ -57,6 +57,7 @@ name = "cas_format"
 version = "0.1.0"
 dependencies = [
  "cas_ast",
+ "num-rational",
 ]
 
 [[package]]

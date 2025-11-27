@@ -8,6 +8,7 @@ pub mod ordering;
 
 pub mod visitors;
 
+pub use visitors::{VariableCollector, DepthVisitor};
 pub use engine::Simplifier;
 pub use rule::Rule;
 pub use step::Step;

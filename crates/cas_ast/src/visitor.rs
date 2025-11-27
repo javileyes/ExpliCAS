@@ -57,29 +57,29 @@ pub trait Visitor {
     }
 }
 
-pub trait MutVisitor {
-    fn visit_expr(&mut self, expr: Rc<Expr>) -> Rc<Expr> {
+pub trait Transformer {
+    fn transform_expr(&mut self, expr: Rc<Expr>) -> Rc<Expr> {
         match expr.as_ref() {
-            Expr::Number(_) => self.visit_number(expr),
-            Expr::Constant(_) => self.visit_constant(expr),
-            Expr::Variable(_) => self.visit_variable(expr),
-            Expr::Add(l, r) => self.visit_add(expr.clone(), l, r),
-            Expr::Sub(l, r) => self.visit_sub(expr.clone(), l, r),
-            Expr::Mul(l, r) => self.visit_mul(expr.clone(), l, r),
-            Expr::Div(l, r) => self.visit_div(expr.clone(), l, r),
-            Expr::Pow(b, e) => self.visit_pow(expr.clone(), b, e),
-            Expr::Neg(e) => self.visit_neg(expr.clone(), e),
-            Expr::Function(name, args) => self.visit_function(expr.clone(), name, args),
+            Expr::Number(_) => self.transform_number(expr),
+            Expr::Constant(_) => self.transform_constant(expr),
+            Expr::Variable(_) => self.transform_variable(expr),
+            Expr::Add(l, r) => self.transform_add(expr.clone(), l, r),
+            Expr::Sub(l, r) => self.transform_sub(expr.clone(), l, r),
+            Expr::Mul(l, r) => self.transform_mul(expr.clone(), l, r),
+            Expr::Div(l, r) => self.transform_div(expr.clone(), l, r),
+            Expr::Pow(b, e) => self.transform_pow(expr.clone(), b, e),
+            Expr::Neg(e) => self.transform_neg(expr.clone(), e),
+            Expr::Function(name, args) => self.transform_function(expr.clone(), name, args),
         }
     }
 
-    fn visit_number(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
-    fn visit_constant(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
-    fn visit_variable(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
+    fn transform_number(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
+    fn transform_constant(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
+    fn transform_variable(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
 
-    fn visit_add(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
-        let new_l = self.visit_expr(l.clone());
-        let new_r = self.visit_expr(r.clone());
+    fn transform_add(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
+        let new_l = self.transform_expr(l.clone());
+        let new_r = self.transform_expr(r.clone());
         if new_l != *l || new_r != *r {
             Expr::add(new_l, new_r)
         } else {
@@ -87,9 +87,9 @@ pub trait MutVisitor {
         }
     }
 
-    fn visit_sub(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
-        let new_l = self.visit_expr(l.clone());
-        let new_r = self.visit_expr(r.clone());
+    fn transform_sub(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
+        let new_l = self.transform_expr(l.clone());
+        let new_r = self.transform_expr(r.clone());
         if new_l != *l || new_r != *r {
             Expr::sub(new_l, new_r)
         } else {
@@ -97,9 +97,9 @@ pub trait MutVisitor {
         }
     }
 
-    fn visit_mul(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
-        let new_l = self.visit_expr(l.clone());
-        let new_r = self.visit_expr(r.clone());
+    fn transform_mul(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
+        let new_l = self.transform_expr(l.clone());
+        let new_r = self.transform_expr(r.clone());
         if new_l != *l || new_r != *r {
             Expr::mul(new_l, new_r)
         } else {
@@ -107,9 +107,9 @@ pub trait MutVisitor {
         }
     }
 
-    fn visit_div(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
-        let new_l = self.visit_expr(l.clone());
-        let new_r = self.visit_expr(r.clone());
+    fn transform_div(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
+        let new_l = self.transform_expr(l.clone());
+        let new_r = self.transform_expr(r.clone());
         if new_l != *l || new_r != *r {
             Expr::div(new_l, new_r)
         } else {
@@ -117,9 +117,9 @@ pub trait MutVisitor {
         }
     }
 
-    fn visit_pow(&mut self, original: Rc<Expr>, b: &Rc<Expr>, e: &Rc<Expr>) -> Rc<Expr> {
-        let new_b = self.visit_expr(b.clone());
-        let new_e = self.visit_expr(e.clone());
+    fn transform_pow(&mut self, original: Rc<Expr>, b: &Rc<Expr>, e: &Rc<Expr>) -> Rc<Expr> {
+        let new_b = self.transform_expr(b.clone());
+        let new_e = self.transform_expr(e.clone());
         if new_b != *b || new_e != *e {
             Expr::pow(new_b, new_e)
         } else {
@@ -127,8 +127,8 @@ pub trait MutVisitor {
         }
     }
 
-    fn visit_neg(&mut self, original: Rc<Expr>, e: &Rc<Expr>) -> Rc<Expr> {
-        let new_e = self.visit_expr(e.clone());
+    fn transform_neg(&mut self, original: Rc<Expr>, e: &Rc<Expr>) -> Rc<Expr> {
+        let new_e = self.transform_expr(e.clone());
         if new_e != *e {
             Expr::neg(new_e)
         } else {
@@ -136,11 +136,11 @@ pub trait MutVisitor {
         }
     }
 
-    fn visit_function(&mut self, original: Rc<Expr>, name: &str, args: &[Rc<Expr>]) -> Rc<Expr> {
+    fn transform_function(&mut self, original: Rc<Expr>, name: &str, args: &[Rc<Expr>]) -> Rc<Expr> {
         let mut new_args = Vec::new();
         let mut changed = false;
         for arg in args {
-            let new_arg = self.visit_expr(arg.clone());
+            let new_arg = self.transform_expr(arg.clone());
             if new_arg != *arg {
                 changed = true;
             }

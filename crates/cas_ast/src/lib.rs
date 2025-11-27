@@ -3,7 +3,7 @@ pub mod domain;
 pub mod visitor;
 
 pub use expression::{Expr, Constant};
-pub use visitor::{Visitor, MutVisitor};
+pub use visitor::{Visitor, Transformer};
 pub use domain::{Interval, BoundType, SolutionSet};
 use std::rc::Rc;
 
