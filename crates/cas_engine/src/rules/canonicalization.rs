@@ -16,14 +16,23 @@ impl Rule for CanonicalizeAddRule {
 
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
         if let Expr::Add(lhs, rhs) = expr.as_ref() {
-            // Check if RHS < LHS. If so, swap.
-            // a + b is fine if a <= b
-            // b + a -> a + b
+            // 1. Basic Swap: b + a -> a + b if b < a
             if compare_expr(rhs, lhs) == Ordering::Less {
                 return Some(Rewrite {
                     new_expr: Expr::add(rhs.clone(), lhs.clone()),
                     description: "Reorder addition terms".to_string(),
                 });
+            }
+            
+            // 2. Rotation: a + (b + c) -> b + (a + c) if b < a
+            // This allows sorting nested terms.
+            if let Expr::Add(rl, rr) = rhs.as_ref() {
+                if compare_expr(rl, lhs) == Ordering::Less {
+                    return Some(Rewrite {
+                        new_expr: Expr::add(rl.clone(), Expr::add(lhs.clone(), rr.clone())),
+                        description: "Rotate addition terms".to_string(),
+                    });
+                }
             }
         }
         None
@@ -39,12 +48,22 @@ impl Rule for CanonicalizeMulRule {
 
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
         if let Expr::Mul(lhs, rhs) = expr.as_ref() {
-            // Check if RHS < LHS. If so, swap.
+            // 1. Basic Swap: b * a -> a * b if b < a
             if compare_expr(rhs, lhs) == Ordering::Less {
                 return Some(Rewrite {
                     new_expr: Expr::mul(rhs.clone(), lhs.clone()),
                     description: "Reorder multiplication factors".to_string(),
                 });
+            }
+
+            // 2. Rotation: a * (b * c) -> b * (a * c) if b < a
+            if let Expr::Mul(rl, rr) = rhs.as_ref() {
+                if compare_expr(rl, lhs) == Ordering::Less {
+                    return Some(Rewrite {
+                        new_expr: Expr::mul(rl.clone(), Expr::mul(lhs.clone(), rr.clone())),
+                        description: "Rotate multiplication factors".to_string(),
+                    });
+                }
             }
         }
         None
@@ -99,6 +118,39 @@ impl Rule for CanonicalizeRootRule {
                     description: format!("root(x, n) = x^(1/n)"),
                 });
             }
+        }
+        None
+    }
+}
+
+pub struct AssociativityRule;
+
+impl Rule for AssociativityRule {
+    fn name(&self) -> &str {
+        "Associativity (Flattening)"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        match expr.as_ref() {
+            // (a + b) + c -> a + (b + c)
+            Expr::Add(lhs, rhs) => {
+                if let Expr::Add(ll, lr) = lhs.as_ref() {
+                    return Some(Rewrite {
+                        new_expr: Expr::add(ll.clone(), Expr::add(lr.clone(), rhs.clone())),
+                        description: "Associativity: (a + b) + c -> a + (b + c)".to_string(),
+                    });
+                }
+            }
+            // (a * b) * c -> a * (b * c)
+            Expr::Mul(lhs, rhs) => {
+                if let Expr::Mul(ll, lr) = lhs.as_ref() {
+                    return Some(Rewrite {
+                        new_expr: Expr::mul(ll.clone(), Expr::mul(lr.clone(), rhs.clone())),
+                        description: "Associativity: (a * b) * c -> a * (b * c)".to_string(),
+                    });
+                }
+            }
+            _ => {}
         }
         None
     }

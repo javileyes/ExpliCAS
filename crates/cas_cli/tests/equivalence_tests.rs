@@ -2,7 +2,7 @@ use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
+use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
@@ -16,6 +16,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
+    simplifier.add_rule(Box::new(AssociativityRule));
     
     // Evaluation
     simplifier.add_rule(Box::new(EvaluateAbsRule));
@@ -95,6 +96,15 @@ fn test_commutativity_equivalence() {
     // x * y equiv y * x
     let e1 = parse("x * y").unwrap();
     let e2 = parse("y * x").unwrap();
+    assert!(simplifier.are_equivalent(e1, e2));
+}
+
+#[test]
+fn test_associativity_equivalence() {
+    let simplifier = create_full_simplifier();
+    // (x + y) + z equiv x + (y + z)
+    let e1 = parse("(x + y) + z").unwrap();
+    let e2 = parse("x + (y + z)").unwrap();
     assert!(simplifier.are_equivalent(e1, e2));
 }
 
