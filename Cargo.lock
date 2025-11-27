@@ -36,6 +36,7 @@ dependencies = [
  "cas_ast",
  "cas_engine",
  "cas_parser",
+ "num-traits",
  "rustyline",
 ]
 

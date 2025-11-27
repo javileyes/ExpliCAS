@@ -417,23 +417,77 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
         Expr::Div(l, r) => {
             // A / B = RHS
             if contains_var(l, var) {
-                // A = RHS * B
-                // Check if B is negative constant to flip inequality
-                let mut new_op = op.clone();
-                if is_negative(r) {
-                    new_op = flip_inequality(new_op);
-                }
+                if contains_var(r, var) && matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq) {
+                    // Denominator contains variable. Split into cases.
+                    // Case 1: Denominator > 0
+                    let op_pos = op.clone();
+                    let new_rhs = Expr::mul(rhs.clone(), r.clone());
+                    let (sim_rhs, _) = simplifier.simplify(new_rhs);
+                    
+                    if simplifier.collect_steps {
+                        steps.push(SolveStep {
+                            description: format!("Case 1: Assume {} > 0. Multiply by positive denominator.", r),
+                            equation_after: Equation { lhs: l.clone(), rhs: sim_rhs.clone(), op: op_pos.clone() }
+                        });
+                    }
+                    
+                    let results_pos = isolate(l, &sim_rhs, op_pos, var, simplifier)?;
+                    let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
+                    
+                    // Domain: r > 0
+                    let domain_eq = Equation { lhs: r.clone(), rhs: Expr::num(0), op: RelOp::Gt };
+                    let (domain_pos_set, _) = solve(&domain_eq, var, simplifier)?; // Solve r > 0
+                    let final_pos = intersect_solution_sets(set_pos, domain_pos_set);
+                    
+                    // Case 2: Denominator < 0
+                    let op_neg = flip_inequality(op.clone());
+                    // new_rhs is same
+                    let (sim_rhs, _) = simplifier.simplify(Expr::mul(rhs.clone(), r.clone()));
+                    
+                    if simplifier.collect_steps {
+                        steps.push(SolveStep {
+                            description: format!("Case 2: Assume {} < 0. Multiply by negative denominator (flips inequality).", r),
+                            equation_after: Equation { lhs: l.clone(), rhs: sim_rhs.clone(), op: op_neg.clone() }
+                        });
+                    }
+                    
+                    let results_neg = isolate(l, &sim_rhs, op_neg, var, simplifier)?;
+                    let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
+                    
+                    // Domain: r < 0
+                    let domain_eq_neg = Equation { lhs: r.clone(), rhs: Expr::num(0), op: RelOp::Lt };
+                    let (domain_neg_set, _) = solve(&domain_eq_neg, var, simplifier)?; // Solve r < 0
+                    let final_neg = intersect_solution_sets(set_neg, domain_neg_set);
+                    
+                    // Combine
+                    let final_set = union_solution_sets(final_pos, final_neg);
+                    
+                    // Combine steps
+                    let mut all_steps = steps_pos;
+                    all_steps.push(SolveStep { description: "--- End of Case 1 ---".to_string(), equation_after: Equation { lhs: l.clone(), rhs: sim_rhs.clone(), op: op.clone() }});
+                    all_steps.extend(steps_neg);
+                    
+                    return Ok((final_set, all_steps));
 
-                let new_rhs = Expr::mul(rhs.clone(), r.clone());
-                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: new_op.clone() };
-                if simplifier.collect_steps {
-                    steps.push(SolveStep {
-                        description: format!("Multiply both sides by {}", r),
-                        equation_after: new_eq.clone(),
-                    });
+                } else {
+                    // A = RHS * B
+                    // Check if B is negative constant to flip inequality
+                    let mut new_op = op.clone();
+                    if is_negative(r) {
+                        new_op = flip_inequality(new_op);
+                    }
+
+                    let new_rhs = Expr::mul(rhs.clone(), r.clone());
+                    let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: new_op.clone() };
+                    if simplifier.collect_steps {
+                        steps.push(SolveStep {
+                            description: format!("Multiply both sides by {}", r),
+                            equation_after: new_eq.clone(),
+                        });
+                    }
+                    let results = isolate(l, &new_rhs, new_op, var, simplifier)?;
+                    prepend_steps(results, steps)
                 }
-                let results = isolate(l, &new_rhs, new_op, var, simplifier)?;
-                prepend_steps(results, steps)
             } else {
                 // B = A / RHS
                 let new_rhs = Expr::div(l.clone(), rhs.clone());
