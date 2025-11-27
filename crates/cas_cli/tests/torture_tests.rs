@@ -29,6 +29,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(ZeroOnePowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(DistributeRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::BinomialExpansionRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));

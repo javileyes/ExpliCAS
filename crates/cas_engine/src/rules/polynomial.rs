@@ -1,6 +1,7 @@
 use crate::rule::{Rewrite, Rule};
 use cas_ast::Expr;
 use std::rc::Rc;
+use num_traits::{ToPrimitive, Signed};
 
 pub struct DistributeRule;
 impl Rule for DistributeRule {
@@ -98,6 +99,72 @@ impl Rule for CombineLikeTermsRule {
         }
         None
     }
+}
+
+pub struct BinomialExpansionRule;
+
+impl Rule for BinomialExpansionRule {
+    fn name(&self) -> &str {
+        "Binomial Expansion"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        // (a + b)^n
+        if let Expr::Pow(base, exp) = expr.as_ref() {
+            if let Expr::Add(a, b) = base.as_ref() {
+                if let Expr::Number(n) = exp.as_ref() {
+                    if n.is_integer() && !n.is_negative() {
+                        let n_val = n.to_integer().to_u32()?;
+                        // Limit expansion to reasonable size to prevent explosion
+                        if n_val >= 2 && n_val <= 10 {
+                            // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
+                            let mut terms = Vec::new();
+                            for k in 0..=n_val {
+                                let coeff = binomial_coeff(n_val, k);
+                                let exp_a = n_val - k;
+                                let exp_b = k;
+                                
+                                let term_a = if exp_a == 0 { Expr::num(1) } else if exp_a == 1 { a.clone() } else { Expr::pow(a.clone(), Expr::num(exp_a as i64)) };
+                                let term_b = if exp_b == 0 { Expr::num(1) } else if exp_b == 1 { b.clone() } else { Expr::pow(b.clone(), Expr::num(exp_b as i64)) };
+                                
+                                let mut term = Expr::mul(term_a, term_b);
+                                if coeff > 1 {
+                                    term = Expr::mul(Expr::num(coeff as i64), term);
+                                }
+                                terms.push(term);
+                            }
+                            
+                            // Sum up terms
+                            let mut expanded = terms[0].clone();
+                            for i in 1..terms.len() {
+                                expanded = Expr::add(expanded, terms[i].clone());
+                            }
+                            
+                            return Some(Rewrite {
+                                new_expr: expanded,
+                                description: format!("Expand binomial power ^{}", n_val),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+fn binomial_coeff(n: u32, k: u32) -> u32 {
+    if k == 0 || k == n {
+        return 1;
+    }
+    if k > n {
+        return 0;
+    }
+    let mut res = 1;
+    for i in 0..k {
+        res = res * (n - i) / (i + 1);
+    }
+    res
 }
 
 #[cfg(test)]
