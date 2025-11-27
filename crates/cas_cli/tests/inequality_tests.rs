@@ -8,7 +8,7 @@ use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule}
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule};
 use cas_parser::parse;
-use cas_ast::{Equation, RelOp};
+use cas_ast::{Equation, RelOp, SolutionSet, Interval, BoundType};
 use cas_engine::solver::solve;
 
 fn create_full_simplifier() -> Simplifier {
@@ -44,13 +44,16 @@ fn test_inequality_simple() {
     let rhs = parse("10").unwrap();
     let eq = Equation { lhs, rhs, op: RelOp::Lt };
     
-    let results = solve(&eq, "x", &simplifier).expect("Failed to solve");
-    assert_eq!(results.len(), 1);
-    let (res, _) = &results[0];
+    let (result, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
     
-    assert_eq!(res.op, RelOp::Lt);
-    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
-    assert_eq!(format!("{}", final_rhs), "5");
+    if let SolutionSet::Continuous(interval) = result {
+        // x < 5 -> (-inf, 5)
+        assert_eq!(interval.max_type, BoundType::Open);
+        let (final_max, _) = simplifier.simplify(interval.max.clone());
+        assert_eq!(format!("{}", final_max), "5");
+    } else {
+        panic!("Expected Continuous solution");
+    }
 }
 
 #[test]
@@ -61,13 +64,16 @@ fn test_inequality_flip_negative_coeff() {
     let rhs = parse("9").unwrap();
     let eq = Equation { lhs, rhs, op: RelOp::Geq };
     
-    let results = solve(&eq, "x", &simplifier).expect("Failed to solve");
-    assert_eq!(results.len(), 1);
-    let (res, _) = &results[0];
+    let (result, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
     
-    assert_eq!(res.op, RelOp::Leq); // Flipped
-    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
-    assert_eq!(format!("{}", final_rhs), "-3");
+    if let SolutionSet::Continuous(interval) = result {
+        // x <= -3 -> (-inf, -3]
+        assert_eq!(interval.max_type, BoundType::Closed);
+        let (final_max, _) = simplifier.simplify(interval.max.clone());
+        assert_eq!(format!("{}", final_max), "-3");
+    } else {
+        panic!("Expected Continuous solution");
+    }
 }
 
 #[test]
@@ -82,19 +88,15 @@ fn test_abs_inequality_complex() {
     let rhs = parse("2").unwrap();
     let eq = Equation { lhs, rhs, op: RelOp::Lt };
     
-    let results = solve(&eq, "x", &simplifier).expect("Failed to solve");
-    assert_eq!(results.len(), 2);
+    let (result, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
     
-    let ops: Vec<RelOp> = results.iter().map(|r| r.0.op.clone()).collect();
-    assert!(ops.contains(&RelOp::Lt));
-    assert!(ops.contains(&RelOp::Gt));
-    
-    for (res, _) in results {
-        let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
-        if res.op == RelOp::Lt {
-            assert_eq!(format!("{}", final_rhs), "3");
-        } else {
-            assert_eq!(format!("{}", final_rhs), "-1");
-        }
+    if let SolutionSet::Continuous(interval) = result {
+        // (-1, 3)
+        let (final_min, _) = simplifier.simplify(interval.min.clone());
+        let (final_max, _) = simplifier.simplify(interval.max.clone());
+        assert_eq!(format!("{}", final_min), "-1");
+        assert_eq!(format!("{}", final_max), "3");
+    } else {
+        panic!("Expected Continuous solution, got {:?}", result);
     }
 }

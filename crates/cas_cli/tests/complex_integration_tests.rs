@@ -8,7 +8,7 @@ use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule}
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule};
 use cas_parser::parse;
-use cas_ast::{Equation, RelOp};
+use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_engine::solver::solve;
 
 fn create_full_simplifier() -> Simplifier {
@@ -59,15 +59,20 @@ fn test_trig_algebra_solver() {
     assert!(lhs_str == "1 + x" || lhs_str == "x + 1");
     
     // Solve
-    let results = solve(&sim_eq, "x", &simplifier).expect("Failed to solve");
-    assert!(!results.is_empty());
-    let (res, _) = &results[0];
+    let (result, _) = solve(&sim_eq, "x", &simplifier).expect("Failed to solve");
     
-    // Result should be x = 4
-    // Note: Solver might produce x = 5 - 1, which simplifies to 4 if we run simplifier on it.
-    // The solver returns the final equation. Let's simplify the result RHS.
-    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
-    assert_eq!(format!("{}", final_rhs), "4");
+    if let SolutionSet::Discrete(solutions) = result {
+        assert!(!solutions.is_empty());
+        let res_rhs = &solutions[0];
+        
+        // Result should be x = 4
+        // Note: Solver might produce x = 5 - 1, which simplifies to 4 if we run simplifier on it.
+        // The solver returns the final equation. Let's simplify the result RHS.
+        let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
+        assert_eq!(format!("{}", final_rhs), "4");
+    } else {
+        panic!("Expected Discrete solution");
+    }
 }
 
 #[test]
@@ -91,12 +96,17 @@ fn test_complex_solver_distribution() {
     // Canonical order: Number < Product. So 2 + 2*x
     assert_eq!(format!("{}", sim_eq.lhs), "2 + 2 * x");
     
-    let results = solve(&sim_eq, "x", &simplifier).expect("Failed to solve");
-    assert!(!results.is_empty());
-    let (res, _) = &results[0];
+    let (result, _) = solve(&sim_eq, "x", &simplifier).expect("Failed to solve");
     
-    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
-    assert_eq!(format!("{}", final_rhs), "2");
+    if let SolutionSet::Discrete(solutions) = result {
+        assert!(!solutions.is_empty());
+        let res_rhs = &solutions[0];
+        
+        let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
+        assert_eq!(format!("{}", final_rhs), "2");
+    } else {
+        panic!("Expected Discrete solution");
+    }
 }
 
 #[test]

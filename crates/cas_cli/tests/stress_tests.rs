@@ -8,7 +8,7 @@ use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule}
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule};
 use cas_parser::parse;
-use cas_ast::{Equation, RelOp};
+use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_engine::solver::solve;
 
 fn create_full_simplifier() -> Simplifier {
@@ -108,12 +108,16 @@ fn test_quadratic_solver() {
     // Then Pow(b, e) = RHS. b = RHS^(1/e). x = 4^(1/2).
     // Then simplify 4^(1/2) -> 2.
     
-    let results = solve(&eq, "x", &simplifier).expect("Failed to solve");
-    assert!(!results.is_empty());
-    let (res, _) = &results[0];
-    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
+    let (result, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
     
-    assert_eq!(format!("{}", final_rhs), "2");
+    if let SolutionSet::Discrete(solutions) = result {
+        assert!(!solutions.is_empty());
+        let res_rhs = &solutions[0];
+        let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
+        assert_eq!(format!("{}", final_rhs), "2");
+    } else {
+        panic!("Expected Discrete solution");
+    }
 }
 
 #[test]
@@ -124,10 +128,14 @@ fn test_exponential_solver() {
     let rhs = parse("0").unwrap();
     let eq = Equation { lhs, rhs, op: RelOp::Eq };
     
-    let results = solve(&eq, "x", &simplifier).expect("Failed to solve");
-    assert!(!results.is_empty());
-    let (res, _) = &results[0];
-    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
+    let (result, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
     
-    assert_eq!(format!("{}", final_rhs), "0");
+    if let SolutionSet::Discrete(solutions) = result {
+        assert!(!solutions.is_empty());
+        let res_rhs = &solutions[0];
+        let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
+        assert_eq!(format!("{}", final_rhs), "0");
+    } else {
+        panic!("Expected Discrete solution");
+    }
 }

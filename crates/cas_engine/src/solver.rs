@@ -1,15 +1,188 @@
-use cas_ast::{Expr, Equation, RelOp};
+use cas_ast::{Expr, Equation, RelOp, SolutionSet, Interval, BoundType, Constant};
 use std::rc::Rc;
 use crate::engine::Simplifier;
+use std::cmp::Ordering;
+use num_rational::BigRational;
+
 
 
 #[derive(Debug, Clone)]
 pub struct SolveStep {
     pub description: String,
-    pub equation_after: Equation,
+    // equation_after is less relevant now that we return SolutionSet, 
+    // but we can keep it to show the state of the equation being manipulated.
+    // For branching, it might be the equation of that specific branch.
+    pub equation_after: Equation, 
 }
 
-pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<Vec<(Equation, Vec<SolveStep>)>, String> {
+// Helper to create -infinity
+fn neg_inf() -> Rc<Expr> {
+    Rc::new(Expr::Neg(Rc::new(Expr::Constant(Constant::Infinity))))
+}
+
+// Helper to create +infinity
+fn pos_inf() -> Rc<Expr> {
+    Rc::new(Expr::Constant(Constant::Infinity))
+}
+
+fn is_infinity(expr: &Expr) -> bool {
+    matches!(expr, Expr::Constant(Constant::Infinity))
+}
+
+fn is_neg_infinity(expr: &Expr) -> bool {
+    match expr {
+        Expr::Neg(inner) => is_infinity(inner),
+        _ => false,
+    }
+}
+
+fn get_number(expr: &Expr) -> Option<BigRational> {
+    match expr {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Neg(inner) => get_number(inner).map(|n| -n),
+        _ => None,
+    }
+}
+
+fn compare_values(a: &Expr, b: &Expr) -> Ordering {
+    // Handle Infinity
+    let a_inf = is_infinity(a);
+    let b_inf = is_infinity(b);
+    let a_neg_inf = is_neg_infinity(a);
+    let b_neg_inf = is_neg_infinity(b);
+    
+    if a_neg_inf {
+        if b_neg_inf { return Ordering::Equal; }
+        return Ordering::Less;
+    }
+    if b_neg_inf { return Ordering::Greater; }
+    
+    if a_inf {
+        if b_inf { return Ordering::Equal; }
+        return Ordering::Greater;
+    }
+    if b_inf { return Ordering::Less; }
+    
+    // Handle Numbers
+    if let (Some(n1), Some(n2)) = (get_number(a), get_number(b)) {
+        return n1.cmp(&n2);
+    }
+    
+    // Fallback: Use structural comparison if we can't compare values
+    // This is risky but better than nothing for symbolic bounds
+    // But we need to be careful. For now, let's use structural but warn?
+    // Actually, let's just use structural as a fallback.
+    // But structural says Neg(Inf) > Number. We handled Inf above.
+    // What about Variable(x) vs Number(5)?
+    // We don't know.
+    // For this task, we assume solvable inequalities result in numeric bounds.
+    crate::ordering::compare_expr(a, b)
+}
+
+fn intersect_intervals(i1: &Interval, i2: &Interval) -> SolutionSet {
+    // Intersection of [a, b] and [c, d] is [max(a,c), min(b,d)]
+    
+    println!("Intersecting {} and {}", i1, i2);
+
+    // Compare mins
+    let (min, min_type) = match compare_values(&i1.min, &i2.min) {
+        Ordering::Less => (i2.min.clone(), i2.min_type.clone()), // i1.min < i2.min -> take i2
+        Ordering::Greater => (i1.min.clone(), i1.min_type.clone()), // i1.min > i2.min -> take i1
+        Ordering::Equal => {
+            let type_ = if i1.min_type == BoundType::Open || i2.min_type == BoundType::Open {
+                BoundType::Open
+            } else {
+                BoundType::Closed
+            };
+            (i1.min.clone(), type_)
+        }
+    };
+
+    // Compare maxs
+    let (max, max_type) = match compare_values(&i1.max, &i2.max) {
+        Ordering::Less => (i1.max.clone(), i1.max_type.clone()), // i1.max < i2.max -> take i1
+        Ordering::Greater => (i2.max.clone(), i2.max_type.clone()), // i1.max > i2.max -> take i2
+        Ordering::Equal => {
+            let type_ = if i1.max_type == BoundType::Open || i2.max_type == BoundType::Open {
+                BoundType::Open
+            } else {
+                BoundType::Closed
+            };
+            (i1.max.clone(), type_)
+        }
+    };
+    
+    println!("Result min: {}, max: {}", min, max);
+    println!("Compare min/max: {:?}", compare_values(&min, &max));
+
+    // Check if valid interval (min < max)
+    match compare_values(&min, &max) {
+        Ordering::Less => SolutionSet::Continuous(Interval { min, min_type, max, max_type }),
+        Ordering::Equal => {
+            if min_type == BoundType::Closed && max_type == BoundType::Closed {
+                SolutionSet::Discrete(vec![min])
+            } else {
+                SolutionSet::Empty
+            }
+        },
+        Ordering::Greater => SolutionSet::Empty,
+    }
+}
+
+fn union_solution_sets(s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
+    match (s1, s2) {
+        (SolutionSet::Empty, s) => s,
+        (s, SolutionSet::Empty) => s,
+        (SolutionSet::AllReals, _) => SolutionSet::AllReals,
+        (_, SolutionSet::AllReals) => SolutionSet::AllReals,
+        (SolutionSet::Continuous(i1), SolutionSet::Continuous(i2)) => {
+            // Check if they overlap or touch
+            // If they do, merge. If not, return Union.
+            // Simplified: Just return Union for now unless we implement full interval arithmetic
+            SolutionSet::Union(vec![i1, i2])
+        },
+        (SolutionSet::Union(mut u1), SolutionSet::Union(u2)) => {
+            u1.extend(u2);
+            SolutionSet::Union(u1)
+        },
+        (SolutionSet::Continuous(i), SolutionSet::Union(mut u)) => {
+            u.push(i);
+            SolutionSet::Union(u)
+        },
+        (SolutionSet::Union(mut u), SolutionSet::Continuous(i)) => {
+            u.push(i);
+            SolutionSet::Union(u)
+        },
+        (SolutionSet::Discrete(mut d1), SolutionSet::Discrete(d2)) => {
+            d1.extend(d2);
+            SolutionSet::Discrete(d1)
+        },
+        // Fallback for mixed types (Discrete + Continuous) -> Union?
+        // SolutionSet::Union currently only holds Intervals.
+        // We might need to update SolutionSet definition to hold mixed types or just keep them separate.
+        // For this iteration, let's assume we mostly deal with same types or just return a list.
+        // But SolutionSet::Union is Vec<Interval>.
+        // Let's just return s1 for now if incompatible (TODO: Fix SolutionSet definition)
+        (s1, _) => s1, 
+    }
+}
+
+fn intersect_solution_sets(s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
+    match (s1, s2) {
+        (SolutionSet::Empty, _) => SolutionSet::Empty,
+        (_, SolutionSet::Empty) => SolutionSet::Empty,
+        (SolutionSet::AllReals, s) => s,
+        (s, SolutionSet::AllReals) => s,
+        (SolutionSet::Continuous(i1), SolutionSet::Continuous(i2)) => {
+            intersect_intervals(&i1, &i2)
+        },
+        // TODO: Handle other intersections
+        _ => SolutionSet::Empty,
+    }
+}
+
+
+pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), String> {
     // We want to isolate 'var' on LHS.
     let mut steps = Vec::new();
 
@@ -38,18 +211,9 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<Vec<(E
             });
         }
         
-        // Recursive call (tail recursion effectively)
-        // We need to merge steps from recursive call
-        let results = solve_internal(&new_eq, var, simplifier)?;
-        
-        // Prepend current steps to all results
-        let mut final_results = Vec::new();
-        for (res_eq, mut res_steps) in results {
-            let mut combined_steps = steps.clone();
-            combined_steps.append(&mut res_steps);
-            final_results.push((res_eq, combined_steps));
-        }
-        return Ok(final_results);
+        let (result_set, mut res_steps) = solve_internal(&new_eq, var, simplifier)?;
+        steps.append(&mut res_steps);
+        return Ok((result_set, steps));
     }
 
     if lhs_has_var && rhs_has_var {
@@ -57,36 +221,55 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<Vec<(E
     }
 
     // Now LHS has var, RHS does not.
-    let results = isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier)?;
-    
-    // Prepend current steps (empty here, but for consistency)
-    let mut final_results = Vec::new();
-    for (res_eq, mut res_steps) in results {
-        let mut combined_steps = steps.clone();
-        combined_steps.append(&mut res_steps);
-        final_results.push((res_eq, combined_steps));
-    }
-    Ok(final_results)
+    let (result_set, mut res_steps) = isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier)?;
+    steps.append(&mut res_steps);
+    Ok((result_set, steps))
 }
 
 // Internal helper to avoid re-checking var presence unnecessarily if we already know it
-fn solve_internal(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<Vec<(Equation, Vec<SolveStep>)>, String> {
+fn solve_internal(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), String> {
     // This is just a wrapper to call isolate directly since we know var is on LHS from the swap logic
     isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier)
 }
 
-fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Simplifier) -> Result<Vec<(Equation, Vec<SolveStep>)>, String> {
+fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), String> {
     let mut steps = Vec::new();
     
     match lhs.as_ref() {
         Expr::Variable(v) if v == var => {
-            Ok(vec![(Equation { lhs: lhs.clone(), rhs: rhs.clone(), op }, steps)])
+            let set = match op {
+                RelOp::Eq => SolutionSet::Discrete(vec![rhs.clone()]),
+                RelOp::Neq => {
+                    // x != 5 -> (-inf, 5) U (5, inf)
+                    let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: rhs.clone(), max_type: BoundType::Open };
+                    let i2 = Interval { min: rhs.clone(), min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                    SolutionSet::Union(vec![i1, i2])
+                },
+                RelOp::Lt => SolutionSet::Continuous(Interval {
+                    min: neg_inf(), min_type: BoundType::Open,
+                    max: rhs.clone(), max_type: BoundType::Open
+                }),
+                RelOp::Gt => SolutionSet::Continuous(Interval {
+                    min: rhs.clone(), min_type: BoundType::Open,
+                    max: pos_inf(), max_type: BoundType::Open
+                }),
+                RelOp::Leq => SolutionSet::Continuous(Interval {
+                    min: neg_inf(), min_type: BoundType::Open,
+                    max: rhs.clone(), max_type: BoundType::Closed
+                }),
+                RelOp::Geq => SolutionSet::Continuous(Interval {
+                    min: rhs.clone(), min_type: BoundType::Closed,
+                    max: pos_inf(), max_type: BoundType::Open
+                }),
+            };
+            Ok((set, steps))
         }
         Expr::Add(l, r) => {
             // (A + B) = RHS
             if contains_var(l, var) {
                 // A = RHS - B
                 let new_rhs = Expr::sub(rhs.clone(), r.clone());
+                let (sim_rhs, _) = simplifier.simplify(new_rhs.clone());
                 let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: op.clone() };
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
@@ -94,11 +277,12 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let results = isolate(l, &new_rhs, op, var, simplifier)?;
+                let results = isolate(l, &sim_rhs, op, var, simplifier)?;
                 prepend_steps(results, steps)
             } else {
                 // B = RHS - A
                 let new_rhs = Expr::sub(rhs.clone(), l.clone());
+                let (sim_rhs, _) = simplifier.simplify(new_rhs.clone());
                 let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: op.clone() };
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
@@ -106,7 +290,7 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let results = isolate(r, &new_rhs, op, var, simplifier)?;
+                let results = isolate(r, &sim_rhs, op, var, simplifier)?;
                 prepend_steps(results, steps)
             }
         }
@@ -115,6 +299,7 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
             if contains_var(l, var) {
                 // A = RHS + B
                 let new_rhs = Expr::add(rhs.clone(), r.clone());
+                let (sim_rhs, _) = simplifier.simplify(new_rhs.clone());
                 let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: op.clone() };
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
@@ -122,12 +307,13 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let results = isolate(l, &new_rhs, op, var, simplifier)?;
+                let results = isolate(l, &sim_rhs, op, var, simplifier)?;
                 prepend_steps(results, steps)
             } else {
                 // -B = RHS - A -> B = A - RHS
                 // Multiply by -1 flips inequality
                 let new_rhs = Expr::sub(l.clone(), rhs.clone());
+                let (sim_rhs, _) = simplifier.simplify(new_rhs.clone());
                 let new_op = flip_inequality(op);
                 let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: new_op.clone() };
                 if simplifier.collect_steps {
@@ -136,7 +322,7 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let results = isolate(r, &new_rhs, new_op, var, simplifier)?;
+                let results = isolate(r, &sim_rhs, new_op, var, simplifier)?;
                 prepend_steps(results, steps)
             }
         }
@@ -255,24 +441,12 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
         Expr::Function(name, args) => {
             if name == "abs" && args.len() == 1 {
                 // |A| = B
-                // Branch 1: A = B
-                // Branch 2: A = -B
-                // For inequalities:
-                // |A| < B -> -B < A < B (Intersection) -> A < B AND A > -B
-                // |A| > B -> A > B OR A < -B
-                // Currently we return a list of equations.
-                // For |A| = B, we return [A=B, A=-B].
-                // For |A| < B, we return [A < B, A > -B] (Implicit AND? Or just list of constraints?)
-                // For |A| > B, we return [A > B, A < -B] (Implicit OR?)
-                // The solver returns a Vec of (Equation, Steps).
-                // Interpretation of Vec depends on context.
-                // For equations, it's OR (solutions).
-                // For inequalities, it's context dependent.
-                // Let's implement the standard splitting.
+                // |A| < B -> -B < A < B (Intersection)
+                // |A| > B -> A > B OR A < -B (Union)
                 
                 let arg = &args[0];
                 
-                // Branch 1: Positive case
+                // Branch 1: Positive case (A op B)
                 let eq1 = Equation { lhs: arg.clone(), rhs: rhs.clone(), op: op.clone() };
                 let mut steps1 = steps.clone();
                 if simplifier.collect_steps {
@@ -282,7 +456,7 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                     });
                 }
                 let results1 = isolate(arg, rhs, op.clone(), var, simplifier)?;
-                let final_results1 = prepend_steps(results1, steps1);
+                let (set1, steps1_out) = prepend_steps(results1, steps1)?;
 
                 // Branch 2: Negative case
                 // |A| < B -> A > -B (Flip op)
@@ -308,12 +482,19 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                     });
                 }
                 let results2 = isolate(arg, &neg_rhs, op2, var, simplifier)?;
-                let final_results2 = prepend_steps(results2, steps2);
+                let (set2, steps2_out) = prepend_steps(results2, steps2)?;
                 
-                let mut all_results = final_results1?;
-                all_results.extend(final_results2?);
+                // Combine sets
+                let final_set = match op {
+                    RelOp::Eq | RelOp::Neq | RelOp::Gt | RelOp::Geq => union_solution_sets(set1, set2),
+                    RelOp::Lt | RelOp::Leq => intersect_solution_sets(set1, set2),
+                };
                 
-                Ok(all_results)
+                // Combine steps (just append for now, maybe separate them?)
+                let mut all_steps = steps1_out;
+                all_steps.extend(steps2_out);
+                
+                Ok((final_set, all_steps))
             } else if name == "log" && args.len() == 2 {
                 let base = &args[0];
                 let arg = &args[1];
@@ -450,16 +631,11 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
 }
 
 fn prepend_steps(
-    results: Vec<(Equation, Vec<SolveStep>)>,
-    steps: Vec<SolveStep>
-) -> Result<Vec<(Equation, Vec<SolveStep>)>, String> {
-    let mut final_results = Vec::new();
-    for (res_eq, mut res_steps) in results {
-        let mut combined_steps = steps.clone();
-        combined_steps.append(&mut res_steps);
-        final_results.push((res_eq, combined_steps));
-    }
-    Ok(final_results)
+    (set, mut res_steps): (SolutionSet, Vec<SolveStep>),
+    mut steps: Vec<SolveStep>
+) -> Result<(SolutionSet, Vec<SolveStep>), String> {
+    steps.append(&mut res_steps);
+    Ok((set, steps))
 }
 
 fn is_negative(expr: &Expr) -> bool {
@@ -535,13 +711,14 @@ mod tests {
         let eq = make_eq("x + 2", "5");
         let mut simplifier = Simplifier::new();
         simplifier.collect_steps = true;
-        let results = solve(&eq, "x", &simplifier).unwrap();
-        assert_eq!(results.len(), 1);
-        let (res, _) = &results[0];
-        // Result: x = 5 - 2
-        // We don't simplify automatically in solve, so RHS is "5 - 2".
-        assert_eq!(format!("{}", res.lhs), "x");
-        assert_eq!(format!("{}", res.rhs), "5 - 2");
+        let (result, _) = solve(&eq, "x", &simplifier).unwrap();
+        
+        if let SolutionSet::Discrete(solutions) = result {
+            assert_eq!(solutions.len(), 1);
+            assert_eq!(format!("{}", solutions[0]), "5 - 2");
+        } else {
+            panic!("Expected Discrete solution");
+        }
     }
 
     #[test]
@@ -550,10 +727,14 @@ mod tests {
         let eq = make_eq("2 * x", "6");
         let mut simplifier = Simplifier::new();
         simplifier.collect_steps = true;
-        let results = solve(&eq, "x", &simplifier).unwrap();
-        assert_eq!(results.len(), 1);
-        let (res, _) = &results[0];
-        assert_eq!(format!("{}", res.rhs), "6 / 2");
+        let (result, _) = solve(&eq, "x", &simplifier).unwrap();
+        
+        if let SolutionSet::Discrete(solutions) = result {
+            assert_eq!(solutions.len(), 1);
+            assert_eq!(format!("{}", solutions[0]), "6 / 2");
+        } else {
+            panic!("Expected Discrete solution");
+        }
     }
     
     #[test]
@@ -562,9 +743,71 @@ mod tests {
         let eq = make_eq("x^2", "4");
         let mut simplifier = Simplifier::new();
         simplifier.collect_steps = true;
-        let results = solve(&eq, "x", &simplifier).unwrap();
-        assert_eq!(results.len(), 1);
-        let (res, _) = &results[0];
-        assert_eq!(format!("{}", res.rhs), "4^(1 / 2)");
+        let (result, _) = solve(&eq, "x", &simplifier).unwrap();
+        
+        if let SolutionSet::Discrete(solutions) = result {
+            assert_eq!(solutions.len(), 1);
+            assert_eq!(format!("{}", solutions[0]), "4^(1 / 2)");
+        } else {
+            panic!("Expected Discrete solution");
+        }
+    }
+    
+    #[test]
+    fn test_solve_abs() {
+        // |x| = 5 -> x=5, x=-5
+        let eq = make_eq("|x|", "5");
+        let mut simplifier = Simplifier::new();
+        let (result, _) = solve(&eq, "x", &simplifier).unwrap();
+        
+        if let SolutionSet::Discrete(solutions) = result {
+            assert_eq!(solutions.len(), 2);
+            // Order might vary
+            let s: Vec<String> = solutions.iter().map(|e| format!("{}", e)).collect();
+            assert!(s.contains(&"5".to_string()));
+            assert!(s.contains(&"-5".to_string()));
+        } else {
+            panic!("Expected Discrete solution");
+        }
+    }
+
+    #[test]
+    fn test_solve_inequality_flip() {
+        // -2x < 10 -> x > -5
+        let eq = Equation {
+            lhs: parse("-2*x").unwrap(),
+            rhs: parse("10").unwrap(),
+            op: RelOp::Lt,
+        };
+        let mut simplifier = Simplifier::new();
+        let (result, _) = solve(&eq, "x", &simplifier).unwrap();
+        
+        if let SolutionSet::Continuous(interval) = result {
+            // (-5, inf)
+            assert_eq!(format!("{}", interval.min), "10 / -2"); // Not simplified
+            assert_eq!(interval.min_type, BoundType::Open);
+            assert_eq!(format!("{}", interval.max), "infinity");
+        } else {
+            panic!("Expected Continuous solution, got {:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_solve_abs_inequality() {
+        // |x| < 5 -> (-5, 5)
+        let eq = Equation {
+            lhs: parse("|x|").unwrap(),
+            rhs: parse("5").unwrap(),
+            op: RelOp::Lt,
+        };
+        let mut simplifier = Simplifier::new();
+        let (result, _) = solve(&eq, "x", &simplifier).unwrap();
+        
+        if let SolutionSet::Continuous(interval) = result {
+            assert_eq!(format!("{}", interval.min), "-5");
+            assert_eq!(format!("{}", interval.max), "5");
+        } else {
+            panic!("Expected Continuous solution, got {:?}", result);
+        }
     }
 }

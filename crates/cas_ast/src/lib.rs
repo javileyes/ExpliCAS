@@ -1,5 +1,8 @@
 pub mod expression;
+pub mod domain;
+
 pub use expression::{Expr, Constant};
+pub use domain::{Interval, BoundType, SolutionSet};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
