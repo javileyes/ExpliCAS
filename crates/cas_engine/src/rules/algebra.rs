@@ -3,7 +3,7 @@ use cas_ast::Expr;
 use crate::polynomial::Polynomial;
 use std::rc::Rc;
 use std::collections::HashSet;
-use num_traits::{One};
+use num_traits::{One, Signed};
 
 
 pub struct SimplifyFractionRule;
@@ -67,6 +67,106 @@ impl Rule for SimplifyFractionRule {
     }
 }
 
+
+pub struct NestedFractionRule;
+
+impl Rule for NestedFractionRule {
+    fn name(&self) -> &str {
+        "Simplify Nested Fraction"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Div(num, den) = expr.as_ref() {
+            let num_denoms = collect_denominators(num);
+            let den_denoms = collect_denominators(den);
+            
+            if num_denoms.is_empty() && den_denoms.is_empty() {
+                return None;
+            }
+            
+            // Collect all unique denominators
+            let mut all_denoms = Vec::new();
+            all_denoms.extend(num_denoms);
+            all_denoms.extend(den_denoms);
+            
+            if all_denoms.is_empty() {
+                return None;
+            }
+            
+            // Construct the common multiplier (product of all unique denominators)
+            // Ideally LCM, but product is safer for now.
+            // We need to deduplicate.
+            let mut unique_denoms: Vec<Rc<Expr>> = Vec::new();
+            for d in all_denoms {
+                if !unique_denoms.contains(&d) {
+                    unique_denoms.push(d);
+                }
+            }
+            
+            if unique_denoms.is_empty() {
+                return None;
+            }
+
+            let mut multiplier = unique_denoms[0].clone();
+            for i in 1..unique_denoms.len() {
+                multiplier = Expr::mul(multiplier, unique_denoms[i].clone());
+            }
+            
+            // Multiply num and den by multiplier
+            let new_num = distribute(num, &multiplier);
+            let new_den = distribute(den, &multiplier);
+            
+            return Some(Rewrite {
+                new_expr: Expr::div(new_num, new_den),
+                description: format!("Multiply by common denominator {}", multiplier),
+            });
+        }
+        None
+    }
+}
+
+fn distribute(target: &Rc<Expr>, multiplier: &Rc<Expr>) -> Rc<Expr> {
+    match target.as_ref() {
+        Expr::Add(l, r) => Expr::add(distribute(l, multiplier), distribute(r, multiplier)),
+        Expr::Sub(l, r) => Expr::sub(distribute(l, multiplier), distribute(r, multiplier)),
+        Expr::Div(l, r) => {
+            // (l / r) * m. If m == r, return l.
+            if r == multiplier {
+                return l.clone();
+            }
+            // If m contains r (e.g. m = x*y, r = x), we can simplify.
+            // For now, just return (l*m)/r
+            Expr::mul(Expr::div(l.clone(), r.clone()), multiplier.clone())
+        },
+        _ => Expr::mul(target.clone(), multiplier.clone())
+    }
+}
+
+fn collect_denominators(expr: &Rc<Expr>) -> Vec<Rc<Expr>> {
+    let mut denoms = Vec::new();
+    match expr.as_ref() {
+        Expr::Div(_, den) => {
+            denoms.push(den.clone());
+            // Recurse? Maybe not needed for simple cases.
+        },
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            denoms.extend(collect_denominators(l));
+            denoms.extend(collect_denominators(r));
+        },
+        Expr::Pow(b, e) => {
+            // Check for negative exponent?
+            if let Expr::Number(n) = e.as_ref() {
+                if n.is_negative() {
+                    // b^-k = 1/b^k. Denominator is b^k (or b if k=-1)
+                    // For simplicity, let's just handle 1/x style Divs first.
+                }
+            }
+            denoms.extend(collect_denominators(b));
+        },
+        _ => {}
+    }
+    denoms
+}
 
 pub struct ExpandRule;
 

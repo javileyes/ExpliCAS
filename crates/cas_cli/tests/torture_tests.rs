@@ -32,6 +32,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(cas_engine::rules::polynomial::BinomialExpansionRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); 
     simplifier.add_rule(Box::new(CombineConstantsRule));
