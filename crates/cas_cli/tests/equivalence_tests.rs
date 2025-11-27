@@ -4,7 +4,7 @@ use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, Dist
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
+use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule};
 use cas_parser::parse;
@@ -22,6 +22,9 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
+    simplifier.add_rule(Box::new(AngleIdentityRule));
+    simplifier.add_rule(Box::new(TanToSinCosRule));
+    simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
@@ -173,8 +176,8 @@ fn test_trig_associativity() {
 fn test_numeric_verification() {
     let simplifier = create_full_simplifier();
     // sin(x + y) equiv sin(x)cos(y) + cos(x)sin(y)
-    // We do NOT have an AngleSumIdentityRule, so symbolic simplification will fail.
-    // This relies entirely on the numeric fallback.
+    // We now have AngleIdentityRule, so this should pass symbolically.
+    // But we keep it here to ensure it passes (and numeric check is a fallback).
     let e1 = parse("sin(x + y)").unwrap();
     let e2 = parse("sin(x)*cos(y) + cos(x)*sin(y)").unwrap();
     assert!(simplifier.are_equivalent(e1, e2));

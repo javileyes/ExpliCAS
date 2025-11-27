@@ -143,6 +143,146 @@ fn is_trig_square<'a>(expr: &'a Expr, name: &str) -> Option<&'a Rc<Expr>> {
     None
 }
 
+
+
+pub struct AngleIdentityRule;
+
+impl Rule for AngleIdentityRule {
+    fn name(&self) -> &str {
+        "Angle Sum/Diff Identity"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Function(name, args) = expr.as_ref() {
+            if args.len() == 1 {
+                let inner = &args[0];
+                match name.as_str() {
+                    "sin" => {
+                        if let Expr::Add(lhs, rhs) = inner.as_ref() {
+                            // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
+                            let term1 = Expr::mul(Expr::sin(lhs.clone()), Expr::cos(rhs.clone()));
+                            let term2 = Expr::mul(Expr::cos(lhs.clone()), Expr::sin(rhs.clone()));
+                            return Some(Rewrite {
+                                new_expr: Expr::add(term1, term2),
+                                description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)".to_string(),
+                            });
+                        } else if let Expr::Sub(lhs, rhs) = inner.as_ref() {
+                            // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
+                            let term1 = Expr::mul(Expr::sin(lhs.clone()), Expr::cos(rhs.clone()));
+                            let term2 = Expr::mul(Expr::cos(lhs.clone()), Expr::sin(rhs.clone()));
+                            return Some(Rewrite {
+                                new_expr: Expr::sub(term1, term2),
+                                description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)".to_string(),
+                            });
+                        }
+                    },
+                    "cos" => {
+                        if let Expr::Add(lhs, rhs) = inner.as_ref() {
+                            // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)
+                            let term1 = Expr::mul(Expr::cos(lhs.clone()), Expr::cos(rhs.clone()));
+                            let term2 = Expr::mul(Expr::sin(lhs.clone()), Expr::sin(rhs.clone()));
+                            return Some(Rewrite {
+                                new_expr: Expr::sub(term1, term2),
+                                description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)".to_string(),
+                            });
+                        } else if let Expr::Sub(lhs, rhs) = inner.as_ref() {
+                            // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
+                            let term1 = Expr::mul(Expr::cos(lhs.clone()), Expr::cos(rhs.clone()));
+                            let term2 = Expr::mul(Expr::sin(lhs.clone()), Expr::sin(rhs.clone()));
+                            return Some(Rewrite {
+                                new_expr: Expr::add(term1, term2),
+                                description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)".to_string(),
+                            });
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+}
+
+pub struct TanToSinCosRule;
+
+impl Rule for TanToSinCosRule {
+    fn name(&self) -> &str {
+        "Tan to Sin/Cos"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Function(name, args) = expr.as_ref() {
+            if name == "tan" && args.len() == 1 {
+                // tan(x) -> sin(x) / cos(x)
+                return Some(Rewrite {
+                    new_expr: Expr::div(Expr::sin(args[0].clone()), Expr::cos(args[0].clone())),
+                    description: "tan(x) -> sin(x)/cos(x)".to_string(),
+                });
+            }
+        }
+        None
+    }
+}
+
+pub struct DoubleAngleRule;
+
+impl Rule for DoubleAngleRule {
+    fn name(&self) -> &str {
+        "Double Angle Identity"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Function(name, args) = expr.as_ref() {
+            if args.len() == 1 {
+                // Check if arg is 2*x or x*2
+                // We need to match "2 * x"
+                if let Some(inner_var) = extract_double_angle_arg(&args[0]) {
+                    match name.as_str() {
+                        "sin" => {
+                            // sin(2x) -> 2sin(x)cos(x)
+                            let new_expr = Expr::mul(
+                                Expr::num(2),
+                                Expr::mul(Expr::sin(inner_var.clone()), Expr::cos(inner_var.clone()))
+                            );
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "sin(2x) -> 2sin(x)cos(x)".to_string(),
+                            });
+                        },
+                        "cos" => {
+                            // cos(2x) -> cos^2(x) - sin^2(x)
+                            let cos2 = Expr::pow(Expr::cos(inner_var.clone()), Expr::num(2));
+                            let sin2 = Expr::pow(Expr::sin(inner_var.clone()), Expr::num(2));
+                            return Some(Rewrite {
+                                new_expr: Expr::sub(cos2, sin2),
+                                description: "cos(2x) -> cos^2(x) - sin^2(x)".to_string(),
+                            });
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+fn extract_double_angle_arg(expr: &Expr) -> Option<Rc<Expr>> {
+    if let Expr::Mul(lhs, rhs) = expr {
+        if let Expr::Number(n) = lhs.as_ref() {
+            if n.is_integer() && n.to_integer() == 2.into() {
+                return Some(rhs.clone());
+            }
+        }
+        if let Expr::Number(n) = rhs.as_ref() {
+            if n.is_integer() && n.to_integer() == 2.into() {
+                return Some(lhs.clone());
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,6 +326,51 @@ mod tests {
         let expr = parse("tan(-x)").unwrap();
         let rewrite = rule.apply(&expr).unwrap();
         assert_eq!(format!("{}", rewrite.new_expr), "-tan(x)");
+    }
+
+    #[test]
+    fn test_trig_identities() {
+        let rule = AngleIdentityRule;
+        
+        // sin(x + y)
+        let expr = parse("sin(x + y)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert!(format!("{}", rewrite.new_expr).contains("sin(x)"));
+        
+        // cos(x + y) -> cos(x)cos(y) - sin(x)sin(y)
+        let expr = parse("cos(x + y)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        let res = format!("{}", rewrite.new_expr);
+        assert!(res.contains("cos(x)"));
+        assert!(res.contains("-"));
+        
+        // sin(x - y)
+        let expr = parse("sin(x - y)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert!(format!("{}", rewrite.new_expr).contains("-"));
+    }
+
+    #[test]
+    fn test_tan_to_sin_cos() {
+        let rule = TanToSinCosRule;
+        let expr = parse("tan(x)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert_eq!(format!("{}", rewrite.new_expr), "sin(x) / cos(x)");
+    }
+
+    #[test]
+    fn test_double_angle() {
+        let rule = DoubleAngleRule;
+        
+        // sin(2x)
+        let expr = parse("sin(2 * x)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert!(format!("{}", rewrite.new_expr).contains("2 * sin(x) * cos(x)")); // Approx check
+        
+        // cos(2x)
+        let expr = parse("cos(2 * x)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert!(format!("{}", rewrite.new_expr).contains("cos(x)^2 - sin(x)^2"));
     }
 
     #[test]

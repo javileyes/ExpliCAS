@@ -4,7 +4,7 @@ use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
+use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
 use cas_engine::rules::grouping::CollectRule;
@@ -21,6 +21,9 @@ fn main() -> rustyline::Result<()> {
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
+    simplifier.add_rule(Box::new(AngleIdentityRule));
+    simplifier.add_rule(Box::new(TanToSinCosRule));
+    simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
