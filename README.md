@@ -18,8 +18,11 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   Roots (`sqrt(x)`, `sqrt(x, n)`).
     -   Absolute value (`abs(x)`).
 -   **Variables**: Symbolic computation with variables.
+-   **Constants**: Built-in support for mathematical constants `e` and `pi`.
+-   **Equation Solving**: Isolate variables in equations (`solve x+2=5, x`).
 -   **Substitution**: Replace variables with values or other expressions.
 -   **Interactive CLI**: Command-line interface with history support.
+-   **Verbose Mode**: Toggle step-by-step output (`steps on/off`) for educational or performance purposes.
 
 ## Getting Started
 
@@ -102,9 +105,26 @@ Use the `solve` command to isolate a variable in an equation.
 *Output:* `x = 3`
 
 ```text
-> solve ln(x) = 1, x
+> solve ln(x) + ln(x) = 2
 ```
-*Output:* `x = e`
+*Output:* `x = e` (Simplifies to `2*ln(x)=2` -> `ln(x)=1` -> `x=e`)
+
+**9. Verbose Mode**
+Toggle step-by-step output using `steps on` and `steps off`.
+
+```text
+> steps off
+> solve ln(x) = 1
+```
+*Output:* `x = e` (No intermediate steps shown)
+
+```text
+> steps on
+> solve ln(x) = 1
+```
+*Output:* Shows full derivation steps.
+
+*Note:* Turning steps off improves performance by skipping step collection in the engine.
 
 ### Running Tests
 
