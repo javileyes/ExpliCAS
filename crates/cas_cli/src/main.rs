@@ -253,7 +253,7 @@ fn main() -> rustyline::Result<()> {
                                     println!("{} != {}", sim_lhs, sim_rhs);
                                 }
                             } else {
-                                match cas_engine::solver::solve(&simplified_eq, var, show_steps) {
+                                match cas_engine::solver::solve(&simplified_eq, var, &simplifier) {
                                     Ok((solved_eq, steps)) => {
                                         if show_steps {
                                             println!("Steps:");
