@@ -116,7 +116,9 @@ pub fn substitute_expr(expr: &Rc<Expr>, target: &Rc<Expr>, replacement_name: &st
     }
 }
 
-pub fn solve_quadratic(eq: &Equation, var: &str, simplifier: &Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), String>> {
+use crate::error::CasError;
+
+pub fn solve_quadratic(eq: &Equation, var: &str, simplifier: &Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
     let mut steps = Vec::new();
     
     // Move everything to LHS: lhs - rhs = 0

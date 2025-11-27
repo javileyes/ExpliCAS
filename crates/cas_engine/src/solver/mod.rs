@@ -15,16 +15,25 @@ pub struct SolveStep {
     pub equation_after: Equation, 
 }
 
-pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), String> {
+use crate::error::CasError;
+
+pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // 1. Check if variable exists in equation
+    if !contains_var(&eq.lhs, var) && !contains_var(&eq.rhs, var) {
+        return Err(CasError::VariableNotFound(var.to_string()));
+    }
+
+    // 2. Try strategies
+    // ...
+    solve_internal(eq, var, simplifier)
+}
+
+fn solve_internal(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // We want to isolate 'var' on LHS.
     let mut steps = Vec::new();
 
     let lhs_has_var = contains_var(&eq.lhs, var);
     let rhs_has_var = contains_var(&eq.rhs, var);
-
-    if !lhs_has_var && !rhs_has_var {
-        return Err(format!("Variable '{}' not found in equation", var));
-    }
 
     if !lhs_has_var && rhs_has_var {
         // Swap to make LHS have the variable
@@ -50,7 +59,7 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(Solut
     }
 
     if lhs_has_var && rhs_has_var {
-        return Err("Variable appears on both sides. Please simplify/collect first.".to_string());
+        return Err(CasError::VariableNotFound("Variable appears on both sides. Please simplify/collect first.".to_string()));
     }
 
     // 0. Try Substitution (Hidden Quadratic)
@@ -121,11 +130,7 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(Solut
     Ok((result_set, steps))
 }
 
-// Internal helper to avoid re-checking var presence unnecessarily if we already know it
-fn solve_internal(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), String> {
-    // This is just a wrapper to call isolate directly since we know var is on LHS from the swap logic
-    isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier)
-}
+
 
 #[cfg(test)]
 mod tests {

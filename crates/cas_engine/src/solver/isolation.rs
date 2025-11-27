@@ -4,7 +4,9 @@ use crate::engine::Simplifier;
 use crate::solver::{SolveStep, solve};
 use crate::solver::solution_set::{neg_inf, pos_inf, intersect_solution_sets, union_solution_sets};
 
-pub fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), String> {
+use crate::error::CasError;
+
+pub fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let mut steps = Vec::new();
     
     match lhs.as_ref() {
@@ -472,7 +474,7 @@ pub fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier:
                     let results = isolate(base, &new_rhs, op, var, simplifier)?;
                     prepend_steps(results, steps)
                 } else {
-                     Err(format!("Cannot isolate '{}' from log function", var))
+                     Err(CasError::IsolationError(var.to_string(), "Cannot isolate from log function".to_string()))
                 }
             } else if args.len() == 1 {
                 let arg = &args[0];
@@ -565,23 +567,23 @@ pub fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier:
                             let results = isolate(arg, &simplified_rhs, op, var, simplifier)?;
                             prepend_steps(results, steps)
                         },
-                        _ => Err(format!("Cannot invert function '{}'", name)),
+                        _ => Err(CasError::UnknownFunction(name.clone())),
                     }
                 } else {
-                     Err(format!("Variable '{}' not found in function argument", var))
+                     Err(CasError::VariableNotFound(var.to_string()))
                 }
             } else {
-                 Err(format!("Cannot invert function '{}' with {} arguments", name, args.len()))
+                 Err(CasError::IsolationError(var.to_string(), format!("Cannot invert function '{}' with {} arguments", name, args.len())))
             }
         }
-        _ => Err(format!("Cannot isolate '{}' from {:?}", var, lhs)),
+        _ => Err(CasError::IsolationError(var.to_string(), format!("Cannot isolate from {:?}", lhs))),
     }
 }
 
 pub fn prepend_steps(
     (set, mut res_steps): (SolutionSet, Vec<SolveStep>),
     mut steps: Vec<SolveStep>
-) -> Result<(SolutionSet, Vec<SolveStep>), String> {
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     steps.append(&mut res_steps);
     Ok((set, steps))
 }

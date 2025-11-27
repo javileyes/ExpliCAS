@@ -1,4 +1,4 @@
-use cas_ast::Expr;
+use cas_ast::{Expr, Constant};
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -183,21 +183,21 @@ fn parse_equation(input: &str) -> IResult<&str, Equation> {
     Ok((input, Equation { lhs, rhs, op }))
 }
 
-pub fn parse(input: &str) -> Result<Rc<Expr>, String> {
-    // Legacy support for just expressions
-    match parse_expr(input) {
-        Ok((remaining, expr)) => {
-            if remaining.trim().is_empty() {
-                Ok(expr)
-            } else {
-                Err(format!("Unconsumed input: {}", remaining))
-            }
-        }
-        Err(e) => Err(format!("Parse error: {}", e)),
+use crate::error::ParseError;
+
+pub fn parse(input: &str) -> Result<Rc<Expr>, ParseError> {
+    let (remaining, expr) = parse_expr(input)
+        .map_err(|e| ParseError::NomError(format!("{}", e)))?;
+    
+    let remaining = remaining.trim();
+    if !remaining.is_empty() {
+        return Err(ParseError::UnconsumedInput(remaining.to_string()));
     }
+    
+    Ok(expr)
 }
 
-pub fn parse_statement(input: &str) -> Result<Statement, String> {
+pub fn parse_statement(input: &str) -> Result<Statement, ParseError> {
     // Try parsing as equation first
     if let Ok((remaining, eq)) = parse_equation(input) {
         if remaining.trim().is_empty() {
@@ -211,10 +211,10 @@ pub fn parse_statement(input: &str) -> Result<Statement, String> {
             if remaining.trim().is_empty() {
                 Ok(Statement::Expression(expr))
             } else {
-                Err(format!("Unconsumed input: {}", remaining))
+                Err(ParseError::UnconsumedInput(remaining.to_string()))
             }
         }
-        Err(e) => Err(format!("Parse error: {}", e)),
+        Err(e) => Err(ParseError::NomError(format!("{}", e))),
     }
 }
 

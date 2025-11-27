@@ -7,8 +7,10 @@ pub mod solver;
 pub mod ordering;
 
 pub mod visitors;
+pub mod error;
 
 pub use visitors::{VariableCollector, DepthVisitor};
+pub use error::CasError;
 pub use engine::Simplifier;
 pub use rule::Rule;
 pub use step::Step;
