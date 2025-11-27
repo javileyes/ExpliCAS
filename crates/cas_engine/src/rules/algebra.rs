@@ -3,7 +3,8 @@ use cas_ast::Expr;
 use crate::polynomial::Polynomial;
 use std::rc::Rc;
 use std::collections::HashSet;
-use num_traits::One;
+use num_traits::{One, Zero};
+use num_rational::BigRational;
 
 pub struct SimplifyFractionRule;
 
@@ -60,6 +61,89 @@ impl Rule for SimplifyFractionRule {
                 new_expr: Expr::div(new_num, new_den),
                 description: "Simplified fraction by GCD".to_string(),
             });
+        }
+        None
+    }
+}
+
+
+pub struct ExpandRule;
+
+impl Rule for ExpandRule {
+    fn name(&self) -> &str {
+        "Expand Polynomial"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Function(name, args) = expr.as_ref() {
+            if name == "expand" && args.len() == 1 {
+                let arg = &args[0];
+                // Try to convert to polynomial
+                let vars = collect_variables(arg);
+                if vars.len() != 1 {
+                    return None;
+                }
+                let var = vars.iter().next().unwrap();
+                
+                if let Some(poly) = Polynomial::from_expr(arg, var) {
+                    return Some(Rewrite {
+                        new_expr: poly.to_expr(),
+                        description: "expand(poly)".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+}
+
+pub struct FactorRule;
+
+impl Rule for FactorRule {
+    fn name(&self) -> &str {
+        "Factor Polynomial (MVP)"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Function(name, args) = expr.as_ref() {
+            if name == "factor" && args.len() == 1 {
+                let arg = &args[0];
+                let vars = collect_variables(arg);
+                if vars.len() != 1 {
+                    return None;
+                }
+                let var = vars.iter().next().unwrap();
+                
+                if let Some(poly) = Polynomial::from_expr(arg, var) {
+                    if poly.is_zero() { return None; }
+
+                    let content = poly.content();
+                    let min_deg = poly.min_degree();
+
+                    // If trivial (content=1 and min_deg=0), nothing to factor
+                    if content.is_one() && min_deg == 0 {
+                        return None;
+                    }
+
+                    // Construct common factor term: content * x^min_deg
+                    let mut factor_coeffs = vec![BigRational::zero(); min_deg + 1];
+                    factor_coeffs[min_deg] = content.clone();
+                    let factor_poly = Polynomial::new(factor_coeffs, var.clone());
+
+                    let (quotient, rem) = poly.div_rem(&factor_poly);
+                    if !rem.is_zero() {
+                        return None; // Should not happen
+                    }
+
+                    let factor_expr = factor_poly.to_expr();
+                    let quotient_expr = quotient.to_expr();
+
+                    return Some(Rewrite {
+                        new_expr: Expr::mul(factor_expr, quotient_expr),
+                        description: "factor(poly) -> common_factor * quotient".to_string(),
+                    });
+                }
+            }
         }
         None
     }

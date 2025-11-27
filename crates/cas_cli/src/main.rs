@@ -1,12 +1,12 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{DistributeRule, CombineLikeTermsRule, AnnihilationRule};
+use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::SimplifyFractionRule;
+use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -20,8 +20,12 @@ fn main() -> rustyline::Result<()> {
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
+    simplifier.add_rule(Box::new(ExpandRule));
+    simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
-    simplifier.add_rule(Box::new(DistributeRule));
+    simplifier.add_rule(Box::new(EvaluatePowerRule));
+    // simplifier.add_rule(Box::new(DistributeRule)); // Disabled to allow factor() to persist. Use expand() to distribute.
+    simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(ProductPowerRule));
@@ -61,6 +65,8 @@ fn main() -> rustyline::Result<()> {
                     println!("Rust CAS Commands:");
                     println!("  <expr>                  Evaluate and simplify an expression");
                     println!("  subst <expr> <var>=<val> Substitute a variable and simplify");
+                    println!("  expand <expr>           Expand polynomials");
+                    println!("  factor <expr>           Factor polynomials");
                     println!("  help                    Show this help message");
                     println!("  quit / exit             Exit the REPL");
                     println!();
@@ -68,6 +74,9 @@ fn main() -> rustyline::Result<()> {
                     println!("  2 + 3 * 4");
                     println!("  x + x");
                     println!("  sqrt(27, 3)");
+                    println!("  ln(e^2)");
+                    println!("  expand((x+1)^2)");
+                    println!("  factor(2*x^2 + 4*x)");
                     println!("  subst x+1 x=2");
                     continue;
                 }

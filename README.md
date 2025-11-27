@@ -5,9 +5,19 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 ## Features
 
 -   **Step-by-Step Simplification**: Shows every rule applied to transform an expression.
--   **Arithmetic**: Basic operations and simplification (e.g., `x + 0 -> x`, `2 * 3 -> 6`).
--   **Polynomials**: Distribution, combining like terms, and annihilation (e.g., `2*(x+3) + 4*x -> 6*x + 6`).
--   **Exponents**: Power rules (e.g., `x^2 * x^3 -> x^5`, `(x^2)^3 -> x^6`).
+-   **Basic Arithmetic**: Addition, subtraction, multiplication, division, exponentiation.
+-   **Algebraic Simplification**:
+    -   Combining like terms (`2x + 3x -> 5x`).
+    -   Polynomial expansion (`expand((x+1)^2) -> x^2 + 2x + 1`).
+    -   Polynomial factorization (`factor(2x^2 + 4x) -> 2x(x + 2)`).
+    -   Fraction simplification (`(x^2 - 1) / (x + 1) -> x - 1`).
+-   **Functions**:
+    -   Trigonometry (`sin`, `cos`, `tan`) with identity simplification (`sin(x)^2 + cos(x)^2 -> 1`).
+    -   Logarithms (`log(base, x)`, `ln(x)`) with properties (`log(b, b^x) -> x`).
+    -   Roots (`sqrt(x)`, `sqrt(x, n)`).
+    -   Absolute value (`abs(x)`).
+-   **Variables**: Symbolic computation with variables.
+-   **Substitution**: Replace variables with values or other expressions.
 -   **Interactive CLI**: Command-line interface with history support.
 
 ## Getting Started

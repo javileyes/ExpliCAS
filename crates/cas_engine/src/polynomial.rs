@@ -1,6 +1,6 @@
 use cas_ast::Expr;
 use num_rational::BigRational;
-use num_traits::{Zero, One};
+use num_traits::{Zero, One, Signed};
 use std::rc::Rc;
 use std::cmp::max;
 
@@ -250,6 +250,62 @@ impl Polynomial {
 
         a
     }
+
+    pub fn content(&self) -> BigRational {
+        if self.is_zero() {
+            return BigRational::zero();
+        }
+        // GCD of all coefficients
+        // Since BigRational doesn't have gcd directly exposed easily for all versions, 
+        // and we are using rational numbers, "content" usually refers to integer content 
+        // or we can just look for common integer factor if they are integers?
+        // For Rationals, it's tricky.
+        // Let's simplify: if all coeffs are integers, find integer GCD.
+        // If not, return 1.
+        
+        // Actually, let's just return 1 for now unless we implement a proper Rational GCD.
+        // But we can at least handle the leading coefficient to make it monic?
+        // Or extract the leading coefficient?
+        // The user asked for "factor common term".
+        // e.g. 2x^2 + 4x -> 2x(x+2).
+        // Coeffs: [0, 4, 2].
+        // GCD(4, 2) = 2.
+        // Min power = 1.
+        
+        // Let's implement a simple integer GCD for numerators if denominators are 1.
+        let mut g = BigRational::zero();
+        for c in &self.coeffs {
+            if c.is_zero() { continue; }
+            if g.is_zero() {
+                g = c.abs();
+            } else {
+                g = gcd_rational(g, c.abs());
+            }
+        }
+        g
+    }
+
+    pub fn min_degree(&self) -> usize {
+        for (i, c) in self.coeffs.iter().enumerate() {
+            if !c.is_zero() {
+                return i;
+            }
+        }
+        0
+    }
+}
+
+fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
+    // Simple placeholder: if both are integers, use integer GCD.
+    if a.is_integer() && b.is_integer() {
+        use num_integer::Integer;
+        let num_a = a.to_integer();
+        let num_b = b.to_integer();
+        let g = num_a.gcd(&num_b);
+        return BigRational::from_integer(g);
+    }
+    // If not integers, just return 1 (or smaller of the two? No, 1 is safe).
+    BigRational::one()
 }
 
 #[cfg(test)]
