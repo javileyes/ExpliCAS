@@ -108,8 +108,10 @@ fn test_quadratic_solver() {
     // Then Pow(b, e) = RHS. b = RHS^(1/e). x = 4^(1/2).
     // Then simplify 4^(1/2) -> 2.
     
-    let (res, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
-    let (final_rhs, _) = simplifier.simplify(res.rhs);
+    let results = solve(&eq, "x", &simplifier).expect("Failed to solve");
+    assert!(!results.is_empty());
+    let (res, _) = &results[0];
+    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
     
     assert_eq!(format!("{}", final_rhs), "2");
 }
@@ -122,8 +124,10 @@ fn test_exponential_solver() {
     let rhs = parse("0").unwrap();
     let eq = Equation { lhs, rhs, op: RelOp::Eq };
     
-    let (res, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
-    let (final_rhs, _) = simplifier.simplify(res.rhs);
+    let results = solve(&eq, "x", &simplifier).expect("Failed to solve");
+    assert!(!results.is_empty());
+    let (res, _) = &results[0];
+    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
     
     assert_eq!(format!("{}", final_rhs), "0");
 }

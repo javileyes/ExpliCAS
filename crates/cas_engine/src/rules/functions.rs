@@ -67,6 +67,6 @@ mod tests {
         // abs(-x) -> abs(x)
         let expr3 = parse("abs(-x)").expect("Failed to parse abs(-x)");
         let rewrite3 = rule.apply(&expr3).expect("Rule failed to apply");
-        assert_eq!(format!("{}", rewrite3.new_expr), "abs(x)");
+        assert_eq!(format!("{}", rewrite3.new_expr), "|x|");
     }
 }

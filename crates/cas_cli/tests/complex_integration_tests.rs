@@ -59,12 +59,14 @@ fn test_trig_algebra_solver() {
     assert!(lhs_str == "1 + x" || lhs_str == "x + 1");
     
     // Solve
-    let (res, _) = solve(&sim_eq, "x", &simplifier).expect("Failed to solve");
+    let results = solve(&sim_eq, "x", &simplifier).expect("Failed to solve");
+    assert!(!results.is_empty());
+    let (res, _) = &results[0];
     
     // Result should be x = 4
     // Note: Solver might produce x = 5 - 1, which simplifies to 4 if we run simplifier on it.
     // The solver returns the final equation. Let's simplify the result RHS.
-    let (final_rhs, _) = simplifier.simplify(res.rhs);
+    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
     assert_eq!(format!("{}", final_rhs), "4");
 }
 
@@ -89,9 +91,11 @@ fn test_complex_solver_distribution() {
     // Canonical order: Number < Product. So 2 + 2*x
     assert_eq!(format!("{}", sim_eq.lhs), "2 + 2 * x");
     
-    let (res, _) = solve(&sim_eq, "x", &simplifier).expect("Failed to solve");
+    let results = solve(&sim_eq, "x", &simplifier).expect("Failed to solve");
+    assert!(!results.is_empty());
+    let (res, _) = &results[0];
     
-    let (final_rhs, _) = simplifier.simplify(res.rhs);
+    let (final_rhs, _) = simplifier.simplify(res.rhs.clone());
     assert_eq!(format!("{}", final_rhs), "2");
 }
 

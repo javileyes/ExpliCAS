@@ -254,6 +254,10 @@ impl fmt::Display for Expr {
                         return Ok(());
                     }
                 }
+                if name == "abs" && args.len() == 1 {
+                    write!(f, "|{}|", args[0])?;
+                    return Ok(());
+                }
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 { write!(f, ", ")?; }

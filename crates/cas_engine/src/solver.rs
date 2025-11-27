@@ -9,7 +9,7 @@ pub struct SolveStep {
     pub equation_after: Equation,
 }
 
-pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(Equation, Vec<SolveStep>), String> {
+pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<Vec<(Equation, Vec<SolveStep>)>, String> {
     // We want to isolate 'var' on LHS.
     let mut steps = Vec::new();
 
@@ -40,9 +40,16 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(Equat
         
         // Recursive call (tail recursion effectively)
         // We need to merge steps from recursive call
-        let (final_eq, more_steps) = solve_internal(&new_eq, var, simplifier)?;
-        steps.extend(more_steps);
-        return Ok((final_eq, steps));
+        let results = solve_internal(&new_eq, var, simplifier)?;
+        
+        // Prepend current steps to all results
+        let mut final_results = Vec::new();
+        for (res_eq, mut res_steps) in results {
+            let mut combined_steps = steps.clone();
+            combined_steps.append(&mut res_steps);
+            final_results.push((res_eq, combined_steps));
+        }
+        return Ok(final_results);
     }
 
     if lhs_has_var && rhs_has_var {
@@ -50,23 +57,30 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(Equat
     }
 
     // Now LHS has var, RHS does not.
-    let (final_eq, more_steps) = isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier)?;
-    steps.extend(more_steps);
-    Ok((final_eq, steps))
+    let results = isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier)?;
+    
+    // Prepend current steps (empty here, but for consistency)
+    let mut final_results = Vec::new();
+    for (res_eq, mut res_steps) in results {
+        let mut combined_steps = steps.clone();
+        combined_steps.append(&mut res_steps);
+        final_results.push((res_eq, combined_steps));
+    }
+    Ok(final_results)
 }
 
 // Internal helper to avoid re-checking var presence unnecessarily if we already know it
-fn solve_internal(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(Equation, Vec<SolveStep>), String> {
+fn solve_internal(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<Vec<(Equation, Vec<SolveStep>)>, String> {
     // This is just a wrapper to call isolate directly since we know var is on LHS from the swap logic
     isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier)
 }
 
-fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Simplifier) -> Result<(Equation, Vec<SolveStep>), String> {
+fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Simplifier) -> Result<Vec<(Equation, Vec<SolveStep>)>, String> {
     let mut steps = Vec::new();
     
     match lhs.as_ref() {
         Expr::Variable(v) if v == var => {
-            Ok((Equation { lhs: lhs.clone(), rhs: rhs.clone(), op }, steps))
+            Ok(vec![(Equation { lhs: lhs.clone(), rhs: rhs.clone(), op }, steps)])
         }
         Expr::Add(l, r) => {
             // (A + B) = RHS
@@ -80,9 +94,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(l, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(l, &new_rhs, op, var, simplifier)?;
+                prepend_steps(results, steps)
             } else {
                 // B = RHS - A
                 let new_rhs = Expr::sub(rhs.clone(), l.clone());
@@ -93,9 +106,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(r, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(r, &new_rhs, op, var, simplifier)?;
+                prepend_steps(results, steps)
             }
         }
         Expr::Sub(l, r) => {
@@ -110,72 +122,95 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(l, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(l, &new_rhs, op, var, simplifier)?;
+                prepend_steps(results, steps)
             } else {
                 // -B = RHS - A -> B = A - RHS
+                // Multiply by -1 flips inequality
                 let new_rhs = Expr::sub(l.clone(), rhs.clone());
                 let new_op = flip_inequality(op);
                 let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: new_op.clone() };
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
-                        description: format!("Move {} and multiply by -1", l),
+                        description: format!("Move {} and multiply by -1 (flips inequality)", l),
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(r, &new_rhs, new_op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(r, &new_rhs, new_op, var, simplifier)?;
+                prepend_steps(results, steps)
             }
         }
         Expr::Mul(l, r) => {
             // A * B = RHS
             if contains_var(l, var) {
                 // A = RHS / B
+                // Check if B is negative constant to flip inequality
+                let mut new_op = op.clone();
+                if is_negative(r) {
+                    new_op = flip_inequality(new_op);
+                }
+
                 let new_rhs = Expr::div(rhs.clone(), r.clone());
-                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: new_op.clone() };
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
                         description: format!("Divide both sides by {}", r),
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(l, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(l, &new_rhs, new_op, var, simplifier)?;
+                prepend_steps(results, steps)
             } else {
                 // B = RHS / A
+                let mut new_op = op.clone();
+                if is_negative(l) {
+                    new_op = flip_inequality(new_op);
+                }
+
                 let new_rhs = Expr::div(rhs.clone(), l.clone());
-                let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: new_op.clone() };
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
                         description: format!("Divide both sides by {}", l),
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(r, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(r, &new_rhs, new_op, var, simplifier)?;
+                prepend_steps(results, steps)
             }
         }
         Expr::Div(l, r) => {
             // A / B = RHS
             if contains_var(l, var) {
                 // A = RHS * B
+                // Check if B is negative constant to flip inequality
+                let mut new_op = op.clone();
+                if is_negative(r) {
+                    new_op = flip_inequality(new_op);
+                }
+
                 let new_rhs = Expr::mul(rhs.clone(), r.clone());
-                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                let new_eq = Equation { lhs: l.clone(), rhs: new_rhs.clone(), op: new_op.clone() };
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
                         description: format!("Multiply both sides by {}", r),
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(l, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(l, &new_rhs, new_op, var, simplifier)?;
+                prepend_steps(results, steps)
             } else {
                 // B = A / RHS
+                // This is tricky for inequalities. 
+                // 10 / x < 2
+                // If x > 0: 10 < 2x -> 5 < x -> x > 5
+                // If x < 0: 10 > 2x -> 5 > x -> x < 5
+                // We assume x is positive for now or just standard algebraic manipulation?
+                // Standard: x = A / RHS
+                // But inequality direction depends on sign of RHS and x.
+                // Let's assume standard equation logic for now, or warn about inequalities with variable in denominator.
+                // For now, let's just implement standard isolation.
+                
                 let new_rhs = Expr::div(l.clone(), rhs.clone());
                 let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: op.clone() };
                 if simplifier.collect_steps {
@@ -184,9 +219,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(r, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(r, &new_rhs, op, var, simplifier)?;
+                prepend_steps(results, steps)
             }
         }
         Expr::Pow(b, e) => {
@@ -202,9 +236,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(b, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(b, &new_rhs, op, var, simplifier)?;
+                prepend_steps(results, steps)
             } else {
                 // E = log(B, RHS)
                 let new_rhs = Expr::log(b.clone(), rhs.clone());
@@ -215,13 +248,73 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let (final_eq, more_steps) = isolate(e, &new_rhs, op, var, simplifier)?;
-                steps.extend(more_steps);
-                Ok((final_eq, steps))
+                let results = isolate(e, &new_rhs, op, var, simplifier)?;
+                prepend_steps(results, steps)
             }
         }
         Expr::Function(name, args) => {
-            if name == "log" && args.len() == 2 {
+            if name == "abs" && args.len() == 1 {
+                // |A| = B
+                // Branch 1: A = B
+                // Branch 2: A = -B
+                // For inequalities:
+                // |A| < B -> -B < A < B (Intersection) -> A < B AND A > -B
+                // |A| > B -> A > B OR A < -B
+                // Currently we return a list of equations.
+                // For |A| = B, we return [A=B, A=-B].
+                // For |A| < B, we return [A < B, A > -B] (Implicit AND? Or just list of constraints?)
+                // For |A| > B, we return [A > B, A < -B] (Implicit OR?)
+                // The solver returns a Vec of (Equation, Steps).
+                // Interpretation of Vec depends on context.
+                // For equations, it's OR (solutions).
+                // For inequalities, it's context dependent.
+                // Let's implement the standard splitting.
+                
+                let arg = &args[0];
+                
+                // Branch 1: Positive case
+                let eq1 = Equation { lhs: arg.clone(), rhs: rhs.clone(), op: op.clone() };
+                let mut steps1 = steps.clone();
+                if simplifier.collect_steps {
+                    steps1.push(SolveStep {
+                        description: format!("Split absolute value (Case 1): {} {} {}", arg, op, rhs),
+                        equation_after: eq1.clone(),
+                    });
+                }
+                let results1 = isolate(arg, rhs, op.clone(), var, simplifier)?;
+                let final_results1 = prepend_steps(results1, steps1);
+
+                // Branch 2: Negative case
+                // |A| < B -> A > -B (Flip op)
+                // |A| > B -> A < -B (Flip op)
+                // |A| = B -> A = -B
+                
+                let neg_rhs = Expr::neg(rhs.clone());
+                let op2 = match op {
+                    RelOp::Eq => RelOp::Eq,
+                    RelOp::Neq => RelOp::Neq,
+                    RelOp::Lt => RelOp::Gt,  // |x| < 5 -> x > -5
+                    RelOp::Leq => RelOp::Geq,
+                    RelOp::Gt => RelOp::Lt,  // |x| > 5 -> x < -5
+                    RelOp::Geq => RelOp::Leq,
+                };
+                
+                let eq2 = Equation { lhs: arg.clone(), rhs: neg_rhs.clone(), op: op2.clone() };
+                let mut steps2 = steps.clone();
+                if simplifier.collect_steps {
+                    steps2.push(SolveStep {
+                        description: format!("Split absolute value (Case 2): {} {} {}", arg, op2, neg_rhs),
+                        equation_after: eq2.clone(),
+                    });
+                }
+                let results2 = isolate(arg, &neg_rhs, op2, var, simplifier)?;
+                let final_results2 = prepend_steps(results2, steps2);
+                
+                let mut all_results = final_results1?;
+                all_results.extend(final_results2?);
+                
+                Ok(all_results)
+            } else if name == "log" && args.len() == 2 {
                 let base = &args[0];
                 let arg = &args[1];
                 
@@ -235,9 +328,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                             equation_after: new_eq.clone(),
                         });
                     }
-                    let (final_eq, more_steps) = isolate(arg, &new_rhs, op, var, simplifier)?;
-                    steps.extend(more_steps);
-                    Ok((final_eq, steps))
+                    let results = isolate(arg, &new_rhs, op, var, simplifier)?;
+                    prepend_steps(results, steps)
                 } else if contains_var(base, var) && !contains_var(arg, var) {
                     let inv_rhs = Expr::div(Expr::num(1), rhs.clone());
                     let new_rhs = Expr::pow(arg.clone(), inv_rhs);
@@ -248,9 +340,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                             equation_after: new_eq.clone(),
                         });
                     }
-                    let (final_eq, more_steps) = isolate(base, &new_rhs, op, var, simplifier)?;
-                    steps.extend(more_steps);
-                    Ok((final_eq, steps))
+                    let results = isolate(base, &new_rhs, op, var, simplifier)?;
+                    prepend_steps(results, steps)
                 } else {
                      Err(format!("Cannot isolate '{}' from log function", var))
                 }
@@ -267,9 +358,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                                     equation_after: new_eq.clone(),
                                 });
                             }
-                            let (final_eq, more_steps) = isolate(arg, &new_rhs, op, var, simplifier)?;
-                            steps.extend(more_steps);
-                            Ok((final_eq, steps))
+                            let results = isolate(arg, &new_rhs, op, var, simplifier)?;
+                            prepend_steps(results, steps)
                         },
                         "exp" => {
                             let new_rhs = Expr::ln(rhs.clone());
@@ -280,9 +370,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                                     equation_after: new_eq.clone(),
                                 });
                             }
-                            let (final_eq, more_steps) = isolate(arg, &new_rhs, op, var, simplifier)?;
-                            steps.extend(more_steps);
-                            Ok((final_eq, steps))
+                            let results = isolate(arg, &new_rhs, op, var, simplifier)?;
+                            prepend_steps(results, steps)
                         },
                         "sqrt" => {
                             let new_rhs = Expr::pow(rhs.clone(), Expr::num(2));
@@ -293,9 +382,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                                     equation_after: new_eq.clone(),
                                 });
                             }
-                            let (final_eq, more_steps) = isolate(arg, &new_rhs, op, var, simplifier)?;
-                            steps.extend(more_steps);
-                            Ok((final_eq, steps))
+                            let results = isolate(arg, &new_rhs, op, var, simplifier)?;
+                            prepend_steps(results, steps)
                         },
                         "sin" => {
                             // sin(x) = y -> x = arcsin(y)
@@ -311,9 +399,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                             let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg.clone(), op.clone(), simplifier);
                             steps.extend(sim_steps);
 
-                            let (final_eq, more_steps) = isolate(arg, &simplified_rhs, op, var, simplifier)?;
-                            steps.extend(more_steps);
-                            Ok((final_eq, steps))
+                            let results = isolate(arg, &simplified_rhs, op, var, simplifier)?;
+                            prepend_steps(results, steps)
                         },
                         "cos" => {
                             // cos(x) = y -> x = arccos(y)
@@ -329,9 +416,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                             let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg.clone(), op.clone(), simplifier);
                             steps.extend(sim_steps);
 
-                            let (final_eq, more_steps) = isolate(arg, &simplified_rhs, op, var, simplifier)?;
-                            steps.extend(more_steps);
-                            Ok((final_eq, steps))
+                            let results = isolate(arg, &simplified_rhs, op, var, simplifier)?;
+                            prepend_steps(results, steps)
                         },
                         "tan" => {
                             // tan(x) = y -> x = arctan(y)
@@ -347,9 +433,8 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                             let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg.clone(), op.clone(), simplifier);
                             steps.extend(sim_steps);
 
-                            let (final_eq, more_steps) = isolate(arg, &simplified_rhs, op, var, simplifier)?;
-                            steps.extend(more_steps);
-                            Ok((final_eq, steps))
+                            let results = isolate(arg, &simplified_rhs, op, var, simplifier)?;
+                            prepend_steps(results, steps)
                         },
                         _ => Err(format!("Cannot invert function '{}'", name)),
                     }
@@ -361,6 +446,28 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
             }
         }
         _ => Err(format!("Cannot isolate '{}' from {:?}", var, lhs)),
+    }
+}
+
+fn prepend_steps(
+    results: Vec<(Equation, Vec<SolveStep>)>,
+    steps: Vec<SolveStep>
+) -> Result<Vec<(Equation, Vec<SolveStep>)>, String> {
+    let mut final_results = Vec::new();
+    for (res_eq, mut res_steps) in results {
+        let mut combined_steps = steps.clone();
+        combined_steps.append(&mut res_steps);
+        final_results.push((res_eq, combined_steps));
+    }
+    Ok(final_results)
+}
+
+fn is_negative(expr: &Expr) -> bool {
+    match expr {
+        Expr::Number(n) => *n < num_rational::BigRational::from_integer(0.into()),
+        Expr::Neg(_) => true, // Simple check, might be Neg(Neg(x))
+        Expr::Mul(l, r) => is_negative(l) ^ is_negative(r),
+        _ => false, // Conservative
     }
 }
 
@@ -428,7 +535,9 @@ mod tests {
         let eq = make_eq("x + 2", "5");
         let mut simplifier = Simplifier::new();
         simplifier.collect_steps = true;
-        let (res, _) = solve(&eq, "x", &simplifier).unwrap();
+        let results = solve(&eq, "x", &simplifier).unwrap();
+        assert_eq!(results.len(), 1);
+        let (res, _) = &results[0];
         // Result: x = 5 - 2
         // We don't simplify automatically in solve, so RHS is "5 - 2".
         assert_eq!(format!("{}", res.lhs), "x");
@@ -441,7 +550,9 @@ mod tests {
         let eq = make_eq("2 * x", "6");
         let mut simplifier = Simplifier::new();
         simplifier.collect_steps = true;
-        let (res, _) = solve(&eq, "x", &simplifier).unwrap();
+        let results = solve(&eq, "x", &simplifier).unwrap();
+        assert_eq!(results.len(), 1);
+        let (res, _) = &results[0];
         assert_eq!(format!("{}", res.rhs), "6 / 2");
     }
     
@@ -451,7 +562,9 @@ mod tests {
         let eq = make_eq("x^2", "4");
         let mut simplifier = Simplifier::new();
         simplifier.collect_steps = true;
-        let (res, _) = solve(&eq, "x", &simplifier).unwrap();
+        let results = solve(&eq, "x", &simplifier).unwrap();
+        assert_eq!(results.len(), 1);
+        let (res, _) = &results[0];
         assert_eq!(format!("{}", res.rhs), "4^(1 / 2)");
     }
 }

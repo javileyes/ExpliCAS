@@ -282,23 +282,34 @@ fn main() -> rustyline::Result<()> {
                                     println!("{} != {}", sim_lhs, sim_rhs);
                                 }
                             } else {
+
                                 match cas_engine::solver::solve(&simplified_eq, var, &simplifier) {
-                                    Ok((solved_eq, steps)) => {
-                                        if show_steps {
-                                            println!("Steps:");
-                                            for (i, step) in steps.iter().enumerate() {
-                                                // Simplify the equation for display
-                                                let (sim_lhs, _) = simplifier.simplify(step.equation_after.lhs.clone());
-                                                let (sim_rhs, _) = simplifier.simplify(step.equation_after.rhs.clone());
+                                    Ok(results) => {
+                                        if results.is_empty() {
+                                            println!("No solution found.");
+                                        } else {
+                                            for (idx, (solved_eq, steps)) in results.iter().enumerate() {
+                                                if results.len() > 1 {
+                                                    println!("--- Solution {} ---", idx + 1);
+                                                }
                                                 
-                                                println!("{}. {}", i + 1, step.description);
-                                                println!("   -> {} {} {}", sim_lhs, step.equation_after.op, sim_rhs);
+                                                if show_steps {
+                                                    println!("Steps:");
+                                                    for (i, step) in steps.iter().enumerate() {
+                                                        // Simplify the equation for display
+                                                        let (sim_lhs, _) = simplifier.simplify(step.equation_after.lhs.clone());
+                                                        let (sim_rhs, _) = simplifier.simplify(step.equation_after.rhs.clone());
+                                                        
+                                                        println!("{}. {}", i + 1, step.description);
+                                                        println!("   -> {} {} {}", sim_lhs, step.equation_after.op, sim_rhs);
+                                                    }
+                                                }
+
+                                                // Simplify the RHS of the solution
+                                                let (simplified_rhs, _) = simplifier.simplify(solved_eq.rhs.clone());
+                                                println!("Result: {} {} {}", solved_eq.lhs, solved_eq.op, simplified_rhs);
                                             }
                                         }
-
-                                        // Simplify the RHS of the solution
-                                        let (simplified_rhs, _) = simplifier.simplify(solved_eq.rhs);
-                                        println!("Result: {} {} {}", solved_eq.lhs, solved_eq.op, simplified_rhs);
                                     },
                                     Err(e) => println!("Error solving: {}", e),
                                 }

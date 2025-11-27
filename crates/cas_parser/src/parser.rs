@@ -63,6 +63,15 @@ fn parse_function(input: &str) -> IResult<&str, Rc<Expr>> {
     Ok((input, Rc::new(Expr::Function(name.to_string(), args))))
 }
 
+// Parser for absolute value: | expr |
+fn parse_abs(input: &str) -> IResult<&str, Rc<Expr>> {
+    delimited(
+        preceded(multispace0, tag("|")),
+        parse_expr,
+        preceded(multispace0, tag("|")),
+    )(input).map(|(next_input, expr)| (next_input, Expr::abs(expr)))
+}
+
 // Atom: number, variable, function, or (expr)
 fn parse_atom(input: &str) -> IResult<&str, Rc<Expr>> {
     preceded(
@@ -80,6 +89,7 @@ fn parse_atom(input: &str) -> IResult<&str, Rc<Expr>> {
             parse_constant,
             parse_variable,
             parse_parens,
+            parse_abs,
         )),
     )(input)
 }
