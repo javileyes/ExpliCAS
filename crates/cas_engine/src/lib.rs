@@ -6,6 +6,8 @@ pub mod polynomial;
 pub mod solver;
 pub mod ordering;
 
+pub mod visitors;
+
 pub use engine::Simplifier;
 pub use rule::Rule;
 pub use step::Step;

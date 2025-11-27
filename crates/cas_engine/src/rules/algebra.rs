@@ -317,28 +317,12 @@ impl Rule for FactorRule {
 }
 
 fn collect_variables(expr: &Expr) -> HashSet<String> {
-    let mut vars = HashSet::new();
-    collect_vars_recursive(expr, &mut vars);
-    vars
-}
-
-fn collect_vars_recursive(expr: &Expr, vars: &mut HashSet<String>) {
-    match expr {
-        Expr::Variable(s) => { vars.insert(s.clone()); },
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            collect_vars_recursive(l, vars);
-            collect_vars_recursive(r, vars);
-        },
-        Expr::Neg(e) => {
-             collect_vars_recursive(e, vars);
-        },
-        Expr::Function(_, args) => {
-            for arg in args {
-                collect_vars_recursive(arg, vars);
-            }
-        },
-        _ => {},
-    }
+    use crate::visitors::VariableCollector;
+    use cas_ast::Visitor;
+    
+    let mut collector = VariableCollector::new();
+    collector.visit_expr(expr);
+    collector.vars
 }
 
 

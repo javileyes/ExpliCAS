@@ -241,28 +241,12 @@ impl Simplifier {
     }
 
     fn collect_variables(&self, expr: &Rc<Expr>) -> HashSet<String> {
-        let mut vars = HashSet::new();
-        self.collect_vars_recursive(expr, &mut vars);
-        vars
-    }
-
-    fn collect_vars_recursive(&self, expr: &Expr, vars: &mut HashSet<String>) {
-        match expr {
-            Expr::Variable(s) => { vars.insert(s.clone()); },
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-                self.collect_vars_recursive(l, vars);
-                self.collect_vars_recursive(r, vars);
-            },
-            Expr::Neg(e) => {
-                 self.collect_vars_recursive(e, vars);
-            },
-            Expr::Function(_, args) => {
-                for arg in args {
-                    self.collect_vars_recursive(arg, vars);
-                }
-            },
-            _ => {},
-        }
+        use crate::visitors::VariableCollector;
+        use cas_ast::Visitor;
+        
+        let mut collector = VariableCollector::new();
+        collector.visit_expr(expr);
+        collector.vars
     }
 }
 
