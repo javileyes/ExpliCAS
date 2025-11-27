@@ -283,28 +283,31 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
     
     match lhs.as_ref() {
         Expr::Variable(v) if v == var => {
+            // Simplify RHS before returning
+            let (sim_rhs, _) = simplifier.simplify(rhs.clone());
+            
             let set = match op {
-                RelOp::Eq => SolutionSet::Discrete(vec![rhs.clone()]),
+                RelOp::Eq => SolutionSet::Discrete(vec![sim_rhs.clone()]),
                 RelOp::Neq => {
                     // x != 5 -> (-inf, 5) U (5, inf)
-                    let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: rhs.clone(), max_type: BoundType::Open };
-                    let i2 = Interval { min: rhs.clone(), min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                    let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: sim_rhs.clone(), max_type: BoundType::Open };
+                    let i2 = Interval { min: sim_rhs.clone(), min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
                     SolutionSet::Union(vec![i1, i2])
                 },
                 RelOp::Lt => SolutionSet::Continuous(Interval {
                     min: neg_inf(), min_type: BoundType::Open,
-                    max: rhs.clone(), max_type: BoundType::Open
+                    max: sim_rhs.clone(), max_type: BoundType::Open
                 }),
                 RelOp::Gt => SolutionSet::Continuous(Interval {
-                    min: rhs.clone(), min_type: BoundType::Open,
+                    min: sim_rhs.clone(), min_type: BoundType::Open,
                     max: pos_inf(), max_type: BoundType::Open
                 }),
                 RelOp::Leq => SolutionSet::Continuous(Interval {
                     min: neg_inf(), min_type: BoundType::Open,
-                    max: rhs.clone(), max_type: BoundType::Closed
+                    max: sim_rhs.clone(), max_type: BoundType::Closed
                 }),
                 RelOp::Geq => SolutionSet::Continuous(Interval {
-                    min: rhs.clone(), min_type: BoundType::Closed,
+                    min: sim_rhs.clone(), min_type: BoundType::Closed,
                     max: pos_inf(), max_type: BoundType::Open
                 }),
             };
@@ -525,25 +528,54 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
         Expr::Pow(b, e) => {
             // B^E = RHS
             if contains_var(b, var) {
-                // B = RHS^(1/E)
-                let inv_exp = Expr::div(Expr::num(1), e.clone());
-                let new_rhs = Expr::pow(rhs.clone(), inv_exp);
-                let new_eq = Equation { lhs: b.clone(), rhs: new_rhs.clone(), op: op.clone() };
-                if simplifier.collect_steps {
-                    steps.push(SolveStep {
-                        description: format!("Take {}-th root of both sides", e),
-                        equation_after: new_eq.clone(),
-                    });
+                // Check if exponent is an even integer
+                let is_even = if let Some(n) = get_number(e) {
+                    n.is_integer() && (n.to_integer() % 2 == 0.into())
+                } else {
+                    false
+                };
+
+                if is_even {
+                     // B^E = RHS -> |B| = RHS^(1/E)
+                     let inv_exp = Expr::div(Expr::num(1), e.clone());
+                     let new_rhs = Expr::pow(rhs.clone(), inv_exp);
+                     
+                     // Construct |B|
+                     let abs_b = Rc::new(Expr::Function("abs".to_string(), vec![b.clone()]));
+                     
+                     let new_eq = Equation { lhs: abs_b.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                     if simplifier.collect_steps {
+                        steps.push(SolveStep {
+                            description: format!("Take {}-th root of both sides (even root implies absolute value)", e),
+                            equation_after: new_eq.clone(),
+                        });
+                     }
+                     
+                     // Isolate |B|
+                     // Note: We pass 'op' as is. |B| < RHS will be handled by isolate(|B|...) logic.
+                     let results = isolate(&abs_b, &new_rhs, op, var, simplifier)?;
+                     prepend_steps(results, steps)
+                } else {
+                    // B = RHS^(1/E)
+                    let inv_exp = Expr::div(Expr::num(1), e.clone());
+                    let new_rhs = Expr::pow(rhs.clone(), inv_exp);
+                    let new_eq = Equation { lhs: b.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                    if simplifier.collect_steps {
+                        steps.push(SolveStep {
+                            description: format!("Take {}-th root of both sides", e),
+                            equation_after: new_eq.clone(),
+                        });
+                    }
+                    
+                    // Check if exponent is negative to flip inequality
+                    let mut new_op = op.clone();
+                    if is_negative(e) {
+                         new_op = flip_inequality(new_op);
+                    }
+                    
+                    let results = isolate(b, &new_rhs, new_op, var, simplifier)?;
+                    prepend_steps(results, steps)
                 }
-                
-                // Check if exponent is negative to flip inequality
-                let mut new_op = op.clone();
-                if is_negative(e) {
-                     new_op = flip_inequality(new_op);
-                }
-                
-                let results = isolate(b, &new_rhs, new_op, var, simplifier)?;
-                prepend_steps(results, steps)
             } else {
                 // E = log(B, RHS)
                 let new_rhs = Expr::log(b.clone(), rhs.clone());
@@ -862,12 +894,31 @@ mod tests {
         // x^2 = 4 -> x = 4^(1/2)
         let eq = make_eq("x^2", "4");
         let mut simplifier = Simplifier::new();
+        simplifier.add_rule(Box::new(crate::rules::exponents::EvaluatePowerRule));
+        simplifier.add_rule(Box::new(crate::rules::canonicalization::CanonicalizeNegationRule));
+        simplifier.add_rule(Box::new(crate::rules::arithmetic::CombineConstantsRule));
         simplifier.collect_steps = true;
         let (result, _) = solve(&eq, "x", &simplifier).unwrap();
         
-        if let SolutionSet::Discrete(solutions) = result {
-            assert_eq!(solutions.len(), 1);
-            assert_eq!(format!("{}", solutions[0]), "4^(1 / 2)");
+        if let SolutionSet::Discrete(mut solutions) = result {
+            assert_eq!(solutions.len(), 2);
+            // Sort to ensure order
+            solutions.sort_by(|a, b| format!("{}", a).cmp(&format!("{}", b)));
+            // Expect -2 and 2 (or -4^(1/2) and 4^(1/2) if not simplified)
+            // The user noted 4^(1/2) wasn't simplifying.
+            // Let's assert what we currently get, then fix simplification.
+            // Current behavior likely: -4^(1/2) and 4^(1/2).
+            // But wait, the user said "Result: (4^(1 / 2), infinity)".
+            // So for EQUATION x^2=4, we expect x=2, x=-2.
+            // If simplification is missing, it might be 4^(1/2).
+            // Let's check for "contains" 2 or 4^(1/2).
+            
+            let s1 = format!("{}", solutions[0]);
+            let s2 = format!("{}", solutions[1]);
+            
+            // We want to eventually see "-2" and "2".
+            assert_eq!(s1, "-2");
+            assert_eq!(s2, "2");
         } else {
             panic!("Expected Discrete solution");
         }

@@ -205,10 +205,37 @@ fn test_quadratic_inequality() {
     let (result, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
     
     if let SolutionSet::Continuous(interval) = result {
-        // Likely (-inf, 2) if it just does x < 2.
-        // Or if it does |x| < 2, then (-2, 2).
-        // Let's inspect.
+        let (min, _) = simplifier.simplify(interval.min.clone());
         let (max, _) = simplifier.simplify(interval.max.clone());
+        assert_eq!(format!("{}", min), "-2");
         assert_eq!(format!("{}", max), "2");
+    } else {
+        panic!("Expected Continuous solution, got {:?}", result);
+    }
+}
+
+#[test]
+fn test_quadratic_inequality_gt() {
+    // x^2 > 4 -> (-inf, -2) U (2, inf)
+    let simplifier = create_full_simplifier();
+    let lhs = parse("x^2").unwrap();
+    let rhs = parse("4").unwrap();
+    let eq = Equation { lhs, rhs, op: RelOp::Gt };
+    
+    let (result, _) = solve(&eq, "x", &simplifier).expect("Failed to solve");
+    
+    if let SolutionSet::Union(intervals) = result {
+        assert_eq!(intervals.len(), 2);
+        // Sorted: (-inf, -2), (2, inf)
+        let i1 = &intervals[0];
+        let i2 = &intervals[1];
+        
+        let (max1, _) = simplifier.simplify(i1.max.clone());
+        let (min2, _) = simplifier.simplify(i2.min.clone());
+        
+        assert_eq!(format!("{}", max1), "-2");
+        assert_eq!(format!("{}", min2), "2");
+    } else {
+        panic!("Expected Union solution, got {:?}", result);
     }
 }
