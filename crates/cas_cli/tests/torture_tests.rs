@@ -5,7 +5,7 @@ use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowe
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
-use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
+use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule};
 use cas_parser::parse;
 use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr};
@@ -24,6 +24,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
+    simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(ZeroOnePowerRule));

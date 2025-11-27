@@ -144,6 +144,64 @@ impl Rule for ExponentialLogRule {
     }
 }
 
+
+pub struct SplitLogExponentsRule;
+
+impl Rule for SplitLogExponentsRule {
+    fn name(&self) -> &str {
+        "Split Log Exponents"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        // e^(a + b) -> e^a * e^b IF a or b is a log
+        if let Expr::Pow(base, exp) = expr.as_ref() {
+            if let Expr::Constant(cas_ast::Constant::E) = base.as_ref() {
+                if let Expr::Add(lhs, rhs) = exp.as_ref() {
+                    let lhs_is_log = is_log(lhs);
+                    let rhs_is_log = is_log(rhs);
+                    
+                    if lhs_is_log || rhs_is_log {
+                        let term1 = simplify_exp_log(base, lhs);
+                        let term2 = simplify_exp_log(base, rhs);
+                        return Some(Rewrite {
+                            new_expr: Expr::mul(term1, term2),
+                            description: "e^(a+b) -> e^a * e^b (log cancellation)".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+fn simplify_exp_log(base: &Rc<Expr>, exp: &Rc<Expr>) -> Rc<Expr> {
+    // Check if exp is log(base, x)
+    if let Expr::Function(name, args) = exp.as_ref() {
+        if name == "log" && args.len() == 2 {
+            let log_base = &args[0];
+            let log_arg = &args[1];
+            if log_base == base {
+                return log_arg.clone();
+            }
+        }
+    }
+    // Also check n*log(base, x) -> x^n?
+    // Maybe later. For now just direct cancellation.
+    Expr::pow(base.clone(), exp.clone())
+}
+
+fn is_log(expr: &Rc<Expr>) -> bool {
+    if let Expr::Function(name, _) = expr.as_ref() {
+        return name == "log" || name == "ln";
+    }
+    // Also check for n*log(x)
+    if let Expr::Mul(l, r) = expr.as_ref() {
+        return is_log(l) || is_log(r);
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
