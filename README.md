@@ -10,6 +10,7 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   Combining like terms (`2x + 3x -> 5x`).
     -   Polynomial expansion (`expand((x+1)^2) -> x^2 + 2x + 1`).
     -   Polynomial factorization (`factor(2x^2 + 4x) -> 2x(x + 2)`).
+    -   Grouping terms (`collect(ax + bx, x) -> (a+b)x`).
     -   Fraction simplification (`(x^2 - 1) / (x + 1) -> x - 1`).
 -   **Functions**:
     -   Trigonometry (`sin`, `cos`, `tan`) with identity simplification (`sin(x)^2 + cos(x)^2 -> 1`).
