@@ -195,14 +195,21 @@ fn main() -> rustyline::Result<()> {
                     match cas_parser::parse_statement(eq_str) {
                         Ok(cas_parser::Statement::Equation(eq)) => {
                             // Check if variable exists in equation
-                            let lhs_has = cas_engine::solver::contains_var(&eq.lhs, var);
-                            let rhs_has = cas_engine::solver::contains_var(&eq.rhs, var);
+                            // We should simplify the equation first to handle cases like "ln(x) + ln(x) = 2" -> "2*ln(x) = 2"
+                            let (sim_lhs, _) = simplifier.simplify(eq.lhs.clone());
+                            let (sim_rhs, _) = simplifier.simplify(eq.rhs.clone());
+                            let simplified_eq = cas_ast::Equation {
+                                lhs: sim_lhs.clone(),
+                                rhs: sim_rhs.clone(),
+                                op: eq.op.clone(),
+                            };
+
+                            let lhs_has = cas_engine::solver::contains_var(&simplified_eq.lhs, var);
+                            let rhs_has = cas_engine::solver::contains_var(&simplified_eq.rhs, var);
 
                             if !lhs_has && !rhs_has {
                                 // Constant equation (w.r.t var). Evaluate truthiness.
-                                let (sim_lhs, _) = simplifier.simplify(eq.lhs);
-                                let (sim_rhs, _) = simplifier.simplify(eq.rhs);
-                                
+                                // Already simplified above
                                 if sim_lhs == sim_rhs {
                                     println!("True (Identity)");
                                 } else {
@@ -210,7 +217,7 @@ fn main() -> rustyline::Result<()> {
                                     println!("{} != {}", sim_lhs, sim_rhs);
                                 }
                             } else {
-                                match cas_engine::solver::solve(&eq, var) {
+                                match cas_engine::solver::solve(&simplified_eq, var) {
                                     Ok((solved_eq, steps)) => {
                                         println!("Steps:");
                                         for (i, step) in steps.iter().enumerate() {

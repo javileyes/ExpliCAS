@@ -76,8 +76,8 @@ impl Rule for CombineLikeTermsRule {
                             None
                         }
                     }
-                    Expr::Variable(_) => Some((BigRational::one(), e.clone())),
-                    _ => None,
+                    Expr::Number(_) => None, // Handled by CombineConstantsRule
+                    _ => Some((BigRational::one(), e.clone())),
                 }
             };
 
@@ -145,5 +145,14 @@ mod tests {
         );
         let rewrite2 = rule.apply(&expr2).unwrap();
         assert_eq!(format!("{}", rewrite2.new_expr), "3 * x");
+
+        // ln(x) + ln(x) -> 2 * ln(x)
+        let expr3 = Expr::add(
+            Expr::ln(Expr::var("x")),
+            Expr::ln(Expr::var("x"))
+        );
+        let rewrite3 = rule.apply(&expr3).unwrap();
+        // ln(x) is log(e, x)
+        assert_eq!(format!("{}", rewrite3.new_expr), "2 * log(e, x)");
     }
 }
