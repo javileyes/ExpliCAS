@@ -84,14 +84,27 @@ Once inside the CLI, try these expressions:
 Use the `subst` command to evaluate expressions for specific variable values.
 
 ```text
-> subst x+1 x=2
+> subst x+1, x=2
 ```
 *Output:* `3`
 
 ```text
-> subst x^2+x x=3
+> subst x^2+x, x=3
 ```
 *Output:* `12` (Calculated as `3^2 + 3` -> `9 + 3` -> `12`)
+
+**8. Equation Solving**
+Use the `solve` command to isolate a variable in an equation.
+
+```text
+> solve x + 2 = 5, x
+```
+*Output:* `x = 3`
+
+```text
+> solve ln(x) = 1, x
+```
+*Output:* `x = e`
 
 ### Running Tests
 
