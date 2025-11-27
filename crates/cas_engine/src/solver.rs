@@ -475,7 +475,7 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                          
                          let op_neg = op.clone();
                          let results_neg = isolate(r, &sim_rhs, op_neg, var, simplifier)?;
-                         let (set_neg, mut steps_neg) = prepend_steps(results_neg, steps.clone())?;
+                         let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
                          
                          // Intersect with (-inf, 0)
                          let domain_neg = SolutionSet::Continuous(Interval {

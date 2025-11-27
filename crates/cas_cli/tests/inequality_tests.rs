@@ -8,7 +8,7 @@ use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule}
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule};
 use cas_parser::parse;
-use cas_ast::{Equation, RelOp, SolutionSet, Interval, BoundType};
+use cas_ast::{Equation, RelOp, SolutionSet, BoundType};
 use cas_engine::solver::solve;
 
 fn create_full_simplifier() -> Simplifier {

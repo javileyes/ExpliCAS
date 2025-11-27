@@ -126,7 +126,25 @@ Result: x = -3
 Steps:
 1. Divide both sides by -2 (flips inequality)
    -> x > -5
-Result: x > -5
+Result: (-5, infinity)
+```
+
+**Example: Absolute Value Inequality (Intersection)**
+```text
+> solve |x| < 5, x
+Steps:
+1. Split absolute value (Case 1): x < 5
+2. Split absolute value (Case 2): x > -5
+Result: (-5, 5)
+```
+
+**Example: Absolute Value Inequality (Union)**
+```text
+> solve |x| > 5, x
+Steps:
+1. Split absolute value (Case 1): x > 5
+2. Split absolute value (Case 2): x < -5
+Result: (-infinity, -5) U (5, infinity)
 ```
 
 #### 6. Equivalence Checking
