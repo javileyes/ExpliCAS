@@ -2,7 +2,7 @@ use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule};
+use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
@@ -14,6 +14,8 @@ use rustyline::DefaultEditor;
 fn main() -> rustyline::Result<()> {
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
+    simplifier.add_rule(Box::new(CanonicalizeAddRule));
+    simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));

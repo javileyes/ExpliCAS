@@ -1,8 +1,55 @@
 use crate::rule::{Rule, Rewrite};
 use cas_ast::Expr;
 use std::rc::Rc;
+use std::cmp::Ordering;
+use crate::ordering::compare_expr;
 
 pub struct CanonicalizeNegationRule;
+// ... (existing CanonicalizeNegationRule impl) ...
+
+pub struct CanonicalizeAddRule;
+
+impl Rule for CanonicalizeAddRule {
+    fn name(&self) -> &str {
+        "Canonicalize Addition"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Add(lhs, rhs) = expr.as_ref() {
+            // Check if RHS < LHS. If so, swap.
+            // a + b is fine if a <= b
+            // b + a -> a + b
+            if compare_expr(rhs, lhs) == Ordering::Less {
+                return Some(Rewrite {
+                    new_expr: Expr::add(rhs.clone(), lhs.clone()),
+                    description: "Reorder addition terms".to_string(),
+                });
+            }
+        }
+        None
+    }
+}
+
+pub struct CanonicalizeMulRule;
+
+impl Rule for CanonicalizeMulRule {
+    fn name(&self) -> &str {
+        "Canonicalize Multiplication"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Mul(lhs, rhs) = expr.as_ref() {
+            // Check if RHS < LHS. If so, swap.
+            if compare_expr(rhs, lhs) == Ordering::Less {
+                return Some(Rewrite {
+                    new_expr: Expr::mul(rhs.clone(), lhs.clone()),
+                    description: "Reorder multiplication factors".to_string(),
+                });
+            }
+        }
+        None
+    }
+}
 
 impl Rule for CanonicalizeNegationRule {
     fn name(&self) -> &str {
