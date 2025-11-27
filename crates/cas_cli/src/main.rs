@@ -165,15 +165,31 @@ fn main() -> rustyline::Result<()> {
                     // Split by comma or space to get equation and var
                     let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
                         (e.trim(), v.trim())
-                    } else if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
-                        // Check if v is a variable name
-                        if v.chars().all(char::is_alphabetic) {
+                    } else {
+                        // No comma. Try to see if it looks like "eq var"
+                        // We only accept "eq var" if "eq" is a valid equation.
+                        // Otherwise, we assume the whole string is the equation (e.g. "ln(x) = a + b")
+                        let try_split = rsplit_ignoring_parens(rest, ' ');
+                        let mut use_split = false;
+                        
+                        if let Some((e, v)) = try_split {
+                             let v = v.trim();
+                             // Check if v is a variable name (alphabetic)
+                             if !v.is_empty() && v.chars().all(char::is_alphabetic) {
+                                 // Check if e is a valid equation
+                                 // We need to suppress output or errors? parse_statement just returns Result.
+                                 if let Ok(cas_parser::Statement::Equation(_)) = cas_parser::parse_statement(e.trim()) {
+                                     use_split = true;
+                                 }
+                             }
+                        }
+                        
+                        if use_split {
+                            let (e, v) = try_split.unwrap();
                             (e.trim(), v.trim())
                         } else {
                             (rest, "x")
                         }
-                    } else {
-                        (rest, "x")
                     };
 
                     match cas_parser::parse_statement(eq_str) {
