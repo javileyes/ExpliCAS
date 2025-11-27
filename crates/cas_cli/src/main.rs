@@ -43,6 +43,29 @@ fn main() -> rustyline::Result<()> {
     let mut rl = DefaultEditor::new()?;
     // Load history if file exists (optional, skipping for simplicity or can add later)
     
+    // Helper to split string by delimiter, ignoring delimiters inside parentheses
+    fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
+        let mut balance = 0;
+        let mut split_idx = None;
+        
+        for (i, c) in s.char_indices().rev() {
+            if c == ')' {
+                balance += 1;
+            } else if c == '(' {
+                balance -= 1;
+            } else if c == delimiter && balance == 0 {
+                split_idx = Some(i);
+                break;
+            }
+        }
+        
+        if let Some(idx) = split_idx {
+            Some((&s[..idx], &s[idx+1..]))
+        } else {
+            None
+        }
+    }
+
     loop {
         let readline = rl.readline("> ");
         match readline {
@@ -93,9 +116,9 @@ fn main() -> rustyline::Result<()> {
                     let rest = line[6..].trim();
                     
                     // Try splitting by comma first (preferred)
-                    let (expr_str, assign_str) = if let Some((e, a)) = rest.rsplit_once(',') {
+                    let (expr_str, assign_str) = if let Some((e, a)) = rsplit_ignoring_parens(rest, ',') {
                         (e.trim(), a.trim())
-                    } else if let Some((e, a)) = rest.rsplit_once(' ') {
+                    } else if let Some((e, a)) = rsplit_ignoring_parens(rest, ' ') {
                         // Fallback to last space
                         (e.trim(), a.trim())
                     } else {
@@ -138,10 +161,11 @@ fn main() -> rustyline::Result<()> {
                 if line.starts_with("solve ") {
                     // solve <equation>, <var>
                     let rest = line[6..].trim();
+                    
                     // Split by comma or space to get equation and var
-                    let (eq_str, var) = if let Some((e, v)) = rest.rsplit_once(',') {
+                    let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
                         (e.trim(), v.trim())
-                    } else if let Some((e, v)) = rest.rsplit_once(' ') {
+                    } else if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
                         // Check if v is a variable name
                         if v.chars().all(char::is_alphabetic) {
                             (e.trim(), v.trim())
