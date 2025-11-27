@@ -63,6 +63,36 @@ impl Rule for MulOneRule {
     }
 }
 
+pub struct MulZeroRule;
+
+impl Rule for MulZeroRule {
+    fn name(&self) -> &str {
+        "Zero Property of Multiplication"
+    }
+
+    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        if let Expr::Mul(lhs, rhs) = expr.as_ref() {
+            if let Expr::Number(n) = rhs.as_ref() {
+                if n.is_zero() {
+                    return Some(Rewrite {
+                        new_expr: Rc::new(Expr::Number(num_rational::BigRational::zero())),
+                        description: "x * 0 = 0".to_string(),
+                    });
+                }
+            }
+            if let Expr::Number(n) = lhs.as_ref() {
+                if n.is_zero() {
+                    return Some(Rewrite {
+                        new_expr: Rc::new(Expr::Number(num_rational::BigRational::zero())),
+                        description: "0 * x = 0".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+}
+
 pub struct CombineConstantsRule;
 
 impl Rule for CombineConstantsRule {

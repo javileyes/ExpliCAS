@@ -2,6 +2,7 @@ use crate::rule::Rule;
 use crate::step::Step;
 use cas_ast::Expr;
 use std::rc::Rc;
+use num_traits::Zero;
 
 pub struct Simplifier {
     rules: Vec<Box<dyn Rule>>,
@@ -126,5 +127,16 @@ impl Simplifier {
             }
         }
         (expr, steps)
+    }
+    pub fn are_equivalent(&self, a: Rc<Expr>, b: Rc<Expr>) -> bool {
+        let diff = Expr::sub(a, b);
+        // We don't need steps for the equivalence check itself, but simplify generates them.
+        // We can ignore them.
+        let (simplified_diff, _) = self.simplify(diff);
+        
+        match simplified_diff.as_ref() {
+            Expr::Number(n) => n.is_zero(),
+            _ => false,
+        }
     }
 }

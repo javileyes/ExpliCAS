@@ -108,6 +108,7 @@ fn main() -> rustyline::Result<()> {
                     println!("  expand <expr>           Expand polynomials");
                     println!("  factor <expr>           Factor polynomials");
                     println!("  collect <expr>, <var>   Group terms by variable");
+                    println!("  equiv <e1>, <e2>        Check if two expressions are equivalent");
                     println!("  solve <eq>, <var>       Solve equation for variable");
                     println!("  steps on/off            Toggle step-by-step output");
                     println!("  help                    Show this help message");
@@ -122,6 +123,28 @@ fn main() -> rustyline::Result<()> {
                     println!("  collect(a*x + b*x, x)");
                     println!("  solve x+2=5, x");
                     println!("  subst x+1, x=2");
+                    continue;
+                }
+
+                // Check for "equiv" command
+                if line.starts_with("equiv ") {
+                    let rest = line[6..].trim();
+                    if let Some((expr1_str, expr2_str)) = rsplit_ignoring_parens(rest, ',') {
+                         match (cas_parser::parse(expr1_str.trim()), cas_parser::parse(expr2_str.trim())) {
+                             (Ok(e1), Ok(e2)) => {
+                                 let are_eq = simplifier.are_equivalent(e1, e2);
+                                 if are_eq {
+                                     println!("True");
+                                 } else {
+                                     println!("False");
+                                 }
+                             },
+                             (Err(e), _) => println!("Error parsing first expression: {}", e),
+                             (_, Err(e)) => println!("Error parsing second expression: {}", e),
+                         }
+                    } else {
+                        println!("Usage: equiv <expr1>, <expr2>");
+                    }
                     continue;
                 }
 
