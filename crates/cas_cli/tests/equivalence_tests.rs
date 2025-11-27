@@ -134,3 +134,36 @@ fn test_zero_property_equivalence() {
     let e2 = parse("0").unwrap();
     assert!(simplifier.are_equivalent(e1, e2));
 }
+
+#[test]
+fn test_deep_associativity() {
+    let simplifier = create_full_simplifier();
+    // ((a + b) + c) + d equiv a + (b + (c + d))
+    let e1 = parse("((a + b) + c) + d").unwrap();
+    let e2 = parse("a + (b + (c + d))").unwrap();
+    assert!(simplifier.are_equivalent(e1, e2));
+}
+
+#[test]
+fn test_mixed_distributive_associativity() {
+    let simplifier = create_full_simplifier();
+    // 2*x + 2*y + 2*z equiv 2*(x + y + z)
+    // Note: 2*(x+y+z) parses as 2 * ((x+y)+z) usually.
+    // DistributeRule should handle this.
+    let e1 = parse("2*x + 2*y + 2*z").unwrap();
+    let e2 = parse("2 * (x + y + z)").unwrap();
+    assert!(simplifier.are_equivalent(e1, e2));
+}
+
+#[test]
+fn test_trig_associativity() {
+    let simplifier = create_full_simplifier();
+    // sin(x)^2 + (cos(x)^2 + 1) equiv 2
+    // This requires:
+    // 1. Flattening: sin^2 + cos^2 + 1
+    // 2. Sorting: cos^2 + sin^2 + 1 (if cos < sin)
+    // 3. Identity: 1 + 1 -> 2
+    let e1 = parse("sin(x)^2 + (cos(x)^2 + 1)").unwrap();
+    let e2 = parse("2").unwrap();
+    assert!(simplifier.are_equivalent(e1, e2));
+}
