@@ -248,6 +248,12 @@ impl fmt::Display for Expr {
                 Ok(())
             },
             Expr::Function(name, args) => {
+                if name == "log" && args.len() == 2 {
+                    if let Expr::Constant(Constant::E) = args[0].as_ref() {
+                        write!(f, "ln({})", args[1])?;
+                        return Ok(());
+                    }
+                }
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 { write!(f, ", ")?; }

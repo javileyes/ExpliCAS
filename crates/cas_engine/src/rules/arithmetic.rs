@@ -103,19 +103,41 @@ impl Rule for CombineConstantsRule {
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
         match expr.as_ref() {
             Expr::Add(lhs, rhs) => {
-                if let (Expr::Number(n1), Expr::Number(n2)) = (lhs.as_ref(), rhs.as_ref()) {
-                    return Some(Rewrite {
-                        new_expr: Rc::new(Expr::Number(n1 + n2)),
-                        description: format!("{} + {} = {}", n1, n2, n1 + n2),
-                    });
+                if let Expr::Number(n1) = lhs.as_ref() {
+                    if let Expr::Number(n2) = rhs.as_ref() {
+                        return Some(Rewrite {
+                            new_expr: Rc::new(Expr::Number(n1 + n2)),
+                            description: format!("{} + {} = {}", n1, n2, n1 + n2),
+                        });
+                    }
+                    // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
+                    if let Expr::Add(rl, rr) = rhs.as_ref() {
+                        if let Expr::Number(n2) = rl.as_ref() {
+                            return Some(Rewrite {
+                                new_expr: Expr::add(Rc::new(Expr::Number(n1 + n2)), rr.clone()),
+                                description: format!("Combine nested constants: {} + {}", n1, n2),
+                            });
+                        }
+                    }
                 }
             }
             Expr::Mul(lhs, rhs) => {
-                if let (Expr::Number(n1), Expr::Number(n2)) = (lhs.as_ref(), rhs.as_ref()) {
-                    return Some(Rewrite {
-                        new_expr: Rc::new(Expr::Number(n1 * n2)),
-                        description: format!("{} * {} = {}", n1, n2, n1 * n2),
-                    });
+                if let Expr::Number(n1) = lhs.as_ref() {
+                    if let Expr::Number(n2) = rhs.as_ref() {
+                        return Some(Rewrite {
+                            new_expr: Rc::new(Expr::Number(n1 * n2)),
+                            description: format!("{} * {} = {}", n1, n2, n1 * n2),
+                        });
+                    }
+                    // Handle nested: c1 * (c2 * x) -> (c1*c2) * x
+                    if let Expr::Mul(rl, rr) = rhs.as_ref() {
+                        if let Expr::Number(n2) = rl.as_ref() {
+                            return Some(Rewrite {
+                                new_expr: Expr::mul(Rc::new(Expr::Number(n1 * n2)), rr.clone()),
+                                description: format!("Combine nested constants: {} * {}", n1, n2),
+                            });
+                        }
+                    }
                 }
             }
             Expr::Sub(lhs, rhs) => {

@@ -36,6 +36,29 @@ impl Rule for EvaluateLogRule {
                             description: "log(b, neg) = undefined".to_string(),
                         });
                     }
+                    
+                    // Check if n is a power of base (if base is a number)
+                    if let Expr::Number(b) = base.as_ref() {
+                        // Simple check for integer powers for now
+                        if b.is_integer() && n.is_integer() {
+                            let b_int = b.to_integer();
+                            let n_int = n.to_integer();
+                            if b_int > num_bigint::BigInt::from(1) {
+                                let mut temp = b_int.clone();
+                                let mut power = 1;
+                                while temp < n_int {
+                                    temp = temp * &b_int;
+                                    power += 1;
+                                }
+                                if temp == n_int {
+                                    return Some(Rewrite {
+                                        new_expr: Expr::num(power),
+                                        description: format!("log({}, {}) = {}", b, n, power),
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // 2. log(b, b) = 1
@@ -63,6 +86,28 @@ impl Rule for EvaluateLogRule {
                     return Some(Rewrite {
                         new_expr: Expr::mul(p_exp.clone(), Expr::log(base.clone(), p_base.clone())),
                         description: "log(b, x^y) = y * log(b, x)".to_string(),
+                    });
+                }
+
+                // 5. Product: log(b, x*y) = log(b, x) + log(b, y)
+                if let Expr::Mul(lhs, rhs) = arg.as_ref() {
+                    return Some(Rewrite {
+                        new_expr: Expr::add(
+                            Expr::log(base.clone(), lhs.clone()),
+                            Expr::log(base.clone(), rhs.clone())
+                        ),
+                        description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
+                    });
+                }
+
+                // 6. Quotient: log(b, x/y) = log(b, x) - log(b, y)
+                if let Expr::Div(num, den) = arg.as_ref() {
+                    return Some(Rewrite {
+                        new_expr: Expr::sub(
+                            Expr::log(base.clone(), num.clone()),
+                            Expr::log(base.clone(), den.clone())
+                        ),
+                        description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
                     });
                 }
             }
@@ -138,5 +183,39 @@ mod tests {
         let expr = parse("log(2, x^3)").unwrap();
         let rewrite = rule.apply(&expr).unwrap();
         assert_eq!(format!("{}", rewrite.new_expr), "3 * log(2, x)");
+    }
+
+    #[test]
+    fn test_log_product() {
+        let rule = EvaluateLogRule;
+        // log(b, x*y) -> log(b, x) + log(b, y)
+        let expr = parse("log(2, x * y)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        let res = format!("{}", rewrite.new_expr);
+        assert!(res.contains("log(2, x)"));
+        assert!(res.contains("log(2, y)"));
+        assert!(res.contains("+"));
+    }
+
+    #[test]
+    fn test_log_quotient() {
+        let rule = EvaluateLogRule;
+        // log(b, x/y) -> log(b, x) - log(b, y)
+        let expr = parse("log(2, x / y)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        let res = format!("{}", rewrite.new_expr);
+        assert!(res.contains("log(2, x)"));
+        assert!(res.contains("log(2, y)"));
+        assert!(res.contains("-"));
+    }
+
+    #[test]
+    fn test_ln_e() {
+        let rule = EvaluateLogRule;
+        // ln(e) -> 1
+        // Note: ln(e) parses to log(e, e)
+        let expr = parse("ln(e)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert_eq!(format!("{}", rewrite.new_expr), "1");
     }
 }

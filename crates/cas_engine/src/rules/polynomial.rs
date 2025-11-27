@@ -152,7 +152,7 @@ mod tests {
             Expr::ln(Expr::var("x"))
         );
         let rewrite3 = rule.apply(&expr3).unwrap();
-        // ln(x) is log(e, x)
-        assert_eq!(format!("{}", rewrite3.new_expr), "2 * log(e, x)");
+        // ln(x) is log(e, x), prints as ln(x)
+        assert_eq!(format!("{}", rewrite3.new_expr), "2 * ln(x)");
     }
 }

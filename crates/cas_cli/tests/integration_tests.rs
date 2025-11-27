@@ -226,3 +226,54 @@ fn test_integration_command() {
     let (result, _) = simplifier.simplify(expr);
     assert_eq!(format!("{}", result), "x^3 / 3");
 }
+
+#[test]
+fn test_logarithm_simplification() {
+    use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
+    use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
+    use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
+    use cas_engine::rules::exponents::EvaluatePowerRule;
+    use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule, CanonicalizeNegationRule};
+
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(CanonicalizeNegationRule));
+    simplifier.add_rule(Box::new(AssociativityRule));
+    simplifier.add_rule(Box::new(CanonicalizeAddRule));
+    simplifier.add_rule(Box::new(CanonicalizeMulRule));
+    simplifier.add_rule(Box::new(EvaluateLogRule));
+    simplifier.add_rule(Box::new(ExponentialLogRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(AddZeroRule));
+    simplifier.add_rule(Box::new(MulOneRule));
+    simplifier.add_rule(Box::new(MulZeroRule));
+    simplifier.add_rule(Box::new(CombineLikeTermsRule));
+    simplifier.add_rule(Box::new(DistributeRule));
+    simplifier.add_rule(Box::new(EvaluatePowerRule));
+
+    // Test 1: Expansion and Cancellation
+    // ln(x^2 * y) - 2*ln(x)
+    // -> ln(x^2) + ln(y) - 2*ln(x)
+    // -> 2*ln(x) + ln(y) - 2*ln(x)
+    // -> ln(y)
+    let input1 = "ln(x^2 * y) - 2 * ln(x)";
+    let expr1 = parse(input1).expect("Failed to parse");
+    let (result1, _) = simplifier.simplify(expr1);
+    assert_eq!(format!("{}", result1), "ln(y)");
+
+    // Test 2: Numeric Log
+    // log(10, 100) -> 2
+    let input2 = "log(10, 100)";
+    let expr2 = parse(input2).expect("Failed to parse");
+    let (result2, _) = simplifier.simplify(expr2);
+    assert_eq!(format!("{}", result2), "2");
+    
+    // Test 3: Inverse Property
+    // exp(ln(x) + ln(y)) -> exp(ln(x*y)) -> x*y ?
+    // Or exp(ln(x)) * exp(ln(y)) -> x * y
+    // Our current rules might not do exp(a+b) -> exp(a)*exp(b).
+    // Let's test simple inverse: exp(ln(x)) -> x
+    let input3 = "exp(ln(x))";
+    let expr3 = parse(input3).expect("Failed to parse");
+    let (result3, _) = simplifier.simplify(expr3);
+    assert_eq!(format!("{}", result3), "x");
+}

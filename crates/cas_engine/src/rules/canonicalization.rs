@@ -76,11 +76,29 @@ impl Rule for CanonicalizeNegationRule {
     }
 
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+        // 1. Subtraction: a - b -> a + (-b)
+        if let Expr::Sub(lhs, rhs) = expr.as_ref() {
+            return Some(Rewrite {
+                new_expr: Expr::add(lhs.clone(), Expr::neg(rhs.clone())),
+                description: "a - b = a + (-b)".to_string(),
+            });
+        }
+
+        // 2. Negation: -x -> -1 * x
         if let Expr::Neg(inner) = expr.as_ref() {
             if let Expr::Number(n) = inner.as_ref() {
+                // -(-5) -> 5 (Handled by parser usually, but good to have)
+                // Actually parser produces Neg(Number(5)).
+                // If we have Neg(Number(5)), we want Number(-5).
                 return Some(Rewrite {
                     new_expr: Rc::new(Expr::Number(-n)),
                     description: format!("-({}) = {}", n, -n),
+                });
+            } else {
+                // -x -> -1 * x
+                return Some(Rewrite {
+                    new_expr: Expr::mul(Expr::num(-1), inner.clone()),
+                    description: "-x = -1 * x".to_string(),
                 });
             }
         }
