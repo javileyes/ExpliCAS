@@ -131,28 +131,25 @@ fn intersect_intervals(i1: &Interval, i2: &Interval) -> SolutionSet {
 
 fn union_solution_sets(s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
     match (s1, s2) {
-        (SolutionSet::Empty, s) => s,
-        (s, SolutionSet::Empty) => s,
-        (SolutionSet::AllReals, _) => SolutionSet::AllReals,
-        (_, SolutionSet::AllReals) => SolutionSet::AllReals,
+        (SolutionSet::Empty, s) | (s, SolutionSet::Empty) => s,
+        (SolutionSet::AllReals, _) | (_, SolutionSet::AllReals) => SolutionSet::AllReals,
         (SolutionSet::Continuous(i1), SolutionSet::Continuous(i2)) => {
-            // Check if they overlap or touch
-            // If they do, merge. If not, return Union.
-            // Simplified: Just return Union for now unless we implement full interval arithmetic
-            SolutionSet::Union(vec![i1, i2])
+            // TODO: Merge if overlapping or touching
+            let mut intervals = vec![i1, i2];
+            intervals.sort_by(|a, b| compare_values(&a.min, &b.min));
+            SolutionSet::Union(intervals)
+        },
+        (SolutionSet::Continuous(i), SolutionSet::Union(mut u)) | (SolutionSet::Union(mut u), SolutionSet::Continuous(i)) => {
+            u.push(i);
+             u.sort_by(|a, b| compare_values(&a.min, &b.min));
+            SolutionSet::Union(u)
         },
         (SolutionSet::Union(mut u1), SolutionSet::Union(u2)) => {
             u1.extend(u2);
+             u1.sort_by(|a, b| compare_values(&a.min, &b.min));
             SolutionSet::Union(u1)
         },
-        (SolutionSet::Continuous(i), SolutionSet::Union(mut u)) => {
-            u.push(i);
-            SolutionSet::Union(u)
-        },
-        (SolutionSet::Union(mut u), SolutionSet::Continuous(i)) => {
-            u.push(i);
-            SolutionSet::Union(u)
-        },
+
         (SolutionSet::Discrete(mut d1), SolutionSet::Discrete(d2)) => {
             d1.extend(d2);
             SolutionSet::Discrete(d1)
@@ -458,8 +455,17 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                          // So yes, flip op for x > 0.
                          
                          let op_pos = flip_inequality(op.clone());
+                         
+                         // Add step for Case 1
+                         if simplifier.collect_steps {
+                             steps.push(SolveStep {
+                                 description: format!("Case 1: Assume {} > 0. Multiply by {} (positive). Inequality direction preserved (flipped from isolation logic).", r, r),
+                                 equation_after: Equation { lhs: r.clone(), rhs: sim_rhs.clone(), op: op_pos.clone() } // Showing the isolated form roughly
+                             });
+                         }
+
                          let results_pos = isolate(r, &sim_rhs, op_pos, var, simplifier)?;
-                         let (set_pos, mut steps_pos) = prepend_steps(results_pos, steps.clone())?;
+                         let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
                          
                          // Intersect with (0, inf)
                          let domain_pos = SolutionSet::Continuous(Interval {
@@ -474,6 +480,15 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                          // So pass ORIGINAL op for x < 0.
                          
                          let op_neg = op.clone();
+                         
+                         // Add step for Case 2
+                         if simplifier.collect_steps {
+                             steps.push(SolveStep {
+                                 description: format!("Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.", r, r),
+                                 equation_after: Equation { lhs: r.clone(), rhs: sim_rhs.clone(), op: op_neg.clone() }
+                             });
+                         }
+
                          let results_neg = isolate(r, &sim_rhs, op_neg, var, simplifier)?;
                          let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
                          
@@ -487,8 +502,13 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                          // Union
                          let final_set = union_solution_sets(final_pos, final_neg);
                          
-                         steps_pos.extend(steps_neg);
-                         return Ok((final_set, steps_pos));
+                         // Combine steps: We should probably show them sequentially or structured.
+                         // For now, appending them is okay, but maybe we can add a separator step?
+                         let mut all_steps = steps_pos;
+                         all_steps.push(SolveStep { description: "--- End of Case 1 ---".to_string(), equation_after: Equation { lhs: r.clone(), rhs: sim_rhs.clone(), op: op.clone() }}); // Dummy eq
+                         all_steps.extend(steps_neg);
+                         
+                         return Ok((final_set, all_steps));
                     }
                 }
 
