@@ -176,7 +176,56 @@ fn intersect_solution_sets(s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
         (SolutionSet::Continuous(i1), SolutionSet::Continuous(i2)) => {
             intersect_intervals(&i1, &i2)
         },
-        // TODO: Handle other intersections
+        (SolutionSet::Continuous(i), SolutionSet::Union(u)) => {
+            // Intersect i with each interval in u
+            let mut new_u = Vec::new();
+            for interval in u {
+                let res = intersect_intervals(&i, &interval);
+                match res {
+                    SolutionSet::Continuous(new_i) => new_u.push(new_i),
+                    SolutionSet::Discrete(_d) => {
+                        // Convert discrete points to tiny intervals or handle separately?
+                        // SolutionSet::Union currently only holds Intervals.
+                        // We need to handle mixed types properly.
+                        // For now, let's ignore discrete points in Union or upgrade Union to hold SolutionSets?
+                        // Or just return Discrete if it's the only result?
+                        // If we have multiple discrete points, we need a Discrete set.
+                        // Complex. Let's assume for now we get Continuous intervals.
+                    },
+                    _ => {}
+                }
+            }
+            if new_u.is_empty() {
+                SolutionSet::Empty
+            } else if new_u.len() == 1 {
+                SolutionSet::Continuous(new_u[0].clone())
+            } else {
+                SolutionSet::Union(new_u)
+            }
+        },
+        (SolutionSet::Union(u), SolutionSet::Continuous(i)) => {
+            intersect_solution_sets(SolutionSet::Continuous(i), SolutionSet::Union(u))
+        },
+        (SolutionSet::Union(u1), SolutionSet::Union(u2)) => {
+            // Distributive property: (A U B) n (C U D) = (A n C) U (A n D) U (B n C) U (B n D)
+            let mut new_u = Vec::new();
+            for i1 in &u1 {
+                for i2 in &u2 {
+                    let res = intersect_intervals(i1, i2);
+                    match res {
+                        SolutionSet::Continuous(new_i) => new_u.push(new_i),
+                        _ => {}
+                    }
+                }
+            }
+            if new_u.is_empty() {
+                SolutionSet::Empty
+            } else if new_u.len() == 1 {
+                SolutionSet::Continuous(new_u[0].clone())
+            } else {
+                SolutionSet::Union(new_u)
+            }
+        },
         _ => SolutionSet::Empty,
     }
 }
@@ -387,25 +436,69 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                 prepend_steps(results, steps)
             } else {
                 // B = A / RHS
-                // This is tricky for inequalities. 
-                // 10 / x < 2
-                // If x > 0: 10 < 2x -> 5 < x -> x > 5
-                // If x < 0: 10 > 2x -> 5 > x -> x < 5
-                // We assume x is positive for now or just standard algebraic manipulation?
-                // Standard: x = A / RHS
-                // But inequality direction depends on sign of RHS and x.
-                // Let's assume standard equation logic for now, or warn about inequalities with variable in denominator.
-                // For now, let's just implement standard isolation.
-                
                 let new_rhs = Expr::div(l.clone(), rhs.clone());
+                let (sim_rhs, _) = simplifier.simplify(new_rhs.clone());
                 let new_eq = Equation { lhs: r.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                
+                // Check if denominator is just the variable (simple case)
+                if let Expr::Variable(v) = r.as_ref() {
+                    if v == var && matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq) {
+                         // Split into x > 0 and x < 0
+                         
+                         // Case 1: x > 0. Multiply by x (positive) -> Inequality direction preserved for 1 < 2x?
+                         // Wait. 1/x < 2.
+                         // x > 0: 1 < 2x -> 1/2 < x -> x > 1/2.
+                         // Original op <. Result >.
+                         // So if we isolate x from 1/2 < x, we get x > 1/2.
+                         // But we are calling isolate(x, 1/2, op).
+                         // If we pass op (<), we get x < 1/2.
+                         // So we need to pass FLIPPED op for x > 0 case?
+                         // 1/x < 2. x>0. 1 < 2x. 1/2 < x. x > 1/2.
+                         // isolate(x, 1/2, >) -> x > 1/2.
+                         // So yes, flip op for x > 0.
+                         
+                         let op_pos = flip_inequality(op.clone());
+                         let results_pos = isolate(r, &sim_rhs, op_pos, var, simplifier)?;
+                         let (set_pos, mut steps_pos) = prepend_steps(results_pos, steps.clone())?;
+                         
+                         // Intersect with (0, inf)
+                         let domain_pos = SolutionSet::Continuous(Interval {
+                             min: Expr::num(0), min_type: BoundType::Open,
+                             max: pos_inf(), max_type: BoundType::Open
+                         });
+                         let final_pos = intersect_solution_sets(set_pos, domain_pos);
+                         
+                         // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
+                         // 1/x < 2. x < 0. 1 > 2x. 1/2 > x. x < 1/2.
+                         // isolate(x, 1/2, <) -> x < 1/2.
+                         // So pass ORIGINAL op for x < 0.
+                         
+                         let op_neg = op.clone();
+                         let results_neg = isolate(r, &sim_rhs, op_neg, var, simplifier)?;
+                         let (set_neg, mut steps_neg) = prepend_steps(results_neg, steps.clone())?;
+                         
+                         // Intersect with (-inf, 0)
+                         let domain_neg = SolutionSet::Continuous(Interval {
+                             min: neg_inf(), min_type: BoundType::Open,
+                             max: Expr::num(0), max_type: BoundType::Open
+                         });
+                         let final_neg = intersect_solution_sets(set_neg, domain_neg);
+                         
+                         // Union
+                         let final_set = union_solution_sets(final_pos, final_neg);
+                         
+                         steps_pos.extend(steps_neg);
+                         return Ok((final_set, steps_pos));
+                    }
+                }
+
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
                         description: format!("Isolate denominator {}", r),
                         equation_after: new_eq.clone(),
                     });
                 }
-                let results = isolate(r, &new_rhs, op, var, simplifier)?;
+                let results = isolate(r, &sim_rhs, op, var, simplifier)?;
                 prepend_steps(results, steps)
             }
         }
@@ -422,7 +515,14 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, simplifier: &Si
                         equation_after: new_eq.clone(),
                     });
                 }
-                let results = isolate(b, &new_rhs, op, var, simplifier)?;
+                
+                // Check if exponent is negative to flip inequality
+                let mut new_op = op.clone();
+                if is_negative(e) {
+                     new_op = flip_inequality(new_op);
+                }
+                
+                let results = isolate(b, &new_rhs, new_op, var, simplifier)?;
                 prepend_steps(results, steps)
             } else {
                 // E = log(B, RHS)
@@ -757,7 +857,7 @@ mod tests {
     fn test_solve_abs() {
         // |x| = 5 -> x=5, x=-5
         let eq = make_eq("|x|", "5");
-        let mut simplifier = Simplifier::new();
+        let simplifier = Simplifier::new();
         let (result, _) = solve(&eq, "x", &simplifier).unwrap();
         
         if let SolutionSet::Discrete(solutions) = result {
@@ -779,7 +879,7 @@ mod tests {
             rhs: parse("10").unwrap(),
             op: RelOp::Lt,
         };
-        let mut simplifier = Simplifier::new();
+        let simplifier = Simplifier::new();
         let (result, _) = solve(&eq, "x", &simplifier).unwrap();
         
         if let SolutionSet::Continuous(interval) = result {
@@ -800,7 +900,7 @@ mod tests {
             rhs: parse("5").unwrap(),
             op: RelOp::Lt,
         };
-        let mut simplifier = Simplifier::new();
+        let simplifier = Simplifier::new();
         let (result, _) = solve(&eq, "x", &simplifier).unwrap();
         
         if let SolutionSet::Continuous(interval) = result {
