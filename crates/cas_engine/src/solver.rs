@@ -118,19 +118,41 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str) -> Result<Equat
                 isolate(e, &Expr::log(b.clone(), rhs.clone()), op, var)
             }
         }
-        Expr::Function(name, args) if args.len() == 1 => {
+        Expr::Function(name, args) => {
             // f(x) = RHS -> x = f_inv(RHS)
-            let arg = &args[0];
-            if contains_var(arg, var) {
-                match name.as_str() {
-                    "ln" => isolate(arg, &Expr::pow(Expr::e(), rhs.clone()), op, var),
-                    "exp" => isolate(arg, &Expr::ln(rhs.clone()), op, var),
-                    "sqrt" => isolate(arg, &Expr::pow(rhs.clone(), Expr::num(2)), op, var),
-                    // Add trig inverses later
-                    _ => Err(format!("Cannot invert function '{}'", name)),
+            if name == "log" && args.len() == 2 {
+                // log(base, arg) = RHS
+                let base = &args[0];
+                let arg = &args[1];
+                
+                if contains_var(arg, var) && !contains_var(base, var) {
+                    // log(b, x) = RHS -> x = b^RHS
+                    isolate(arg, &Expr::pow(base.clone(), rhs.clone()), op, var)
+                } else if contains_var(base, var) && !contains_var(arg, var) {
+                    // log(x, a) = RHS -> x^RHS = a -> x = a^(1/RHS)
+                    // This is effectively x^RHS = a.
+                    // Isolate x from x^RHS = a.
+                    // x = a^(1/RHS)
+                    let inv_rhs = Expr::div(Expr::num(1), rhs.clone());
+                    isolate(base, &Expr::pow(arg.clone(), inv_rhs), op, var)
+                } else {
+                     Err(format!("Cannot isolate '{}' from log function (variable in both base and arg?)", var))
+                }
+            } else if args.len() == 1 {
+                let arg = &args[0];
+                if contains_var(arg, var) {
+                    match name.as_str() {
+                        "ln" => isolate(arg, &Expr::pow(Expr::e(), rhs.clone()), op, var), // Should be parsed as log(e, x) but just in case
+                        "exp" => isolate(arg, &Expr::ln(rhs.clone()), op, var),
+                        "sqrt" => isolate(arg, &Expr::pow(rhs.clone(), Expr::num(2)), op, var),
+                        // Add trig inverses later
+                        _ => Err(format!("Cannot invert function '{}'", name)),
+                    }
+                } else {
+                     Err(format!("Variable '{}' not found in function argument", var))
                 }
             } else {
-                 Err(format!("Variable '{}' not found in function argument", var))
+                 Err(format!("Cannot invert function '{}' with {} arguments", name, args.len()))
             }
         }
         _ => Err(format!("Cannot isolate '{}' from {:?}", var, lhs)),
