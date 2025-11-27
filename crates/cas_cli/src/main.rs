@@ -7,6 +7,7 @@ use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
+use cas_engine::rules::calculus::IntegrateRule;
 use cas_engine::rules::grouping::CollectRule;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -42,6 +43,7 @@ fn main() -> rustyline::Result<()> {
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(IntegrateRule));
 
     println!("Rust CAS Step-by-Step Demo");
     println!("Enter an expression (e.g., '2 * 3 + 0'):");

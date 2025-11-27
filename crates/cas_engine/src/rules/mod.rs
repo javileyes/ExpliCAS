@@ -7,3 +7,4 @@ pub mod trigonometry;
 pub mod logarithms;
 pub mod algebra;
 pub mod grouping;
+pub mod calculus;

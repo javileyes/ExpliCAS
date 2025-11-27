@@ -210,3 +210,19 @@ fn test_polynomial_factorization_integration() {
     assert!(res3.contains("x - 1") || res3.contains("-1 + x") || res3.contains("x + -1"));
     assert!(res3.contains("x + 1") || res3.contains("1 + x"));
 }
+
+#[test]
+fn test_integration_command() {
+    use cas_engine::rules::calculus::IntegrateRule;
+    use cas_engine::rules::arithmetic::CombineConstantsRule;
+
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(IntegrateRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+
+    // integrate(x^2, x) -> x^3 / 3
+    let input = "integrate(x^2, x)";
+    let expr = parse(input).expect("Failed to parse");
+    let (result, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", result), "x^3 / 3");
+}
