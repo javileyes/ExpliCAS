@@ -82,7 +82,7 @@ fn compare_values(a: &Expr, b: &Expr) -> Ordering {
 fn intersect_intervals(i1: &Interval, i2: &Interval) -> SolutionSet {
     // Intersection of [a, b] and [c, d] is [max(a,c), min(b,d)]
     
-    println!("Intersecting {} and {}", i1, i2);
+    // println!("Intersecting {} and {}", i1, i2);
 
     // Compare mins
     let (min, min_type) = match compare_values(&i1.min, &i2.min) {
@@ -112,8 +112,8 @@ fn intersect_intervals(i1: &Interval, i2: &Interval) -> SolutionSet {
         }
     };
     
-    println!("Result min: {}, max: {}", min, max);
-    println!("Compare min/max: {:?}", compare_values(&min, &max));
+    // println!("Result min: {}, max: {}", min, max);
+    // println!("Compare min/max: {:?}", compare_values(&min, &max));
 
     // Check if valid interval (min < max)
     match compare_values(&min, &max) {
