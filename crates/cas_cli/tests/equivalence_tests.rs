@@ -168,3 +168,14 @@ fn test_trig_associativity() {
     let e2 = parse("2").unwrap();
     assert!(simplifier.are_equivalent(e1, e2));
 }
+
+#[test]
+fn test_numeric_verification() {
+    let simplifier = create_full_simplifier();
+    // sin(x + y) equiv sin(x)cos(y) + cos(x)sin(y)
+    // We do NOT have an AngleSumIdentityRule, so symbolic simplification will fail.
+    // This relies entirely on the numeric fallback.
+    let e1 = parse("sin(x + y)").unwrap();
+    let e2 = parse("sin(x)*cos(y) + cos(x)*sin(y)").unwrap();
+    assert!(simplifier.are_equivalent(e1, e2));
+}

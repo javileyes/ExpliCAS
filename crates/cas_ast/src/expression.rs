@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::fmt;
 use num_rational::BigRational;
+use num_traits::ToPrimitive;
 use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -108,6 +109,47 @@ impl Expr {
             Expr::Function(name, args) => {
                 let new_args = args.iter().map(|arg| arg.substitute(var_name, value)).collect();
                 Rc::new(Expr::Function(name.clone(), new_args))
+            }
+        }
+    }
+
+    pub fn eval_f64(&self, vars: &std::collections::HashMap<String, f64>) -> f64 {
+        match self {
+            Expr::Number(n) => n.to_f64().unwrap_or(f64::NAN),
+            Expr::Constant(c) => match c {
+                Constant::Pi => std::f64::consts::PI,
+                Constant::E => std::f64::consts::E,
+                Constant::Infinity => f64::INFINITY,
+                Constant::Undefined => f64::NAN,
+            },
+            Expr::Variable(name) => *vars.get(name).unwrap_or(&f64::NAN),
+            Expr::Add(l, r) => l.eval_f64(vars) + r.eval_f64(vars),
+            Expr::Sub(l, r) => l.eval_f64(vars) - r.eval_f64(vars),
+            Expr::Mul(l, r) => l.eval_f64(vars) * r.eval_f64(vars),
+            Expr::Div(l, r) => l.eval_f64(vars) / r.eval_f64(vars),
+            Expr::Pow(b, e) => b.eval_f64(vars).powf(e.eval_f64(vars)),
+            Expr::Neg(e) => -e.eval_f64(vars),
+            Expr::Function(name, args) => {
+                let eval_args: Vec<f64> = args.iter().map(|a| a.eval_f64(vars)).collect();
+                match name.as_str() {
+                    "sin" => eval_args[0].sin(),
+                    "cos" => eval_args[0].cos(),
+                    "tan" => eval_args[0].tan(),
+                    "asin" => eval_args[0].asin(),
+                    "acos" => eval_args[0].acos(),
+                    "atan" => eval_args[0].atan(),
+                    "ln" | "log" => {
+                        if eval_args.len() == 1 {
+                            eval_args[0].ln()
+                        } else {
+                            eval_args[1].log(eval_args[0])
+                        }
+                    },
+                    "exp" => eval_args[0].exp(),
+                    "sqrt" => eval_args[0].sqrt(),
+                    "abs" => eval_args[0].abs(),
+                    _ => f64::NAN, // Unknown function
+                }
             }
         }
     }

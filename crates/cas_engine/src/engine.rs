@@ -151,7 +151,48 @@ impl Simplifier {
 
         match result_expr.as_ref() {
             Expr::Number(n) => n.is_zero(),
-            _ => false,
+            _ => {
+                // Symbolic check failed. Try probabilistic numeric check.
+                // Evaluate at x = 1.23456789 (an "ugly" number to avoid coincidences)
+                let vars = self.collect_variables(result_expr);
+                let mut var_map = std::collections::HashMap::new();
+                for var in vars {
+                    var_map.insert(var, 1.23456789);
+                }
+                
+                let val = result_expr.eval_f64(&var_map);
+                if val.is_nan() {
+                    return false;
+                }
+                
+                // Check if close to zero
+                val.abs() < 1e-9
+            }
+        }
+    }
+
+    fn collect_variables(&self, expr: &Rc<Expr>) -> std::collections::HashSet<String> {
+        let mut vars = std::collections::HashSet::new();
+        self.collect_vars_recursive(expr, &mut vars);
+        vars
+    }
+
+    fn collect_vars_recursive(&self, expr: &Expr, vars: &mut std::collections::HashSet<String>) {
+        match expr {
+            Expr::Variable(s) => { vars.insert(s.clone()); },
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                self.collect_vars_recursive(l, vars);
+                self.collect_vars_recursive(r, vars);
+            },
+            Expr::Neg(e) => {
+                 self.collect_vars_recursive(e, vars);
+            },
+            Expr::Function(_, args) => {
+                for arg in args {
+                    self.collect_vars_recursive(arg, vars);
+                }
+            },
+            _ => {},
         }
     }
 }
