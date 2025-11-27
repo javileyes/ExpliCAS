@@ -88,10 +88,12 @@ fn main() -> rustyline::Result<()> {
                 // Check for "steps" command
                 if line == "steps on" {
                     show_steps = true;
+                    simplifier.collect_steps = true;
                     println!("Step-by-step output enabled.");
                     continue;
                 } else if line == "steps off" {
                     show_steps = false;
+                    simplifier.collect_steps = false;
                     println!("Step-by-step output disabled.");
                     continue;
                 }
@@ -249,7 +251,7 @@ fn main() -> rustyline::Result<()> {
                                     println!("{} != {}", sim_lhs, sim_rhs);
                                 }
                             } else {
-                                match cas_engine::solver::solve(&simplified_eq, var) {
+                                match cas_engine::solver::solve(&simplified_eq, var, show_steps) {
                                     Ok((solved_eq, steps)) => {
                                         if show_steps {
                                             println!("Steps:");

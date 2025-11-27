@@ -5,11 +5,15 @@ use std::rc::Rc;
 
 pub struct Simplifier {
     rules: Vec<Box<dyn Rule>>,
+    pub collect_steps: bool,
 }
 
 impl Simplifier {
     pub fn new() -> Self {
-        Self { rules: Vec::new() }
+        Self { 
+            rules: Vec::new(),
+            collect_steps: true,
+        }
     }
 
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
@@ -26,12 +30,14 @@ impl Simplifier {
             changed = false;
             for rule in &self.rules {
                 if let Some(rewrite) = rule.apply(&expr) {
-                    steps.push(Step::new(
-                        &rewrite.description,
-                        rule.name(),
-                        expr.clone(),
-                        rewrite.new_expr.clone(),
-                    ));
+                    if self.collect_steps {
+                        steps.push(Step::new(
+                            &rewrite.description,
+                            rule.name(),
+                            expr.clone(),
+                            rewrite.new_expr.clone(),
+                        ));
+                    }
                     expr = rewrite.new_expr;
                     changed = true;
                     break; // Restart loop after a change
