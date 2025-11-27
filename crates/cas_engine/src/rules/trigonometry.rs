@@ -19,7 +19,7 @@ impl Rule for EvaluateTrigRule {
                 if let Expr::Number(n) = arg.as_ref() {
                     if n.is_zero() {
                         match name.as_str() {
-                            "sin" | "tan" => return Some(Rewrite {
+                            "sin" | "tan" | "arcsin" | "arctan" => return Some(Rewrite {
                                 new_expr: Rc::new(Expr::Number(n.clone())), // 0
                                 description: format!("{}(0) = 0", name),
                             }),
@@ -27,8 +27,40 @@ impl Rule for EvaluateTrigRule {
                                 new_expr: Rc::new(Expr::Number(num_rational::BigRational::one())), // 1
                                 description: "cos(0) = 1".to_string(),
                             }),
+                            "arccos" => return Some(Rewrite {
+                                new_expr: Expr::div(Expr::pi(), Expr::num(2)), // pi/2
+                                description: "arccos(0) = pi/2".to_string(),
+                            }),
                             _ => {}
                         }
+                    } else if n.is_one() {
+                        match name.as_str() {
+                            "arcsin" => return Some(Rewrite {
+                                new_expr: Expr::div(Expr::pi(), Expr::num(2)), // pi/2
+                                description: "arcsin(1) = pi/2".to_string(),
+                            }),
+                            "arccos" => return Some(Rewrite {
+                                new_expr: Expr::num(0), // 0
+                                description: "arccos(1) = 0".to_string(),
+                            }),
+                            "arctan" => return Some(Rewrite {
+                                new_expr: Expr::div(Expr::pi(), Expr::num(4)), // pi/4
+                                description: "arctan(1) = pi/4".to_string(),
+                            }),
+                            _ => {}
+                        }
+                    } else if *n == num_rational::BigRational::new(1.into(), 2.into()) { // 1/2
+                         match name.as_str() {
+                            "arcsin" => return Some(Rewrite {
+                                new_expr: Expr::div(Expr::pi(), Expr::num(6)), // pi/6
+                                description: "arcsin(1/2) = pi/6".to_string(),
+                            }),
+                            "arccos" => return Some(Rewrite {
+                                new_expr: Expr::div(Expr::pi(), Expr::num(3)), // pi/3
+                                description: "arccos(1/2) = pi/3".to_string(),
+                            }),
+                            _ => {}
+                         }
                     }
                 }
 
@@ -163,5 +195,33 @@ mod tests {
         let expr = parse("tan(-x)").unwrap();
         let rewrite = rule.apply(&expr).unwrap();
         assert_eq!(format!("{}", rewrite.new_expr), "-tan(x)");
+    }
+
+    #[test]
+    fn test_evaluate_inverse_trig() {
+        let rule = EvaluateTrigRule;
+
+        // arcsin(0) -> 0
+        let expr = parse("arcsin(0)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert_eq!(format!("{}", rewrite.new_expr), "0");
+
+        // arccos(1) -> 0
+        let expr = parse("arccos(1)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert_eq!(format!("{}", rewrite.new_expr), "0");
+
+        // arcsin(1) -> pi/2
+        // Note: pi/2 might be formatted as "pi / 2" or similar depending on Display impl
+        let expr = parse("arcsin(1)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert!(format!("{}", rewrite.new_expr).contains("pi"));
+        assert!(format!("{}", rewrite.new_expr).contains("2"));
+
+        // arccos(0) -> pi/2
+        let expr = parse("arccos(0)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        assert!(format!("{}", rewrite.new_expr).contains("pi"));
+        assert!(format!("{}", rewrite.new_expr).contains("2"));
     }
 }

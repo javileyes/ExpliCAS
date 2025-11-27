@@ -255,11 +255,12 @@ fn main() -> rustyline::Result<()> {
                                     Ok((solved_eq, steps)) => {
                                         if show_steps {
                                             println!("Steps:");
-                                            for step in steps.iter() {
+                                            for (i, step) in steps.iter().enumerate() {
                                                 // Simplify the equation for display
                                                 let (sim_lhs, _) = simplifier.simplify(step.equation_after.lhs.clone());
                                                 let (sim_rhs, _) = simplifier.simplify(step.equation_after.rhs.clone());
                                                 
+                                                println!("{}. {}", i + 1, step.description);
                                                 println!("   -> {} {} {}", sim_lhs, step.equation_after.op, sim_rhs);
                                             }
                                         }

@@ -1,5 +1,7 @@
 use cas_ast::{Expr, Equation, RelOp};
 use std::rc::Rc;
+use crate::engine::Simplifier;
+use crate::rules::trigonometry::EvaluateTrigRule;
 
 #[derive(Debug, Clone)]
 pub struct SolveStep {
@@ -295,6 +297,60 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, collect_steps: 
                             steps.extend(more_steps);
                             Ok((final_eq, steps))
                         },
+                        "sin" => {
+                            // sin(x) = y -> x = arcsin(y)
+                            let new_rhs = Rc::new(Expr::Function("arcsin".to_string(), vec![rhs.clone()]));
+                            let new_eq = Equation { lhs: arg.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                            if collect_steps {
+                                steps.push(SolveStep {
+                                    description: "Take arcsin of both sides".to_string(),
+                                    equation_after: new_eq.clone(),
+                                });
+                            }
+                            
+                            let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg.clone(), op.clone(), collect_steps);
+                            steps.extend(sim_steps);
+
+                            let (final_eq, more_steps) = isolate(arg, &simplified_rhs, op, var, collect_steps)?;
+                            steps.extend(more_steps);
+                            Ok((final_eq, steps))
+                        },
+                        "cos" => {
+                            // cos(x) = y -> x = arccos(y)
+                            let new_rhs = Rc::new(Expr::Function("arccos".to_string(), vec![rhs.clone()]));
+                            let new_eq = Equation { lhs: arg.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                            if collect_steps {
+                                steps.push(SolveStep {
+                                    description: "Take arccos of both sides".to_string(),
+                                    equation_after: new_eq.clone(),
+                                });
+                            }
+
+                            let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg.clone(), op.clone(), collect_steps);
+                            steps.extend(sim_steps);
+
+                            let (final_eq, more_steps) = isolate(arg, &simplified_rhs, op, var, collect_steps)?;
+                            steps.extend(more_steps);
+                            Ok((final_eq, steps))
+                        },
+                        "tan" => {
+                            // tan(x) = y -> x = arctan(y)
+                            let new_rhs = Rc::new(Expr::Function("arctan".to_string(), vec![rhs.clone()]));
+                            let new_eq = Equation { lhs: arg.clone(), rhs: new_rhs.clone(), op: op.clone() };
+                            if collect_steps {
+                                steps.push(SolveStep {
+                                    description: "Take arctan of both sides".to_string(),
+                                    equation_after: new_eq.clone(),
+                                });
+                            }
+
+                            let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg.clone(), op.clone(), collect_steps);
+                            steps.extend(sim_steps);
+
+                            let (final_eq, more_steps) = isolate(arg, &simplified_rhs, op, var, collect_steps)?;
+                            steps.extend(more_steps);
+                            Ok((final_eq, steps))
+                        },
                         _ => Err(format!("Cannot invert function '{}'", name)),
                     }
                 } else {
@@ -306,6 +362,29 @@ fn isolate(lhs: &Rc<Expr>, rhs: &Rc<Expr>, op: RelOp, var: &str, collect_steps: 
         }
         _ => Err(format!("Cannot isolate '{}' from {:?}", var, lhs)),
     }
+}
+
+fn simplify_rhs(rhs: Rc<Expr>, lhs: Rc<Expr>, op: RelOp, collect_steps: bool) -> (Rc<Expr>, Vec<SolveStep>) {
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(EvaluateTrigRule));
+    simplifier.collect_steps = collect_steps;
+
+    let (simplified_rhs, sim_steps) = simplifier.simplify(rhs);
+    let mut steps = Vec::new();
+
+    if collect_steps {
+        for step in sim_steps {
+            steps.push(SolveStep {
+                description: step.description,
+                equation_after: Equation {
+                    lhs: lhs.clone(),
+                    rhs: step.after, // This is correct, each step produces a new RHS
+                    op: op.clone(),
+                }
+            });
+        }
+    }
+    (simplified_rhs, steps)
 }
 
 pub fn contains_var(expr: &Rc<Expr>, var: &str) -> bool {
