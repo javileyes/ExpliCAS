@@ -165,3 +165,48 @@ fn test_root_simplification() {
     let (result, _) = simplifier.simplify(expr);
     assert_eq!(format!("{}", result), "x");
 }
+
+#[test]
+fn test_polynomial_factorization_integration() {
+    use cas_engine::rules::algebra::FactorRule;
+    use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
+    use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
+
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(FactorRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(AddZeroRule));
+    simplifier.add_rule(Box::new(MulOneRule));
+    simplifier.add_rule(Box::new(MulZeroRule));
+    simplifier.add_rule(Box::new(CombineLikeTermsRule));
+    // simplifier.add_rule(Box::new(DistributeRule)); // Conflicts with FactorRule
+
+    // Test 1: Difference of Squares
+    // factor(x^2 - 9) -> (x - 3)(x + 3)
+    let input1 = "factor(x^2 - 9)";
+    let expr1 = parse(input1).expect("Failed to parse");
+    let (result1, _) = simplifier.simplify(expr1);
+    let res1 = format!("{}", result1);
+    println!("Factor(x^2 - 9) -> {}", res1);
+    assert!(res1.contains("x - 3") || res1.contains("-3 + x") || res1.contains("x + -3"));
+    assert!(res1.contains("x + 3") || res1.contains("3 + x"));
+
+    // Test 2: Perfect Square
+    // factor(x^2 + 4x + 4) -> (x + 2)(x + 2)
+    let input2 = "factor(x^2 + 4*x + 4)";
+    let expr2 = parse(input2).expect("Failed to parse");
+    let (result2, _) = simplifier.simplify(expr2);
+    let res2 = format!("{}", result2);
+    assert!(res2.contains("x + 2") || res2.contains("2 + x"));
+    assert!(res2.contains("*"));
+
+    // Test 3: Cubic
+    // factor(x^3 - x) -> x(x-1)(x+1)
+    let input3 = "factor(x^3 - x)";
+    let expr3 = parse(input3).expect("Failed to parse");
+    let (result3, _) = simplifier.simplify(expr3);
+    let res3 = format!("{}", result3);
+    assert!(res3.contains("x"));
+    assert!(res3.contains("x - 1") || res3.contains("-1 + x") || res3.contains("x + -1"));
+    assert!(res3.contains("x + 1") || res3.contains("1 + x"));
+}

@@ -293,6 +293,147 @@ impl Polynomial {
         }
         0
     }
+
+    pub fn derivative(&self) -> Self {
+        if self.degree() == 0 {
+            return Polynomial::zero(self.var.clone());
+        }
+        let mut new_coeffs = Vec::with_capacity(self.degree());
+        for (i, c) in self.coeffs.iter().enumerate().skip(1) {
+            let power = BigRational::from_integer(i.into());
+            new_coeffs.push(c * power);
+        }
+        Polynomial::new(new_coeffs, self.var.clone())
+    }
+
+    pub fn eval(&self, x: &BigRational) -> BigRational {
+        let mut res = BigRational::zero();
+        // Horner's method
+        for c in self.coeffs.iter().rev() {
+            res = res * x + c;
+        }
+        res
+    }
+
+    // Returns a list of factors. The product of these factors (times content) equals the polynomial.
+    // Factors are not necessarily irreducible if they have no rational roots (e.g. x^2 + 1).
+    pub fn factor_rational_roots(&self) -> Vec<Polynomial> {
+        if self.is_zero() { return vec![self.clone()]; }
+        if self.degree() <= 1 { return vec![self.clone()]; }
+
+        let mut factors = Vec::new();
+        let mut current_poly = self.clone();
+
+        // 1. Extract content (to make integer coeffs easier to handle)
+        // Actually, Rational Root Theorem works best on integer polynomials.
+        // Let's just work with what we have. If coeffs are fractions, we can multiply by LCM of denominators?
+        // For MVP, let's assume integer coeffs or simple rationals.
+        // We'll try to find roots p/q.
+
+        // Optimization: Make monic first? No, RRT needs a_0 and a_n.
+        
+        loop {
+            if current_poly.degree() <= 1 {
+                factors.push(current_poly);
+                break;
+            }
+
+            if let Some(root) = current_poly.find_one_rational_root() {
+                // Found root r. Factor is (x - r).
+                // To keep things clean, we might prefer integer factors like (qx - p).
+                // root = p/q.
+                let p = root.numer();
+                let q = root.denom();
+                
+                // Factor: q*x - p
+                let factor_coeffs = vec![-BigRational::from_integer(p.clone()), BigRational::from_integer(q.clone())];
+                let factor = Polynomial::new(factor_coeffs, self.var.clone());
+                
+                factors.push(factor.clone());
+                let (quotient, _) = current_poly.div_rem(&factor);
+                current_poly = quotient;
+            } else {
+                // No more rational roots.
+                factors.push(current_poly);
+                break;
+            }
+        }
+        factors
+    }
+
+    fn find_one_rational_root(&self) -> Option<BigRational> {
+        // 1. Get a_0 and a_n
+        let a_0 = self.coeffs.first()?;
+        let a_n = self.coeffs.last()?;
+
+        if a_0.is_zero() {
+            return Some(BigRational::zero()); // 0 is a root
+        }
+
+        // Convert to integers if possible. If not, RRT is hard.
+        // For now, only support if a_0 and a_n are integers (or we scale).
+        // Let's try to scale by LCM of all denominators to get integer poly.
+        // But finding root of scaled poly is same as original.
+        
+        // Let's just check integer factors of numerator of a_0 and a_n?
+        // Simplified approach: Assume integer coefficients for now.
+        if !self.are_coeffs_integers() {
+            return None; // TODO: Handle rational coeffs by scaling
+        }
+
+        let p_candidates = get_factors(&a_0.to_integer());
+        let q_candidates = get_factors(&a_n.to_integer());
+
+        for p in &p_candidates {
+            for q in &q_candidates {
+                if q.is_zero() { continue; } // Should not happen
+                
+                // Test +p/q and -p/q
+                let root = BigRational::new(p.clone(), q.clone());
+                if self.eval(&root).is_zero() {
+                    return Some(root);
+                }
+                let neg_root = -root;
+                if self.eval(&neg_root).is_zero() {
+                    return Some(neg_root);
+                }
+            }
+        }
+        None
+    }
+
+    fn are_coeffs_integers(&self) -> bool {
+        self.coeffs.iter().all(|c| c.is_integer())
+    }
+}
+
+fn get_factors(n: &num_bigint::BigInt) -> Vec<num_bigint::BigInt> {
+    use num_integer::Integer;
+    use num_traits::Signed;
+    
+    let n = n.abs();
+    if n.is_zero() { return vec![]; }
+    
+    let mut factors = Vec::new();
+    let one = num_bigint::BigInt::one();
+    let mut i = num_bigint::BigInt::one();
+    
+    // Naive factorization up to sqrt(n)
+    // Since we are dealing with BigInt, this could be slow for huge numbers.
+    // But for textbook CAS problems, coeffs are small.
+    // Let's limit search space?
+    
+    while &i * &i <= n {
+        if n.is_multiple_of(&i) {
+            factors.push(i.clone());
+            let div = &n / &i;
+            if div != i {
+                factors.push(div);
+            }
+        }
+        i = i + &one;
+    }
+    factors
 }
 
 fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {

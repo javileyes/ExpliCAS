@@ -110,7 +110,7 @@ pub struct FactorRule;
 
 impl Rule for FactorRule {
     fn name(&self) -> &str {
-        "Factor Polynomial (MVP)"
+        "Factor Polynomial"
     }
 
     fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
@@ -126,30 +126,45 @@ impl Rule for FactorRule {
                 if let Some(poly) = Polynomial::from_expr(arg, var) {
                     if poly.is_zero() { return None; }
 
-                    let content = poly.content();
-                    let min_deg = poly.min_degree();
-
-                    // If trivial (content=1 and min_deg=0), nothing to factor
-                    if content.is_one() && min_deg == 0 {
-                        return None;
+                    // 1. Extract content (common constant factor)
+                    // Note: factor_rational_roots returns factors that might include content in the last term?
+                    // Actually, my implementation of factor_rational_roots returns (qx-p) factors.
+                    // The last factor is the remaining polynomial, which contains the content/leading coeff.
+                    
+                    let factors = poly.factor_rational_roots();
+                    
+                    if factors.len() == 1 {
+                        // Irreducible (over rationals) or just trivial
+                        // Check if we can at least pull out content?
+                        // Existing logic did that. Let's keep it?
+                        // But factor_rational_roots returns [poly] if no roots.
+                        // Let's check if we can factor out common term (x^k) or constant.
+                        let content = poly.content();
+                        let min_deg = poly.min_degree();
+                        if content.is_one() && min_deg == 0 {
+                            // Truly irreducible and no common factor
+                            // Remove the "factor()" wrapper?
+                            // Or return None to signal "cannot factor further"?
+                            // If user asked to factor, and we can't, we should probably return the input (without wrapper)
+                            // or leave it?
+                            // Usually "factor(x)" -> "x".
+                            return Some(Rewrite {
+                                new_expr: arg.clone(),
+                                description: "Irreducible".to_string(),
+                            });
+                        }
                     }
 
-                    // Construct common factor term: content * x^min_deg
-                    let mut factor_coeffs = vec![BigRational::zero(); min_deg + 1];
-                    factor_coeffs[min_deg] = content.clone();
-                    let factor_poly = Polynomial::new(factor_coeffs, var.clone());
-
-                    let (quotient, rem) = poly.div_rem(&factor_poly);
-                    if !rem.is_zero() {
-                        return None; // Should not happen
+                    // Construct the expression from factors
+                    // factors[0] * factors[1] * ...
+                    let mut res = factors[0].to_expr();
+                    for factor in factors.iter().skip(1) {
+                        res = Expr::mul(res, factor.to_expr());
                     }
-
-                    let factor_expr = factor_poly.to_expr();
-                    let quotient_expr = quotient.to_expr();
 
                     return Some(Rewrite {
-                        new_expr: Expr::mul(factor_expr, quotient_expr),
-                        description: "factor(poly) -> common_factor * quotient".to_string(),
+                        new_expr: res,
+                        description: "Factorization".to_string(),
                     });
                 }
             }
@@ -212,5 +227,32 @@ mod tests {
         let rewrite = rule.apply(&expr).unwrap();
         assert!(format!("{}", rewrite.new_expr).contains("1"));
         assert!(format!("{}", rewrite.new_expr).contains("x"));
+    }
+
+    #[test]
+    fn test_factor_difference_squares() {
+        let rule = FactorRule;
+        // factor(x^2 - 1) -> (x - 1)(x + 1)
+        // Note: My implementation produces (x-1) and (x+1) (or similar).
+        // Order depends on root finding.
+        // Roots are 1, -1.
+        // Factors: (x-1), (x+1).
+        let expr = parse("factor(x^2 - 1)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        let res = format!("{}", rewrite.new_expr);
+        assert!(res.contains("x - 1") || res.contains("-1 + x") || res.contains("x + -1"));
+        assert!(res.contains("x + 1") || res.contains("1 + x"));
+    }
+
+    #[test]
+    fn test_factor_perfect_square() {
+        let rule = FactorRule;
+        // factor(x^2 + 2x + 1) -> (x + 1)(x + 1)
+        let expr = parse("factor(x^2 + 2*x + 1)").unwrap();
+        let rewrite = rule.apply(&expr).unwrap();
+        let res = format!("{}", rewrite.new_expr);
+        // Should be (x+1) * (x+1)
+        assert!(res.contains("x + 1") || res.contains("1 + x"));
+        assert!(res.contains("*"));
     }
 }
