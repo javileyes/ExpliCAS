@@ -1,13 +1,12 @@
 pub mod solution_set;
 pub mod isolation;
 pub mod strategies;
+pub mod strategy;
 
 use cas_ast::{Equation, RelOp, SolutionSet};
 use crate::engine::Simplifier;
 
-use self::isolation::isolate;
 pub use self::isolation::contains_var;
-use self::strategies::{detect_substitution, substitute_expr, solve_quadratic};
 
 #[derive(Debug, Clone)]
 pub struct SolveStep {
@@ -17,117 +16,31 @@ pub struct SolveStep {
 
 use crate::error::CasError;
 
+use crate::solver::strategy::SolverStrategy;
+use crate::solver::strategies::{SubstitutionStrategy, QuadraticStrategy, IsolationStrategy};
+
 pub fn solve(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // 1. Check if variable exists in equation
     if !contains_var(&eq.lhs, var) && !contains_var(&eq.rhs, var) {
         return Err(CasError::VariableNotFound(var.to_string()));
     }
 
-    // 2. Try strategies
-    // ...
-    solve_internal(eq, var, simplifier)
-}
+    // 2. Define strategies
+    // In a real app, these might be configured in Simplifier or passed in.
+    let strategies: Vec<Box<dyn SolverStrategy>> = vec![
+        Box::new(SubstitutionStrategy),
+        Box::new(QuadraticStrategy),
+        Box::new(IsolationStrategy),
+    ];
 
-fn solve_internal(eq: &Equation, var: &str, simplifier: &Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // We want to isolate 'var' on LHS.
-    let mut steps = Vec::new();
-
-    let lhs_has_var = contains_var(&eq.lhs, var);
-    let rhs_has_var = contains_var(&eq.rhs, var);
-
-    if !lhs_has_var && rhs_has_var {
-        // Swap to make LHS have the variable
-        let new_op = match eq.op {
-            RelOp::Eq => RelOp::Eq,
-            RelOp::Neq => RelOp::Neq,
-            RelOp::Lt => RelOp::Gt,
-            RelOp::Gt => RelOp::Lt,
-            RelOp::Leq => RelOp::Geq,
-            RelOp::Geq => RelOp::Leq,
-        };
-        let new_eq = Equation { lhs: eq.rhs.clone(), rhs: eq.lhs.clone(), op: new_op };
-        if simplifier.collect_steps {
-            steps.push(SolveStep {
-                description: "Swap sides to put variable on LHS".to_string(),
-                equation_after: new_eq.clone(),
-            });
-        }
-        
-        let (result_set, mut res_steps) = solve_internal(&new_eq, var, simplifier)?;
-        steps.append(&mut res_steps);
-        return Ok((result_set, steps));
-    }
-
-    if lhs_has_var && rhs_has_var {
-        return Err(CasError::VariableNotFound("Variable appears on both sides. Please simplify/collect first.".to_string()));
-    }
-
-    // 0. Try Substitution (Hidden Quadratic)
-    if let Some(sub_var_expr) = detect_substitution(eq, var) {
-        if simplifier.collect_steps {
-            steps.push(SolveStep {
-                description: format!("Detected substitution: u = {}", sub_var_expr),
-                equation_after: eq.clone(),
-            });
-        }
-        
-        // Rewrite equation in terms of u
-        let u_sym = "u";
-        let new_lhs = substitute_expr(&eq.lhs, &sub_var_expr, u_sym);
-        let new_rhs = substitute_expr(&eq.rhs, &sub_var_expr, u_sym);
-        
-        let new_eq = Equation { lhs: new_lhs, rhs: new_rhs, op: eq.op.clone() };
-        
-        if simplifier.collect_steps {
-            steps.push(SolveStep {
-                description: format!("Substituted equation: {} {} {}", new_eq.lhs, new_eq.op, new_eq.rhs),
-                equation_after: new_eq.clone(),
-            });
-        }
-        
-        // Solve for u
-        let (u_solutions, mut u_steps) = solve(&new_eq, u_sym, simplifier)?;
-        steps.append(&mut u_steps);
-        
-        // Now solve u = val for each solution
-        match u_solutions {
-            SolutionSet::Discrete(vals) => {
-                let mut final_solutions = Vec::new();
-                for val in vals {
-                    // Solve sub_var_expr = val
-                    let sub_eq = Equation { lhs: sub_var_expr.clone(), rhs: val.clone(), op: RelOp::Eq };
-                    if simplifier.collect_steps {
-                        steps.push(SolveStep {
-                            description: format!("Back-substitute: {} = {}", sub_var_expr, val),
-                            equation_after: sub_eq.clone(),
-                        });
-                    }
-                    let (x_sol, mut x_steps) = solve(&sub_eq, var, simplifier)?;
-                    steps.append(&mut x_steps);
-                    
-                    if let SolutionSet::Discrete(xs) = x_sol {
-                        final_solutions.extend(xs);
-                    }
-                }
-                return Ok((SolutionSet::Discrete(final_solutions), steps));
-            },
-            _ => {
-                // Handle intervals? Too complex for now.
-            }
+    // 3. Try strategies
+    for strategy in strategies {
+        if let Some(result) = strategy.apply(eq, var, simplifier) {
+            return result;
         }
     }
 
-    // 0.5 Try Polynomial Solver (Quadratic Formula)
-    if let Some(result) = solve_quadratic(eq, var, simplifier) {
-        let (res_set, mut res_steps) = result?;
-        steps.append(&mut res_steps);
-        return Ok((res_set, steps));
-    }
-
-    // Now LHS has var, RHS does not.
-    let (result_set, mut res_steps) = isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier)?;
-    steps.append(&mut res_steps);
-    Ok((result_set, steps))
+    Err(CasError::SolverError("No strategy could solve this equation.".to_string()))
 }
 
 
