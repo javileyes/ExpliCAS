@@ -48,6 +48,14 @@ impl Repl {
         simplifier.add_rule(Box::new(CollectRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::logarithms::SplitLogExponentsRule));
+        
+        // Advanced Algebra Rules (Critical for Solver)
+        simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
         
         // Configurable rules
         if config.distribute {
