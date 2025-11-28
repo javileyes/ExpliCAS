@@ -1,4 +1,4 @@
-use crate::rule::{Rewrite, Rule};
+use crate::rule::Rewrite;
 use crate::define_rule;
 use cas_ast::Expr;
 use crate::polynomial::Polynomial;

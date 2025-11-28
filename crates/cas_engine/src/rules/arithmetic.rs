@@ -1,4 +1,4 @@
-use crate::rule::{Rewrite, Rule};
+use crate::rule::Rewrite;
 use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
@@ -139,6 +139,11 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: Rc::new(Expr::Number(n1 / n2)),
                             description: format!("{} / {} = {}", n1, n2, n1 / n2),
+                        });
+                    } else {
+                        return Some(Rewrite {
+                            new_expr: Rc::new(Expr::Constant(cas_ast::Constant::Undefined)),
+                            description: "Division by zero".to_string(),
                         });
                     }
                 }

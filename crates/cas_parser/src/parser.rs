@@ -1,4 +1,4 @@
-use cas_ast::{Expr, Constant};
+use cas_ast::Expr;
 use nom::{
     branch::alt,
     bytes::complete::tag,

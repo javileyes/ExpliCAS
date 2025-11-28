@@ -43,4 +43,63 @@ proptest! {
         let s2 = simplifier.simplify(s1.0.clone());
         prop_assert_eq!(s1.0, s2.0);
     }
+
+    #[test]
+    fn test_constant_folding(expr in strategies::arb_expr()) {
+        let simplifier = Simplifier::with_default_rules();
+        let (simplified, _) = simplifier.simplify(expr);
+        
+        // Check that no Number op Number exists in the simplified expression
+        // We can use a visitor or a recursive check.
+        // Let's use a recursive check helper.
+        fn check_no_constant_ops(expr: &Expr) -> bool {
+            match expr {
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                    if let (Expr::Number(_), Expr::Number(_)) = (l.as_ref(), r.as_ref()) {
+                        return false;
+                    }
+                    check_no_constant_ops(l) && check_no_constant_ops(r)
+                },
+                Expr::Neg(e) => {
+                    if let Expr::Number(_) = e.as_ref() {
+                        // Neg(Number) is allowed if it's negative number representation, 
+                        // but usually parser/engine puts negative in Number itself.
+                        // Our engine might produce Neg(Number(5)) -> Number(-5).
+                        // So Neg(Number) shouldn't exist ideally.
+                        return false;
+                    }
+                    check_no_constant_ops(e)
+                },
+                Expr::Function(_, args) => args.iter().all(|a| check_no_constant_ops(a)),
+                _ => true,
+            }
+        }
+        
+        prop_assert!(check_no_constant_ops(&simplified), "Constant folding failed: {}", simplified);
+    }
+
+    #[test]
+    fn test_identity_preservation(expr in strategies::arb_expr()) {
+        let simplifier = Simplifier::with_default_rules();
+        
+        // x * 0 -> 0
+        let zero = Expr::num(0);
+        let mul_zero = Expr::mul(expr.clone(), zero.clone());
+        let (s_mul_zero, _) = simplifier.simplify(mul_zero);
+        prop_assert_eq!(s_mul_zero, zero.clone());
+
+        // x ^ 0 -> 1
+        // Exception: 0^0 is undefined or 1 depending on convention. Our rule says 1.
+        // But 0^0 might be tricky.
+        let one = Expr::num(1);
+        let pow_zero = Expr::pow(expr.clone(), zero.clone());
+        let (s_pow_zero, _) = simplifier.simplify(pow_zero);
+        prop_assert_eq!(s_pow_zero, one.clone());
+        
+        // x ^ 1 -> x
+        let pow_one = Expr::pow(expr.clone(), one.clone());
+        let (s_pow_one, _) = simplifier.simplify(pow_one);
+        let (s_expr, _) = simplifier.simplify(expr.clone());
+        prop_assert_eq!(s_pow_one, s_expr);
+    }
 }
