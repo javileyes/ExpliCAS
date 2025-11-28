@@ -5,7 +5,7 @@ macro_rules! define_rule {
         $struct_name:ident,
         $name_str:expr,
         $targets:expr, // Option<Vec<&str>>
-        | $arg:ident | $body:block
+        | $ctx:ident, $arg:ident | $body:block
     ) => {
         $(#[$meta])*
         pub struct $struct_name;
@@ -15,7 +15,7 @@ macro_rules! define_rule {
                 $name_str
             }
 
-            fn apply(&self, $arg: &std::rc::Rc<cas_ast::Expr>) -> Option<crate::rule::Rewrite> {
+            fn apply(&self, $ctx: &mut cas_ast::Context, $arg: cas_ast::ExprId) -> Option<crate::rule::Rewrite> {
                 $body
             }
             
@@ -29,14 +29,14 @@ macro_rules! define_rule {
         $(#[$meta:meta])*
         $struct_name:ident,
         $name_str:expr,
-        | $arg:ident | $body:block
+        | $ctx:ident, $arg:ident | $body:block
     ) => {
         $crate::define_rule!(
             $(#[$meta])*
             $struct_name,
             $name_str,
             None,
-            | $arg | $body
+            | $ctx, $arg | $body
         );
     };
 }

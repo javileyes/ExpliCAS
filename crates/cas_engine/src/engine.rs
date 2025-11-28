@@ -1,11 +1,12 @@
 use crate::rule::Rule;
 use crate::step::Step;
-use cas_ast::Expr;
+use cas_ast::{Expr, ExprId, Context};
 use std::rc::Rc;
-use num_traits::Zero;
+use num_traits::{Zero, ToPrimitive};
 use std::collections::{HashMap, HashSet};
 
 pub struct Simplifier {
+    pub context: Context,
     rules: HashMap<String, Vec<Rc<dyn Rule>>>,
     global_rules: Vec<Rc<dyn Rule>>,
     pub collect_steps: bool,
@@ -14,6 +15,7 @@ pub struct Simplifier {
 impl Simplifier {
     pub fn new() -> Self {
         Self { 
+            context: Context::new(),
             rules: HashMap::new(),
             global_rules: Vec::new(),
             collect_steps: true,
@@ -52,31 +54,44 @@ impl Simplifier {
         }
     }
 
-    pub fn simplify(&self, expr: Rc<Expr>) -> (Rc<Expr>, Vec<Step>) {
-        let mut transformer = SimplificationTransformer {
-            simplifier: self,
+    pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
+        let rules = &self.rules;
+        let global_rules = &self.global_rules;
+        let collect_steps = self.collect_steps;
+        
+        let mut local_transformer = LocalSimplificationTransformer {
+            context: &mut self.context,
+            rules,
+            global_rules,
+            collect_steps,
             steps: Vec::new(),
         };
-        let new_expr = transformer.transform_expr(expr);
-        (new_expr, transformer.steps)
+        
+        let new_expr = local_transformer.transform_expr_recursive(expr_id);
+        (new_expr, local_transformer.steps)
     }
 
-    pub fn are_equivalent(&self, a: Rc<Expr>, b: Rc<Expr>) -> bool {
-        let diff = Expr::sub(a, b);
-        let expanded_diff = Rc::new(Expr::Function("expand".to_string(), vec![diff]));
+    pub fn are_equivalent(&mut self, a: ExprId, b: ExprId) -> bool {
+        let diff = self.context.add(Expr::Sub(a, b));
+        let expand_str = "expand".to_string();
+        let expanded_diff = self.context.add(Expr::Function(expand_str.clone(), vec![diff]));
         let (simplified_diff, _) = self.simplify(expanded_diff);
         
-        let result_expr = if let Expr::Function(name, args) = simplified_diff.as_ref() {
-            if name == "expand" && args.len() == 1 {
-                &args[0]
+        let result_expr = {
+            let expr = self.context.get(simplified_diff);
+            if let Expr::Function(name, args) = expr {
+                if name == "expand" && args.len() == 1 {
+                    args[0]
+                } else {
+                    simplified_diff
+                }
             } else {
-                &simplified_diff
+                simplified_diff
             }
-        } else {
-            &simplified_diff
         };
 
-        match result_expr.as_ref() {
+        let expr = self.context.get(result_expr);
+        match expr {
             Expr::Number(n) => n.is_zero(),
             _ => {
                 let vars = self.collect_variables(result_expr);
@@ -85,107 +100,196 @@ impl Simplifier {
                     var_map.insert(var, 1.23456789);
                 }
                 
-                let val = result_expr.eval_f64(&var_map);
-                if val.is_nan() {
-                    return false;
+                if let Some(val) = eval_f64(&self.context, result_expr, &var_map) {
+                    val.abs() < 1e-9
+                } else {
+                    false
                 }
-                val.abs() < 1e-9
             }
         }
     }
 
-    fn collect_variables(&self, expr: &Rc<Expr>) -> HashSet<String> {
+    fn collect_variables(&self, expr_id: ExprId) -> HashSet<String> {
         use crate::visitors::VariableCollector;
         use cas_ast::Visitor;
         
         let mut collector = VariableCollector::new();
-        collector.visit_expr(expr);
+        collector.visit_expr(&self.context, expr_id);
         collector.vars
     }
 }
 
-struct SimplificationTransformer<'a> {
-    simplifier: &'a Simplifier,
+fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Option<f64> {
+    match ctx.get(expr) {
+        Expr::Number(n) => n.to_f64(),
+        Expr::Variable(v) => var_map.get(v).cloned(),
+        Expr::Add(l, r) => Some(eval_f64(ctx, *l, var_map)? + eval_f64(ctx, *r, var_map)?),
+        Expr::Sub(l, r) => Some(eval_f64(ctx, *l, var_map)? - eval_f64(ctx, *r, var_map)?),
+        Expr::Mul(l, r) => Some(eval_f64(ctx, *l, var_map)? * eval_f64(ctx, *r, var_map)?),
+        Expr::Div(l, r) => Some(eval_f64(ctx, *l, var_map)? / eval_f64(ctx, *r, var_map)?),
+        Expr::Pow(b, e) => Some(eval_f64(ctx, *b, var_map)?.powf(eval_f64(ctx, *e, var_map)?)),
+        Expr::Neg(e) => Some(-eval_f64(ctx, *e, var_map)?),
+        Expr::Function(name, args) => {
+             let arg_vals: Option<Vec<f64>> = args.iter().map(|a| eval_f64(ctx, *a, var_map)).collect();
+             let arg_vals = arg_vals?;
+             match name.as_str() {
+                 "sin" => Some(arg_vals.get(0)?.sin()),
+                 "cos" => Some(arg_vals.get(0)?.cos()),
+                 "tan" => Some(arg_vals.get(0)?.tan()),
+                 "exp" => Some(arg_vals.get(0)?.exp()),
+                 "ln" => Some(arg_vals.get(0)?.ln()),
+                 "sqrt" => Some(arg_vals.get(0)?.sqrt()),
+                 "abs" => Some(arg_vals.get(0)?.abs()),
+                 _ => None,
+             }
+        },
+        Expr::Constant(c) => match c {
+            cas_ast::Constant::Pi => Some(std::f64::consts::PI),
+            cas_ast::Constant::E => Some(std::f64::consts::E),
+            cas_ast::Constant::Infinity => Some(f64::INFINITY),
+            cas_ast::Constant::Undefined => Some(f64::NAN),
+        }
+    }
+}
+
+struct LocalSimplificationTransformer<'a> {
+    context: &'a mut Context,
+    rules: &'a HashMap<String, Vec<Rc<dyn Rule>>>,
+    global_rules: &'a Vec<Rc<dyn Rule>>,
+    collect_steps: bool,
     steps: Vec<Step>,
 }
 
 use cas_ast::visitor::Transformer;
 
-impl<'a> Transformer for SimplificationTransformer<'a> {
-    fn transform_expr(&mut self, expr: Rc<Expr>) -> Rc<Expr> {
-        // 1. Simplify children first (Bottom-Up)
-        let expr_with_simplified_children = match expr.as_ref() {
-            Expr::Number(_) => self.transform_number(expr.clone()),
-            Expr::Constant(_) => self.transform_constant(expr.clone()),
-            Expr::Variable(_) => self.transform_variable(expr.clone()),
-            Expr::Add(l, r) => self.transform_add(expr.clone(), l, r),
-            Expr::Sub(l, r) => self.transform_sub(expr.clone(), l, r),
-            Expr::Mul(l, r) => self.transform_mul(expr.clone(), l, r),
-            Expr::Div(l, r) => self.transform_div(expr.clone(), l, r),
-            Expr::Pow(b, e) => self.transform_pow(expr.clone(), b, e),
-            Expr::Neg(e) => self.transform_neg(expr.clone(), e),
-            Expr::Function(name, args) => self.transform_function(expr.clone(), name, args),
-        };
-
-        // 2. Apply rules to the current node
-        self.apply_rules(expr_with_simplified_children)
+impl<'a> Transformer for LocalSimplificationTransformer<'a> {
+    // We implement the trait but we might need a custom recursive method to handle the borrow split
+    // Actually, the trait methods take `&mut Context`.
+    // But `LocalSimplificationTransformer` holds `&mut Context`.
+    // This is a problem. The trait expects `&mut Context` passed in, but we hold it.
+    // If we hold it, we can't implement the trait exactly as is if the trait requires passing it in.
+    // The trait signature is `fn transform_expr(&mut self, context: &mut Context, id: ExprId)`.
+    // So we can pass `self.context` to it? No, `self` is borrowed mutably.
+    
+    // We should probably NOT implement the trait for `LocalSimplificationTransformer` directly if it holds the context.
+    // Instead, `LocalSimplificationTransformer` should just have methods.
+    // Or `Simplifier` should NOT own `Context` but take it as arg?
+    // But `Simplifier` is the main entry point.
+    
+    // Let's implement a custom `transform_expr_recursive` that mimics the trait but works with our struct.
+    fn transform_expr(&mut self, _context: &mut Context, id: ExprId) -> ExprId {
+        self.transform_expr_recursive(id)
     }
 }
 
-impl<'a> SimplificationTransformer<'a> {
-    fn apply_rules(&mut self, mut expr: Rc<Expr>) -> Rc<Expr> {
+impl<'a> LocalSimplificationTransformer<'a> {
+    fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
+        // 1. Simplify children first (Bottom-Up)
+        // We need to manually call transform on children because we can't use the default trait impl easily
+        // without passing context, but we hold context.
+        
+        // We can temporarily extract context? No.
+        
+        // Let's just implement the logic manually for now.
+        let expr = self.context.get(id).clone();
+        
+        let expr_with_simplified_children = match expr {
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => id,
+            Expr::Add(l, r) => {
+                let new_l = self.transform_expr_recursive(l);
+                let new_r = self.transform_expr_recursive(r);
+                if new_l != l || new_r != r { self.context.add(Expr::Add(new_l, new_r)) } else { id }
+            },
+            Expr::Sub(l, r) => {
+                let new_l = self.transform_expr_recursive(l);
+                let new_r = self.transform_expr_recursive(r);
+                if new_l != l || new_r != r { self.context.add(Expr::Sub(new_l, new_r)) } else { id }
+            },
+            Expr::Mul(l, r) => {
+                let new_l = self.transform_expr_recursive(l);
+                let new_r = self.transform_expr_recursive(r);
+                if new_l != l || new_r != r { self.context.add(Expr::Mul(new_l, new_r)) } else { id }
+            },
+            Expr::Div(l, r) => {
+                let new_l = self.transform_expr_recursive(l);
+                let new_r = self.transform_expr_recursive(r);
+                if new_l != l || new_r != r { self.context.add(Expr::Div(new_l, new_r)) } else { id }
+            },
+            Expr::Pow(b, e) => {
+                let new_b = self.transform_expr_recursive(b);
+                let new_e = self.transform_expr_recursive(e);
+                if new_b != b || new_e != e { self.context.add(Expr::Pow(new_b, new_e)) } else { id }
+            },
+            Expr::Neg(e) => {
+                let new_e = self.transform_expr_recursive(e);
+                if new_e != e { self.context.add(Expr::Neg(new_e)) } else { id }
+            },
+            Expr::Function(name, args) => {
+                let mut new_args = Vec::new();
+                let mut changed = false;
+                for arg in args {
+                    let new_arg = self.transform_expr_recursive(arg);
+                    if new_arg != arg { changed = true; }
+                    new_args.push(new_arg);
+                }
+                if changed { self.context.add(Expr::Function(name, new_args)) } else { id }
+            },
+        };
+
+        // 2. Apply rules
+        self.apply_rules(expr_with_simplified_children)
+    }
+
+    fn apply_rules(&mut self, mut expr_id: ExprId) -> ExprId {
         loop {
             let mut changed = false;
-            let variant = get_variant_name(&expr);
+            let variant = get_variant_name(self.context.get(expr_id));
             
             // Try specific rules
-            if let Some(specific_rules) = self.simplifier.rules.get(variant) {
+            if let Some(specific_rules) = self.rules.get(variant) {
                 for rule in specific_rules {
-                    if let Some(rewrite) = rule.apply(&expr) {
-                        if self.simplifier.collect_steps {
+                    if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                        if self.collect_steps {
                             self.steps.push(Step::new(
                                 &rewrite.description,
                                 rule.name(),
-                                expr.clone(),
-                                rewrite.new_expr.clone(),
+                                expr_id,
+                                rewrite.new_expr,
                             ));
                         }
-                        expr = rewrite.new_expr;
+                        expr_id = rewrite.new_expr;
                         changed = true;
-                        break; // Restart loop with new expression
+                        break; 
                     }
                 }
             }
             
             if changed { 
-                // If changed, re-simplify the whole tree
-                return self.transform_expr(expr);
+                return self.transform_expr_recursive(expr_id);
             }
 
             // Try global rules
-            for rule in &self.simplifier.global_rules {
-                if let Some(rewrite) = rule.apply(&expr) {
-                    if self.simplifier.collect_steps {
+            for rule in self.global_rules {
+                if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                    if self.collect_steps {
                         self.steps.push(Step::new(
                             &rewrite.description,
                             rule.name(),
-                            expr.clone(),
-                            rewrite.new_expr.clone(),
+                            expr_id,
+                            rewrite.new_expr,
                         ));
                     }
-                    expr = rewrite.new_expr;
+                    expr_id = rewrite.new_expr;
                     changed = true;
-                    break; // Restart loop
+                    break; 
                 }
             }
             
             if changed {
-                // If changed, re-simplify the whole tree
-                return self.transform_expr(expr);
+                return self.transform_expr_recursive(expr_id);
             }
 
-            // If no rules applied, we are done with this node
-            return expr;
+            return expr_id;
         }
     }
 }

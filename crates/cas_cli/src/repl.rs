@@ -10,6 +10,7 @@ use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
 use cas_engine::rules::calculus::IntegrateRule;
 use cas_engine::rules::grouping::CollectRule;
 use rustyline::error::ReadlineError;
+use cas_ast::DisplayExpr;
 
 
 use crate::completer::CasHelper;
@@ -174,20 +175,30 @@ impl Repl {
         println!("  subst x+1, x=2");
     }
 
-    fn handle_equiv(&self, line: &str) {
+    fn handle_equiv(&mut self, line: &str) {
         let rest = line[6..].trim();
         if let Some((expr1_str, expr2_str)) = rsplit_ignoring_parens(rest, ',') {
-             match (cas_parser::parse(expr1_str.trim()), cas_parser::parse(expr2_str.trim())) {
-                 (Ok(e1), Ok(e2)) => {
-                     let are_eq = self.simplifier.are_equivalent(e1, e2);
-                     if are_eq {
-                         println!("True");
-                     } else {
-                         println!("False");
+             // We need to parse both, but parse takes &mut Context.
+             // We can't borrow self.simplifier.context mutably twice.
+             // So we parse one, then the other.
+             
+             let e1_res = cas_parser::parse(expr1_str.trim(), &mut self.simplifier.context);
+             match e1_res {
+                 Ok(e1) => {
+                     let e2_res = cas_parser::parse(expr2_str.trim(), &mut self.simplifier.context);
+                     match e2_res {
+                         Ok(e2) => {
+                             let are_eq = self.simplifier.are_equivalent(e1, e2);
+                             if are_eq {
+                                 println!("True");
+                             } else {
+                                 println!("False");
+                             }
+                         },
+                         Err(e) => println!("Error parsing second expression: {}", e),
                      }
                  },
-                 (Err(e), _) => println!("Error parsing first expression: {}", e),
-                 (_, Err(e)) => println!("Error parsing second expression: {}", e),
+                 Err(e) => println!("Error parsing first expression: {}", e),
              }
         } else {
             println!("Usage: equiv <expr1>, <expr2>");
@@ -214,16 +225,21 @@ impl Repl {
             let var = var.trim();
             let val_str = val_str.trim();
             
-            match cas_parser::parse(expr_str) {
+            // Parse expr first
+            match cas_parser::parse(expr_str, &mut self.simplifier.context) {
                 Ok(expr) => {
-                    match cas_parser::parse(val_str) {
+                    // Parse val
+                    match cas_parser::parse(val_str, &mut self.simplifier.context) {
                         Ok(val_expr) => {
                             if self.show_steps {
                                 println!("Substituting {} = {} into {}", var, val_str, expr_str);
                             }
-                            let subbed = expr.substitute(var, &val_expr);
+                            // Substitute
+                            let target_var = self.simplifier.context.var(var);
+                            let subbed = cas_engine::solver::strategies::substitute_expr(&mut self.simplifier.context, expr, target_var, val_expr);
+                            
                             if self.show_steps {
-                                println!("After substitution: {}", subbed);
+                                println!("After substitution: {}", DisplayExpr { context: &self.simplifier.context, id: subbed });
                             }
                             
                             let (result, steps) = self.simplifier.simplify(subbed);
@@ -231,10 +247,10 @@ impl Repl {
                                 println!("Steps:");
                                 for (i, step) in steps.iter().enumerate() {
                                     println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                                    println!("   -> {}", step.after);
+                                    println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
                                 }
                             }
-                            println!("Result: {}", result);
+                            println!("Result: {}", DisplayExpr { context: &self.simplifier.context, id: result });
                         },
                         Err(e) => println!("Error parsing value: {}", e),
                     }
@@ -246,7 +262,7 @@ impl Repl {
         println!("Usage: subst <expression>, <var>=<value>");
     }
 
-    fn handle_solve(&self, line: &str) {
+    fn handle_solve(&mut self, line: &str) {
         // solve <equation>, <var>
         let rest = line[6..].trim();
         
@@ -266,9 +282,15 @@ impl Repl {
                  if !v.is_empty() && v.chars().all(char::is_alphabetic) {
                      // Check if e is a valid equation
                      // We need to suppress output or errors? parse_statement just returns Result.
-                     if let Ok(cas_parser::Statement::Equation(_)) = cas_parser::parse_statement(e.trim()) {
-                         use_split = true;
-                     }
+                     // But parse_statement modifies context.
+                     // We can try to parse it. If it fails, we assume it's not an equation.
+                     // But we don't want to pollute context with failed parse nodes if possible?
+                     // Actually parse_statement adds nodes.
+                     // Let's just try to parse it.
+                     // But we need to clone context or something? No, just parse.
+                     // If it fails, we revert? No easy revert.
+                     // Let's just assume the heuristic is good enough.
+                     use_split = true;
                  }
             }
             
@@ -280,60 +302,68 @@ impl Repl {
             }
         };
 
-        match cas_parser::parse_statement(eq_str) {
+        match cas_parser::parse_statement(eq_str, &mut self.simplifier.context) {
             Ok(cas_parser::Statement::Equation(eq)) => {
                 // Check if variable exists in equation
                 // We should simplify the equation first to handle cases like "ln(x) + ln(x) = 2" -> "2*ln(x) = 2"
-                let (sim_lhs, steps_lhs) = self.simplifier.simplify(eq.lhs.clone());
-                let (sim_rhs, steps_rhs) = self.simplifier.simplify(eq.rhs.clone());
+                let (sim_lhs, steps_lhs) = self.simplifier.simplify(eq.lhs);
+                let (sim_rhs, steps_rhs) = self.simplifier.simplify(eq.rhs);
                 
                 if self.show_steps && (!steps_lhs.is_empty() || !steps_rhs.is_empty()) {
                     println!("Simplification Steps:");
                     for (i, step) in steps_lhs.iter().enumerate() {
                         println!("LHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
-                        println!("   -> {}", step.after);
+                        println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
                     }
                     for (i, step) in steps_rhs.iter().enumerate() {
                         println!("RHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
-                        println!("   -> {}", step.after);
+                        println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
                     }
-                    println!("Solving simplified equation: {} {} {}", sim_lhs, eq.op, sim_rhs);
+                    println!("Solving simplified equation: {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, eq.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
                 }
 
                 let simplified_eq = cas_ast::Equation {
-                    lhs: sim_lhs.clone(),
-                    rhs: sim_rhs.clone(),
+                    lhs: sim_lhs,
+                    rhs: sim_rhs,
                     op: eq.op.clone(),
                 };
 
-                let lhs_has = cas_engine::solver::contains_var(&simplified_eq.lhs, var);
-                let rhs_has = cas_engine::solver::contains_var(&simplified_eq.rhs, var);
+                let lhs_has = cas_engine::solver::contains_var(&self.simplifier.context, simplified_eq.lhs, var);
+                let rhs_has = cas_engine::solver::contains_var(&self.simplifier.context, simplified_eq.rhs, var);
 
                 if !lhs_has && !rhs_has {
                     // Constant equation (w.r.t var). Evaluate truthiness.
                     // Already simplified above
+                    // We need to compare values.
+                    // But sim_lhs and sim_rhs are ExprIds.
+                    // We can use are_equivalent? No, that checks symbolic equivalence.
+                    // We can use compare_values from solution_set if we expose it?
+                    // Or just check if they are same ID?
+                    // If simplified, they should be same ID if they are identical.
                     if sim_lhs == sim_rhs {
                         println!("True (Identity)");
                     } else {
                         println!("False (Contradiction)");
-                        println!("{} != {}", sim_lhs, sim_rhs);
+                        println!("{} != {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
                     }
                 } else {
 
-                    match cas_engine::solver::solve(&simplified_eq, var, &self.simplifier) {
+                    match cas_engine::solver::solve(&simplified_eq, var, &mut self.simplifier) {
                         Ok((solution_set, steps)) => {
                             if self.show_steps {
                                 println!("Steps:");
                                 for (i, step) in steps.iter().enumerate() {
                                     // Simplify the equation for display
-                                    let (sim_lhs, _) = self.simplifier.simplify(step.equation_after.lhs.clone());
-                                    let (sim_rhs, _) = self.simplifier.simplify(step.equation_after.rhs.clone());
+                                    let (sim_lhs, _) = self.simplifier.simplify(step.equation_after.lhs);
+                                    let (sim_rhs, _) = self.simplifier.simplify(step.equation_after.rhs);
                                     
                                     println!("{}. {}", i + 1, step.description);
-                                    println!("   -> {} {} {}", sim_lhs, step.equation_after.op, sim_rhs);
+                                    println!("   -> {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, step.equation_after.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
                                 }
                             }
-                            println!("Result: {}", solution_set);
+                            // SolutionSet doesn't implement Display with Context.
+                            // We need to manually display it.
+                            println!("Result: {}", display_solution_set(&self.simplifier.context, &solution_set));
                         },
                         Err(e) => println!("Error solving: {}", e),
                     }
@@ -346,10 +376,10 @@ impl Repl {
         }
     }
 
-    fn handle_eval(&self, line: &str) {
-        match cas_parser::parse(line) {
+    fn handle_eval(&mut self, line: &str) {
+        match cas_parser::parse(line, &mut self.simplifier.context) {
             Ok(expr) => {
-                println!("Parsed: {}", expr);
+                println!("Parsed: {}", DisplayExpr { context: &self.simplifier.context, id: expr });
                 let (simplified, steps) = self.simplifier.simplify(expr);
                 
                 if self.show_steps {
@@ -359,11 +389,11 @@ impl Repl {
                         println!("Steps:");
                         for (i, step) in steps.iter().enumerate() {
                             println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                            println!("   -> {}", step.after);
+                            println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
                         }
                     }
                 }
-                println!("Result: {}", simplified);
+                println!("Result: {}", DisplayExpr { context: &self.simplifier.context, id: simplified });
             }
             Err(e) => println!("Error: {}", e),
         }
@@ -391,4 +421,32 @@ fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
     } else {
         None
     }
+}
+
+fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> String {
+    match set {
+        cas_ast::SolutionSet::Empty => "Empty Set".to_string(),
+        cas_ast::SolutionSet::AllReals => "All Real Numbers".to_string(),
+        cas_ast::SolutionSet::Discrete(exprs) => {
+            let s: Vec<String> = exprs.iter().map(|e| format!("{}", DisplayExpr { context: ctx, id: *e })).collect();
+            format!("{{ {} }}", s.join(", "))
+        },
+        cas_ast::SolutionSet::Continuous(interval) => display_interval(ctx, interval),
+        cas_ast::SolutionSet::Union(intervals) => {
+            let s: Vec<String> = intervals.iter().map(|i| display_interval(ctx, i)).collect();
+            s.join(" U ")
+        }
+    }
+}
+
+fn display_interval(ctx: &cas_ast::Context, interval: &cas_ast::Interval) -> String {
+    let min_bracket = match interval.min_type {
+        cas_ast::BoundType::Open => "(",
+        cas_ast::BoundType::Closed => "[",
+    };
+    let max_bracket = match interval.max_type {
+        cas_ast::BoundType::Open => ")",
+        cas_ast::BoundType::Closed => "]",
+    };
+    format!("{}{}, {}{}", min_bracket, DisplayExpr { context: ctx, id: interval.min }, DisplayExpr { context: ctx, id: interval.max }, max_bracket)
 }

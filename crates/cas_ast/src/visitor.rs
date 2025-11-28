@@ -1,19 +1,19 @@
-use crate::expression::{Expr, Constant};
-use std::rc::Rc;
+use crate::expression::{Expr, Constant, ExprId, Context};
 
 pub trait Visitor {
-    fn visit_expr(&mut self, expr: &Expr) {
+    fn visit_expr(&mut self, context: &Context, id: ExprId) {
+        let expr = context.get(id);
         match expr {
             Expr::Number(n) => self.visit_number(n),
             Expr::Constant(c) => self.visit_constant(c),
             Expr::Variable(name) => self.visit_variable(name),
-            Expr::Add(l, r) => self.visit_add(l, r),
-            Expr::Sub(l, r) => self.visit_sub(l, r),
-            Expr::Mul(l, r) => self.visit_mul(l, r),
-            Expr::Div(l, r) => self.visit_div(l, r),
-            Expr::Pow(b, e) => self.visit_pow(b, e),
-            Expr::Neg(e) => self.visit_neg(e),
-            Expr::Function(name, args) => self.visit_function(name, args),
+            Expr::Add(l, r) => self.visit_add(context, *l, *r),
+            Expr::Sub(l, r) => self.visit_sub(context, *l, *r),
+            Expr::Mul(l, r) => self.visit_mul(context, *l, *r),
+            Expr::Div(l, r) => self.visit_div(context, *l, *r),
+            Expr::Pow(b, e) => self.visit_pow(context, *b, *e),
+            Expr::Neg(e) => self.visit_neg(context, *e),
+            Expr::Function(name, args) => self.visit_function(context, name, args),
         }
     }
 
@@ -21,133 +21,134 @@ pub trait Visitor {
     fn visit_constant(&mut self, _c: &Constant) {}
     fn visit_variable(&mut self, _name: &str) {}
 
-    fn visit_add(&mut self, left: &Expr, right: &Expr) {
-        self.visit_expr(left);
-        self.visit_expr(right);
+    fn visit_add(&mut self, context: &Context, left: ExprId, right: ExprId) {
+        self.visit_expr(context, left);
+        self.visit_expr(context, right);
     }
 
-    fn visit_sub(&mut self, left: &Expr, right: &Expr) {
-        self.visit_expr(left);
-        self.visit_expr(right);
+    fn visit_sub(&mut self, context: &Context, left: ExprId, right: ExprId) {
+        self.visit_expr(context, left);
+        self.visit_expr(context, right);
     }
 
-    fn visit_mul(&mut self, left: &Expr, right: &Expr) {
-        self.visit_expr(left);
-        self.visit_expr(right);
+    fn visit_mul(&mut self, context: &Context, left: ExprId, right: ExprId) {
+        self.visit_expr(context, left);
+        self.visit_expr(context, right);
     }
 
-    fn visit_div(&mut self, left: &Expr, right: &Expr) {
-        self.visit_expr(left);
-        self.visit_expr(right);
+    fn visit_div(&mut self, context: &Context, left: ExprId, right: ExprId) {
+        self.visit_expr(context, left);
+        self.visit_expr(context, right);
     }
 
-    fn visit_pow(&mut self, base: &Expr, exp: &Expr) {
-        self.visit_expr(base);
-        self.visit_expr(exp);
+    fn visit_pow(&mut self, context: &Context, base: ExprId, exp: ExprId) {
+        self.visit_expr(context, base);
+        self.visit_expr(context, exp);
     }
 
-    fn visit_neg(&mut self, expr: &Expr) {
-        self.visit_expr(expr);
+    fn visit_neg(&mut self, context: &Context, expr: ExprId) {
+        self.visit_expr(context, expr);
     }
 
-    fn visit_function(&mut self, _name: &str, args: &[Rc<Expr>]) {
+    fn visit_function(&mut self, context: &Context, _name: &str, args: &[ExprId]) {
         for arg in args {
-            self.visit_expr(arg);
+            self.visit_expr(context, *arg);
         }
     }
 }
 
 pub trait Transformer {
-    fn transform_expr(&mut self, expr: Rc<Expr>) -> Rc<Expr> {
-        match expr.as_ref() {
-            Expr::Number(_) => self.transform_number(expr),
-            Expr::Constant(_) => self.transform_constant(expr),
-            Expr::Variable(_) => self.transform_variable(expr),
-            Expr::Add(l, r) => self.transform_add(expr.clone(), l, r),
-            Expr::Sub(l, r) => self.transform_sub(expr.clone(), l, r),
-            Expr::Mul(l, r) => self.transform_mul(expr.clone(), l, r),
-            Expr::Div(l, r) => self.transform_div(expr.clone(), l, r),
-            Expr::Pow(b, e) => self.transform_pow(expr.clone(), b, e),
-            Expr::Neg(e) => self.transform_neg(expr.clone(), e),
-            Expr::Function(name, args) => self.transform_function(expr.clone(), name, args),
+    fn transform_expr(&mut self, context: &mut Context, id: ExprId) -> ExprId {
+        let expr = context.get(id).clone(); // Clone to avoid borrow issues
+        match expr {
+            Expr::Number(_) => self.transform_number(context, id),
+            Expr::Constant(_) => self.transform_constant(context, id),
+            Expr::Variable(_) => self.transform_variable(context, id),
+            Expr::Add(l, r) => self.transform_add(context, id, l, r),
+            Expr::Sub(l, r) => self.transform_sub(context, id, l, r),
+            Expr::Mul(l, r) => self.transform_mul(context, id, l, r),
+            Expr::Div(l, r) => self.transform_div(context, id, l, r),
+            Expr::Pow(b, e) => self.transform_pow(context, id, b, e),
+            Expr::Neg(e) => self.transform_neg(context, id, e),
+            Expr::Function(name, args) => self.transform_function(context, id, &name, &args),
         }
     }
 
-    fn transform_number(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
-    fn transform_constant(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
-    fn transform_variable(&mut self, expr: Rc<Expr>) -> Rc<Expr> { expr }
+    fn transform_number(&mut self, _context: &mut Context, id: ExprId) -> ExprId { id }
+    fn transform_constant(&mut self, _context: &mut Context, id: ExprId) -> ExprId { id }
+    fn transform_variable(&mut self, _context: &mut Context, id: ExprId) -> ExprId { id }
 
-    fn transform_add(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
-        let new_l = self.transform_expr(l.clone());
-        let new_r = self.transform_expr(r.clone());
-        if new_l != *l || new_r != *r {
-            Expr::add(new_l, new_r)
+    fn transform_add(&mut self, context: &mut Context, original: ExprId, l: ExprId, r: ExprId) -> ExprId {
+        let new_l = self.transform_expr(context, l);
+        let new_r = self.transform_expr(context, r);
+        if new_l != l || new_r != r {
+            context.add(Expr::Add(new_l, new_r))
         } else {
             original
         }
     }
 
-    fn transform_sub(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
-        let new_l = self.transform_expr(l.clone());
-        let new_r = self.transform_expr(r.clone());
-        if new_l != *l || new_r != *r {
-            Expr::sub(new_l, new_r)
+    fn transform_sub(&mut self, context: &mut Context, original: ExprId, l: ExprId, r: ExprId) -> ExprId {
+        let new_l = self.transform_expr(context, l);
+        let new_r = self.transform_expr(context, r);
+        if new_l != l || new_r != r {
+            context.add(Expr::Sub(new_l, new_r))
         } else {
             original
         }
     }
 
-    fn transform_mul(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
-        let new_l = self.transform_expr(l.clone());
-        let new_r = self.transform_expr(r.clone());
-        if new_l != *l || new_r != *r {
-            Expr::mul(new_l, new_r)
+    fn transform_mul(&mut self, context: &mut Context, original: ExprId, l: ExprId, r: ExprId) -> ExprId {
+        let new_l = self.transform_expr(context, l);
+        let new_r = self.transform_expr(context, r);
+        if new_l != l || new_r != r {
+            context.add(Expr::Mul(new_l, new_r))
         } else {
             original
         }
     }
 
-    fn transform_div(&mut self, original: Rc<Expr>, l: &Rc<Expr>, r: &Rc<Expr>) -> Rc<Expr> {
-        let new_l = self.transform_expr(l.clone());
-        let new_r = self.transform_expr(r.clone());
-        if new_l != *l || new_r != *r {
-            Expr::div(new_l, new_r)
+    fn transform_div(&mut self, context: &mut Context, original: ExprId, l: ExprId, r: ExprId) -> ExprId {
+        let new_l = self.transform_expr(context, l);
+        let new_r = self.transform_expr(context, r);
+        if new_l != l || new_r != r {
+            context.add(Expr::Div(new_l, new_r))
         } else {
             original
         }
     }
 
-    fn transform_pow(&mut self, original: Rc<Expr>, b: &Rc<Expr>, e: &Rc<Expr>) -> Rc<Expr> {
-        let new_b = self.transform_expr(b.clone());
-        let new_e = self.transform_expr(e.clone());
-        if new_b != *b || new_e != *e {
-            Expr::pow(new_b, new_e)
+    fn transform_pow(&mut self, context: &mut Context, original: ExprId, b: ExprId, e: ExprId) -> ExprId {
+        let new_b = self.transform_expr(context, b);
+        let new_e = self.transform_expr(context, e);
+        if new_b != b || new_e != e {
+            context.add(Expr::Pow(new_b, new_e))
         } else {
             original
         }
     }
 
-    fn transform_neg(&mut self, original: Rc<Expr>, e: &Rc<Expr>) -> Rc<Expr> {
-        let new_e = self.transform_expr(e.clone());
-        if new_e != *e {
-            Expr::neg(new_e)
+    fn transform_neg(&mut self, context: &mut Context, original: ExprId, e: ExprId) -> ExprId {
+        let new_e = self.transform_expr(context, e);
+        if new_e != e {
+            context.add(Expr::Neg(new_e))
         } else {
             original
         }
     }
 
-    fn transform_function(&mut self, original: Rc<Expr>, name: &str, args: &[Rc<Expr>]) -> Rc<Expr> {
+    fn transform_function(&mut self, context: &mut Context, original: ExprId, name: &str, args: &[ExprId]) -> ExprId {
         let mut new_args = Vec::new();
         let mut changed = false;
         for arg in args {
-            let new_arg = self.transform_expr(arg.clone());
+            let new_arg = self.transform_expr(context, *arg);
             if new_arg != *arg {
                 changed = true;
             }
             new_args.push(new_arg);
         }
         if changed {
-            Rc::new(Expr::Function(name.to_string(), new_args))
+            context.add(Expr::Function(name.to_string(), new_args))
         } else {
             original
         }

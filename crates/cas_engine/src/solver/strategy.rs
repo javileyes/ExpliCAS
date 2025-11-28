@@ -11,5 +11,5 @@ pub trait SolverStrategy {
     /// - None: Strategy does not apply to this equation.
     /// - Some(Ok(result)): Strategy applied and solved the equation.
     /// - Some(Err(e)): Strategy applied but encountered an error.
-    fn apply(&self, eq: &Equation, var: &str, simplifier: &Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>>;
+    fn apply(&self, eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>>;
 }

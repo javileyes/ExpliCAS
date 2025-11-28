@@ -1,7 +1,7 @@
-use cas_ast::Expr;
+
+use cas_ast::{Expr, ExprId, Context};
 use num_rational::BigRational;
 use num_traits::{Zero, One, Signed};
-use std::rc::Rc;
 use std::cmp::max;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,9 +57,10 @@ impl Polynomial {
     }
 
     // Convert Expr to Polynomial. Returns CasError if not a polynomial in `var`.
-    pub fn from_expr(expr: &Expr, var: &str) -> Result<Self, crate::error::CasError> {
+    pub fn from_expr(context: &Context, expr: ExprId, var: &str) -> Result<Self, crate::error::CasError> {
         use crate::error::CasError;
-        match expr {
+        let expr_data = context.get(expr);
+        match expr_data {
             Expr::Number(n) => Ok(Polynomial::new(vec![n.clone()], var.to_string())),
             Expr::Variable(v) => {
                 if v == var {
@@ -71,25 +72,25 @@ impl Polynomial {
                 }
             },
             Expr::Add(l, r) => {
-                let p1 = Polynomial::from_expr(l, var)?;
-                let p2 = Polynomial::from_expr(r, var)?;
+                let p1 = Polynomial::from_expr(context, *l, var)?;
+                let p2 = Polynomial::from_expr(context, *r, var)?;
                 Ok(p1.add(&p2))
             },
             Expr::Sub(l, r) => {
-                let p1 = Polynomial::from_expr(l, var)?;
-                let p2 = Polynomial::from_expr(r, var)?;
+                let p1 = Polynomial::from_expr(context, *l, var)?;
+                let p2 = Polynomial::from_expr(context, *r, var)?;
                 Ok(p1.sub(&p2))
             },
             Expr::Mul(l, r) => {
-                let p1 = Polynomial::from_expr(l, var)?;
-                let p2 = Polynomial::from_expr(r, var)?;
+                let p1 = Polynomial::from_expr(context, *l, var)?;
+                let p2 = Polynomial::from_expr(context, *r, var)?;
                 Ok(p1.mul(&p2))
             },
             Expr::Pow(base, exp) => {
                 // Only handle x^n where n is non-negative integer
-                if let Expr::Number(n) = exp.as_ref() {
+                if let Expr::Number(n) = context.get(*exp) {
                     if n.is_integer() && *n >= BigRational::zero() {
-                        let p_base = Polynomial::from_expr(base, var)?;
+                        let p_base = Polynomial::from_expr(context, *base, var)?;
                         // Naive power
                         let exp_usize = n.to_integer().try_into().map_err(|_| CasError::PolynomialError("Exponent too large".to_string()))?;
                         let mut res = Polynomial::one(var.to_string());
@@ -99,39 +100,42 @@ impl Polynomial {
                         return Ok(res);
                     }
                 }
-                Err(CasError::PolynomialError(format!("Unsupported power: {}", exp)))
+                Err(CasError::PolynomialError(format!("Unsupported power: {:?}", context.get(*exp))))
             },
             Expr::Neg(e) => {
-                let p = Polynomial::from_expr(e, var)?;
+                let p = Polynomial::from_expr(context, *e, var)?;
                 Ok(p.neg())
             },
-            _ => Err(CasError::PolynomialError(format!("Unsupported expression type for polynomial: {:?}", expr))),
+            _ => Err(CasError::PolynomialError(format!("Unsupported expression type for polynomial: {:?}", expr_data))),
         }
     }
 
-    pub fn to_expr(&self) -> Rc<Expr> {
+    pub fn to_expr(&self, context: &mut Context) -> ExprId {
         if self.is_zero() {
-            return Expr::num(0);
+            return context.num(0);
         }
         
         let mut terms = Vec::new();
         for (i, coeff) in self.coeffs.iter().enumerate().rev() {
             if !coeff.is_zero() {
                 let term = if i == 0 {
-                    Rc::new(Expr::Number(coeff.clone()))
+                    context.add(Expr::Number(coeff.clone()))
                 } else {
+                    let var_expr = context.var(&self.var);
                     let var_part = if i == 1 {
-                        Expr::var(&self.var)
+                        var_expr
                     } else {
-                        Expr::pow(Expr::var(&self.var), Expr::num(i as i64))
+                        let exp = context.num(i as i64);
+                        context.add(Expr::Pow(var_expr, exp))
                     };
 
                     if coeff.is_one() {
                         var_part
                     } else if *coeff == -BigRational::one() {
-                        Expr::neg(var_part)
+                        context.add(Expr::Neg(var_part))
                     } else {
-                        Expr::mul(Rc::new(Expr::Number(coeff.clone())), var_part)
+                        let coeff_expr = context.add(Expr::Number(coeff.clone()));
+                        context.add(Expr::Mul(coeff_expr, var_part))
                     }
                 };
                 terms.push(term);
@@ -140,12 +144,12 @@ impl Polynomial {
 
         // Combine terms with Add
         if terms.is_empty() {
-            return Expr::num(0);
+            return context.num(0);
         }
         
-        let mut res = terms[0].clone();
+        let mut res = terms[0];
         for term in terms.into_iter().skip(1) {
-            res = Expr::add(res, term);
+            res = context.add(Expr::Add(res, term));
         }
         res
     }
@@ -452,6 +456,7 @@ fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
 mod tests {
     use super::*;
     use cas_parser::parse;
+    use cas_ast::DisplayExpr;
 
     #[test]
     fn test_poly_ops() {
@@ -473,20 +478,27 @@ mod tests {
 
     #[test]
     fn test_div_rem() {
+        let mut ctx = Context::new();
         // (x^2 + 2x + 1) / (x + 1) = x + 1, rem 0
-        let p_num = Polynomial::from_expr(&parse("x^2 + 2*x + 1").unwrap(), "x").unwrap();
-        let p_den = Polynomial::from_expr(&parse("x + 1").unwrap(), "x").unwrap();
+        let expr_num = parse("x^2 + 2*x + 1", &mut ctx).unwrap();
+        let p_num = Polynomial::from_expr(&ctx, expr_num, "x").unwrap();
+        let expr_den = parse("x + 1", &mut ctx).unwrap();
+        let p_den = Polynomial::from_expr(&ctx, expr_den, "x").unwrap();
 
         let (q, r) = p_num.div_rem(&p_den);
         assert!(r.is_zero());
-        assert_eq!(q.to_expr().to_string(), "x + 1"); // Display order is x + 1
+        let q_expr = q.to_expr(&mut ctx);
+        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: q_expr }), "x + 1"); // Display order is x + 1
     }
 
     #[test]
     fn test_gcd() {
+        let mut ctx = Context::new();
         // gcd(x^2 - 1, x^2 + 2x + 1) = x + 1
-        let p1 = Polynomial::from_expr(&parse("x^2 - 1").unwrap(), "x").unwrap();
-        let p2 = Polynomial::from_expr(&parse("x^2 + 2*x + 1").unwrap(), "x").unwrap();
+        let expr1 = parse("x^2 - 1", &mut ctx).unwrap();
+        let p1 = Polynomial::from_expr(&ctx, expr1, "x").unwrap();
+        let expr2 = parse("x^2 + 2*x + 1", &mut ctx).unwrap();
+        let p2 = Polynomial::from_expr(&ctx, expr2, "x").unwrap();
 
         let g = p1.gcd(&p2);
         // Should be x + 1 (normalized)

@@ -1,43 +1,43 @@
-use cas_ast::{Expr, SolutionSet, Interval, BoundType, Constant};
-use std::rc::Rc;
+use cas_ast::{Expr, SolutionSet, Interval, BoundType, Constant, ExprId, Context};
 use std::cmp::Ordering;
 use num_rational::BigRational;
 
 // Helper to create -infinity
-pub fn neg_inf() -> Rc<Expr> {
-    Rc::new(Expr::Neg(Rc::new(Expr::Constant(Constant::Infinity))))
+pub fn neg_inf(ctx: &mut Context) -> ExprId {
+    let inf = ctx.add(Expr::Constant(Constant::Infinity));
+    ctx.add(Expr::Neg(inf))
 }
 
 // Helper to create +infinity
-pub fn pos_inf() -> Rc<Expr> {
-    Rc::new(Expr::Constant(Constant::Infinity))
+pub fn pos_inf(ctx: &mut Context) -> ExprId {
+    ctx.add(Expr::Constant(Constant::Infinity))
 }
 
-pub fn is_infinity(expr: &Expr) -> bool {
-    matches!(expr, Expr::Constant(Constant::Infinity))
+pub fn is_infinity(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Constant(Constant::Infinity))
 }
 
-pub fn is_neg_infinity(expr: &Expr) -> bool {
-    match expr {
-        Expr::Neg(inner) => is_infinity(inner),
+pub fn is_neg_infinity(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => is_infinity(ctx, *inner),
         _ => false,
     }
 }
 
-pub fn get_number(expr: &Expr) -> Option<BigRational> {
-    match expr {
+pub fn get_number(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
         Expr::Number(n) => Some(n.clone()),
-        Expr::Neg(inner) => get_number(inner).map(|n| -n),
+        Expr::Neg(inner) => get_number(ctx, *inner).map(|n| -n),
         _ => None,
     }
 }
 
-pub fn compare_values(a: &Expr, b: &Expr) -> Ordering {
+pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     // Handle Infinity
-    let a_inf = is_infinity(a);
-    let b_inf = is_infinity(b);
-    let a_neg_inf = is_neg_infinity(a);
-    let b_neg_inf = is_neg_infinity(b);
+    let a_inf = is_infinity(ctx, a);
+    let b_inf = is_infinity(ctx, b);
+    let a_neg_inf = is_neg_infinity(ctx, a);
+    let b_neg_inf = is_neg_infinity(ctx, b);
     
     if a_neg_inf {
         if b_neg_inf { return Ordering::Equal; }
@@ -52,47 +52,47 @@ pub fn compare_values(a: &Expr, b: &Expr) -> Ordering {
     if b_inf { return Ordering::Less; }
     
     // Handle Numbers
-    if let (Some(n1), Some(n2)) = (get_number(a), get_number(b)) {
+    if let (Some(n1), Some(n2)) = (get_number(ctx, a), get_number(ctx, b)) {
         return n1.cmp(&n2);
     }
     
     // Fallback: Use structural comparison if we can't compare values
-    crate::ordering::compare_expr(a, b)
+    crate::ordering::compare_expr(ctx, a, b)
 }
 
-pub fn intersect_intervals(i1: &Interval, i2: &Interval) -> SolutionSet {
+pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> SolutionSet {
     // Intersection of [a, b] and [c, d] is [max(a,c), min(b,d)]
     
     // Compare mins
-    let (min, min_type) = match compare_values(&i1.min, &i2.min) {
-        Ordering::Less => (i2.min.clone(), i2.min_type.clone()), // i1.min < i2.min -> take i2
-        Ordering::Greater => (i1.min.clone(), i1.min_type.clone()), // i1.min > i2.min -> take i1
+    let (min, min_type) = match compare_values(ctx, i1.min, i2.min) {
+        Ordering::Less => (i2.min, i2.min_type.clone()), // i1.min < i2.min -> take i2
+        Ordering::Greater => (i1.min, i1.min_type.clone()), // i1.min > i2.min -> take i1
         Ordering::Equal => {
             let type_ = if i1.min_type == BoundType::Open || i2.min_type == BoundType::Open {
                 BoundType::Open
             } else {
                 BoundType::Closed
             };
-            (i1.min.clone(), type_)
+            (i1.min, type_)
         }
     };
 
     // Compare maxs
-    let (max, max_type) = match compare_values(&i1.max, &i2.max) {
-        Ordering::Less => (i1.max.clone(), i1.max_type.clone()), // i1.max < i2.max -> take i1
-        Ordering::Greater => (i2.max.clone(), i2.max_type.clone()), // i1.max > i2.max -> take i2
+    let (max, max_type) = match compare_values(ctx, i1.max, i2.max) {
+        Ordering::Less => (i1.max, i1.max_type.clone()), // i1.max < i2.max -> take i1
+        Ordering::Greater => (i2.max, i2.max_type.clone()), // i1.max > i2.max -> take i2
         Ordering::Equal => {
             let type_ = if i1.max_type == BoundType::Open || i2.max_type == BoundType::Open {
                 BoundType::Open
             } else {
                 BoundType::Closed
             };
-            (i1.max.clone(), type_)
+            (i1.max, type_)
         }
     };
     
     // Check if valid interval (min < max)
-    match compare_values(&min, &max) {
+    match compare_values(ctx, min, max) {
         Ordering::Less => SolutionSet::Continuous(Interval { min, min_type, max, max_type }),
         Ordering::Equal => {
             if min_type == BoundType::Closed && max_type == BoundType::Closed {
@@ -105,24 +105,24 @@ pub fn intersect_intervals(i1: &Interval, i2: &Interval) -> SolutionSet {
     }
 }
 
-pub fn union_solution_sets(s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
+pub fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
     match (s1, s2) {
         (SolutionSet::Empty, s) | (s, SolutionSet::Empty) => s,
         (SolutionSet::AllReals, _) | (_, SolutionSet::AllReals) => SolutionSet::AllReals,
         (SolutionSet::Continuous(i1), SolutionSet::Continuous(i2)) => {
             // TODO: Merge if overlapping or touching
             let mut intervals = vec![i1, i2];
-            intervals.sort_by(|a, b| compare_values(&a.min, &b.min));
+            intervals.sort_by(|a, b| compare_values(ctx, a.min, b.min));
             SolutionSet::Union(intervals)
         },
         (SolutionSet::Continuous(i), SolutionSet::Union(mut u)) | (SolutionSet::Union(mut u), SolutionSet::Continuous(i)) => {
             u.push(i);
-             u.sort_by(|a, b| compare_values(&a.min, &b.min));
+             u.sort_by(|a, b| compare_values(ctx, a.min, b.min));
             SolutionSet::Union(u)
         },
         (SolutionSet::Union(mut u1), SolutionSet::Union(u2)) => {
             u1.extend(u2);
-             u1.sort_by(|a, b| compare_values(&a.min, &b.min));
+             u1.sort_by(|a, b| compare_values(ctx, a.min, b.min));
             SolutionSet::Union(u1)
         },
 
@@ -134,20 +134,20 @@ pub fn union_solution_sets(s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
     }
 }
 
-pub fn intersect_solution_sets(s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
+pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
     match (s1, s2) {
         (SolutionSet::Empty, _) => SolutionSet::Empty,
         (_, SolutionSet::Empty) => SolutionSet::Empty,
         (SolutionSet::AllReals, s) => s,
         (s, SolutionSet::AllReals) => s,
         (SolutionSet::Continuous(i1), SolutionSet::Continuous(i2)) => {
-            intersect_intervals(&i1, &i2)
+            intersect_intervals(ctx, &i1, &i2)
         },
         (SolutionSet::Continuous(i), SolutionSet::Union(u)) => {
             // Intersect i with each interval in u
             let mut new_u = Vec::new();
             for interval in u {
-                let res = intersect_intervals(&i, &interval);
+                let res = intersect_intervals(ctx, &i, &interval);
                 match res {
                     SolutionSet::Continuous(new_i) => new_u.push(new_i),
                     SolutionSet::Discrete(_d) => {
@@ -165,14 +165,14 @@ pub fn intersect_solution_sets(s1: SolutionSet, s2: SolutionSet) -> SolutionSet 
             }
         },
         (SolutionSet::Union(u), SolutionSet::Continuous(i)) => {
-            intersect_solution_sets(SolutionSet::Continuous(i), SolutionSet::Union(u))
+            intersect_solution_sets(ctx, SolutionSet::Continuous(i), SolutionSet::Union(u))
         },
         (SolutionSet::Union(u1), SolutionSet::Union(u2)) => {
             // Distributive property: (A U B) n (C U D) = (A n C) U (A n D) U (B n C) U (B n D)
             let mut new_u = Vec::new();
             for i1 in &u1 {
                 for i2 in &u2 {
-                    let res = intersect_intervals(i1, i2);
+                    let res = intersect_intervals(ctx, i1, i2);
                     match res {
                         SolutionSet::Continuous(new_i) => new_u.push(new_i),
                         _ => {}

@@ -1,12 +1,11 @@
-use cas_ast::Expr;
-use std::rc::Rc;
+use cas_ast::{Expr, ExprId, Context};
 use num_traits::{ToPrimitive, Signed, One};
 
-pub fn is_trig_pow(expr: &Rc<Expr>, name: &str, power: i64) -> bool {
-    if let Expr::Pow(base, exp) = expr.as_ref() {
-        if let Expr::Number(n) = exp.as_ref() {
+pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
+    if let Expr::Pow(base, exp) = context.get(expr) {
+        if let Expr::Number(n) = context.get(*exp) {
             if n.is_integer() && n.to_integer() == power.into() {
-                if let Expr::Function(func_name, args) = base.as_ref() {
+                if let Expr::Function(func_name, args) = context.get(*base) {
                     return func_name == name && args.len() == 1;
                 }
             }
@@ -15,49 +14,53 @@ pub fn is_trig_pow(expr: &Rc<Expr>, name: &str, power: i64) -> bool {
     false
 }
 
-pub fn get_trig_arg(expr: &Rc<Expr>) -> Option<Rc<Expr>> {
-    if let Expr::Pow(base, _) = expr.as_ref() {
-        if let Expr::Function(_, args) = base.as_ref() {
+pub fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Pow(base, _) = context.get(expr) {
+        if let Expr::Function(_, args) = context.get(*base) {
             if args.len() == 1 {
-                return Some(args[0].clone());
+                return Some(args[0]);
             }
         }
     }
     None
 }
 
-pub fn get_square_root(expr: &Rc<Expr>) -> Option<Rc<Expr>> {
-    match expr.as_ref() {
+pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
+    // We need to clone the expression to avoid borrowing issues if we need to inspect it deeply
+    // But context.get returns reference.
+    // We can't hold reference to context while mutating it.
+    // So we should extract necessary data first.
+    
+    let expr_data = context.get(expr).clone();
+    
+    match expr_data {
         Expr::Pow(b, e) => {
-            if let Expr::Number(n) = e.as_ref() {
+            if let Expr::Number(n) = context.get(e) {
                 if n.is_integer() {
                     let val = n.to_integer();
                     if &val % 2 == 0.into() {
                         let two = num_bigint::BigInt::from(2);
-                        let new_exp = Expr::num((val / two).to_i64().unwrap());
+                        let new_exp_val = (val / two).to_i64().unwrap();
+                        let new_exp = context.num(new_exp_val);
+                        
                         // If new_exp is 1, simplify to b
-                        if let Expr::Number(ne) = new_exp.as_ref() {
+                        if let Expr::Number(ne) = context.get(new_exp) {
                             if ne.is_one() {
-                                return Some(b.clone());
+                                return Some(b);
                             }
                         }
-                        return Some(Expr::pow(b.clone(), new_exp));
+                        return Some(context.add(Expr::Pow(b, new_exp)));
                     }
                 }
             }
             None
         },
-        // Handle sin(x)^4 -> sin(x)^2
-        // Handle 4 -> 2
         Expr::Number(n) => {
-             // Check if n is a perfect square
-             // For simplicity, only handle positive integers for now
              if n.is_integer() && !n.is_negative() {
                  let val = n.to_integer();
-                 // Simple integer sqrt check
                  let sqrt = val.sqrt();
                  if &sqrt * &sqrt == val {
-                     return Some(Expr::num(sqrt.to_i64().unwrap()));
+                     return Some(context.num(sqrt.to_i64().unwrap()));
                  }
              }
              None
@@ -66,16 +69,16 @@ pub fn get_square_root(expr: &Rc<Expr>) -> Option<Rc<Expr>> {
     }
 }
 
-pub fn extract_double_angle_arg(expr: &Expr) -> Option<Rc<Expr>> {
-    if let Expr::Mul(lhs, rhs) = expr {
-        if let Expr::Number(n) = lhs.as_ref() {
+pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Mul(lhs, rhs) = context.get(expr) {
+        if let Expr::Number(n) = context.get(*lhs) {
             if n.is_integer() && n.to_integer() == 2.into() {
-                return Some(rhs.clone());
+                return Some(*rhs);
             }
         }
-        if let Expr::Number(n) = rhs.as_ref() {
+        if let Expr::Number(n) = context.get(*rhs) {
             if n.is_integer() && n.to_integer() == 2.into() {
-                return Some(lhs.clone());
+                return Some(*lhs);
             }
         }
     }

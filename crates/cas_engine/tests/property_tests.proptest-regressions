@@ -9,3 +9,4 @@ cc 906cf6a5dd048558bceb01bf2b7486dd29ebd6369d483042a1bbc81e4280c3a8 # shrinks to
 cc 749c7962425c5ef91de2bfaf7ae83548c7cd2b718aeb82963ea847b3967bb35d # shrinks to expr = Number(Ratio { numer: 0, denom: 1 })
 cc 2d541d266ae03861bc0296bfedbba2b04c3474faecfca8a38556534956677bc7 # shrinks to expr = Pow(Number(Ratio { numer: 0, denom: 1 }), Number(Ratio { numer: -1, denom: 1 }))
 cc cf4d07abd3aee38466dc5c958fe064e00546f2889c5d4450d459d62bc27eb9f6 # shrinks to expr = Div(Number(Ratio { numer: 0, denom: 1 }), Number(Ratio { numer: 0, denom: 1 }))
+cc 09cdcacf97c46b429069e622cf18e148c97a859b1e45c65fcc9dc05f00ab59bb # shrinks to re = Pow(Number(0), Neg(Number(0)))

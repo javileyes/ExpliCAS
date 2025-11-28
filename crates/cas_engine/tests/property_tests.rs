@@ -1,141 +1,180 @@
 use cas_engine::Simplifier;
-use cas_ast::Expr;
+use cas_ast::{Expr, Context, ExprId};
 use proptest::prelude::*;
 
 mod strategies;
 
 proptest! {
     #[test]
-    fn test_round_trip_parse(expr in strategies::arb_expr()) {
-        let s = expr.to_string();
+    fn test_round_trip_parse(re in strategies::arb_recursive_expr()) {
+        let (ctx, expr) = strategies::to_context(re);
+        let s = cas_format::Format::to_latex(&expr, &ctx); // Use to_latex for string representation for now, or Display
+        // Actually we should use Display implementation if available.
+        // But DisplayExpr is needed.
+        let display_expr = cas_ast::DisplayExpr { context: &ctx, id: expr };
+        let s = display_expr.to_string();
+        
         // Parse it back
-        let parsed = cas_parser::parse(&s);
+        let mut parse_ctx = Context::new();
+        let parsed = cas_parser::parse(&s, &mut parse_ctx);
         // It should parse successfully
         prop_assert!(parsed.is_ok(), "Failed to parse: {}", s);
     }
 
     #[test]
-    fn test_identity_add_zero(expr in strategies::arb_expr()) {
-        let simplifier = Simplifier::with_default_rules();
+    fn test_identity_add_zero(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx; // Use the generated context
+        
         // expr + 0 should simplify to expr (or equivalent)
-        let input = Expr::add(expr.clone(), Expr::num(0));
+        let zero = simplifier.context.num(0);
+        let input = simplifier.context.add(Expr::Add(expr, zero));
         
         // simplify(expr + 0) == simplify(expr)
-        let s1 = simplifier.simplify(input);
-        let s2 = simplifier.simplify(expr);
-        prop_assert_eq!(s1.0, s2.0);
+        let (s1, _) = simplifier.simplify(input);
+        let (s2, _) = simplifier.simplify(expr);
+        
+        // We need to compare structure, but ExprId equality is not enough if they are different nodes with same content.
+        // But simplify should canonicalize.
+        // However, s1 and s2 might be different IDs even if content is same.
+        // We need deep equality check.
+        // Or compare string representation.
+        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        prop_assert_eq!(d1.to_string(), d2.to_string());
     }
 
     #[test]
-    fn test_identity_mul_one(expr in strategies::arb_expr()) {
-        let simplifier = Simplifier::with_default_rules();
+    fn test_identity_mul_one(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+
         // expr * 1 should simplify to expr
-        let input = Expr::mul(expr.clone(), Expr::num(1));
-        let s1 = simplifier.simplify(input);
-        let s2 = simplifier.simplify(expr);
-        prop_assert_eq!(s1.0, s2.0);
+        let one = simplifier.context.num(1);
+        let input = simplifier.context.add(Expr::Mul(expr, one));
+        
+        let (s1, _) = simplifier.simplify(input);
+        let (s2, _) = simplifier.simplify(expr);
+        
+        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        prop_assert_eq!(d1.to_string(), d2.to_string());
     }
     
     #[test]
-    fn test_idempotency(expr in strategies::arb_expr()) {
-        let simplifier = Simplifier::with_default_rules();
-        let s1 = simplifier.simplify(expr);
-        let s2 = simplifier.simplify(s1.0.clone());
-        prop_assert_eq!(s1.0, s2.0);
+    fn test_idempotency(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+
+        let (s1, _) = simplifier.simplify(expr);
+        let (s2, _) = simplifier.simplify(s1);
+        
+        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        prop_assert_eq!(d1.to_string(), d2.to_string());
     }
 
     #[test]
-    fn test_constant_folding(expr in strategies::arb_expr()) {
-        let simplifier = Simplifier::with_default_rules();
+    fn test_constant_folding(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+
         let (simplified, _) = simplifier.simplify(expr);
         
         // Check that no Number op Number exists in the simplified expression
-        // We can use a visitor or a recursive check.
-        // Let's use a recursive check helper.
-        fn check_no_constant_ops(expr: &Expr) -> bool {
-            match expr {
+        fn check_no_constant_ops(ctx: &Context, expr: ExprId) -> bool {
+            match ctx.get(expr) {
                 Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-                    if let (Expr::Number(_), Expr::Number(_)) = (l.as_ref(), r.as_ref()) {
+                    if let (Expr::Number(_), Expr::Number(_)) = (ctx.get(*l), ctx.get(*r)) {
                         return false;
                     }
-                    check_no_constant_ops(l) && check_no_constant_ops(r)
+                    check_no_constant_ops(ctx, *l) && check_no_constant_ops(ctx, *r)
                 },
                 Expr::Neg(e) => {
-                    if let Expr::Number(_) = e.as_ref() {
-                        // Neg(Number) is allowed if it's negative number representation, 
-                        // but usually parser/engine puts negative in Number itself.
-                        // Our engine might produce Neg(Number(5)) -> Number(-5).
-                        // So Neg(Number) shouldn't exist ideally.
+                    if let Expr::Number(_) = ctx.get(*e) {
                         return false;
                     }
-                    check_no_constant_ops(e)
+                    check_no_constant_ops(ctx, *e)
                 },
-                Expr::Function(_, args) => args.iter().all(|a| check_no_constant_ops(a)),
+                Expr::Function(_, args) => args.iter().all(|a| check_no_constant_ops(ctx, *a)),
                 _ => true,
             }
         }
         
-        prop_assert!(check_no_constant_ops(&simplified), "Constant folding failed: {}", simplified);
+        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: simplified };
+        prop_assert!(check_no_constant_ops(&simplifier.context, simplified), "Constant folding failed: {}", d);
     }
 
     #[test]
-    fn test_identity_preservation(expr in strategies::arb_expr()) {
-        let simplifier = Simplifier::with_default_rules();
+    fn test_identity_preservation(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
         
         // x * 0 -> 0
-        let zero = Expr::num(0);
-        let mul_zero = Expr::mul(expr.clone(), zero.clone());
+        let zero = simplifier.context.num(0);
+        let mul_zero = simplifier.context.add(Expr::Mul(expr, zero));
         let (s_mul_zero, _) = simplifier.simplify(mul_zero);
-        prop_assert_eq!(s_mul_zero, zero.clone());
+        
+        let d_s = cas_ast::DisplayExpr { context: &simplifier.context, id: s_mul_zero };
+        let d_z = cas_ast::DisplayExpr { context: &simplifier.context, id: zero };
+        prop_assert_eq!(d_s.to_string(), d_z.to_string());
 
         // x ^ 0 -> 1
-        // Exception: 0^0 is undefined or 1 depending on convention. Our rule says 1.
-        // But 0^0 might be tricky.
-        let one = Expr::num(1);
-        let pow_zero = Expr::pow(expr.clone(), zero.clone());
+        let one = simplifier.context.num(1);
+        let pow_zero = simplifier.context.add(Expr::Pow(expr, zero));
         let (s_pow_zero, _) = simplifier.simplify(pow_zero);
-        prop_assert_eq!(s_pow_zero, one.clone());
+        
+        let d_p = cas_ast::DisplayExpr { context: &simplifier.context, id: s_pow_zero };
+        let d_o = cas_ast::DisplayExpr { context: &simplifier.context, id: one };
+        prop_assert_eq!(d_p.to_string(), d_o.to_string());
         
         // x ^ 1 -> x
-        let pow_one = Expr::pow(expr.clone(), one.clone());
+        let pow_one = simplifier.context.add(Expr::Pow(expr, one));
         let (s_pow_one, _) = simplifier.simplify(pow_one);
-        let (s_expr, _) = simplifier.simplify(expr.clone());
-        prop_assert_eq!(s_pow_one, s_expr);
+        let (s_expr, _) = simplifier.simplify(expr);
+        
+        let d_p1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s_pow_one };
+        let d_e = cas_ast::DisplayExpr { context: &simplifier.context, id: s_expr };
+        prop_assert_eq!(d_p1.to_string(), d_e.to_string());
     }
 
     #[test]
-    fn test_associativity_flattening(expr in strategies::arb_expr()) {
-        let simplifier = Simplifier::with_default_rules();
+    fn test_associativity_flattening(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+
         let (simplified, _) = simplifier.simplify(expr);
         
-        // Check that we don't have (a + b) + c or (a * b) * c
-        // The AssociativityRule should flatten these to a + (b + c) or similar canonical form.
-        // Our rule is: (a + b) + c -> a + (b + c) (Right associative)
-        // So we shouldn't see Add(Add(..), ..) as the LHS of an Add.
-        
-        fn check_right_associative(expr: &Expr) -> bool {
-            match expr {
+        fn check_right_associative(ctx: &Context, expr: ExprId) -> bool {
+            match ctx.get(expr) {
                 Expr::Add(lhs, rhs) => {
-                    if let Expr::Add(_, _) = lhs.as_ref() {
+                    if let Expr::Add(_, _) = ctx.get(*lhs) {
                         return false; // Found (a+b)+c
                     }
-                    check_right_associative(lhs) && check_right_associative(rhs)
+                    check_right_associative(ctx, *lhs) && check_right_associative(ctx, *rhs)
                 },
                 Expr::Mul(lhs, rhs) => {
-                    if let Expr::Mul(_, _) = lhs.as_ref() {
+                    if let Expr::Mul(_, _) = ctx.get(*lhs) {
                         return false; // Found (a*b)*c
                     }
-                    check_right_associative(lhs) && check_right_associative(rhs)
+                    check_right_associative(ctx, *lhs) && check_right_associative(ctx, *rhs)
                 },
                 Expr::Sub(lhs, rhs) | Expr::Div(lhs, rhs) | Expr::Pow(lhs, rhs) => {
-                    check_right_associative(lhs) && check_right_associative(rhs)
+                    check_right_associative(ctx, *lhs) && check_right_associative(ctx, *rhs)
                 },
-                Expr::Neg(e) => check_right_associative(e),
-                Expr::Function(_, args) => args.iter().all(|a| check_right_associative(a)),
+                Expr::Neg(e) => check_right_associative(ctx, *e),
+                Expr::Function(_, args) => args.iter().all(|a| check_right_associative(ctx, *a)),
                 _ => true,
             }
         }
 
-        prop_assert!(check_right_associative(&simplified), "Associativity flattening failed: {}", simplified);
+        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: simplified };
+        prop_assert!(check_right_associative(&simplifier.context, simplified), "Associativity flattening failed: {}", d);
     }
 }

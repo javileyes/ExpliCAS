@@ -1,14 +1,13 @@
-use cas_ast::Expr;
-use std::rc::Rc;
+use cas_ast::{ExprId, Context};
 
 pub struct Rewrite {
-    pub new_expr: Rc<Expr>,
+    pub new_expr: ExprId,
     pub description: String,
 }
 
 pub trait Rule {
     fn name(&self) -> &str;
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite>;
+    fn apply(&self, context: &mut Context, expr: ExprId) -> Option<Rewrite>;
     
     // Optional: Return list of Expr variant names this rule targets.
     // If None, the rule is applied to all nodes.

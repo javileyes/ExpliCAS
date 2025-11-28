@@ -2,10 +2,10 @@ pub mod expression;
 pub mod domain;
 pub mod visitor;
 
-pub use expression::{Expr, Constant};
+pub use expression::{Expr, Constant, ExprId, Context, DisplayExpr};
 pub use visitor::{Visitor, Transformer};
 pub use domain::{Interval, BoundType, SolutionSet};
-use std::rc::Rc;
+// use std::rc::Rc; // Removed Rc usage
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RelOp {
@@ -32,7 +32,7 @@ impl std::fmt::Display for RelOp {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Equation {
-    pub lhs: Rc<Expr>, // Left Hand Side
-    pub rhs: Rc<Expr>, // Right Hand Side
+    pub lhs: ExprId, // Left Hand Side
+    pub rhs: ExprId, // Right Hand Side
     pub op: RelOp,
 }

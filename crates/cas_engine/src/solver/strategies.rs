@@ -1,5 +1,4 @@
-use cas_ast::{Expr, Equation, RelOp, SolutionSet, Interval, BoundType};
-use std::rc::Rc;
+use cas_ast::{Expr, Equation, RelOp, SolutionSet, Interval, BoundType, ExprId, Context};
 use crate::engine::Simplifier;
 use crate::solver::SolveStep;
 use crate::polynomial::Polynomial;
@@ -11,14 +10,15 @@ use crate::solver::isolation::{contains_var, isolate};
 use crate::error::CasError;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::solve; // Needed for recursive solve in substitution
+use crate::ordering::compare_expr;
 
 // --- Helper Functions (Keep these as they are useful helpers) ---
 
-pub fn detect_substitution(eq: &Equation, var: &str) -> Option<Rc<Expr>> {
+pub fn detect_substitution(ctx: &mut Context, eq: &Equation, var: &str) -> Option<ExprId> {
     // ... (Keep existing implementation)
     // Heuristic: Look for e^x.
     // Collect all Pow(e, ...) terms.
-    let terms = collect_exponential_terms(&eq.lhs, var);
+    let terms = collect_exponential_terms(ctx, eq.lhs, var);
     if terms.is_empty() {
         return None;
     }
@@ -32,16 +32,16 @@ pub fn detect_substitution(eq: &Equation, var: &str) -> Option<Rc<Expr>> {
     let mut base_term = None;
 
     for term in &terms {
-        if let Expr::Pow(_, exp) = term.as_ref() {
+        if let Expr::Pow(_, exp) = ctx.get(*term) {
             // Check if exponent is exactly var (e^x)
-            if let Expr::Variable(v) = exp.as_ref() {
+            if let Expr::Variable(v) = ctx.get(*exp) {
                 if v == var {
-                    base_term = Some(term.clone());
+                    base_term = Some(*term);
                 }
             } else {
                 // Check if exponent is k*var (e^2x)
                 // If so, it's complex.
-                if contains_var(exp, var) {
+                if contains_var(ctx, *exp, var) {
                     found_complex = true;
                 }
             }
@@ -60,8 +60,15 @@ pub fn detect_substitution(eq: &Equation, var: &str) -> Option<Rc<Expr>> {
         } else {
             // Construct e^x
             // We need to know the base.
-            if let Expr::Pow(b, _) = terms[0].as_ref() {
-                return Some(Expr::pow(b.clone(), Expr::var(var)));
+            let base_id = if let Expr::Pow(b, _) = ctx.get(terms[0]) {
+                Some(*b)
+            } else {
+                None
+            };
+
+            if let Some(b) = base_id {
+                let var_expr = ctx.var(var);
+                return Some(ctx.add(Expr::Pow(b, var_expr)));
             }
         }
     }
@@ -69,57 +76,128 @@ pub fn detect_substitution(eq: &Equation, var: &str) -> Option<Rc<Expr>> {
     None
 }
 
-pub fn collect_exponential_terms(expr: &Rc<Expr>, var: &str) -> Vec<Rc<Expr>> {
+pub fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
     let mut terms = Vec::new();
-    match expr.as_ref() {
+    match ctx.get(expr) {
         Expr::Pow(b, e) => {
-            let is_e = match b.as_ref() {
+            let is_e = match ctx.get(*b) {
                 Expr::Variable(name) => name == "e",
                 Expr::Constant(c) => matches!(c, cas_ast::Constant::E),
                 _ => false
             };
-            if is_e && contains_var(e, var) {
-                terms.push(expr.clone());
+            if is_e && contains_var(ctx, *e, var) {
+                terms.push(expr);
             }
         },
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            terms.extend(collect_exponential_terms(l, var));
-            terms.extend(collect_exponential_terms(r, var));
+            terms.extend(collect_exponential_terms(ctx, *l, var));
+            terms.extend(collect_exponential_terms(ctx, *r, var));
         },
         _ => {}
     }
     terms
 }
 
-pub fn substitute_expr(expr: &Rc<Expr>, target: &Rc<Expr>, replacement_name: &str) -> Rc<Expr> {
-    if expr == target {
-        return Expr::var(replacement_name);
+pub fn substitute_expr(ctx: &mut Context, expr: ExprId, target: ExprId, replacement: ExprId) -> ExprId {
+    if compare_expr(ctx, expr, target) == Ordering::Equal {
+        return replacement;
     }
     
+    let expr_data = ctx.get(expr).clone();
+
     // Handle e^(2x) -> (e^x)^2 -> u^2
-    if let Expr::Pow(b, e) = expr.as_ref() {
-        if let Expr::Pow(tb, te) = target.as_ref() {
-            if b == tb {
+    let target_pow = if let Expr::Pow(tb, te) = ctx.get(target) {
+        Some((*tb, *te))
+    } else {
+        None
+    };
+
+    if let Expr::Pow(b, e) = &expr_data {
+        if let Some((tb, te)) = target_pow {
+            if compare_expr(ctx, *b, tb) == Ordering::Equal {
                 // Check if e = k * te
-                // e.g. 2x = 2 * x
-                if let Expr::Mul(l, r) = e.as_ref() {
-                    if (l == te && matches!(r.as_ref(), Expr::Number(_))) || (r == te && matches!(l.as_ref(), Expr::Number(_))) {
-                        let coeff = if l == te { r } else { l };
-                        return Expr::pow(Expr::var(replacement_name), coeff.clone());
+                let e_mul = if let Expr::Mul(l, r) = ctx.get(*e) {
+                    Some((*l, *r))
+                } else {
+                    None
+                };
+
+                if let Some((l, r)) = e_mul {
+                    let l_is_num = matches!(ctx.get(l), Expr::Number(_));
+                    let r_is_num = matches!(ctx.get(r), Expr::Number(_));
+                    
+                    let l_matches = compare_expr(ctx, l, te) == Ordering::Equal;
+                    let r_matches = compare_expr(ctx, r, te) == Ordering::Equal;
+                    
+                    if (l_matches && r_is_num) || (r_matches && l_is_num) {
+                        let coeff = if l_matches { r } else { l };
+                        return ctx.add(Expr::Pow(replacement, coeff));
                     }
                 }
             }
         }
     }
 
-    match expr.as_ref() {
-        Expr::Add(l, r) => Expr::add(substitute_expr(l, target, replacement_name), substitute_expr(r, target, replacement_name)),
-        Expr::Sub(l, r) => Expr::sub(substitute_expr(l, target, replacement_name), substitute_expr(r, target, replacement_name)),
-        Expr::Mul(l, r) => Expr::mul(substitute_expr(l, target, replacement_name), substitute_expr(r, target, replacement_name)),
-        Expr::Div(l, r) => Expr::div(substitute_expr(l, target, replacement_name), substitute_expr(r, target, replacement_name)),
-        Expr::Pow(b, e) => Expr::pow(substitute_expr(b, target, replacement_name), substitute_expr(e, target, replacement_name)),
-        _ => expr.clone()
+    match expr_data {
+        Expr::Add(l, r) => {
+            let new_l = substitute_expr(ctx, l, target, replacement);
+            let new_r = substitute_expr(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                return ctx.add(Expr::Add(new_l, new_r));
+            }
+        },
+        Expr::Sub(l, r) => {
+            let new_l = substitute_expr(ctx, l, target, replacement);
+            let new_r = substitute_expr(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                return ctx.add(Expr::Sub(new_l, new_r));
+            }
+        },
+        Expr::Mul(l, r) => {
+            let new_l = substitute_expr(ctx, l, target, replacement);
+            let new_r = substitute_expr(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                return ctx.add(Expr::Mul(new_l, new_r));
+            }
+        },
+        Expr::Div(l, r) => {
+            let new_l = substitute_expr(ctx, l, target, replacement);
+            let new_r = substitute_expr(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                return ctx.add(Expr::Div(new_l, new_r));
+            }
+        },
+        Expr::Pow(b, e) => {
+            let new_b = substitute_expr(ctx, b, target, replacement);
+            let new_e = substitute_expr(ctx, e, target, replacement);
+            if new_b != b || new_e != e {
+                return ctx.add(Expr::Pow(new_b, new_e));
+            }
+        },
+        Expr::Neg(e) => {
+            let new_e = substitute_expr(ctx, e, target, replacement);
+            if new_e != e {
+                return ctx.add(Expr::Neg(new_e));
+            }
+        },
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::new();
+            let mut changed = false;
+            for arg in args {
+                let new_arg = substitute_expr(ctx, arg, target, replacement);
+                if new_arg != arg {
+                    changed = true;
+                }
+                new_args.push(new_arg);
+            }
+            if changed {
+                return ctx.add(Expr::Function(name, new_args));
+            }
+        },
+        _ => {}
     }
+    
+    expr
 }
 
 // --- Strategies ---
@@ -131,26 +209,27 @@ impl SolverStrategy for SubstitutionStrategy {
         "Substitution"
     }
 
-    fn apply(&self, eq: &Equation, var: &str, simplifier: &Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        if let Some(sub_var_expr) = detect_substitution(eq, var) {
+    fn apply(&self, eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+        if let Some(sub_var_expr) = detect_substitution(&mut simplifier.context, eq, var) {
             let mut steps = Vec::new();
             if simplifier.collect_steps {
                 steps.push(SolveStep {
-                    description: format!("Detected substitution: u = {}", sub_var_expr),
+                    description: format!("Detected substitution: u = {:?}", sub_var_expr), // Debug format
                     equation_after: eq.clone(),
                 });
             }
             
             // Rewrite equation in terms of u
             let u_sym = "u";
-            let new_lhs = substitute_expr(&eq.lhs, &sub_var_expr, u_sym);
-            let new_rhs = substitute_expr(&eq.rhs, &sub_var_expr, u_sym);
+            let u_var = simplifier.context.var(u_sym);
+            let new_lhs = substitute_expr(&mut simplifier.context, eq.lhs, sub_var_expr, u_var);
+            let new_rhs = substitute_expr(&mut simplifier.context, eq.rhs, sub_var_expr, u_var);
             
             let new_eq = Equation { lhs: new_lhs, rhs: new_rhs, op: eq.op.clone() };
             
             if simplifier.collect_steps {
                 steps.push(SolveStep {
-                    description: format!("Substituted equation: {} {} {}", new_eq.lhs, new_eq.op, new_eq.rhs),
+                    description: format!("Substituted equation: {:?} {} {:?}", new_eq.lhs, new_eq.op, new_eq.rhs),
                     equation_after: new_eq.clone(),
                 });
             }
@@ -168,10 +247,10 @@ impl SolverStrategy for SubstitutionStrategy {
                     let mut final_solutions = Vec::new();
                     for val in vals {
                         // Solve sub_var_expr = val
-                        let sub_eq = Equation { lhs: sub_var_expr.clone(), rhs: val.clone(), op: RelOp::Eq };
+                        let sub_eq = Equation { lhs: sub_var_expr, rhs: val, op: RelOp::Eq };
                         if simplifier.collect_steps {
                             steps.push(SolveStep {
-                                description: format!("Back-substitute: {} = {}", sub_var_expr, val),
+                                description: format!("Back-substitute: {:?} = {:?}", sub_var_expr, val),
                                 equation_after: sub_eq.clone(),
                             });
                         }
@@ -204,19 +283,19 @@ impl SolverStrategy for QuadraticStrategy {
         "Quadratic Formula"
     }
 
-    fn apply(&self, eq: &Equation, var: &str, simplifier: &Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    fn apply(&self, eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let mut steps = Vec::new();
         
         // Move everything to LHS: lhs - rhs = 0
-        let poly_expr = Expr::sub(eq.lhs.clone(), eq.rhs.clone());
+        let poly_expr = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
         let (sim_poly_expr, _) = simplifier.simplify(poly_expr);
         
-        if let Ok(poly) = Polynomial::from_expr(&sim_poly_expr, var) {
+        if let Ok(poly) = Polynomial::from_expr(&simplifier.context, sim_poly_expr, var) {
             if poly.degree() == 2 {
                 if simplifier.collect_steps {
                     steps.push(SolveStep {
                         description: "Detected quadratic equation. Applying quadratic formula.".to_string(),
-                        equation_after: Equation { lhs: sim_poly_expr.clone(), rhs: Expr::num(0), op: RelOp::Eq }
+                        equation_after: Equation { lhs: sim_poly_expr, rhs: simplifier.context.num(0), op: RelOp::Eq }
                     });
                 }
                 
@@ -237,26 +316,29 @@ impl SolverStrategy for QuadraticStrategy {
                 let neg_b = -b.clone();
                 let two_a = BigRational::from_integer(2.into()) * a.clone();
                 
-                let delta_expr = Rc::new(Expr::Number(delta.clone()));
-                let neg_b_expr = Rc::new(Expr::Number(neg_b));
-                let two_a_expr = Rc::new(Expr::Number(two_a.clone()));
+                let delta_expr = simplifier.context.add(Expr::Number(delta.clone()));
+                let neg_b_expr = simplifier.context.add(Expr::Number(neg_b));
+                let two_a_expr = simplifier.context.add(Expr::Number(two_a.clone()));
                 
                 // sqrt(delta)
-                let sqrt_delta = Expr::pow(delta_expr, Expr::rational(1, 2));
+                let one = simplifier.context.num(1);
+                let two = simplifier.context.num(2);
+                let half = simplifier.context.add(Expr::Div(one, two));
+                let sqrt_delta = simplifier.context.add(Expr::Pow(delta_expr, half));
                 
                 // x1 = (-b - sqrt(delta)) / 2a (Smaller root if a > 0)
-                let num1 = Expr::sub(neg_b_expr.clone(), sqrt_delta.clone());
-                let sol1 = Expr::div(num1, two_a_expr.clone());
+                let num1 = simplifier.context.add(Expr::Sub(neg_b_expr, sqrt_delta));
+                let sol1 = simplifier.context.add(Expr::Div(num1, two_a_expr));
                 
                 // x2 = (-b + sqrt(delta)) / 2a (Larger root if a > 0)
-                let num2 = Expr::add(neg_b_expr, sqrt_delta);
-                let sol2 = Expr::div(num2, two_a_expr);
+                let num2 = simplifier.context.add(Expr::Add(neg_b_expr, sqrt_delta));
+                let sol2 = simplifier.context.add(Expr::Div(num2, two_a_expr));
                 
                 let (sim_sol1, _) = simplifier.simplify(sol1);
                 let (sim_sol2, _) = simplifier.simplify(sol2);
                 
                 // Ensure r1 <= r2
-                let (r1, r2) = if compare_values(&sim_sol1, &sim_sol2) == Ordering::Greater {
+                let (r1, r2) = if compare_values(&simplifier.context, sim_sol1, sim_sol2) == Ordering::Greater {
                     (sim_sol2, sim_sol1)
                 } else {
                     (sim_sol1, sim_sol2)
@@ -276,9 +358,9 @@ impl SolverStrategy for QuadraticStrategy {
                         RelOp::Eq => SolutionSet::Discrete(vec![r1, r2]),
                         RelOp::Neq => {
                             // (-inf, r1) U (r1, r2) U (r2, inf)
-                            let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1.clone(), max_type: BoundType::Open };
-                            let i2 = Interval { min: r1.clone(), min_type: BoundType::Open, max: r2.clone(), max_type: BoundType::Open };
-                            let i3 = Interval { min: r2.clone(), min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                            let i1 = Interval { min: neg_inf(&mut simplifier.context), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
+                            let i2 = Interval { min: r1, min_type: BoundType::Open, max: r2, max_type: BoundType::Open };
+                            let i3 = Interval { min: r2, min_type: BoundType::Open, max: pos_inf(&mut simplifier.context), max_type: BoundType::Open };
                             SolutionSet::Union(vec![i1, i2, i3])
                         },
                         RelOp::Lt => {
@@ -287,8 +369,8 @@ impl SolverStrategy for QuadraticStrategy {
                                 mk_interval(r1, BoundType::Open, r2, BoundType::Open)
                             } else {
                                 // Parabola < 0 outside roots: (-inf, r1) U (r2, inf)
-                                let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
-                                let i2 = Interval { min: r2, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                                let i1 = Interval { min: neg_inf(&mut simplifier.context), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
+                                let i2 = Interval { min: r2, min_type: BoundType::Open, max: pos_inf(&mut simplifier.context), max_type: BoundType::Open };
                                 SolutionSet::Union(vec![i1, i2])
                             }
                         },
@@ -298,16 +380,16 @@ impl SolverStrategy for QuadraticStrategy {
                                 mk_interval(r1, BoundType::Closed, r2, BoundType::Closed)
                             } else {
                                 // (-inf, r1] U [r2, inf)
-                                let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1, max_type: BoundType::Closed };
-                                let i2 = Interval { min: r2, min_type: BoundType::Closed, max: pos_inf(), max_type: BoundType::Open };
+                                let i1 = Interval { min: neg_inf(&mut simplifier.context), min_type: BoundType::Open, max: r1, max_type: BoundType::Closed };
+                                let i2 = Interval { min: r2, min_type: BoundType::Closed, max: pos_inf(&mut simplifier.context), max_type: BoundType::Open };
                                 SolutionSet::Union(vec![i1, i2])
                             }
                         },
                         RelOp::Gt => {
                             if opens_up {
                                 // Parabola > 0 outside roots: (-inf, r1) U (r2, inf)
-                                let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
-                                let i2 = Interval { min: r2, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                                let i1 = Interval { min: neg_inf(&mut simplifier.context), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
+                                let i2 = Interval { min: r2, min_type: BoundType::Open, max: pos_inf(&mut simplifier.context), max_type: BoundType::Open };
                                 SolutionSet::Union(vec![i1, i2])
                             } else {
                                 // Parabola > 0 between roots: (r1, r2)
@@ -317,8 +399,8 @@ impl SolverStrategy for QuadraticStrategy {
                         RelOp::Geq => {
                             if opens_up {
                                 // (-inf, r1] U [r2, inf)
-                                let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1, max_type: BoundType::Closed };
-                                let i2 = Interval { min: r2, min_type: BoundType::Closed, max: pos_inf(), max_type: BoundType::Open };
+                                let i1 = Interval { min: neg_inf(&mut simplifier.context), min_type: BoundType::Open, max: r1, max_type: BoundType::Closed };
+                                let i2 = Interval { min: r2, min_type: BoundType::Closed, max: pos_inf(&mut simplifier.context), max_type: BoundType::Open };
                                 SolutionSet::Union(vec![i1, i2])
                             } else {
                                 // [r1, r2]
@@ -332,8 +414,8 @@ impl SolverStrategy for QuadraticStrategy {
                         RelOp::Eq => SolutionSet::Discrete(vec![r1]),
                         RelOp::Neq => {
                             // (-inf, r1) U (r1, inf)
-                            let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1.clone(), max_type: BoundType::Open };
-                            let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                            let i1 = Interval { min: neg_inf(&mut simplifier.context), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
+                            let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(&mut simplifier.context), max_type: BoundType::Open };
                             SolutionSet::Union(vec![i1, i2])
                         },
                         RelOp::Lt => {
@@ -342,8 +424,8 @@ impl SolverStrategy for QuadraticStrategy {
                                 SolutionSet::Empty
                             } else {
                                 // -(x-r)^2 < 0 -> All Reals except r
-                                let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1.clone(), max_type: BoundType::Open };
-                                let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                                let i1 = Interval { min: neg_inf(&mut simplifier.context), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
+                                let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(&mut simplifier.context), max_type: BoundType::Open };
                                 SolutionSet::Union(vec![i1, i2])
                             }
                         },
@@ -359,8 +441,8 @@ impl SolverStrategy for QuadraticStrategy {
                         RelOp::Gt => {
                             if opens_up {
                                 // (x-r)^2 > 0 -> All Reals except r
-                                let i1 = Interval { min: neg_inf(), min_type: BoundType::Open, max: r1.clone(), max_type: BoundType::Open };
-                                let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(), max_type: BoundType::Open };
+                                let i1 = Interval { min: neg_inf(&mut simplifier.context), min_type: BoundType::Open, max: r1, max_type: BoundType::Open };
+                                let i2 = Interval { min: r1, min_type: BoundType::Open, max: pos_inf(&mut simplifier.context), max_type: BoundType::Open };
                                 SolutionSet::Union(vec![i1, i2])
                             } else {
                                 // -(x-r)^2 > 0 -> Empty
@@ -405,7 +487,7 @@ impl SolverStrategy for IsolationStrategy {
         "Isolation"
     }
 
-    fn apply(&self, eq: &Equation, var: &str, simplifier: &Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    fn apply(&self, eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Isolation strategy expects variable on LHS.
         // The main solve loop handles swapping, but we should check here or just assume?
         // Let's check and swap if needed, or just rely on isolate to handle it?
@@ -414,8 +496,8 @@ impl SolverStrategy for IsolationStrategy {
         // If var is on RHS and not LHS, we should swap.
         // If var is on both, isolation might fail or we need to collect first.
         
-        let lhs_has = contains_var(&eq.lhs, var);
-        let rhs_has = contains_var(&eq.rhs, var);
+        let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
+        let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
         
         if !lhs_has && !rhs_has {
              return Some(Err(CasError::VariableNotFound(var.to_string())));
@@ -440,10 +522,10 @@ impl SolverStrategy for IsolationStrategy {
             if simplifier.collect_steps {
                 steps.push(SolveStep {
                     description: "Swap sides to put variable on LHS".to_string(),
-                    equation_after: Equation { lhs: eq.rhs.clone(), rhs: eq.lhs.clone(), op: new_op.clone() },
+                    equation_after: Equation { lhs: eq.rhs, rhs: eq.lhs, op: new_op.clone() },
                 });
             }
-            match isolate(&eq.rhs, &eq.lhs, new_op, var, simplifier) {
+            match isolate(eq.rhs, eq.lhs, new_op, var, simplifier) {
                 Ok((set, mut iso_steps)) => {
                     steps.append(&mut iso_steps);
                     return Some(Ok((set, steps)));
@@ -453,7 +535,7 @@ impl SolverStrategy for IsolationStrategy {
         }
         
         // LHS has var
-        match isolate(&eq.lhs, &eq.rhs, eq.op.clone(), var, simplifier) {
+        match isolate(eq.lhs, eq.rhs, eq.op.clone(), var, simplifier) {
             Ok((set, steps)) => Some(Ok((set, steps))),
             Err(e) => Some(Err(e)),
         }
