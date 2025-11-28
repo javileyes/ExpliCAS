@@ -1,16 +1,13 @@
 use crate::rule::{Rule, Rewrite};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use num_traits::{Zero, One};
 
-pub struct EvaluateTrigRule;
-
-impl Rule for EvaluateTrigRule {
-    fn name(&self) -> &str {
-        "Evaluate Trigonometric Functions"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    EvaluateTrigRule,
+    "Evaluate Trigonometric Functions",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if args.len() == 1 {
                 let arg = &args[0];
@@ -101,16 +98,12 @@ impl Rule for EvaluateTrigRule {
         }
         None
     }
-}
+);
 
-pub struct PythagoreanIdentityRule;
-
-impl Rule for PythagoreanIdentityRule {
-    fn name(&self) -> &str {
-        "Pythagorean Identity"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    PythagoreanIdentityRule,
+    "Pythagorean Identity",
+    |expr| {
         if let Expr::Add(lhs, rhs) = expr.as_ref() {
             // Check cos^2 + sin^2
             if let (Some(arg_cos), Some(arg_sin)) = (is_trig_square(lhs, "cos"), is_trig_square(rhs, "sin")) {
@@ -133,7 +126,7 @@ impl Rule for PythagoreanIdentityRule {
         }
         None
     }
-}
+);
 
 // Helper to check if expr is name(arg)^2 and return arg
 fn is_trig_square<'a>(expr: &'a Expr, name: &str) -> Option<&'a Rc<Expr>> {
@@ -151,16 +144,10 @@ fn is_trig_square<'a>(expr: &'a Expr, name: &str) -> Option<&'a Rc<Expr>> {
     None
 }
 
-
-
-pub struct AngleIdentityRule;
-
-impl Rule for AngleIdentityRule {
-    fn name(&self) -> &str {
-        "Angle Sum/Diff Identity"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    AngleIdentityRule,
+    "Angle Sum/Diff Identity",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if args.len() == 1 {
                 let inner = &args[0];
@@ -209,16 +196,12 @@ impl Rule for AngleIdentityRule {
         }
         None
     }
-}
+);
 
-pub struct TanToSinCosRule;
-
-impl Rule for TanToSinCosRule {
-    fn name(&self) -> &str {
-        "Tan to Sin/Cos"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    TanToSinCosRule,
+    "Tan to Sin/Cos",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if name == "tan" && args.len() == 1 {
                 // tan(x) -> sin(x) / cos(x)
@@ -230,16 +213,12 @@ impl Rule for TanToSinCosRule {
         }
         None
     }
-}
+);
 
-pub struct DoubleAngleRule;
-
-impl Rule for DoubleAngleRule {
-    fn name(&self) -> &str {
-        "Double Angle Identity"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    DoubleAngleRule,
+    "Double Angle Identity",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if args.len() == 1 {
                 // Check if arg is 2*x or x*2
@@ -273,7 +252,7 @@ impl Rule for DoubleAngleRule {
         }
         None
     }
-}
+);
 
 fn extract_double_angle_arg(expr: &Expr) -> Option<Rc<Expr>> {
     if let Expr::Mul(lhs, rhs) = expr {

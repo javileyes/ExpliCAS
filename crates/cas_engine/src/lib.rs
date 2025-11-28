@@ -8,6 +8,8 @@ pub mod ordering;
 
 pub mod visitors;
 pub mod error;
+#[macro_use]
+pub mod macros;
 
 pub use visitors::{VariableCollector, DepthVisitor};
 pub use error::CasError;

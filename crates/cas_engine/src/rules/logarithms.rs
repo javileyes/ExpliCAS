@@ -1,16 +1,13 @@
 use crate::rule::{Rule, Rewrite};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use num_traits::{Zero, One};
 
-pub struct EvaluateLogRule;
-
-impl Rule for EvaluateLogRule {
-    fn name(&self) -> &str {
-        "Evaluate Logarithms"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    EvaluateLogRule,
+    "Evaluate Logarithms",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if name == "log" && args.len() == 2 {
                 let base = &args[0];
@@ -114,16 +111,12 @@ impl Rule for EvaluateLogRule {
         }
         None
     }
-}
+);
 
-pub struct ExponentialLogRule;
-
-impl Rule for ExponentialLogRule {
-    fn name(&self) -> &str {
-        "Exponential-Log Inverse"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    ExponentialLogRule,
+    "Exponential-Log Inverse",
+    |expr| {
         if let Expr::Pow(base, exp) = expr.as_ref() {
             // Check if exponent is log(base, x)
             if let Expr::Function(name, args) = exp.as_ref() {
@@ -142,17 +135,13 @@ impl Rule for ExponentialLogRule {
         }
         None
     }
-}
+);
 
 
-pub struct SplitLogExponentsRule;
-
-impl Rule for SplitLogExponentsRule {
-    fn name(&self) -> &str {
-        "Split Log Exponents"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    SplitLogExponentsRule,
+    "Split Log Exponents",
+    |expr| {
         // e^(a + b) -> e^a * e^b IF a or b is a log
         if let Expr::Pow(base, exp) = expr.as_ref() {
             if let Expr::Constant(cas_ast::Constant::E) = base.as_ref() {
@@ -173,7 +162,7 @@ impl Rule for SplitLogExponentsRule {
         }
         None
     }
-}
+);
 
 fn simplify_exp_log(base: &Rc<Expr>, exp: &Rc<Expr>) -> Rc<Expr> {
     // Check if exp is log(base, x)

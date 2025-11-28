@@ -1,14 +1,15 @@
 use crate::rule::{Rewrite, Rule};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use num_traits::{ToPrimitive, Signed};
+use num_rational::BigRational;
+use num_traits::One;
 
-pub struct DistributeRule;
-impl Rule for DistributeRule {
-    fn name(&self) -> &str {
-        "Distributive Property"
-    }
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    DistributeRule,
+    "Distributive Property",
+    |expr| {
         if let Expr::Mul(l, r) = expr.as_ref() {
             // a * (b + c) -> a*b + a*c
             if let Expr::Add(b, c) = r.as_ref() {
@@ -33,14 +34,12 @@ impl Rule for DistributeRule {
         }
         None
     }
-}
+);
 
-pub struct AnnihilationRule;
-impl Rule for AnnihilationRule {
-    fn name(&self) -> &str {
-        "Annihilation"
-    }
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    AnnihilationRule,
+    "Annihilation",
+    |expr| {
         if let Expr::Sub(l, r) = expr.as_ref() {
             if l == r {
                 return Some(Rewrite {
@@ -51,17 +50,12 @@ impl Rule for AnnihilationRule {
         }
         None
     }
-}
+);
 
-use num_rational::BigRational;
-use num_traits::One;
-
-pub struct CombineLikeTermsRule;
-impl Rule for CombineLikeTermsRule {
-    fn name(&self) -> &str {
-        "Combine Like Terms"
-    }
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    CombineLikeTermsRule,
+    "Combine Like Terms",
+    |expr| {
         if let Expr::Add(l, r) = expr.as_ref() {
             // Helper to extract (coeff, var_part)
             // 2x -> (2, x)
@@ -99,16 +93,12 @@ impl Rule for CombineLikeTermsRule {
         }
         None
     }
-}
+);
 
-pub struct BinomialExpansionRule;
-
-impl Rule for BinomialExpansionRule {
-    fn name(&self) -> &str {
-        "Binomial Expansion"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    BinomialExpansionRule,
+    "Binomial Expansion",
+    |expr| {
         // (a + b)^n
         if let Expr::Pow(base, exp) = expr.as_ref() {
             if let Expr::Add(a, b) = base.as_ref() {
@@ -151,7 +141,7 @@ impl Rule for BinomialExpansionRule {
         }
         None
     }
-}
+);
 
 fn binomial_coeff(n: u32, k: u32) -> u32 {
     if k == 0 || k == n {

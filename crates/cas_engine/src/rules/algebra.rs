@@ -1,4 +1,5 @@
-use crate::rule::{Rule, Rewrite};
+use crate::rule::{Rewrite, Rule};
+use crate::define_rule;
 use cas_ast::Expr;
 use crate::polynomial::Polynomial;
 use std::rc::Rc;
@@ -6,14 +7,10 @@ use std::collections::HashSet;
 use num_traits::{One, Signed, ToPrimitive};
 
 
-pub struct SimplifyFractionRule;
-
-impl Rule for SimplifyFractionRule {
-    fn name(&self) -> &str {
-        "Simplify Algebraic Fraction"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    SimplifyFractionRule,
+    "Simplify Algebraic Fraction",
+    |expr| {
         if let Expr::Div(num, den) = expr.as_ref() {
             // 1. Identify variable
             let vars = collect_variables(expr);
@@ -65,17 +62,12 @@ impl Rule for SimplifyFractionRule {
         }
         None
     }
-}
+);
 
-
-pub struct NestedFractionRule;
-
-impl Rule for NestedFractionRule {
-    fn name(&self) -> &str {
-        "Simplify Nested Fraction"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    NestedFractionRule,
+    "Simplify Nested Fraction",
+    |expr| {
         if let Expr::Div(num, den) = expr.as_ref() {
             let num_denoms = collect_denominators(num);
             let den_denoms = collect_denominators(den);
@@ -133,7 +125,7 @@ impl Rule for NestedFractionRule {
         }
         None
     }
-}
+);
 
 fn distribute(target: &Rc<Expr>, multiplier: &Rc<Expr>) -> Rc<Expr> {
     match target.as_ref() {
@@ -211,14 +203,10 @@ fn collect_denominators(expr: &Rc<Expr>) -> Vec<Rc<Expr>> {
     denoms
 }
 
-pub struct ExpandRule;
-
-impl Rule for ExpandRule {
-    fn name(&self) -> &str {
-        "Expand Polynomial"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    ExpandRule,
+    "Expand Polynomial",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if name == "expand" && args.len() == 1 {
                 let arg = &args[0];
@@ -247,16 +235,12 @@ impl Rule for ExpandRule {
         }
         None
     }
-}
+);
 
-pub struct FactorRule;
-
-impl Rule for FactorRule {
-    fn name(&self) -> &str {
-        "Factor Polynomial"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    FactorRule,
+    "Factor Polynomial",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if name == "factor" && args.len() == 1 {
                 let arg = &args[0];
@@ -314,7 +298,7 @@ impl Rule for FactorRule {
         }
         None
     }
-}
+);
 
 fn collect_variables(expr: &Expr) -> HashSet<String> {
     use crate::visitors::VariableCollector;
@@ -326,14 +310,10 @@ fn collect_variables(expr: &Expr) -> HashSet<String> {
 }
 
 
-pub struct FactorDifferenceSquaresRule;
-
-impl Rule for FactorDifferenceSquaresRule {
-    fn name(&self) -> &str {
-        "Factor Difference of Squares"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    FactorDifferenceSquaresRule,
+    "Factor Difference of Squares",
+    |expr| {
         let (l, r) = match expr.as_ref() {
             Expr::Sub(l, r) => (l.clone(), r.clone()),
             Expr::Add(a, b) => {
@@ -370,7 +350,7 @@ impl Rule for FactorDifferenceSquaresRule {
         }
         None
     }
-}
+);
 
 fn is_sin_cos_pair(a: &Rc<Expr>, b: &Rc<Expr>) -> bool {
     (is_trig_pow(a, "sin", 2) && is_trig_pow(b, "cos", 2) && get_trig_arg(a) == get_trig_arg(b)) ||

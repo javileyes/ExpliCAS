@@ -1,17 +1,14 @@
 use crate::rule::{Rule, Rewrite};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use num_traits::{One};
 use num_rational::BigRational;
 
-pub struct IntegrateRule;
-
-impl Rule for IntegrateRule {
-    fn name(&self) -> &str {
-        "Symbolic Integration"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    IntegrateRule,
+    "Symbolic Integration",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if name == "integrate" {
                 if args.len() == 2 {
@@ -33,14 +30,14 @@ impl Rule for IntegrateRule {
                         return Some(Rewrite {
                             new_expr: result,
                             description: format!("integrate({})", integrand),
-                        });
+                            });
                     }
                 }
             }
         }
         None
     }
-}
+);
 
 fn integrate(expr: &Rc<Expr>, var: &str) -> Option<Rc<Expr>> {
     // 1. Linearity: integrate(a + b) = integrate(a) + integrate(b)

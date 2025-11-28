@@ -1,16 +1,13 @@
 use crate::rule::{Rewrite, Rule};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use num_traits::{Zero, One};
 
-pub struct AddZeroRule;
-
-impl Rule for AddZeroRule {
-    fn name(&self) -> &str {
-        "Identity Property of Addition"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    AddZeroRule,
+    "Identity Property of Addition",
+    |expr| {
         if let Expr::Add(lhs, rhs) = expr.as_ref() {
             if let Expr::Number(n) = rhs.as_ref() {
                 if n.is_zero() {
@@ -31,16 +28,12 @@ impl Rule for AddZeroRule {
         }
         None
     }
-}
+);
 
-pub struct MulOneRule;
-
-impl Rule for MulOneRule {
-    fn name(&self) -> &str {
-        "Identity Property of Multiplication"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    MulOneRule,
+    "Identity Property of Multiplication",
+    |expr| {
         if let Expr::Mul(lhs, rhs) = expr.as_ref() {
             if let Expr::Number(n) = rhs.as_ref() {
                 if n.is_one() {
@@ -61,16 +54,12 @@ impl Rule for MulOneRule {
         }
         None
     }
-}
+);
 
-pub struct MulZeroRule;
-
-impl Rule for MulZeroRule {
-    fn name(&self) -> &str {
-        "Zero Property of Multiplication"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    MulZeroRule,
+    "Zero Property of Multiplication",
+    |expr| {
         if let Expr::Mul(lhs, rhs) = expr.as_ref() {
             if let Expr::Number(n) = rhs.as_ref() {
                 if n.is_zero() {
@@ -91,16 +80,12 @@ impl Rule for MulZeroRule {
         }
         None
     }
-}
+);
 
-pub struct CombineConstantsRule;
-
-impl Rule for CombineConstantsRule {
-    fn name(&self) -> &str {
-        "Combine Constants"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    CombineConstantsRule,
+    "Combine Constants",
+    |expr| {
         match expr.as_ref() {
             Expr::Add(lhs, rhs) => {
                 if let Expr::Number(n1) = lhs.as_ref() {
@@ -119,17 +104,6 @@ impl Rule for CombineConstantsRule {
                             });
                         }
                     }
-
-                    // // Handle Add(Number, Mul(Number, Number)) - e.g. 1 + (-1 * 1)
-                    // if let Expr::Mul(ml, mr) = rhs.as_ref() {
-                    //     if let (Expr::Number(n2), Expr::Number(n3)) = (ml.as_ref(), mr.as_ref()) {
-                    //         let product = n2 * n3;
-                    //         return Some(Rewrite {
-                    //             new_expr: Rc::new(Expr::Number(n1 + product.clone())),
-                    //             description: format!("{} + ({} * {}) = {}", n1, n2, n3, n1 + product),
-                    //         });
-                    //     }
-                    // }
                 }
             }
             Expr::Mul(lhs, rhs) => {
@@ -173,7 +147,7 @@ impl Rule for CombineConstantsRule {
         }
         None
     }
-}
+);
 
 #[cfg(test)]
 mod tests {

@@ -1,16 +1,14 @@
 use crate::rule::{Rule, Rewrite};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use num_traits::{Zero, One, ToPrimitive};
+use num_rational::BigRational;
 
-pub struct ProductPowerRule;
-
-impl Rule for ProductPowerRule {
-    fn name(&self) -> &str {
-        "Product of Powers"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    ProductPowerRule,
+    "Product of Powers",
+    |expr| {
         // x^a * x^b -> x^(a+b)
         if let Expr::Mul(lhs, rhs) = expr.as_ref() {
             // Case 1: Both are powers with same base: x^a * x^b
@@ -51,16 +49,12 @@ impl Rule for ProductPowerRule {
         }
         None
     }
-}
+);
 
-pub struct PowerPowerRule;
-
-impl Rule for PowerPowerRule {
-    fn name(&self) -> &str {
-        "Power of a Power"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    PowerPowerRule,
+    "Power of a Power",
+    |expr| {
         // (x^a)^b -> x^(a*b)
         if let Expr::Pow(base, outer_exp) = expr.as_ref() {
             if let Expr::Pow(inner_base, inner_exp) = base.as_ref() {
@@ -72,18 +66,12 @@ impl Rule for PowerPowerRule {
         }
         None
     }
-}
+);
 
-use num_rational::BigRational;
-
-pub struct EvaluatePowerRule;
-
-impl Rule for EvaluatePowerRule {
-    fn name(&self) -> &str {
-        "Evaluate Numeric Power"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    EvaluatePowerRule,
+    "Evaluate Numeric Power",
+    |expr| {
         if let Expr::Pow(base, exp) = expr.as_ref() {
             if let (Expr::Number(b), Expr::Number(e)) = (base.as_ref(), exp.as_ref()) {
                 // Case 1: Integer Exponent
@@ -148,16 +136,12 @@ impl Rule for EvaluatePowerRule {
         }
         None
     }
-}
+);
 
-pub struct ZeroOnePowerRule;
-
-impl Rule for ZeroOnePowerRule {
-    fn name(&self) -> &str {
-        "Zero/One Exponent"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    ZeroOnePowerRule,
+    "Zero/One Exponent",
+    |expr| {
         if let Expr::Pow(base, exp) = expr.as_ref() {
             // x^0 -> 1
             if let Expr::Number(n) = exp.as_ref() {
@@ -177,7 +161,7 @@ impl Rule for ZeroOnePowerRule {
         }
         None
     }
-}
+);
 
 #[cfg(test)]
 mod tests {

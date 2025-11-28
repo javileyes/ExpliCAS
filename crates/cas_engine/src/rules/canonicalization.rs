@@ -1,81 +1,14 @@
 use crate::rule::{Rule, Rewrite};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use std::cmp::Ordering;
 use crate::ordering::compare_expr;
 
-pub struct CanonicalizeNegationRule;
-// ... (existing CanonicalizeNegationRule impl) ...
-
-pub struct CanonicalizeAddRule;
-
-impl Rule for CanonicalizeAddRule {
-    fn name(&self) -> &str {
-        "Canonicalize Addition"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
-        if let Expr::Add(lhs, rhs) = expr.as_ref() {
-            // 1. Basic Swap: b + a -> a + b if b < a
-            if compare_expr(rhs, lhs) == Ordering::Less {
-                return Some(Rewrite {
-                    new_expr: Expr::add(rhs.clone(), lhs.clone()),
-                    description: "Reorder addition terms".to_string(),
-                });
-            }
-            
-            // 2. Rotation: a + (b + c) -> b + (a + c) if b < a
-            // This allows sorting nested terms.
-            if let Expr::Add(rl, rr) = rhs.as_ref() {
-                if compare_expr(rl, lhs) == Ordering::Less {
-                    return Some(Rewrite {
-                        new_expr: Expr::add(rl.clone(), Expr::add(lhs.clone(), rr.clone())),
-                        description: "Rotate addition terms".to_string(),
-                    });
-                }
-            }
-        }
-        None
-    }
-}
-
-pub struct CanonicalizeMulRule;
-
-impl Rule for CanonicalizeMulRule {
-    fn name(&self) -> &str {
-        "Canonicalize Multiplication"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
-        if let Expr::Mul(lhs, rhs) = expr.as_ref() {
-            // 1. Basic Swap: b * a -> a * b if b < a
-            if compare_expr(rhs, lhs) == Ordering::Less {
-                return Some(Rewrite {
-                    new_expr: Expr::mul(rhs.clone(), lhs.clone()),
-                    description: "Reorder multiplication factors".to_string(),
-                });
-            }
-
-            // 2. Rotation: a * (b * c) -> b * (a * c) if b < a
-            if let Expr::Mul(rl, rr) = rhs.as_ref() {
-                if compare_expr(rl, lhs) == Ordering::Less {
-                    return Some(Rewrite {
-                        new_expr: Expr::mul(rl.clone(), Expr::mul(lhs.clone(), rr.clone())),
-                        description: "Rotate multiplication factors".to_string(),
-                    });
-                }
-            }
-        }
-        None
-    }
-}
-
-impl Rule for CanonicalizeNegationRule {
-    fn name(&self) -> &str {
-        "Canonicalize Negation"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    CanonicalizeNegationRule,
+    "Canonicalize Negation",
+    |expr| {
         // 1. Subtraction: a - b -> a + (-b)
         if let Expr::Sub(lhs, rhs) = expr.as_ref() {
             return Some(Rewrite {
@@ -104,16 +37,67 @@ impl Rule for CanonicalizeNegationRule {
         }
         None
     }
-}
+);
 
-pub struct CanonicalizeRootRule;
-
-impl Rule for CanonicalizeRootRule {
-    fn name(&self) -> &str {
-        "Canonicalize Roots"
+define_rule!(
+    CanonicalizeAddRule,
+    "Canonicalize Addition",
+    |expr| {
+        if let Expr::Add(lhs, rhs) = expr.as_ref() {
+            // 1. Basic Swap: b + a -> a + b if b < a
+            if compare_expr(rhs, lhs) == Ordering::Less {
+                return Some(Rewrite {
+                    new_expr: Expr::add(rhs.clone(), lhs.clone()),
+                    description: "Reorder addition terms".to_string(),
+                });
+            }
+            
+            // 2. Rotation: a + (b + c) -> b + (a + c) if b < a
+            // This allows sorting nested terms.
+            if let Expr::Add(rl, rr) = rhs.as_ref() {
+                if compare_expr(rl, lhs) == Ordering::Less {
+                    return Some(Rewrite {
+                        new_expr: Expr::add(rl.clone(), Expr::add(lhs.clone(), rr.clone())),
+                        description: "Rotate addition terms".to_string(),
+                    });
+                }
+            }
+        }
+        None
     }
+);
 
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    CanonicalizeMulRule,
+    "Canonicalize Multiplication",
+    |expr| {
+        if let Expr::Mul(lhs, rhs) = expr.as_ref() {
+            // 1. Basic Swap: b * a -> a * b if b < a
+            if compare_expr(rhs, lhs) == Ordering::Less {
+                return Some(Rewrite {
+                    new_expr: Expr::mul(rhs.clone(), lhs.clone()),
+                    description: "Reorder multiplication factors".to_string(),
+                });
+            }
+
+            // 2. Rotation: a * (b * c) -> b * (a * c) if b < a
+            if let Expr::Mul(rl, rr) = rhs.as_ref() {
+                if compare_expr(rl, lhs) == Ordering::Less {
+                    return Some(Rewrite {
+                        new_expr: Expr::mul(rl.clone(), Expr::mul(lhs.clone(), rr.clone())),
+                        description: "Rotate multiplication factors".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
+define_rule!(
+    CanonicalizeRootRule,
+    "Canonicalize Roots",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if name == "sqrt" {
                 if args.len() == 1 {
@@ -139,16 +123,12 @@ impl Rule for CanonicalizeRootRule {
         }
         None
     }
-}
+);
 
-pub struct AssociativityRule;
-
-impl Rule for AssociativityRule {
-    fn name(&self) -> &str {
-        "Associativity (Flattening)"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    AssociativityRule,
+    "Associativity (Flattening)",
+    |expr| {
         match expr.as_ref() {
             // (a + b) + c -> a + (b + c)
             Expr::Add(lhs, rhs) => {
@@ -172,7 +152,7 @@ impl Rule for AssociativityRule {
         }
         None
     }
-}
+);
 
 #[cfg(test)]
 mod tests {

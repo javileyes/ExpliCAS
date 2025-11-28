@@ -1,16 +1,13 @@
 use crate::rule::{Rule, Rewrite};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use num_traits::Signed;
 
-pub struct EvaluateAbsRule;
-
-impl Rule for EvaluateAbsRule {
-    fn name(&self) -> &str {
-        "Evaluate Absolute Value"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    EvaluateAbsRule,
+    "Evaluate Absolute Value",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if name == "abs" && args.len() == 1 {
                 let arg = &args[0];
@@ -43,7 +40,7 @@ impl Rule for EvaluateAbsRule {
         }
         None
     }
-}
+);
 
 #[cfg(test)]
 mod tests {

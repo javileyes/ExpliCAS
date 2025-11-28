@@ -1,17 +1,14 @@
 use crate::rule::{Rule, Rewrite};
+use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
 use std::collections::HashMap;
 use num_traits::{One, Zero};
 
-pub struct CollectRule;
-
-impl Rule for CollectRule {
-    fn name(&self) -> &str {
-        "Collect Terms"
-    }
-
-    fn apply(&self, expr: &Rc<Expr>) -> Option<Rewrite> {
+define_rule!(
+    CollectRule,
+    "Collect Terms",
+    |expr| {
         if let Expr::Function(name, args) = expr.as_ref() {
             if name == "collect" && args.len() == 2 {
                 let target_expr = &args[0];
@@ -109,7 +106,7 @@ impl Rule for CollectRule {
         }
         None
     }
-}
+);
 
 // Helper to check if expr is effectively 1
 fn is_one(expr: &Expr) -> bool {
