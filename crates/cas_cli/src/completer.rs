@@ -21,6 +21,8 @@ impl CasHelper {
                 "collect".to_string(),
                 "equiv".to_string(),
                 "solve".to_string(),
+                "simplify".to_string(),
+                "config".to_string(),
                 "steps on".to_string(),
                 "steps off".to_string(),
                 "help".to_string(),
@@ -50,6 +52,69 @@ impl Completer for CasHelper {
     ) -> Result<(usize, Vec<Pair>), ReadlineError> {
         let (start, word) = extract_word(line, pos);
         let mut matches = Vec::new();
+
+        // Check for "config" context
+        if line.starts_with("config ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+            
+            // Case 1: "config <TAB>" or "config li<TAB>"
+            // If ends with space, we are starting a new word (subcommand). parts=["config"]
+            // If not ends with space, we are completing subcommand. parts=["config", "li"]
+            
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let subcommands = vec!["list", "enable", "disable", "save", "restore"];
+                // If new word, word is empty. If completing, word is partial subcommand.
+                for sub in subcommands {
+                    if sub.starts_with(word) {
+                        matches.push(Pair {
+                            display: sub.to_string(),
+                            replacement: sub.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+            
+            // Case 2: "config enable <TAB>" or "config enable dis<TAB>"
+            // parts=["config", "enable"] (ends with space) -> show rules
+            // parts=["config", "enable", "dis"] (!ends with space) -> show rules matching "dis"
+            
+            if parts.len() >= 2 && (parts[1] == "enable" || parts[1] == "disable") {
+                 if (parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space) {
+                     let rules = vec![
+                         "distribute",
+                         "distribute_constants",
+                         "expand_binomials",
+                         "factor_difference_squares",
+                     ];
+                     
+                     for rule in rules {
+                         if rule.starts_with(word) {
+                             matches.push(Pair {
+                                 display: rule.to_string(),
+                                 replacement: rule.to_string(),
+                             });
+                         }
+                     }
+                     return Ok((start, matches));
+                 }
+            }
+        }
+
+        // Check for "help" context
+        if line.starts_with("help ") {
+            // Suggest commands to get help on
+            for cmd in &self.commands {
+                if cmd.starts_with(word) {
+                    matches.push(Pair {
+                        display: cmd.clone(),
+                        replacement: cmd.clone(),
+                    });
+                }
+            }
+             return Ok((start, matches));
+        }
 
         // Check commands
         for cmd in &self.commands {

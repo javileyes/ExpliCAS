@@ -14,16 +14,21 @@ use cas_ast::DisplayExpr;
 
 
 use crate::completer::CasHelper;
+use crate::config::CasConfig;
 use rustyline::config::Configurer;
 
 pub struct Repl {
     simplifier: Simplifier,
     show_steps: bool,
+    config: CasConfig,
 }
 
 impl Repl {
     pub fn new() -> Self {
+        let config = CasConfig::load();
         let mut simplifier = Simplifier::new();
+        
+        // Always enabled core rules
         simplifier.add_rule(Box::new(CanonicalizeNegationRule));
         simplifier.add_rule(Box::new(CanonicalizeAddRule));
         simplifier.add_rule(Box::new(CanonicalizeMulRule));
@@ -43,7 +48,24 @@ impl Repl {
         simplifier.add_rule(Box::new(CollectRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
-        // simplifier.add_rule(Box::new(DistributeRule)); // Disabled to allow factor() to persist. Use expand() to distribute.
+        
+        // Configurable rules
+        if config.distribute {
+            simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
+        }
+        
+        if config.distribute_constants {
+            simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeConstantRule));
+        }
+        
+        if config.expand_binomials {
+            simplifier.add_rule(Box::new(cas_engine::rules::polynomial::BinomialExpansionRule));
+        }
+        
+        if config.factor_difference_squares {
+            simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule));
+        }
+
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
         simplifier.add_rule(Box::new(AnnihilationRule));
@@ -59,6 +81,7 @@ impl Repl {
         Self {
             simplifier,
             show_steps: true,
+            config,
         }
     }
 
@@ -93,6 +116,12 @@ impl Repl {
                         break;
                     }
 
+                    // Check for "help" command
+                    if line.starts_with("help") {
+                        self.handle_help(line);
+                        continue;
+                    }
+
                     // Check for "steps" command
                     if line == "steps on" {
                         self.show_steps = true;
@@ -108,7 +137,7 @@ impl Repl {
 
                     // Check for "help" command
                     if line == "help" {
-                        self.print_help();
+                        self.print_general_help();
                         continue;
                     }
 
@@ -127,6 +156,18 @@ impl Repl {
                     // Check for "solve" command
                     if line.starts_with("solve ") {
                         self.handle_solve(line);
+                        continue;
+                    }
+
+                    // Check for "simplify" command
+                    if line.starts_with("simplify ") {
+                        self.handle_full_simplify(line);
+                        continue;
+                    }
+
+                    // Check for "config" command
+                    if line.starts_with("config ") {
+                        self.handle_config(line);
                         continue;
                     }
 
@@ -149,9 +190,137 @@ impl Repl {
         Ok(())
     }
 
-    fn print_help(&self) {
+    fn handle_config(&mut self, line: &str) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            println!("Usage: config <list|enable|disable|save|restore> [rule]");
+            return;
+        }
+
+        match parts[1] {
+            "list" => {
+                println!("Current Configuration:");
+                println!("  distribute: {}", self.config.distribute);
+                println!("  expand_binomials: {}", self.config.expand_binomials);
+                println!("  distribute_constants: {}", self.config.distribute_constants);
+                println!("  factor_difference_squares: {}", self.config.factor_difference_squares);
+            },
+            "save" => {
+                match self.config.save() {
+                    Ok(_) => println!("Configuration saved to cas_config.toml"),
+                    Err(e) => println!("Error saving configuration: {}", e),
+                }
+            },
+            "restore" => {
+                self.config = CasConfig::restore();
+                println!("Configuration restored to defaults. Restart CLI to apply changes fully.");
+                // We should probably reload rules here, but Repl::new() logic is complex to extract.
+                // For now, just warn user.
+            },
+            "enable" | "disable" => {
+                if parts.len() < 3 {
+                    println!("Usage: config {} <rule>", parts[1]);
+                    return;
+                }
+                let rule = parts[2];
+                let enable = parts[1] == "enable";
+                
+                let mut changed = true;
+                match rule {
+                    "distribute" => self.config.distribute = enable,
+                    "expand_binomials" => self.config.expand_binomials = enable,
+                    "distribute_constants" => self.config.distribute_constants = enable,
+                    "factor_difference_squares" => self.config.factor_difference_squares = enable,
+                    _ => {
+                        println!("Unknown rule: {}", rule);
+                        changed = false;
+                    }
+                }
+                
+                if changed {
+                    println!("Rule '{}' set to {}. Restart CLI to apply changes.", rule, enable);
+                }
+            },
+            _ => println!("Unknown config command: {}", parts[1]),
+        }
+    }
+
+    fn handle_help(&self, line: &str) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            self.print_general_help();
+            return;
+        }
+
+        match parts[1] {
+            "simplify" => {
+                println!("Command: simplify <expr>");
+                println!("Description: Simplifies an expression using the full power of the engine.");
+                println!("             This includes aggressive distribution and other rules that may");
+                println!("             undo factorizations, but guarantee maximum simplification.");
+                println!("Example: simplify (x+1)*(x-1) -> x^2 - 1");
+            },
+            "config" => {
+                println!("Command: config <subcommand> [args]");
+                println!("Description: Manages CLI configuration.");
+                println!("Subcommands:");
+                println!("  list             Show current configuration");
+                println!("  enable <rule>    Enable a simplification rule");
+                println!("  disable <rule>   Disable a simplification rule");
+                println!("  save             Save configuration to file");
+                println!("  restore          Restore default configuration");
+                println!("Rules:");
+                println!("  distribute       Aggressive distribution (a*(b+c) -> a*b + a*c)");
+                println!("  distribute_constants Safe distribution (-1*(x+y) -> -x-y)");
+                println!("  expand_binomials Expand powers ((a+b)^2 -> a^2+2ab+b^2)");
+                println!("  factor_difference_squares Factor difference of squares (a^2-b^2 -> (a-b)(a+b))");
+            },
+            "subst" => {
+                println!("Command: subst <expr>, <var>=<val>");
+                println!("Description: Substitutes a variable with a value (or another expression) and simplifies.");
+                println!("Example: subst x^2 + x, x=3 -> 12");
+            },
+            "expand" => {
+                println!("Command: expand <expr>");
+                println!("Description: Expands polynomials and products.");
+                println!("Example: expand (x+1)^2 -> x^2 + 2*x + 1");
+            },
+            "factor" => {
+                println!("Command: factor <expr>");
+                println!("Description: Factors polynomials.");
+                println!("Example: factor x^2 - 1 -> (x - 1) * (x + 1)");
+            },
+            "collect" => {
+                println!("Command: collect <expr>, <var>");
+                println!("Description: Groups terms by powers of a variable.");
+                println!("Example: collect a*x + b*x + c, x -> (a + b) * x + c");
+            },
+            "equiv" => {
+                println!("Command: equiv <expr1>, <expr2>");
+                println!("Description: Checks if two expressions are mathematically equivalent.");
+                println!("             Returns true if expr1 - expr2 simplifies to 0.");
+            },
+            "solve" => {
+                println!("Command: solve <equation>, <var>");
+                println!("Description: Solves an equation for a variable.");
+                println!("Example: solve x + 2 = 5, x -> x = 3");
+            },
+            "steps" => {
+                println!("Command: steps <on|off>");
+                println!("Description: Toggles the display of step-by-step simplification details.");
+            },
+            _ => {
+                println!("Unknown command: {}", parts[1]);
+                self.print_general_help();
+            }
+        }
+    }
+
+    fn print_general_help(&self) {
         println!("Rust CAS Commands:");
         println!("  <expr>                  Evaluate and simplify an expression");
+        println!("  simplify <expr>         Aggressive simplification (full power)");
+        println!("  config <subcmd>         Manage configuration (list, enable, disable...)");
         println!("  subst <expr>, <var>=<val> Substitute a variable and simplify");
         println!("  expand <expr>           Expand polynomials");
         println!("  factor <expr>           Factor polynomials");
@@ -159,21 +328,10 @@ impl Repl {
         println!("  equiv <e1>, <e2>        Check if two expressions are equivalent");
         println!("  solve <eq>, <var>       Solve equation for variable");
         println!("  steps on/off            Toggle step-by-step output");
-        println!("  help                    Show this help message");
+        println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
         println!();
-        println!("Examples:");
-        println!("  2 + 3 * 4");
-        println!("  sin(pi) + cos(0)");
-        println!("  ln(e^2)");
-        println!("  expand((x+1)^2)");
-        println!("  factor(2*x^2 + 4*x)");
-        println!("  collect(a*x + b*x, x)");
-        println!("  solve x+2=5, x");
-        println!("  solve |x|=5, x");
-        println!("  solve |x|<5, x");
-        println!("  solve -2*x < 10, x");
-        println!("  subst x+1, x=2");
+        println!("Type 'help <command>' for more details on a specific command.");
     }
 
     fn handle_equiv(&mut self, line: &str) {
@@ -382,6 +540,64 @@ impl Repl {
             }
             Err(e) => println!("Error: {}", e),
         }
+    }
+    fn handle_full_simplify(&mut self, line: &str) {
+        // simplify <expr>
+        // Uses a temporary simplifier with ALL default rules (including aggressive distribution)
+        let expr_str = line[9..].trim();
+        
+        // We need to use the existing context to parse, but then we want to simplify using a different rule set.
+        // The Simplifier struct owns the context.
+        // Option 1: Create a new Simplifier, parse into it.
+        // Option 2: Swap rules in current simplifier? (Hard)
+        // Option 3: Create a new Simplifier, copy context? (Hard)
+        
+        // Easiest: Create new simplifier, parse string into it. 
+        // Note: Variables from previous history won't be available if we don't copy context.
+        // But REPL history is just text in rustyline, not context state (unless we implement variable storage).
+        // Current implementation: Context is reset per line? No, self.simplifier.context persists.
+        // If we want to support "x = 5; simplify x", we need to share context.
+        
+        // Better approach:
+        // 1. Parse expression using current context.
+        // 2. Create a temporary Simplifier that SHARES the context? 
+        //    Simplifier owns Context. We can't easily share.
+        //    But we can temporarily TAKE the context, use it in a new Simplifier, and then put it back.
+        
+        let mut temp_simplifier = Simplifier::with_default_rules();
+        // Swap context
+        std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+        
+        // Ensure we have the aggressive rules we want (DistributeRule is in default)
+        // Also add DistributeConstantRule just in case (though DistributeRule covers it)
+        temp_simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeConstantRule));
+        
+        // Set steps mode
+        temp_simplifier.collect_steps = self.show_steps;
+        
+        match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
+            Ok(expr) => {
+                println!("Parsed: {}", DisplayExpr { context: &temp_simplifier.context, id: expr });
+                let (simplified, steps) = temp_simplifier.simplify(expr);
+                
+                if self.show_steps {
+                    if steps.is_empty() {
+                        println!("No simplification steps needed.");
+                    } else {
+                        println!("Steps (Aggressive Mode):");
+                        for (i, step) in steps.iter().enumerate() {
+                            println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                            println!("   -> {}", DisplayExpr { context: &temp_simplifier.context, id: step.after });
+                        }
+                    }
+                }
+                println!("Result: {}", DisplayExpr { context: &temp_simplifier.context, id: simplified });
+            }
+            Err(e) => println!("Error: {}", e),
+        }
+        
+        // Swap context back
+        std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
     }
 }
 

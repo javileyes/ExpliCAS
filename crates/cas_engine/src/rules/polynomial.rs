@@ -41,6 +41,46 @@ define_rule!(
 );
 
 define_rule!(
+    DistributeConstantRule,
+    "Distribute Constant",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Mul(l, r) = expr_data {
+            // c * (a + b) -> c*a + c*b where c is a number
+            let l_is_num = matches!(ctx.get(l), Expr::Number(_));
+            let r_is_num = matches!(ctx.get(r), Expr::Number(_));
+
+            if l_is_num {
+                let r_data = ctx.get(r).clone();
+                if let Expr::Add(a, b) = r_data {
+                    let ca = ctx.add(Expr::Mul(l, a));
+                    let cb = ctx.add(Expr::Mul(l, b));
+                    let new_expr = ctx.add(Expr::Add(ca, cb));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Distribute Constant".to_string(),
+                    });
+                }
+            }
+            
+            if r_is_num {
+                let l_data = ctx.get(l).clone();
+                if let Expr::Add(a, b) = l_data {
+                    let ac = ctx.add(Expr::Mul(a, r));
+                    let bc = ctx.add(Expr::Mul(b, r));
+                    let new_expr = ctx.add(Expr::Add(ac, bc));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Distribute Constant".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
+define_rule!(
     AnnihilationRule,
     "Annihilation",
     |ctx, expr| {

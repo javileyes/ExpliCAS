@@ -1,5 +1,6 @@
 mod repl;
 mod completer;
+mod config;
 
 use repl::Repl;
 

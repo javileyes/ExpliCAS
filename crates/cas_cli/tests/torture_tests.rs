@@ -136,6 +136,35 @@ fn test_trig_identity_hidden() {
 }
 
 #[test]
+fn test_algebraic_labyrinth() {
+    // ln(e^3) + (sin(x) + cos(x))^2 - sin(2*x) - (x^3 - 8)/(x - 2) + x^2 + 2*x
+    // Expected: 0
+    let input = "ln(e^3) + (sin(x) + cos(x))^2 - sin(2*x) - (x^3 - 8)/(x - 2) + x^2 + 2*x";
+    let mut simplifier = create_full_simplifier();
+    
+    // Ensure we have necessary rules
+    // Logarithms
+    simplifier.add_rule(Box::new(cas_engine::rules::logarithms::EvaluateLogRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::logarithms::ExponentialLogRule));
+    
+    // Trig
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::PythagoreanIdentityRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::ExpandRule)); // For (sin+cos)^2
+    
+    // Polynomial/Rational
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyFractionRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule)); // For negative sign distribution
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule));
+
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    
+    let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result_str, "0", "Failed on: {}", input);
+}
+
+#[test]
 fn test_log_power_trap() {
     // simplify(ln(e^(x^2 + 1))) -> x^2 + 1
     let mut simplifier = create_full_simplifier();
