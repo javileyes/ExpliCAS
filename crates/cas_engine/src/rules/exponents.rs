@@ -1,4 +1,4 @@
-use crate::rule::{Rule, Rewrite};
+use crate::rule::Rewrite;
 use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
@@ -83,6 +83,14 @@ define_rule!(
                     // It has `pow(i32)`.
                     // Let's check if e fits in i32.
                     if let Some(e_i32) = e.to_integer().to_u32().map(|x| x as i32).or_else(|| e.to_integer().to_i32()) {
+                         // Check for 0^-n
+                         if b.is_zero() && e_i32 < 0 {
+                             return Some(Rewrite {
+                                 new_expr: Rc::new(Expr::Constant(cas_ast::Constant::Undefined)),
+                                 description: "Division by zero".to_string(),
+                             });
+                         }
+
                          // b^e_i32
                          // BigRational::pow takes i32.
                          let res = b.pow(e_i32);
@@ -166,6 +174,7 @@ define_rule!(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rule::Rule;
 
     #[test]
     fn test_product_power() {

@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0683e10612fb4860d92527fb9994319688a28855ddf5ac75ca129d61ad652a04 # shrinks to expr = Number(Ratio { numer: 0, denom: 1 })
+cc 906cf6a5dd048558bceb01bf2b7486dd29ebd6369d483042a1bbc81e4280c3a8 # shrinks to expr = Pow(Number(Ratio { numer: 0, denom: 1 }), Number(Ratio { numer: -1, denom: 1 }))
+cc 749c7962425c5ef91de2bfaf7ae83548c7cd2b718aeb82963ea847b3967bb35d # shrinks to expr = Number(Ratio { numer: 0, denom: 1 })
+cc 2d541d266ae03861bc0296bfedbba2b04c3474faecfca8a38556534956677bc7 # shrinks to expr = Pow(Number(Ratio { numer: 0, denom: 1 }), Number(Ratio { numer: -1, denom: 1 }))

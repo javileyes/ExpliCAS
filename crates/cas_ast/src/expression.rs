@@ -158,12 +158,18 @@ impl Expr {
 impl Expr {
     fn precedence(&self) -> u8 {
         match self {
-            Expr::Add(_, _) | Expr::Sub(_, _) => 1,
-            Expr::Mul(_, _) | Expr::Div(_, _) => 2,
-            Expr::Pow(_, _) => 3,
-            Expr::Neg(_) => 4,
-            Expr::Number(n) => if n.is_integer() { 5 } else { 2 },
-            Expr::Function(_, _) | Expr::Variable(_) | Expr::Constant(_) => 5,
+            Expr::Add(_, _) | Expr::Sub(_, _) => 10,
+            Expr::Mul(_, _) | Expr::Div(_, _) => 20,
+            Expr::Neg(_) => 30,
+            Expr::Pow(_, _) => 40,
+            Expr::Number(n) => {
+                if n.is_integer() {
+                    if *n < num_rational::BigRational::from_integer(0.into()) { 30 } else { 50 }
+                } else {
+                    20 // Fractions are effectively division
+                }
+            },
+            Expr::Function(_, _) | Expr::Variable(_) | Expr::Constant(_) => 50,
         }
     }
 }

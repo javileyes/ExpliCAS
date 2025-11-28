@@ -1,4 +1,4 @@
-use crate::rule::{Rule, Rewrite};
+use crate::rule::Rewrite;
 use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
@@ -194,6 +194,7 @@ fn is_log(expr: &Rc<Expr>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rule::Rule;
     use cas_parser::parse;
 
     #[test]

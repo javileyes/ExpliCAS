@@ -160,6 +160,7 @@ fn binomial_coeff(n: u32, k: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rule::Rule;
 
     #[test]
     fn test_distribute() {

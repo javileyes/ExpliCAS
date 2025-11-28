@@ -152,6 +152,7 @@ define_rule!(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rule::Rule;
 
     #[test]
     fn test_add_zero() {

@@ -459,6 +459,7 @@ fn get_square_root(expr: &Rc<Expr>) -> Option<Rc<Expr>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rule::Rule;
     use cas_parser::parse;
 
     #[test]

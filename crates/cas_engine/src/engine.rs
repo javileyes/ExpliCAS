@@ -20,6 +20,69 @@ impl Simplifier {
         }
     }
 
+    pub fn with_default_rules() -> Self {
+        let mut s = Self::new();
+        s.register_default_rules();
+        s
+    }
+
+    pub fn register_default_rules(&mut self) {
+        use crate::rules::*;
+        
+        // Arithmetic
+        self.add_rule(Box::new(arithmetic::AddZeroRule));
+        self.add_rule(Box::new(arithmetic::MulOneRule));
+        self.add_rule(Box::new(arithmetic::MulZeroRule));
+        self.add_rule(Box::new(arithmetic::CombineConstantsRule));
+        
+        // Canonicalization
+        self.add_rule(Box::new(canonicalization::CanonicalizeNegationRule));
+        self.add_rule(Box::new(canonicalization::CanonicalizeAddRule));
+        self.add_rule(Box::new(canonicalization::CanonicalizeMulRule));
+        self.add_rule(Box::new(canonicalization::CanonicalizeRootRule));
+        self.add_rule(Box::new(canonicalization::AssociativityRule));
+        
+        // Exponents
+        self.add_rule(Box::new(exponents::ProductPowerRule));
+        self.add_rule(Box::new(exponents::PowerPowerRule));
+        self.add_rule(Box::new(exponents::EvaluatePowerRule));
+        self.add_rule(Box::new(exponents::ZeroOnePowerRule));
+        
+        // Logarithms
+        self.add_rule(Box::new(logarithms::EvaluateLogRule));
+        self.add_rule(Box::new(logarithms::ExponentialLogRule));
+        self.add_rule(Box::new(logarithms::SplitLogExponentsRule));
+        
+        // Trigonometry
+        self.add_rule(Box::new(trigonometry::EvaluateTrigRule));
+        self.add_rule(Box::new(trigonometry::PythagoreanIdentityRule));
+        self.add_rule(Box::new(trigonometry::AngleIdentityRule));
+        self.add_rule(Box::new(trigonometry::TanToSinCosRule));
+        self.add_rule(Box::new(trigonometry::DoubleAngleRule));
+        
+        // Polynomial
+        self.add_rule(Box::new(polynomial::DistributeRule));
+        self.add_rule(Box::new(polynomial::AnnihilationRule));
+        self.add_rule(Box::new(polynomial::CombineLikeTermsRule));
+        self.add_rule(Box::new(polynomial::BinomialExpansionRule));
+        
+        // Algebra
+        self.add_rule(Box::new(algebra::SimplifyFractionRule));
+        self.add_rule(Box::new(algebra::NestedFractionRule));
+        self.add_rule(Box::new(algebra::ExpandRule));
+        self.add_rule(Box::new(algebra::FactorRule));
+        self.add_rule(Box::new(algebra::FactorDifferenceSquaresRule));
+        
+        // Calculus
+        self.add_rule(Box::new(calculus::IntegrateRule));
+        
+        // Functions
+        self.add_rule(Box::new(functions::EvaluateAbsRule));
+        
+        // Grouping
+        self.add_rule(Box::new(grouping::CollectRule));
+    }
+
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
         let rule_rc: Rc<dyn Rule> = rule.into();
         if let Some(targets) = rule_rc.target_types() {

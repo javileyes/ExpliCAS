@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rule::Rule;
     use cas_parser::parse;
     use cas_engine::Simplifier;
 

@@ -1,4 +1,4 @@
-use crate::rule::{Rule, Rewrite};
+use crate::rule::Rewrite;
 use crate::define_rule;
 use cas_ast::Expr;
 use std::rc::Rc;
@@ -265,6 +265,7 @@ fn is_var(expr: &Expr, var: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rule::Rule;
     use cas_parser::parse;
 
     #[test]
