@@ -52,7 +52,7 @@ impl Polynomial {
         if self.is_zero() {
             BigRational::zero()
         } else {
-            self.coeffs.last().unwrap().clone()
+            self.coeffs.last().cloned().unwrap_or_else(BigRational::zero)
         }
     }
 
@@ -381,7 +381,11 @@ impl Polynomial {
         // Let's just check integer factors of numerator of a_0 and a_n?
         // Simplified approach: Assume integer coefficients for now.
         if !self.are_coeffs_integers() {
-            return None; // TODO: Handle rational coeffs by scaling
+            use num_integer::Integer;
+            let lcm = self.coeffs.iter().fold(num_bigint::BigInt::one(), |acc, c| acc.lcm(c.denom()));
+            let scale_factor = Polynomial::new(vec![BigRational::from_integer(lcm)], self.var.clone());
+            let scaled_poly = self.mul(&scale_factor);
+            return scaled_poly.find_one_rational_root();
         }
 
         let p_candidates = get_factors(&a_0.to_integer());

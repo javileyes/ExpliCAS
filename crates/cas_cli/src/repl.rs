@@ -273,30 +273,14 @@ impl Repl {
             // No comma. Try to see if it looks like "eq var"
             // We only accept "eq var" if "eq" is a valid equation.
             // Otherwise, we assume the whole string is the equation (e.g. "ln(x) = a + b")
-            let try_split = rsplit_ignoring_parens(rest, ' ');
-            let mut use_split = false;
-            
-            if let Some((_e, v)) = try_split {
-                 let v = v.trim();
+            if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
+                 let v_trim = v.trim();
                  // Check if v is a variable name (alphabetic)
-                 if !v.is_empty() && v.chars().all(char::is_alphabetic) {
-                     // Check if e is a valid equation
-                     // We need to suppress output or errors? parse_statement just returns Result.
-                     // But parse_statement modifies context.
-                     // We can try to parse it. If it fails, we assume it's not an equation.
-                     // But we don't want to pollute context with failed parse nodes if possible?
-                     // Actually parse_statement adds nodes.
-                     // Let's just try to parse it.
-                     // But we need to clone context or something? No, just parse.
-                     // If it fails, we revert? No easy revert.
-                     // Let's just assume the heuristic is good enough.
-                     use_split = true;
+                 if !v_trim.is_empty() && v_trim.chars().all(char::is_alphabetic) {
+                     (e.trim(), v_trim)
+                 } else {
+                     (rest, "x")
                  }
-            }
-            
-            if use_split {
-                let (e, v) = try_split.unwrap();
-                (e.trim(), v.trim())
             } else {
                 (rest, "x")
             }

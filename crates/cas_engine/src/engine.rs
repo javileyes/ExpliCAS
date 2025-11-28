@@ -65,6 +65,7 @@ impl Simplifier {
             global_rules,
             collect_steps,
             steps: Vec::new(),
+            cache: HashMap::new(),
         };
         
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -158,25 +159,12 @@ struct LocalSimplificationTransformer<'a> {
     global_rules: &'a Vec<Rc<dyn Rule>>,
     collect_steps: bool,
     steps: Vec<Step>,
+    cache: HashMap<ExprId, ExprId>,
 }
 
 use cas_ast::visitor::Transformer;
 
 impl<'a> Transformer for LocalSimplificationTransformer<'a> {
-    // We implement the trait but we might need a custom recursive method to handle the borrow split
-    // Actually, the trait methods take `&mut Context`.
-    // But `LocalSimplificationTransformer` holds `&mut Context`.
-    // This is a problem. The trait expects `&mut Context` passed in, but we hold it.
-    // If we hold it, we can't implement the trait exactly as is if the trait requires passing it in.
-    // The trait signature is `fn transform_expr(&mut self, context: &mut Context, id: ExprId)`.
-    // So we can pass `self.context` to it? No, `self` is borrowed mutably.
-    
-    // We should probably NOT implement the trait for `LocalSimplificationTransformer` directly if it holds the context.
-    // Instead, `LocalSimplificationTransformer` should just have methods.
-    // Or `Simplifier` should NOT own `Context` but take it as arg?
-    // But `Simplifier` is the main entry point.
-    
-    // Let's implement a custom `transform_expr_recursive` that mimics the trait but works with our struct.
     fn transform_expr(&mut self, _context: &mut Context, id: ExprId) -> ExprId {
         self.transform_expr_recursive(id)
     }
@@ -184,13 +172,11 @@ impl<'a> Transformer for LocalSimplificationTransformer<'a> {
 
 impl<'a> LocalSimplificationTransformer<'a> {
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
+        if let Some(&cached) = self.cache.get(&id) {
+            return cached;
+        }
+
         // 1. Simplify children first (Bottom-Up)
-        // We need to manually call transform on children because we can't use the default trait impl easily
-        // without passing context, but we hold context.
-        
-        // We can temporarily extract context? No.
-        
-        // Let's just implement the logic manually for now.
         let expr = self.context.get(id).clone();
         
         let expr_with_simplified_children = match expr {
@@ -237,7 +223,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
         };
 
         // 2. Apply rules
-        self.apply_rules(expr_with_simplified_children)
+        let result = self.apply_rules(expr_with_simplified_children);
+        self.cache.insert(id, result);
+        result
     }
 
     fn apply_rules(&mut self, mut expr_id: ExprId) -> ExprId {

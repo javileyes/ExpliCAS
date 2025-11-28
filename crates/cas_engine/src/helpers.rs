@@ -40,7 +40,7 @@ pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
                     let val = n.to_integer();
                     if &val % 2 == 0.into() {
                         let two = num_bigint::BigInt::from(2);
-                        let new_exp_val = (val / two).to_i64().unwrap();
+                        let new_exp_val = (val / two).to_i64()?;
                         let new_exp = context.num(new_exp_val);
                         
                         // If new_exp is 1, simplify to b
@@ -60,7 +60,7 @@ pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
                  let val = n.to_integer();
                  let sqrt = val.sqrt();
                  if &sqrt * &sqrt == val {
-                     return Some(context.num(sqrt.to_i64().unwrap()));
+                     return Some(context.num(sqrt.to_i64()?));
                  }
              }
              None

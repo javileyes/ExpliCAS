@@ -106,32 +106,75 @@ pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> Solut
 }
 
 pub fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
-    match (s1, s2) {
-        (SolutionSet::Empty, s) | (s, SolutionSet::Empty) => s,
-        (SolutionSet::AllReals, _) | (_, SolutionSet::AllReals) => SolutionSet::AllReals,
-        (SolutionSet::Continuous(i1), SolutionSet::Continuous(i2)) => {
-            // TODO: Merge if overlapping or touching
-            let mut intervals = vec![i1, i2];
-            intervals.sort_by(|a, b| compare_values(ctx, a.min, b.min));
-            SolutionSet::Union(intervals)
-        },
+    let intervals = match (s1, s2) {
+        (SolutionSet::Empty, s) | (s, SolutionSet::Empty) => return s,
+        (SolutionSet::AllReals, _) | (_, SolutionSet::AllReals) => return SolutionSet::AllReals,
+        (SolutionSet::Continuous(i1), SolutionSet::Continuous(i2)) => vec![i1, i2],
         (SolutionSet::Continuous(i), SolutionSet::Union(mut u)) | (SolutionSet::Union(mut u), SolutionSet::Continuous(i)) => {
             u.push(i);
-             u.sort_by(|a, b| compare_values(ctx, a.min, b.min));
-            SolutionSet::Union(u)
+            u
         },
         (SolutionSet::Union(mut u1), SolutionSet::Union(u2)) => {
             u1.extend(u2);
-             u1.sort_by(|a, b| compare_values(ctx, a.min, b.min));
-            SolutionSet::Union(u1)
+            u1
         },
-
         (SolutionSet::Discrete(mut d1), SolutionSet::Discrete(d2)) => {
             d1.extend(d2);
-            SolutionSet::Discrete(d1)
+            return SolutionSet::Discrete(d1);
         },
-        (s1, _) => s1, 
+        (s1, _) => return s1, 
+    };
+
+    let merged = merge_intervals(ctx, intervals);
+    if merged.is_empty() {
+        SolutionSet::Empty
+    } else if merged.len() == 1 {
+        let i = &merged[0];
+        if is_neg_infinity(ctx, i.min) && is_infinity(ctx, i.max) {
+            SolutionSet::AllReals
+        } else {
+            SolutionSet::Continuous(i.clone())
+        }
+    } else {
+        SolutionSet::Union(merged)
     }
+}
+
+fn merge_intervals(ctx: &Context, mut intervals: Vec<Interval>) -> Vec<Interval> {
+    if intervals.is_empty() { return vec![]; }
+    intervals.sort_by(|a, b| compare_values(ctx, a.min, b.min));
+
+    let mut merged = Vec::new();
+    let mut current = intervals[0].clone();
+
+    for next in intervals.into_iter().skip(1) {
+        let cmp_max_min = compare_values(ctx, current.max, next.min);
+        
+        let should_merge = match cmp_max_min {
+            Ordering::Greater => true,
+            Ordering::Equal => {
+                current.max_type == BoundType::Closed || next.min_type == BoundType::Closed
+            },
+            Ordering::Less => false,
+        };
+
+        if should_merge {
+            let cmp_maxs = compare_values(ctx, current.max, next.max);
+            if cmp_maxs == Ordering::Less {
+                current.max = next.max;
+                current.max_type = next.max_type;
+            } else if cmp_maxs == Ordering::Equal {
+                 if next.max_type == BoundType::Closed {
+                     current.max_type = BoundType::Closed;
+                 }
+            }
+        } else {
+            merged.push(current);
+            current = next;
+        }
+    }
+    merged.push(current);
+    merged
 }
 
 pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
@@ -188,5 +231,95 @@ pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) 
             }
         },
         _ => SolutionSet::Empty,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_ast::Context;
+
+    fn make_interval(ctx: &mut Context, min: i64, min_type: BoundType, max: i64, max_type: BoundType) -> Interval {
+        Interval {
+            min: ctx.num(min),
+            min_type,
+            max: ctx.num(max),
+            max_type,
+        }
+    }
+
+    #[test]
+    fn test_merge_intervals_overlap() {
+        let mut ctx = Context::new();
+        let i1 = make_interval(&mut ctx, 0, BoundType::Closed, 2, BoundType::Closed);
+        let i2 = make_interval(&mut ctx, 1, BoundType::Closed, 3, BoundType::Closed);
+        
+        let s1 = SolutionSet::Continuous(i1);
+        let s2 = SolutionSet::Continuous(i2);
+        
+        let union = union_solution_sets(&ctx, s1, s2);
+        
+        if let SolutionSet::Continuous(i) = union {
+            assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 0.into());
+            assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 3.into());
+        } else {
+            panic!("Expected Continuous set, got {:?}", union);
+        }
+    }
+
+    #[test]
+    fn test_merge_intervals_touching() {
+        let mut ctx = Context::new();
+        let i1 = make_interval(&mut ctx, 0, BoundType::Closed, 1, BoundType::Closed);
+        let i2 = make_interval(&mut ctx, 1, BoundType::Closed, 2, BoundType::Closed);
+        
+        let s1 = SolutionSet::Continuous(i1);
+        let s2 = SolutionSet::Continuous(i2);
+        
+        let union = union_solution_sets(&ctx, s1, s2);
+        
+        if let SolutionSet::Continuous(i) = union {
+            assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 0.into());
+            assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 2.into());
+        } else {
+            panic!("Expected Continuous set, got {:?}", union);
+        }
+    }
+
+    #[test]
+    fn test_merge_intervals_touching_open_closed() {
+        let mut ctx = Context::new();
+        let i1 = make_interval(&mut ctx, 0, BoundType::Closed, 1, BoundType::Open); // [0, 1)
+        let i2 = make_interval(&mut ctx, 1, BoundType::Closed, 2, BoundType::Closed); // [1, 2]
+        
+        let s1 = SolutionSet::Continuous(i1);
+        let s2 = SolutionSet::Continuous(i2);
+        
+        let union = union_solution_sets(&ctx, s1, s2);
+        
+        if let SolutionSet::Continuous(i) = union {
+            assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 0.into());
+            assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 2.into());
+        } else {
+            panic!("Expected Continuous set, got {:?}", union);
+        }
+    }
+
+    #[test]
+    fn test_merge_intervals_disjoint() {
+        let mut ctx = Context::new();
+        let i1 = make_interval(&mut ctx, 0, BoundType::Closed, 1, BoundType::Closed);
+        let i2 = make_interval(&mut ctx, 2, BoundType::Closed, 3, BoundType::Closed);
+        
+        let s1 = SolutionSet::Continuous(i1);
+        let s2 = SolutionSet::Continuous(i2);
+        
+        let union = union_solution_sets(&ctx, s1, s2);
+        
+        if let SolutionSet::Union(intervals) = union {
+            assert_eq!(intervals.len(), 2);
+        } else {
+            panic!("Expected Union set, got {:?}", union);
+        }
     }
 }
