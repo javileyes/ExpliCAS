@@ -1,6 +1,6 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId, Context};
+use cas_ast::Expr;
 use num_traits::{Zero, One};
 use crate::helpers::{extract_double_angle_arg, is_trig_pow, get_trig_arg};
 use crate::ordering::compare_expr;
@@ -346,7 +346,7 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_parser::parse;
-    use cas_ast::DisplayExpr;
+    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_evaluate_trig_zero() {

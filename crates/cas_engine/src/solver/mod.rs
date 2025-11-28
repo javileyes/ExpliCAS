@@ -3,7 +3,7 @@ pub mod isolation;
 pub mod strategies;
 pub mod strategy;
 
-use cas_ast::{Equation, SolutionSet, Context, ExprId, DisplayExpr};
+use cas_ast::{Equation, SolutionSet};
 use crate::engine::Simplifier;
 
 pub use self::isolation::contains_var;
@@ -49,7 +49,7 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Result<(S
 mod tests {
     use super::*;
     use cas_parser::parse; 
-    use cas_ast::{BoundType, RelOp}; 
+    use cas_ast::{BoundType, RelOp, DisplayExpr, Context}; 
     
     // Helper to make equation from strings
     fn make_eq(ctx: &mut Context, lhs: &str, rhs: &str) -> Equation {

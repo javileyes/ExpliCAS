@@ -1,6 +1,6 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId, Context};
+use cas_ast::Expr;
 use num_traits::{Zero, One};
 
 define_rule!(
@@ -189,7 +189,7 @@ define_rule!(
 mod tests {
     use super::*;
     use crate::rule::Rule;
-    use cas_ast::DisplayExpr;
+    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_add_zero() {

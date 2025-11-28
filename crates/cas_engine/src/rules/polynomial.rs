@@ -179,7 +179,7 @@ fn binomial_coeff(n: u32, k: u32) -> u32 {
 mod tests {
     use super::*;
     use crate::rule::Rule;
-    use cas_ast::DisplayExpr;
+    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_distribute() {

@@ -281,7 +281,7 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_parser::parse;
-    use cas_ast::DisplayExpr;
+    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_integrate_power() {

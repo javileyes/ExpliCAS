@@ -1,7 +1,7 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
 use cas_ast::{Expr, ExprId, Context};
-use num_traits::{Zero, One, ToPrimitive};
+use num_traits::{Zero, One};
 use crate::ordering::compare_expr;
 use std::cmp::Ordering;
 
@@ -220,7 +220,7 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_parser::parse;
-    use cas_ast::DisplayExpr;
+    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_log_one() {

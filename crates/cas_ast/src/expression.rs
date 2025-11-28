@@ -1,6 +1,6 @@
 use std::fmt;
 use num_rational::BigRational;
-use num_traits::{ToPrimitive, Zero};
+use num_traits::Zero;
 use num_bigint::BigInt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

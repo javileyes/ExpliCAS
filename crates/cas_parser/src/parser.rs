@@ -9,7 +9,7 @@ use nom::{
     IResult,
 };
 use num_rational::BigRational;
-use num_traits::ToPrimitive;
+
 use num_bigint::BigInt;
 
 // Intermediate AST for parsing

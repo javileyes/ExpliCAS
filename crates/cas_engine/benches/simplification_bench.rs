@@ -1,7 +1,7 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use cas_engine::Simplifier;
-use cas_ast::{Expr, Context};
 use cas_parser::parse;
+use std::hint::black_box;
 
 fn benchmark_polynomial_simplification(c: &mut Criterion) {
     let mut group = c.benchmark_group("polynomial");

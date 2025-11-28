@@ -2,7 +2,7 @@ use crate::rule::Rewrite;
 use crate::define_rule;
 use cas_ast::{Expr, ExprId, Context};
 use std::collections::HashMap;
-use num_traits::{One, Zero, ToPrimitive};
+use num_traits::{One, Zero};
 
 define_rule!(
     CollectRule,
@@ -248,7 +248,7 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_parser::parse;
-    use cas_ast::DisplayExpr;
+    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_collect_basic() {

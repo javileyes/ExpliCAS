@@ -1,6 +1,6 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, Context};
+use cas_ast::Expr;
 use num_traits::Signed;
 
 define_rule!(
@@ -56,6 +56,7 @@ define_rule!(
 mod tests {
     use super::*;
     use crate::rule::Rule;
+    use cas_ast::Context;
     use cas_parser::parse;
     use cas_ast::DisplayExpr;
 

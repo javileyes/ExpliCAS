@@ -1,6 +1,6 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId, Context};
+use cas_ast::Expr;
 use std::cmp::Ordering;
 use crate::ordering::compare_expr;
 
@@ -193,7 +193,7 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_parser::parse;
-    use cas_ast::DisplayExpr;
+    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_canonicalize_negation() {

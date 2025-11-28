@@ -1,6 +1,6 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId, Context};
+use cas_ast::Expr;
 use num_traits::{Zero, One, ToPrimitive};
 use num_rational::BigRational;
 use crate::ordering::compare_expr;
@@ -204,7 +204,7 @@ define_rule!(
 mod tests {
     use super::*;
     use crate::rule::Rule;
-    use cas_ast::DisplayExpr;
+    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_product_power() {

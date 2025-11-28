@@ -276,7 +276,7 @@ impl Repl {
             let try_split = rsplit_ignoring_parens(rest, ' ');
             let mut use_split = false;
             
-            if let Some((e, v)) = try_split {
+            if let Some((_e, v)) = try_split {
                  let v = v.trim();
                  // Check if v is a variable name (alphabetic)
                  if !v.is_empty() && v.chars().all(char::is_alphabetic) {
