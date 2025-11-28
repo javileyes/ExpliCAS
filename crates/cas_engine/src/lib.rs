@@ -8,6 +8,7 @@ pub mod ordering;
 
 pub mod visitors;
 pub mod error;
+pub mod helpers;
 #[macro_use]
 pub mod macros;
 

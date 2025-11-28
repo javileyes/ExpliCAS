@@ -222,3 +222,10 @@ mod tests {
         assert_eq!(format!("{}", rewrite2.new_expr), "x");
     }
 }
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(ProductPowerRule));
+    simplifier.add_rule(Box::new(PowerPowerRule));
+    simplifier.add_rule(Box::new(EvaluatePowerRule));
+    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+}

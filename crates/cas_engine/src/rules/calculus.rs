@@ -346,3 +346,7 @@ mod tests {
         assert_eq!(format!("{}", rewrite.new_expr), "ln(3 * x) / 3");
     }
 }
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(IntegrateRule));
+}

@@ -209,3 +209,11 @@ mod tests {
         assert_eq!(format!("{}", rewrite2.new_expr), "x^(1 / 4)");
     }
 }
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(CanonicalizeNegationRule));
+    simplifier.add_rule(Box::new(CanonicalizeAddRule));
+    simplifier.add_rule(Box::new(CanonicalizeMulRule));
+    simplifier.add_rule(Box::new(CanonicalizeRootRule));
+    simplifier.add_rule(Box::new(AssociativityRule));
+}

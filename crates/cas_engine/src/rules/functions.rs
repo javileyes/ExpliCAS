@@ -68,3 +68,7 @@ mod tests {
         assert_eq!(format!("{}", rewrite3.new_expr), "|x|");
     }
 }
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(EvaluateAbsRule));
+}

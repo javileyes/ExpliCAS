@@ -183,3 +183,10 @@ mod tests {
         assert_eq!(format!("{}", rewrite.new_expr), "5");
     }
 }
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(AddZeroRule));
+    simplifier.add_rule(Box::new(MulOneRule));
+    simplifier.add_rule(Box::new(MulZeroRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+}

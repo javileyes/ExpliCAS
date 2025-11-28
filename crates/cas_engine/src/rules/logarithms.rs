@@ -267,3 +267,9 @@ mod tests {
         assert_eq!(format!("{}", rewrite.new_expr), "1");
     }
 }
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(EvaluateLogRule));
+    simplifier.add_rule(Box::new(ExponentialLogRule));
+    simplifier.add_rule(Box::new(SplitLogExponentsRule));
+}

@@ -268,3 +268,7 @@ mod tests {
         assert!(s.contains("x^2"));
     }
 }
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(CollectRule));
+}

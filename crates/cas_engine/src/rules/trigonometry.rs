@@ -100,49 +100,45 @@ define_rule!(
     }
 );
 
+use crate::helpers::{extract_double_angle_arg, is_trig_pow};
+
 define_rule!(
     PythagoreanIdentityRule,
     "Pythagorean Identity",
     |expr| {
         if let Expr::Add(lhs, rhs) = expr.as_ref() {
             // Check cos^2 + sin^2
-            if let (Some(arg_cos), Some(arg_sin)) = (is_trig_square(lhs, "cos"), is_trig_square(rhs, "sin")) {
-                if arg_sin == arg_cos {
-                    return Some(Rewrite {
-                        new_expr: Rc::new(Expr::Number(num_rational::BigRational::one())),
-                        description: "cos^2(x) + sin^2(x) = 1".to_string(),
-                    });
-                }
+            // Use is_trig_pow instead of is_trig_square
+            // We need to extract the arg manually since is_trig_pow returns bool.
+            // Or better: use get_trig_arg from helpers if we import it.
+            use crate::helpers::get_trig_arg;
+            
+            if is_trig_pow(lhs, "cos", 2) && is_trig_pow(rhs, "sin", 2) {
+                 if let (Some(arg_cos), Some(arg_sin)) = (get_trig_arg(lhs), get_trig_arg(rhs)) {
+                     if arg_cos == arg_sin {
+                         return Some(Rewrite {
+                             new_expr: Rc::new(Expr::Number(num_rational::BigRational::one())),
+                             description: "cos^2(x) + sin^2(x) = 1".to_string(),
+                         });
+                     }
+                 }
             }
+            
             // Check sin^2 + cos^2
-            if let (Some(arg_sin), Some(arg_cos)) = (is_trig_square(lhs, "sin"), is_trig_square(rhs, "cos")) {
-                if arg_sin == arg_cos {
-                    return Some(Rewrite {
-                        new_expr: Rc::new(Expr::Number(num_rational::BigRational::one())),
-                        description: "sin^2(x) + cos^2(x) = 1".to_string(),
-                    });
-                }
+            if is_trig_pow(lhs, "sin", 2) && is_trig_pow(rhs, "cos", 2) {
+                 if let (Some(arg_sin), Some(arg_cos)) = (get_trig_arg(lhs), get_trig_arg(rhs)) {
+                     if arg_sin == arg_cos {
+                         return Some(Rewrite {
+                             new_expr: Rc::new(Expr::Number(num_rational::BigRational::one())),
+                             description: "sin^2(x) + cos^2(x) = 1".to_string(),
+                         });
+                     }
+                 }
             }
         }
         None
     }
 );
-
-// Helper to check if expr is name(arg)^2 and return arg
-fn is_trig_square<'a>(expr: &'a Expr, name: &str) -> Option<&'a Rc<Expr>> {
-    if let Expr::Pow(base, exp) = expr {
-        if let Expr::Number(n) = exp.as_ref() {
-            if n.is_integer() && n.to_integer() == 2.into() {
-                if let Expr::Function(func_name, args) = base.as_ref() {
-                    if func_name == name && args.len() == 1 {
-                        return Some(&args[0]);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
 
 define_rule!(
     AngleIdentityRule,
@@ -253,22 +249,6 @@ define_rule!(
         None
     }
 );
-
-fn extract_double_angle_arg(expr: &Expr) -> Option<Rc<Expr>> {
-    if let Expr::Mul(lhs, rhs) = expr {
-        if let Expr::Number(n) = lhs.as_ref() {
-            if n.is_integer() && n.to_integer() == 2.into() {
-                return Some(rhs.clone());
-            }
-        }
-        if let Expr::Number(n) = rhs.as_ref() {
-            if n.is_integer() && n.to_integer() == 2.into() {
-                return Some(lhs.clone());
-            }
-        }
-    }
-    None
-}
 
 #[cfg(test)]
 mod tests {
@@ -388,4 +368,12 @@ mod tests {
         assert!(format!("{}", rewrite.new_expr).contains("pi"));
         assert!(format!("{}", rewrite.new_expr).contains("2"));
     }
+}
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(EvaluateTrigRule));
+    simplifier.add_rule(Box::new(PythagoreanIdentityRule));
+    simplifier.add_rule(Box::new(AngleIdentityRule));
+    simplifier.add_rule(Box::new(TanToSinCosRule));
+    simplifier.add_rule(Box::new(DoubleAngleRule));
 }

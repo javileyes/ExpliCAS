@@ -214,3 +214,10 @@ mod tests {
         assert_eq!(format!("{}", rewrite3.new_expr), "2 * ln(x)");
     }
 }
+
+pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(DistributeRule));
+    simplifier.add_rule(Box::new(AnnihilationRule));
+    simplifier.add_rule(Box::new(CombineLikeTermsRule));
+    simplifier.add_rule(Box::new(BinomialExpansionRule));
+}
