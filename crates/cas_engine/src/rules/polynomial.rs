@@ -3,7 +3,7 @@ use crate::define_rule;
 use cas_ast::{Expr, ExprId, Context};
 use num_traits::{ToPrimitive, Signed};
 use num_rational::BigRational;
-use num_traits::One;
+use num_traits::{One, Zero};
 use crate::ordering::compare_expr;
 use std::cmp::Ordering;
 
@@ -58,50 +58,124 @@ define_rule!(
     }
 );
 
+
 define_rule!(
     CombineLikeTermsRule,
     "Combine Like Terms",
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Add(l, r) = expr_data {
-            // Helper to extract (coeff, var_part)
-            // 2x -> (2, x)
-            // x -> (1, x)
-            let get_parts = |context: &Context, e: ExprId| -> Option<(BigRational, ExprId)> {
-                match context.get(e) {
-                    Expr::Mul(a, b) => {
-                        if let Expr::Number(n) = context.get(*a) {
-                            Some((n.clone(), *b))
-                        } else if let Expr::Number(n) = context.get(*b) {
-                            Some((n.clone(), *a))
-                        } else {
-                            None
-                        }
-                    }
-                    Expr::Number(_) => None, // Handled by CombineConstantsRule
-                    _ => Some((BigRational::one(), e)),
-                }
-            };
+        if let Expr::Add(_, _) = ctx.get(expr) {
+            // Flatten
+            let mut terms = Vec::new();
+            flatten_add(ctx, expr, &mut terms);
+            
+            if terms.len() < 2 { return None; }
 
-            if let (Some((c1, v1)), Some((c2, v2))) = (get_parts(ctx, l), get_parts(ctx, r)) {
-                if compare_expr(ctx, v1, v2) == Ordering::Equal {
-                    let new_coeff = &c1 + &c2;
-                    let new_term = if new_coeff.is_one() {
-                        v1
+            // Extract (coeff, var_part)
+            let mut parsed_terms = Vec::new();
+            for t in terms {
+                let (c, v) = get_parts(ctx, t);
+                parsed_terms.push((c, v));
+            }
+            
+            // Sort by var_part to bring like terms together
+            parsed_terms.sort_by(|a, b| compare_expr(ctx, a.1, b.1));
+            
+            // Combine
+            let mut new_terms = Vec::new();
+            if parsed_terms.is_empty() { return None; } // Should not happen
+
+            let mut current_coeff = parsed_terms[0].0.clone();
+            let mut current_var = parsed_terms[0].1;
+            let mut changed = false;
+            
+            for i in 1..parsed_terms.len() {
+                let (c, v) = &parsed_terms[i];
+                if compare_expr(ctx, current_var, *v) == Ordering::Equal {
+                    current_coeff += c;
+                    changed = true;
+                } else {
+                    if !current_coeff.is_zero() {
+                        new_terms.push(make_term(ctx, current_coeff, current_var));
                     } else {
-                        let coeff_expr = ctx.add(Expr::Number(new_coeff.clone()));
-                        ctx.add(Expr::Mul(coeff_expr, v1))
-                    };
-                    return Some(Rewrite {
-                        new_expr: new_term,
-                        description: format!("Combine like terms: {}{} + {}{}", c1, v1, c2, v2), // Note: Display might be tricky here without context, but it's just a string description
-                    });
+                        changed = true; // Zero removed
+                    }
+                    current_coeff = c.clone();
+                    current_var = *v;
                 }
             }
+            if !current_coeff.is_zero() {
+                new_terms.push(make_term(ctx, current_coeff, current_var));
+            } else {
+                changed = true;
+            }
+            
+            if !changed {
+                return None;
+            }
+            
+            if new_terms.is_empty() {
+                return Some(Rewrite {
+                    new_expr: ctx.num(0),
+                    description: "Combine like terms (all cancelled)".to_string(),
+                });
+            }
+            
+            // Rebuild Add chain (left-associative)
+            let mut res = new_terms[0];
+            for t in new_terms.iter().skip(1) {
+                res = ctx.add(Expr::Add(res, *t));
+            }
+            
+            return Some(Rewrite {
+                new_expr: res,
+                description: "Global Combine Like Terms".to_string(),
+            });
         }
         None
     }
 );
+
+fn flatten_add(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            flatten_add(ctx, *l, terms);
+            flatten_add(ctx, *r, terms);
+        }
+        _ => terms.push(expr),
+    }
+}
+
+fn get_parts(context: &mut Context, e: ExprId) -> (BigRational, ExprId) {
+    match context.get(e) {
+        Expr::Mul(a, b) => {
+            if let Expr::Number(n) = context.get(*a) {
+                (n.clone(), *b)
+            } else if let Expr::Number(n) = context.get(*b) {
+                (n.clone(), *a)
+            } else {
+                (BigRational::one(), e)
+            }
+        }
+        Expr::Number(n) => (n.clone(), context.num(1)), // Treat constant as c * 1
+        _ => (BigRational::one(), e),
+    }
+}
+
+fn make_term(ctx: &mut Context, coeff: BigRational, var: ExprId) -> ExprId {
+    if let Expr::Number(n) = ctx.get(var) {
+        if n.is_one() {
+            return ctx.add(Expr::Number(coeff));
+        }
+    }
+    
+    if coeff.is_one() {
+        var
+    } else {
+        let c = ctx.add(Expr::Number(coeff));
+        ctx.add(Expr::Mul(c, var))
+    }
+}
+
 
 define_rule!(
     BinomialExpansionRule,

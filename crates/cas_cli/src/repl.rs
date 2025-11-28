@@ -1,5 +1,5 @@
 use cas_engine::Simplifier;
-use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
+use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule};
@@ -52,6 +52,7 @@ impl Repl {
         simplifier.add_rule(Box::new(ZeroOnePowerRule));
         simplifier.add_rule(Box::new(AddZeroRule));
         simplifier.add_rule(Box::new(MulOneRule));
+        simplifier.add_rule(Box::new(MulZeroRule));
         simplifier.add_rule(Box::new(CombineConstantsRule));
         simplifier.add_rule(Box::new(IntegrateRule));
 

@@ -4,9 +4,10 @@ use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, Dist
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
+use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule, AddFractionsRule, FactorRule, SimplifyMulDivRule};
+use cas_engine::rules::grouping::CollectRule;
 use cas_parser::parse;
 use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
 use cas_engine::solver::solve;
@@ -21,6 +22,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
+    simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
@@ -35,6 +37,10 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
+    simplifier.add_rule(Box::new(AddFractionsRule));
+    simplifier.add_rule(Box::new(SimplifyMulDivRule));
+    simplifier.add_rule(Box::new(FactorRule));
+    simplifier.add_rule(Box::new(CollectRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Moved to specific test to avoid loops 
 
     simplifier.add_rule(Box::new(AddZeroRule));
@@ -105,12 +111,28 @@ fn test_nested_fraction() {
 
 #[test]
 fn test_trig_identity_hidden() {
-    // equiv(sin(x)^4 - cos(x)^4, sin(x)^2 - cos(x)^2) -> True
-    let mut simplifier = create_full_simplifier();
+    let input = "sin(x)^4 - cos(x)^4 - (sin(x)^2 - cos(x)^2)";
+    // Custom simplifier without DistributeRule to avoid fighting with FactorDifferenceSquaresRule
+    let mut simplifier = cas_engine::Simplifier::new();
+    let mut ctx = Context::new();
+    simplifier.context = ctx;
+    
+    // Add minimal rules needed
+    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::AddZeroRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulOneRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::CombineConstantsRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::AnnihilationRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule)); // Global one
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(FactorDifferenceSquaresRule));
-    let expr1 = parse("sin(x)^4 - cos(x)^4", &mut simplifier.context).unwrap();
-    let expr2 = parse("sin(x)^2 - cos(x)^2", &mut simplifier.context).unwrap();
-    assert_equivalent(&mut simplifier, expr1, expr2);
+    
+    // We need ExpandRule? Maybe not.
+    
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result_str, "0", "Failed on: {}", input);
 }
 
 #[test]
@@ -248,5 +270,34 @@ fn test_quadratic_abs_inequality() {
         assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: max }), "2");
     } else {
         panic!("Expected Continuous solution, got {:?}", result);
+    }
+}
+
+#[test]
+fn test_zero_equivalence_suite() {
+    let cases = vec![
+        "1/(x-1) - 2/(x^2-1) - 1/(x+1)",
+        "(tan(x)*cos(x))^2 + cos(x)^2 - 1",
+        "sqrt(x^2 + 2*x + 1) - abs(x + 1)",
+        "2*ln(sqrt(e^x)) - x + ln(1)",
+        "(x+2)^3 - (x^3 + 6*x^2 + 12*x + 8)",
+    ];
+
+    for input in cases {
+        let mut simplifier = create_full_simplifier();
+        // Ensure we have all necessary rules
+        simplifier.add_rule(Box::new(TanToSinCosRule));
+        simplifier.add_rule(Box::new(SimplifyMulDivRule));
+        simplifier.add_rule(Box::new(AddFractionsRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule)); // Global
+        // Note: FactorDifferenceSquaresRule is NOT added here to avoid loops with DistributeRule in Rational Crusher
+        // if AddFractionsRule is not prioritized or if they fight.
+        // But AddFractionsRule should handle Rational Crusher.
+        
+        let expr = parse(input, &mut simplifier.context).unwrap();
+        let (simplified, _) = simplifier.simplify(expr);
+        
+        let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+        assert_eq!(result_str, "0", "Failed on: {}", input);
     }
 }

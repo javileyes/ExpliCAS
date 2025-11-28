@@ -2,7 +2,7 @@ use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
 use cas_parser::parse;
 use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
-use cas_engine::solver::solve;
+// use cas_engine::solver::solve; // Unused
 use num_traits::Zero;
 
 // Helper function to create a simplifier with a common set of rules for testing
@@ -235,7 +235,8 @@ fn test_polynomial_factorization_integration() {
     let (result2, _) = simplifier.simplify(expr2);
     let res2 = format!("{}", DisplayExpr { context: &simplifier.context, id: result2 });
     assert!(res2.contains("x + 2") || res2.contains("2 + x"));
-    assert!(res2.contains("*"));
+    // With grouped factors, this becomes (x+2)^2, so check for power instead of mul
+    assert!(res2.contains("^2") || res2.contains("^ 2"));
 
     // Test 3: Cubic
     // factor(x^3 - x) -> x(x-1)(x+1)

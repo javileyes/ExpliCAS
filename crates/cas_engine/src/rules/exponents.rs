@@ -1,7 +1,8 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::Expr;
+use cas_ast::{Expr, ExprId};
 use num_traits::{Zero, One, ToPrimitive};
+use num_integer::Integer;
 use num_rational::BigRational;
 use crate::ordering::compare_expr;
 use std::cmp::Ordering;
@@ -75,6 +76,40 @@ define_rule!(
         if let Expr::Pow(base, outer_exp) = expr_data {
             let base_data = ctx.get(base).clone();
             if let Expr::Pow(inner_base, inner_exp) = base_data {
+                // Check for even root safety: (x^2)^(1/2) -> |x|
+                // If inner_exp is even integer and outer_exp is fractional with even denominator?
+                // Or just check specific case (x^2)^(1/2).
+                
+                let is_even_int = |e: ExprId| -> bool {
+                    if let Expr::Number(n) = ctx.get(e) {
+                        n.is_integer() && n.to_integer().is_even()
+                    } else {
+                        false
+                    }
+                };
+                
+                let is_half = |e: ExprId| -> bool {
+                    if let Expr::Number(n) = ctx.get(e) {
+                        *n.numer() == 1.into() && *n.denom() == 2.into()
+                    } else {
+                        false
+                    }
+                };
+
+                if is_even_int(inner_exp) && is_half(outer_exp) {
+                    // (x^(2k))^(1/2) -> |x|^k
+                    // If k=1, |x|.
+                    // new_exp = inner_exp * outer_exp = 2k * 1/2 = k.
+                    let prod_exp = ctx.add(Expr::Mul(inner_exp, outer_exp));
+                    // We need to wrap base in abs.
+                    let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![inner_base]));
+                    let new_expr = ctx.add(Expr::Pow(abs_base, prod_exp));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Power of power with even root: (x^2k)^(1/2) -> |x|^k".to_string(),
+                    });
+                }
+
                 let prod_exp = ctx.add(Expr::Mul(inner_exp, outer_exp));
                 let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
                 return Some(Rewrite {

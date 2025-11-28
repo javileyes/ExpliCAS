@@ -283,12 +283,37 @@ define_rule!(
                         }
                     }
 
-                    // Construct the expression from factors
-                    // factors[0] * factors[1] * ...
-                    let mut res = factors[0].to_expr(ctx);
-                    for factor in factors.iter().skip(1) {
-                        let f_expr = factor.to_expr(ctx);
-                        res = ctx.add(Expr::Mul(res, f_expr));
+                    // Group identical factors into powers
+                    // Map: Polynomial -> count
+                    // But Polynomial doesn't implement Hash/Eq easily.
+                    // We can just iterate and count.
+                    // factors are sorted? No.
+                    // But we can sort them? Or just use a simple loop.
+                    
+                    let mut counts: Vec<(crate::polynomial::Polynomial, u32)> = Vec::new();
+                    for f in factors {
+                        if let Some((_, count)) = counts.iter_mut().find(|(p, _)| p == &f) {
+                            *count += 1;
+                        } else {
+                            counts.push((f, 1));
+                        }
+                    }
+                    
+                    // Construct expression
+                    let mut terms = Vec::new();
+                    for (p, count) in counts {
+                        let base = p.to_expr(ctx);
+                        if count == 1 {
+                            terms.push(base);
+                        } else {
+                            let exp = ctx.num(count as i64);
+                            terms.push(ctx.add(Expr::Pow(base, exp)));
+                        }
+                    }
+                    
+                    let mut res = terms[0];
+                    for t in terms.iter().skip(1) {
+                        res = ctx.add(Expr::Mul(res, *t));
                     }
 
                     return Some(Rewrite {
@@ -302,7 +327,7 @@ define_rule!(
     }
 );
 
-fn collect_variables(ctx: &Context, expr: ExprId) -> HashSet<String> {
+pub fn collect_variables(ctx: &Context, expr: ExprId) -> HashSet<String> {
     use crate::visitors::VariableCollector;
     use cas_ast::Visitor;
     
@@ -471,16 +496,138 @@ mod tests {
         let expr = parse("factor(x^2 + 2*x + 1)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
         let res = format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr });
-        // Should be (x+1) * (x+1)
+        // Should be (x+1)^2
         assert!(res.contains("x + 1") || res.contains("1 + x"));
-        assert!(res.contains("*"));
+        assert!(res.contains("^2") || res.contains("^ 2"));
     }
 }
+
+
+define_rule!(
+    AddFractionsRule,
+    "Add Algebraic Fractions",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Add(l, r) = expr_data {
+            // Check if either is a fraction
+            let is_frac = |e: ExprId| matches!(ctx.get(e), Expr::Div(_, _));
+            if !is_frac(l) && !is_frac(r) {
+                return None;
+            }
+
+            // Helper to get num/den
+            let mut get_nd = |e: ExprId| -> (ExprId, ExprId) {
+                if let Expr::Div(n, d) = ctx.get(e) {
+                    (*n, *d)
+                } else {
+                    (e, ctx.num(1))
+                }
+            };
+
+            let (n1, d1) = get_nd(l);
+            let (n2, d2) = get_nd(r);
+
+            // If denominators are same, simple add
+            if d1 == d2 {
+                let new_num = ctx.add(Expr::Add(n1, n2));
+                let new_expr = ctx.add(Expr::Div(new_num, d1));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Add fractions with same denominator".to_string(),
+                });
+            }
+
+            // Different denominators. Try to find LCM.
+            // We need variables to use Polynomials.
+            let vars = collect_variables(ctx, expr);
+            if vars.len() != 1 {
+                // Multivariate LCM is hard. Just use product?
+                // For now, only support univariate LCM for "Rational Crusher".
+                // Or simple product if simple expressions.
+                return None; 
+            }
+            let var = vars.iter().next().unwrap();
+
+            let p_d1 = Polynomial::from_expr(ctx, d1, var).ok()?;
+            let p_d2 = Polynomial::from_expr(ctx, d2, var).ok()?;
+
+            // LCM = (d1 * d2) / GCD(d1, d2)
+            let gcd = p_d1.gcd(&p_d2);
+            let (lcm_poly, _) = p_d1.mul(&p_d2).div_rem(&gcd); // d1*d2 / gcd
+            
+            // New Num = n1 * (LCM/d1) + n2 * (LCM/d2)
+            // LCM/d1 = d2/gcd
+            // LCM/d2 = d1/gcd
+            
+            let (m1_poly, _) = p_d2.div_rem(&gcd);
+            let (m2_poly, _) = p_d1.div_rem(&gcd);
+            
+            let m1 = m1_poly.to_expr(ctx);
+            let m2 = m2_poly.to_expr(ctx);
+            
+            let term1 = ctx.add(Expr::Mul(n1, m1));
+            let term2 = ctx.add(Expr::Mul(n2, m2));
+            let new_num = ctx.add(Expr::Add(term1, term2));
+            let new_den = lcm_poly.to_expr(ctx);
+            
+            let new_expr = ctx.add(Expr::Div(new_num, new_den));
+            
+            return Some(Rewrite {
+                new_expr,
+                description: "Add fractions with LCM".to_string(),
+            });
+        }
+        None
+    }
+);
+
+
+define_rule!(
+    SimplifyMulDivRule,
+    "Simplify Multiplication with Division",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Mul(l, r) = expr_data {
+            // Check for a * (b/c) or (b/c) * a
+            let mut check = |target: ExprId, other: ExprId| -> Option<Rewrite> {
+                if let Expr::Div(num, den) = ctx.get(target).clone() {
+                    // (num / den) * other
+                    
+                    // 1. Direct cancellation: (a/b) * b -> a
+                    // Use compare_expr for structural equality
+                    if crate::ordering::compare_expr(ctx, den, other) == std::cmp::Ordering::Equal {
+                        return Some(Rewrite {
+                            new_expr: num,
+                            description: "Cancel division: (a/b)*b -> a".to_string(),
+                        });
+                    }
+
+                    // (num / den) * other -> (num * other) / den
+                    let new_num = ctx.add(Expr::Mul(num, other));
+                    let new_expr = ctx.add(Expr::Div(new_num, den));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Combine Mul and Div".to_string(),
+                    });
+                }
+                None
+            };
+
+            if let Some(rw) = check(l, r) { return Some(rw); }
+            if let Some(rw) = check(r, l) { return Some(rw); }
+        }
+        None
+    }
+);
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
+    simplifier.add_rule(Box::new(AddFractionsRule));
+    simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(ExpandRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(FactorDifferenceSquaresRule));
 }
+
+

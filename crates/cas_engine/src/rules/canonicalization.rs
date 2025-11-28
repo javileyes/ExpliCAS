@@ -120,6 +120,62 @@ define_rule!(
         if let Expr::Function(name, args) = expr_data {
             if name == "sqrt" {
                 if args.len() == 1 {
+                    let arg = args[0];
+                    
+                    // Try to factor argument to find perfect squares
+                    // e.g. sqrt(x^2 + 2x + 1) -> sqrt((x+1)^2) -> |x+1|
+                    use crate::polynomial::Polynomial;
+                    use crate::rules::algebra::collect_variables;
+                    
+                    let vars = collect_variables(ctx, arg);
+                    if vars.len() == 1 {
+                        let var = vars.iter().next().unwrap();
+                        if let Ok(poly) = Polynomial::from_expr(ctx, arg, var) {
+                             let factors = poly.factor_rational_roots();
+                             if !factors.is_empty() {
+                                 let first = &factors[0];
+                                 if factors.iter().all(|f| f == first) {
+                                     let count = factors.len() as u32;
+                                     if count >= 2 {
+                                         // arg = base^count
+                                         // sqrt(base^count) = |base|^(count/2) if count is even?
+                                         // sqrt(x^2) = |x|.
+                                         // sqrt(x^4) = x^2 = |x|^2.
+                                         // sqrt(x^3) = |x| * sqrt(x).
+                                         
+                                         let base = first.to_expr(ctx);
+                                         let k = count / 2;
+                                         let rem = count % 2;
+                                         
+                                         let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![base]));
+                                         
+                                         let term1 = if k == 1 {
+                                             abs_base
+                                         } else {
+                                             let k_expr = ctx.num(k as i64);
+                                             ctx.add(Expr::Pow(abs_base, k_expr))
+                                         };
+                                         
+                                         if rem == 0 {
+                                             return Some(Rewrite {
+                                                 new_expr: term1,
+                                                 description: "Simplify perfect square root".to_string(),
+                                             });
+                                         } else {
+                                             // Remainder 1: term1 * sqrt(base)
+                                             let sqrt_base = ctx.add(Expr::Function("sqrt".to_string(), vec![base]));
+                                             let new_expr = ctx.add(Expr::Mul(term1, sqrt_base));
+                                             return Some(Rewrite {
+                                                 new_expr,
+                                                 description: "Simplify square root factors".to_string(),
+                                             });
+                                         }
+                                     }
+                                 }
+                             }
+                        }
+                    }
+
                     // sqrt(x) -> x^(1/2)
                     let half = ctx.rational(1, 2);
                     let new_expr = ctx.add(Expr::Pow(args[0], half));
