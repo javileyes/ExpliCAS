@@ -127,16 +127,7 @@ fn test_nested_logs_exponents() {
     let (res, _) = simplifier.simplify(expr);
     assert_eq!(format!("{}", res), "x");
     
-    // Let's try the complex one and see if it fails or if I can implement the missing rule if needed.
-    // Actually, let's stick to what we know works or what we want to verify.
-    // If we want x*y, we need `exp(ln(x*y))`.
-    // If we have `exp(ln(x) + ln(y))`, we need `exp(ln(x)) * exp(ln(y))` rule?
-    // `exp(a + b) -> exp(a) * exp(b)`? We don't have that rule either.
-    // So `exp(ln(x) + ln(y))` won't simplify to `x*y` currently.
-    // I will comment out the complex case and stick to `exp(ln(x))` for now, 
-    // or add a TODO to implement `LogCombinationRule`.
-    
-    // Alternative test: `exp(ln(x * y))` -> `x * y`
+    // Test: `exp(ln(x * y))` -> `x * y`
     let input2 = "exp(ln(x * y))";
     let expr2 = parse(input2).unwrap();
     let (res2, _) = simplifier.simplify(expr2);

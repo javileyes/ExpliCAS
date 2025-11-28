@@ -211,7 +211,7 @@ impl SolverStrategy for QuadraticStrategy {
         let poly_expr = Expr::sub(eq.lhs.clone(), eq.rhs.clone());
         let (sim_poly_expr, _) = simplifier.simplify(poly_expr);
         
-        if let Some(poly) = Polynomial::from_expr(&sim_poly_expr, var) {
+        if let Ok(poly) = Polynomial::from_expr(&sim_poly_expr, var) {
             if poly.degree() == 2 {
                 if simplifier.collect_steps {
                     steps.push(SolveStep {

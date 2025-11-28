@@ -56,35 +56,34 @@ impl Polynomial {
         }
     }
 
-    // Convert Expr to Polynomial. Returns None if not a polynomial in `var`.
-    pub fn from_expr(expr: &Expr, var: &str) -> Option<Self> {
+    // Convert Expr to Polynomial. Returns CasError if not a polynomial in `var`.
+    pub fn from_expr(expr: &Expr, var: &str) -> Result<Self, crate::error::CasError> {
+        use crate::error::CasError;
         match expr {
-            Expr::Number(n) => Some(Polynomial::new(vec![n.clone()], var.to_string())),
+            Expr::Number(n) => Ok(Polynomial::new(vec![n.clone()], var.to_string())),
             Expr::Variable(v) => {
                 if v == var {
                     // x = 0 + 1*x
-                    Some(Polynomial::new(vec![BigRational::zero(), BigRational::one()], var.to_string()))
+                    Ok(Polynomial::new(vec![BigRational::zero(), BigRational::one()], var.to_string()))
                 } else {
                     // Treat other variables as constants? For now, fail.
-                    // Or maybe treat as constant polynomial?
-                    // Let's stick to strict univariate for now.
-                    None
+                    Err(CasError::PolynomialError(format!("Variable mismatch: expected '{}', found '{}'", var, v)))
                 }
             },
             Expr::Add(l, r) => {
                 let p1 = Polynomial::from_expr(l, var)?;
                 let p2 = Polynomial::from_expr(r, var)?;
-                Some(p1.add(&p2))
+                Ok(p1.add(&p2))
             },
             Expr::Sub(l, r) => {
                 let p1 = Polynomial::from_expr(l, var)?;
                 let p2 = Polynomial::from_expr(r, var)?;
-                Some(p1.sub(&p2))
+                Ok(p1.sub(&p2))
             },
             Expr::Mul(l, r) => {
                 let p1 = Polynomial::from_expr(l, var)?;
                 let p2 = Polynomial::from_expr(r, var)?;
-                Some(p1.mul(&p2))
+                Ok(p1.mul(&p2))
             },
             Expr::Pow(base, exp) => {
                 // Only handle x^n where n is non-negative integer
@@ -92,21 +91,21 @@ impl Polynomial {
                     if n.is_integer() && *n >= BigRational::zero() {
                         let p_base = Polynomial::from_expr(base, var)?;
                         // Naive power
-                        let exp_usize = n.to_integer().try_into().ok()?;
+                        let exp_usize = n.to_integer().try_into().map_err(|_| CasError::PolynomialError("Exponent too large".to_string()))?;
                         let mut res = Polynomial::one(var.to_string());
                         for _ in 0..exp_usize {
                             res = res.mul(&p_base);
                         }
-                        return Some(res);
+                        return Ok(res);
                     }
                 }
-                None
+                Err(CasError::PolynomialError(format!("Unsupported power: {}", exp)))
             },
             Expr::Neg(e) => {
                 let p = Polynomial::from_expr(e, var)?;
-                Some(p.neg())
+                Ok(p.neg())
             },
-            _ => None,
+            _ => Err(CasError::PolynomialError(format!("Unsupported expression type for polynomial: {:?}", expr))),
         }
     }
 

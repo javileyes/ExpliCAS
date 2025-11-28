@@ -20,8 +20,8 @@ define_rule!(
             let var = vars.iter().next().unwrap();
 
             // 2. Convert to Polynomials
-            let p_num = Polynomial::from_expr(num, var)?;
-            let p_den = Polynomial::from_expr(den, var)?;
+            let p_num = Polynomial::from_expr(num, var).ok()?;
+            let p_den = Polynomial::from_expr(den, var).ok()?;
 
             // 3. Compute GCD
             let gcd = p_num.gcd(&p_den);
@@ -225,7 +225,7 @@ define_rule!(
                 }
                 let var = vars.iter().next().unwrap();
                 
-                if let Some(poly) = Polynomial::from_expr(arg, var) {
+                if let Ok(poly) = Polynomial::from_expr(arg, var) {
                     return Some(Rewrite {
                         new_expr: poly.to_expr(),
                         description: "expand(poly)".to_string(),
@@ -250,7 +250,7 @@ define_rule!(
                 }
                 let var = vars.iter().next().unwrap();
                 
-                if let Some(poly) = Polynomial::from_expr(arg, var) {
+                if let Ok(poly) = Polynomial::from_expr(arg, var) {
                     if poly.is_zero() { return None; }
 
                     // 1. Extract content (common constant factor)

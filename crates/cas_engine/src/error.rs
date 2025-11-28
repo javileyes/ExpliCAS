@@ -12,4 +12,6 @@ pub enum CasError {
     SolverError(String),
     #[error("Parse error: {0}")]
     ParseError(String), // Wrap ParseError if needed, or just string for now
+    #[error("Polynomial error: {0}")]
+    PolynomialError(String),
 }
