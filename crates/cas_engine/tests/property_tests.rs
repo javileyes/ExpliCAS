@@ -102,4 +102,40 @@ proptest! {
         let (s_expr, _) = simplifier.simplify(expr.clone());
         prop_assert_eq!(s_pow_one, s_expr);
     }
+
+    #[test]
+    fn test_associativity_flattening(expr in strategies::arb_expr()) {
+        let simplifier = Simplifier::with_default_rules();
+        let (simplified, _) = simplifier.simplify(expr);
+        
+        // Check that we don't have (a + b) + c or (a * b) * c
+        // The AssociativityRule should flatten these to a + (b + c) or similar canonical form.
+        // Our rule is: (a + b) + c -> a + (b + c) (Right associative)
+        // So we shouldn't see Add(Add(..), ..) as the LHS of an Add.
+        
+        fn check_right_associative(expr: &Expr) -> bool {
+            match expr {
+                Expr::Add(lhs, rhs) => {
+                    if let Expr::Add(_, _) = lhs.as_ref() {
+                        return false; // Found (a+b)+c
+                    }
+                    check_right_associative(lhs) && check_right_associative(rhs)
+                },
+                Expr::Mul(lhs, rhs) => {
+                    if let Expr::Mul(_, _) = lhs.as_ref() {
+                        return false; // Found (a*b)*c
+                    }
+                    check_right_associative(lhs) && check_right_associative(rhs)
+                },
+                Expr::Sub(lhs, rhs) | Expr::Div(lhs, rhs) | Expr::Pow(lhs, rhs) => {
+                    check_right_associative(lhs) && check_right_associative(rhs)
+                },
+                Expr::Neg(e) => check_right_associative(e),
+                Expr::Function(_, args) => args.iter().all(|a| check_right_associative(a)),
+                _ => true,
+            }
+        }
+
+        prop_assert!(check_right_associative(&simplified), "Associativity flattening failed: {}", simplified);
+    }
 }
