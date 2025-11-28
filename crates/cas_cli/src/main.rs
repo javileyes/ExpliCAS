@@ -200,10 +200,10 @@ fn main() -> rustyline::Result<()> {
                                         }
                                         println!("Result: {}", result);
                                     },
-                                    Err(e) => println!("Error parsing value: {:?}", e),
+                                    Err(e) => println!("Error parsing value: {}", e),
                                 }
                             },
-                            Err(e) => println!("Error parsing expression: {:?}", e),
+                            Err(e) => println!("Error parsing expression: {}", e),
                         }
                         continue;
                     }
