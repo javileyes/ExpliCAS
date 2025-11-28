@@ -62,6 +62,66 @@ define_rule!(
                     description: "Multiply identical terms".to_string(),
                 });
             }
+
+            // Case 4: Nested Multiplication: x * (x * y) -> x^2 * y
+            // We rely on CanonicalizeMulRule to have sorted terms, so identical bases are adjacent.
+            // Check if rhs is a Mul(rl, rr) and lhs == rl
+            if let Expr::Mul(rl, rr) = rhs_data {
+                // x * (x * y)
+                if compare_expr(ctx, lhs, rl) == Ordering::Equal {
+                    let two = ctx.num(2);
+                    let x_squared = ctx.add(Expr::Pow(lhs, two));
+                    let new_expr = ctx.add(Expr::Mul(x_squared, rr));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Combine nested identical terms".to_string(),
+                    });
+                }
+                
+                // x^a * (x^b * y) -> x^(a+b) * y
+                let lhs_pow = if let Expr::Pow(b, e) = &lhs_data { Some((*b, *e)) } else { None };
+                let rhs_pow = if let Expr::Pow(b, e) = ctx.get(rl) { Some((*b, *e)) } else { None };
+
+                if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rhs_pow) {
+                    if compare_expr(ctx, base1, base2) == Ordering::Equal {
+                        let sum_exp = ctx.add(Expr::Add(exp1, exp2));
+                        let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
+                        let new_expr = ctx.add(Expr::Mul(new_pow, rr));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Combine nested powers".to_string(),
+                        });
+                    }
+                }
+                
+                // x^a * (x * y) -> x^(a+1) * y
+                if let Some((base1, exp1)) = lhs_pow {
+                    if compare_expr(ctx, base1, rl) == Ordering::Equal {
+                        let one = ctx.num(1);
+                        let sum_exp = ctx.add(Expr::Add(exp1, one));
+                        let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
+                        let new_expr = ctx.add(Expr::Mul(new_pow, rr));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Combine nested power and base".to_string(),
+                        });
+                    }
+                }
+
+                // x * (x^b * y) -> x^(1+b) * y
+                if let Some((base2, exp2)) = rhs_pow {
+                    if compare_expr(ctx, lhs, base2) == Ordering::Equal {
+                        let one = ctx.num(1);
+                        let sum_exp = ctx.add(Expr::Add(one, exp2));
+                        let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
+                        let new_expr = ctx.add(Expr::Mul(new_pow, rr));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Combine nested base and power".to_string(),
+                        });
+                    }
+                }
+            }
         }
         None
     }

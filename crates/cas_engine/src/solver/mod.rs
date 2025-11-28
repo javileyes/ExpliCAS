@@ -3,7 +3,7 @@ pub mod isolation;
 pub mod strategies;
 pub mod strategy;
 
-use cas_ast::{Equation, SolutionSet};
+use cas_ast::{Equation, SolutionSet, Context, ExprId};
 use crate::engine::Simplifier;
 
 pub use self::isolation::contains_var;
@@ -17,7 +17,7 @@ pub struct SolveStep {
 use crate::error::CasError;
 
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::strategies::{SubstitutionStrategy, QuadraticStrategy, IsolationStrategy};
+use crate::solver::strategies::{SubstitutionStrategy, QuadraticStrategy, IsolationStrategy, UnwrapStrategy};
 
 pub fn solve(eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // 1. Check if variable exists in equation
@@ -29,18 +29,95 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Result<(S
     // In a real app, these might be configured in Simplifier or passed in.
     let strategies: Vec<Box<dyn SolverStrategy>> = vec![
         Box::new(SubstitutionStrategy),
+        Box::new(UnwrapStrategy),
         Box::new(QuadraticStrategy),
         Box::new(IsolationStrategy),
     ];
 
     // 3. Try strategies
     for strategy in strategies {
-        if let Some(result) = strategy.apply(eq, var, simplifier) {
-            return result;
+        if let Some(res) = strategy.apply(eq, var, simplifier) {
+            match res {
+                Ok((result, steps)) => {
+                    // Verify solutions if Discrete
+                    if let SolutionSet::Discrete(sols) = result {
+                        let mut valid_sols = Vec::new();
+                        for sol in sols {
+                            if verify_solution(eq, var, sol, simplifier) {
+                                valid_sols.push(sol);
+                            }
+                        }
+                        return Ok((SolutionSet::Discrete(valid_sols), steps));
+                    }
+                    return Ok((result, steps));
+                },
+                Err(e) => return Err(e),
+            }
         }
     }
 
     Err(CasError::SolverError("No strategy could solve this equation.".to_string()))
+}
+
+fn verify_solution(eq: &Equation, var: &str, sol: ExprId, simplifier: &mut Simplifier) -> bool {
+    // 1. Substitute
+    let lhs_sub = substitute(&mut simplifier.context, eq.lhs, var, sol);
+    let rhs_sub = substitute(&mut simplifier.context, eq.rhs, var, sol);
+    
+    // 2. Simplify
+    let (lhs_sim, _) = simplifier.simplify(lhs_sub);
+    let (rhs_sim, _) = simplifier.simplify(rhs_sub);
+    
+    // 3. Check equality
+    simplifier.are_equivalent(lhs_sim, rhs_sim)
+}
+
+fn substitute(ctx: &mut Context, expr: ExprId, var: &str, val: ExprId) -> ExprId {
+    use cas_ast::Expr;
+    let expr_data = ctx.get(expr).clone();
+    match expr_data {
+        Expr::Variable(v) if v == var => val,
+        Expr::Add(l, r) => {
+            let nl = substitute(ctx, l, var, val);
+            let nr = substitute(ctx, r, var, val);
+            if nl != l || nr != r { ctx.add(Expr::Add(nl, nr)) } else { expr }
+        },
+        Expr::Sub(l, r) => {
+            let nl = substitute(ctx, l, var, val);
+            let nr = substitute(ctx, r, var, val);
+            if nl != l || nr != r { ctx.add(Expr::Sub(nl, nr)) } else { expr }
+        },
+        Expr::Mul(l, r) => {
+            let nl = substitute(ctx, l, var, val);
+            let nr = substitute(ctx, r, var, val);
+            if nl != l || nr != r { ctx.add(Expr::Mul(nl, nr)) } else { expr }
+        },
+        Expr::Div(l, r) => {
+            let nl = substitute(ctx, l, var, val);
+            let nr = substitute(ctx, r, var, val);
+            if nl != l || nr != r { ctx.add(Expr::Div(nl, nr)) } else { expr }
+        },
+        Expr::Pow(b, e) => {
+            let nb = substitute(ctx, b, var, val);
+            let ne = substitute(ctx, e, var, val);
+            if nb != b || ne != e { ctx.add(Expr::Pow(nb, ne)) } else { expr }
+        },
+        Expr::Neg(e) => {
+            let ne = substitute(ctx, e, var, val);
+            if ne != e { ctx.add(Expr::Neg(ne)) } else { expr }
+        },
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::new();
+            let mut changed = false;
+            for arg in args {
+                let new_arg = substitute(ctx, arg, var, val);
+                if new_arg != arg { changed = true; }
+                new_args.push(new_arg);
+            }
+            if changed { ctx.add(Expr::Function(name, new_args)) } else { expr }
+        },
+        _ => expr
+    }
 }
 
 

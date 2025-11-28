@@ -39,6 +39,8 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Moved to specific test to avoid loops 
@@ -328,5 +330,90 @@ fn test_zero_equivalence_suite() {
         
         let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
         assert_eq!(result_str, "0", "Failed on: {}", input);
+    }
+}
+
+// --- Round 2: Advanced Torture Tests ---
+
+#[test]
+fn test_torture_6_conjugate() {
+    // 1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)
+    // Expected: 0
+    let input = "1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)";
+    let mut simplifier = create_full_simplifier();
+    // Needs rationalization or smart fraction subtraction
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyFractionRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule)); // x-1 -> (sqrt(x)-1)(sqrt(x)+1)
+
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result_str, "0", "Failed on: {}", input);
+}
+
+#[test]
+fn test_torture_7_log_chain() {
+    // (ln(x) / ln(10)) * (ln(10) / ln(x)) - 1
+    // Expected: 0
+    let input = "(ln(x) / ln(10)) * (ln(10) / ln(x)) - 1";
+    let mut simplifier = create_full_simplifier();
+    // Needs cross-cancellation in multiplication
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
+
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result_str, "0", "Failed on: {}", input);
+}
+
+#[test]
+fn test_torture_8_sophie_germain() {
+    // (x^2 + 2*y^2 + 2*x*y) * (x^2 + 2*y^2 - 2*x*y) - (x^4 + 4*y^4)
+    // Expected: 0
+    let input = "(x^2 + 2*y^2 + 2*x*y) * (x^2 + 2*y^2 - 2*x*y) - (x^4 + 4*y^4)";
+    let mut simplifier = create_full_simplifier();
+    // Needs aggressive expansion and distribution
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule));
+
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result_str, "0", "Failed on: {}", input);
+}
+
+#[test]
+fn test_torture_9_angle_compound() {
+    // sin(x + y) - (sin(x)*cos(y) + cos(x)*sin(y))
+    // Expected: 0
+    let input = "sin(x + y) - (sin(x)*cos(y) + cos(x)*sin(y))";
+    let mut simplifier = create_full_simplifier();
+    // Needs Sin(a+b) expansion
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule)); 
+
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result_str, "0", "Failed on: {}", input);
+}
+
+#[test]
+fn test_torture_10_ghost_solution() {
+    // solve sqrt(2*x + 3) = x
+    // Expected: x = 3 (reject x = -1)
+    let mut simplifier = create_full_simplifier();
+    let lhs = parse("sqrt(2*x + 3)", &mut simplifier.context).unwrap();
+    let rhs = parse("x", &mut simplifier.context).unwrap();
+    let eq = Equation { lhs, rhs, op: RelOp::Eq };
+    
+    let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
+    
+    if let SolutionSet::Discrete(solutions) = result {
+        assert_eq!(solutions.len(), 1, "Should have eliminated extraneous root x=-1. Got: {:?}", solutions.iter().map(|s| format!("{}", DisplayExpr { context: &simplifier.context, id: *s })).collect::<Vec<_>>());
+        let sol_str = format!("{}", DisplayExpr { context: &simplifier.context, id: solutions[0] });
+        assert_eq!(sol_str, "3");
+    } else {
+        panic!("Expected Discrete solution, got {:?}", result);
     }
 }

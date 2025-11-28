@@ -137,9 +137,10 @@ define_rule!(
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
-            // Check if exponent is log(base, x)
             let exp_data = ctx.get(exp).clone();
-            if let Expr::Function(name, args) = exp_data {
+            
+            // Case 1: b^log(b, x) -> x
+            if let Expr::Function(name, args) = &exp_data {
                 if name == "log" && args.len() == 2 {
                     let log_base = args[0];
                     let log_arg = args[1];
@@ -151,6 +152,31 @@ define_rule!(
                         });
                     }
                 }
+            }
+            
+            // Case 2: b^(c * log(b, x)) -> x^c
+            if let Expr::Mul(lhs, rhs) = &exp_data {
+                // Check if lhs or rhs is log(b, x)
+                let mut check_log = |target: ExprId, coeff: ExprId| -> Option<Rewrite> {
+                    if let Expr::Function(name, args) = ctx.get(target) {
+                        if name == "log" && args.len() == 2 {
+                            let log_base = args[0];
+                            let log_arg = args[1];
+                            if compare_expr(ctx, log_base, base) == Ordering::Equal {
+                                // Found log(b, x). Result is x^coeff
+                                let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: "b^(c*log(b, x)) = x^c".to_string(),
+                                });
+                            }
+                        }
+                    }
+                    None
+                };
+                
+                if let Some(rw) = check_log(*lhs, *rhs) { return Some(rw); }
+                if let Some(rw) = check_log(*rhs, *lhs) { return Some(rw); }
             }
         }
         None

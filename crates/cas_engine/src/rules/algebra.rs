@@ -588,33 +588,386 @@ define_rule!(
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(l, r) = expr_data {
-            // Check for a * (b/c) or (b/c) * a
-            let mut check = |target: ExprId, other: ExprId| -> Option<Rewrite> {
-                if let Expr::Div(num, den) = ctx.get(target).clone() {
-                    // (num / den) * other
-                    
-                    // 1. Direct cancellation: (a/b) * b -> a
-                    // Use compare_expr for structural equality
-                    if crate::ordering::compare_expr(ctx, den, other) == std::cmp::Ordering::Equal {
-                        return Some(Rewrite {
-                            new_expr: num,
-                            description: "Cancel division: (a/b)*b -> a".to_string(),
-                        });
-                    }
+            let one = ctx.num(1); // Pre-calculate to avoid mutable borrow in closure
 
-                    // (num / den) * other -> (num * other) / den
-                    let new_num = ctx.add(Expr::Mul(num, other));
-                    let new_expr = ctx.add(Expr::Div(new_num, den));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Combine Mul and Div".to_string(),
-                    });
+            // Helper to check if expr is Div or Pow(..., -1) or Mul(..., Pow(..., -1))
+            // Now only captures ctx immutably
+            let get_num_den = |e: ExprId| -> Option<(ExprId, ExprId)> {
+                match ctx.get(e) {
+                    Expr::Div(n, d) => Some((*n, *d)),
+                    Expr::Pow(b, exp) => {
+                        if let Expr::Number(n) = ctx.get(*exp) {
+                            if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                return Some((one, *b));
+                            }
+                        }
+                        None
+                    },
+                    Expr::Mul(ml, mr) => {
+                         // Check ml * mr^-1
+                        if let Expr::Pow(b, e) = ctx.get(*mr) {
+                             if let Expr::Number(n) = ctx.get(*e) {
+                                if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                    return Some((*ml, *b));
+                                }
+                            }
+                        }
+                        // Check mr * ml^-1
+                        if let Expr::Pow(b, e) = ctx.get(*ml) {
+                             if let Expr::Number(n) = ctx.get(*e) {
+                                if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                    return Some((*mr, *b));
+                                }
+                            }
+                        }
+                        None
+                    },
+                    _ => None
                 }
-                None
             };
 
-            if let Some(rw) = check(l, r) { return Some(rw); }
-            if let Some(rw) = check(r, l) { return Some(rw); }
+            // Check for (a/b) * (c/d)
+            if let (Some((n1, d1)), Some((n2, d2))) = (get_num_den(l), get_num_den(r)) {
+                let new_num = ctx.add(Expr::Mul(n1, n2));
+                let new_den = ctx.add(Expr::Mul(d1, d2));
+                let new_expr = ctx.add(Expr::Div(new_num, new_den));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Multiply fractions: (a/b)*(c/d) -> (ac)/(bd)".to_string(),
+                });
+            }
+
+            // Check for a * (b/c) or (b/c) * a
+            // We need to be careful about borrowing ctx mutably for add/Mul/Div
+            // So we collect info first, then mutate.
+            
+            let check_target_l = get_num_den(l);
+            if let Some((num, den)) = check_target_l {
+                // (num / den) * r
+                if crate::ordering::compare_expr(ctx, den, r) == std::cmp::Ordering::Equal {
+                    return Some(Rewrite {
+                        new_expr: num,
+                        description: "Cancel division: (a/b)*b -> a".to_string(),
+                    });
+                }
+                let new_num = ctx.add(Expr::Mul(num, r));
+                let new_expr = ctx.add(Expr::Div(new_num, den));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Combine Mul and Div".to_string(),
+                });
+            }
+
+            let check_target_r = get_num_den(r);
+            if let Some((num, den)) = check_target_r {
+                // l * (num / den)
+                if crate::ordering::compare_expr(ctx, den, l) == std::cmp::Ordering::Equal {
+                    return Some(Rewrite {
+                        new_expr: num,
+                        description: "Cancel division: a*(b/a) -> b".to_string(),
+                    });
+                }
+                let new_num = ctx.add(Expr::Mul(l, num));
+                let new_expr = ctx.add(Expr::Div(new_num, den));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Combine Mul and Div".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
+define_rule!(
+    RationalizeDenominatorRule,
+    "Rationalize Denominator",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        
+        // Helper to extract num/den from Div, Pow(x, -1), or Mul(x, Pow(y, -1))
+        let (num, den) = match expr_data {
+            Expr::Div(n, d) => (n, d),
+            Expr::Pow(b, e) => {
+                if let Expr::Number(n) = ctx.get(e) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                        (ctx.num(1), b)
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            },
+            Expr::Mul(l, r) => {
+                // Check l * r^-1
+                if let Expr::Pow(b, e) = ctx.get(r) {
+                     if let Expr::Number(n) = ctx.get(*e) {
+                        if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                            (l, *b)
+                        } else {
+                            // Check r * l^-1
+                            if let Expr::Pow(b_l, e_l) = ctx.get(l) {
+                                if let Expr::Number(n_l) = ctx.get(*e_l) {
+                                    if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
+                                        (r, *b_l)
+                                    } else {
+                                        return None;
+                                    }
+                                } else {
+                                    return None;
+                                }
+                            } else {
+                                return None;
+                            }
+                        }
+                    } else {
+                         // Check r * l^-1
+                        if let Expr::Pow(b_l, e_l) = ctx.get(l) {
+                            if let Expr::Number(n_l) = ctx.get(*e_l) {
+                                if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
+                                    (r, *b_l)
+                                } else {
+                                    return None;
+                                }
+                            } else {
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                } else {
+                    // Check r * l^-1
+                    if let Expr::Pow(b_l, e_l) = ctx.get(l) {
+                        if let Expr::Number(n_l) = ctx.get(*e_l) {
+                            if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
+                                (r, *b_l)
+                            } else {
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+            },
+            _ => return None,
+        };
+        
+        // Check if denominator has roots
+        // We look for Add(a, b) or Sub(a, b) where one or both involve roots.
+        // Simple case: sqrt(x) + 1, sqrt(x) - 1, sqrt(x) + sqrt(y)
+        
+        let den_data = ctx.get(den).clone();
+        let (l, r, is_add) = match den_data {
+            Expr::Add(l, r) => (l, r, true),
+            Expr::Sub(l, r) => (l, r, false),
+            _ => return None,
+        };
+
+        // Check for roots
+        let has_root = |e: ExprId| -> bool {
+            match ctx.get(e) {
+                Expr::Pow(_, exp) => {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        !n.is_integer()
+                    } else {
+                        false
+                    }
+                },
+                Expr::Function(name, _) => name == "sqrt",
+                Expr::Mul(_, _) => false, // Simplified
+                _ => false
+            }
+        };
+
+        let l_root = has_root(l);
+        let r_root = has_root(r);
+        
+        // eprintln!("Rationalize Check: {:?} has_root(l)={} has_root(r)={}", den_data, l_root, r_root);
+
+        if !l_root && !r_root {
+            return None;
+        }
+
+        // Construct conjugate
+        let conjugate = if is_add {
+            ctx.add(Expr::Sub(l, r))
+        } else {
+            ctx.add(Expr::Add(l, r))
+        };
+
+        // Multiply num and den by conjugate
+        let new_num = ctx.add(Expr::Mul(num, conjugate));
+        let new_den = ctx.add(Expr::Mul(den, conjugate));
+        
+        let new_expr = ctx.add(Expr::Div(new_num, new_den));
+        return Some(Rewrite {
+            new_expr,
+            description: "Rationalize denominator".to_string(),
+        });
+    }
+);
+
+define_rule!(
+    CancelCommonFactorsRule,
+    "Cancel Common Factors",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        
+        // Helper to extract num/den from Div, Pow(x, -1), or Mul(x, Pow(y, -1))
+        let (num, den) = match expr_data {
+            Expr::Div(n, d) => (n, d),
+            Expr::Pow(b, e) => {
+                if let Expr::Number(n) = ctx.get(e) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                        (ctx.num(1), b)
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            },
+            Expr::Mul(l, r) => {
+                // Check l * r^-1
+                if let Expr::Pow(b, e) = ctx.get(r) {
+                     if let Expr::Number(n) = ctx.get(*e) {
+                        if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                            (l, *b)
+                        } else {
+                            // Check r * l^-1
+                            if let Expr::Pow(b_l, e_l) = ctx.get(l) {
+                                if let Expr::Number(n_l) = ctx.get(*e_l) {
+                                    if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
+                                        (r, *b_l)
+                                    } else {
+                                        return None;
+                                    }
+                                } else {
+                                    return None;
+                                }
+                            } else {
+                                return None;
+                            }
+                        }
+                    } else {
+                         // Check r * l^-1
+                        if let Expr::Pow(b_l, e_l) = ctx.get(l) {
+                            if let Expr::Number(n_l) = ctx.get(*e_l) {
+                                if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
+                                    (r, *b_l)
+                                } else {
+                                    return None;
+                                }
+                            } else {
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                } else {
+                    // Check r * l^-1
+                    if let Expr::Pow(b_l, e_l) = ctx.get(l) {
+                        if let Expr::Number(n_l) = ctx.get(*e_l) {
+                            if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
+                                (r, *b_l)
+                            } else {
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+            },
+            _ => return None,
+        };
+
+        // Helper to collect factors
+        fn collect_factors(ctx: &Context, e: ExprId) -> Vec<ExprId> {
+            let mut factors = Vec::new();
+            let mut stack = vec![e];
+            while let Some(curr) = stack.pop() {
+                if let Expr::Mul(l, r) = ctx.get(curr) {
+                    stack.push(*r);
+                    stack.push(*l);
+                } else {
+                    factors.push(curr);
+                }
+            }
+            factors
+        }
+
+        let mut num_factors = collect_factors(ctx, num);
+        let mut den_factors = collect_factors(ctx, den);
+        
+        // println!("Cancel Check: NumFactors={:?} DenFactors={:?}", num_factors, den_factors);
+
+        let mut changed = false;
+        let mut i = 0;
+        while i < num_factors.len() {
+            let nf = num_factors[i];
+            let mut found = false;
+            for j in 0..den_factors.len() {
+                if crate::ordering::compare_expr(ctx, nf, den_factors[j]) == std::cmp::Ordering::Equal {
+                    // Found common factor
+                    den_factors.remove(j);
+                    found = true;
+                    changed = true;
+                    break;
+                }
+            }
+            if found {
+                num_factors.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        
+        if changed {
+            // Reconstruct
+            let new_num = if num_factors.is_empty() {
+                ctx.num(1)
+            } else {
+                let mut res = num_factors[0];
+                for f in num_factors.iter().skip(1) {
+                    res = ctx.add(Expr::Mul(res, *f));
+                }
+                res
+            };
+            
+            let new_den = if den_factors.is_empty() {
+                ctx.num(1)
+            } else {
+                let mut res = den_factors[0];
+                for f in den_factors.iter().skip(1) {
+                    res = ctx.add(Expr::Mul(res, *f));
+                }
+                res
+            };
+            
+            // If den is 1, return num
+            if let Expr::Number(n) = ctx.get(new_den) {
+                if n.is_one() {
+                    return Some(Rewrite {
+                        new_expr: new_num,
+                        description: "Cancel common factors (to scalar)".to_string(),
+                    });
+                }
+            }
+            
+            let new_expr = ctx.add(Expr::Div(new_num, new_den));
+            return Some(Rewrite {
+                new_expr,
+                description: "Cancel common factors".to_string(),
+            });
         }
         None
     }
@@ -627,6 +980,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(ExpandRule));
     simplifier.add_rule(Box::new(FactorRule));
+    simplifier.add_rule(Box::new(RationalizeDenominatorRule));
+    simplifier.add_rule(Box::new(CancelCommonFactorsRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
 

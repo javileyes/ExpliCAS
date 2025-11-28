@@ -542,3 +542,144 @@ impl SolverStrategy for IsolationStrategy {
     }
 }
 
+pub struct UnwrapStrategy;
+
+impl SolverStrategy for UnwrapStrategy {
+    fn name(&self) -> &str {
+        "Unwrap"
+    }
+
+    fn apply(&self, eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+        // Try to unwrap functions on LHS or RHS to expose the variable or transform the equation.
+        // This is useful when var is on both sides, e.g. sqrt(2x+3) = x.
+        
+        let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
+        let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
+        
+        // Only apply if var is on both sides? 
+        // If var is only on one side, IsolationStrategy handles it.
+        // But IsolationStrategy might be later in the list.
+        // Let's apply if top-level is a function/pow that we can invert.
+        
+        if !lhs_has && !rhs_has { return None; }
+        
+        // Helper to invert
+        let mut invert = |target: ExprId, other: ExprId, op: RelOp, is_lhs: bool| -> Option<(Equation, String)> {
+            let target_data = simplifier.context.get(target).clone();
+            match target_data {
+                Expr::Function(name, args) if args.len() == 1 => {
+                    let arg = args[0];
+                    match name.as_str() {
+                        "sqrt" => {
+                            // sqrt(A) = B -> A = B^2
+                            // Check domain? sqrt(A) >= 0. So B must be >= 0.
+                            // We should add a constraint or verify later.
+                            // For now, just transform. Verification step in solve() handles extraneous roots.
+                            let two = simplifier.context.num(2);
+                            let new_other = simplifier.context.add(Expr::Pow(other, two));
+                            let new_eq = if is_lhs {
+                                Equation { lhs: arg, rhs: new_other, op }
+                            } else {
+                                Equation { lhs: new_other, rhs: arg, op }
+                            };
+                            Some((new_eq, "Square both sides".to_string()))
+                        },
+                        "ln" => {
+                            // ln(A) = B -> A = e^B
+                            let e = simplifier.context.add(Expr::Constant(cas_ast::Constant::E));
+                            let new_other = simplifier.context.add(Expr::Pow(e, other));
+                            let new_eq = if is_lhs {
+                                Equation { lhs: arg, rhs: new_other, op }
+                            } else {
+                                Equation { lhs: new_other, rhs: arg, op }
+                            };
+                            Some((new_eq, "Exponentiate (base e)".to_string()))
+                        },
+                        "exp" => {
+                            // exp(A) = B -> A = ln(B)
+                            let new_other = simplifier.context.add(Expr::Function("ln".to_string(), vec![other]));
+                            let new_eq = if is_lhs {
+                                Equation { lhs: arg, rhs: new_other, op }
+                            } else {
+                                Equation { lhs: new_other, rhs: arg, op }
+                            };
+                            Some((new_eq, "Take natural log".to_string()))
+                        },
+                        _ => None
+                    }
+                },
+                Expr::Pow(b, e) => {
+                    // A^n = B -> A = B^(1/n) (if n is const)
+                    // If A contains var and n does not.
+                    if contains_var(&simplifier.context, b, var) && !contains_var(&simplifier.context, e, var) {
+                         // Prevent unwrapping positive integer powers (handled by Polynomial/Quadratic)
+                         // e.g. x^2 = ... don't turn into x = sqrt(...)
+                         if let Expr::Number(n) = simplifier.context.get(e) {
+                             if n.is_integer() && *n > num_rational::BigRational::from_integer(0.into()) {
+                                 return None;
+                             }
+                         }
+
+                         let one = simplifier.context.num(1);
+                         let inv_exp = simplifier.context.add(Expr::Div(one, e));
+                         let new_other = simplifier.context.add(Expr::Pow(other, inv_exp));
+                         // Handle even powers? |A| = ...
+                         // For now, simple inversion.
+                         let new_eq = if is_lhs {
+                             Equation { lhs: b, rhs: new_other, op }
+                         } else {
+                             Equation { lhs: new_other, rhs: b, op }
+                         };
+                         Some((new_eq, "Take root".to_string()))
+                    } else {
+                        None
+                    }
+                },
+                _ => None
+            }
+        };
+
+        // Try LHS
+        if lhs_has {
+            if let Some((new_eq, desc)) = invert(eq.lhs, eq.rhs, eq.op.clone(), true) {
+                 let mut steps = Vec::new();
+                 if simplifier.collect_steps {
+                     steps.push(SolveStep {
+                         description: desc,
+                         equation_after: new_eq.clone(),
+                     });
+                 }
+                 match solve(&new_eq, var, simplifier) {
+                     Ok((set, mut sub_steps)) => {
+                         steps.append(&mut sub_steps);
+                         return Some(Ok((set, steps)));
+                     },
+                     Err(e) => return Some(Err(e)),
+                 }
+            }
+        }
+        
+        // Try RHS
+        if rhs_has {
+            if let Some((new_eq, desc)) = invert(eq.rhs, eq.lhs, eq.op.clone(), false) {
+                 let mut steps = Vec::new();
+                 if simplifier.collect_steps {
+                     steps.push(SolveStep {
+                         description: desc,
+                         equation_after: new_eq.clone(),
+                     });
+                 }
+                 match solve(&new_eq, var, simplifier) {
+                     Ok((set, mut sub_steps)) => {
+                         steps.append(&mut sub_steps);
+                         return Some(Ok((set, steps)));
+                     },
+                     Err(e) => return Some(Err(e)),
+                 }
+            }
+        }
+
+        None
+    }
+}
+
