@@ -686,7 +686,6 @@ define_rule!(
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
             if let Expr::Number(n) = ctx.get(exp) {
-                println!("Checking Trig Pow: base={:?}, exp={}", base, n);
                 if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
                     if let Expr::Function(name, args) = ctx.get(base) {
                         if name == "cos" && args.len() == 1 {
@@ -697,7 +696,6 @@ define_rule!(
                             let two = ctx.num(2);
                             let sin_sq = ctx.add(Expr::Pow(sin_x, two));
                             let new_expr = ctx.add(Expr::Sub(one, sin_sq));
-                            println!("CanonicalizeTrigSquareRule: Rewriting cos^2 -> 1 - sin^2");
                             return Some(Rewrite {
                                 new_expr,
                                 description: "cos^2(x) -> 1 - sin^2(x)".to_string(),

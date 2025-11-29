@@ -12,19 +12,14 @@ define_rule!(
     "Product of Powers",
     |ctx, expr| {
         // x^a * x^b -> x^(a+b)
-        // println!("ProductPowerRule checking {:?}", expr);
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
             let lhs_data = ctx.get(lhs).clone();
             let rhs_data = ctx.get(rhs).clone();
             
-            // Debug for sin * sin^2
-            // println!("ProductPowerRule: lhs={:?} ({:?}), rhs={:?} ({:?})", lhs, lhs_data, rhs, rhs_data);
-            if let Expr::Function(name, _) = &lhs_data {
-                if name == "sin" {
-                     println!("ProductPowerRule: lhs is sin. rhs={:?}", rhs_data);
-                }
-            }
+            let lhs_data = ctx.get(lhs).clone();
+            let rhs_data = ctx.get(rhs).clone();
+            
 
             // Case 1: Both are powers with same base: x^a * x^b
             if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
@@ -66,7 +61,6 @@ define_rule!(
             if compare_expr(ctx, lhs, rhs) == Ordering::Equal {
                 let two = ctx.num(2);
                 let new_expr = ctx.add(Expr::Pow(lhs, two));
-                println!("ProductPowerRule: x * x -> x^2");
                 return Some(Rewrite {
                     new_expr,
                     description: "Multiply identical terms".to_string(),
@@ -78,7 +72,6 @@ define_rule!(
             // Check if rhs is a Mul(rl, rr) and lhs == rl
             if let Expr::Mul(rl, rr) = rhs_data {
                 // x * (x * y)
-                println!("ProductPowerRule Case 4 check: lhs={:?}, rl={:?}", lhs, rl);
                 if compare_expr(ctx, lhs, rl) == Ordering::Equal {
                     let two = ctx.num(2);
                     let x_squared = ctx.add(Expr::Pow(lhs, two));
@@ -452,14 +445,11 @@ define_rule!(
     IdentityPowerRule,
     "Identity Power",
     |ctx, expr| {
-        println!("IdentityPowerRule checking {:?}", expr);
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
             // x^1 -> x
             if let Expr::Number(n) = ctx.get(exp) {
-                println!("IdentityPowerRule: exp={}", n);
                 if n.is_one() {
-                    println!("IdentityPowerRule: x^1 -> x");
                     return Some(Rewrite {
                         new_expr: base,
                         description: "x^1 -> x".to_string(),

@@ -45,6 +45,9 @@ impl Repl {
         if config.trig_double_angle {
             simplifier.add_rule(Box::new(DoubleAngleRule));
         }
+        if config.canonicalize_trig_square {
+            simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule));
+        }
         simplifier.add_rule(Box::new(EvaluateLogRule));
         simplifier.add_rule(Box::new(ExponentialLogRule));
         simplifier.add_rule(Box::new(SimplifyFractionRule));
@@ -234,6 +237,7 @@ impl Repl {
                 println!("  trig_angle_sum: {}", self.config.trig_angle_sum);
                 println!("  log_split_exponents: {}", self.config.log_split_exponents);
                 println!("  rationalize_denominator: {}", self.config.rationalize_denominator);
+                println!("  canonicalize_trig_square: {}", self.config.canonicalize_trig_square);
             },
             "save" => {
                 match self.config.save() {
@@ -264,6 +268,7 @@ impl Repl {
                     "trig_angle_sum" => self.config.trig_angle_sum = enable,
                     "log_split_exponents" => self.config.log_split_exponents = enable,
                     "rationalize_denominator" => self.config.rationalize_denominator = enable,
+                    "canonicalize_trig_square" => self.config.canonicalize_trig_square = enable,
                     _ => {
                         println!("Unknown rule: {}", rule);
                         changed = false;

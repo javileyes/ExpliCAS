@@ -14,6 +14,7 @@ pub struct CasConfig {
     pub trig_angle_sum: bool,
     pub log_split_exponents: bool,
     pub rationalize_denominator: bool,
+    pub canonicalize_trig_square: bool,
 }
 
 impl Default for CasConfig {
@@ -28,6 +29,7 @@ impl Default for CasConfig {
             trig_angle_sum: true, // sin(a+b) -> sin(a)cos(b)...
             log_split_exponents: true, // ln(x^a) -> a*ln(x)
             rationalize_denominator: true, // 1/sqrt(2) -> sqrt(2)/2
+            canonicalize_trig_square: true, // cos^2 -> 1-sin^2
         }
     }
 }

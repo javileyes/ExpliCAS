@@ -104,7 +104,6 @@ define_rule!(
     "Combine Like Terms",
     |ctx, expr| {
         if let Expr::Add(_, _) = ctx.get(expr) {
-            println!("CombineLikeTerms checking {:?}", expr);
             // Flatten
             let mut terms = Vec::new();
             flatten_add(ctx, expr, &mut terms);

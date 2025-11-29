@@ -335,8 +335,6 @@ define_rule!(
         // println!("LogInversePowerRule checking {:?}", expr);
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
-            println!("LogInversePowerRule checking Pow: base={:?}, exp={:?}", base, exp);
-            println!("Exp variant: {:?}", ctx.get(exp));
             // Check for x^(c / log(b, x))
             // exp could be Div(c, log(b, x)) or Mul(c, Pow(log(b, x), -1))
             
