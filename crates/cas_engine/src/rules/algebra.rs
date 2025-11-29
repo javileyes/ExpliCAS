@@ -8,7 +8,7 @@ use num_traits::{One, Signed, ToPrimitive};
 
 define_rule!(
     SimplifyFractionRule,
-    "Simplify Algebraic Fraction",
+    "Simplify Nested Fraction",
     |ctx, expr| {
         let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
             (*n, *d)
@@ -256,6 +256,7 @@ define_rule!(
     FactorRule,
     "Factor Polynomial",
     |ctx, expr| {
+        // eprintln!("FactorRule checking: {:?}", expr);
         if let Expr::Function(name, args) = ctx.get(expr) {
             if name == "factor" && args.len() == 1 {
                 let arg = args[0];
@@ -586,6 +587,7 @@ define_rule!(
     SimplifyMulDivRule,
     "Simplify Multiplication with Division",
     |ctx, expr| {
+        // eprintln!("SimplifyMulDivRule checking: {:?}", expr);
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(l, r) = expr_data {
             let one = ctx.num(1); // Pre-calculate to avoid mutable borrow in closure
@@ -628,12 +630,13 @@ define_rule!(
 
             // Check for (a/b) * (c/d)
             if let (Some((n1, d1)), Some((n2, d2))) = (get_num_den(l), get_num_den(r)) {
+                // eprintln!("SimplifyMulDivRule MATCHED: {:?} * {:?}", l, r);
                 let new_num = ctx.add(Expr::Mul(n1, n2));
                 let new_den = ctx.add(Expr::Mul(d1, d2));
                 let new_expr = ctx.add(Expr::Div(new_num, new_den));
                 return Some(Rewrite {
                     new_expr,
-                    description: "Multiply fractions: (a/b)*(c/d) -> (ac)/(bd)".to_string(),
+                    description: "Multiply fractions".to_string(),
                 });
             }
 

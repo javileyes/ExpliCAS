@@ -2,6 +2,7 @@ use crate::rule::Rewrite;
 use crate::define_rule;
 use cas_ast::Expr;
 use num_traits::Signed;
+use num_integer::Integer;
 
 define_rule!(
     EvaluateAbsRule,
@@ -52,6 +53,39 @@ define_rule!(
     }
 );
 
+define_rule!(
+    AbsSquaredRule,
+    "Abs Squared Identity",
+    Some(vec!["Pow"]),
+    |ctx, expr| {
+        // abs(x)^2 -> x^2
+        // General: abs(x)^(2k) -> x^(2k) for integer k
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            let base_data = ctx.get(base).clone();
+            if let Expr::Function(name, args) = base_data {
+                if name == "abs" && args.len() == 1 {
+                    let inner = args[0];
+                    
+                    // Check if exponent is an even integer
+                    let exp_data = ctx.get(exp).clone();
+                    if let Expr::Number(n) = exp_data {
+                        if n.is_integer() && n.to_integer().is_even() {
+                            // abs(x)^even -> x^even
+                            let new_expr = ctx.add(Expr::Pow(inner, exp));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: format!("|x|^{} = x^{}", n, n),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,4 +120,5 @@ mod tests {
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateAbsRule));
+    simplifier.add_rule(Box::new(AbsSquaredRule));
 }

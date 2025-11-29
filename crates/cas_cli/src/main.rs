@@ -1,4 +1,4 @@
-mod repl;
+pub mod repl;
 mod completer;
 mod config;
 

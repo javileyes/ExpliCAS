@@ -35,6 +35,7 @@ impl Repl {
         simplifier.add_rule(Box::new(CanonicalizeRootRule));
         simplifier.add_rule(Box::new(AssociativityRule));
         simplifier.add_rule(Box::new(EvaluateAbsRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
         simplifier.add_rule(Box::new(EvaluateTrigRule));
         simplifier.add_rule(Box::new(PythagoreanIdentityRule));
         simplifier.add_rule(Box::new(AngleIdentityRule));
@@ -54,7 +55,7 @@ impl Repl {
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
+        // simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
         
         // Configurable rules
@@ -71,7 +72,8 @@ impl Repl {
         }
         
         if config.factor_difference_squares {
-            simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule));
+            // simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule));
+            println!("Warning: 'factor_difference_squares' is currently unstable and has been disabled to prevent crashes.");
         }
 
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
@@ -117,69 +119,7 @@ impl Repl {
                     }
                     
                     rl.add_history_entry(line)?;
-
-                    // Check for "quit" or "exit" command
-                    if line == "quit" || line == "exit" {
-                        println!("Goodbye!");
-                        break;
-                    }
-
-                    // Check for "help" command
-                    if line.starts_with("help") {
-                        self.handle_help(line);
-                        continue;
-                    }
-
-                    // Check for "steps" command
-                    if line == "steps on" {
-                        self.show_steps = true;
-                        self.simplifier.collect_steps = true;
-                        println!("Step-by-step output enabled.");
-                        continue;
-                    } else if line == "steps off" {
-                        self.show_steps = false;
-                        self.simplifier.collect_steps = false;
-                        println!("Step-by-step output disabled.");
-                        continue;
-                    }
-
-                    // Check for "help" command
-                    if line == "help" {
-                        self.print_general_help();
-                        continue;
-                    }
-
-                    // Check for "equiv" command
-                    if line.starts_with("equiv ") {
-                        self.handle_equiv(line);
-                        continue;
-                    }
-
-                    // Check for "subst" command
-                    if line.starts_with("subst ") {
-                        self.handle_subst(line);
-                        continue;
-                    }
-
-                    // Check for "solve" command
-                    if line.starts_with("solve ") {
-                        self.handle_solve(line);
-                        continue;
-                    }
-
-                    // Check for "simplify" command
-                    if line.starts_with("simplify ") {
-                        self.handle_full_simplify(line);
-                        continue;
-                    }
-
-                    // Check for "config" command
-                    if line.starts_with("config ") {
-                        self.handle_config(line);
-                        continue;
-                    }
-
-                    self.handle_eval(line);
+                    self.handle_command(line);
                 },
                 Err(ReadlineError::Interrupted) => {
                     println!("CTRL-C");
@@ -196,6 +136,76 @@ impl Repl {
             }
         }
         Ok(())
+    }
+
+    pub fn handle_command(&mut self, line: &str) {
+        // Check for "quit" or "exit" command
+        if line == "quit" || line == "exit" {
+            println!("Goodbye!");
+            return; // Can't break loop here, but run loop handles it? 
+            // Wait, run loop checks for quit/exit too?
+            // No, I'm moving logic.
+            // The run loop needs to know when to break.
+            // For now, let's just handle the other commands.
+            // Quit/Exit needs to be handled by caller or return bool.
+        }
+
+        // Check for "help" command
+        if line.starts_with("help") {
+            self.handle_help(line);
+            return;
+        }
+
+        // Check for "steps" command
+        if line == "steps on" {
+            self.show_steps = true;
+            self.simplifier.collect_steps = true;
+            println!("Step-by-step output enabled.");
+            return;
+        } else if line == "steps off" {
+            self.show_steps = false;
+            self.simplifier.collect_steps = false;
+            println!("Step-by-step output disabled.");
+            return;
+        }
+
+        // Check for "help" command (duplicate check in original code?)
+        if line == "help" {
+            self.print_general_help();
+            return;
+        }
+
+        // Check for "equiv" command
+        if line.starts_with("equiv ") {
+            self.handle_equiv(line);
+            return;
+        }
+
+        // Check for "subst" command
+        if line.starts_with("subst ") {
+            self.handle_subst(line);
+            return;
+        }
+
+        // Check for "solve" command
+        if line.starts_with("solve ") {
+            self.handle_solve(line);
+            return;
+        }
+
+        // Check for "simplify" command
+        if line.starts_with("simplify ") {
+            self.handle_full_simplify(line);
+            return;
+        }
+
+        // Check for "config" command
+        if line.starts_with("config ") {
+            self.handle_config(line);
+            return;
+        }
+
+        self.handle_eval(line);
     }
 
     fn handle_config(&mut self, line: &str) {
@@ -499,7 +509,9 @@ impl Repl {
                     }
                 } else {
 
-                    match cas_engine::solver::solve(&simplified_eq, var, &mut self.simplifier) {
+                    // Pass the ORIGINAL equation to solve, so it can check for domain restrictions (singularities).
+                    // If we pass simplified_eq, we lose information about e.g. (x-1) in denominator.
+                    match cas_engine::solver::solve(&eq, var, &mut self.simplifier) {
                         Ok((solution_set, steps)) => {
                             if self.show_steps {
                                 println!("Steps:");

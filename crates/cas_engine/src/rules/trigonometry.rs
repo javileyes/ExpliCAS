@@ -119,6 +119,41 @@ define_rule!(
                         _ => {}
                     }
                 }
+                
+                // Case 3: Known Values (pi/2)
+                let arg_data = ctx.get(arg).clone();
+                if let Expr::Div(lhs, rhs) = arg_data {
+                    let lhs_data = ctx.get(lhs);
+                    let rhs_data = ctx.get(rhs);
+                    if let (Expr::Constant(cas_ast::Constant::Pi), Expr::Number(n)) = (lhs_data, rhs_data) {
+                        if *n == num_rational::BigRational::from_integer(2.into()) {
+                            match name.as_str() {
+                                "sin" => {
+                                    let one = ctx.num(1);
+                                    return Some(Rewrite {
+                                        new_expr: one,
+                                        description: "sin(pi/2) = 1".to_string(),
+                                    });
+                                },
+                                "cos" => {
+                                    let zero = ctx.num(0);
+                                    return Some(Rewrite {
+                                        new_expr: zero,
+                                        description: "cos(pi/2) = 0".to_string(),
+                                    });
+                                },
+                                "tan" => {
+                                    let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                                    return Some(Rewrite {
+                                        new_expr: undefined,
+                                        description: "tan(pi/2) = undefined".to_string(),
+                                    });
+                                },
+                                _ => {}
+                            }
+                        }
+                    }
+                }
 
                 // Case 2: Identities for negative arguments
                 if let Expr::Neg(inner) = ctx.get(arg) {
@@ -230,6 +265,27 @@ define_rule!(
                                 new_expr,
                                 description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)".to_string(),
                             });
+                        } else if let Expr::Div(num, den) = inner_data {
+                            // sin((a + b) / c) -> sin(a/c + b/c) -> ...
+                            let num_data = ctx.get(num).clone();
+                            if let Expr::Add(lhs, rhs) = num_data {
+                                let a = ctx.add(Expr::Div(lhs, den));
+                                let b = ctx.add(Expr::Div(rhs, den));
+                                
+                                let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
+                                let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
+                                let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
+                                
+                                let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
+                                let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
+                                let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
+                                
+                                let new_expr = ctx.add(Expr::Add(term1, term2));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)".to_string(),
+                                });
+                            }
                         }
                     },
                     "cos" => {
@@ -264,6 +320,27 @@ define_rule!(
                                 new_expr,
                                 description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)".to_string(),
                             });
+                        } else if let Expr::Div(num, den) = inner_data {
+                            // cos((a + b) / c) -> cos(a/c + b/c) -> ...
+                            let num_data = ctx.get(num).clone();
+                            if let Expr::Add(lhs, rhs) = num_data {
+                                let a = ctx.add(Expr::Div(lhs, den));
+                                let b = ctx.add(Expr::Div(rhs, den));
+                                
+                                let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
+                                let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
+                                let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
+                                
+                                let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
+                                let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
+                                let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
+                                
+                                let new_expr = ctx.add(Expr::Sub(term1, term2));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)".to_string(),
+                                });
+                            }
                         }
                     },
                     _ => {}

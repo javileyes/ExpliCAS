@@ -10,6 +10,7 @@ pub struct Simplifier {
     rules: HashMap<String, Vec<Rc<dyn Rule>>>,
     global_rules: Vec<Rc<dyn Rule>>,
     pub collect_steps: bool,
+    pub allow_numerical_verification: bool,
 }
 
 impl Simplifier {
@@ -19,6 +20,7 @@ impl Simplifier {
             rules: HashMap::new(),
             global_rules: Vec::new(),
             collect_steps: true,
+            allow_numerical_verification: true,
         }
     }
 
@@ -95,6 +97,9 @@ impl Simplifier {
         match expr {
             Expr::Number(n) => n.is_zero(),
             _ => {
+                if !self.allow_numerical_verification {
+                    return false;
+                }
                 let vars = self.collect_variables(result_expr);
                 let mut var_map = HashMap::new();
                 for var in vars {
@@ -232,11 +237,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
         loop {
             let mut changed = false;
             let variant = get_variant_name(self.context.get(expr_id));
-            
             // Try specific rules
             if let Some(specific_rules) = self.rules.get(variant) {
                 for rule in specific_rules {
                     if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                        // println!("Applied specific rule: {} -> {} (from {:?})", rule.name(), rewrite.description, self.context.get(expr_id));
                         if self.collect_steps {
                             self.steps.push(Step::new(
                                 &rewrite.description,
@@ -259,6 +264,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             // Try global rules
             for rule in self.global_rules {
                 if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                    // println!("Applied global rule: {} -> {} (from {:?})", rule.name(), rewrite.description, self.context.get(expr_id));
                     if self.collect_steps {
                         self.steps.push(Step::new(
                             &rewrite.description,

@@ -15,13 +15,16 @@ use num_traits::Zero;
 
 fn create_full_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();
+    simplifier.allow_numerical_verification = false; // Enforce symbolic equivalence
     simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
@@ -416,4 +419,136 @@ fn test_torture_10_ghost_solution() {
     } else {
         panic!("Expected Discrete solution, got {:?}", result);
     }
+}
+#[test]
+fn test_torture_11_polynomial_stress() {
+    // 11. La "Cascada de Cuadrados"
+    // (x - 1) * (x + 1) * (x^2 + 1) * (x^4 + 1) - (x^8 - 1)
+    
+    // Create simplifier matching Repl::new order exactly
+    let mut simplifier = Simplifier::new();
+    // Always enabled core rules
+    simplifier.add_rule(Box::new(CanonicalizeNegationRule));
+    simplifier.add_rule(Box::new(CanonicalizeAddRule));
+    simplifier.add_rule(Box::new(CanonicalizeMulRule));
+    simplifier.add_rule(Box::new(CanonicalizeRootRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::canonicalization::AssociativityRule));
+    simplifier.add_rule(Box::new(EvaluateAbsRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
+    simplifier.add_rule(Box::new(EvaluateTrigRule));
+    simplifier.add_rule(Box::new(PythagoreanIdentityRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule));
+    simplifier.add_rule(Box::new(TanToSinCosRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
+    simplifier.add_rule(Box::new(EvaluateLogRule));
+    simplifier.add_rule(Box::new(ExponentialLogRule));
+    simplifier.add_rule(Box::new(SimplifyFractionRule));
+    simplifier.add_rule(Box::new(FactorRule));
+    simplifier.add_rule(Box::new(CollectRule));
+    simplifier.add_rule(Box::new(EvaluatePowerRule));
+    // simplifier.add_rule(Box::new(EvaluatePowerRule)); // Duplicate in Repl, but skipping here
+    simplifier.add_rule(Box::new(cas_engine::rules::logarithms::SplitLogExponentsRule));
+    
+    // Advanced Algebra Rules (Critical for Solver)
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
+    
+    // Configurable rules (Defaults)
+    // distribute: false in config default, BUT user might have enabled it?
+    // Wait, if distribute is false, then DistributeRule is NOT added.
+    // But the user's output shows "Distribute" steps. So distribute MUST be true.
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
+    
+    // expand_binomials: true
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::BinomialExpansionRule));
+    
+    // distribute_constants: true
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeConstantRule));
+    
+    simplifier.add_rule(Box::new(CombineLikeTermsRule));
+    simplifier.add_rule(Box::new(AnnihilationRule));
+    simplifier.add_rule(Box::new(ProductPowerRule));
+    simplifier.add_rule(Box::new(PowerPowerRule));
+    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+    simplifier.add_rule(Box::new(AddZeroRule));
+    simplifier.add_rule(Box::new(MulOneRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+    // simplifier.add_rule(Box::new(IntegrateRule)); // Not needed for this test
+
+    let expr = parse("(x - 1) * (x + 1) * (x^2 + 1) * (x^4 + 1) - (x^8 - 1)", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    
+    let zero = simplifier.context.num(0);
+    assert!(simplifier.are_equivalent(simplified, zero), "Polynomial stress test failed");
+}
+
+#[test]
+fn test_torture_12_solver_singularity() {
+    // 12. El "Agujero en la Gráfica"
+    // (x^2 - 1) / (x - 1) = 2
+    // Should be No Solution because x=1 makes denominator zero.
+    let mut simplifier = create_full_simplifier();
+    let stmt = cas_parser::parse_statement("(x^2 - 1) / (x - 1) = 2", &mut simplifier.context).unwrap();
+    
+    if let cas_parser::Statement::Equation(eq) = stmt {
+        let result = cas_engine::solver::solve(&eq, "x", &mut simplifier);
+        
+        match result {
+            Ok((SolutionSet::Empty, _)) => (), // Correct
+            Ok((SolutionSet::Discrete(sols), _)) => {
+                // If it returns x=1, check if it's valid (it shouldn't be)
+                let one = simplifier.context.num(1);
+                for sol in sols {
+                    if simplifier.are_equivalent(sol, one) {
+                        panic!("FALLO GRAVE: El solver devolvió x=1, que indefine la ecuación original (división por cero).");
+                    }
+                }
+            },
+            _ => panic!("Resultado inesperado para singularidad: {:?}", result),
+        }
+    } else {
+        panic!("Failed to parse equation");
+    }
+}
+
+#[test]
+fn test_torture_13_abs_squared() {
+    // 13. La "Identidad Absoluta Oculta"
+    // abs(x)^2 - x^2 -> 0
+    let mut simplifier = create_full_simplifier();
+    let expr = parse("abs(x)^2 - x^2", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    
+    let zero = simplifier.context.num(0);
+    assert!(simplifier.are_equivalent(simplified, zero), "Abs squared identity failed");
+}
+
+#[test]
+fn test_torture_14_rational_telescoping() {
+    // 14. La "Suma Telescópica Racional"
+    // 1/(x*(x+1)) + 1/((x+1)*(x+2)) - 2/(x*(x+2)) -> 0
+    let mut simplifier = create_full_simplifier();
+    let expr = parse("1/(x*(x+1)) + 1/((x+1)*(x+2)) - 2/(x*(x+2))", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    
+    let zero = simplifier.context.num(0);
+    assert!(simplifier.are_equivalent(simplified, zero), "Rational telescoping failed");
+}
+
+#[test]
+fn test_torture_15_trig_shift() {
+    // 15. El "Cambio de Fase Trigonométrico"
+    // sin(x + pi/2) - cos(x) -> 0
+    let mut simplifier = create_full_simplifier();
+    // Note: pi/2 might need to be parsed carefully or constructed if parser doesn't support 'pi' directly as constant in this context
+    // Assuming parser handles 'pi'
+    let expr = parse("sin(x + pi/2) - cos(x)", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    
+    let zero = simplifier.context.num(0);
+    assert!(simplifier.are_equivalent(simplified, zero), "Trig shift failed");
 }
