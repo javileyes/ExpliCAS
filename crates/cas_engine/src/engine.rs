@@ -56,6 +56,24 @@ impl Simplifier {
         }
     }
 
+    pub fn get_all_rule_names(&self) -> Vec<String> {
+        let mut names = HashSet::new();
+        
+        for rule in &self.global_rules {
+            names.insert(rule.name().to_string());
+        }
+        
+        for rules in self.rules.values() {
+            for rule in rules {
+                names.insert(rule.name().to_string());
+            }
+        }
+        
+        let mut sorted_names: Vec<String> = names.into_iter().collect();
+        sorted_names.sort();
+        sorted_names
+    }
+
     pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
@@ -177,6 +195,7 @@ impl<'a> Transformer for LocalSimplificationTransformer<'a> {
 
 impl<'a> LocalSimplificationTransformer<'a> {
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
+        println!("Transforming {:?}", id);
         if let Some(&cached) = self.cache.get(&id) {
             return cached;
         }
@@ -189,7 +208,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
             Expr::Add(l, r) => {
                 let new_l = self.transform_expr_recursive(l);
                 let new_r = self.transform_expr_recursive(r);
-                if new_l != l || new_r != r { self.context.add(Expr::Add(new_l, new_r)) } else { id }
+                println!("Rebuilding Add: l={:?}->{:?}, r={:?}->{:?}", l, new_l, r, new_r);
+                if new_l != l || new_r != r { 
+                    println!("  Changed! Creating new Add");
+                    self.context.add(Expr::Add(new_l, new_r)) 
+                } else { 
+                    println!("  Unchanged. Returning id");
+                    id 
+                }
             },
             Expr::Sub(l, r) => {
                 let new_l = self.transform_expr_recursive(l);
@@ -228,8 +254,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
         };
 
         // 2. Apply rules
+        println!("Simplified children of {:?} -> {:?} ({:?})", id, expr_with_simplified_children, self.context.get(expr_with_simplified_children));
         let result = self.apply_rules(expr_with_simplified_children);
         self.cache.insert(id, result);
+        println!("Transforming {:?} -> {:?} ({:?})", id, result, self.context.get(result));
         result
     }
 
@@ -265,6 +293,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             for rule in self.global_rules {
                 if let Some(rewrite) = rule.apply(self.context, expr_id) {
                     // println!("Applied global rule: {} -> {} (from {:?})", rule.name(), rewrite.description, self.context.get(expr_id));
+                    println!("Applied global rule: {}", rule.name());
                     if self.collect_steps {
                         self.steps.push(Step::new(
                             &rewrite.description,

@@ -1,0 +1,135 @@
+warning: unused imports: `get_trig_arg` and `is_trig_pow`
+ --> crates/cas_engine/src/rules/trigonometry.rs:5:48
+  |
+5 | use crate::helpers::{extract_double_angle_arg, is_trig_pow, get_trig_arg};
+  |                                                ^^^^^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `term_id` is never read
+   --> crates/cas_engine/src/rules/trigonometry.rs:214:18
+    |
+209 |              struct TrigTerm {
+    |                     -------- field in this struct
+...
+214 |                  term_id: ExprId,
+    |                  ^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cas_engine` (lib) generated 2 warnings (run `cargo fix --lib -p cas_engine` to apply 1 suggestion)
+warning: unused import: `Context`
+ --> crates/cas_cli/tests/advanced_simplification.rs:5:32
+  |
+5 | ...:{DisplayExpr, Context, Expr};
+  |                   ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cas_cli` (test "advanced_simplification") generated 1 warning (run `cargo fix --test "advanced_simplification"` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running tests/advanced_simplification.rs (target/debug/deps/advanced_simplification-a9fc6a932e918cf7)
+
+running 1 test
+Parsed Log Mirror expr: Sub(ExprId(6), ExprId(9))
+Transforming ExprId(10)
+Transforming ExprId(6)
+Transforming ExprId(0)
+Simplified children of ExprId(0) -> ExprId(0) (Variable("x"))
+IdentityPowerRule checking ExprId(0)
+Transforming ExprId(0) -> ExprId(0) (Variable("x"))
+Transforming ExprId(5)
+Transforming ExprId(1)
+Simplified children of ExprId(1) -> ExprId(1) (Number(Ratio { numer: 1, denom: 1 }))
+IdentityPowerRule checking ExprId(1)
+Transforming ExprId(1) -> ExprId(1) (Number(Ratio { numer: 1, denom: 1 }))
+Transforming ExprId(4)
+Transforming ExprId(2)
+Simplified children of ExprId(2) -> ExprId(2) (Constant(E))
+IdentityPowerRule checking ExprId(2)
+Transforming ExprId(2) -> ExprId(2) (Constant(E))
+Transforming ExprId(3)
+Simplified children of ExprId(3) -> ExprId(3) (Variable("x"))
+IdentityPowerRule checking ExprId(3)
+Transforming ExprId(3) -> ExprId(3) (Variable("x"))
+Simplified children of ExprId(4) -> ExprId(4) (Function("log", [ExprId(2), ExprId(3)]))
+IdentityPowerRule checking ExprId(4)
+Transforming ExprId(4) -> ExprId(4) (Function("log", [ExprId(2), ExprId(3)]))
+Simplified children of ExprId(5) -> ExprId(5) (Div(ExprId(1), ExprId(4)))
+IdentityPowerRule checking ExprId(5)
+Transforming ExprId(5) -> ExprId(5) (Div(ExprId(1), ExprId(4)))
+Simplified children of ExprId(6) -> ExprId(6) (Pow(ExprId(0), ExprId(5)))
+LogInversePowerRule checking Pow: base=ExprId(0), exp=ExprId(5)
+Exp variant: Div(ExprId(1), ExprId(4))
+check_log_denom: name=log, args=[ExprId(2), ExprId(3)]
+check_log_denom found log(ExprId(2), ExprId(3))
+LogInversePowerRule: Rewriting x^(c/log(b, x)) -> b^c. b=ExprId(2), c=ExprId(1)
+Applied global rule: Log Inverse Power
+Transforming ExprId(11)
+Transforming ExprId(2)
+Transforming ExprId(1)
+Simplified children of ExprId(11) -> ExprId(11) (Pow(ExprId(2), ExprId(1)))
+Checking Trig Pow: base=ExprId(2), exp=1
+LogInversePowerRule checking Pow: base=ExprId(2), exp=ExprId(1)
+Exp variant: Number(Ratio { numer: 1, denom: 1 })
+Applied global rule: Zero/One Exponent
+Transforming ExprId(2)
+Transforming ExprId(11) -> ExprId(2) (Constant(E))
+Transforming ExprId(6) -> ExprId(2) (Constant(E))
+Transforming ExprId(9)
+Transforming ExprId(7)
+Simplified children of ExprId(7) -> ExprId(7) (Constant(E))
+IdentityPowerRule checking ExprId(7)
+Transforming ExprId(7) -> ExprId(7) (Constant(E))
+Transforming ExprId(8)
+Simplified children of ExprId(8) -> ExprId(8) (Number(Ratio { numer: 1, denom: 1 }))
+IdentityPowerRule checking ExprId(8)
+Transforming ExprId(8) -> ExprId(8) (Number(Ratio { numer: 1, denom: 1 }))
+Simplified children of ExprId(9) -> ExprId(9) (Pow(ExprId(7), ExprId(8)))
+Checking Trig Pow: base=ExprId(7), exp=1
+LogInversePowerRule checking Pow: base=ExprId(7), exp=ExprId(8)
+Exp variant: Number(Ratio { numer: 1, denom: 1 })
+Applied global rule: Zero/One Exponent
+Transforming ExprId(7)
+Transforming ExprId(9) -> ExprId(7) (Constant(E))
+Simplified children of ExprId(10) -> ExprId(12) (Sub(ExprId(2), ExprId(7)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(14)
+Transforming ExprId(2)
+Transforming ExprId(13)
+Transforming ExprId(7)
+Simplified children of ExprId(13) -> ExprId(13) (Neg(ExprId(7)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(16)
+Transforming ExprId(15)
+Simplified children of ExprId(15) -> ExprId(15) (Number(Ratio { numer: -1, denom: 1 }))
+IdentityPowerRule checking ExprId(15)
+Transforming ExprId(15) -> ExprId(15) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(7)
+Simplified children of ExprId(16) -> ExprId(16) (Mul(ExprId(15), ExprId(7)))
+IdentityPowerRule checking ExprId(16)
+Transforming ExprId(16) -> ExprId(16) (Mul(ExprId(15), ExprId(7)))
+Transforming ExprId(13) -> ExprId(16) (Mul(ExprId(15), ExprId(7)))
+Rebuilding Add: l=ExprId(2)->ExprId(2), r=ExprId(13)->ExprId(16)
+  Changed! Creating new Add
+Simplified children of ExprId(14) -> ExprId(18) (Add(ExprId(2), ExprId(16)))
+IdentityPowerRule checking ExprId(18)
+Transforming ExprId(14) -> ExprId(18) (Add(ExprId(2), ExprId(16)))
+Transforming ExprId(10) -> ExprId(18) (Add(ExprId(2), ExprId(16)))
+Log Mirror Result: e + -1 * e
+
+thread 'engine_tests::test_logarithmic_mirror_engine' (3268052) panicked at crates/cas_cli/tests/advanced_simplification.rs:43:9:
+assertion `left == right` failed
+  left: "e + -1 * e"
+ right: "0"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test engine_tests::test_logarithmic_mirror_engine ... FAILED
+
+failures:
+
+failures:
+    engine_tests::test_logarithmic_mirror_engine
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p cas_cli --test advanced_simplification`

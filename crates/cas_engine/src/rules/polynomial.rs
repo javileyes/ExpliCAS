@@ -104,6 +104,7 @@ define_rule!(
     "Combine Like Terms",
     |ctx, expr| {
         if let Expr::Add(_, _) = ctx.get(expr) {
+            println!("CombineLikeTerms checking {:?}", expr);
             // Flatten
             let mut terms = Vec::new();
             flatten_add(ctx, expr, &mut terms);
@@ -117,6 +118,11 @@ define_rule!(
                 parsed_terms.push((c, v));
             }
             
+            // println!("CombineLikeTerms: {:?}", parsed_terms);
+            // for (c, v) in &parsed_terms {
+            //     println!("  Term: coeff={:?}, var={:?} -> {:?}", c, v, ctx.get(*v));
+            // }
+
             // Sort by var_part to bring like terms together
             parsed_terms.sort_by(|a, b| compare_expr(ctx, a.1, b.1));
             

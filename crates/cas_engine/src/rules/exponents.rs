@@ -12,10 +12,19 @@ define_rule!(
     "Product of Powers",
     |ctx, expr| {
         // x^a * x^b -> x^(a+b)
+        // println!("ProductPowerRule checking {:?}", expr);
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
             let lhs_data = ctx.get(lhs).clone();
             let rhs_data = ctx.get(rhs).clone();
+            
+            // Debug for sin * sin^2
+            // println!("ProductPowerRule: lhs={:?} ({:?}), rhs={:?} ({:?})", lhs, lhs_data, rhs, rhs_data);
+            if let Expr::Function(name, _) = &lhs_data {
+                if name == "sin" {
+                     println!("ProductPowerRule: lhs is sin. rhs={:?}", rhs_data);
+                }
+            }
 
             // Case 1: Both are powers with same base: x^a * x^b
             if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
@@ -30,11 +39,11 @@ define_rule!(
             }
             // Case 2: One is power, one is base: x^a * x -> x^(a+1)
             // Left is power
-            if let Expr::Pow(base1, exp1) = lhs_data {
-                if compare_expr(ctx, base1, rhs) == Ordering::Equal {
+            if let Expr::Pow(base1, exp1) = &lhs_data {
+                if compare_expr(ctx, *base1, rhs) == Ordering::Equal {
                     let one = ctx.num(1);
-                    let sum_exp = ctx.add(Expr::Add(exp1, one));
-                    let new_expr = ctx.add(Expr::Pow(base1, sum_exp));
+                    let sum_exp = ctx.add(Expr::Add(*exp1, one));
+                    let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine power and base".to_string(),
@@ -42,11 +51,11 @@ define_rule!(
                 }
             }
             // Right is power
-            if let Expr::Pow(base2, exp2) = rhs_data {
-                if compare_expr(ctx, base2, lhs) == Ordering::Equal {
+            if let Expr::Pow(base2, exp2) = &rhs_data {
+                if compare_expr(ctx, *base2, lhs) == Ordering::Equal {
                     let one = ctx.num(1);
-                    let sum_exp = ctx.add(Expr::Add(one, exp2));
-                    let new_expr = ctx.add(Expr::Pow(base2, sum_exp));
+                    let sum_exp = ctx.add(Expr::Add(one, *exp2));
+                    let new_expr = ctx.add(Expr::Pow(*base2, sum_exp));
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine base and power".to_string(),
@@ -57,6 +66,7 @@ define_rule!(
             if compare_expr(ctx, lhs, rhs) == Ordering::Equal {
                 let two = ctx.num(2);
                 let new_expr = ctx.add(Expr::Pow(lhs, two));
+                println!("ProductPowerRule: x * x -> x^2");
                 return Some(Rewrite {
                     new_expr,
                     description: "Multiply identical terms".to_string(),
@@ -68,6 +78,7 @@ define_rule!(
             // Check if rhs is a Mul(rl, rr) and lhs == rl
             if let Expr::Mul(rl, rr) = rhs_data {
                 // x * (x * y)
+                println!("ProductPowerRule Case 4 check: lhs={:?}, rl={:?}", lhs, rl);
                 if compare_expr(ctx, lhs, rl) == Ordering::Equal {
                     let two = ctx.num(2);
                     let x_squared = ctx.add(Expr::Pow(lhs, two));
@@ -94,6 +105,22 @@ define_rule!(
                     }
                 }
                 
+                // x * (x^a * y) -> x^(a+1) * y
+                if let Some((base2, exp2)) = rhs_pow {
+                    if compare_expr(ctx, lhs, base2) == Ordering::Equal {
+                        let one = ctx.num(1);
+                        let sum_exp = ctx.add(Expr::Add(exp2, one));
+                        let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
+                        let new_expr = ctx.add(Expr::Mul(new_pow, rr));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Combine base and nested power".to_string(),
+                        });
+                    }
+                }
+                
+
+                
                 // x^a * (x * y) -> x^(a+1) * y
                 if let Some((base1, exp1)) = lhs_pow {
                     if compare_expr(ctx, base1, rl) == Ordering::Equal {
@@ -103,8 +130,70 @@ define_rule!(
                         let new_expr = ctx.add(Expr::Mul(new_pow, rr));
                         return Some(Rewrite {
                             new_expr,
-                            description: "Combine nested power and base".to_string(),
+                            description: "Combine power and nested base".to_string(),
                         });
+                    }
+                }
+                
+                // (c * x^a) * x^b -> c * x^(a+b)
+                // Check if lhs is Mul(c, x^a)
+                if let Expr::Mul(ll, lr) = lhs_data {
+                    // Check if ll is number (coefficient)
+                    if let Expr::Number(_) = ctx.get(ll) {
+                        // lr is x^a ?
+                        let lr_pow = if let Expr::Pow(b, e) = ctx.get(lr) { Some((*b, *e)) } else { None };
+                        
+                        // Check rhs is x^b
+                        let rhs_pow = if let Expr::Pow(b, e) = &rhs_data { Some((*b, *e)) } else { None };
+                        
+                        if let (Some((base1, exp1)), Some((base2, exp2))) = (lr_pow, rhs_pow) {
+                             if compare_expr(ctx, base1, base2) == Ordering::Equal {
+                                 let sum_exp = ctx.add(Expr::Add(exp1, exp2));
+                                 let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
+                                 let new_expr = ctx.add(Expr::Mul(ll, new_pow));
+                                 return Some(Rewrite {
+                                     new_expr,
+                                     description: "Combine coeff-power and power".to_string(),
+                                 });
+                             }
+                        }
+                        
+                        // Check rhs is x (implicit power 1)
+                        // (c * x^a) * x -> c * x^(a+1)
+                        if let Some((base1, exp1)) = lr_pow {
+                             if compare_expr(ctx, base1, rhs) == Ordering::Equal {
+                                 let one = ctx.num(1);
+                                 let sum_exp = ctx.add(Expr::Add(exp1, one));
+                                 let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
+                                 let new_expr = ctx.add(Expr::Mul(ll, new_pow));
+                                 return Some(Rewrite {
+                                     new_expr,
+                                     description: "Combine coeff-power and base".to_string(),
+                                 });
+                             }
+                        }
+                    }
+                }
+                
+                // (c * x) * x^a -> c * x^(a+1)
+                if let Expr::Mul(ll, lr) = lhs_data {
+                    if let Expr::Number(_) = ctx.get(ll) {
+                        // lr is x
+                        // rhs is x^a
+                         let rhs_pow = if let Expr::Pow(b, e) = &rhs_data { Some((*b, *e)) } else { None };
+                         
+                         if let Some((base2, exp2)) = rhs_pow {
+                             if compare_expr(ctx, lr, base2) == Ordering::Equal {
+                                 let one = ctx.num(1);
+                                 let sum_exp = ctx.add(Expr::Add(exp2, one));
+                                 let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
+                                 let new_expr = ctx.add(Expr::Mul(ll, new_pow));
+                                 return Some(Rewrite {
+                                     new_expr,
+                                     description: "Combine coeff-base and power".to_string(),
+                                 });
+                             }
+                         }
                     }
                 }
 
@@ -359,9 +448,49 @@ mod tests {
     }
 }
 
+define_rule!(
+    IdentityPowerRule,
+    "Identity Power",
+    |ctx, expr| {
+        println!("IdentityPowerRule checking {:?}", expr);
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            // x^1 -> x
+            if let Expr::Number(n) = ctx.get(exp) {
+                println!("IdentityPowerRule: exp={}", n);
+                if n.is_one() {
+                    println!("IdentityPowerRule: x^1 -> x");
+                    return Some(Rewrite {
+                        new_expr: base,
+                        description: "x^1 -> x".to_string(),
+                    });
+                }
+                if n.is_zero() {
+                    // x^0 -> 1
+                    return Some(Rewrite {
+                        new_expr: ctx.num(1),
+                        description: "x^0 -> 1".to_string(),
+                    });
+                }
+            }
+            // 1^x -> 1
+            if let Expr::Number(n) = ctx.get(base) {
+                if n.is_one() {
+                    return Some(Rewrite {
+                        new_expr: ctx.num(1),
+                        description: "1^x -> 1".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(ZeroOnePowerRule));
+    simplifier.add_rule(Box::new(IdentityPowerRule));
 }

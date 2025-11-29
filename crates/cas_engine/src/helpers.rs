@@ -84,3 +84,29 @@ pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprI
     }
     None
 }
+
+pub fn flatten_add(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            flatten_add(ctx, *l, terms);
+            flatten_add(ctx, *r, terms);
+        }
+        _ => terms.push(expr),
+    }
+}
+
+pub fn get_parts(context: &mut Context, e: ExprId) -> (num_rational::BigRational, ExprId) {
+    match context.get(e) {
+        Expr::Mul(a, b) => {
+            if let Expr::Number(n) = context.get(*a) {
+                (n.clone(), *b)
+            } else if let Expr::Number(n) = context.get(*b) {
+                (n.clone(), *a)
+            } else {
+                (num_rational::BigRational::one(), e)
+            }
+        }
+        Expr::Number(n) => (n.clone(), context.num(1)), // Treat constant as c * 1
+        _ => (num_rational::BigRational::one(), e),
+    }
+}

@@ -1,0 +1,804 @@
+   Compiling cas_engine v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_engine)
+warning: unused imports: `get_trig_arg` and `is_trig_pow`
+ --> crates/cas_engine/src/rules/trigonometry.rs:5:48
+  |
+5 | use crate::helpers::{extract_double_angle_arg, is_trig_pow, get_trig_arg};
+  |                                                ^^^^^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `term_id` is never read
+   --> crates/cas_engine/src/rules/trigonometry.rs:214:18
+    |
+209 |              struct TrigTerm {
+    |                     -------- field in this struct
+...
+214 |                  term_id: ExprId,
+    |                  ^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cas_engine` (lib) generated 2 warnings (run `cargo fix --lib -p cas_engine` to apply 1 suggestion)
+   Compiling cas_cli v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_cli)
+warning: unused import: `Context`
+ --> crates/cas_cli/tests/advanced_simplification.rs:5:32
+  |
+5 |     use cas_ast::{DisplayExpr, Context, Expr};
+  |                                ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cas_cli` (test "advanced_simplification") generated 1 warning (run `cargo fix --test "advanced_simplification"` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.48s
+     Running tests/advanced_simplification.rs (target/debug/deps/advanced_simplification-a9fc6a932e918cf7)
+
+running 1 test
+Transforming ExprId(15)
+Transforming ExprId(3)
+Transforming ExprId(2)
+Transforming ExprId(0)
+Simplified children of ExprId(0) -> ExprId(0) (Number(Ratio { numer: 3, denom: 1 }))
+Transforming ExprId(0) -> ExprId(0) (Number(Ratio { numer: 3, denom: 1 }))
+Transforming ExprId(1)
+Simplified children of ExprId(1) -> ExprId(1) (Variable("x"))
+Transforming ExprId(1) -> ExprId(1) (Variable("x"))
+Simplified children of ExprId(2) -> ExprId(2) (Mul(ExprId(0), ExprId(1)))
+Transforming ExprId(2) -> ExprId(2) (Mul(ExprId(0), ExprId(1)))
+Simplified children of ExprId(3) -> ExprId(3) (Function("sin", [ExprId(2)]))
+Applied global rule: Recursive Trig Expansion
+Transforming ExprId(25)
+Transforming ExprId(23)
+Transforming ExprId(19)
+Transforming ExprId(18)
+Transforming ExprId(17)
+Simplified children of ExprId(17) -> ExprId(17) (Number(Ratio { numer: 2, denom: 1 }))
+Transforming ExprId(17) -> ExprId(17) (Number(Ratio { numer: 2, denom: 1 }))
+Transforming ExprId(1)
+Simplified children of ExprId(18) -> ExprId(18) (Mul(ExprId(17), ExprId(1)))
+Transforming ExprId(18) -> ExprId(18) (Mul(ExprId(17), ExprId(1)))
+Simplified children of ExprId(19) -> ExprId(19) (Function("sin", [ExprId(18)]))
+Applied global rule: Double Angle Identity
+Transforming ExprId(31)
+Transforming ExprId(27)
+Simplified children of ExprId(27) -> ExprId(27) (Number(Ratio { numer: 2, denom: 1 }))
+Transforming ExprId(27) -> ExprId(27) (Number(Ratio { numer: 2, denom: 1 }))
+Transforming ExprId(30)
+Transforming ExprId(28)
+Transforming ExprId(1)
+Simplified children of ExprId(28) -> ExprId(28) (Function("sin", [ExprId(1)]))
+Transforming ExprId(28) -> ExprId(28) (Function("sin", [ExprId(1)]))
+Transforming ExprId(29)
+Transforming ExprId(1)
+Simplified children of ExprId(29) -> ExprId(29) (Function("cos", [ExprId(1)]))
+Transforming ExprId(29) -> ExprId(29) (Function("cos", [ExprId(1)]))
+Simplified children of ExprId(30) -> ExprId(30) (Mul(ExprId(28), ExprId(29)))
+Applied global rule: Canonicalize Multiplication
+Transforming ExprId(32)
+Transforming ExprId(29)
+Transforming ExprId(28)
+Simplified children of ExprId(32) -> ExprId(32) (Mul(ExprId(29), ExprId(28)))
+Transforming ExprId(32) -> ExprId(32) (Mul(ExprId(29), ExprId(28)))
+Transforming ExprId(30) -> ExprId(32) (Mul(ExprId(29), ExprId(28)))
+Simplified children of ExprId(31) -> ExprId(34) (Mul(ExprId(27), ExprId(32)))
+Transforming ExprId(31) -> ExprId(34) (Mul(ExprId(27), ExprId(32)))
+Transforming ExprId(19) -> ExprId(34) (Mul(ExprId(27), ExprId(32)))
+Transforming ExprId(22)
+Transforming ExprId(1)
+Simplified children of ExprId(22) -> ExprId(22) (Function("cos", [ExprId(1)]))
+Transforming ExprId(22) -> ExprId(22) (Function("cos", [ExprId(1)]))
+Simplified children of ExprId(23) -> ExprId(36) (Mul(ExprId(34), ExprId(22)))
+Applied global rule: Canonicalize Multiplication
+Transforming ExprId(37)
+Transforming ExprId(22)
+Transforming ExprId(34)
+Transforming ExprId(27)
+Transforming ExprId(32)
+Simplified children of ExprId(34) -> ExprId(34) (Mul(ExprId(27), ExprId(32)))
+Transforming ExprId(34) -> ExprId(34) (Mul(ExprId(27), ExprId(32)))
+Simplified children of ExprId(37) -> ExprId(37) (Mul(ExprId(22), ExprId(34)))
+Applied global rule: Canonicalize Multiplication
+Transforming ExprId(40)
+Transforming ExprId(27)
+Transforming ExprId(39)
+Transforming ExprId(22)
+Transforming ExprId(32)
+Simplified children of ExprId(39) -> ExprId(39) (Mul(ExprId(22), ExprId(32)))
+Transforming ExprId(39) -> ExprId(39) (Mul(ExprId(22), ExprId(32)))
+Simplified children of ExprId(40) -> ExprId(40) (Mul(ExprId(27), ExprId(39)))
+Transforming ExprId(40) -> ExprId(40) (Mul(ExprId(27), ExprId(39)))
+Transforming ExprId(37) -> ExprId(40) (Mul(ExprId(27), ExprId(39)))
+Transforming ExprId(23) -> ExprId(40) (Mul(ExprId(27), ExprId(39)))
+Transforming ExprId(24)
+Transforming ExprId(20)
+Transforming ExprId(18)
+Simplified children of ExprId(20) -> ExprId(20) (Function("cos", [ExprId(18)]))
+Applied global rule: Double Angle Identity
+Transforming ExprId(48)
+Transforming ExprId(45)
+Transforming ExprId(44)
+Transforming ExprId(1)
+Simplified children of ExprId(44) -> ExprId(44) (Function("cos", [ExprId(1)]))
+Transforming ExprId(44) -> ExprId(44) (Function("cos", [ExprId(1)]))
+Transforming ExprId(43)
+Simplified children of ExprId(43) -> ExprId(43) (Number(Ratio { numer: 2, denom: 1 }))
+Transforming ExprId(43) -> ExprId(43) (Number(Ratio { numer: 2, denom: 1 }))
+Simplified children of ExprId(45) -> ExprId(45) (Pow(ExprId(44), ExprId(43)))
+Checking Trig Pow: base=ExprId(44), exp=2
+CanonicalizeTrigSquareRule: Rewriting cos^2 -> 1 - sin^2
+Applied global rule: Canonicalize Trig Square
+Transforming ExprId(53)
+Transforming ExprId(49)
+Simplified children of ExprId(49) -> ExprId(49) (Number(Ratio { numer: 1, denom: 1 }))
+Transforming ExprId(49) -> ExprId(49) (Number(Ratio { numer: 1, denom: 1 }))
+Transforming ExprId(52)
+Transforming ExprId(50)
+Transforming ExprId(1)
+Simplified children of ExprId(50) -> ExprId(50) (Function("sin", [ExprId(1)]))
+Transforming ExprId(50) -> ExprId(50) (Function("sin", [ExprId(1)]))
+Transforming ExprId(51)
+Simplified children of ExprId(51) -> ExprId(51) (Number(Ratio { numer: 2, denom: 1 }))
+Transforming ExprId(51) -> ExprId(51) (Number(Ratio { numer: 2, denom: 1 }))
+Simplified children of ExprId(52) -> ExprId(52) (Pow(ExprId(50), ExprId(51)))
+Checking Trig Pow: base=ExprId(50), exp=2
+Transforming ExprId(52) -> ExprId(52) (Pow(ExprId(50), ExprId(51)))
+Simplified children of ExprId(53) -> ExprId(53) (Sub(ExprId(49), ExprId(52)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(55)
+Transforming ExprId(49)
+Transforming ExprId(54)
+Transforming ExprId(52)
+Simplified children of ExprId(54) -> ExprId(54) (Neg(ExprId(52)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(57)
+Transforming ExprId(56)
+Simplified children of ExprId(56) -> ExprId(56) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(56) -> ExprId(56) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(52)
+Simplified children of ExprId(57) -> ExprId(57) (Mul(ExprId(56), ExprId(52)))
+Transforming ExprId(57) -> ExprId(57) (Mul(ExprId(56), ExprId(52)))
+Transforming ExprId(54) -> ExprId(57) (Mul(ExprId(56), ExprId(52)))
+Rebuilding Add: l=ExprId(49)->ExprId(49), r=ExprId(54)->ExprId(57)
+  Changed! Creating new Add
+Simplified children of ExprId(55) -> ExprId(59) (Add(ExprId(49), ExprId(57)))
+CombineLikeTerms checking ExprId(59)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(61)), (Ratio { numer: -1, denom: 1 }, ExprId(52))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(61) -> Number(Ratio { numer: 1, denom: 1 })
+  Term: coeff=Ratio { numer: -1, denom: 1 }, var=ExprId(52) -> Pow(ExprId(50), ExprId(51))
+  Comparing var ExprId(61) with ExprId(52) -> Less
+Transforming ExprId(55) -> ExprId(59) (Add(ExprId(49), ExprId(57)))
+Transforming ExprId(53) -> ExprId(59) (Add(ExprId(49), ExprId(57)))
+Transforming ExprId(45) -> ExprId(59) (Add(ExprId(49), ExprId(57)))
+Transforming ExprId(47)
+Transforming ExprId(46)
+Transforming ExprId(1)
+Simplified children of ExprId(46) -> ExprId(46) (Function("sin", [ExprId(1)]))
+Transforming ExprId(46) -> ExprId(46) (Function("sin", [ExprId(1)]))
+Transforming ExprId(43)
+Simplified children of ExprId(47) -> ExprId(47) (Pow(ExprId(46), ExprId(43)))
+Checking Trig Pow: base=ExprId(46), exp=2
+Transforming ExprId(47) -> ExprId(47) (Pow(ExprId(46), ExprId(43)))
+Simplified children of ExprId(48) -> ExprId(65) (Sub(ExprId(59), ExprId(47)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(67)
+Transforming ExprId(59)
+Transforming ExprId(49)
+Transforming ExprId(57)
+Rebuilding Add: l=ExprId(49)->ExprId(49), r=ExprId(57)->ExprId(57)
+  Unchanged. Returning id
+Simplified children of ExprId(59) -> ExprId(59) (Add(ExprId(49), ExprId(57)))
+CombineLikeTerms checking ExprId(59)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(69)), (Ratio { numer: -1, denom: 1 }, ExprId(52))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(69) -> Number(Ratio { numer: 1, denom: 1 })
+  Term: coeff=Ratio { numer: -1, denom: 1 }, var=ExprId(52) -> Pow(ExprId(50), ExprId(51))
+  Comparing var ExprId(69) with ExprId(52) -> Less
+Transforming ExprId(59) -> ExprId(59) (Add(ExprId(49), ExprId(57)))
+Transforming ExprId(66)
+Transforming ExprId(47)
+Simplified children of ExprId(66) -> ExprId(66) (Neg(ExprId(47)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(74)
+Transforming ExprId(73)
+Simplified children of ExprId(73) -> ExprId(73) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(73) -> ExprId(73) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(47)
+Simplified children of ExprId(74) -> ExprId(74) (Mul(ExprId(73), ExprId(47)))
+Transforming ExprId(74) -> ExprId(74) (Mul(ExprId(73), ExprId(47)))
+Transforming ExprId(66) -> ExprId(74) (Mul(ExprId(73), ExprId(47)))
+Rebuilding Add: l=ExprId(59)->ExprId(59), r=ExprId(66)->ExprId(74)
+  Changed! Creating new Add
+Simplified children of ExprId(67) -> ExprId(76) (Add(ExprId(59), ExprId(74)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(77)
+Transforming ExprId(74)
+Transforming ExprId(59)
+Rebuilding Add: l=ExprId(74)->ExprId(74), r=ExprId(59)->ExprId(59)
+  Unchanged. Returning id
+Simplified children of ExprId(77) -> ExprId(77) (Add(ExprId(74), ExprId(59)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(79)
+Transforming ExprId(49)
+Transforming ExprId(78)
+Transforming ExprId(74)
+Transforming ExprId(57)
+Rebuilding Add: l=ExprId(74)->ExprId(74), r=ExprId(57)->ExprId(57)
+  Unchanged. Returning id
+Simplified children of ExprId(78) -> ExprId(78) (Add(ExprId(74), ExprId(57)))
+CombineLikeTerms checking ExprId(78)
+CombineLikeTerms: [(Ratio { numer: -1, denom: 1 }, ExprId(47)), (Ratio { numer: -1, denom: 1 }, ExprId(52))]
+  Term: coeff=Ratio { numer: -1, denom: 1 }, var=ExprId(47) -> Pow(ExprId(46), ExprId(43))
+  Term: coeff=Ratio { numer: -1, denom: 1 }, var=ExprId(52) -> Pow(ExprId(50), ExprId(51))
+  Comparing var ExprId(47) with ExprId(52) -> Equal
+Applied global rule: Combine Like Terms
+Transforming ExprId(81)
+Transforming ExprId(80)
+Simplified children of ExprId(80) -> ExprId(80) (Number(Ratio { numer: -2, denom: 1 }))
+Transforming ExprId(80) -> ExprId(80) (Number(Ratio { numer: -2, denom: 1 }))
+Transforming ExprId(47)
+Simplified children of ExprId(81) -> ExprId(81) (Mul(ExprId(80), ExprId(47)))
+Transforming ExprId(81) -> ExprId(81) (Mul(ExprId(80), ExprId(47)))
+Transforming ExprId(78) -> ExprId(81) (Mul(ExprId(80), ExprId(47)))
+Rebuilding Add: l=ExprId(49)->ExprId(49), r=ExprId(78)->ExprId(81)
+  Changed! Creating new Add
+Simplified children of ExprId(79) -> ExprId(83) (Add(ExprId(49), ExprId(81)))
+CombineLikeTerms checking ExprId(83)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(85)), (Ratio { numer: -2, denom: 1 }, ExprId(47))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(85) -> Number(Ratio { numer: 1, denom: 1 })
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(47) -> Pow(ExprId(46), ExprId(43))
+  Comparing var ExprId(85) with ExprId(47) -> Less
+Transforming ExprId(79) -> ExprId(83) (Add(ExprId(49), ExprId(81)))
+Transforming ExprId(77) -> ExprId(83) (Add(ExprId(49), ExprId(81)))
+Transforming ExprId(67) -> ExprId(83) (Add(ExprId(49), ExprId(81)))
+Transforming ExprId(48) -> ExprId(83) (Add(ExprId(49), ExprId(81)))
+Transforming ExprId(20) -> ExprId(83) (Add(ExprId(49), ExprId(81)))
+Transforming ExprId(21)
+Transforming ExprId(1)
+Simplified children of ExprId(21) -> ExprId(21) (Function("sin", [ExprId(1)]))
+Transforming ExprId(21) -> ExprId(21) (Function("sin", [ExprId(1)]))
+Simplified children of ExprId(24) -> ExprId(89) (Mul(ExprId(83), ExprId(21)))
+Applied global rule: Canonicalize Multiplication
+Transforming ExprId(90)
+Transforming ExprId(21)
+Transforming ExprId(83)
+Transforming ExprId(49)
+Transforming ExprId(81)
+Rebuilding Add: l=ExprId(49)->ExprId(49), r=ExprId(81)->ExprId(81)
+  Unchanged. Returning id
+Simplified children of ExprId(83) -> ExprId(83) (Add(ExprId(49), ExprId(81)))
+CombineLikeTerms checking ExprId(83)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(92)), (Ratio { numer: -2, denom: 1 }, ExprId(47))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(92) -> Number(Ratio { numer: 1, denom: 1 })
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(47) -> Pow(ExprId(46), ExprId(43))
+  Comparing var ExprId(92) with ExprId(47) -> Less
+Transforming ExprId(83) -> ExprId(83) (Add(ExprId(49), ExprId(81)))
+Simplified children of ExprId(90) -> ExprId(90) (Mul(ExprId(21), ExprId(83)))
+Applied global rule: Distributive Property
+Transforming ExprId(99)
+Transforming ExprId(97)
+Transforming ExprId(21)
+Transforming ExprId(49)
+Simplified children of ExprId(97) -> ExprId(97) (Mul(ExprId(21), ExprId(49)))
+Applied global rule: Canonicalize Multiplication
+Transforming ExprId(100)
+Transforming ExprId(49)
+Transforming ExprId(21)
+Simplified children of ExprId(100) -> ExprId(100) (Mul(ExprId(49), ExprId(21)))
+Applied global rule: Identity Property of Multiplication
+Transforming ExprId(21)
+Transforming ExprId(100) -> ExprId(21) (Function("sin", [ExprId(1)]))
+Transforming ExprId(97) -> ExprId(21) (Function("sin", [ExprId(1)]))
+Transforming ExprId(98)
+Transforming ExprId(21)
+Transforming ExprId(81)
+Simplified children of ExprId(98) -> ExprId(98) (Mul(ExprId(21), ExprId(81)))
+Applied global rule: Canonicalize Multiplication
+Transforming ExprId(102)
+Transforming ExprId(80)
+Transforming ExprId(101)
+Transforming ExprId(21)
+Transforming ExprId(47)
+Simplified children of ExprId(101) -> ExprId(101) (Mul(ExprId(21), ExprId(47)))
+Transforming ExprId(101) -> ExprId(101) (Mul(ExprId(21), ExprId(47)))
+Simplified children of ExprId(102) -> ExprId(102) (Mul(ExprId(80), ExprId(101)))
+Transforming ExprId(102) -> ExprId(102) (Mul(ExprId(80), ExprId(101)))
+Transforming ExprId(98) -> ExprId(102) (Mul(ExprId(80), ExprId(101)))
+Rebuilding Add: l=ExprId(97)->ExprId(21), r=ExprId(98)->ExprId(102)
+  Changed! Creating new Add
+Simplified children of ExprId(99) -> ExprId(105) (Add(ExprId(21), ExprId(102)))
+CombineLikeTerms checking ExprId(105)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(21)), (Ratio { numer: -2, denom: 1 }, ExprId(101))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(21) -> Function("sin", [ExprId(1)])
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Comparing var ExprId(21) with ExprId(101) -> Less
+Transforming ExprId(99) -> ExprId(105) (Add(ExprId(21), ExprId(102)))
+Transforming ExprId(90) -> ExprId(105) (Add(ExprId(21), ExprId(102)))
+Transforming ExprId(24) -> ExprId(105) (Add(ExprId(21), ExprId(102)))
+Rebuilding Add: l=ExprId(23)->ExprId(40), r=ExprId(24)->ExprId(105)
+  Changed! Creating new Add
+Simplified children of ExprId(25) -> ExprId(108) (Add(ExprId(40), ExprId(105)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(110)
+Transforming ExprId(21)
+Transforming ExprId(109)
+Transforming ExprId(40)
+Transforming ExprId(102)
+Rebuilding Add: l=ExprId(40)->ExprId(40), r=ExprId(102)->ExprId(102)
+  Unchanged. Returning id
+Simplified children of ExprId(109) -> ExprId(109) (Add(ExprId(40), ExprId(102)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(111)
+Transforming ExprId(102)
+Transforming ExprId(40)
+Rebuilding Add: l=ExprId(102)->ExprId(102), r=ExprId(40)->ExprId(40)
+  Unchanged. Returning id
+Simplified children of ExprId(111) -> ExprId(111) (Add(ExprId(102), ExprId(40)))
+CombineLikeTerms checking ExprId(111)
+CombineLikeTerms: [(Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39))]
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(111) -> ExprId(111) (Add(ExprId(102), ExprId(40)))
+Transforming ExprId(109) -> ExprId(111) (Add(ExprId(102), ExprId(40)))
+Rebuilding Add: l=ExprId(21)->ExprId(21), r=ExprId(109)->ExprId(111)
+  Changed! Creating new Add
+Simplified children of ExprId(110) -> ExprId(116) (Add(ExprId(21), ExprId(111)))
+CombineLikeTerms checking ExprId(116)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(21)), (Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(21) -> Function("sin", [ExprId(1)])
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Comparing var ExprId(21) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(110) -> ExprId(116) (Add(ExprId(21), ExprId(111)))
+Transforming ExprId(25) -> ExprId(116) (Add(ExprId(21), ExprId(111)))
+Transforming ExprId(3) -> ExprId(116) (Add(ExprId(21), ExprId(111)))
+Transforming ExprId(14)
+Transforming ExprId(7)
+Transforming ExprId(4)
+Simplified children of ExprId(4) -> ExprId(4) (Number(Ratio { numer: 3, denom: 1 }))
+Transforming ExprId(4) -> ExprId(4) (Number(Ratio { numer: 3, denom: 1 }))
+Transforming ExprId(6)
+Transforming ExprId(5)
+Simplified children of ExprId(5) -> ExprId(5) (Variable("x"))
+Transforming ExprId(5) -> ExprId(5) (Variable("x"))
+Simplified children of ExprId(6) -> ExprId(6) (Function("sin", [ExprId(5)]))
+Transforming ExprId(6) -> ExprId(6) (Function("sin", [ExprId(5)]))
+Simplified children of ExprId(7) -> ExprId(7) (Mul(ExprId(4), ExprId(6)))
+Transforming ExprId(7) -> ExprId(7) (Mul(ExprId(4), ExprId(6)))
+Transforming ExprId(13)
+Transforming ExprId(8)
+Simplified children of ExprId(8) -> ExprId(8) (Number(Ratio { numer: 4, denom: 1 }))
+Transforming ExprId(8) -> ExprId(8) (Number(Ratio { numer: 4, denom: 1 }))
+Transforming ExprId(12)
+Transforming ExprId(10)
+Transforming ExprId(9)
+Simplified children of ExprId(9) -> ExprId(9) (Variable("x"))
+Transforming ExprId(9) -> ExprId(9) (Variable("x"))
+Simplified children of ExprId(10) -> ExprId(10) (Function("sin", [ExprId(9)]))
+Transforming ExprId(10) -> ExprId(10) (Function("sin", [ExprId(9)]))
+Transforming ExprId(11)
+Simplified children of ExprId(11) -> ExprId(11) (Number(Ratio { numer: 3, denom: 1 }))
+Transforming ExprId(11) -> ExprId(11) (Number(Ratio { numer: 3, denom: 1 }))
+Simplified children of ExprId(12) -> ExprId(12) (Pow(ExprId(10), ExprId(11)))
+Checking Trig Pow: base=ExprId(10), exp=3
+Transforming ExprId(12) -> ExprId(12) (Pow(ExprId(10), ExprId(11)))
+Simplified children of ExprId(13) -> ExprId(13) (Mul(ExprId(8), ExprId(12)))
+Transforming ExprId(13) -> ExprId(13) (Mul(ExprId(8), ExprId(12)))
+Simplified children of ExprId(14) -> ExprId(14) (Sub(ExprId(7), ExprId(13)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(124)
+Transforming ExprId(7)
+Transforming ExprId(123)
+Transforming ExprId(13)
+Simplified children of ExprId(123) -> ExprId(123) (Neg(ExprId(13)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(126)
+Transforming ExprId(125)
+Simplified children of ExprId(125) -> ExprId(125) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(125) -> ExprId(125) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(13)
+Simplified children of ExprId(126) -> ExprId(126) (Mul(ExprId(125), ExprId(13)))
+Applied global rule: Combine Constants
+Transforming ExprId(128)
+Transforming ExprId(127)
+Simplified children of ExprId(127) -> ExprId(127) (Number(Ratio { numer: -4, denom: 1 }))
+Transforming ExprId(127) -> ExprId(127) (Number(Ratio { numer: -4, denom: 1 }))
+Transforming ExprId(12)
+Simplified children of ExprId(128) -> ExprId(128) (Mul(ExprId(127), ExprId(12)))
+Transforming ExprId(128) -> ExprId(128) (Mul(ExprId(127), ExprId(12)))
+Transforming ExprId(126) -> ExprId(128) (Mul(ExprId(127), ExprId(12)))
+Transforming ExprId(123) -> ExprId(128) (Mul(ExprId(127), ExprId(12)))
+Rebuilding Add: l=ExprId(7)->ExprId(7), r=ExprId(123)->ExprId(128)
+  Changed! Creating new Add
+Simplified children of ExprId(124) -> ExprId(130) (Add(ExprId(7), ExprId(128)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(131)
+Transforming ExprId(128)
+Transforming ExprId(7)
+Rebuilding Add: l=ExprId(128)->ExprId(128), r=ExprId(7)->ExprId(7)
+  Unchanged. Returning id
+Simplified children of ExprId(131) -> ExprId(131) (Add(ExprId(128), ExprId(7)))
+CombineLikeTerms checking ExprId(131)
+CombineLikeTerms: [(Ratio { numer: -4, denom: 1 }, ExprId(12)), (Ratio { numer: 3, denom: 1 }, ExprId(6))]
+  Term: coeff=Ratio { numer: -4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Term: coeff=Ratio { numer: 3, denom: 1 }, var=ExprId(6) -> Function("sin", [ExprId(5)])
+  Comparing var ExprId(6) with ExprId(12) -> Less
+Transforming ExprId(131) -> ExprId(131) (Add(ExprId(128), ExprId(7)))
+Transforming ExprId(124) -> ExprId(131) (Add(ExprId(128), ExprId(7)))
+Transforming ExprId(14) -> ExprId(131) (Add(ExprId(128), ExprId(7)))
+Simplified children of ExprId(15) -> ExprId(136) (Sub(ExprId(116), ExprId(131)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(138)
+Transforming ExprId(116)
+Transforming ExprId(21)
+Transforming ExprId(111)
+Rebuilding Add: l=ExprId(21)->ExprId(21), r=ExprId(111)->ExprId(111)
+  Unchanged. Returning id
+Simplified children of ExprId(116) -> ExprId(116) (Add(ExprId(21), ExprId(111)))
+CombineLikeTerms checking ExprId(116)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(21)), (Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(21) -> Function("sin", [ExprId(1)])
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Comparing var ExprId(21) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(116) -> ExprId(116) (Add(ExprId(21), ExprId(111)))
+Transforming ExprId(137)
+Transforming ExprId(131)
+Simplified children of ExprId(137) -> ExprId(137) (Neg(ExprId(131)))
+Applied global rule: Canonicalize Negation
+Transforming ExprId(144)
+Transforming ExprId(143)
+Simplified children of ExprId(143) -> ExprId(143) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(143) -> ExprId(143) (Number(Ratio { numer: -1, denom: 1 }))
+Transforming ExprId(131)
+Simplified children of ExprId(144) -> ExprId(144) (Mul(ExprId(143), ExprId(131)))
+Applied global rule: Distributive Property
+Transforming ExprId(148)
+Transforming ExprId(146)
+Transforming ExprId(143)
+Transforming ExprId(128)
+Simplified children of ExprId(146) -> ExprId(146) (Mul(ExprId(143), ExprId(128)))
+Applied global rule: Canonicalize Multiplication
+Transforming ExprId(150)
+Transforming ExprId(127)
+Transforming ExprId(149)
+Transforming ExprId(143)
+Transforming ExprId(12)
+Simplified children of ExprId(149) -> ExprId(149) (Mul(ExprId(143), ExprId(12)))
+Transforming ExprId(149) -> ExprId(149) (Mul(ExprId(143), ExprId(12)))
+Simplified children of ExprId(150) -> ExprId(150) (Mul(ExprId(127), ExprId(149)))
+Applied global rule: Combine Constants
+Transforming ExprId(153)
+Transforming ExprId(152)
+Simplified children of ExprId(152) -> ExprId(152) (Number(Ratio { numer: 4, denom: 1 }))
+Transforming ExprId(152) -> ExprId(152) (Number(Ratio { numer: 4, denom: 1 }))
+Transforming ExprId(12)
+Simplified children of ExprId(153) -> ExprId(153) (Mul(ExprId(152), ExprId(12)))
+Transforming ExprId(153) -> ExprId(153) (Mul(ExprId(152), ExprId(12)))
+Transforming ExprId(150) -> ExprId(153) (Mul(ExprId(152), ExprId(12)))
+Transforming ExprId(146) -> ExprId(153) (Mul(ExprId(152), ExprId(12)))
+Transforming ExprId(147)
+Transforming ExprId(143)
+Transforming ExprId(7)
+Simplified children of ExprId(147) -> ExprId(147) (Mul(ExprId(143), ExprId(7)))
+Applied global rule: Combine Constants
+Transforming ExprId(156)
+Transforming ExprId(155)
+Simplified children of ExprId(155) -> ExprId(155) (Number(Ratio { numer: -3, denom: 1 }))
+Transforming ExprId(155) -> ExprId(155) (Number(Ratio { numer: -3, denom: 1 }))
+Transforming ExprId(6)
+Simplified children of ExprId(156) -> ExprId(156) (Mul(ExprId(155), ExprId(6)))
+Transforming ExprId(156) -> ExprId(156) (Mul(ExprId(155), ExprId(6)))
+Transforming ExprId(147) -> ExprId(156) (Mul(ExprId(155), ExprId(6)))
+Rebuilding Add: l=ExprId(146)->ExprId(153), r=ExprId(147)->ExprId(156)
+  Changed! Creating new Add
+Simplified children of ExprId(148) -> ExprId(158) (Add(ExprId(153), ExprId(156)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(159)
+Transforming ExprId(156)
+Transforming ExprId(153)
+Rebuilding Add: l=ExprId(156)->ExprId(156), r=ExprId(153)->ExprId(153)
+  Unchanged. Returning id
+Simplified children of ExprId(159) -> ExprId(159) (Add(ExprId(156), ExprId(153)))
+CombineLikeTerms checking ExprId(159)
+CombineLikeTerms: [(Ratio { numer: -3, denom: 1 }, ExprId(6)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: -3, denom: 1 }, var=ExprId(6) -> Function("sin", [ExprId(5)])
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(6) with ExprId(12) -> Less
+Transforming ExprId(159) -> ExprId(159) (Add(ExprId(156), ExprId(153)))
+Transforming ExprId(148) -> ExprId(159) (Add(ExprId(156), ExprId(153)))
+Transforming ExprId(144) -> ExprId(159) (Add(ExprId(156), ExprId(153)))
+Transforming ExprId(137) -> ExprId(159) (Add(ExprId(156), ExprId(153)))
+Rebuilding Add: l=ExprId(116)->ExprId(116), r=ExprId(137)->ExprId(159)
+  Changed! Creating new Add
+Simplified children of ExprId(138) -> ExprId(164) (Add(ExprId(116), ExprId(159)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(166)
+Transforming ExprId(156)
+Transforming ExprId(165)
+Transforming ExprId(116)
+Transforming ExprId(153)
+Rebuilding Add: l=ExprId(116)->ExprId(116), r=ExprId(153)->ExprId(153)
+  Unchanged. Returning id
+Simplified children of ExprId(165) -> ExprId(165) (Add(ExprId(116), ExprId(153)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(167)
+Transforming ExprId(153)
+Transforming ExprId(116)
+Rebuilding Add: l=ExprId(153)->ExprId(153), r=ExprId(116)->ExprId(116)
+  Unchanged. Returning id
+Simplified children of ExprId(167) -> ExprId(167) (Add(ExprId(153), ExprId(116)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(169)
+Transforming ExprId(21)
+Transforming ExprId(168)
+Transforming ExprId(153)
+Transforming ExprId(111)
+Rebuilding Add: l=ExprId(153)->ExprId(153), r=ExprId(111)->ExprId(111)
+  Unchanged. Returning id
+Simplified children of ExprId(168) -> ExprId(168) (Add(ExprId(153), ExprId(111)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(171)
+Transforming ExprId(102)
+Transforming ExprId(170)
+Transforming ExprId(153)
+Transforming ExprId(40)
+Rebuilding Add: l=ExprId(153)->ExprId(153), r=ExprId(40)->ExprId(40)
+  Unchanged. Returning id
+Simplified children of ExprId(170) -> ExprId(170) (Add(ExprId(153), ExprId(40)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(172)
+Transforming ExprId(40)
+Transforming ExprId(153)
+Rebuilding Add: l=ExprId(40)->ExprId(40), r=ExprId(153)->ExprId(153)
+  Unchanged. Returning id
+Simplified children of ExprId(172) -> ExprId(172) (Add(ExprId(40), ExprId(153)))
+CombineLikeTerms checking ExprId(172)
+CombineLikeTerms: [(Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(12) with ExprId(39) -> Less
+Transforming ExprId(172) -> ExprId(172) (Add(ExprId(40), ExprId(153)))
+Transforming ExprId(170) -> ExprId(172) (Add(ExprId(40), ExprId(153)))
+Rebuilding Add: l=ExprId(102)->ExprId(102), r=ExprId(170)->ExprId(172)
+  Changed! Creating new Add
+Simplified children of ExprId(171) -> ExprId(177) (Add(ExprId(102), ExprId(172)))
+CombineLikeTerms checking ExprId(177)
+CombineLikeTerms: [(Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(12) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(171) -> ExprId(177) (Add(ExprId(102), ExprId(172)))
+Transforming ExprId(168) -> ExprId(177) (Add(ExprId(102), ExprId(172)))
+Rebuilding Add: l=ExprId(21)->ExprId(21), r=ExprId(168)->ExprId(177)
+  Changed! Creating new Add
+Simplified children of ExprId(169) -> ExprId(184) (Add(ExprId(21), ExprId(177)))
+CombineLikeTerms checking ExprId(184)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(21)), (Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(21) -> Function("sin", [ExprId(1)])
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(21) with ExprId(12) -> Less
+  Comparing var ExprId(12) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(169) -> ExprId(184) (Add(ExprId(21), ExprId(177)))
+Transforming ExprId(167) -> ExprId(184) (Add(ExprId(21), ExprId(177)))
+Transforming ExprId(165) -> ExprId(184) (Add(ExprId(21), ExprId(177)))
+Rebuilding Add: l=ExprId(156)->ExprId(156), r=ExprId(165)->ExprId(184)
+  Changed! Creating new Add
+Simplified children of ExprId(166) -> ExprId(191) (Add(ExprId(156), ExprId(184)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(193)
+Transforming ExprId(21)
+Transforming ExprId(192)
+Transforming ExprId(156)
+Transforming ExprId(177)
+Transforming ExprId(102)
+Transforming ExprId(172)
+Rebuilding Add: l=ExprId(102)->ExprId(102), r=ExprId(172)->ExprId(172)
+  Unchanged. Returning id
+Simplified children of ExprId(177) -> ExprId(177) (Add(ExprId(102), ExprId(172)))
+CombineLikeTerms checking ExprId(177)
+CombineLikeTerms: [(Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(12) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(177) -> ExprId(177) (Add(ExprId(102), ExprId(172)))
+Rebuilding Add: l=ExprId(156)->ExprId(156), r=ExprId(177)->ExprId(177)
+  Unchanged. Returning id
+Simplified children of ExprId(192) -> ExprId(192) (Add(ExprId(156), ExprId(177)))
+CombineLikeTerms checking ExprId(192)
+CombineLikeTerms: [(Ratio { numer: -3, denom: 1 }, ExprId(6)), (Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: -3, denom: 1 }, var=ExprId(6) -> Function("sin", [ExprId(5)])
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(6) with ExprId(12) -> Less
+  Comparing var ExprId(12) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(192) -> ExprId(192) (Add(ExprId(156), ExprId(177)))
+Rebuilding Add: l=ExprId(21)->ExprId(21), r=ExprId(192)->ExprId(192)
+  Unchanged. Returning id
+Simplified children of ExprId(193) -> ExprId(193) (Add(ExprId(21), ExprId(192)))
+CombineLikeTerms checking ExprId(193)
+CombineLikeTerms: [(Ratio { numer: 1, denom: 1 }, ExprId(21)), (Ratio { numer: -3, denom: 1 }, ExprId(6)), (Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: 1, denom: 1 }, var=ExprId(21) -> Function("sin", [ExprId(1)])
+  Term: coeff=Ratio { numer: -3, denom: 1 }, var=ExprId(6) -> Function("sin", [ExprId(5)])
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(21) with ExprId(6) -> Equal
+  Comparing var ExprId(21) with ExprId(12) -> Less
+  Comparing var ExprId(12) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Applied global rule: Combine Like Terms
+Transforming ExprId(218)
+Transforming ExprId(217)
+Transforming ExprId(216)
+Transforming ExprId(209)
+Transforming ExprId(208)
+Simplified children of ExprId(208) -> ExprId(208) (Number(Ratio { numer: -2, denom: 1 }))
+Transforming ExprId(208) -> ExprId(208) (Number(Ratio { numer: -2, denom: 1 }))
+Transforming ExprId(21)
+Simplified children of ExprId(209) -> ExprId(209) (Mul(ExprId(208), ExprId(21)))
+Transforming ExprId(209) -> ExprId(209) (Mul(ExprId(208), ExprId(21)))
+Transforming ExprId(211)
+Transforming ExprId(210)
+Simplified children of ExprId(210) -> ExprId(210) (Number(Ratio { numer: 4, denom: 1 }))
+Transforming ExprId(210) -> ExprId(210) (Number(Ratio { numer: 4, denom: 1 }))
+Transforming ExprId(12)
+Simplified children of ExprId(211) -> ExprId(211) (Mul(ExprId(210), ExprId(12)))
+Transforming ExprId(211) -> ExprId(211) (Mul(ExprId(210), ExprId(12)))
+Rebuilding Add: l=ExprId(209)->ExprId(209), r=ExprId(211)->ExprId(211)
+  Unchanged. Returning id
+Simplified children of ExprId(216) -> ExprId(216) (Add(ExprId(209), ExprId(211)))
+CombineLikeTerms checking ExprId(216)
+CombineLikeTerms: [(Ratio { numer: -2, denom: 1 }, ExprId(21)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(21) -> Function("sin", [ExprId(1)])
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(21) with ExprId(12) -> Less
+Transforming ExprId(216) -> ExprId(216) (Add(ExprId(209), ExprId(211)))
+Transforming ExprId(213)
+Transforming ExprId(212)
+Simplified children of ExprId(212) -> ExprId(212) (Number(Ratio { numer: 2, denom: 1 }))
+Transforming ExprId(212) -> ExprId(212) (Number(Ratio { numer: 2, denom: 1 }))
+Transforming ExprId(39)
+Simplified children of ExprId(213) -> ExprId(213) (Mul(ExprId(212), ExprId(39)))
+Transforming ExprId(213) -> ExprId(213) (Mul(ExprId(212), ExprId(39)))
+Rebuilding Add: l=ExprId(216)->ExprId(216), r=ExprId(213)->ExprId(213)
+  Unchanged. Returning id
+Simplified children of ExprId(217) -> ExprId(217) (Add(ExprId(216), ExprId(213)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(226)
+Transforming ExprId(213)
+Transforming ExprId(216)
+Rebuilding Add: l=ExprId(213)->ExprId(213), r=ExprId(216)->ExprId(216)
+  Unchanged. Returning id
+Simplified children of ExprId(226) -> ExprId(226) (Add(ExprId(213), ExprId(216)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(228)
+Transforming ExprId(209)
+Transforming ExprId(227)
+Transforming ExprId(213)
+Transforming ExprId(211)
+Rebuilding Add: l=ExprId(213)->ExprId(213), r=ExprId(211)->ExprId(211)
+  Unchanged. Returning id
+Simplified children of ExprId(227) -> ExprId(227) (Add(ExprId(213), ExprId(211)))
+CombineLikeTerms checking ExprId(227)
+CombineLikeTerms: [(Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(12) with ExprId(39) -> Less
+Transforming ExprId(227) -> ExprId(227) (Add(ExprId(213), ExprId(211)))
+Rebuilding Add: l=ExprId(209)->ExprId(209), r=ExprId(227)->ExprId(227)
+  Unchanged. Returning id
+Simplified children of ExprId(228) -> ExprId(228) (Add(ExprId(209), ExprId(227)))
+CombineLikeTerms checking ExprId(228)
+CombineLikeTerms: [(Ratio { numer: -2, denom: 1 }, ExprId(21)), (Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(21) -> Function("sin", [ExprId(1)])
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(21) with ExprId(12) -> Less
+  Comparing var ExprId(12) with ExprId(39) -> Less
+Transforming ExprId(228) -> ExprId(228) (Add(ExprId(209), ExprId(227)))
+Transforming ExprId(226) -> ExprId(228) (Add(ExprId(209), ExprId(227)))
+Transforming ExprId(217) -> ExprId(228) (Add(ExprId(209), ExprId(227)))
+Transforming ExprId(215)
+Transforming ExprId(214)
+Simplified children of ExprId(214) -> ExprId(214) (Number(Ratio { numer: -2, denom: 1 }))
+Transforming ExprId(214) -> ExprId(214) (Number(Ratio { numer: -2, denom: 1 }))
+Transforming ExprId(101)
+Simplified children of ExprId(215) -> ExprId(215) (Mul(ExprId(214), ExprId(101)))
+Transforming ExprId(215) -> ExprId(215) (Mul(ExprId(214), ExprId(101)))
+Rebuilding Add: l=ExprId(217)->ExprId(228), r=ExprId(215)->ExprId(215)
+  Changed! Creating new Add
+Simplified children of ExprId(218) -> ExprId(240) (Add(ExprId(228), ExprId(215)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(241)
+Transforming ExprId(215)
+Transforming ExprId(228)
+Rebuilding Add: l=ExprId(215)->ExprId(215), r=ExprId(228)->ExprId(228)
+  Unchanged. Returning id
+Simplified children of ExprId(241) -> ExprId(241) (Add(ExprId(215), ExprId(228)))
+Applied global rule: Canonicalize Addition
+Transforming ExprId(243)
+Transforming ExprId(209)
+Transforming ExprId(242)
+Transforming ExprId(215)
+Transforming ExprId(227)
+Rebuilding Add: l=ExprId(215)->ExprId(215), r=ExprId(227)->ExprId(227)
+  Unchanged. Returning id
+Simplified children of ExprId(242) -> ExprId(242) (Add(ExprId(215), ExprId(227)))
+CombineLikeTerms checking ExprId(242)
+CombineLikeTerms: [(Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(12) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(242) -> ExprId(242) (Add(ExprId(215), ExprId(227)))
+Rebuilding Add: l=ExprId(209)->ExprId(209), r=ExprId(242)->ExprId(242)
+  Unchanged. Returning id
+Simplified children of ExprId(243) -> ExprId(243) (Add(ExprId(209), ExprId(242)))
+CombineLikeTerms checking ExprId(243)
+CombineLikeTerms: [(Ratio { numer: -2, denom: 1 }, ExprId(21)), (Ratio { numer: -2, denom: 1 }, ExprId(101)), (Ratio { numer: 2, denom: 1 }, ExprId(39)), (Ratio { numer: 4, denom: 1 }, ExprId(12))]
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(21) -> Function("sin", [ExprId(1)])
+  Term: coeff=Ratio { numer: -2, denom: 1 }, var=ExprId(101) -> Mul(ExprId(21), ExprId(47))
+    Mul details: l=ExprId(21) (Function("sin", [ExprId(1)])), r=ExprId(47) (Pow(ExprId(46), ExprId(43)))
+  Term: coeff=Ratio { numer: 2, denom: 1 }, var=ExprId(39) -> Mul(ExprId(22), ExprId(32))
+    Mul details: l=ExprId(22) (Function("cos", [ExprId(1)])), r=ExprId(32) (Mul(ExprId(29), ExprId(28)))
+  Term: coeff=Ratio { numer: 4, denom: 1 }, var=ExprId(12) -> Pow(ExprId(10), ExprId(11))
+  Comparing var ExprId(21) with ExprId(12) -> Less
+  Comparing var ExprId(12) with ExprId(39) -> Less
+  Comparing var ExprId(39) with ExprId(101) -> Less
+Transforming ExprId(243) -> ExprId(243) (Add(ExprId(209), ExprId(242)))
+Transforming ExprId(241) -> ExprId(243) (Add(ExprId(209), ExprId(242)))
+Transforming ExprId(218) -> ExprId(243) (Add(ExprId(209), ExprId(242)))
+Transforming ExprId(193) -> ExprId(243) (Add(ExprId(209), ExprId(242)))
+Transforming ExprId(166) -> ExprId(243) (Add(ExprId(209), ExprId(242)))
+Transforming ExprId(138) -> ExprId(243) (Add(ExprId(209), ExprId(242)))
+Transforming ExprId(15) -> ExprId(243) (Add(ExprId(209), ExprId(242)))
+Triple Angle Result: -2 * sin(x) + -2 * sin(x) * sin(x)^2 + 2 * cos(x) * cos(x) * sin(x) + 4 * sin(x)^3
+
+thread 'engine_tests::test_triple_angle_engine' (3265329) panicked at crates/cas_cli/tests/advanced_simplification.rs:63:9:
+assertion `left == right` failed
+  left: "-2 * sin(x) + -2 * sin(x) * sin(x)^2 + 2 * cos(x) * cos(x) * sin(x) + 4 * sin(x)^3"
+ right: "0"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test engine_tests::test_triple_angle_engine ... FAILED
+
+failures:
+
+failures:
+    engine_tests::test_triple_angle_engine
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p cas_cli --test advanced_simplification`

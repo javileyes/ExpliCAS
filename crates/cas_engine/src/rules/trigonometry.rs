@@ -1,8 +1,8 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::Expr;
+use cas_ast::{Expr, ExprId};
 use num_traits::{Zero, One};
-use crate::helpers::{extract_double_angle_arg, is_trig_pow, get_trig_arg};
+use crate::helpers::extract_double_angle_arg;
 use crate::ordering::compare_expr;
 use std::cmp::Ordering;
 
@@ -194,32 +194,92 @@ define_rule!(
     PythagoreanIdentityRule,
     "Pythagorean Identity",
     |ctx, expr| {
-        if let Expr::Add(lhs, rhs) = ctx.get(expr) {
-            // Check cos^2 + sin^2
-            if is_trig_pow(ctx, *lhs, "cos", 2) && is_trig_pow(ctx, *rhs, "sin", 2) {
-                 if let (Some(arg_cos), Some(arg_sin)) = (get_trig_arg(ctx, *lhs), get_trig_arg(ctx, *rhs)) {
-                     if compare_expr(ctx, arg_cos, arg_sin) == Ordering::Equal {
-                         let one = ctx.num(1);
-                         return Some(Rewrite {
-                             new_expr: one,
-                             description: "cos^2(x) + sin^2(x) = 1".to_string(),
-                         });
+        // Look for sin(x)^2 + cos(x)^2 = 1
+        // Or a*sin(x)^2 + a*cos(x)^2 = a
+        
+        // This requires scanning an Add expression
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Add(_, _) = expr_data {
+             // Flatten add
+             let mut terms = Vec::new();
+             crate::helpers::flatten_add(ctx, expr, &mut terms);
+             
+             // Step 1: Analyze all terms and extract relevant info
+             // Store: (TermIndex, CoeffVal, FuncName, Arg)
+             struct TrigTerm {
+                 index: usize,
+                 coeff_val: num_rational::BigRational,
+                 func_name: String,
+                 arg: ExprId,
+             }
+             
+             let mut trig_terms = Vec::new();
+             
+             for (i, &term) in terms.iter().enumerate() {
+                 let (c_val, v) = crate::helpers::get_parts(ctx, term);
+                 // Check v is sin(arg)^2 or cos(arg)^2
+                 if let Expr::Pow(base, exp) = ctx.get(v) {
+                     if let Expr::Number(n) = ctx.get(*exp) {
+                         if *n == num_rational::BigRational::from_integer(2.into()) {
+                             if let Expr::Function(name, args) = ctx.get(*base) {
+                                 if (name == "sin" || name == "cos") && args.len() == 1 {
+                                     trig_terms.push(TrigTerm {
+                                         index: i,
+                                         coeff_val: c_val,
+                                         func_name: name.clone(),
+                                         arg: args[0],
+                                     });
+                                 }
+                             }
+                         }
                      }
                  }
-            }
-            
-            // Check sin^2 + cos^2
-            if is_trig_pow(ctx, *lhs, "sin", 2) && is_trig_pow(ctx, *rhs, "cos", 2) {
-                 if let (Some(arg_sin), Some(arg_cos)) = (get_trig_arg(ctx, *lhs), get_trig_arg(ctx, *rhs)) {
-                     if compare_expr(ctx, arg_sin, arg_cos) == Ordering::Equal {
-                         let one = ctx.num(1);
-                         return Some(Rewrite {
-                             new_expr: one,
-                             description: "sin^2(x) + cos^2(x) = 1".to_string(),
-                         });
+             }
+             
+             // Step 2: Find pairs
+             for i in 0..trig_terms.len() {
+                 let t1 = &trig_terms[i];
+                 for j in (i+1)..trig_terms.len() {
+                     let t2 = &trig_terms[j];
+                     
+                     if t1.func_name != t2.func_name && t1.coeff_val == t2.coeff_val {
+                         // Check args equality
+                         if compare_expr(ctx, t1.arg, t2.arg) == Ordering::Equal {
+                             // Found match!
+                             // a*sin^2 + a*cos^2 = a
+                             
+                             // Construct new expression
+                             let mut new_terms = Vec::new();
+                             for k in 0..terms.len() {
+                                 if k != t1.index && k != t2.index {
+                                     new_terms.push(terms[k]);
+                                 }
+                             }
+                             
+                             // Add 'a' (the coefficient)
+                             let a = ctx.add(Expr::Number(t1.coeff_val.clone()));
+                             new_terms.push(a);
+                             
+                             if new_terms.is_empty() {
+                                 return Some(Rewrite {
+                                     new_expr: ctx.num(0),
+                                     description: "Pythagorean Identity (empty)".to_string(),
+                                 });
+                             }
+                             
+                             let mut new_expr = new_terms[0];
+                             for k in 1..new_terms.len() {
+                                 new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                             }
+                             
+                             return Some(Rewrite {
+                                 new_expr,
+                                 description: "sin^2 + cos^2 = 1".to_string(),
+                             });
+                         }
                      }
                  }
-            }
+             }
         }
         None
     }
@@ -545,10 +605,118 @@ mod tests {
     }
 }
 
+define_rule!(
+    RecursiveTrigExpansionRule,
+    "Recursive Trig Expansion",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(name, args) = expr_data {
+            if args.len() == 1 && (name == "sin" || name == "cos") {
+                // Check for n * x where n is integer > 2
+                let inner = args[0];
+                let inner_data = ctx.get(inner).clone();
+                
+                let (n_val, x_val) = if let Expr::Mul(l, r) = inner_data {
+                    if let Expr::Number(n) = ctx.get(l) {
+                        if n.is_integer() {
+                            (n.to_integer(), r)
+                        } else {
+                            return None;
+                        }
+                    } else if let Expr::Number(n) = ctx.get(r) {
+                        if n.is_integer() {
+                            (n.to_integer(), l)
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                };
+
+                if n_val > num_bigint::BigInt::from(2) {
+                    // Rewrite sin(nx) -> sin((n-1)x + x)
+                    
+                    let n_minus_1 = n_val.clone() - 1;
+                    let n_minus_1_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(n_minus_1)));
+                    let term_nm1 = ctx.add(Expr::Mul(n_minus_1_expr, x_val));
+                    
+                    // sin(nx) = sin((n-1)x)cos(x) + cos((n-1)x)sin(x)
+                    // cos(nx) = cos((n-1)x)cos(x) - sin((n-1)x)sin(x)
+                    
+                    let sin_nm1 = ctx.add(Expr::Function("sin".to_string(), vec![term_nm1]));
+                    let cos_nm1 = ctx.add(Expr::Function("cos".to_string(), vec![term_nm1]));
+                    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x_val]));
+                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![x_val]));
+                    
+                    if name == "sin" {
+                        let t1 = ctx.add(Expr::Mul(sin_nm1, cos_x));
+                        let t2 = ctx.add(Expr::Mul(cos_nm1, sin_x));
+                        let new_expr = ctx.add(Expr::Add(t1, t2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: format!("sin({}x) expansion", n_val),
+                        });
+                    } else {
+                        // cos
+                        let t1 = ctx.add(Expr::Mul(cos_nm1, cos_x));
+                        let t2 = ctx.add(Expr::Mul(sin_nm1, sin_x));
+                        let new_expr = ctx.add(Expr::Sub(t1, t2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: format!("cos({}x) expansion", n_val),
+                        });
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+
+
+define_rule!(
+    CanonicalizeTrigSquareRule,
+    "Canonicalize Trig Square",
+    |ctx, expr| {
+        // cos^2(x) -> 1 - sin^2(x)
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            if let Expr::Number(n) = ctx.get(exp) {
+                println!("Checking Trig Pow: base={:?}, exp={}", base, n);
+                if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
+                    if let Expr::Function(name, args) = ctx.get(base) {
+                        if name == "cos" && args.len() == 1 {
+                            let arg = args[0];
+                            // 1 - sin^2(x)
+                            let one = ctx.num(1);
+                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                            let two = ctx.num(2);
+                            let sin_sq = ctx.add(Expr::Pow(sin_x, two));
+                            let new_expr = ctx.add(Expr::Sub(one, sin_sq));
+                            println!("CanonicalizeTrigSquareRule: Rewriting cos^2 -> 1 - sin^2");
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "cos^2(x) -> 1 - sin^2(x)".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateTrigRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
+    simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
+    simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule));
 }

@@ -3,7 +3,7 @@ use crate::define_rule;
 use cas_ast::{Expr, ExprId, Context};
 use crate::polynomial::Polynomial;
 use std::collections::HashSet;
-use num_traits::{One, Signed, ToPrimitive};
+use num_traits::{One, Signed, ToPrimitive, Zero};
 
 
 define_rule!(
@@ -976,6 +976,152 @@ define_rule!(
     }
 );
 
+
+
+define_rule!(
+    RootDenestingRule,
+    "Root Denesting",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+
+        // We look for sqrt(A + B) or sqrt(A - B)
+        // Also handle Pow(inner, 1/2)
+        let inner = if let Expr::Function(name, args) = &expr_data {
+            if name == "sqrt" && args.len() == 1 {
+                Some(args[0])
+            } else {
+                None
+            }
+        } else if let Expr::Pow(b, e) = &expr_data {
+            if let Expr::Number(n) = ctx.get(*e) {
+                 if *n.numer() == 1.into() && *n.denom() == 2.into() {
+                     Some(*b)
+                 } else {
+                     None
+                 }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if inner.is_none() { return None; }
+        let inner = inner.unwrap();
+        let inner_data = ctx.get(inner).clone();
+
+        let (a, b, is_add) = match inner_data {
+            Expr::Add(l, r) => (l, r, true),
+            Expr::Sub(l, r) => (l, r, false),
+            _ => return None,
+        };
+        
+        // Helper to identify if a term is C*sqrt(D) or sqrt(D)
+        // Returns (Option<C>, D). If C is None, it means 1.
+        fn analyze_sqrt_term(ctx: &Context, e: cas_ast::ExprId) -> Option<(Option<cas_ast::ExprId>, cas_ast::ExprId)> {
+            match ctx.get(e) {
+                Expr::Function(fname, fargs) if fname == "sqrt" && fargs.len() == 1 => {
+                    Some((None, fargs[0]))
+                },
+                Expr::Pow(b, e) => {
+                    // Check for b^(3/2) -> b * sqrt(b)
+                    if let Expr::Number(n) = ctx.get(*e) {
+                        println!("Checking Pow: base={:?}, exp={}", b, n);
+                        if *n.numer() == 3.into() && *n.denom() == 2.into() {
+                            return Some((Some(*b), *b));
+                        }
+                    }
+                    None
+                },
+                Expr::Mul(l, r) => {
+                    // Check l * sqrt(r)
+                    if let Expr::Function(fname, fargs) = ctx.get(*r) {
+                        if fname == "sqrt" && fargs.len() == 1 {
+                            return Some((Some(*l), fargs[0]));
+                        }
+                    }
+                    // Check sqrt(l) * r
+                    if let Expr::Function(fname, fargs) = ctx.get(*l) {
+                        if fname == "sqrt" && fargs.len() == 1 {
+                            return Some((Some(*r), fargs[0]));
+                        }
+                    }
+                    None
+                },
+                _ => None
+            }
+        }
+
+        // We need to determine which is the "rational" part A and which is the "surd" part sqrt(B).
+        // Try both permutations.
+        
+        // We can't use a closure that captures ctx mutably and calls methods on it easily.
+        // So we inline the logic or use a macro/helper that takes ctx.
+        
+        let check_permutation = |ctx: &mut Context, term_a: cas_ast::ExprId, term_b: cas_ast::ExprId| -> Option<crate::rule::Rewrite> {
+            // Assume term_a is A, term_b is C*sqrt(D)
+            // We need to call analyze_sqrt_term which takes &Context.
+            // But we need to mutate ctx later.
+            // So we analyze first.
+            
+            let sqrt_parts = analyze_sqrt_term(ctx, term_b);
+            
+            if let Some((c_opt, d)) = sqrt_parts {
+                // We have sqrt(A +/- C*sqrt(D))
+                // Effective B_eff = C^2 * D
+                let c = c_opt.unwrap_or_else(|| ctx.num(1));
+                
+                // We need numerical values to check the condition
+                if let (Expr::Number(val_a), Expr::Number(val_c), Expr::Number(val_d)) = (ctx.get(term_a), ctx.get(c), ctx.get(d)) {
+                     let val_c2 = val_c * val_c;
+                     let val_beff = val_c2 * val_d;
+                     let val_a2 = val_a * val_a;
+                     let val_delta = val_a2 - val_beff.clone();
+                     
+                     if val_delta >= num_rational::BigRational::zero() {
+                         if val_delta.is_integer() {
+                             let int_delta = val_delta.to_integer();
+                             let sqrt_delta = int_delta.sqrt();
+                             if sqrt_delta.pow(2) == int_delta {
+                                 let z_val = ctx.add(Expr::Number(num_rational::BigRational::from_integer(sqrt_delta)));
+                                 
+                                 // Found Z!
+                                 // Result = sqrt((A+Z)/2) +/- sqrt((A-Z)/2)
+                                 let two = ctx.num(2);
+                                 
+                                 let term1_num = ctx.add(Expr::Add(term_a, z_val));
+                                 let term1_frac = ctx.add(Expr::Div(term1_num, two));
+                                 let term1 = ctx.add(Expr::Function("sqrt".to_string(), vec![term1_frac]));
+                                 
+                                 let term2_num = ctx.add(Expr::Sub(term_a, z_val));
+                                 let term2_frac = ctx.add(Expr::Div(term2_num, two));
+                                 let term2 = ctx.add(Expr::Function("sqrt".to_string(), vec![term2_frac]));
+                                 
+                                 let new_expr = if is_add {
+                                     ctx.add(Expr::Add(term1, term2))
+                                 } else {
+                                     ctx.add(Expr::Sub(term1, term2))
+                                 };
+                                 
+                                 return Some(crate::rule::Rewrite {
+                                     new_expr,
+                                     description: "Denest square root".to_string(),
+                                 });
+                             }
+                         }
+                     }
+                }
+
+            }
+            None
+        };
+        
+        if let Some(rw) = check_permutation(ctx, a, b) { return Some(rw); }
+        if let Some(rw) = check_permutation(ctx, b, a) { return Some(rw); }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
@@ -985,6 +1131,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
+    simplifier.add_rule(Box::new(RootDenestingRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
 

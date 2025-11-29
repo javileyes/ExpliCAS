@@ -326,8 +326,113 @@ mod tests {
     }
 }
 
+
+
+define_rule!(
+    LogInversePowerRule,
+    "Log Inverse Power",
+    |ctx, expr| {
+        // println!("LogInversePowerRule checking {:?}", expr);
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            println!("LogInversePowerRule checking Pow: base={:?}, exp={:?}", base, exp);
+            println!("Exp variant: {:?}", ctx.get(exp));
+            // Check for x^(c / log(b, x))
+            // exp could be Div(c, log(b, x)) or Mul(c, Pow(log(b, x), -1))
+            
+            // Returns Some(Some(base)) for log(b, x), Some(None) for ln(x) -> base e
+            let check_log_denom = |ctx: &Context, denom: cas_ast::ExprId| -> Option<Option<cas_ast::ExprId>> {
+                // println!("check_log_denom checking {:?}", denom);
+                if let Expr::Function(name, args) = ctx.get(denom) {
+                    println!("check_log_denom: name={}, args={:?}", name, args);
+                    if name == "log" && args.len() == 2 {
+                        let log_base = args[0];
+                        let log_arg = args[1];
+                        // Check if log_arg == base
+                        if compare_expr(ctx, log_arg, base) == Ordering::Equal {
+                            println!("check_log_denom found log({:?}, {:?})", log_base, log_arg);
+                            return Some(Some(log_base));
+                        }
+                    } else if name == "ln" && args.len() == 1 {
+                        let log_arg = args[0];
+                        if compare_expr(ctx, log_arg, base) == Ordering::Equal {
+                            println!("check_log_denom found ln({:?})", log_arg);
+                            return Some(None); // Base e
+                        }
+                    }
+                }
+                None
+            };
+
+            let mut target_b_opt: Option<Option<cas_ast::ExprId>> = None;
+            let mut coeff: Option<cas_ast::ExprId> = None;
+
+            let exp_data = ctx.get(exp).clone();
+            match exp_data {
+                Expr::Div(num, den) => {
+                    if let Some(b_opt) = check_log_denom(ctx, den) {
+                        target_b_opt = Some(b_opt);
+                        coeff = Some(num);
+                    }
+                },
+                Expr::Mul(l, r) => {
+                    // Check l * r^-1
+                    if let Expr::Pow(b, e) = ctx.get(r) {
+                         if let Expr::Number(n) = ctx.get(*e) {
+                            if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                if let Some(b_opt) = check_log_denom(ctx, *b) {
+                                    target_b_opt = Some(b_opt);
+                                    coeff = Some(l);
+                                }
+                            }
+                        }
+                    }
+                    // Check r * l^-1
+                    if target_b_opt.is_none() {
+                        if let Expr::Pow(b, e) = ctx.get(l) {
+                             if let Expr::Number(n) = ctx.get(*e) {
+                                if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                    if let Some(b_opt) = check_log_denom(ctx, *b) {
+                                        target_b_opt = Some(b_opt);
+                                        coeff = Some(r);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                Expr::Pow(b, e) => {
+                    // Check if it's log(b, x)^-1
+                    if let Expr::Number(n) = ctx.get(e) {
+                        if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                            if let Some(b_opt) = check_log_denom(ctx, b) {
+                                target_b_opt = Some(b_opt);
+                                coeff = Some(ctx.num(1));
+                            }
+                        }
+                    }
+                },
+                _ => {}
+            }
+
+            if let (Some(b_opt), Some(c)) = (target_b_opt, coeff) {
+                // Result is b^c
+                let b = b_opt.unwrap_or_else(|| ctx.add(Expr::Constant(cas_ast::Constant::E)));
+                println!("LogInversePowerRule: Rewriting x^(c/log(b, x)) -> b^c. b={:?}, c={:?}", b, c);
+                let new_expr = ctx.add(Expr::Pow(b, c));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "x^(c/log(b, x)) = b^c".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
+    simplifier.add_rule(Box::new(LogInversePowerRule));
 }

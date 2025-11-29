@@ -38,9 +38,13 @@ impl Repl {
         simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
         simplifier.add_rule(Box::new(EvaluateTrigRule));
         simplifier.add_rule(Box::new(PythagoreanIdentityRule));
-        simplifier.add_rule(Box::new(AngleIdentityRule));
+        if config.trig_angle_sum {
+            simplifier.add_rule(Box::new(AngleIdentityRule));
+        }
         simplifier.add_rule(Box::new(TanToSinCosRule));
-        simplifier.add_rule(Box::new(DoubleAngleRule));
+        if config.trig_double_angle {
+            simplifier.add_rule(Box::new(DoubleAngleRule));
+        }
         simplifier.add_rule(Box::new(EvaluateLogRule));
         simplifier.add_rule(Box::new(ExponentialLogRule));
         simplifier.add_rule(Box::new(SimplifyFractionRule));
@@ -49,13 +53,17 @@ impl Repl {
         simplifier.add_rule(Box::new(CollectRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::logarithms::SplitLogExponentsRule));
+        if config.log_split_exponents {
+            simplifier.add_rule(Box::new(cas_engine::rules::logarithms::SplitLogExponentsRule));
+        }
         
         // Advanced Algebra Rules (Critical for Solver)
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
-        // simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
+        if config.rationalize_denominator {
+            simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
+        }
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
         
         // Configurable rules
@@ -74,6 +82,10 @@ impl Repl {
         if config.factor_difference_squares {
             // simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule));
             println!("Warning: 'factor_difference_squares' is currently unstable and has been disabled to prevent crashes.");
+        }
+
+        if config.root_denesting {
+            simplifier.add_rule(Box::new(cas_engine::rules::algebra::RootDenestingRule));
         }
 
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
@@ -119,6 +131,12 @@ impl Repl {
                     }
                     
                     rl.add_history_entry(line)?;
+                    
+                    if line == "quit" || line == "exit" {
+                        println!("Goodbye!");
+                        break;
+                    }
+
                     self.handle_command(line);
                 },
                 Err(ReadlineError::Interrupted) => {
@@ -139,17 +157,6 @@ impl Repl {
     }
 
     pub fn handle_command(&mut self, line: &str) {
-        // Check for "quit" or "exit" command
-        if line == "quit" || line == "exit" {
-            println!("Goodbye!");
-            return; // Can't break loop here, but run loop handles it? 
-            // Wait, run loop checks for quit/exit too?
-            // No, I'm moving logic.
-            // The run loop needs to know when to break.
-            // For now, let's just handle the other commands.
-            // Quit/Exit needs to be handled by caller or return bool.
-        }
-
         // Check for "help" command
         if line.starts_with("help") {
             self.handle_help(line);
@@ -222,6 +229,11 @@ impl Repl {
                 println!("  expand_binomials: {}", self.config.expand_binomials);
                 println!("  distribute_constants: {}", self.config.distribute_constants);
                 println!("  factor_difference_squares: {}", self.config.factor_difference_squares);
+                println!("  root_denesting: {}", self.config.root_denesting);
+                println!("  trig_double_angle: {}", self.config.trig_double_angle);
+                println!("  trig_angle_sum: {}", self.config.trig_angle_sum);
+                println!("  log_split_exponents: {}", self.config.log_split_exponents);
+                println!("  rationalize_denominator: {}", self.config.rationalize_denominator);
             },
             "save" => {
                 match self.config.save() {
@@ -232,8 +244,6 @@ impl Repl {
             "restore" => {
                 self.config = CasConfig::restore();
                 println!("Configuration restored to defaults. Restart CLI to apply changes fully.");
-                // We should probably reload rules here, but Repl::new() logic is complex to extract.
-                // For now, just warn user.
             },
             "enable" | "disable" => {
                 if parts.len() < 3 {
@@ -249,6 +259,11 @@ impl Repl {
                     "expand_binomials" => self.config.expand_binomials = enable,
                     "distribute_constants" => self.config.distribute_constants = enable,
                     "factor_difference_squares" => self.config.factor_difference_squares = enable,
+                    "root_denesting" => self.config.root_denesting = enable,
+                    "trig_double_angle" => self.config.trig_double_angle = enable,
+                    "trig_angle_sum" => self.config.trig_angle_sum = enable,
+                    "log_split_exponents" => self.config.log_split_exponents = enable,
+                    "rationalize_denominator" => self.config.rationalize_denominator = enable,
                     _ => {
                         println!("Unknown rule: {}", rule);
                         changed = false;

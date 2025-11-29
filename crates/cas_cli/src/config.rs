@@ -9,6 +9,11 @@ pub struct CasConfig {
     pub expand_binomials: bool,
     pub distribute_constants: bool,
     pub factor_difference_squares: bool,
+    pub root_denesting: bool,
+    pub trig_double_angle: bool,
+    pub trig_angle_sum: bool,
+    pub log_split_exponents: bool,
+    pub rationalize_denominator: bool,
 }
 
 impl Default for CasConfig {
@@ -18,6 +23,11 @@ impl Default for CasConfig {
             expand_binomials: true, // Needed for many simplifications
             distribute_constants: true, // Safe distribution of -1, etc.
             factor_difference_squares: false, // Can cause loops if not careful
+            root_denesting: true, // Advanced simplification for nested roots
+            trig_double_angle: true, // sin(2x) -> 2sin(x)cos(x)
+            trig_angle_sum: true, // sin(a+b) -> sin(a)cos(b)...
+            log_split_exponents: true, // ln(x^a) -> a*ln(x)
+            rationalize_denominator: true, // 1/sqrt(2) -> sqrt(2)/2
         }
     }
 }
