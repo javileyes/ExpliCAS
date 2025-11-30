@@ -476,10 +476,34 @@ define_rule!(
     }
 );
 
+define_rule!(
+    PowerProductRule,
+    "Power of a Product",
+    |ctx, expr| {
+        // (a * b)^n -> a^n * b^n
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            let base_data = ctx.get(base).clone();
+            if let Expr::Mul(lhs, rhs) = base_data {
+                // Distribute exponent
+                let new_lhs = ctx.add(Expr::Pow(lhs, exp));
+                let new_rhs = ctx.add(Expr::Pow(rhs, exp));
+                let new_expr = ctx.add(Expr::Mul(new_lhs, new_rhs));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Distribute power over product".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(ZeroOnePowerRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
+    simplifier.add_rule(Box::new(PowerProductRule));
 }

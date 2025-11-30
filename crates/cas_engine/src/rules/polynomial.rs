@@ -16,13 +16,24 @@ define_rule!(
             // a * (b + c) -> a*b + a*c
             let r_data = ctx.get(r).clone();
             if let Expr::Add(b, c) = r_data {
-                // Distribute if 'l' is a Number or a Function (e.g. sin(x))
-                // Do NOT distribute if 'l' is a Variable (e.g. x) or an Add (e.g. x+1)
-                // This preserves polynomial factorization x(x+1) while allowing trig expansion sin(x)(1-sin^2(x))
+                // Distribute if 'l' is a Number, Function, Add/Sub, Pow, Mul, or Div.
+                // We exclude Var to keep x(x+1) factored, but allow x^2(x+1) to expand.
                 let l_expr = ctx.get(l);
-                let should_distribute = matches!(l_expr, Expr::Number(_)) || matches!(l_expr, Expr::Function(_, _));
+                let should_distribute = matches!(l_expr, Expr::Number(_)) 
+                    || matches!(l_expr, Expr::Function(_, _))
+                    || matches!(l_expr, Expr::Add(_, _))
+                    || matches!(l_expr, Expr::Sub(_, _))
+                    || matches!(l_expr, Expr::Pow(_, _))
+                    || matches!(l_expr, Expr::Mul(_, _))
+                    || matches!(l_expr, Expr::Div(_, _));
                 
                 if !should_distribute {
+                    return None;
+                }
+
+                // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
+                // If we have (A+B)(A-B), do NOT distribute.
+                if is_conjugate(ctx, l, r) {
                     return None;
                 }
                 
@@ -39,9 +50,20 @@ define_rule!(
             if let Expr::Add(b, c) = l_data {
                 // Same logic for 'r'
                 let r_expr = ctx.get(r);
-                let should_distribute = matches!(r_expr, Expr::Number(_)) || matches!(r_expr, Expr::Function(_, _));
+                let should_distribute = matches!(r_expr, Expr::Number(_)) 
+                    || matches!(r_expr, Expr::Function(_, _))
+                    || matches!(r_expr, Expr::Add(_, _))
+                    || matches!(r_expr, Expr::Sub(_, _))
+                    || matches!(r_expr, Expr::Pow(_, _))
+                    || matches!(r_expr, Expr::Mul(_, _))
+                    || matches!(r_expr, Expr::Div(_, _));
 
                 if !should_distribute {
+                    return None;
+                }
+
+                // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
+                if is_conjugate(ctx, l, r) {
                     return None;
                 }
 
@@ -57,6 +79,95 @@ define_rule!(
         None
     }
 );
+
+fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    // Check for (A+B) and (A-B) or (A-B) and (A+B)
+    let a_expr = ctx.get(a);
+    let b_expr = ctx.get(b);
+
+    match (a_expr, b_expr) {
+        (Expr::Add(a1, a2), Expr::Sub(b1, b2)) | (Expr::Sub(b1, b2), Expr::Add(a1, a2)) => {
+            // (A+B) vs (A-B)
+            // Check if A=A and B=B
+            // Or A=B and B=A (commutative)
+            let a1 = *a1; let a2 = *a2;
+            let b1 = *b1; let b2 = *b2;
+            
+            // Direct match: A+B vs A-B
+            if compare_expr(ctx, a1, b1) == Ordering::Equal && compare_expr(ctx, a2, b2) == Ordering::Equal {
+                return true;
+            }
+            // Commutative A: B+A vs A-B (A matches A, B matches B)
+            if compare_expr(ctx, a2, b1) == Ordering::Equal && compare_expr(ctx, a1, b2) == Ordering::Equal {
+                return true;
+            }
+            
+            // What about -B+A? Canonicalization usually handles this to Sub(A,B) or Add(A, Neg(B)).
+            // If we have Add(A, Neg(B)), it's not Sub.
+            false
+        },
+        (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
+            // (A+B) vs (A+(-B)) or ((-B)+A)
+            // Check if one term is negation of another
+            let a1 = *a1; let a2 = *a2;
+            let b1 = *b1; let b2 = *b2;
+            
+            // Case 1: b2 is neg(a2) -> (A+B)(A-B)
+            if is_negation(ctx, a2, b2) && compare_expr(ctx, a1, b1) == Ordering::Equal {
+                return true;
+            }
+            // Case 2: b1 is neg(a2) -> (A+B)(-B+A)
+            if is_negation(ctx, a2, b1) && compare_expr(ctx, a1, b2) == Ordering::Equal {
+                return true;
+            }
+            // Case 3: b2 is neg(a1) -> (A+B)(B-A) -> No, that's -(A-B)(A+B)? No.
+            // (A+B)(B-A) = B^2 - A^2. This IS a conjugate pair.
+            if is_negation(ctx, a1, b2) && compare_expr(ctx, a2, b1) == Ordering::Equal {
+                return true;
+            }
+            // Case 4: b1 is neg(a1) -> (A+B)(-A+B)
+            if is_negation(ctx, a1, b1) && compare_expr(ctx, a2, b2) == Ordering::Equal {
+                return true;
+            }
+            false
+        },
+        _ => false
+    }
+}
+
+fn is_negation(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    // Check if b is Neg(a) or Mul(-1, a)
+    if check_negation_structure(ctx, b, a) {
+        return true;
+    }
+    // Check if a is Neg(b) or Mul(-1, b)
+    if check_negation_structure(ctx, a, b) {
+        return true;
+    }
+    false
+}
+
+fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: ExprId) -> bool {
+    match ctx.get(potential_neg) {
+        Expr::Neg(n) => compare_expr(ctx, original, *n) == Ordering::Equal,
+        Expr::Mul(l, r) => {
+            // Check for -1 * original
+            if let Expr::Number(n) = ctx.get(*l) {
+                if *n == -BigRational::one() && compare_expr(ctx, *r, original) == Ordering::Equal {
+                    return true;
+                }
+            }
+            // Check for original * -1
+            if let Expr::Number(n) = ctx.get(*r) {
+                if *n == -BigRational::one() && compare_expr(ctx, *l, original) == Ordering::Equal {
+                    return true;
+                }
+            }
+            false
+        },
+        _ => false
+    }
+}
 
 define_rule!(
     DistributeConstantRule,

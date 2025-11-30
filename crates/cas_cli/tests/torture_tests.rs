@@ -1,7 +1,7 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule, DistributeConstantRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
+use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule, PowerProductRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule};
@@ -37,6 +37,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
+    simplifier.add_rule(Box::new(PowerProductRule));
     simplifier.add_rule(Box::new(ZeroOnePowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(DistributeRule));
@@ -524,4 +525,20 @@ fn test_torture_25_half_angle() {
     
     let res_str = format!("{}", DisplayExpr { context: &s.context, id: res });
     assert_eq!(res_str, "0", "Half-Angle Identity failed to simplify to 0");
+}
+
+#[test]
+fn test_torture_26_lagrange_identity() {
+    // 26. La "Identidad de Lagrange"
+    // (a^2 + b^2) * (c^2 + d^2) - (a*c + b*d)^2 - (a*d - b*c)^2
+    // Expected: 0
+    let mut simplifier = create_full_simplifier();
+    // Requires expand() to trigger expansion
+    let input_str = "expand((a^2 + b^2) * (c^2 + d^2) - (a*c + b*d)^2 - (a*d - b*c)^2)";
+    
+    let expr = parse(input_str, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    
+    let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result_str, "0", "Lagrange Identity failed to simplify to 0");
 }
