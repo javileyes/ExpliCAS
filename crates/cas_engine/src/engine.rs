@@ -86,6 +86,7 @@ impl Simplifier {
             collect_steps,
             steps: Vec::new(),
             cache: HashMap::new(),
+            current_path: Vec::new(),
         };
         
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -183,6 +184,7 @@ struct LocalSimplificationTransformer<'a> {
     collect_steps: bool,
     steps: Vec<Step>,
     cache: HashMap<ExprId, ExprId>,
+    current_path: Vec<crate::step::PathStep>,
 }
 
 use cas_ast::visitor::Transformer;
@@ -205,8 +207,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
         let expr_with_simplified_children = match expr {
             Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => id,
             Expr::Add(l, r) => {
+                self.current_path.push(crate::step::PathStep::Left);
                 let new_l = self.transform_expr_recursive(l);
+                self.current_path.pop();
+                
+                self.current_path.push(crate::step::PathStep::Right);
                 let new_r = self.transform_expr_recursive(r);
+                self.current_path.pop();
+                
                 if new_l != l || new_r != r { 
                     self.context.add(Expr::Add(new_l, new_r)) 
                 } else { 
@@ -214,35 +222,65 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 }
             },
             Expr::Sub(l, r) => {
+                self.current_path.push(crate::step::PathStep::Left);
                 let new_l = self.transform_expr_recursive(l);
+                self.current_path.pop();
+                
+                self.current_path.push(crate::step::PathStep::Right);
                 let new_r = self.transform_expr_recursive(r);
+                self.current_path.pop();
+                
                 if new_l != l || new_r != r { self.context.add(Expr::Sub(new_l, new_r)) } else { id }
             },
             Expr::Mul(l, r) => {
+                self.current_path.push(crate::step::PathStep::Left);
                 let new_l = self.transform_expr_recursive(l);
+                self.current_path.pop();
+                
+                self.current_path.push(crate::step::PathStep::Right);
                 let new_r = self.transform_expr_recursive(r);
+                self.current_path.pop();
+                
                 if new_l != l || new_r != r { self.context.add(Expr::Mul(new_l, new_r)) } else { id }
             },
             Expr::Div(l, r) => {
+                self.current_path.push(crate::step::PathStep::Left);
                 let new_l = self.transform_expr_recursive(l);
+                self.current_path.pop();
+                
+                self.current_path.push(crate::step::PathStep::Right);
                 let new_r = self.transform_expr_recursive(r);
+                self.current_path.pop();
+                
                 if new_l != l || new_r != r { self.context.add(Expr::Div(new_l, new_r)) } else { id }
             },
             Expr::Pow(b, e) => {
+                self.current_path.push(crate::step::PathStep::Base);
                 let new_b = self.transform_expr_recursive(b);
+                self.current_path.pop();
+                
+                self.current_path.push(crate::step::PathStep::Exponent);
                 let new_e = self.transform_expr_recursive(e);
+                self.current_path.pop();
+                
                 if new_b != b || new_e != e { self.context.add(Expr::Pow(new_b, new_e)) } else { id }
             },
             Expr::Neg(e) => {
+                self.current_path.push(crate::step::PathStep::Inner);
                 let new_e = self.transform_expr_recursive(e);
+                self.current_path.pop();
+                
                 if new_e != e { self.context.add(Expr::Neg(new_e)) } else { id }
             },
             Expr::Function(name, args) => {
                 let mut new_args = Vec::new();
                 let mut changed = false;
-                for arg in args {
-                    let new_arg = self.transform_expr_recursive(arg);
-                    if new_arg != arg { changed = true; }
+                for (i, arg) in args.iter().enumerate() {
+                    self.current_path.push(crate::step::PathStep::Arg(i));
+                    let new_arg = self.transform_expr_recursive(*arg);
+                    self.current_path.pop();
+                    
+                    if new_arg != *arg { changed = true; }
                     new_args.push(new_arg);
                 }
                 if changed { self.context.add(Expr::Function(name, new_args)) } else { id }
@@ -269,6 +307,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 rule.name(),
                                 expr_id,
                                 rewrite.new_expr,
+                                self.current_path.clone(),
                             ));
                         }
                         expr_id = rewrite.new_expr;
@@ -292,6 +331,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             rule.name(),
                             expr_id,
                             rewrite.new_expr,
+                            self.current_path.clone(),
                         ));
                     }
                     expr_id = rewrite.new_expr;

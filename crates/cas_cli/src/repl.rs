@@ -10,7 +10,8 @@ use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
 use cas_engine::rules::calculus::IntegrateRule;
 use cas_engine::rules::grouping::CollectRule;
 use rustyline::error::ReadlineError;
-use cas_ast::DisplayExpr;
+use cas_ast::{DisplayExpr, ExprId, Expr, Context};
+use cas_engine::step::PathStep;
 
 
 use crate::completer::CasHelper;
@@ -21,6 +22,73 @@ pub struct Repl {
     simplifier: Simplifier,
     show_steps: bool,
     config: CasConfig,
+}
+
+fn reconstruct_global_expr(context: &mut Context, root: ExprId, path: &[PathStep], replacement: ExprId) -> ExprId {
+    if path.is_empty() {
+        return replacement;
+    }
+
+    let current_step = &path[0];
+    let remaining_path = &path[1..];
+    let expr = context.get(root).clone();
+
+    match (expr, current_step) {
+        (Expr::Add(l, r), PathStep::Left) => {
+            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+            context.add(Expr::Add(new_l, r))
+        },
+        (Expr::Add(l, r), PathStep::Right) => {
+            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+            context.add(Expr::Add(l, new_r))
+        },
+        (Expr::Sub(l, r), PathStep::Left) => {
+            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+            context.add(Expr::Sub(new_l, r))
+        },
+        (Expr::Sub(l, r), PathStep::Right) => {
+            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+            context.add(Expr::Sub(l, new_r))
+        },
+        (Expr::Mul(l, r), PathStep::Left) => {
+            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+            context.add(Expr::Mul(new_l, r))
+        },
+        (Expr::Mul(l, r), PathStep::Right) => {
+            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+            context.add(Expr::Mul(l, new_r))
+        },
+        (Expr::Div(l, r), PathStep::Left) => {
+            let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
+            context.add(Expr::Div(new_l, r))
+        },
+        (Expr::Div(l, r), PathStep::Right) => {
+            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+            context.add(Expr::Div(l, new_r))
+        },
+        (Expr::Pow(b, e), PathStep::Base) => {
+            let new_b = reconstruct_global_expr(context, b, remaining_path, replacement);
+            context.add(Expr::Pow(new_b, e))
+        },
+        (Expr::Pow(b, e), PathStep::Exponent) => {
+            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
+            context.add(Expr::Pow(b, new_e))
+        },
+        (Expr::Neg(e), PathStep::Inner) => {
+            let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
+            context.add(Expr::Neg(new_e))
+        },
+        (Expr::Function(name, args), PathStep::Arg(idx)) => {
+            let mut new_args = args.clone();
+            if *idx < new_args.len() {
+                new_args[*idx] = reconstruct_global_expr(context, new_args[*idx], remaining_path, replacement);
+                context.add(Expr::Function(name, new_args))
+            } else {
+                root // Should not happen if path is valid
+            }
+        },
+        _ => root, // Path mismatch or invalid structure
+    }
 }
 
 impl Repl {
@@ -442,9 +510,11 @@ impl Repl {
                             let (result, steps) = self.simplifier.simplify(subbed);
                             if self.show_steps {
                                 println!("Steps:");
+                                let mut current_root = subbed;
                                 for (i, step) in steps.iter().enumerate() {
                                     println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                                    println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
+                                    current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                    println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
                                 }
                             }
                             println!("Result: {}", DisplayExpr { context: &self.simplifier.context, id: result });
@@ -570,9 +640,12 @@ impl Repl {
                         println!("No simplification steps needed.");
                     } else {
                         println!("Steps:");
+                        let mut current_root = expr;
                         for (i, step) in steps.iter().enumerate() {
                             println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                            println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
+                            // Reconstruct global expression
+                            current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                            println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
                         }
                     }
                 }
@@ -625,9 +698,12 @@ impl Repl {
                         println!("No simplification steps needed.");
                     } else {
                         println!("Steps (Aggressive Mode):");
+                        let mut current_root = expr;
                         for (i, step) in steps.iter().enumerate() {
                             println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                            println!("   -> {}", DisplayExpr { context: &temp_simplifier.context, id: step.after });
+                            // Reconstruct global expression
+                            current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
+                            println!("   -> {}", DisplayExpr { context: &temp_simplifier.context, id: current_root });
                         }
                     }
                 }
