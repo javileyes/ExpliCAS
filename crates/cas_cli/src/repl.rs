@@ -174,8 +174,7 @@ impl Repl {
         }
         
         if config.factor_difference_squares {
-            // simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule));
-            println!("Warning: 'factor_difference_squares' is currently unstable and has been disabled to prevent crashes.");
+            simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule));
         }
 
         if config.root_denesting {

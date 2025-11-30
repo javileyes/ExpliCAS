@@ -1,13 +1,16 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule};
+use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule, DistributeConstantRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule, AddFractionsRule, FactorRule, SimplifyMulDivRule, ExpandRule};
+use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::grouping::CollectRule;
+use cas_engine::rules::number_theory::NumberTheoryRule;
+
 use cas_parser::parse;
 use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
 use cas_engine::solver::solve;
@@ -50,11 +53,15 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::DistributeDivisionRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
-    // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Moved to specific test to avoid loops 
+    simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); 
 
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
+    simplifier.add_rule(Box::new(DistributeConstantRule));
+    simplifier.add_rule(Box::new(IntegrateRule));
+    simplifier.add_rule(Box::new(DiffRule));
+    simplifier.add_rule(Box::new(NumberTheoryRule));
     simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
     simplifier
 }
@@ -122,23 +129,8 @@ fn test_nested_fraction() {
 #[test]
 fn test_trig_identity_hidden() {
     let input = "sin(x)^4 - cos(x)^4 - (sin(x)^2 - cos(x)^2)";
-    // Custom simplifier with DistributeRule enabled (safe now thanks to complexity check in FactorDifferenceSquaresRule)
-    let mut simplifier = cas_engine::Simplifier::new();
-    let mut ctx = Context::new();
-    simplifier.context = ctx;
-    
-    // Add minimal rules needed
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::AddZeroRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulOneRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::CombineConstantsRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::AnnihilationRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule)); // Global one
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule)); // Now safe to add!
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::PythagoreanIdentityRule));
-    simplifier.add_rule(Box::new(FactorDifferenceSquaresRule));
-    
-    // We need ExpandRule? Maybe not.
+    let mut simplifier = create_full_simplifier();
+    // No manual rules needed anymore
     
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
@@ -316,14 +308,7 @@ fn test_zero_equivalence_suite() {
 
     for input in cases {
         let mut simplifier = create_full_simplifier();
-        // Ensure we have all necessary rules
-        simplifier.add_rule(Box::new(TanToSinCosRule));
-        simplifier.add_rule(Box::new(SimplifyMulDivRule));
-        simplifier.add_rule(Box::new(AddFractionsRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule)); // Global
-        // Note: FactorDifferenceSquaresRule is NOT added here to avoid loops with DistributeRule in Rational Crusher
-        // if AddFractionsRule is not prioritized or if they fight.
-        // But AddFractionsRule should handle Rational Crusher.
+        // All necessary rules are now in create_full_simplifier
         
         let expr = parse(input, &mut simplifier.context).unwrap();
         let (simplified, _) = simplifier.simplify(expr);
@@ -341,10 +326,7 @@ fn test_torture_6_conjugate() {
     // Expected: 0
     let input = "1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)";
     let mut simplifier = create_full_simplifier();
-    // Needs rationalization or smart fraction subtraction
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyFractionRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule)); // x-1 -> (sqrt(x)-1)(sqrt(x)+1)
+    // Rules are now in create_full_simplifier
 
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
@@ -358,8 +340,7 @@ fn test_torture_7_log_chain() {
     // Expected: 0
     let input = "(ln(x) / ln(10)) * (ln(10) / ln(x)) - 1";
     let mut simplifier = create_full_simplifier();
-    // Needs cross-cancellation in multiplication
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
+    // Rules are now in create_full_simplifier
 
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
@@ -373,9 +354,7 @@ fn test_torture_8_sophie_germain() {
     // Expected: 0
     let input_str = "(x^2 + 2*y^2 + 2*x*y) * (x^2 + 2*y^2 - 2*x*y) - (x^4 + 4*y^4)";
     let mut simplifier = create_full_simplifier();
-    // Needs aggressive expansion and distribution
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::ExpandRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule));
+    // Rules are now in create_full_simplifier
 
     let input = format!("expand({})", input_str);
     let expr = parse(&input, &mut simplifier.context).unwrap();
@@ -390,8 +369,7 @@ fn test_torture_9_angle_compound() {
     // Expected: 0
     let input = "sin(x + y) - (sin(x)*cos(y) + cos(x)*sin(y))";
     let mut simplifier = create_full_simplifier();
-    // Needs Sin(a+b) expansion
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule)); 
+    // Rules are now in create_full_simplifier 
 
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
@@ -441,54 +419,8 @@ fn test_torture_11_polynomial_stress() {
     let mut simplifier = Simplifier::new();
     // Always enabled core rules
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
-    simplifier.add_rule(Box::new(CanonicalizeAddRule));
-    simplifier.add_rule(Box::new(CanonicalizeMulRule));
-    simplifier.add_rule(Box::new(CanonicalizeRootRule));
-    simplifier.add_rule(Box::new(EvaluateAbsRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
-    simplifier.add_rule(Box::new(EvaluateTrigRule));
-    simplifier.add_rule(Box::new(PythagoreanIdentityRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule));
-    simplifier.add_rule(Box::new(TanToSinCosRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
-    simplifier.add_rule(Box::new(EvaluateLogRule));
-    simplifier.add_rule(Box::new(ExponentialLogRule));
-    simplifier.add_rule(Box::new(SimplifyFractionRule));
-    simplifier.add_rule(Box::new(FactorRule));
-    simplifier.add_rule(Box::new(CollectRule));
-    simplifier.add_rule(Box::new(EvaluatePowerRule));
-    // simplifier.add_rule(Box::new(EvaluatePowerRule)); // Duplicate in Repl, but skipping here
-    simplifier.add_rule(Box::new(cas_engine::rules::logarithms::SplitLogExponentsRule));
-    
-    // Advanced Algebra Rules (Critical for Solver)
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
-    
-    // Configurable rules (Defaults)
-    // distribute: false in config default, BUT user might have enabled it?
-    // Wait, if distribute is false, then DistributeRule is NOT added.
-    // But the user's output shows "Distribute" steps. So distribute MUST be true.
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
-    
-    // expand_binomials: true
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::BinomialExpansionRule));
-    
-    // distribute_constants: true
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeConstantRule));
-    
-    simplifier.add_rule(Box::new(CombineLikeTermsRule));
-    simplifier.add_rule(Box::new(AnnihilationRule));
-    simplifier.add_rule(Box::new(ProductPowerRule));
-    simplifier.add_rule(Box::new(PowerPowerRule));
-    simplifier.add_rule(Box::new(ZeroOnePowerRule));
-    simplifier.add_rule(Box::new(AddZeroRule));
-    simplifier.add_rule(Box::new(MulOneRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
-    simplifier.add_rule(Box::new(CombineConstantsRule));
-    // simplifier.add_rule(Box::new(IntegrateRule)); // Not needed for this test
+    let mut simplifier = create_full_simplifier();
+    // No manual rules needed anymore
 
     let expr = parse("(x - 1) * (x + 1) * (x^2 + 1) * (x^4 + 1) - (x^8 - 1)", &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
@@ -569,9 +501,7 @@ fn test_torture_18_product_rule() {
     // 18. Regla del Producto
     // diff(x * sin(x), x) -> sin(x) + x * cos(x)
     let mut simplifier = create_full_simplifier();
-    // Add DiffRule
-    use cas_engine::rules::calculus::DiffRule;
-    simplifier.add_rule(Box::new(DiffRule));
+    // DiffRule is now in create_full_simplifier
     
     let expr = parse("diff(x * sin(x), x)", &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
