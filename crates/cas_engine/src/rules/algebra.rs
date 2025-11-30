@@ -26,6 +26,10 @@ define_rule!(
         // 2. Convert to Polynomials
         let p_num = Polynomial::from_expr(ctx, num, var).ok()?;
         let p_den = Polynomial::from_expr(ctx, den, var).ok()?;
+        
+        if p_den.is_zero() {
+            return None;
+        }
 
         // 3. Compute GCD
         let gcd = p_num.gcd(&p_den);
@@ -235,9 +239,7 @@ define_rule!(
                         description: "expand(constant) -> constant".to_string(),
                     });
                 }
-                if vars.len() != 1 {
-                    return None;
-                }
+                // Allow multivariate expansion by picking one variable as 'main' and treating others as coefficients
                 let var = vars.iter().next().unwrap();
                 
                 if let Ok(poly) = Polynomial::from_expr(ctx, arg, var) {
@@ -245,6 +247,69 @@ define_rule!(
                         new_expr: poly.to_expr(ctx),
                         description: "expand(poly)".to_string(),
                     });
+                } else {
+                    // Fallback: structural expansion
+                    let arg_data = ctx.get(arg).clone();
+                    match arg_data {
+                        Expr::Add(l, r) => {
+                            let ex_l = ctx.add(Expr::Function("expand".to_string(), vec![l]));
+                            let ex_r = ctx.add(Expr::Function("expand".to_string(), vec![r]));
+                            let new_expr = ctx.add(Expr::Add(ex_l, ex_r));
+                            return Some(Rewrite { new_expr, description: "distribute expand".to_string() });
+                        },
+                        Expr::Sub(l, r) => {
+                            let ex_l = ctx.add(Expr::Function("expand".to_string(), vec![l]));
+                            let ex_r = ctx.add(Expr::Function("expand".to_string(), vec![r]));
+                            let new_expr = ctx.add(Expr::Sub(ex_l, ex_r));
+                            return Some(Rewrite { new_expr, description: "distribute expand".to_string() });
+                        },
+                        Expr::Mul(_, _) => {
+                            // Flatten multiplication to find any Add term
+                            let mut factors = Vec::new();
+                            let mut stack = vec![arg];
+                            while let Some(curr) = stack.pop() {
+                                if let Expr::Mul(a, b) = ctx.get(curr) {
+                                    stack.push(*b);
+                                    stack.push(*a);
+                                } else {
+                                    factors.push(curr);
+                                }
+                            }
+                            
+                            // Find an Add factor
+                            let mut add_idx = None;
+                            for (i, &f) in factors.iter().enumerate() {
+                                if let Expr::Add(_, _) = ctx.get(f) {
+                                    add_idx = Some(i);
+                                    break;
+                                }
+                                if let Expr::Sub(_, _) = ctx.get(f) {
+                                    add_idx = Some(i);
+                                    break;
+                                }
+                            }
+                            
+                            if let Some(idx) = add_idx {
+                                // Distribute all other factors into this Add
+                                let add_term = factors.remove(idx);
+                                let mut multiplier = factors[0];
+                                for &f in factors.iter().skip(1) {
+                                    multiplier = ctx.add(Expr::Mul(multiplier, f));
+                                }
+                                
+                                let new_expr = distribute(ctx, add_term, multiplier);
+                                let ex_new = ctx.add(Expr::Function("expand".to_string(), vec![new_expr]));
+                                return Some(Rewrite { new_expr: ex_new, description: "distribute flattened (expand)".to_string() });
+                            }
+                            
+                            // If no Add factor, remove expand wrapper
+                            return Some(Rewrite { new_expr: arg, description: "expand(atom)".to_string() });
+                        },
+                        _ => {
+                            // Remove expand wrapper for atoms/others
+                            return Some(Rewrite { new_expr: arg, description: "expand(atom)".to_string() });
+                        }
+                    }
                 }
             }
         }
@@ -849,7 +914,9 @@ define_rule!(
 
         // Multiply num and den by conjugate
         let new_num = ctx.add(Expr::Mul(num, conjugate));
-        let new_den = ctx.add(Expr::Mul(den, conjugate));
+        let den_mul = ctx.add(Expr::Mul(den, conjugate));
+        let expand_str = "expand".to_string();
+        let new_den = ctx.add(Expr::Function(expand_str, vec![den_mul]));
         
         let new_expr = ctx.add(Expr::Div(new_num, new_den));
         return Some(Rewrite {

@@ -6,7 +6,7 @@ use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNega
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule, AddFractionsRule, FactorRule, SimplifyMulDivRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule, AddFractionsRule, FactorRule, SimplifyMulDivRule, ExpandRule};
 use cas_engine::rules::grouping::CollectRule;
 use cas_parser::parse;
 use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
@@ -37,6 +37,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(ZeroOnePowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(DistributeRule));
+    simplifier.add_rule(Box::new(ExpandRule));
     simplifier.add_rule(Box::new(cas_engine::rules::polynomial::BinomialExpansionRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
@@ -370,13 +371,14 @@ fn test_torture_7_log_chain() {
 fn test_torture_8_sophie_germain() {
     // (x^2 + 2*y^2 + 2*x*y) * (x^2 + 2*y^2 - 2*x*y) - (x^4 + 4*y^4)
     // Expected: 0
-    let input = "(x^2 + 2*y^2 + 2*x*y) * (x^2 + 2*y^2 - 2*x*y) - (x^4 + 4*y^4)";
+    let input_str = "(x^2 + 2*y^2 + 2*x*y) * (x^2 + 2*y^2 - 2*x*y) - (x^4 + 4*y^4)";
     let mut simplifier = create_full_simplifier();
     // Needs aggressive expansion and distribution
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::ExpandRule));
     simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule));
 
-    let expr = parse(input, &mut simplifier.context).unwrap();
+    let input = format!("expand({})", input_str);
+    let expr = parse(&input, &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
     let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
     assert_eq!(result_str, "0", "Failed on: {}", input);

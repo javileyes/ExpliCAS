@@ -197,6 +197,7 @@ impl<'a> Transformer for LocalSimplificationTransformer<'a> {
 
 impl<'a> LocalSimplificationTransformer<'a> {
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
+        // println!("Simplifying: {:?}", id);
         if let Some(&cached) = self.cache.get(&id) {
             return cached;
         }
