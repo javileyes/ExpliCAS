@@ -16,10 +16,13 @@ define_rule!(
             // a * (b + c) -> a*b + a*c
             let r_data = ctx.get(r).clone();
             if let Expr::Add(b, c) = r_data {
-                // Only distribute if 'l' is a constant (Number)
-                // This preserves factored forms like x(x+1) or (x+1)(x+2)
-                // while allowing canonicalization like 2(x+1) -> 2x+2
-                if !matches!(ctx.get(l), Expr::Number(_)) {
+                // Distribute if 'l' is a Number or a Function (e.g. sin(x))
+                // Do NOT distribute if 'l' is a Variable (e.g. x) or an Add (e.g. x+1)
+                // This preserves polynomial factorization x(x+1) while allowing trig expansion sin(x)(1-sin^2(x))
+                let l_expr = ctx.get(l);
+                let should_distribute = matches!(l_expr, Expr::Number(_)) || matches!(l_expr, Expr::Function(_, _));
+                
+                if !should_distribute {
                     return None;
                 }
                 
@@ -28,14 +31,17 @@ define_rule!(
                 let new_expr = ctx.add(Expr::Add(ab, ac));
                 return Some(Rewrite {
                     new_expr,
-                    description: "Distribute Constant".to_string(),
+                    description: "Distribute".to_string(),
                 });
             }
             // (b + c) * a -> b*a + c*a
             let l_data = ctx.get(l).clone();
             if let Expr::Add(b, c) = l_data {
-                // Only distribute if 'r' is a constant
-                if !matches!(ctx.get(r), Expr::Number(_)) {
+                // Same logic for 'r'
+                let r_expr = ctx.get(r);
+                let should_distribute = matches!(r_expr, Expr::Number(_)) || matches!(r_expr, Expr::Function(_, _));
+
+                if !should_distribute {
                     return None;
                 }
 
@@ -44,7 +50,7 @@ define_rule!(
                 let new_expr = ctx.add(Expr::Add(ba, ca));
                 return Some(Rewrite {
                     new_expr,
-                    description: "Distribute Constant".to_string(),
+                    description: "Distribute".to_string(),
                 });
             }
         }
