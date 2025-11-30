@@ -26,6 +26,7 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 -   **Equation Solving**: Isolate variables in equations (`solve x+2=5, x`).
 -   **Substitution**: Replace variables with values or other expressions.
 -   **Interactive CLI**: Command-line interface with history support.
+-   **Configuration**: Enable/disable specific simplification rules (e.g., `root_denesting`, `trig_double_angle`) via the `config` command.
 -   **Verbose Mode**: Toggle step-by-step output (`steps on/off`) for educational or performance purposes.
 
 ## Getting Started
@@ -175,6 +176,53 @@ Result: x = pi / 6
 > subst x^2 + x, x=3
 ```
 **Output:** `12`
+
+### Advanced Examples
+
+ExpliCAS can handle complex symbolic identities and simplifications.
+
+#### 1. Ramanujan's Nested Roots
+Simplifies nested square roots automatically.
+```text
+> sqrt(3 + 2*sqrt(2))
+```
+**Output:** `1 + sqrt(2)`
+
+#### 2. Logarithmic Mirror
+Simplifies complex exponential and logarithmic identities.
+```text
+> x^(1/ln(x))
+```
+**Output:** `e`
+
+#### 3. Trigonometric Identities
+Verifies complex identities like the triple angle formula.
+```text
+> simplify sin(3*x) - (3*sin(x) - 4*sin(x)^3)
+```
+**Output:** `0`
+
+#### 4. Rational Simplification
+Handles polynomial division and simplification.
+```text
+> (x^3 - 1) / (x - 1)
+```
+**Output:** `x^2 + x + 1`
+
+### Configuration
+
+You can configure specific simplification rules directly from the CLI.
+
+```text
+> config list
+```
+Shows available configurable rules.
+
+```text
+> config disable canonicalize_trig_square
+> config enable root_denesting
+```
+Toggles specific rules on or off.
 
 ### Running Tests
 

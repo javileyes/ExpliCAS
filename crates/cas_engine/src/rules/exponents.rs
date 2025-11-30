@@ -14,8 +14,7 @@ define_rule!(
         // x^a * x^b -> x^(a+b)
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
-            let lhs_data = ctx.get(lhs).clone();
-            let rhs_data = ctx.get(rhs).clone();
+
             
             let lhs_data = ctx.get(lhs).clone();
             let rhs_data = ctx.get(rhs).clone();
