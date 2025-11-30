@@ -149,13 +149,29 @@ fn parse_atom(input: &str) -> IResult<&str, ParseNode> {
     )(input)
 }
 
+// Factorial (Postfix) - Higher precedence than power?
+// Actually, usually ! binds very tightly.
+// x^y! -> x^(y!)
+// So parse_factorial should be called by parse_power for the base?
+// No, parse_power calls parse_factorial.
+// parse_factorial calls parse_atom.
+
+fn parse_factorial(input: &str) -> IResult<&str, ParseNode> {
+    let (input, atom) = parse_atom(input)?;
+    fold_many0(
+        preceded(multispace0, tag("!")),
+        move || atom.clone(),
+        |acc, _| ParseNode::Function("fact".to_string(), vec![acc]),
+    )(input)
+}
+
 // Power
 fn parse_power(input: &str) -> IResult<&str, ParseNode> {
-    let (input, init) = parse_atom(input)?;
+    let (input, init) = parse_factorial(input)?;
     fold_many0(
         pair(
             preceded(multispace0, tag("^")),
-            parse_atom,
+            parse_factorial,
         ),
         move || init.clone(),
         |acc, (_, val)| ParseNode::Pow(Box::new(acc), Box::new(val)),
@@ -178,13 +194,14 @@ fn parse_term(input: &str) -> IResult<&str, ParseNode> {
     let (input, init) = parse_unary(input)?;
     fold_many0(
         pair(
-            preceded(multispace0, alt((tag("*"), tag("/")))),
+            preceded(multispace0, alt((tag("*"), tag("/"), tag("mod")))),
             parse_unary,
         ),
         move || init.clone(),
         |acc, (op, val)| match op {
             "*" => ParseNode::Mul(Box::new(acc), Box::new(val)),
             "/" => ParseNode::Div(Box::new(acc), Box::new(val)),
+            "mod" => ParseNode::Function("mod".to_string(), vec![acc, val]),
             _ => unreachable!(),
         },
     )(input)

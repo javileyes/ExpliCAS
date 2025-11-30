@@ -69,3 +69,36 @@ fn test_prime_factors_large() {
     assert!(out.contains("2^2"));
     assert!(out.contains("5^2"));
 }
+
+#[test]
+fn test_factorial() {
+    let mut simplifier = create_nt_simplifier();
+    // fact(5) -> 120
+    let expr = parse("fact(5)", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "120");
+
+    // 5! -> 120
+    let expr = parse("5!", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "120");
+    
+    // 0! -> 1
+    let expr = parse("0!", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
+}
+
+#[test]
+fn test_infix_mod() {
+    let mut simplifier = create_nt_simplifier();
+    // 10 mod 3 -> 1
+    let expr = parse("10 mod 3", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
+    
+    // (20 + 5) mod 7 -> 25 mod 7 -> 4
+    let expr = parse("(20 + 5) mod 7", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "4");
+}

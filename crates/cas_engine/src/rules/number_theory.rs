@@ -57,6 +57,16 @@ define_rule!(
                     }
                 }
             },
+            "fact" | "factorial" => {
+                if args.len() == 1 {
+                    if let Some(res) = compute_factorial(ctx, args[0]) {
+                        return Some(Rewrite {
+                            new_expr: res,
+                            description: format!("fact({:?})", args[0]),
+                        });
+                    }
+                }
+            },
             _ => {}
         }
         None
@@ -163,6 +173,27 @@ fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     
     // Return as a "factored" function to prevent CombineConstants from undoing it
     Some(ctx.add(Expr::Function("factored".to_string(), exprs)))
+}
+
+fn compute_factorial(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
+    let val = get_integer(ctx, n)?;
+    if val.is_negative() {
+        return None; // Undefined for negative integers
+    }
+    
+    // Limit factorial size to prevent hanging
+    if val > BigInt::from(1000) {
+        return None; // Too large to compute
+    }
+    
+    let mut res = BigInt::one();
+    let mut i = BigInt::one();
+    while i <= val {
+        res = res * &i;
+        i = i + 1;
+    }
+    
+    Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
 }
 
 fn get_integer(ctx: &Context, expr: ExprId) -> Option<BigInt> {

@@ -397,6 +397,31 @@ impl Repl {
                 println!("             Supports basic arithmetic, power rule, chain rule, and common functions.");
                 println!("Example: diff(sin(x^2), x) -> 2*x*cos(x^2)");
             },
+            "gcd" => {
+                println!("Function: gcd <a, b>");
+                println!("Description: Computes the Greatest Common Divisor of two integers.");
+                println!("Example: gcd(12, 18) -> 6");
+            },
+            "lcm" => {
+                println!("Function: lcm <a, b>");
+                println!("Description: Computes the Least Common Multiple of two integers.");
+                println!("Example: lcm(4, 6) -> 12");
+            },
+            "mod" => {
+                println!("Function: mod <a, n>");
+                println!("Description: Computes the remainder of a divided by n (Euclidean modulo).");
+                println!("Example: mod(10, 3) -> 1");
+            },
+            "factors" | "prime_factors" => {
+                println!("Function: factors <n>");
+                println!("Description: Computes the prime factorization of an integer.");
+                println!("Example: factors(12) -> 2^2 * 3");
+            },
+            "fact" | "factorial" => {
+                println!("Function: fact <n> or <n>!");
+                println!("Description: Computes the factorial of a non-negative integer.");
+                println!("Example: fact(5) -> 120, 5! -> 120");
+            },
             "config" => {
                 println!("Command: config <subcommand> [args]");
                 println!("Description: Manages CLI configuration.");
@@ -464,6 +489,12 @@ impl Repl {
         println!("  collect <expr>, <var>   Group terms by variable");
         println!("  equiv <e1>, <e2>        Check if two expressions are equivalent");
         println!("  solve <eq>, <var>       Solve equation for variable");
+        println!("  diff <expr>, <var>      Compute symbolic derivative");
+        println!("  gcd <a, b>              Greatest Common Divisor");
+        println!("  lcm <a, b>              Least Common Multiple");
+        println!("  mod <a, n>              Modular arithmetic");
+        println!("  factors <n>             Prime factorization");
+        println!("  fact <n>                Factorial (or n!)");
         println!("  steps on/off            Toggle step-by-step output");
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
