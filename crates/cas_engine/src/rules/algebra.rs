@@ -365,21 +365,49 @@ define_rule!(
             // Check for Pythagorean identity in term2 (a + b)
             // sin^2 + cos^2 = 1
             let mut term2 = ctx.add(Expr::Add(root_l, root_r));
+            let mut is_pythagorean = false;
             
             if is_sin_cos_pair(ctx, root_l, root_r) {
                  term2 = ctx.num(1);
+                 is_pythagorean = true;
             }
 
-            let new_expr = ctx.add(Expr::Mul(term1, term2));
+            let new_expr = if is_pythagorean {
+                term1
+            } else {
+                ctx.add(Expr::Mul(term1, term2))
+            };
             
-            return Some(Rewrite {
-                new_expr,
-                description: "Factor difference of squares".to_string(),
-            });
+            // Complexity check to avoid loops with DistributeRule
+            // Only apply if the new expression is simpler (fewer nodes)
+            // or if we performed a reduction (term2 became 1)
+            let old_complexity = count_nodes(ctx, expr);
+            let new_complexity = count_nodes(ctx, new_expr);
+            
+            println!("FactorDiffSq: {} -> {}", cas_ast::DisplayExpr { context: ctx, id: expr }, cas_ast::DisplayExpr { context: ctx, id: new_expr });
+            println!("Complexity: {} -> {}", old_complexity, new_complexity);
+
+            if new_complexity <= old_complexity {
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Factor difference of squares (simplifying)".to_string(),
+                });
+            }
         }
         None
     }
 );
+
+fn count_nodes(ctx: &Context, expr: ExprId) -> usize {
+    match ctx.get(expr) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            1 + count_nodes(ctx, *l) + count_nodes(ctx, *r)
+        },
+        Expr::Neg(e) => 1 + count_nodes(ctx, *e),
+        Expr::Function(_, args) => 1 + args.iter().map(|a| count_nodes(ctx, *a)).sum::<usize>(),
+        _ => 1
+    }
+}
 
 use crate::helpers::{get_square_root, get_trig_arg, is_trig_pow};
 
@@ -391,12 +419,20 @@ fn is_sin_cos_pair(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     if arg_a.is_none() || arg_b.is_none() {
         return false;
     }
-    if arg_a != arg_b {
+    
+    let a_val = arg_a.unwrap();
+    let b_val = arg_b.unwrap();
+    
+    if a_val != b_val && crate::ordering::compare_expr(ctx, a_val, b_val) != std::cmp::Ordering::Equal {
         return false;
     }
 
-    (is_trig_pow(ctx, a, "sin", 2) && is_trig_pow(ctx, b, "cos", 2)) ||
-    (is_trig_pow(ctx, a, "cos", 2) && is_trig_pow(ctx, b, "sin", 2))
+    let is_sin_a = is_trig_pow(ctx, a, "sin", 2);
+    let is_cos_b = is_trig_pow(ctx, b, "cos", 2);
+    let is_cos_a = is_trig_pow(ctx, a, "cos", 2);
+    let is_sin_b = is_trig_pow(ctx, b, "sin", 2);
+    
+    (is_sin_a && is_cos_b) || (is_cos_a && is_sin_b)
 }
 
 fn is_negative_term(ctx: &Context, expr: ExprId) -> bool {

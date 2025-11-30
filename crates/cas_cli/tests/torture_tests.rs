@@ -27,6 +27,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleConsistencyRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
@@ -120,7 +121,7 @@ fn test_nested_fraction() {
 #[test]
 fn test_trig_identity_hidden() {
     let input = "sin(x)^4 - cos(x)^4 - (sin(x)^2 - cos(x)^2)";
-    // Custom simplifier without DistributeRule to avoid fighting with FactorDifferenceSquaresRule
+    // Custom simplifier with DistributeRule enabled (safe now thanks to complexity check in FactorDifferenceSquaresRule)
     let mut simplifier = cas_engine::Simplifier::new();
     let mut ctx = Context::new();
     simplifier.context = ctx;
@@ -132,6 +133,7 @@ fn test_trig_identity_hidden() {
     simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::CombineConstantsRule));
     simplifier.add_rule(Box::new(cas_engine::rules::polynomial::AnnihilationRule));
     simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule)); // Global one
+    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule)); // Now safe to add!
     simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(FactorDifferenceSquaresRule));
     
@@ -150,20 +152,11 @@ fn test_algebraic_labyrinth() {
     let input = "ln(e^3) + (sin(x) + cos(x))^2 - sin(2*x) - (x^3 - 8)/(x - 2) + x^2 + 2*x";
     let mut simplifier = create_full_simplifier();
     
-    // Ensure we have necessary rules
-    // Logarithms
-    simplifier.add_rule(Box::new(cas_engine::rules::logarithms::EvaluateLogRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::logarithms::ExponentialLogRule));
-    
-    // Trig
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::PythagoreanIdentityRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::ExpandRule)); // For (sin+cos)^2
-    
-    // Polynomial/Rational
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyFractionRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule)); // For negative sign distribution
-    simplifier.add_rule(Box::new(cas_engine::rules::polynomial::CombineLikeTermsRule));
+    // All necessary rules are now in create_full_simplifier()
+    // - DoubleAngleRule for sin(2x)
+    // - BinomialExpansionRule for (sin+cos)^2
+    // - DistributeRule for negative sign
+    // - Log/Trig/Poly rules
 
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
