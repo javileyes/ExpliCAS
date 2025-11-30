@@ -44,6 +44,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::DistributeDivisionRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Moved to specific test to avoid loops 
@@ -420,6 +421,20 @@ fn test_torture_10_ghost_solution() {
         panic!("Expected Discrete solution, got {:?}", result);
     }
 }
+
+#[test]
+fn test_torture_24_difference_quotient() {
+    let mut simplifier = create_full_simplifier();
+    // ((x + h)^3 - x^3) / h - (3*x^2 + 3*x*h + h^2)
+    // Should simplify to 0
+    let expr = parse("((x + h)^3 - x^3) / h - (3*x^2 + 3*x*h + h^2)", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    
+    // Check if result is 0
+    let out = format!("{}", DisplayExpr { context: &simplifier.context, id: res });
+    assert_eq!(out, "0", "Difference Quotient failed to simplify to 0");
+}
+
 #[test]
 fn test_torture_11_polynomial_stress() {
     // 11. La "Cascada de Cuadrados"

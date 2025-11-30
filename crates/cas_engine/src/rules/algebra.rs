@@ -919,13 +919,65 @@ define_rule!(
             let nf = num_factors[i];
             let mut found = false;
             for j in 0..den_factors.len() {
-                if crate::ordering::compare_expr(ctx, nf, den_factors[j]) == std::cmp::Ordering::Equal {
+                let df = den_factors[j];
+                
+                // Check exact match
+                if crate::ordering::compare_expr(ctx, nf, df) == std::cmp::Ordering::Equal {
                     // Found common factor
                     den_factors.remove(j);
                     found = true;
                     changed = true;
                     break;
                 }
+                
+                // Check power cancellation: nf = x^n, df = x^m
+                // Case 1: nf = base^n, df = base. (n > 1)
+                let nf_pow = if let Expr::Pow(b, e) = ctx.get(nf) { Some((*b, *e)) } else { None };
+                if let Some((b, e)) = nf_pow {
+                    if crate::ordering::compare_expr(ctx, b, df) == std::cmp::Ordering::Equal {
+                        // nf = df^e. Cancel df.
+                        // New nf = df^(e-1).
+                        // We need to construct new term.
+                        if let Expr::Number(n) = ctx.get(e) {
+                             let new_exp = n - num_rational::BigRational::one();
+                             let new_term = if new_exp.is_one() {
+                                 b
+                             } else {
+                                 let exp_node = ctx.add(Expr::Number(new_exp));
+                                 ctx.add(Expr::Pow(b, exp_node))
+                             };
+                             num_factors[i] = new_term; // Update factor in place
+                             den_factors.remove(j); // Remove denominator factor
+                             found = false; // We didn't remove num factor entirely, just modified it.
+                             changed = true;
+                             break;
+                        }
+                    }
+                }
+                
+                // Case 2: nf = base, df = base^m. (m > 1)
+                // Cancel nf from df. df becomes df^(m-1).
+                let df_pow = if let Expr::Pow(b, e) = ctx.get(df) { Some((*b, *e)) } else { None };
+                if let Some((b, e)) = df_pow {
+                    if crate::ordering::compare_expr(ctx, nf, b) == std::cmp::Ordering::Equal {
+                        if let Expr::Number(n) = ctx.get(e) {
+                             let new_exp = n - num_rational::BigRational::one();
+                             let new_term = if new_exp.is_one() {
+                                 b
+                             } else {
+                                 let exp_node = ctx.add(Expr::Number(new_exp));
+                                 ctx.add(Expr::Pow(b, exp_node))
+                             };
+                             den_factors[j] = new_term; // Update den factor
+                             found = true; // Remove num factor
+                             changed = true;
+                             break;
+                        }
+                    }
+                }
+                
+                // Case 3: nf = base^n, df = base^m.
+                // ... (implement if needed, but Case 1/2 cover most)
             }
             if found {
                 num_factors.remove(i);
@@ -1132,7 +1184,171 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
     simplifier.add_rule(Box::new(RootDenestingRule));
+    simplifier.add_rule(Box::new(DistributeDivisionRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
+}
+
+define_rule!(
+    DistributeDivisionRule,
+    "Distribute Division",
+    |ctx, expr| {
+        let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
+            (*n, *d)
+        } else {
+            return None;
+        };
+
+        // Check if num is Add/Sub
+        let num_data = ctx.get(num).clone();
+        match num_data {
+            Expr::Add(_, _) | Expr::Sub(_, _) => {
+                // Flatten terms
+                let terms = flatten_add_sub(ctx, num);
+                
+                // Check if denominator divides ALL terms
+                if terms.iter().all(|(t, _)| is_divisible(ctx, *t, den)) {
+                    // Distribute
+                    let mut new_terms = Vec::new();
+                    for (t, is_add) in terms {
+                        let div = ctx.add(Expr::Div(t, den));
+                        new_terms.push((div, is_add));
+                    }
+                    
+                    // Reconstruct
+                    let mut res = new_terms[0].0;
+                    if !new_terms[0].1 {
+                        res = ctx.add(Expr::Neg(res));
+                    }
+                    
+                    for (t, is_add) in new_terms.iter().skip(1) {
+                        if *is_add {
+                            res = ctx.add(Expr::Add(res, *t));
+                        } else {
+                            res = ctx.add(Expr::Sub(res, *t));
+                        }
+                    }
+                    
+                    return Some(Rewrite {
+                        new_expr: res,
+                        description: "Distribute division".to_string(),
+                    });
+                }
+            },
+            _ => {}
+        }
+        None
+    }
+);
+
+fn flatten_add_sub(ctx: &Context, expr: ExprId) -> Vec<(ExprId, bool)> {
+    let mut terms = Vec::new();
+    let mut stack = vec![(expr, true)]; // expr, is_positive
+    
+    while let Some((curr, pos)) = stack.pop() {
+        match ctx.get(curr) {
+            Expr::Add(l, r) => {
+                stack.push((*r, pos));
+                stack.push((*l, pos));
+            },
+            Expr::Sub(l, r) => {
+                stack.push((*r, !pos));
+                stack.push((*l, pos));
+            },
+            _ => {
+                terms.push((curr, pos));
+            }
+        }
+    }
+    // Reverse to keep order roughly? Stack reverses order.
+    // Add is commutative, Sub is not.
+    // But we flattened it to signed terms.
+    // (a - b) -> a (pos), b (neg).
+    // Reconstruct: a - b.
+    // Order matters for reconstruction if we want to preserve structure, but for addition it's fine.
+    // Let's just return as is.
+    terms
+}
+
+fn is_divisible(ctx: &Context, term: ExprId, divisor: ExprId) -> bool {
+    // Compare content, not just IDs
+    if ctx.get(term) == ctx.get(divisor) { return true; }
+    
+    // Check if divisor is a factor of term
+    // term = A * B * ...
+    // divisor = X
+    // If X is in {A, B, ...}, return true.
+    
+    // Also handle powers: term = x^2, divisor = x.
+    
+    let term_factors = get_mul_factors(ctx, term);
+    let divisor_data = ctx.get(divisor);
+    
+    // If divisor is simple (not Mul), check if it exists in term_factors
+    // or if a power of it exists.
+    
+    // For now, simple check:
+    for f in &term_factors {
+        if ctx.get(*f) == divisor_data { return true; }
+        
+        // Check power
+        if let Expr::Pow(b, e) = ctx.get(*f) {
+            if ctx.get(*b) == divisor_data {
+                if let Expr::Number(n) = ctx.get(*e) {
+                    if n >= &num_rational::BigRational::one() {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    
+    // What if divisor is Mul? e.g. term = x*y*z, divisor = x*y.
+    // We need to check if all factors of divisor are in term.
+    let div_factors = get_mul_factors(ctx, divisor);
+    
+    // Naive check: for each factor in divisor, find and remove one matching factor in term.
+    let mut available_factors = term_factors.clone();
+    
+    for df in div_factors {
+        let df_data = ctx.get(df);
+        let mut found = false;
+        for (i, tf) in available_factors.iter().enumerate() {
+            if ctx.get(*tf) == df_data {
+                available_factors.remove(i);
+                found = true;
+                break;
+            }
+            // Check power: tf = x^n, df = x.
+            if let Expr::Pow(b, e) = ctx.get(*tf) {
+                if ctx.get(*b) == df_data {
+                     if let Expr::Number(n) = ctx.get(*e) {
+                        if n >= &num_rational::BigRational::one() {
+                            // We "consumed" one power.
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if !found { return false; }
+    }
+    
+    true
+}
+
+fn get_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut factors = Vec::new();
+    let mut stack = vec![expr];
+    while let Some(curr) = stack.pop() {
+        if let Expr::Mul(l, r) = ctx.get(curr) {
+            stack.push(*r);
+            stack.push(*l);
+        } else {
+            factors.push(curr);
+        }
+    }
+    factors
 }
 
 
