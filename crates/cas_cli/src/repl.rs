@@ -7,7 +7,7 @@ use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
-use cas_engine::rules::calculus::IntegrateRule;
+use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::grouping::CollectRule;
 use rustyline::error::ReadlineError;
 use cas_ast::{DisplayExpr, ExprId, Expr, Context};
@@ -192,6 +192,7 @@ impl Repl {
         simplifier.add_rule(Box::new(MulZeroRule));
         simplifier.add_rule(Box::new(CombineConstantsRule));
         simplifier.add_rule(Box::new(IntegrateRule));
+        simplifier.add_rule(Box::new(DiffRule));
 
         Self {
             simplifier,
@@ -387,6 +388,12 @@ impl Repl {
                 println!("             This includes aggressive distribution and other rules that may");
                 println!("             undo factorizations, but guarantee maximum simplification.");
                 println!("Example: simplify (x+1)*(x-1) -> x^2 - 1");
+            },
+            "diff" => {
+                println!("Command: diff <expr> <var>");
+                println!("Description: Computes the symbolic derivative of an expression with respect to a variable.");
+                println!("             Supports basic arithmetic, power rule, chain rule, and common functions.");
+                println!("Example: diff(sin(x^2), x) -> 2*x*cos(x^2)");
             },
             "config" => {
                 println!("Command: config <subcommand> [args]");

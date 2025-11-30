@@ -39,6 +39,158 @@ define_rule!(
     }
 );
 
+define_rule!(
+    DiffRule,
+    "Symbolic Differentiation",
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "diff" {
+                if args.len() == 2 {
+                    let target = args[0];
+                    let var_expr = args[1];
+                    if let Expr::Variable(var_name) = ctx.get(var_expr) {
+                        let var_name = var_name.clone();
+                        if let Some(result) = differentiate(ctx, target, &var_name) {
+                            return Some(Rewrite {
+                                new_expr: result,
+                                description: format!("diff({:?}, {})", target, var_name),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    let expr_data = ctx.get(expr).clone();
+    
+    // 1. Constant Rule: diff(c, x) = 0
+    if !contains_var(ctx, expr, var) {
+        return Some(ctx.num(0));
+    }
+
+    match expr_data {
+        Expr::Variable(v) => {
+            if v == var {
+                Some(ctx.num(1))
+            } else {
+                Some(ctx.num(0))
+            }
+        },
+        Expr::Add(l, r) => {
+            let dl = differentiate(ctx, l, var)?;
+            let dr = differentiate(ctx, r, var)?;
+            Some(ctx.add(Expr::Add(dl, dr)))
+        },
+        Expr::Sub(l, r) => {
+            let dl = differentiate(ctx, l, var)?;
+            let dr = differentiate(ctx, r, var)?;
+            Some(ctx.add(Expr::Sub(dl, dr)))
+        },
+        Expr::Mul(l, r) => {
+            // Product Rule: (uv)' = u'v + uv'
+            let dl = differentiate(ctx, l, var)?;
+            let dr = differentiate(ctx, r, var)?;
+            let term1 = ctx.add(Expr::Mul(dl, r));
+            let term2 = ctx.add(Expr::Mul(l, dr));
+            Some(ctx.add(Expr::Add(term1, term2)))
+        },
+        Expr::Div(l, r) => {
+            // Quotient Rule: (u/v)' = (u'v - uv') / v^2
+            let dl = differentiate(ctx, l, var)?;
+            let dr = differentiate(ctx, r, var)?;
+            let term1 = ctx.add(Expr::Mul(dl, r));
+            let term2 = ctx.add(Expr::Mul(l, dr));
+            let num = ctx.add(Expr::Sub(term1, term2));
+            let two = ctx.num(2);
+            let den = ctx.add(Expr::Pow(r, two));
+            Some(ctx.add(Expr::Div(num, den)))
+        },
+        Expr::Pow(base, exp) => {
+            // Generalized Power Rule: (u^v)' = u^v * (v'*ln(u) + v*u'/u)
+            // Simplified for constant exponent n: (u^n)' = n*u^(n-1)*u'
+            // Simplified for exponential a^u: (a^u)' = a^u * ln(a) * u'
+            
+            let db = differentiate(ctx, base, var)?;
+            let de = differentiate(ctx, exp, var)?;
+            
+            // If exponent is constant (de = 0)
+            if !contains_var(ctx, exp, var) {
+                // n * u^(n-1) * u'
+                let one = ctx.num(1);
+                let n_minus_one = ctx.add(Expr::Sub(exp, one));
+                let pow_term = ctx.add(Expr::Pow(base, n_minus_one));
+                let term = ctx.add(Expr::Mul(exp, pow_term));
+                Some(ctx.add(Expr::Mul(term, db)))
+            } else if !contains_var(ctx, base, var) {
+                // a^u * ln(a) * u'
+                let ln_a = ctx.add(Expr::Function("ln".to_string(), vec![base]));
+                let term = ctx.add(Expr::Mul(expr, ln_a));
+                Some(ctx.add(Expr::Mul(term, de)))
+            } else {
+                // Full rule: u^v * (v'*ln(u) + v*u'/u)
+                // = u^v * (de * ln(base) + exp * db / base)
+                let ln_base = ctx.add(Expr::Function("ln".to_string(), vec![base]));
+                let term1 = ctx.add(Expr::Mul(de, ln_base));
+                let term2_num = ctx.add(Expr::Mul(exp, db));
+                let term2 = ctx.add(Expr::Div(term2_num, base));
+                let inner = ctx.add(Expr::Add(term1, term2));
+                Some(ctx.add(Expr::Mul(expr, inner)))
+            }
+        },
+        Expr::Function(name, args) => {
+            if args.len() == 1 {
+                let arg = args[0];
+                let da = differentiate(ctx, arg, var)?;
+                
+                match name.as_str() {
+                    "sin" => {
+                        // cos(u) * u'
+                        let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                        Some(ctx.add(Expr::Mul(cos_u, da)))
+                    },
+                    "cos" => {
+                        // -sin(u) * u'
+                        let sin_u = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                        let neg_sin = ctx.add(Expr::Neg(sin_u));
+                        Some(ctx.add(Expr::Mul(neg_sin, da)))
+                    },
+                    "tan" => {
+                        // sec^2(u) * u' = (1/cos^2(u)) * u'
+                        let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                        let two = ctx.num(2);
+                        let cos_sq = ctx.add(Expr::Pow(cos_u, two));
+                        let one = ctx.num(1);
+                        let sec_sq = ctx.add(Expr::Div(one, cos_sq));
+                        Some(ctx.add(Expr::Mul(sec_sq, da)))
+                    },
+                    "exp" => {
+                        // exp(u) * u'
+                        Some(ctx.add(Expr::Mul(expr, da)))
+                    },
+                    "ln" => {
+                        // u'/u
+                        Some(ctx.add(Expr::Div(da, arg)))
+                    },
+                    "abs" => {
+                        // abs(u)/u * u' (sign(u) * u')
+                        // or u/abs(u) * u'
+                        let term = ctx.add(Expr::Div(arg, expr)); // u / abs(u)
+                        Some(ctx.add(Expr::Mul(term, da)))
+                    },
+                    _ => None // Unknown function
+                }
+            } else {
+                None // Multi-arg functions not supported yet (except log base?)
+            }
+        },
+        _ => None
+    }
+}
+
 fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     let expr_data = ctx.get(expr).clone();
 
@@ -372,4 +524,5 @@ mod tests {
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(IntegrateRule));
+    simplifier.add_rule(Box::new(DiffRule));
 }

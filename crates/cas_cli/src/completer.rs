@@ -21,6 +21,7 @@ impl CasHelper {
                 "collect".to_string(),
                 "equiv".to_string(),
                 "solve".to_string(),
+                "diff".to_string(),
                 "simplify".to_string(),
                 "config".to_string(),
                 "steps on".to_string(),

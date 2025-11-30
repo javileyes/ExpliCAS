@@ -551,3 +551,23 @@ fn test_torture_15_trig_shift() {
     let zero = simplifier.context.num(0);
     assert!(simplifier.are_equivalent(simplified, zero), "Trig shift failed");
 }
+
+#[test]
+fn test_torture_18_product_rule() {
+    // 18. Regla del Producto
+    // diff(x * sin(x), x) -> sin(x) + x * cos(x)
+    let mut simplifier = create_full_simplifier();
+    // Add DiffRule
+    use cas_engine::rules::calculus::DiffRule;
+    simplifier.add_rule(Box::new(DiffRule));
+    
+    let expr = parse("diff(x * sin(x), x)", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    
+    // Expected: sin(x) + x*cos(x)
+    // Or x*cos(x) + sin(x)
+    let expected_str = "sin(x) + x * cos(x)";
+    let expected = parse(expected_str, &mut simplifier.context).unwrap();
+    
+    assert!(simplifier.are_equivalent(simplified, expected), "Product Rule failed");
+}
