@@ -432,7 +432,6 @@ fn test_torture_11_polynomial_stress() {
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::canonicalization::AssociativityRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));

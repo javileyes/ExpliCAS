@@ -51,29 +51,104 @@ define_rule!(
     CanonicalizeAddRule,
     "Canonicalize Addition",
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Add(lhs, rhs) = expr_data {
-            // 1. Basic Swap: b + a -> a + b if b < a
-            if compare_expr(ctx, rhs, lhs) == Ordering::Less {
-                let new_expr = ctx.add(Expr::Add(rhs, lhs));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Reorder addition terms".to_string(),
-                });
+        if let Expr::Add(_, _) = ctx.get(expr) {
+            // 1. Flatten
+            let mut terms = Vec::new();
+            let mut stack = vec![expr];
+            while let Some(id) = stack.pop() {
+                if let Expr::Add(lhs, rhs) = ctx.get(id) {
+                    stack.push(*rhs);
+                    stack.push(*lhs);
+                } else {
+                    terms.push(id);
+                }
             }
             
-            // 2. Rotation: a + (b + c) -> b + (a + c) if b < a
-            // This allows sorting nested terms.
-            let rhs_data = ctx.get(rhs).clone();
-            if let Expr::Add(rl, rr) = rhs_data {
-                if compare_expr(ctx, rl, lhs) == Ordering::Less {
-                    let inner_add = ctx.add(Expr::Add(lhs, rr));
-                    let new_expr = ctx.add(Expr::Add(rl, inner_add));
+            // 2. Check if already sorted
+            let mut is_sorted = true;
+            for i in 0..terms.len() - 1 {
+                if compare_expr(ctx, terms[i], terms[i+1]) == Ordering::Greater {
+                    is_sorted = false;
+                    break;
+                }
+            }
+
+            // 3. Check if right-associative (if sorted)
+            // If sorted, we only need to rewrite if the structure is NOT right-associative.
+            // Right-associative means: t0 + (t1 + (t2 + ...))
+            // The flattened traversal above (push rhs, push lhs) produces [t0, t1, t2...] for a right-associative tree.
+            // It ALSO produces [t0, t1, t2...] for a left-associative tree ((t0+t1)+t2).
+            // So flattening loses structure information.
+            // We need to check the structure of `expr` directly?
+            // Or just rebuild and compare?
+            // Since Context doesn't dedupe, we can't compare IDs.
+            // But we can check if we *need* to do anything.
+            
+            // If it is NOT sorted, we MUST sort and rebuild.
+            if !is_sorted {
+                terms.sort_by(|a, b| compare_expr(ctx, *a, *b));
+                // Rebuild right-associative
+                let mut new_expr = *terms.last().unwrap();
+                for term in terms.iter().rev().skip(1) {
+                    new_expr = ctx.add(Expr::Add(*term, new_expr));
+                }
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Sort addition terms".to_string(),
+                });
+            }
+
+            // If it IS sorted, we might still need to fix associativity.
+            // e.g. (a+b)+c -> a+(b+c).
+            // We can check if the root has an Add as LHS.
+            // If LHS is Add, it's left-associative (at the top).
+            // We want right-associative, so LHS should NOT be Add (unless it's a parenthesized group, but here we flattened it).
+            // Wait, if we flatten, we treat nested Adds as part of the same sum.
+            // So if LHS is an Add, it means we have (a+b)+... which we want to convert to a+(b+...).
+            if let Expr::Add(lhs, _) = ctx.get(expr) {
+                if let Expr::Add(_, _) = ctx.get(*lhs) {
+                    // Left-associative at root. Rewrite.
+                     let mut new_expr = *terms.last().unwrap();
+                    for term in terms.iter().rev().skip(1) {
+                        new_expr = ctx.add(Expr::Add(*term, new_expr));
+                    }
                     return Some(Rewrite {
                         new_expr,
-                        description: "Rotate addition terms".to_string(),
+                        description: "Fix associativity (a+b)+c -> a+(b+c)".to_string(),
                     });
                 }
+            }
+            
+            // Also check if any RHS is NOT an Add (except the last term).
+            // In a+(b+(c+d)), RHS of first Add is Add. RHS of second is Add. RHS of third is d (not Add).
+            // If we have a+(b+c), terms are [a,b,c].
+            // Root: Add(a, X). X should be Add(b, c).
+            // If X is NOT Add, but we have > 2 terms, then structure is wrong?
+            // No, if X is not Add, it means we only have 2 terms.
+            // If terms.len() > 2, then RHS MUST be Add.
+            if terms.len() > 2 {
+                 if let Expr::Add(_, rhs) = ctx.get(expr) {
+                     if !matches!(ctx.get(*rhs), Expr::Add(_, _)) {
+                         // This case is weird if LHS is not Add.
+                         // e.g. a + b. terms=[a,b]. len=2.
+                         // e.g. a + (b+c). terms=[a,b,c]. len=3. RHS is Add(b,c). OK.
+                         // e.g. (a+b) + c. terms=[a,b,c]. LHS is Add. Caught above.
+                         // Is there a case where LHS is not Add, but structure is wrong?
+                         // Maybe mixed? a + ((b+c) + d)?
+                         // Flatten: [a, b, c, d].
+                         // Root: Add(a, Y). Y = Add(Add(b,c), d).
+                         // Y's LHS is Add.
+                         // So recursively, Y would be fixed by this rule when visiting Y.
+                         // But we are at Root.
+                         // If we only fix Root, Y will be fixed later/before?
+                         // Bottom-up simplification means children are simplified first.
+                         // So Y is already canonicalized to b+(c+d).
+                         // So Root is a + (b+(c+d)).
+                         // This is correct.
+                         // So checking LHS is Add is sufficient?
+                         // Yes, if children are already canonical.
+                     }
+                 }
             }
         }
         None
@@ -84,26 +159,51 @@ define_rule!(
     CanonicalizeMulRule,
     "Canonicalize Multiplication",
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Mul(lhs, rhs) = expr_data {
-            // 1. Basic Swap: b * a -> a * b if b < a
-            if compare_expr(ctx, rhs, lhs) == Ordering::Less {
-                let new_expr = ctx.add(Expr::Mul(rhs, lhs));
+        if let Expr::Mul(_, _) = ctx.get(expr) {
+            // 1. Flatten
+            let mut terms = Vec::new();
+            let mut stack = vec![expr];
+            while let Some(id) = stack.pop() {
+                if let Expr::Mul(lhs, rhs) = ctx.get(id) {
+                    stack.push(*rhs);
+                    stack.push(*lhs);
+                } else {
+                    terms.push(id);
+                }
+            }
+            
+            // 2. Check if already sorted
+            let mut is_sorted = true;
+            for i in 0..terms.len() - 1 {
+                if compare_expr(ctx, terms[i], terms[i+1]) == Ordering::Greater {
+                    is_sorted = false;
+                    break;
+                }
+            }
+
+            if !is_sorted {
+                terms.sort_by(|a, b| compare_expr(ctx, *a, *b));
+                // Rebuild right-associative
+                let mut new_expr = *terms.last().unwrap();
+                for term in terms.iter().rev().skip(1) {
+                    new_expr = ctx.add(Expr::Mul(*term, new_expr));
+                }
                 return Some(Rewrite {
                     new_expr,
-                    description: "Reorder multiplication factors".to_string(),
+                    description: "Sort multiplication factors".to_string(),
                 });
             }
 
-            // 2. Rotation: a * (b * c) -> b * (a * c) if b < a
-            let rhs_data = ctx.get(rhs).clone();
-            if let Expr::Mul(rl, rr) = rhs_data {
-                if compare_expr(ctx, rl, lhs) == Ordering::Less {
-                    let inner_mul = ctx.add(Expr::Mul(lhs, rr));
-                    let new_expr = ctx.add(Expr::Mul(rl, inner_mul));
+            // 3. Check associativity
+            if let Expr::Mul(lhs, _) = ctx.get(expr) {
+                if let Expr::Mul(_, _) = ctx.get(*lhs) {
+                     let mut new_expr = *terms.last().unwrap();
+                    for term in terms.iter().rev().skip(1) {
+                        new_expr = ctx.add(Expr::Mul(*term, new_expr));
+                    }
                     return Some(Rewrite {
                         new_expr,
-                        description: "Rotate multiplication factors".to_string(),
+                        description: "Fix associativity (a*b)*c -> a*(b*c)".to_string(),
                     });
                 }
             }
@@ -208,42 +308,6 @@ define_rule!(
     }
 );
 
-define_rule!(
-    AssociativityRule,
-    "Associativity (Flattening)",
-    |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        match expr_data {
-            // (a + b) + c -> a + (b + c)
-            Expr::Add(lhs, rhs) => {
-                let lhs_data = ctx.get(lhs).clone();
-                if let Expr::Add(ll, lr) = lhs_data {
-                    let inner_add = ctx.add(Expr::Add(lr, rhs));
-                    let new_expr = ctx.add(Expr::Add(ll, inner_add));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Associativity: (a + b) + c -> a + (b + c)".to_string(),
-                    });
-                }
-            }
-            // (a * b) * c -> a * (b * c)
-            Expr::Mul(lhs, rhs) => {
-                let lhs_data = ctx.get(lhs).clone();
-                if let Expr::Mul(ll, lr) = lhs_data {
-                    let inner_mul = ctx.add(Expr::Mul(lr, rhs));
-                    let new_expr = ctx.add(Expr::Mul(ll, inner_mul));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Associativity: (a * b) * c -> a * (b * c)".to_string(),
-                    });
-                }
-            }
-            _ => {}
-        }
-        None
-    }
-);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,5 +368,4 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
-    simplifier.add_rule(Box::new(AssociativityRule));
 }

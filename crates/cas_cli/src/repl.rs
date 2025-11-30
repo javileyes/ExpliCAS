@@ -2,7 +2,7 @@ use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule};
+use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
@@ -91,6 +91,29 @@ fn reconstruct_global_expr(context: &mut Context, root: ExprId, path: &[PathStep
     }
 }
 
+fn should_show_step(step: &cas_engine::step::Step) -> bool {
+    let desc = &step.description;
+    let _rule = &step.rule_name;
+    
+    // Filter out trivial identity steps
+    if desc.contains("x * 1 = x") || desc.contains("x + 0 = x") || desc.contains("Identity Property") {
+        return false;
+    }
+    
+    // Filter out associativity fixes (unless verbose?)
+    // "Fix associativity..."
+    if desc.starts_with("Fix associativity") {
+        return false;
+    }
+    
+    // Filter out "Sort..." if it's just reordering?
+    // User complained about "Sorting Jitter". My new "Sort" rule does it in one go.
+    // So "Sort addition terms" is a single step that puts everything in order.
+    // This is probably fine to show, as it explains why the expression changed shape.
+    
+    true
+}
+
 impl Repl {
     pub fn new() -> Self {
         let config = CasConfig::load();
@@ -101,7 +124,6 @@ impl Repl {
         simplifier.add_rule(Box::new(CanonicalizeAddRule));
         simplifier.add_rule(Box::new(CanonicalizeMulRule));
         simplifier.add_rule(Box::new(CanonicalizeRootRule));
-        simplifier.add_rule(Box::new(AssociativityRule));
         simplifier.add_rule(Box::new(EvaluateAbsRule));
         simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
         simplifier.add_rule(Box::new(EvaluateTrigRule));
@@ -511,10 +533,23 @@ impl Repl {
                             if self.show_steps {
                                 println!("Steps:");
                                 let mut current_root = subbed;
-                                for (i, step) in steps.iter().enumerate() {
-                                    println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                                    current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                                    println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                let mut step_count = 0;
+                                for step in steps.iter() {
+                                    if should_show_step(step) {
+                                        step_count += 1;
+                                        println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
+                                        current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                        println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                    } else {
+                                        // Still need to update current_root even if hidden?
+                                        // Yes, because subsequent steps depend on the state.
+                                        // But reconstruct_global_expr takes `step.after` which is the local replacement.
+                                        // And `step.path`.
+                                        // If we skip printing, we must still update `current_root`?
+                                        // `reconstruct_global_expr` returns the NEW root.
+                                        // So yes, we must update `current_root`.
+                                        current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                    }
                                 }
                             }
                             println!("Result: {}", DisplayExpr { context: &self.simplifier.context, id: result });
@@ -641,11 +676,16 @@ impl Repl {
                     } else {
                         println!("Steps:");
                         let mut current_root = expr;
-                        for (i, step) in steps.iter().enumerate() {
-                            println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                            // Reconstruct global expression
-                            current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                            println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                        let mut step_count = 0;
+                        for step in steps.iter() {
+                            if should_show_step(step) {
+                                step_count += 1;
+                                println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
+                                current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                            } else {
+                                current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                            }
                         }
                     }
                 }
@@ -699,11 +739,16 @@ impl Repl {
                     } else {
                         println!("Steps (Aggressive Mode):");
                         let mut current_root = expr;
-                        for (i, step) in steps.iter().enumerate() {
-                            println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                            // Reconstruct global expression
-                            current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
-                            println!("   -> {}", DisplayExpr { context: &temp_simplifier.context, id: current_root });
+                        let mut step_count = 0;
+                        for step in steps.iter() {
+                            if should_show_step(step) {
+                                step_count += 1;
+                                println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
+                                current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
+                                println!("   -> {}", DisplayExpr { context: &temp_simplifier.context, id: current_root });
+                            } else {
+                                current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
+                            }
                         }
                     }
                 }

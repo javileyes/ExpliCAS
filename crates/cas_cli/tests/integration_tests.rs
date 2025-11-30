@@ -271,11 +271,11 @@ fn test_logarithm_simplification() {
     use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
     use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
     use cas_engine::rules::exponents::EvaluatePowerRule;
-    use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule, CanonicalizeNegationRule};
+    use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule};
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
-    simplifier.add_rule(Box::new(AssociativityRule));
+
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
@@ -322,7 +322,7 @@ fn test_enhanced_integration() {
     use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
     use cas_engine::rules::polynomial::{CombineLikeTermsRule};
     use cas_engine::rules::exponents::EvaluatePowerRule;
-    use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule, AssociativityRule};
+    use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule};
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(IntegrateRule));
@@ -332,7 +332,7 @@ fn test_enhanced_integration() {
     simplifier.add_rule(Box::new(MulZeroRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
-    simplifier.add_rule(Box::new(AssociativityRule));
+
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
 
