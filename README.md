@@ -11,8 +11,9 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   Symbolic Differentiation (`diff(sin(x), x) -> cos(x)`).
 -   **Number Theory**:
     -   GCD/LCM (`gcd(12, 18) -> 6`, `lcm(4, 6) -> 12`).
-    -   Modular Arithmetic (`mod(10, 3) -> 1`).
+    -   Modular Arithmetic (`mod(10, 3) -> 1`, `10 mod 3 -> 1`).
     -   Prime Factorization (`factors(12) -> 2^2 * 3`).
+    -   Combinatorics (`fact(5) -> 120`, `choose(5, 2) -> 10`, `perm(5, 2) -> 20`).
 -   **Algebraic Simplification**:
     -   Combining like terms (`2x + 3x -> 5x`).
     -   Polynomial expansion (`expand((x+1)^2) -> x^2 + 2x + 1`).
@@ -132,6 +133,27 @@ Result: 5 * 7 * 67
 **Output:**
 ```
 Result: 6
+```
+```text
+> 5!
+```
+**Output:**
+```
+Result: 120
+```
+```text
+> choose(5, 2)
+```
+**Output:**
+```
+Result: 10
+```
+```text
+> 25 mod 7
+```
+**Output:**
+```
+Result: 4
 ```
 
 #### 7. Pre-Calculus (Absolute Value & Inequalities)

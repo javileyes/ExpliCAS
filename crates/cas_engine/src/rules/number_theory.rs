@@ -67,6 +67,26 @@ define_rule!(
                     }
                 }
             },
+            "choose" | "nCr" => {
+                if args.len() == 2 {
+                    if let Some(res) = compute_choose(ctx, args[0], args[1]) {
+                        return Some(Rewrite {
+                            new_expr: res,
+                            description: format!("choose({:?}, {:?})", args[0], args[1]),
+                        });
+                    }
+                }
+            },
+            "perm" | "nPr" => {
+                if args.len() == 2 {
+                    if let Some(res) = compute_perm(ctx, args[0], args[1]) {
+                        return Some(Rewrite {
+                            new_expr: res,
+                            description: format!("perm({:?}, {:?})", args[0], args[1]),
+                        });
+                    }
+                }
+            },
             _ => {}
         }
         None
@@ -190,6 +210,64 @@ fn compute_factorial(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let mut i = BigInt::one();
     while i <= val {
         res = res * &i;
+        i = i + 1;
+    }
+    
+    Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
+}
+
+fn compute_choose(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
+    let val_n = get_integer(ctx, n)?;
+    let val_k = get_integer(ctx, k)?;
+    
+    if val_k.is_negative() || val_k > val_n {
+        return Some(ctx.num(0));
+    }
+    
+    // Optimization: nC0 = 1, nCn = 1
+    if val_k.is_zero() || val_k == val_n {
+        return Some(ctx.num(1));
+    }
+    
+    // Symmetry: nCk = nC(n-k)
+    let k_eff = if &val_k * 2 > val_n {
+        &val_n - &val_k
+    } else {
+        val_k.clone()
+    };
+    
+    // Compute: n * (n-1) * ... * (n-k+1) / k!
+    let mut num = BigInt::one();
+    let mut den = BigInt::one();
+    
+    let mut i = BigInt::zero();
+    while i < k_eff {
+        num = num * (&val_n - &i);
+        den = den * (&i + 1);
+        i = i + 1;
+    }
+    
+    let res = num / den;
+    Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
+}
+
+fn compute_perm(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
+    let val_n = get_integer(ctx, n)?;
+    let val_k = get_integer(ctx, k)?;
+    
+    if val_k.is_negative() || val_k > val_n {
+        return Some(ctx.num(0));
+    }
+    
+    if val_k.is_zero() {
+        return Some(ctx.num(1));
+    }
+    
+    // Compute: n * (n-1) * ... * (n-k+1)
+    let mut res = BigInt::one();
+    let mut i = BigInt::zero();
+    while i < val_k {
+        res = res * (&val_n - &i);
         i = i + 1;
     }
     

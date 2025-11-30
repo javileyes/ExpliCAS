@@ -27,6 +27,8 @@ impl CasHelper {
                 "mod".to_string(),
                 "factors".to_string(),
                 "fact".to_string(),
+                "choose".to_string(),
+                "perm".to_string(),
                 "simplify".to_string(),
                 "config".to_string(),
                 "steps on".to_string(),

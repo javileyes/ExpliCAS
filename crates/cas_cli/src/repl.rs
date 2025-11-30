@@ -422,6 +422,16 @@ impl Repl {
                 println!("Description: Computes the factorial of a non-negative integer.");
                 println!("Example: fact(5) -> 120, 5! -> 120");
             },
+            "choose" | "nCr" => {
+                println!("Function: choose <n, k>");
+                println!("Description: Computes the binomial coefficient nCk (combinations).");
+                println!("Example: choose(5, 2) -> 10");
+            },
+            "perm" | "nPr" => {
+                println!("Function: perm <n, k>");
+                println!("Description: Computes the number of permutations nPk.");
+                println!("Example: perm(5, 2) -> 20");
+            },
             "config" => {
                 println!("Command: config <subcommand> [args]");
                 println!("Description: Manages CLI configuration.");
@@ -495,6 +505,8 @@ impl Repl {
         println!("  mod <a, n>              Modular arithmetic");
         println!("  factors <n>             Prime factorization");
         println!("  fact <n>                Factorial (or n!)");
+        println!("  choose <n, k>           Binomial coefficient (nCk)");
+        println!("  perm <n, k>             Permutations (nPk)");
         println!("  steps on/off            Toggle step-by-step output");
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");

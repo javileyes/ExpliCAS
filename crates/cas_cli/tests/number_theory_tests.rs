@@ -102,3 +102,33 @@ fn test_infix_mod() {
     let (res, _) = simplifier.simplify(expr);
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "4");
 }
+
+#[test]
+fn test_combinatorics() {
+    let mut simplifier = create_nt_simplifier();
+    
+    // choose(5, 2) -> 10
+    let expr = parse("choose(5, 2)", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "10");
+    
+    // choose(5, 0) -> 1
+    let expr = parse("choose(5, 0)", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
+    
+    // choose(5, 5) -> 1
+    let expr = parse("choose(5, 5)", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
+    
+    // perm(5, 2) -> 20
+    let expr = parse("perm(5, 2)", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "20");
+    
+    // perm(5, 5) -> 120 (5!)
+    let expr = parse("perm(5, 5)", &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "120");
+}
