@@ -22,6 +22,7 @@ define_rule!(
 
         // 2. Negation: -x -> -1 * x
         if let Expr::Neg(inner) = expr_data {
+            // eprintln!("CanonicalizeNegationRule checking: {:?}", expr);
             let inner_data = ctx.get(inner).clone();
             if let Expr::Number(n) = inner_data {
                 // -(-5) -> 5 (Handled by parser usually, but good to have)
@@ -37,6 +38,7 @@ define_rule!(
                 // -x -> -1 * x
                 let minus_one = ctx.num(-1);
                 let new_expr = ctx.add(Expr::Mul(minus_one, inner));
+                // eprintln!("CanonicalizeNegationRule rewriting: {:?} -> {:?}", expr, new_expr);
                 return Some(Rewrite {
                     new_expr,
                     description: "-x = -1 * x".to_string(),

@@ -95,6 +95,16 @@ pub fn flatten_add(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
     }
 }
 
+pub fn flatten_mul(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(l, r) => {
+            flatten_mul(ctx, *l, factors);
+            flatten_mul(ctx, *r, factors);
+        }
+        _ => factors.push(expr),
+    }
+}
+
 pub fn get_parts(context: &mut Context, e: ExprId) -> (num_rational::BigRational, ExprId) {
     match context.get(e) {
         Expr::Mul(a, b) => {

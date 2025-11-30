@@ -87,6 +87,35 @@ define_rule!(
 );
 
 define_rule!(
+    DivZeroRule,
+    "Zero Property of Division",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Div(lhs, rhs) = expr_data {
+            if let Expr::Number(n) = ctx.get(lhs) {
+                if n.is_zero() {
+                    // Check if denominator is zero?
+                    // Ideally yes, but for symbolic simplification we often assume non-zero.
+                    // If denominator is explicitly zero, CombineConstantsRule handles it (or we can check).
+                    if let Expr::Number(d) = ctx.get(rhs) {
+                        if d.is_zero() {
+                            return None; // Undefined
+                        }
+                    }
+                    
+                    let zero = ctx.num(0);
+                    return Some(Rewrite {
+                        new_expr: zero,
+                        description: "0 / x = 0".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
+define_rule!(
     CombineConstantsRule,
     "Combine Constants",
     |ctx, expr| {
@@ -229,5 +258,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(MulZeroRule));
+    simplifier.add_rule(Box::new(DivZeroRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
 }

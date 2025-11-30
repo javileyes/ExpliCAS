@@ -197,89 +197,183 @@ define_rule!(
         // Look for sin(x)^2 + cos(x)^2 = 1
         // Or a*sin(x)^2 + a*cos(x)^2 = a
         
-        // This requires scanning an Add expression
         let expr_data = ctx.get(expr).clone();
         if let Expr::Add(_, _) = expr_data {
-             // Flatten add
-             let mut terms = Vec::new();
-             crate::helpers::flatten_add(ctx, expr, &mut terms);
-             
-             // Step 1: Analyze all terms and extract relevant info
-             // Store: (TermIndex, CoeffVal, FuncName, Arg)
-             struct TrigTerm {
-                 index: usize,
-                 coeff_val: num_rational::BigRational,
-                 func_name: String,
-                 arg: ExprId,
-             }
-             
-             let mut trig_terms = Vec::new();
-             
-             for (i, &term) in terms.iter().enumerate() {
-                 let (c_val, v) = crate::helpers::get_parts(ctx, term);
-                 // Check v is sin(arg)^2 or cos(arg)^2
-                 if let Expr::Pow(base, exp) = ctx.get(v) {
-                     if let Expr::Number(n) = ctx.get(*exp) {
-                         if *n == num_rational::BigRational::from_integer(2.into()) {
-                             if let Expr::Function(name, args) = ctx.get(*base) {
-                                 if (name == "sin" || name == "cos") && args.len() == 1 {
-                                     trig_terms.push(TrigTerm {
-                                         index: i,
-                                         coeff_val: c_val,
-                                         func_name: name.clone(),
-                                         arg: args[0],
-                                     });
-                                 }
-                             }
-                         }
-                     }
-                 }
-             }
-             
-             // Step 2: Find pairs
-             for i in 0..trig_terms.len() {
-                 let t1 = &trig_terms[i];
-                 for j in (i+1)..trig_terms.len() {
-                     let t2 = &trig_terms[j];
-                     
-                     if t1.func_name != t2.func_name && t1.coeff_val == t2.coeff_val {
-                         // Check args equality
-                         if compare_expr(ctx, t1.arg, t2.arg) == Ordering::Equal {
-                             // Found match!
-                             // a*sin^2 + a*cos^2 = a
-                             
-                             // Construct new expression
-                             let mut new_terms = Vec::new();
-                             for k in 0..terms.len() {
-                                 if k != t1.index && k != t2.index {
-                                     new_terms.push(terms[k]);
-                                 }
-                             }
-                             
-                             // Add 'a' (the coefficient)
-                             let a = ctx.add(Expr::Number(t1.coeff_val.clone()));
-                             new_terms.push(a);
-                             
-                             if new_terms.is_empty() {
-                                 return Some(Rewrite {
-                                     new_expr: ctx.num(0),
-                                     description: "Pythagorean Identity (empty)".to_string(),
-                                 });
-                             }
-                             
-                             let mut new_expr = new_terms[0];
-                             for k in 1..new_terms.len() {
-                                 new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
-                             }
-                             
-                             return Some(Rewrite {
-                                 new_expr,
-                                 description: "sin^2 + cos^2 = 1".to_string(),
-                             });
-                         }
-                     }
-                 }
-             }
+            // Flatten add
+            let mut terms = Vec::new();
+            crate::helpers::flatten_add(ctx, expr, &mut terms);
+            
+            // Helper to extract (coeff, func_name, arg) from a term
+            // Returns (coeff_expr_id, func_name, arg_expr_id)
+            let extract_trig_part = |ctx: &mut cas_ast::Context, term: ExprId| -> Option<(ExprId, String, ExprId)> {
+                let term_data = ctx.get(term).clone();
+                
+                // Check if term itself is sin^n or cos^n with n >= 2
+                if let Expr::Pow(base, exp) = term_data.clone() {
+                    if let Expr::Number(n) = ctx.get(exp) {
+                        if n.clone() >= num_rational::BigRational::from_integer(2.into()) && n.is_integer() {
+                            let trig_info = if let Expr::Function(name, args) = ctx.get(base) {
+                                if (name == "sin" || name == "cos") && args.len() == 1 {
+                                    Some((name.clone(), args[0]))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                            if let Some((name, arg)) = trig_info {
+                                // If n > 2, coeff is sin^(n-2)
+                                let two = num_rational::BigRational::from_integer(2.into());
+                                if n.clone() == two {
+                                    return Some((ctx.num(1), name, arg));
+                                } else {
+                                    let rem_exp = n.clone() - two;
+                                    if rem_exp.is_one() {
+                                        return Some((base, name, arg));
+                                    } else {
+                                        let rem_exp_expr = ctx.add(Expr::Number(rem_exp));
+                                        let rem_pow = ctx.add(Expr::Pow(base, rem_exp_expr));
+                                        return Some((rem_pow, name, arg));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Check if term is Mul containing sin^n or cos^n
+                if let Expr::Mul(_, _) = term_data {
+                    let mut factors = Vec::new();
+                    crate::helpers::flatten_mul(ctx, term, &mut factors);
+                    
+                    // Find the trig square factor (or higher power)
+                    let mut trig_idx = None;
+                    let mut trig_info = None;
+                    let mut trig_rem = None; // Remaining power if n > 2
+                    
+                    for (i, &factor) in factors.iter().enumerate() {
+                        if let Expr::Pow(base, exp) = ctx.get(factor).clone() {
+                            if let Expr::Number(n) = ctx.get(exp) {
+                                if n.clone() >= num_rational::BigRational::from_integer(2.into()) && n.is_integer() {
+                                    if let Expr::Function(name, args) = ctx.get(base) {
+                                        if (name == "sin" || name == "cos") && args.len() == 1 {
+                                            trig_idx = Some(i);
+                                            trig_info = Some((name.clone(), args[0]));
+                                            
+                                            let two = num_rational::BigRational::from_integer(2.into());
+                                            if n.clone() > two {
+                                                let rem_exp = n.clone() - two;
+                                                if rem_exp.is_one() {
+                                                    trig_rem = Some(base);
+                                                } else {
+                                                    let rem_exp_expr = ctx.add(Expr::Number(rem_exp));
+                                                    trig_rem = Some(ctx.add(Expr::Pow(base, rem_exp_expr)));
+                                                }
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if let (Some(idx), Some((name, arg))) = (trig_idx, trig_info) {
+                        // Construct coefficient from remaining factors AND remaining power
+                        let mut coeff_factors = Vec::new();
+                        for (i, &f) in factors.iter().enumerate() {
+                            if i != idx {
+                                coeff_factors.push(f);
+                            }
+                        }
+                        if let Some(rem) = trig_rem {
+                            coeff_factors.push(rem);
+                        }
+                        
+                        let coeff = if coeff_factors.is_empty() {
+                            ctx.num(1)
+                        } else {
+                            let mut c = coeff_factors[0];
+                            for &f in coeff_factors.iter().skip(1) {
+                                c = ctx.add(Expr::Mul(c, f));
+                            }
+                            c
+                        };
+                        return Some((coeff, name, arg));
+                    }
+                }
+                
+                None
+            };
+
+            // Analyze terms
+            struct TrigTerm {
+                index: usize,
+                coeff: ExprId,
+                func_name: String,
+                arg: ExprId,
+            }
+            
+            let mut trig_terms = Vec::new();
+            for (i, &term) in terms.iter().enumerate() {
+                if let Some((coeff, name, arg)) = extract_trig_part(ctx, term) {
+                    trig_terms.push(TrigTerm {
+                        index: i,
+                        coeff,
+                        func_name: name,
+                        arg,
+                    });
+                }
+            }
+            
+            // Find pairs
+            for i in 0..trig_terms.len() {
+                for j in (i + 1)..trig_terms.len() {
+                    let t1 = &trig_terms[i];
+                    let t2 = &trig_terms[j];
+                    
+                    if t1.func_name != t2.func_name { 
+                        // Check args equality
+                        if t1.arg == t2.arg || crate::ordering::compare_expr(ctx, t1.arg, t2.arg) == std::cmp::Ordering::Equal {
+                            // Check coefficient equality
+                            if t1.coeff == t2.coeff || crate::ordering::compare_expr(ctx, t1.coeff, t2.coeff) == std::cmp::Ordering::Equal {
+                                // Found match!
+                            // Found match!
+                            // coeff * sin^2 + coeff * cos^2 = coeff
+                            
+                            // Construct new expression
+                            let mut new_terms = Vec::new();
+                            for k in 0..terms.len() {
+                                if k != t1.index && k != t2.index {
+                                    new_terms.push(terms[k]);
+                                }
+                            }
+                            
+                            // Add 'coeff'
+                            new_terms.push(t1.coeff);
+                            
+                            if new_terms.is_empty() {
+                                return Some(Rewrite {
+                                    new_expr: ctx.num(0),
+                                    description: "Pythagorean Identity (empty)".to_string(),
+                                });
+                            }
+                            
+                            let mut new_expr = new_terms[0];
+                            for k in 1..new_terms.len() {
+                                new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                            }
+                            
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "a*sin^2 + a*cos^2 = a".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+            }
         }
         None
     }
@@ -716,5 +810,206 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
-    simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule));
+    // simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule)); // Can prevent simplification (e.g. half-angle)
+    simplifier.add_rule(Box::new(AngleConsistencyRule));
+}
+
+define_rule!(
+    AngleConsistencyRule,
+    "Angle Consistency (Half-Angle)",
+    |ctx, expr| {
+        // Only run on Add/Sub/Mul/Div to capture context
+        match ctx.get(expr) {
+            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _) => {},
+            _ => return None,
+        }
+
+        // 1. Collect all trig arguments
+        let mut trig_args = Vec::new();
+        collect_trig_args_recursive(ctx, expr, &mut trig_args);
+        
+        if trig_args.is_empty() { return None; }
+        
+        // 2. Check for half-angle relationship
+        // We look for pair (A, B) such that A = 2*B.
+        // Then we expand trig(A) into trig(B).
+        
+        let mut target_expansion: Option<(ExprId, ExprId)> = None; // (A, B) where A=2B
+        
+        for i in 0..trig_args.len() {
+            for j in 0..trig_args.len() {
+                if i == j { continue; }
+                let a = trig_args[i];
+                let b = trig_args[j];
+                
+                if is_double(ctx, a, b) {
+                    target_expansion = Some((a, b));
+                    break;
+                }
+            }
+            if target_expansion.is_some() { break; }
+        }
+        
+        if let Some((large_angle, small_angle)) = target_expansion {
+            // Expand all occurrences of trig(large_angle) in expr
+            // We need a recursive replacement helper
+            let new_expr = expand_trig_angle(ctx, expr, large_angle, small_angle);
+            if new_expr != expr {
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Half-Angle Expansion".to_string(),
+                });
+            }
+        }
+        
+        None
+    }
+);
+
+fn collect_trig_args_recursive(ctx: &cas_ast::Context, expr: ExprId, args: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Function(name, fargs) => {
+            if (name == "sin" || name == "cos" || name == "tan") && fargs.len() == 1 {
+                args.push(fargs[0]);
+            }
+            for arg in fargs {
+                collect_trig_args_recursive(ctx, *arg, args);
+            }
+        },
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            collect_trig_args_recursive(ctx, *l, args);
+            collect_trig_args_recursive(ctx, *r, args);
+        },
+        Expr::Neg(e) => collect_trig_args_recursive(ctx, *e, args),
+        _ => {}
+    }
+}
+
+fn is_double(ctx: &cas_ast::Context, large: ExprId, small: ExprId) -> bool {
+    // Check if large == 2 * small
+    
+    // Case 1: large = 2 * small
+    if let Expr::Mul(l, r) = ctx.get(large) {
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n == &num_rational::BigRational::from_integer(2.into()) && crate::ordering::compare_expr(ctx, *r, small) == Ordering::Equal {
+                return true;
+            }
+        }
+        if let Expr::Number(n) = ctx.get(*r) {
+            if n == &num_rational::BigRational::from_integer(2.into()) && crate::ordering::compare_expr(ctx, *l, small) == Ordering::Equal {
+                return true;
+            }
+        }
+    }
+    
+    // Case 2: small = large / 2
+    if let Expr::Div(n, d) = ctx.get(small) {
+        if let Expr::Number(val) = ctx.get(*d) {
+            if val == &num_rational::BigRational::from_integer(2.into()) && crate::ordering::compare_expr(ctx, *n, large) == Ordering::Equal {
+                return true;
+            }
+        }
+    }
+    
+    // Case 3: small = large * 0.5
+    if let Expr::Mul(l, r) = ctx.get(small) {
+        if let Expr::Number(n) = ctx.get(*l) {
+             if n == &num_rational::BigRational::new(1.into(), 2.into()) && crate::ordering::compare_expr(ctx, *r, large) == Ordering::Equal {
+                 return true;
+             }
+        }
+        if let Expr::Number(n) = ctx.get(*r) {
+             if n == &num_rational::BigRational::new(1.into(), 2.into()) && crate::ordering::compare_expr(ctx, *l, large) == Ordering::Equal {
+                 return true;
+             }
+        }
+    }
+    
+    false
+}
+
+fn expand_trig_angle(ctx: &mut cas_ast::Context, expr: ExprId, large_angle: ExprId, small_angle: ExprId) -> ExprId {
+    let expr_data = ctx.get(expr).clone();
+    
+    // Check if this node is trig(large_angle)
+    if let Expr::Function(name, args) = &expr_data {
+        if args.len() == 1 && crate::ordering::compare_expr(ctx, args[0], large_angle) == Ordering::Equal {
+            match name.as_str() {
+                "sin" => {
+                    // sin(A) -> 2sin(A/2)cos(A/2)
+                    let two = ctx.num(2);
+                    let sin_half = ctx.add(Expr::Function("sin".to_string(), vec![small_angle]));
+                    let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![small_angle]));
+                    let term = ctx.add(Expr::Mul(sin_half, cos_half));
+                    return ctx.add(Expr::Mul(two, term));
+                },
+                "cos" => {
+                    // cos(A) -> 2cos^2(A/2) - 1
+                    let two = ctx.num(2);
+                    let one = ctx.num(1);
+                    let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![small_angle]));
+                    let cos_sq = ctx.add(Expr::Pow(cos_half, two));
+                    let term = ctx.add(Expr::Mul(two, cos_sq));
+                    return ctx.add(Expr::Sub(term, one));
+                },
+                "tan" => {
+                    // tan(A) -> 2tan(A/2) / (1 - tan^2(A/2))
+                    let two = ctx.num(2);
+                    let one = ctx.num(1);
+                    let tan_half = ctx.add(Expr::Function("tan".to_string(), vec![small_angle]));
+                    let num = ctx.add(Expr::Mul(two, tan_half));
+                    
+                    let tan_sq = ctx.add(Expr::Pow(tan_half, two));
+                    let den = ctx.add(Expr::Sub(one, tan_sq));
+                    
+                    return ctx.add(Expr::Div(num, den));
+                },
+                _ => {}
+            }
+        }
+    }
+    
+    // Recurse
+    match expr_data {
+        Expr::Add(l, r) => {
+            let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
+            let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
+            if nl != l || nr != r { ctx.add(Expr::Add(nl, nr)) } else { expr }
+        },
+        Expr::Sub(l, r) => {
+            let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
+            let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
+            if nl != l || nr != r { ctx.add(Expr::Sub(nl, nr)) } else { expr }
+        },
+        Expr::Mul(l, r) => {
+            let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
+            let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
+            if nl != l || nr != r { ctx.add(Expr::Mul(nl, nr)) } else { expr }
+        },
+        Expr::Div(l, r) => {
+            let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
+            let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
+            if nl != l || nr != r { ctx.add(Expr::Div(nl, nr)) } else { expr }
+        },
+        Expr::Pow(b, e) => {
+            let nb = expand_trig_angle(ctx, b, large_angle, small_angle);
+            let ne = expand_trig_angle(ctx, e, large_angle, small_angle);
+            if nb != b || ne != e { ctx.add(Expr::Pow(nb, ne)) } else { expr }
+        },
+        Expr::Neg(e) => {
+            let ne = expand_trig_angle(ctx, e, large_angle, small_angle);
+            if ne != e { ctx.add(Expr::Neg(ne)) } else { expr }
+        },
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::new();
+            let mut changed = false;
+            for arg in args {
+                let na = expand_trig_angle(ctx, arg, large_angle, small_angle);
+                if na != arg { changed = true; }
+                new_args.push(na);
+            }
+            if changed { ctx.add(Expr::Function(name, new_args)) } else { expr }
+        },
+        _ => expr
+    }
 }

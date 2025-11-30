@@ -510,6 +510,7 @@ define_rule!(
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Add(l, r) = expr_data {
+            // eprintln!("AddFractionsRule checking: {:?}", expr);
             // Check if either is a fraction
             let is_frac = |e: ExprId| matches!(ctx.get(e), Expr::Div(_, _));
             if !is_frac(l) && !is_frac(r) {
@@ -529,7 +530,7 @@ define_rule!(
             let (n2, d2) = get_nd(r);
 
             // If denominators are same, simple add
-            if d1 == d2 {
+            if crate::ordering::compare_expr(ctx, d1, d2) == std::cmp::Ordering::Equal {
                 let new_num = ctx.add(Expr::Add(n1, n2));
                 let new_expr = ctx.add(Expr::Div(new_num, d1));
                 return Some(Rewrite {
@@ -629,7 +630,12 @@ define_rule!(
             };
 
             // Check for (a/b) * (c/d)
-            if let (Some((n1, d1)), Some((n2, d2))) = (get_num_den(l), get_num_den(r)) {
+            let gd_l = get_num_den(l);
+            let gd_r = get_num_den(r);
+            // eprintln!("  Mul operands: l={:?}, r={:?}", l, r);
+            // eprintln!("  get_num_den(l)={:?}, get_num_den(r)={:?}", gd_l, gd_r);
+
+            if let (Some((n1, d1)), Some((n2, d2))) = (gd_l, gd_r) {
                 // eprintln!("SimplifyMulDivRule MATCHED: {:?} * {:?}", l, r);
                 let new_num = ctx.add(Expr::Mul(n1, n2));
                 let new_den = ctx.add(Expr::Mul(d1, d2));
@@ -644,8 +650,11 @@ define_rule!(
             // We need to be careful about borrowing ctx mutably for add/Mul/Div
             // So we collect info first, then mutate.
             
-            let check_target_l = get_num_den(l);
-            if let Some((num, den)) = check_target_l {
+            // Check for a * (b/c) or (b/c) * a
+            // We need to be careful about borrowing ctx mutably for add/Mul/Div
+            // So we collect info first, then mutate.
+            
+            if let Some((num, den)) = gd_l {
                 // (num / den) * r
                 if crate::ordering::compare_expr(ctx, den, r) == std::cmp::Ordering::Equal {
                     return Some(Rewrite {
@@ -661,8 +670,7 @@ define_rule!(
                 });
             }
 
-            let check_target_r = get_num_den(r);
-            if let Some((num, den)) = check_target_r {
+            if let Some((num, den)) = gd_r {
                 // l * (num / den)
                 if crate::ordering::compare_expr(ctx, den, l) == std::cmp::Ordering::Equal {
                     return Some(Rewrite {

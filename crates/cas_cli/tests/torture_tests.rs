@@ -26,6 +26,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(EvaluateTrigRule));
     simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleConsistencyRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
@@ -52,6 +53,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
     simplifier
 }
 
@@ -585,4 +587,16 @@ fn test_torture_18_product_rule() {
     let expected = parse(expected_str, &mut simplifier.context).unwrap();
     
     assert!(simplifier.are_equivalent(simplified, expected), "Product Rule failed");
+}
+
+#[test]
+fn test_torture_25_half_angle() {
+    let mut s = create_full_simplifier();
+    
+    // sin(x) / (1 + cos(x)) - tan(x/2) -> 0
+    let expr = parse("sin(x) / (1 + cos(x)) - tan(x/2)", &mut s.context).unwrap();
+    let (res, _) = s.simplify(expr);
+    
+    let res_str = format!("{}", DisplayExpr { context: &s.context, id: res });
+    assert_eq!(res_str, "0", "Half-Angle Identity failed to simplify to 0");
 }

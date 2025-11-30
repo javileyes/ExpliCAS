@@ -182,6 +182,7 @@ impl Repl {
             simplifier.add_rule(Box::new(cas_engine::rules::algebra::RootDenestingRule));
         }
 
+        simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleConsistencyRule));
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
         simplifier.add_rule(Box::new(AnnihilationRule));
@@ -191,6 +192,7 @@ impl Repl {
         simplifier.add_rule(Box::new(AddZeroRule));
         simplifier.add_rule(Box::new(MulOneRule));
         simplifier.add_rule(Box::new(MulZeroRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
         simplifier.add_rule(Box::new(CombineConstantsRule));
         simplifier.add_rule(Box::new(IntegrateRule));
         simplifier.add_rule(Box::new(DiffRule));
