@@ -185,6 +185,14 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                         }
                         write!(f, ")")
                     }
+                } else if name == "factored" {
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 { write!(f, " * ")?; }
+                        write!(f, "{}", DisplayExpr { context: self.context, id: *arg })?;
+                    }
+                    Ok(())
+                } else if name == "factored_pow" && args.len() == 2 {
+                    write!(f, "{}^{}", DisplayExpr { context: self.context, id: args[0] }, DisplayExpr { context: self.context, id: args[1] })
                 } else {
                     write!(f, "{}(", name)?;
                     for (i, arg) in args.iter().enumerate() {

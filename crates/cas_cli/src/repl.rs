@@ -8,6 +8,7 @@ use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule,
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
 use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
+use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_engine::rules::grouping::CollectRule;
 use rustyline::error::ReadlineError;
 use cas_ast::{DisplayExpr, ExprId, Expr, Context};
@@ -193,6 +194,7 @@ impl Repl {
         simplifier.add_rule(Box::new(CombineConstantsRule));
         simplifier.add_rule(Box::new(IntegrateRule));
         simplifier.add_rule(Box::new(DiffRule));
+        simplifier.add_rule(Box::new(NumberTheoryRule));
 
         Self {
             simplifier,

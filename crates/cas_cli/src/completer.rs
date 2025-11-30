@@ -36,7 +36,12 @@ impl CasHelper {
                 "tan".to_string(),
                 "ln".to_string(),
                 "sqrt".to_string(),
+                "sqrt".to_string(),
                 "abs".to_string(),
+                "gcd".to_string(),
+                "lcm".to_string(),
+                "mod".to_string(),
+                "prime_factors".to_string(),
             ],
         }
     }
