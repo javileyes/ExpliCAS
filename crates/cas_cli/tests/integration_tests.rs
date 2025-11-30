@@ -207,7 +207,7 @@ fn test_root_simplification() {
 fn test_polynomial_factorization_integration() {
     use cas_engine::rules::algebra::FactorRule;
     use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
-    use cas_engine::rules::polynomial::{CombineLikeTermsRule};
+    use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(FactorRule));
@@ -216,7 +216,7 @@ fn test_polynomial_factorization_integration() {
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(MulZeroRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
-    // simplifier.add_rule(Box::new(DistributeRule)); // Conflicts with FactorRule
+    simplifier.add_rule(Box::new(DistributeRule)); // Now safe to enable with FactorRule
 
     // Test 1: Difference of Squares
     // factor(x^2 - 9) -> (x - 3)(x + 3)

@@ -16,23 +16,35 @@ define_rule!(
             // a * (b + c) -> a*b + a*c
             let r_data = ctx.get(r).clone();
             if let Expr::Add(b, c) = r_data {
+                // Only distribute if 'l' is a constant (Number)
+                // This preserves factored forms like x(x+1) or (x+1)(x+2)
+                // while allowing canonicalization like 2(x+1) -> 2x+2
+                if !matches!(ctx.get(l), Expr::Number(_)) {
+                    return None;
+                }
+                
                 let ab = ctx.add(Expr::Mul(l, b));
                 let ac = ctx.add(Expr::Mul(l, c));
                 let new_expr = ctx.add(Expr::Add(ab, ac));
                 return Some(Rewrite {
                     new_expr,
-                    description: "Distribute".to_string(),
+                    description: "Distribute Constant".to_string(),
                 });
             }
             // (b + c) * a -> b*a + c*a
             let l_data = ctx.get(l).clone();
             if let Expr::Add(b, c) = l_data {
+                // Only distribute if 'r' is a constant
+                if !matches!(ctx.get(r), Expr::Number(_)) {
+                    return None;
+                }
+
                 let ba = ctx.add(Expr::Mul(b, r));
                 let ca = ctx.add(Expr::Mul(c, r));
                 let new_expr = ctx.add(Expr::Add(ba, ca));
                 return Some(Rewrite {
                     new_expr,
-                    description: "Distribute".to_string(),
+                    description: "Distribute Constant".to_string(),
                 });
             }
         }
