@@ -290,4 +290,29 @@ mod tests {
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CollectRule));
+    // simplifier.add_rule(Box::new(CollectLikeTermsRule));
 }
+
+define_rule!(
+    CollectLikeTermsRule,
+    "Collect Like Terms",
+    |ctx, expr| {
+        // Only apply to Add/Sub
+        match ctx.get(expr) {
+            Expr::Add(_, _) | Expr::Sub(_, _) => {},
+            _ => return None,
+        }
+        
+        let new_expr = crate::collect::collect_like_terms(ctx, expr);
+        // Check if structurally different to avoid infinite loops with ID regeneration
+        if new_expr != expr && crate::ordering::compare_expr(ctx, new_expr, expr) != std::cmp::Ordering::Equal {
+            // eprintln!("CollectLikeTermsRule applied: {:?} -> {:?}", expr, new_expr);
+            Some(Rewrite {
+                new_expr,
+                description: "Collect like terms".to_string(),
+            })
+        } else {
+            None
+        }
+    }
+);

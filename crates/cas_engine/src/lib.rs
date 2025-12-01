@@ -5,6 +5,7 @@ pub mod rules;
 pub mod polynomial;
 pub mod solver;
 pub mod ordering;
+pub mod collect;
 
 pub mod visitors;
 pub mod error;
