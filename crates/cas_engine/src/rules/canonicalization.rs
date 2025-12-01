@@ -35,17 +35,104 @@ define_rule!(
                     new_expr,
                     description: format!("-({}) = {}", n, neg_n),
                 });
-            } else {
-                // -x -> -1 * x
-                let minus_one = ctx.num(-1);
-                let new_expr = ctx.add(Expr::Mul(minus_one, inner));
-                // eprintln!("CanonicalizeNegationRule rewriting: {:?} -> {:?}", expr, new_expr);
+            } 
+            
+            // -(-x) -> x
+            if let Expr::Neg(double_inner) = inner_data {
+                return Some(Rewrite {
+                    new_expr: double_inner,
+                    description: "-(-x) = x".to_string(),
+                });
+            } 
+            
+            // -(a + b) -> -a + -b
+            if let Expr::Add(lhs, rhs) = inner_data {
+                let neg_lhs = ctx.add(Expr::Neg(lhs));
+                let neg_rhs = ctx.add(Expr::Neg(rhs));
+                let new_expr = ctx.add(Expr::Add(neg_lhs, neg_rhs));
                 return Some(Rewrite {
                     new_expr,
-                    description: "-x = -1 * x".to_string(),
+                    description: "-(a + b) = -a - b".to_string(),
+                });
+            }
+
+            // -(c * x) -> (-c) * x
+            if let Expr::Mul(lhs, rhs) = inner_data {
+                let n_opt = if let Expr::Number(n) = ctx.get(lhs) {
+                    Some(n.clone())
+                } else {
+                    None
+                };
+
+                if let Some(n) = n_opt {
+                    let neg_n = -n.clone();
+                    let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
+                    let new_expr = ctx.add(Expr::Mul(neg_n_expr, rhs));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: format!("-({} * x) = {} * x", n, neg_n),
+                    });
+                }
+            }
+
+            if false { // Dummy block to handle the 'else' structure from previous code if needed, but here we just fall through
+            
+                // -x -> -x (Keep as Neg)
+                // We do NOT want to convert to -1 * x because it's verbose.
+                return None;
+            }
+        }
+
+        // 3. Multiplication: a * (-b) -> -(a * b)
+        if let Expr::Mul(lhs, rhs) = expr_data {
+            let lhs_data = ctx.get(lhs);
+            let rhs_data = ctx.get(rhs);
+            
+            // Check for (-a) * b
+            if let Expr::Neg(inner_l) = lhs_data {
+                let new_mul = ctx.add(Expr::Mul(*inner_l, rhs));
+                let new_expr = ctx.add(Expr::Neg(new_mul));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "(-a) * b = -(a * b)".to_string(),
+                });
+            }
+            
+            // Check for a * (-b)
+            if let Expr::Neg(inner_r) = rhs_data {
+                let new_mul = ctx.add(Expr::Mul(lhs, *inner_r));
+                let new_expr = ctx.add(Expr::Neg(new_mul));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "a * (-b) = -(a * b)".to_string(),
                 });
             }
         }
+        
+        // 4. Division: (-a) / b -> -(a / b), a / (-b) -> -(a / b)
+        if let Expr::Div(lhs, rhs) = expr_data {
+             let lhs_data = ctx.get(lhs);
+             let rhs_data = ctx.get(rhs);
+             
+             if let Expr::Neg(inner_l) = lhs_data {
+                 let new_div = ctx.add(Expr::Div(*inner_l, rhs));
+                 let new_expr = ctx.add(Expr::Neg(new_div));
+                 return Some(Rewrite {
+                     new_expr,
+                     description: "(-a) / b = -(a / b)".to_string(),
+                 });
+             }
+             
+             if let Expr::Neg(inner_r) = rhs_data {
+                 let new_div = ctx.add(Expr::Div(lhs, *inner_r));
+                 let new_expr = ctx.add(Expr::Neg(new_div));
+                 return Some(Rewrite {
+                     new_expr,
+                     description: "a / (-b) = -(a / b)".to_string(),
+                 });
+             }
+        }
+
         None
     }
 );

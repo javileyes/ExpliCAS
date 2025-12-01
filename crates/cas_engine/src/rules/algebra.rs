@@ -644,8 +644,14 @@ define_rule!(
         let expr_data = ctx.get(expr).clone();
         if let Expr::Add(l, r) = expr_data {
             // eprintln!("AddFractionsRule checking: {:?}", expr);
-            // Check if either is a fraction
-            let is_frac = |e: ExprId| matches!(ctx.get(e), Expr::Div(_, _));
+            // Check if either is a fraction or Neg(fraction)
+            let is_frac = |e: ExprId| {
+                match ctx.get(e) {
+                    Expr::Div(_, _) => true,
+                    Expr::Neg(inner) => matches!(ctx.get(*inner), Expr::Div(_, _)),
+                    _ => false
+                }
+            };
             if !is_frac(l) && !is_frac(r) {
                 return None;
             }
@@ -655,6 +661,15 @@ define_rule!(
                 let expr_data = ctx.get(e).clone();
                 match expr_data {
                     Expr::Div(n, d) => (n, d),
+                    Expr::Neg(inner) => {
+                        let inner_data = ctx.get(inner).clone();
+                        if let Expr::Div(n, d) = inner_data {
+                            let neg_n = ctx.add(Expr::Neg(n));
+                            (neg_n, d)
+                        } else {
+                            (e, ctx.num(1))
+                        }
+                    },
                     Expr::Mul(l, r) => {
                         // Check for c * (n/d) or (n/d) * c
                         let r_data = ctx.get(r).clone();

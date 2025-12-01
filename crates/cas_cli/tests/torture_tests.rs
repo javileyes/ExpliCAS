@@ -259,7 +259,7 @@ fn test_rational_inequality_signs() {
         let i1 = &intervals[0];
         let (min1, _) = simplifier.simplify(i1.min.clone());
         let (max1, _) = simplifier.simplify(i1.max.clone());
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: min1 }), "-1 * infinity");
+        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: min1 }), "-infinity");
         assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: max1 }), "-2");
         assert_eq!(i1.max_type, BoundType::Open, "Pole at -2 should be Open");
         

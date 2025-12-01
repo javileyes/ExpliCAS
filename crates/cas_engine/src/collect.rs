@@ -72,9 +72,8 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
             if coeff.is_one() {
                 term_part
             } else if coeff == BigRational::from_integer((-1).into()) {
-                // Use Mul(-1, x) instead of Neg(x) to match CanonicalizeNegationRule
-                let minus_one = ctx.num(-1);
-                ctx.add(Expr::Mul(minus_one, term_part))
+                // Use Neg(x) instead of Mul(-1, x) for conciseness
+                ctx.add(Expr::Neg(term_part))
             } else {
                 let coeff_expr = ctx.add(Expr::Number(coeff));
                 ctx.add(Expr::Mul(coeff_expr, term_part))

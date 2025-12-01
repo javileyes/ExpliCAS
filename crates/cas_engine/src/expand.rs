@@ -1,5 +1,6 @@
 use cas_ast::{Expr, ExprId, Context};
 use num_traits::{ToPrimitive, Signed};
+use num_integer::Integer;
 
 /// Expands an expression.
 /// This is the main entry point for expansion.
@@ -118,6 +119,14 @@ pub fn expand_div(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
 pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     // Logic from BinomialExpansionRule
     let base_data = ctx.get(base).clone();
+
+    // (a * b)^n -> a^n * b^n
+    if let Expr::Mul(a, b) = base_data {
+        let ea = expand_pow(ctx, a, exp);
+        let eb = expand_pow(ctx, b, exp);
+        return ctx.add(Expr::Mul(ea, eb));
+    }
+
     if let Expr::Add(a, b) = base_data {
         let exp_data = ctx.get(exp).clone();
         if let Expr::Number(n) = exp_data {
@@ -134,7 +143,7 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
                             
                             let term_a = if exp_a == 0 { ctx.num(1) } else if exp_a == 1 { a } else { 
                                 let e = ctx.num(exp_a as i64);
-                                ctx.add(Expr::Pow(a, e)) // Recurse? expand_pow(a, e)? No, a is atom or whatever.
+                                ctx.add(Expr::Pow(a, e)) 
                             };
                             let term_b = if exp_b == 0 { ctx.num(1) } else if exp_b == 1 { b } else { 
                                 let e = ctx.num(exp_b as i64);
@@ -155,15 +164,32 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
                             expanded = ctx.add(Expr::Add(expanded, terms[i]));
                         }
                         
-                        // Recurse on the result?
-                        // The result is a sum of products.
-                        // We might need to expand those products if a or b were sums.
-                        // But expand is bottom-up. a and b are already expanded.
-                        // So a^(n-k) might need expansion if a is a sum?
-                        // If a is a sum, we have (x+y)^k.
-                        // We should recurse.
                         return expand(ctx, expanded);
                     }
+                }
+            }
+        }
+    }
+
+    // (a - b)^n -> (a + (-b))^n
+    if let Expr::Sub(a, b) = base_data {
+        let neg_b = ctx.add(Expr::Neg(b));
+        let sum = ctx.add(Expr::Add(a, neg_b));
+        return expand_pow(ctx, sum, exp);
+    }
+
+    // (-a)^n
+    if let Expr::Neg(a) = base_data {
+        let exp_data = ctx.get(exp).clone();
+        if let Expr::Number(n) = exp_data {
+            if n.is_integer() {
+                if n.to_integer().is_even() {
+                    // (-a)^n -> a^n
+                    return expand_pow(ctx, a, exp);
+                } else {
+                    // (-a)^n -> -(a^n)
+                    let p = expand_pow(ctx, a, exp);
+                    return ctx.add(Expr::Neg(p));
                 }
             }
         }
