@@ -126,6 +126,19 @@ define_rule!(
                         description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
                     });
                 }
+                // 7. log(b, |x|) -> log(b, x)
+                // We assume x is in the domain of log (x > 0) if this simplification is requested,
+                // similar to how we handle log(b, x^y) -> y*log(b, x).
+                if let Expr::Function(fname, fargs) = &arg_data {
+                    if fname == "abs" && fargs.len() == 1 {
+                        let abs_arg = fargs[0];
+                        let new_expr = ctx.add(Expr::Function("log".to_string(), vec![base, abs_arg]));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "log(b, |x|) -> log(b, x)".to_string(),
+                        });
+                    }
+                }
             }
         None
     }

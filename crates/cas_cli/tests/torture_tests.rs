@@ -568,3 +568,19 @@ fn test_torture_28_tangent_sum() {
     let result = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
     assert_eq!(result, "0");
 }
+
+#[test]
+fn test_log_sqrt_simplification() {
+    let mut simplifier = create_full_simplifier();
+    
+    // ln(sqrt(x^2 + 2*x + 1)) - ln(x + 1) -> 0
+    // Requires:
+    // 1. sqrt(x^2+2x+1) -> |x+1| (SimplifySquareRootRule)
+    // 2. ln(|x+1|) -> ln(x+1) (EvaluateLogRule with domain assumption)
+    // 3. ln(x+1) - ln(x+1) -> 0 (AnnihilationRule or CombineLikeTermsRule)
+    let input = "ln(sqrt(x^2 + 2*x + 1)) - ln(x + 1)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!("{}", DisplayExpr { context: &simplifier.context, id: res });
+    assert_eq!(output, "0");
+}
