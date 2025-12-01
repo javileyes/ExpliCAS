@@ -82,7 +82,7 @@ define_rule!(
 
         // Handle Division Distribution: (a + b) / c -> a/c + b/c
         if let Expr::Div(l, r) = expr_data {
-            println!("DistributeRule Div: l={:?} r={:?}", ctx.get(l), ctx.get(r));
+            // println!("DistributeRule Div: l={:?} r={:?}\", ctx.get(l), ctx.get(r));
             let l_data = ctx.get(l).clone();
             
             // Helper to check if division simplifies (shares factors)

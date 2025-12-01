@@ -55,5 +55,84 @@ fn benchmark_trig_simplification(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, benchmark_polynomial_simplification, benchmark_trig_simplification);
+fn benchmark_rational_simplification(c: &mut Criterion) {
+    let mut group = c.benchmark_group("rational");
+    
+    group.bench_function("sum_fractions_10", |b| {
+        b.iter(|| {
+            let mut simplifier = Simplifier::with_default_rules();
+            // 1/x + 1/(x+1) + ...
+            let mut s = "1/x".to_string();
+            for i in 1..=10 {
+                s.push_str(&format!(" + 1/(x+{})", i));
+            }
+            let input = parse(&s, &mut simplifier.context).unwrap();
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.finish();
+}
+
+fn benchmark_calculus_operations(c: &mut Criterion) {
+    let mut group = c.benchmark_group("calculus");
+    
+    group.bench_function("diff_nested_trig_exp", |b| {
+        b.iter(|| {
+            let mut simplifier = Simplifier::with_default_rules();
+            let input = parse("diff(exp(sin(x^2)), x)", &mut simplifier.context).unwrap();
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.bench_function("integrate_trig_product", |b| {
+        b.iter(|| {
+            let mut simplifier = Simplifier::with_default_rules();
+            let input = parse("integrate(sin(x)*cos(x), x)", &mut simplifier.context).unwrap();
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.finish();
+}
+
+fn benchmark_solver(c: &mut Criterion) {
+    let mut group = c.benchmark_group("solver");
+    
+    group.bench_function("solve_quadratic", |b| {
+        b.iter(|| {
+            let mut simplifier = Simplifier::with_default_rules();
+            let input = parse("solve(x^2 + 5*x + 6, x)", &mut simplifier.context).unwrap();
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.finish();
+}
+
+fn benchmark_stress(c: &mut Criterion) {
+    let mut group = c.benchmark_group("stress");
+    group.sample_size(10); // Lower sample size for slow tests
+    
+    group.bench_function("deeply_nested_poly", |b| {
+        b.iter(|| {
+            let mut simplifier = Simplifier::with_default_rules();
+            // (((x+1)^2 + 1)^2 + 1)^2
+            let input = parse("(((x+1)^2 + 1)^2 + 1)^2", &mut simplifier.context).unwrap();
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.finish();
+}
+
+criterion_group!(
+    benches, 
+    benchmark_polynomial_simplification, 
+    benchmark_trig_simplification,
+    benchmark_rational_simplification,
+    benchmark_calculus_operations,
+    benchmark_solver,
+    benchmark_stress
+);
 criterion_main!(benches);

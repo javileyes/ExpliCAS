@@ -1053,6 +1053,7 @@ define_rule!(
         let r_root = has_root(r);
         
         // eprintln!("Rationalize Check: {:?} has_root(l)={} has_root(r)={}", den_data, l_root, r_root);
+        // eprintln!("Rationalize Check: {:?} has_root(l)={} has_root(r)={} l={:?} r={:?}", den_data, l_root, r_root, ctx.get(l), ctx.get(r));
 
         if !l_root && !r_root {
             return None;
@@ -1065,16 +1066,21 @@ define_rule!(
             ctx.add(Expr::Add(l, r))
         };
 
-        // Multiply num and den by conjugate
+        // Multiply num by conjugate
         let new_num = ctx.add(Expr::Mul(num, conjugate));
-        let den_mul = ctx.add(Expr::Mul(den, conjugate));
-        let expand_str = "expand".to_string();
-        let new_den = ctx.add(Expr::Function(expand_str, vec![den_mul]));
+        
+        // Compute new den = l^2 - r^2
+        // (l+r)(l-r) = l^2 - r^2
+        // (l-r)(l+r) = l^2 - r^2
+        let two = ctx.num(2);
+        let l_sq = ctx.add(Expr::Pow(l, two));
+        let r_sq = ctx.add(Expr::Pow(r, two));
+        let new_den = ctx.add(Expr::Sub(l_sq, r_sq));
         
         let new_expr = ctx.add(Expr::Div(new_num, new_den));
         return Some(Rewrite {
             new_expr,
-            description: "Rationalize denominator".to_string(),
+            description: "Rationalize denominator (diff squares)".to_string(),
         });
     }
 );
@@ -1241,7 +1247,56 @@ define_rule!(
                 }
                 
                 // Case 3: nf = base^n, df = base^m.
-                // ... (implement if needed, but Case 1/2 cover most)
+                if let Some((b_n, e_n)) = nf_pow {
+                    if let Some((b_d, e_d)) = df_pow {
+                        if crate::ordering::compare_expr(ctx, b_n, b_d) == std::cmp::Ordering::Equal {
+                            // Found common base. Compare exponents.
+                            if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(e_n), ctx.get(e_d)) {
+                                if n > m {
+                                    // nf = x^n, df = x^m, n > m.
+                                    // Cancel df. nf becomes x^(n-m).
+                                    let new_exp = n - m;
+                                    let new_term = if new_exp.is_one() {
+                                        b_n
+                                    } else {
+                                        let exp_node = ctx.add(Expr::Number(new_exp));
+                                        ctx.add(Expr::Pow(b_n, exp_node))
+                                    };
+                                    num_factors[i] = new_term;
+                                    den_factors.remove(j);
+                                    found = false; // Modified num factor, keep checking it against other den factors?
+                                    // Actually, we reduced it. We should probably continue checking THIS factor against others?
+                                    // But for simplicity, let's say we made progress.
+                                    changed = true;
+                                    break;
+                                } else if m > n {
+                                    // nf = x^n, df = x^m, m > n.
+                                    // Cancel nf. df becomes x^(m-n).
+                                    let new_exp = m - n;
+                                    let new_term = if new_exp.is_one() {
+                                        b_d
+                                    } else {
+                                        let exp_node = ctx.add(Expr::Number(new_exp));
+                                        ctx.add(Expr::Pow(b_d, exp_node))
+                                    };
+                                    den_factors[j] = new_term;
+                                    found = true; // Removed num factor
+                                    changed = true;
+                                    break;
+                                } else {
+                                    // n == m. Exact match handled above?
+                                    // Exact match might not catch it if they are different ExprIds but structurally equal.
+                                    // But compare_expr should handle it.
+                                    // If we are here, just remove both.
+                                    den_factors.remove(j);
+                                    found = true;
+                                    changed = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
             if found {
                 num_factors.remove(i);
@@ -1325,6 +1380,7 @@ define_rule!(
         if inner.is_none() { return None; }
         let inner = inner.unwrap();
         let inner_data = ctx.get(inner).clone();
+        println!("RootDenesting checking inner: {:?}", inner_data);
 
         let (a, b, is_add) = match inner_data {
             Expr::Add(l, r) => (l, r, true),
@@ -1350,17 +1406,29 @@ define_rule!(
                     None
                 },
                 Expr::Mul(l, r) => {
-                    // Check l * sqrt(r)
-                    if let Expr::Function(fname, fargs) = ctx.get(*r) {
-                        if fname == "sqrt" && fargs.len() == 1 {
-                            return Some((Some(*l), fargs[0]));
+                    // Helper to check for sqrt/pow(1/2)
+                    let is_sqrt = |e: cas_ast::ExprId| -> Option<cas_ast::ExprId> {
+                        match ctx.get(e) {
+                            Expr::Function(fname, fargs) if fname == "sqrt" && fargs.len() == 1 => Some(fargs[0]),
+                            Expr::Pow(b, e) => {
+                                if let Expr::Number(n) = ctx.get(*e) {
+                                    if *n.numer() == 1.into() && *n.denom() == 2.into() {
+                                        return Some(*b);
+                                    }
+                                }
+                                None
+                            },
+                            _ => None
                         }
+                    };
+
+                    // Check l * sqrt(r)
+                    if let Some(inner) = is_sqrt(*r) {
+                        return Some((Some(*l), inner));
                     }
                     // Check sqrt(l) * r
-                    if let Expr::Function(fname, fargs) = ctx.get(*l) {
-                        if fname == "sqrt" && fargs.len() == 1 {
-                            return Some((Some(*r), fargs[0]));
-                        }
+                    if let Some(inner) = is_sqrt(*l) {
+                        return Some((Some(*r), inner));
                     }
                     None
                 },
@@ -1398,7 +1466,9 @@ define_rule!(
                          if val_delta.is_integer() {
                              let int_delta = val_delta.to_integer();
                              let sqrt_delta = int_delta.sqrt();
-                             if sqrt_delta.pow(2) == int_delta {
+                             
+                             if sqrt_delta.clone() * sqrt_delta.clone() == int_delta {
+                                 // Perfect square!
                                  let z_val = ctx.add(Expr::Number(num_rational::BigRational::from_integer(sqrt_delta)));
                                  
                                  // Found Z!
@@ -1413,11 +1483,29 @@ define_rule!(
                                  let term2_frac = ctx.add(Expr::Div(term2_num, two));
                                  let term2 = ctx.add(Expr::Function("sqrt".to_string(), vec![term2_frac]));
                                  
-                                 let new_expr = if is_add {
-                                     ctx.add(Expr::Add(term1, term2))
-                                 } else {
-                                     ctx.add(Expr::Sub(term1, term2))
-                                 };
+                                 // Check sign of C
+                let c_is_negative = if let Expr::Number(n) = ctx.get(c) {
+                    n < &num_rational::BigRational::zero()
+                } else {
+                    false
+                };
+
+                // If is_add is true, we have A + C*sqrt(D).
+                // If C is negative, effective operation is subtraction.
+                // If is_add is false, we have A - C*sqrt(D).
+                // If C is negative, effective operation is addition.
+                
+                let effective_sub = if is_add {
+                    c_is_negative
+                } else {
+                    !c_is_negative
+                };
+
+                let new_expr = if effective_sub {
+                     ctx.add(Expr::Sub(term1, term2))
+                } else {
+                     ctx.add(Expr::Add(term1, term2))
+                };
                                  
                                  return Some(crate::rule::Rewrite {
                                      new_expr,
