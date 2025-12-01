@@ -6,6 +6,7 @@ pub mod polynomial;
 pub mod solver;
 pub mod ordering;
 pub mod collect;
+pub mod expand;
 
 pub mod visitors;
 pub mod error;

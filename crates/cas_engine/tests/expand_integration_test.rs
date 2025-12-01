@@ -1,0 +1,38 @@
+use cas_engine::Simplifier;
+use cas_parser::parse;
+use cas_ast::DisplayExpr;
+
+#[test]
+fn test_expand_rule_integration() {
+    let mut simplifier = Simplifier::new();
+    cas_engine::rules::algebra::register(&mut simplifier);
+    cas_engine::rules::polynomial::register(&mut simplifier); // For CombineLikeTerms
+
+    // Test expand(a*(b+c))
+    let expr = parse("expand(a * (b + c))", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let res = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    println!("Result: {}", res);
+    // Should be a*b + a*c
+    assert!(res.contains("a * b"));
+    assert!(res.contains("a * c"));
+    assert!(!res.contains("expand"));
+}
+
+#[test]
+fn test_expand_binomial_integration() {
+    let mut simplifier = Simplifier::new();
+    cas_engine::rules::algebra::register(&mut simplifier);
+    cas_engine::rules::polynomial::register(&mut simplifier);
+
+    // Test expand((x+1)^2)
+    let expr = parse("expand((x + 1)^2)", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let res = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    println!("Result: {}", res);
+    // Should be x^2 + 2*x + 1
+    assert!(res.contains("x^2"));
+    assert!(res.contains("2 * x"));
+    assert!(res.contains("1"));
+    assert!(!res.contains("expand"));
+}
