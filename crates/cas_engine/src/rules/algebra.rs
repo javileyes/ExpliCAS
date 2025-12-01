@@ -1581,70 +1581,97 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(ExpandRule));
-    simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
     // simplifier.add_rule(Box::new(FractionAddRule)); // Disabled: Conflicts with DistributeRule (Div)
     simplifier.add_rule(Box::new(FactorRule));
-    simplifier.add_rule(Box::new(RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
     simplifier.add_rule(Box::new(RootDenestingRule));
-    simplifier.add_rule(Box::new(DistributeDivisionRule));
+    simplifier.add_rule(Box::new(SimplifySquareRootRule));
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
 
-define_rule!(
-    DistributeDivisionRule,
-    "Distribute Division",
-    |ctx, expr| {
-        // println!("DistributeDivisionRule visiting: {:?}", ctx.get(expr));
-        let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
-            (*n, *d)
-        } else {
-            return None;
-        };
-        
-        // println!("DistributeDivisionRule checking: {:?}", ctx.get(expr));
 
-        // Check if num is Add/Sub
-        let num_data = ctx.get(num).clone();
-        match num_data {
-            Expr::Add(_, _) | Expr::Sub(_, _) => {
-                // Flatten terms
-                let terms = flatten_add_sub(ctx, num);
-                
-                // Check if denominator divides ALL terms
-                if terms.iter().all(|(t, _)| is_divisible(ctx, *t, den)) {
-                    // Distribute
-                    let mut new_terms = Vec::new();
-                    for (t, is_add) in terms {
-                        let div = ctx.add(Expr::Div(t, den));
-                        new_terms.push((div, is_add));
-                    }
-                    
-                    // Reconstruct
-                    let mut result = new_terms[0].0;
-                    if !new_terms[0].1 {
-                        result = ctx.add(Expr::Neg(result));
-                    }
-                    
-                    for (t, is_add) in new_terms.into_iter().skip(1) {
-                        if is_add {
-                            result = ctx.add(Expr::Add(result, t));
-                        } else {
-                            result = ctx.add(Expr::Sub(result, t));
-                        }
-                    }
-                    
-                    // eprintln!("DistributeDivisionRule rewriting: {:?} -> {:?}", expr, result);
-                    return Some(Rewrite {
-                        new_expr: result,
-                        description: "Distribute division".to_string(),
-                    });
+
+
+
+define_rule!(
+    SimplifySquareRootRule,
+    "Simplify Square Root",
+    |ctx, expr| {
+        let arg = if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "sqrt" && args.len() == 1 {
+                Some(args[0])
+            } else {
+                None
+            }
+        } else if let Expr::Pow(b, e) = ctx.get(expr) {
+            if let Expr::Number(n) = ctx.get(*e) {
+                if *n.numer() == 1.into() && *n.denom() == 2.into() {
+                    Some(*b)
+                } else {
+                    None
                 }
-            },
-            _ => {}
-        }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(arg) = arg {
+            // Only try to factor if argument is Add/Sub (polynomial)
+            match ctx.get(arg) {
+                Expr::Add(_, _) | Expr::Sub(_, _) => {},
+                _ => return None,
+            }
+
+                use crate::polynomial::Polynomial;
+                use crate::rules::algebra::collect_variables;
+                
+                let vars = collect_variables(ctx, arg);
+                if vars.len() == 1 {
+                    let var = vars.iter().next().unwrap();
+                    if let Ok(poly) = Polynomial::from_expr(ctx, arg, var) {
+                            let factors = poly.factor_rational_roots();
+                            if !factors.is_empty() {
+                                let first = &factors[0];
+                                if factors.iter().all(|f| f == first) {
+                                    let count = factors.len() as u32;
+                                    if count >= 2 {
+                                        let base = first.to_expr(ctx);
+                                        let k = count / 2;
+                                        let rem = count % 2;
+                                        
+                                        let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![base]));
+                                        
+                                        let term1 = if k == 1 {
+                                            abs_base
+                                        } else {
+                                            let k_expr = ctx.num(k as i64);
+                                            ctx.add(Expr::Pow(abs_base, k_expr))
+                                        };
+                                        
+                                        if rem == 0 {
+                                            return Some(Rewrite {
+                                                new_expr: term1,
+                                                description: "Simplify perfect square root".to_string(),
+                                            });
+                                        } else {
+                                            let sqrt_base = ctx.add(Expr::Function("sqrt".to_string(), vec![base]));
+                                            let new_expr = ctx.add(Expr::Mul(term1, sqrt_base));
+                                            return Some(Rewrite {
+                                                new_expr,
+                                                description: "Simplify square root factors".to_string(),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                    }
+                }
+            }
+
         None
     }
 );
@@ -1696,116 +1723,3 @@ define_rule!(
         None
     }
 );
-
-fn flatten_add_sub(ctx: &Context, expr: ExprId) -> Vec<(ExprId, bool)> {
-    let mut terms = Vec::new();
-    let mut stack = vec![(expr, true)]; // expr, is_positive
-    
-    while let Some((curr, pos)) = stack.pop() {
-        match ctx.get(curr) {
-            Expr::Add(l, r) => {
-                stack.push((*r, pos));
-                stack.push((*l, pos));
-            },
-            Expr::Sub(l, r) => {
-                stack.push((*r, !pos));
-                stack.push((*l, pos));
-            },
-            _ => {
-                terms.push((curr, pos));
-            }
-        }
-    }
-    // Reverse to keep order roughly? Stack reverses order.
-    // Add is commutative, Sub is not.
-    // But we flattened it to signed terms.
-    // (a - b) -> a (pos), b (neg).
-    // Reconstruct: a - b.
-    // Order matters for reconstruction if we want to preserve structure, but for addition it's fine.
-    // Let's just return as is.
-    terms
-}
-
-fn is_divisible(ctx: &Context, term: ExprId, divisor: ExprId) -> bool {
-    // Compare content, not just IDs
-    if ctx.get(term) == ctx.get(divisor) { return true; }
-    
-    // Check if divisor is a factor of term
-    // term = A * B * ...
-    // divisor = X
-    // If X is in {A, B, ...}, return true.
-    
-    // Also handle powers: term = x^2, divisor = x.
-    
-    let term_factors = get_mul_factors(ctx, term);
-    let divisor_data = ctx.get(divisor);
-    
-    // If divisor is simple (not Mul), check if it exists in term_factors
-    // or if a power of it exists.
-    
-    // For now, simple check:
-    for f in &term_factors {
-        if ctx.get(*f) == divisor_data { return true; }
-        
-        // Check power
-        if let Expr::Pow(b, e) = ctx.get(*f) {
-            if ctx.get(*b) == divisor_data {
-                if let Expr::Number(n) = ctx.get(*e) {
-                    if n >= &num_rational::BigRational::one() {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    
-    // What if divisor is Mul? e.g. term = x*y*z, divisor = x*y.
-    // We need to check if all factors of divisor are in term.
-    let div_factors = get_mul_factors(ctx, divisor);
-    
-    // Naive check: for each factor in divisor, find and remove one matching factor in term.
-    let mut available_factors = term_factors.clone();
-    
-    for df in div_factors {
-        let df_data = ctx.get(df);
-        let mut found = false;
-        for (i, tf) in available_factors.iter().enumerate() {
-            if ctx.get(*tf) == df_data {
-                available_factors.remove(i);
-                found = true;
-                break;
-            }
-            // Check power: tf = x^n, df = x.
-            if let Expr::Pow(b, e) = ctx.get(*tf) {
-                if ctx.get(*b) == df_data {
-                     if let Expr::Number(n) = ctx.get(*e) {
-                        if n >= &num_rational::BigRational::one() {
-                            // We "consumed" one power.
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        if !found { return false; }
-    }
-    
-    true
-}
-
-fn get_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    let mut factors = Vec::new();
-    let mut stack = vec![expr];
-    while let Some(curr) = stack.pop() {
-        if let Expr::Mul(l, r) = ctx.get(curr) {
-            stack.push(*r);
-            stack.push(*l);
-        } else {
-            factors.push(curr);
-        }
-    }
-    factors
-}
-
-

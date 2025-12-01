@@ -49,7 +49,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::DistributeDivisionRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifySquareRootRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); 
