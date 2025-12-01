@@ -15,6 +15,7 @@ pub struct CasConfig {
     pub log_split_exponents: bool,
     pub rationalize_denominator: bool,
     pub canonicalize_trig_square: bool,
+    pub auto_factor: bool,
 }
 
 impl Default for CasConfig {
@@ -30,6 +31,7 @@ impl Default for CasConfig {
             log_split_exponents: true, // ln(x^a) -> a*ln(x)
             rationalize_denominator: true, // 1/sqrt(2) -> sqrt(2)/2
             canonicalize_trig_square: false, // cos^2 -> 1-sin^2 (Can prevent simplification)
+            auto_factor: false, // Automatically factor polynomials if simpler (disabled by default to avoid loops)
         }
     }
 }

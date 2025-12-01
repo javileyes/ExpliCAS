@@ -329,6 +329,51 @@ define_rule!(
 );
 
 define_rule!(
+    ConservativeExpandRule,
+    "Conservative Expand",
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            // If explicit expand() call, always expand
+            if name == "expand" && args.len() == 1 {
+                let arg = args[0];
+                let new_expr = crate::expand::expand(ctx, arg);
+                if new_expr != expr {
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "expand()".to_string(),
+                    });
+                } else {
+                    return Some(Rewrite {
+                        new_expr: arg,
+                        description: "expand(atom)".to_string(),
+                    });
+                }
+            }
+        }
+        
+        // Implicit expansion (e.g. (x+1)^2)
+        // Only expand if complexity does not increase
+        let new_expr = crate::expand::expand(ctx, expr);
+        if new_expr != expr {
+            let old_count = count_nodes(ctx, expr);
+            let new_count = count_nodes(ctx, new_expr);
+            
+            if new_count <= old_count {
+                 // Check for structural equality to avoid loops with ID regeneration
+                 if crate::ordering::compare_expr(ctx, new_expr, expr) == std::cmp::Ordering::Equal {
+                     return None;
+                 }
+                 return Some(Rewrite {
+                     new_expr,
+                     description: "Conservative Expansion".to_string(),
+                 });
+            }
+        }
+        None
+    }
+);
+
+define_rule!(
     FactorRule,
     "Factor Polynomial",
     |ctx, expr| {
@@ -371,6 +416,61 @@ define_rule!(
                  description: "Factor difference of squares".to_string(),
              });
         }
+        None
+    }
+);
+
+define_rule!(
+    AutomaticFactorRule,
+    "Automatic Factorization",
+    |ctx, expr| {
+        // Only try to factor if it's an Add or Sub (polynomial-like)
+        match ctx.get(expr) {
+            Expr::Add(_, _) | Expr::Sub(_, _) => {},
+            _ => return None,
+        }
+
+        // Try factor_polynomial first
+        if let Some(new_expr) = crate::factor::factor_polynomial(ctx, expr) {
+             if new_expr != expr {
+                 // Complexity check: Only accept if it strictly reduces size
+                 // This prevents loops with ExpandRule which usually increases size (or keeps it same)
+                 let old_count = count_nodes(ctx, expr);
+                 let new_count = count_nodes(ctx, new_expr);
+                 
+                 if new_count < old_count {
+                     // Check for structural equality (though unlikely if count reduced)
+                     if crate::ordering::compare_expr(ctx, new_expr, expr) == std::cmp::Ordering::Equal {
+                         return None;
+                     }
+                     return Some(Rewrite {
+                         new_expr,
+                         description: "Automatic Factorization (Reduced Size)".to_string(),
+                     });
+                 }
+             }
+        }
+        
+        // Try difference of squares
+        // Note: Diff squares usually increases size: a^2 - b^2 (5) -> (a-b)(a+b) (7)
+        // So this will rarely trigger with strict size check unless terms simplify further.
+        // e.g. x^4 - 1 -> (x^2-1)(x^2+1) -> (x-1)(x+1)(x^2+1).
+        // x^4 - 1 (5 nodes). (x-1)(x+1)(x^2+1) (many nodes).
+        // So auto-factoring diff squares is risky for loops.
+        // We'll skip it for now in AutomaticFactorRule, or only if it reduces size.
+        if let Some(new_expr) = crate::factor::factor_difference_squares(ctx, expr) {
+             if new_expr != expr {
+                 let old_count = count_nodes(ctx, expr);
+                 let new_count = count_nodes(ctx, new_expr);
+                 if new_count < old_count {
+                     return Some(Rewrite {
+                         new_expr,
+                         description: "Automatic Factorization (Diff Squares)".to_string(),
+                     });
+                 }
+             }
+        }
+
         None
     }
 );

@@ -145,6 +145,7 @@ impl Repl {
         simplifier.add_rule(Box::new(ExponentialLogRule));
         simplifier.add_rule(Box::new(SimplifyFractionRule));
         simplifier.add_rule(Box::new(ExpandRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
         simplifier.add_rule(Box::new(FactorRule));
         simplifier.add_rule(Box::new(CollectRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
@@ -181,6 +182,10 @@ impl Repl {
 
         if config.root_denesting {
             simplifier.add_rule(Box::new(cas_engine::rules::algebra::RootDenestingRule));
+        }
+
+        if config.auto_factor {
+            simplifier.add_rule(Box::new(cas_engine::rules::algebra::AutomaticFactorRule));
         }
 
         simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleConsistencyRule));
@@ -233,6 +238,26 @@ impl Repl {
         toggle("Split Log Exponents", config.log_split_exponents);
         toggle("Rationalize Denominator", config.rationalize_denominator);
         toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
+        toggle("Rationalize Denominator", config.rationalize_denominator);
+        toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
+        
+        // Auto Factor Logic:
+        // If auto_factor is on, we enable AutomaticFactorRule AND ConservativeExpandRule.
+        // We DISABLE the aggressive ExpandRule to prevent loops.
+        if config.auto_factor {
+            self.simplifier.enable_rule("Automatic Factorization");
+            self.simplifier.enable_rule("Conservative Expand");
+            self.simplifier.disable_rule("Expand Polynomial");
+            self.simplifier.disable_rule("Binomial Expansion");
+        } else {
+            self.simplifier.disable_rule("Automatic Factorization");
+            self.simplifier.disable_rule("Conservative Expand");
+            self.simplifier.enable_rule("Expand Polynomial");
+            // Re-enable Binomial Expansion if config says so
+            if config.expand_binomials {
+                self.simplifier.enable_rule("Binomial Expansion");
+            }
+        }
     }
 
     pub fn run(&mut self) -> rustyline::Result<()> {
@@ -360,6 +385,7 @@ impl Repl {
                 println!("  log_split_exponents: {}", self.config.log_split_exponents);
                 println!("  rationalize_denominator: {}", self.config.rationalize_denominator);
                 println!("  canonicalize_trig_square: {}", self.config.canonicalize_trig_square);
+                println!("  auto_factor: {}", self.config.auto_factor);
             },
             "save" => {
                 match self.config.save() {
@@ -392,6 +418,7 @@ impl Repl {
                     "log_split_exponents" => self.config.log_split_exponents = enable,
                     "rationalize_denominator" => self.config.rationalize_denominator = enable,
                     "canonicalize_trig_square" => self.config.canonicalize_trig_square = enable,
+                    "auto_factor" => self.config.auto_factor = enable,
                     _ => {
                         println!("Unknown rule: {}", rule);
                         changed = false;
