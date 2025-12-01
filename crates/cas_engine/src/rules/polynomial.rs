@@ -6,11 +6,13 @@ use num_rational::BigRational;
 use num_traits::{One, Zero};
 use crate::ordering::compare_expr;
 use std::cmp::Ordering;
+use crate::polynomial::Polynomial;
 
 define_rule!(
     DistributeRule,
     "Distributive Property",
     |ctx, expr| {
+        println!("DistributeRule visiting: {:?}", ctx.get(expr));
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(l, r) = expr_data {
             // a * (b + c) -> a*b + a*c
@@ -74,6 +76,95 @@ define_rule!(
                     new_expr,
                     description: "Distribute".to_string(),
                 });
+            }
+        }
+
+        // Handle Division Distribution: (a + b) / c -> a/c + b/c
+        if let Expr::Div(l, r) = expr_data {
+            println!("DistributeRule Div: l={:?} r={:?}", ctx.get(l), ctx.get(r));
+            let l_data = ctx.get(l).clone();
+            
+            // Helper to check if division simplifies (shares factors)
+            let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> bool {
+                if num == den { return true; }
+                
+                // Structural factor check
+                let get_factors = |e: ExprId| -> Vec<ExprId> {
+                    let mut factors = Vec::new();
+                    let mut stack = vec![e];
+                    while let Some(curr) = stack.pop() {
+                        if let Expr::Mul(a, b) = ctx.get(curr) {
+                            stack.push(*a);
+                            stack.push(*b);
+                        } else {
+                            factors.push(curr);
+                        }
+                    }
+                    factors
+                };
+                
+                let num_factors = get_factors(num);
+                let den_factors = get_factors(den);
+                
+                // println!("shares_factor: num={:?} den={:?}", num_factors, den_factors);
+                // for f in &num_factors { println!("  num factor: {:?}", ctx.get(*f)); }
+                // for f in &den_factors { println!("  den factor: {:?}", ctx.get(*f)); }
+                
+                println!("shares_factor: num={:?} den={:?}", num_factors, den_factors);
+                for f in &num_factors { println!("  num factor: {:?} args: {:?}", ctx.get(*f), if let Expr::Function(_, args) = ctx.get(*f) { args.iter().map(|a| ctx.get(*a)).collect::<Vec<_>>() } else { vec![] }); }
+                for f in &den_factors { println!("  den factor: {:?} args: {:?}", ctx.get(*f), if let Expr::Function(_, args) = ctx.get(*f) { args.iter().map(|a| ctx.get(*a)).collect::<Vec<_>>() } else { vec![] }); }
+
+                for df in den_factors {
+                    // Check for structural equality using compare_expr
+                    let found = num_factors.iter().any(|nf| {
+                        compare_expr(ctx, *nf, df) == Ordering::Equal
+                    });
+                    
+                    if found {
+                        // println!("  Found common factor: {:?}", ctx.get(df));
+                        return true;
+                    }
+                }
+                
+                // Fallback to Polynomial GCD for polynomial cases (like (x^2+x)/x)
+                // Only if structural check failed
+                let vars = crate::rules::algebra::collect_variables(ctx, num);
+                if vars.is_empty() { return false; } 
+                
+                for var in vars {
+                    if let (Ok(p_num), Ok(p_den)) = (Polynomial::from_expr(ctx, num, &var), Polynomial::from_expr(ctx, den, &var)) {
+                        if p_den.is_zero() { continue; }
+                        let gcd = p_num.gcd(&p_den);
+                        if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
+                            return true;
+                        }
+                    }
+                }
+                false
+            };
+
+            if let Expr::Add(a, b) = l_data {
+                // Only distribute if at least one term simplifies
+                if simplifies(ctx, a, r) || simplifies(ctx, b, r) {
+                    let ac = ctx.add(Expr::Div(a, r));
+                    let bc = ctx.add(Expr::Div(b, r));
+                    let new_expr = ctx.add(Expr::Add(ac, bc));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Distribute division (simplifying)".to_string(),
+                    });
+                }
+            }
+            if let Expr::Sub(a, b) = l_data {
+                if simplifies(ctx, a, r) || simplifies(ctx, b, r) {
+                    let ac = ctx.add(Expr::Div(a, r));
+                    let bc = ctx.add(Expr::Div(b, r));
+                    let new_expr = ctx.add(Expr::Sub(ac, bc));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Distribute division (simplifying)".to_string(),
+                    });
+                }
             }
         }
         None
@@ -246,10 +337,10 @@ define_rule!(
                 parsed_terms.push((c, v));
             }
             
-            // println!("CombineLikeTerms: {:?}", parsed_terms);
-            // for (c, v) in &parsed_terms {
-            //     println!("  Term: coeff={:?}, var={:?} -> {:?}", c, v, ctx.get(*v));
-            // }
+            println!("CombineLikeTerms: {:?}", parsed_terms);
+            for (c, v) in &parsed_terms {
+                println!("  Term: coeff={:?}, var={:?} -> {:?}", c, v, ctx.get(*v));
+            }
 
             // Sort by var_part to bring like terms together
             parsed_terms.sort_by(|a, b| compare_expr(ctx, a.1, b.1));

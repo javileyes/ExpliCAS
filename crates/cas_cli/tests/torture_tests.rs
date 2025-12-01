@@ -6,7 +6,7 @@ use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNega
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule, AddFractionsRule, FactorRule, SimplifyMulDivRule, ExpandRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule, AddFractionsRule, FactorRule, SimplifyMulDivRule, ExpandRule, PullConstantFromFractionRule};
 use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::grouping::CollectRule;
 use cas_engine::rules::number_theory::NumberTheoryRule;
@@ -53,6 +53,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::DistributeDivisionRule));
+    simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); 
@@ -542,4 +543,27 @@ fn test_torture_26_lagrange_identity() {
     
     let result_str = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
     assert_eq!(result_str, "0", "Lagrange Identity failed to simplify to 0");
+}
+
+#[test]
+fn test_torture_27_hyperbolic_masquerade() {
+    let mut simplifier = create_full_simplifier();
+    // ((e^x + e^(-x))/2)^2 - ((e^x - e^(-x))/2)^2 - 1
+    let input = "((e^x + e^(-x))/2)^2 - ((e^x - e^(-x))/2)^2 - 1";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let result = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result, "0");
+}
+
+#[test]
+fn test_torture_28_tangent_sum() {
+    let mut simplifier = create_full_simplifier();
+    // sin(x + y) / (cos(x) * cos(y)) - (tan(x) + tan(y))
+    let input = "sin(x + y) / (cos(x) * cos(y)) - (tan(x) + tan(y))";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    println!("Parsed AST: {:?}", simplifier.context.get(expr));
+    let (simplified, _) = simplifier.simplify(expr);
+    let result = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    assert_eq!(result, "0");
 }

@@ -47,11 +47,14 @@ impl Simplifier {
 
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
         let rule_rc: Rc<dyn Rule> = rule.into();
+        println!("Registering rule: {}", rule_rc.name());
         if let Some(targets) = rule_rc.target_types() {
             for target in targets {
+                println!("  Target: {}", target);
                 self.rules.entry(target.to_string()).or_default().push(rule_rc.clone());
             }
         } else {
+            println!("  Global");
             self.global_rules.push(rule_rc);
         }
     }
@@ -197,6 +200,7 @@ impl<'a> Transformer for LocalSimplificationTransformer<'a> {
 
 impl<'a> LocalSimplificationTransformer<'a> {
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
+        println!("Visiting: {:?} {:?}", id, self.context.get(id));
         // println!("Simplifying: {:?}", id);
         if let Some(&cached) = self.cache.get(&id) {
             return cached;
@@ -298,10 +302,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
         loop {
             let mut changed = false;
             let variant = get_variant_name(self.context.get(expr_id));
+            // println!("apply_rules for {:?} variant: {}", expr_id, variant);
             // Try specific rules
             if let Some(specific_rules) = self.rules.get(variant) {
                 for rule in specific_rules {
                     if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                        // if expr_id.0 > 4000 { // Only print for deep nodes to avoid noise
+                        //      println!("Specific Rule '{}' rewrote {:?} -> {:?}", rule.name(), expr_id, rewrite.new_expr);
+                        // }
                         if self.collect_steps {
                             self.steps.push(Step::new(
                                 &rewrite.description,
@@ -325,7 +333,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
             // Try global rules
             for rule in self.global_rules {
                 if let Some(rewrite) = rule.apply(self.context, expr_id) {
-                    // println!("Applied global rule: {} -> {} (from {:?})", rule.name(), rewrite.description, self.context.get(expr_id));
                     if self.collect_steps {
                         self.steps.push(Step::new(
                             &rewrite.description,

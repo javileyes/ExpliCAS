@@ -13,6 +13,7 @@ define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
     |ctx, expr| {
+        // eprintln!("SimplifyFractionRule visiting: {:?}", ctx.get(expr));
         let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
             (*n, *d)
         } else {
@@ -123,16 +124,86 @@ define_rule!(
         let new_den = distribute(ctx, den, multiplier);
         
         let new_expr = ctx.add(Expr::Div(new_num, new_den));
+        
+        // println!("NestedFractionRule: {} -> {}", cas_ast::DisplayExpr { context: ctx, id: expr }, cas_ast::DisplayExpr { context: ctx, id: new_expr });
+
         if new_expr == expr {
             return None;
         }
 
+        // Complexity Check: Ensure we actually reduced the number of divisions or total nodes
+        // Counting Div nodes is a good heuristic for "nested fraction simplified"
+        let count_divs = |id| count_nodes_of_type(ctx, id, "Div");
+        let old_divs = count_divs(expr);
+        let new_divs = count_divs(new_expr);
+
+        if new_divs >= old_divs {
+             // If we didn't reduce Div count, maybe we reduced total size?
+             // But usually we want to reduce nesting.
+             // If we went from (1+1/x)/1 -> (x+1)/x, Div count is same (1 -> 1).
+             // But nesting is gone.
+             // (1+1/x) has 1 Div. Total expr has 2 Divs.
+             // (x+1)/x has 1 Div.
+             // So Div count SHOULD decrease.
+             // Wait, (1+1/x)/1:
+             //   Div(Add(1, Div(1, x)), 1) -> 2 Divs.
+             // (x+1)/x:
+             //   Div(Add(x, 1), x) -> 1 Div.
+             // So Div count should decrease.
+             
+             // What if we have (1/x)/(1/y) -> y/x?
+             // Div(Div(1,x), Div(1,y)) -> 3 Divs.
+             // Div(y, x) -> 1 Div.
+             // Decrease.
+             
+             // So requiring decrease in Div count is a good check.
+             return None;
+        }
+
+        // eprintln!("NestedFractionRule rewriting: {:?} -> {:?}", expr, new_expr);
         return Some(Rewrite {
             new_expr,
             description: format!("Multiply by common denominator {:?}", multiplier),
         });
     }
 );
+
+fn count_nodes_of_type(ctx: &Context, expr: ExprId, variant: &str) -> usize {
+    let mut count = 0;
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        let node = ctx.get(id);
+        if get_variant_name(node) == variant {
+            count += 1;
+        }
+        match node {
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            },
+            Expr::Neg(e) => stack.push(*e),
+            Expr::Function(_, args) => stack.extend(args),
+            _ => {}
+        }
+    }
+    count
+}
+
+// Helper to get variant name (duplicated from engine.rs, should be shared but for now local is fine or use public if available)
+fn get_variant_name(expr: &Expr) -> &'static str {
+    match expr {
+        Expr::Number(_) => "Number",
+        Expr::Constant(_) => "Constant",
+        Expr::Variable(_) => "Variable",
+        Expr::Add(_, _) => "Add",
+        Expr::Sub(_, _) => "Sub",
+        Expr::Mul(_, _) => "Mul",
+        Expr::Div(_, _) => "Div",
+        Expr::Pow(_, _) => "Pow",
+        Expr::Neg(_) => "Neg",
+        Expr::Function(_, _) => "Function",
+    }
+}
 
 fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
     let target_data = ctx.get(target).clone();
@@ -152,12 +223,16 @@ fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
             let l_denoms = collect_denominators(ctx, l);
             if !l_denoms.is_empty() {
                  let dl = distribute(ctx, l, multiplier);
-                 return ctx.add(Expr::Mul(dl, r));
+                 // Chain distribution: result is dl * r = (l*m) * r.
+                 // We want to distribute dl into r to clear r's denominators if any.
+                 return distribute(ctx, r, dl);
             }
             let r_denoms = collect_denominators(ctx, r);
             if !r_denoms.is_empty() {
                  let dr = distribute(ctx, r, multiplier);
-                 return ctx.add(Expr::Mul(l, dr));
+                 // Chain distribution: result is l * dr = l * (r*m).
+                 // Distribute dr into l.
+                 return distribute(ctx, l, dr);
             }
             // If neither has explicit denominators, just multiply
             ctx.add(Expr::Mul(target, multiplier))
@@ -171,6 +246,7 @@ fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
                 return ctx.add(Expr::Mul(l, quotient));
             }
             // If not, we are stuck with (l/r)*m.
+            // eprintln!("distribute failed to divide: {:?} / {:?} by {:?}", multiplier, r, multiplier);
             let div_expr = ctx.add(Expr::Div(l, r));
             ctx.add(Expr::Mul(div_expr, multiplier))
         },
@@ -324,7 +400,6 @@ define_rule!(
     FactorRule,
     "Factor Polynomial",
     |ctx, expr| {
-        // eprintln!("FactorRule checking: {:?}", expr);
         if let Expr::Function(name, args) = ctx.get(expr) {
             if name == "factor" && args.len() == 1 {
                 let arg = args[0];
@@ -623,10 +698,28 @@ define_rule!(
 
             // Helper to get num/den
             let mut get_nd = |e: ExprId| -> (ExprId, ExprId) {
-                if let Expr::Div(n, d) = ctx.get(e) {
-                    (*n, *d)
-                } else {
-                    (e, ctx.num(1))
+                let expr_data = ctx.get(e).clone();
+                match expr_data {
+                    Expr::Div(n, d) => (n, d),
+                    Expr::Mul(l, r) => {
+                        // Check for c * (n/d) or (n/d) * c
+                        let r_data = ctx.get(r).clone();
+                        if let Expr::Div(n, d) = r_data {
+                            let l_data = ctx.get(l).clone();
+                            if let Expr::Number(_) = l_data {
+                                return (ctx.add(Expr::Mul(l, n)), d);
+                            }
+                        }
+                        let l_data = ctx.get(l).clone();
+                        if let Expr::Div(n, d) = l_data {
+                            let r_data = ctx.get(r).clone();
+                            if let Expr::Number(_) = r_data {
+                                return (ctx.add(Expr::Mul(n, r)), d);
+                            }
+                        }
+                        (e, ctx.num(1))
+                    },
+                    _ => (e, ctx.num(1))
                 }
             };
 
@@ -637,10 +730,17 @@ define_rule!(
             if crate::ordering::compare_expr(ctx, d1, d2) == std::cmp::Ordering::Equal {
                 let new_num = ctx.add(Expr::Add(n1, n2));
                 let new_expr = ctx.add(Expr::Div(new_num, d1));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Add fractions with same denominator".to_string(),
-                });
+                
+                // Complexity check
+                let old_complexity = count_nodes(ctx, expr);
+                let new_complexity = count_nodes(ctx, new_expr);
+                
+                if new_complexity <= old_complexity {
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Add fractions with same denominator".to_string(),
+                    });
+                }
             }
 
             // Different denominators. Try to find LCM.
@@ -654,34 +754,71 @@ define_rule!(
             }
             let var = vars.iter().next().unwrap();
 
-            let p_d1 = Polynomial::from_expr(ctx, d1, var).ok()?;
-            let p_d2 = Polynomial::from_expr(ctx, d2, var).ok()?;
+            let p_d1_res = Polynomial::from_expr(ctx, d1, var);
+            let p_d2_res = Polynomial::from_expr(ctx, d2, var);
+            let p_n1_res = Polynomial::from_expr(ctx, n1, var);
+            let p_n2_res = Polynomial::from_expr(ctx, n2, var);
 
-            // LCM = (d1 * d2) / GCD(d1, d2)
-            let gcd = p_d1.gcd(&p_d2);
-            let (lcm_poly, _) = p_d1.mul(&p_d2).div_rem(&gcd); // d1*d2 / gcd
+            // Check if denominators are negations of each other (d1 = -d2)
+            // This allows combining A/d + B/(-d) -> (A-B)/d even if A, B are not polynomials
+            if let (Ok(p_d1), Ok(p_d2)) = (&p_d1_res, &p_d2_res) {
+                if p_d1.add(p_d2).is_zero() {
+                     let new_num = ctx.add(Expr::Sub(n1, n2));
+                     let new_expr = ctx.add(Expr::Div(new_num, d1));
+                     
+                     // Complexity check
+                     let old_complexity = count_nodes(ctx, expr);
+                     let new_complexity = count_nodes(ctx, new_expr);
+                     
+                     if new_complexity < old_complexity {
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Add fractions with negated denominator".to_string(),
+                        });
+                     }
+                }
+            }
+
+            let new_expr = if let (Ok(p_d1), Ok(p_d2), Ok(p_n1), Ok(p_n2)) = (p_d1_res, p_d2_res, p_n1_res, p_n2_res) {
+                // Polynomial path (with simplification)
+                let gcd_den = p_d1.gcd(&p_d2);
+                let (lcm_poly, _) = p_d1.mul(&p_d2).div_rem(&gcd_den); 
+                
+                let (m1_poly, _) = p_d2.div_rem(&gcd_den);
+                let (m2_poly, _) = p_d1.div_rem(&gcd_den);
+                
+                let term1 = p_n1.mul(&m1_poly);
+                let term2 = p_n2.mul(&m2_poly);
+                let new_num_poly = term1.add(&term2);
+                
+                let common = new_num_poly.gcd(&lcm_poly);
+                let (final_num_poly, _) = new_num_poly.div_rem(&common);
+                let (final_den_poly, _) = lcm_poly.div_rem(&common);
+                
+                let new_num = final_num_poly.to_expr(ctx);
+                let new_den = final_den_poly.to_expr(ctx);
+                ctx.add(Expr::Div(new_num, new_den))
+            } else {
+                // Fallback path disabled to prevent infinite loops with NestedFractionRule
+                return None;
+            };
             
-            // New Num = n1 * (LCM/d1) + n2 * (LCM/d2)
-            // LCM/d1 = d2/gcd
-            // LCM/d2 = d1/gcd
+            // Complexity check
+            let old_complexity = count_nodes(ctx, expr);
+            let new_complexity = count_nodes(ctx, new_expr);
             
-            let (m1_poly, _) = p_d2.div_rem(&gcd);
-            let (m2_poly, _) = p_d1.div_rem(&gcd);
-            
-            let m1 = m1_poly.to_expr(ctx);
-            let m2 = m2_poly.to_expr(ctx);
-            
-            let term1 = ctx.add(Expr::Mul(n1, m1));
-            let term2 = ctx.add(Expr::Mul(n2, m2));
-            let new_num = ctx.add(Expr::Add(term1, term2));
-            let new_den = lcm_poly.to_expr(ctx);
-            
-            let new_expr = ctx.add(Expr::Div(new_num, new_den));
-            
-            return Some(Rewrite {
-                new_expr,
-                description: "Add fractions with LCM".to_string(),
-            });
+            // println!("AddFractions: {} -> {}", cas_ast::DisplayExpr { context: ctx, id: expr }, cas_ast::DisplayExpr { context: ctx, id: new_expr });
+            // println!("Complexity: {} -> {}", old_complexity, new_complexity);
+
+            if new_complexity < old_complexity {
+                // eprintln!("AddFractionsRule rewriting (fallback): {:?} -> {:?}", expr, new_expr);
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Add fractions (fallback/simplified)".to_string(),
+                });
+            } else {
+                 // println!("Rejected due to complexity increase");
+            }
         }
         None
     }
@@ -744,9 +881,10 @@ define_rule!(
                 let new_num = ctx.add(Expr::Mul(n1, n2));
                 let new_den = ctx.add(Expr::Mul(d1, d2));
                 let new_expr = ctx.add(Expr::Div(new_num, new_den));
+                // eprintln!("SimplifyFractionRule rewriting: {:?} -> {:?}", expr, new_expr);
                 return Some(Rewrite {
                     new_expr,
-                    description: "Multiply fractions".to_string(),
+                    description: "Simplify fraction (GCD)".to_string(),
                 });
             }
 
@@ -768,6 +906,12 @@ define_rule!(
                 }
                 let new_num = ctx.add(Expr::Mul(num, r));
                 let new_expr = ctx.add(Expr::Div(new_num, den));
+                
+                // Avoid combining if r is a number or constant (prefer c * (a/b) for CombineLikeTerms)
+                if matches!(ctx.get(r), Expr::Number(_) | Expr::Constant(_)) {
+                    return None;
+                }
+
                 return Some(Rewrite {
                     new_expr,
                     description: "Combine Mul and Div".to_string(),
@@ -782,6 +926,12 @@ define_rule!(
                         description: "Cancel division: a*(b/a) -> b".to_string(),
                     });
                 }
+                
+                // Avoid combining if l is a number or constant
+                if matches!(ctx.get(l), Expr::Number(_) | Expr::Constant(_)) {
+                    return None;
+                }
+
                 let new_num = ctx.add(Expr::Mul(l, num));
                 let new_expr = ctx.add(Expr::Div(new_num, den));
                 return Some(Rewrite {
@@ -1376,12 +1526,13 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ExpandRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
-    simplifier.add_rule(Box::new(FractionAddRule));
+    // simplifier.add_rule(Box::new(FractionAddRule)); // Disabled: Conflicts with DistributeRule (Div)
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
     simplifier.add_rule(Box::new(RootDenestingRule));
     simplifier.add_rule(Box::new(DistributeDivisionRule));
+    simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
 
@@ -1389,11 +1540,14 @@ define_rule!(
     DistributeDivisionRule,
     "Distribute Division",
     |ctx, expr| {
+        // println!("DistributeDivisionRule visiting: {:?}", ctx.get(expr));
         let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
             (*n, *d)
         } else {
             return None;
         };
+        
+        // println!("DistributeDivisionRule checking: {:?}", ctx.get(expr));
 
         // Check if num is Add/Sub
         let num_data = ctx.get(num).clone();
@@ -1412,26 +1566,75 @@ define_rule!(
                     }
                     
                     // Reconstruct
-                    let mut res = new_terms[0].0;
+                    let mut result = new_terms[0].0;
                     if !new_terms[0].1 {
-                        res = ctx.add(Expr::Neg(res));
+                        result = ctx.add(Expr::Neg(result));
                     }
                     
-                    for (t, is_add) in new_terms.iter().skip(1) {
-                        if *is_add {
-                            res = ctx.add(Expr::Add(res, *t));
+                    for (t, is_add) in new_terms.into_iter().skip(1) {
+                        if is_add {
+                            result = ctx.add(Expr::Add(result, t));
                         } else {
-                            res = ctx.add(Expr::Sub(res, *t));
+                            result = ctx.add(Expr::Sub(result, t));
                         }
                     }
                     
+                    // eprintln!("DistributeDivisionRule rewriting: {:?} -> {:?}", expr, result);
                     return Some(Rewrite {
-                        new_expr: res,
+                        new_expr: result,
                         description: "Distribute division".to_string(),
                     });
                 }
             },
             _ => {}
+        }
+        None
+    }
+);
+
+define_rule!(
+    PullConstantFromFractionRule,
+    "Pull Constant From Fraction",
+    |ctx, expr| {
+        let (n, d) = if let Expr::Div(n, d) = ctx.get(expr) {
+            (*n, *d)
+        } else {
+            return None;
+        };
+
+        let num_data = ctx.get(n).clone();
+        if let Expr::Mul(l, r) = num_data {
+            // Check if l or r is a number/constant
+            let l_is_const = matches!(ctx.get(l), Expr::Number(_) | Expr::Constant(_));
+            let r_is_const = matches!(ctx.get(r), Expr::Number(_) | Expr::Constant(_));
+            
+            if l_is_const {
+                // (c * x) / y -> c * (x / y)
+                let div = ctx.add(Expr::Div(r, d));
+                let new_expr = ctx.add(Expr::Mul(l, div));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Pull constant from numerator".to_string(),
+                });
+            } else if r_is_const {
+                // (x * c) / y -> c * (x / y)
+                let div = ctx.add(Expr::Div(l, d));
+                let new_expr = ctx.add(Expr::Mul(r, div));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Pull constant from numerator".to_string(),
+                });
+            }
+        }
+        // Also handle Neg: (-x) / y -> -1 * (x / y)
+        if let Expr::Neg(inner) = num_data {
+                let minus_one = ctx.num(-1);
+                let div = ctx.add(Expr::Div(inner, d));
+                let new_expr = ctx.add(Expr::Mul(minus_one, div));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Pull negation from numerator".to_string(),
+                });
         }
         None
     }
