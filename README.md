@@ -262,20 +262,46 @@ Handles polynomial division and simplification.
 ```
 **Output:** `x^2 + x + 1`
 
-### Configuration
-
-You can configure specific simplification rules directly from the CLI.
-
+### Configuration & Rule Toggling
+ 
+You can dynamically enable or disable specific simplification rules directly from the CLI. This is useful for educational purposes (showing intermediate steps without full simplification) or for debugging.
+ 
+#### Listing Rules
+To see all available configurable rules and their current status:
 ```text
 > config list
 ```
-Shows available configurable rules.
-
-```text
-> config disable canonicalize_trig_square
-> config enable root_denesting
+**Output:**
 ```
-Toggles specific rules on or off.
+Enabled Rules:
+  - Distributive Property
+  - Simplify Fractions
+  ...
+Disabled Rules:
+  - (none)
+```
+ 
+#### Disabling a Rule
+To prevent a specific rule from applying:
+```text
+> config disable trig_double_angle
+Rule 'trig_double_angle' set to false.
+```
+Now, expressions like `sin(2*x)` will **not** be simplified to `2*sin(x)*cos(x)`.
+ 
+#### Enabling a Rule
+To re-enable a rule:
+```text
+> config enable trig_double_angle
+Rule 'trig_double_angle' set to true.
+```
+ 
+#### Restoring Defaults
+To reset all rules to their default state:
+```text
+> config restore
+All rules restored to default values.
+```
 
 ### Running Tests
 
