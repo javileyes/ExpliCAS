@@ -11,6 +11,7 @@ pub struct Simplifier {
     global_rules: Vec<Rc<dyn Rule>>,
     pub collect_steps: bool,
     pub allow_numerical_verification: bool,
+    pub debug_mode: bool,
 }
 
 impl Simplifier {
@@ -21,6 +22,7 @@ impl Simplifier {
             global_rules: Vec::new(),
             collect_steps: true,
             allow_numerical_verification: true,
+            debug_mode: false,
         }
     }
 
@@ -28,6 +30,20 @@ impl Simplifier {
         let mut s = Self::new();
         s.register_default_rules();
         s
+    }
+
+    pub fn enable_debug(&mut self) {
+        self.debug_mode = true;
+    }
+
+    pub fn disable_debug(&mut self) {
+        self.debug_mode = false;
+    }
+
+    pub fn debug(&self, msg: &str) {
+        if self.debug_mode {
+            eprintln!("[DEBUG] {}", msg);
+        }
     }
 
     pub fn register_default_rules(&mut self) {
@@ -90,6 +106,7 @@ impl Simplifier {
             steps: Vec::new(),
             cache: HashMap::new(),
             current_path: Vec::new(),
+            debug_mode: self.debug_mode,
         };
         
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -188,6 +205,7 @@ struct LocalSimplificationTransformer<'a> {
     steps: Vec<Step>,
     cache: HashMap<ExprId, ExprId>,
     current_path: Vec<crate::step::PathStep>,
+    debug_mode: bool,
 }
 
 use cas_ast::visitor::Transformer;
@@ -307,9 +325,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
             if let Some(specific_rules) = self.rules.get(variant) {
                 for rule in specific_rules {
                     if let Some(rewrite) = rule.apply(self.context, expr_id) {
-                        // if expr_id.0 > 4000 { // Only print for deep nodes to avoid noise
-                        //      println!("Specific Rule '{}' rewrote {:?} -> {:?}", rule.name(), expr_id, rewrite.new_expr);
-                        // }
+                        if self.debug_mode {
+                             eprintln!("[DEBUG] Rule '{}' applied: {:?} -> {:?}", rule.name(), expr_id, rewrite.new_expr);
+                        }
                         if self.collect_steps {
                             self.steps.push(Step::new(
                                 &rewrite.description,
@@ -333,6 +351,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
             // Try global rules
             for rule in self.global_rules {
                 if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                    if self.debug_mode {
+                         eprintln!("[DEBUG] Global Rule '{}' applied: {:?} -> {:?}", rule.name(), expr_id, rewrite.new_expr);
+                    }
                     if self.collect_steps {
                         self.steps.push(Step::new(
                             &rewrite.description,
