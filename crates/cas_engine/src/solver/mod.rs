@@ -41,6 +41,9 @@ pub fn solve(eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Result<(S
                 Ok((result, steps)) => {
                     // Verify solutions if Discrete
                     if let SolutionSet::Discrete(sols) = result {
+                        if !strategy.should_verify() {
+                             return Ok((SolutionSet::Discrete(sols), steps));
+                        }
                         let mut valid_sols = Vec::new();
                         for sol in sols {
                             if verify_solution(eq, var, sol, simplifier) {

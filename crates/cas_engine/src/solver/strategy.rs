@@ -12,4 +12,10 @@ pub trait SolverStrategy {
     /// - Some(Ok(result)): Strategy applied and solved the equation.
     /// - Some(Err(e)): Strategy applied but encountered an error.
     fn apply(&self, eq: &Equation, var: &str, simplifier: &mut Simplifier) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>>;
+
+    /// Whether the solutions returned by this strategy should be verified by substitution.
+    /// Defaults to true. Override to false if verification is known to be difficult or unreliable (e.g. symbolic roots).
+    fn should_verify(&self) -> bool {
+        true
+    }
 }
