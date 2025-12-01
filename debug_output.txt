@@ -1,5 +1,0 @@
-error: unexpected argument 'test_logarithmic_mirror_engine' found
-
-Usage: cargo test [OPTIONS] [TESTNAME] [-- [ARGS]...]
-
-For more information, try '--help'.

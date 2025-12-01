@@ -161,17 +161,35 @@ define_rule!(
                     });
                 }
                 // Handle nested: c1 * (c2 * x) -> (c1*c2) * x
-                if let Expr::Number(n1) = lhs_data {
+                if let Expr::Number(ref n1) = lhs_data {
                     if let Expr::Mul(rl, rr) = rhs_data {
                         let rl_data = ctx.get(rl).clone();
                         if let Expr::Number(n2) = rl_data {
-                            let prod = &n1 * &n2;
+                            let prod = n1 * &n2;
                             let prod_expr = ctx.add(Expr::Number(prod.clone()));
                             let new_expr = ctx.add(Expr::Mul(prod_expr, rr));
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("Combine nested constants: {} * {}", n1, n2),
                             });
+                        }
+                    }
+                }
+
+                // Handle c1 * (x / c2) -> (c1/c2) * x
+                if let Expr::Number(ref n1) = lhs_data {
+                    if let Expr::Div(num, den) = rhs_data {
+                        let den_data = ctx.get(den).clone();
+                        if let Expr::Number(n2) = den_data {
+                            if !n2.is_zero() {
+                                let ratio = n1 / &n2;
+                                let ratio_expr = ctx.add(Expr::Number(ratio));
+                                let new_expr = ctx.add(Expr::Mul(ratio_expr, num));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: format!("{} * (x / {}) -> ({} / {}) * x", n1, n2, n1, n2),
+                                });
+                            }
                         }
                     }
                 }

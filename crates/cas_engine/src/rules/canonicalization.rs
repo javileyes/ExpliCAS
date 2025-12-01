@@ -3,6 +3,7 @@ use crate::define_rule;
 use cas_ast::Expr;
 use std::cmp::Ordering;
 use crate::ordering::compare_expr;
+use num_traits::Zero;
 
 define_rule!(
     CanonicalizeNegationRule,
@@ -215,6 +216,38 @@ define_rule!(
 );
 
 define_rule!(
+    CanonicalizeDivRule,
+    "Canonicalize Division",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Div(lhs, rhs) = expr_data {
+            // x / c -> (1/c) * x
+            let n_opt = if let Expr::Number(n) = ctx.get(rhs) {
+                Some(n.clone())
+            } else {
+                None
+            };
+
+            if let Some(n) = n_opt {
+                if !n.is_zero() {
+                    // n is Ratio<BigInt>.
+                    // We want 1/n.
+                    // Ratio::recip() exists.
+                    let inv = n.recip();
+                    let inv_expr = ctx.add(Expr::Number(inv.clone()));
+                    let new_expr = ctx.add(Expr::Mul(inv_expr, lhs));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: format!("x / {} = (1/{}) * x", n, n),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
+define_rule!(
     CanonicalizeRootRule,
     "Canonicalize Roots",
     |ctx, expr| {
@@ -369,5 +402,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
+    simplifier.add_rule(Box::new(CanonicalizeDivRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
 }

@@ -2,7 +2,7 @@ use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule, DistributeConstantRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule, PowerProductRule, PowerQuotientRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
+use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeDivRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
@@ -23,6 +23,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CanonicalizeNegationRule));
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
+    simplifier.add_rule(Box::new(CanonicalizeDivRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));

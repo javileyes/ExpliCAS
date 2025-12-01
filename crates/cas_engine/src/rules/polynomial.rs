@@ -7,6 +7,7 @@ use num_traits::{One, Zero};
 use crate::ordering::compare_expr;
 use std::cmp::Ordering;
 use crate::polynomial::Polynomial;
+use num_integer::Integer;
 
 define_rule!(
     DistributeRule,
@@ -123,6 +124,28 @@ define_rule!(
                     if found {
                         // println!("  Found common factor: {:?}", ctx.get(df));
                         return true;
+                    }
+
+                    // Check for numeric GCD
+                    if let Expr::Number(n_den) = ctx.get(df) {
+                        let found_numeric = num_factors.iter().any(|nf| {
+                            if let Expr::Number(n_num) = ctx.get(*nf) {
+                                // Check if they share a common factor > 1
+                                // We can use BigRational logic or just convert to integer if they are integers
+                                if n_num.is_integer() && n_den.is_integer() {
+                                    let num_int = n_num.to_integer();
+                                    let den_int = n_den.to_integer();
+                                    if !num_int.is_zero() && !den_int.is_zero() {
+                                        let gcd = num_int.gcd(&den_int);
+                                        return gcd > One::one();
+                                    }
+                                }
+                            }
+                            false
+                        });
+                        if found_numeric {
+                            return true;
+                        }
                     }
                 }
                 
