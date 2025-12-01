@@ -105,7 +105,16 @@ pub fn factor_difference_squares(ctx: &mut Context, expr: ExprId) -> Option<Expr
         _ => return None,
     };
 
-    if let (Some(root_l), Some(root_r)) = (get_square_root(ctx, l), get_square_root(ctx, r)) {
+    // println!("factor_diff_squares checking: {:?} - {:?}", l, r);
+    // println!("Left structure: {:?}", ctx.get(l));
+    // if let Expr::Mul(a, b) = ctx.get(l) {
+    //    println!("  Mul children: {:?} and {:?}", ctx.get(*a), ctx.get(*b));
+    // }
+    let root_l_opt = get_square_root(ctx, l);
+    let root_r_opt = get_square_root(ctx, r);
+    // println!("Roots: {:?}, {:?}", root_l_opt, root_r_opt);
+
+    if let (Some(root_l), Some(root_r)) = (root_l_opt, root_r_opt) {
         // a^2 - b^2 = (a - b)(a + b)
         let term1 = ctx.add(Expr::Sub(root_l, root_r));
         

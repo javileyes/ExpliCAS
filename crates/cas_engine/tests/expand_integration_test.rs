@@ -7,6 +7,8 @@ fn test_expand_rule_integration() {
     let mut simplifier = Simplifier::new();
     cas_engine::rules::algebra::register(&mut simplifier);
     cas_engine::rules::polynomial::register(&mut simplifier); // For CombineLikeTerms
+    cas_engine::rules::arithmetic::register(&mut simplifier);
+    cas_engine::rules::exponents::register(&mut simplifier);
 
     // Test expand(a*(b+c))
     let expr = parse("expand(a * (b + c))", &mut simplifier.context).unwrap();
@@ -24,6 +26,8 @@ fn test_expand_binomial_integration() {
     let mut simplifier = Simplifier::new();
     cas_engine::rules::algebra::register(&mut simplifier);
     cas_engine::rules::polynomial::register(&mut simplifier);
+    cas_engine::rules::arithmetic::register(&mut simplifier);
+    cas_engine::rules::exponents::register(&mut simplifier);
 
     // Test expand((x+1)^2)
     let expr = parse("expand((x + 1)^2)", &mut simplifier.context).unwrap();

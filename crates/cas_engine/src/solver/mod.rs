@@ -151,7 +151,7 @@ mod tests {
         if let SolutionSet::Discrete(solutions) = result {
             assert_eq!(solutions.len(), 1);
             let s = format!("{}", DisplayExpr { context: &simplifier.context, id: solutions[0] });
-            assert_eq!(s, "5 - 2");
+            assert_eq!(s, "3");
         } else {
             panic!("Expected Discrete solution");
         }

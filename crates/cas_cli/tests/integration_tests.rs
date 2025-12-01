@@ -67,11 +67,16 @@ fn test_end_to_end_simplification() {
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result }), "6");
 
     // Verify Steps
+    // Orchestrator runs `collect` first, which handles "2*3 + 0" -> "2*3" (removing +0)
+    // Then `CombineConstantsRule` runs "2*3" -> "6"
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0].rule_name, "Combine Constants");
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: steps[0].after }), "6");
     
-    assert_eq!(steps[1].rule_name, "Identity Property of Addition");
+    // Step 1: Collect (removes +0)
+    assert_eq!(steps[0].rule_name, "Collect");
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: steps[0].after }), "2 * 3");
+    
+    // Step 2: Combine Constants (2*3 -> 6)
+    assert_eq!(steps[1].rule_name, "Combine Constants");
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: steps[1].after }), "6");
 }
 
