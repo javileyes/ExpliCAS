@@ -3,7 +3,7 @@ use crate::define_rule;
 use cas_ast::{Expr, ExprId};
 use num_traits::{Zero, One};
 use crate::helpers::extract_double_angle_arg;
-use crate::ordering::compare_expr;
+
 use std::cmp::Ordering;
 
 define_rule!(

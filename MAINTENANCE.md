@@ -109,3 +109,28 @@ Located in `tests/property_tests.rs`. Use `proptest` to generate random expressi
 ```bash
 cargo test
 ```
+
+## 5. Benchmarks
+
+The project uses `criterion` for benchmarking performance, specifically for simplification rules.
+
+### Running Benchmarks
+
+```bash
+cargo bench -p cas_engine
+```
+
+### Benchmark Locations
+
+Benchmarks are located in `crates/cas_engine/benches/`.
+
+-   `simplification_bench.rs`: Benchmarks for polynomial and trigonometric simplification.
+
+### Adding New Benchmarks
+
+1.  Create a new function in `crates/cas_engine/benches/simplification_bench.rs` (or a new file).
+2.  Use `c.benchmark_group("group_name")` to group related benchmarks.
+3.  Use `black_box` to prevent compiler optimizations from removing the code being measured.
+4.  Register the new benchmark group with `criterion_group!` and `criterion_main!`.
+
+**Important**: When optimizing code, always run benchmarks before and after changes to verify improvements and ensure no regressions.
