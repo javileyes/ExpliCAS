@@ -23,18 +23,16 @@ simplifier.disable_debug();
 
 ### Output Format
 
-Logs are printed to `stderr` in the following format:
+Logs are printed to `stderr` with indentation to show the recursion depth:
 
 ```
-[DEBUG] Rule 'RuleName' applied: ExprId(Input) -> ExprId(Output)
-[DEBUG] Global Rule 'RuleName' applied: ExprId(Input) -> ExprId(Output)
+[DEBUG] Visiting: Mul(ExprId(1), ExprId(2))
+  [DEBUG] Visiting: Add(ExprId(0), ExprId(0))
+    [DEBUG] Visiting: Variable("x")
+  [DEBUG] Global Rule 'Combine Like Terms' applied: ExprId(1) -> ExprId(5)
 ```
 
-This format is designed to be easily filtered using `grep`:
-
-```bash
-cargo run | grep "[DEBUG]"
-```
+This format visualizes the simplification tree.
 
 ### Implementation
 

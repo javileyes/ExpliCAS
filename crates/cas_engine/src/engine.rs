@@ -217,8 +217,16 @@ impl<'a> Transformer for LocalSimplificationTransformer<'a> {
 }
 
 impl<'a> LocalSimplificationTransformer<'a> {
+    fn indent(&self) -> String {
+        "  ".repeat(self.current_path.len())
+    }
+
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
-        println!("Visiting: {:?} {:?}", id, self.context.get(id));
+        if self.debug_mode {
+            let expr = self.context.get(id);
+            eprintln!("{}[DEBUG] Visiting: {:?}", self.indent(), expr);
+        }
+        // println!("Visiting: {:?} {:?}", id, self.context.get(id));
         // println!("Simplifying: {:?}", id);
         if let Some(&cached) = self.cache.get(&id) {
             return cached;
@@ -326,7 +334,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 for rule in specific_rules {
                     if let Some(rewrite) = rule.apply(self.context, expr_id) {
                         if self.debug_mode {
-                             eprintln!("[DEBUG] Rule '{}' applied: {:?} -> {:?}", rule.name(), expr_id, rewrite.new_expr);
+                             eprintln!("{}[DEBUG] Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
                         }
                         if self.collect_steps {
                             self.steps.push(Step::new(
@@ -352,7 +360,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             for rule in self.global_rules {
                 if let Some(rewrite) = rule.apply(self.context, expr_id) {
                     if self.debug_mode {
-                         eprintln!("[DEBUG] Global Rule '{}' applied: {:?} -> {:?}", rule.name(), expr_id, rewrite.new_expr);
+                         eprintln!("{}[DEBUG] Global Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
                     }
                     if self.collect_steps {
                         self.steps.push(Step::new(
