@@ -5,7 +5,7 @@ use crate::polynomial::Polynomial;
 use std::collections::HashSet;
 use crate::ordering::compare_expr;
 use std::cmp::Ordering;
-use num_traits::{One, Signed, ToPrimitive, Zero};
+use num_traits::{One, Signed, Zero};
 use num_rational::BigRational;
 
 
@@ -386,7 +386,7 @@ fn count_nodes(ctx: &Context, expr: ExprId) -> usize {
     }
 }
 
-use crate::helpers::get_square_root;
+
 
 // Removed local is_sin_cos_pair, is_negative_term, negate_term as they are now in factor module (or internal to it)
 // If other rules need them, I should expose them from factor module or helpers.

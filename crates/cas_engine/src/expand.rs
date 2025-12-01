@@ -1,9 +1,5 @@
 use cas_ast::{Expr, ExprId, Context};
-use num_traits::{One, Zero, ToPrimitive, Signed};
-use num_rational::BigRational;
-use num_integer::Integer;
-use crate::polynomial::Polynomial;
-use std::collections::HashSet;
+use num_traits::{ToPrimitive, Signed};
 
 /// Expands an expression.
 /// This is the main entry point for expansion.

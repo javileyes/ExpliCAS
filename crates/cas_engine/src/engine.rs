@@ -107,6 +107,11 @@ impl Simplifier {
     }
 
     pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
+        let orchestrator = crate::orchestrator::Orchestrator::new();
+        orchestrator.simplify(expr_id, self)
+    }
+
+    pub fn apply_rules_loop(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let collect_steps = self.collect_steps;

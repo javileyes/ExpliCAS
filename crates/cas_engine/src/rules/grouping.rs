@@ -303,7 +303,7 @@ define_rule!(
             _ => return None,
         }
         
-        let new_expr = crate::collect::collect_like_terms(ctx, expr);
+        let new_expr = crate::collect::collect(ctx, expr);
         // Check if structurally different to avoid infinite loops with ID regeneration
         if new_expr != expr && crate::ordering::compare_expr(ctx, new_expr, expr) != std::cmp::Ordering::Equal {
             // eprintln!("CollectLikeTermsRule applied: {:?} -> {:?}", expr, new_expr);

@@ -295,7 +295,7 @@ define_rule!(
 
             if l_is_num {
                 let r_data = ctx.get(r).clone();
-                if let Expr::Add(a, b) = r_data {
+                if let Expr::Add(_, _) = r_data {
                     let new_expr = crate::expand::expand_mul(ctx, l, r);
                     if new_expr != expr {
                         return Some(Rewrite {
@@ -308,7 +308,7 @@ define_rule!(
             
             if r_is_num {
                 let l_data = ctx.get(l).clone();
-                if let Expr::Add(a, b) = l_data {
+                if let Expr::Add(_, _) = l_data {
                     let new_expr = crate::expand::expand_mul(ctx, l, r);
                     if new_expr != expr {
                         return Some(Rewrite {
@@ -346,119 +346,31 @@ define_rule!(
     CombineLikeTermsRule,
     "Combine Like Terms",
     |ctx, expr| {
-        if let Expr::Add(_, _) = ctx.get(expr) {
-            // Flatten
-            let mut terms = Vec::new();
-            flatten_add(ctx, expr, &mut terms);
-            
-            if terms.len() < 2 { return None; }
+        // Only try to collect if it's an Add or Mul, as those are the main things collect handles
+        // (and Pow for constant folding, but that's handled elsewhere usually)
+        let is_add_or_mul = match ctx.get(expr) {
+            Expr::Add(_, _) | Expr::Mul(_, _) => true,
+            _ => false
+        };
 
-            // Extract (coeff, var_part)
-            let mut parsed_terms = Vec::new();
-            for t in terms {
-                let (c, v) = get_parts(ctx, t);
-                parsed_terms.push((c, v));
-            }
-            
-
-            // Sort by var_part to bring like terms together
-            parsed_terms.sort_by(|a, b| compare_expr(ctx, a.1, b.1));
-            
-            // Combine
-            let mut new_terms = Vec::new();
-            if parsed_terms.is_empty() { return None; } // Should not happen
-
-            let mut current_coeff = parsed_terms[0].0.clone();
-            let mut current_var = parsed_terms[0].1;
-            let mut changed = false;
-            
-            for i in 1..parsed_terms.len() {
-                let (c, v) = &parsed_terms[i];
-                if compare_expr(ctx, current_var, *v) == Ordering::Equal {
-                    current_coeff += c;
-                    changed = true;
-                } else {
-                    if !current_coeff.is_zero() {
-                        new_terms.push(make_term(ctx, current_coeff, current_var));
-                    } else {
-                        changed = true; // Zero removed
-                    }
-                    current_coeff = c.clone();
-                    current_var = *v;
+        if is_add_or_mul {
+            let new_expr = crate::collect::collect(ctx, expr);
+            if new_expr != expr {
+                // Check if structurally different to avoid infinite loops with ID regeneration
+                if crate::ordering::compare_expr(ctx, new_expr, expr) == Ordering::Equal {
+                    return None;
                 }
-            }
-            if !current_coeff.is_zero() {
-                new_terms.push(make_term(ctx, current_coeff, current_var));
-            } else {
-                changed = true;
-            }
-            
-            if !changed {
-                return None;
-            }
-            
-            if new_terms.is_empty() {
+
                 return Some(Rewrite {
-                    new_expr: ctx.num(0),
-                    description: "Combine like terms (all cancelled)".to_string(),
+                    new_expr,
+                    description: "Global Combine Like Terms".to_string(),
                 });
             }
-            
-            // Rebuild Add chain (left-associative)
-            let mut res = new_terms[0];
-            for t in new_terms.iter().skip(1) {
-                res = ctx.add(Expr::Add(res, *t));
-            }
-            
-            return Some(Rewrite {
-                new_expr: res,
-                description: "Global Combine Like Terms".to_string(),
-            });
         }
         None
     }
 );
 
-fn flatten_add(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            flatten_add(ctx, *l, terms);
-            flatten_add(ctx, *r, terms);
-        }
-        _ => terms.push(expr),
-    }
-}
-
-fn get_parts(context: &mut Context, e: ExprId) -> (BigRational, ExprId) {
-    match context.get(e) {
-        Expr::Mul(a, b) => {
-            if let Expr::Number(n) = context.get(*a) {
-                (n.clone(), *b)
-            } else if let Expr::Number(n) = context.get(*b) {
-                (n.clone(), *a)
-            } else {
-                (BigRational::one(), e)
-            }
-        }
-        Expr::Number(n) => (n.clone(), context.num(1)), // Treat constant as c * 1
-        _ => (BigRational::one(), e),
-    }
-}
-
-fn make_term(ctx: &mut Context, coeff: BigRational, var: ExprId) -> ExprId {
-    if let Expr::Number(n) = ctx.get(var) {
-        if n.is_one() {
-            return ctx.add(Expr::Number(coeff));
-        }
-    }
-    
-    if coeff.is_one() {
-        var
-    } else {
-        let c = ctx.add(Expr::Number(coeff));
-        ctx.add(Expr::Mul(c, var))
-    }
-}
 
 
 define_rule!(

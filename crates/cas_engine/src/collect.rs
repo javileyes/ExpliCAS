@@ -1,5 +1,5 @@
 use cas_ast::{Expr, ExprId, Context};
-use std::collections::HashMap;
+
 use num_traits::{One, Zero};
 use num_rational::BigRational;
 
@@ -7,7 +7,7 @@ use num_rational::BigRational;
 /// e.g. 2*x + 3*x -> 5*x
 ///      x + x -> 2*x
 ///      x^2 + 2*x^2 -> 3*x^2
-pub fn collect_like_terms(ctx: &mut Context, expr: ExprId) -> ExprId {
+pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
     // 1. Check if expression is an Add/Sub chain
     let expr_data = ctx.get(expr).clone();
     match expr_data {
@@ -72,7 +72,9 @@ pub fn collect_like_terms(ctx: &mut Context, expr: ExprId) -> ExprId {
             if coeff.is_one() {
                 term_part
             } else if coeff == BigRational::from_integer((-1).into()) {
-                ctx.add(Expr::Neg(term_part))
+                // Use Mul(-1, x) instead of Neg(x) to match CanonicalizeNegationRule
+                let minus_one = ctx.num(-1);
+                ctx.add(Expr::Mul(minus_one, term_part))
             } else {
                 let coeff_expr = ctx.add(Expr::Number(coeff));
                 ctx.add(Expr::Mul(coeff_expr, term_part))
@@ -81,22 +83,20 @@ pub fn collect_like_terms(ctx: &mut Context, expr: ExprId) -> ExprId {
         new_terms.push(term);
     }
 
+    // Sort terms by global canonical order to match CanonicalizeAddRule
+    new_terms.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
+
     if new_terms.is_empty() {
         return ctx.num(0);
     }
 
-    // Construct Add chain
-    let mut result = new_terms[0];
-    for t in new_terms.into_iter().skip(1) {
-        // Optimization: Handle negative terms as Sub?
-        // For now, just Add. The printer handles signs usually, or we can check sign.
-        if is_negative_term(ctx, t) {
-             // Extract positive part?
-             // Let's keep it simple: Add(a, b)
-             result = ctx.add(Expr::Add(result, t));
-        } else {
-             result = ctx.add(Expr::Add(result, t));
-        }
+    // Construct Add chain (Right-Associative to match CanonicalizeAddRule)
+    let mut result = *new_terms.last().unwrap();
+    for t in new_terms.iter().rev().skip(1) {
+        // Optimization: Handle negative terms?
+        // For right-associative, it's harder to peek.
+        // Let's just use Add for now.
+        result = ctx.add(Expr::Add(*t, result));
     }
 
     result
@@ -163,14 +163,7 @@ fn is_one_term(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-fn is_negative_term(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Neg(_) => true,
-        Expr::Number(n) => n < &BigRational::zero(),
-        Expr::Mul(l, _) => is_negative_term(ctx, *l),
-        _ => false
-    }
-}
+
 
 #[cfg(test)]
 mod tests {
@@ -186,7 +179,7 @@ mod tests {
     fn test_collect_integers() {
         let mut ctx = Context::new();
         let expr = parse("1 + 2", &mut ctx).unwrap();
-        let res = collect_like_terms(&mut ctx, expr);
+        let res = collect(&mut ctx, expr);
         assert_eq!(s(&ctx, res), "3");
     }
 
@@ -194,7 +187,7 @@ mod tests {
     fn test_collect_variables() {
         let mut ctx = Context::new();
         let expr = parse("x + x", &mut ctx).unwrap();
-        let res = collect_like_terms(&mut ctx, expr);
+        let res = collect(&mut ctx, expr);
         assert_eq!(s(&ctx, res), "2 * x");
     }
 
@@ -202,7 +195,7 @@ mod tests {
     fn test_collect_mixed() {
         let mut ctx = Context::new();
         let expr = parse("2*x + 3*y + 4*x", &mut ctx).unwrap();
-        let res = collect_like_terms(&mut ctx, expr);
+        let res = collect(&mut ctx, expr);
         // Order depends on implementation, but should have 6*x and 3*y
         let res_str = s(&ctx, res);
         assert!(res_str.contains("6 * x"));
@@ -213,7 +206,7 @@ mod tests {
     fn test_collect_cancel() {
         let mut ctx = Context::new();
         let expr = parse("x - x", &mut ctx).unwrap();
-        let res = collect_like_terms(&mut ctx, expr);
+        let res = collect(&mut ctx, expr);
         assert_eq!(s(&ctx, res), "0");
     }
     
@@ -221,7 +214,7 @@ mod tests {
     fn test_collect_powers() {
         let mut ctx = Context::new();
         let expr = parse("x^2 + 2*x^2", &mut ctx).unwrap();
-        let res = collect_like_terms(&mut ctx, expr);
+        let res = collect(&mut ctx, expr);
         assert_eq!(s(&ctx, res), "3 * x^2");
     }
 }

@@ -1,0 +1,57 @@
+use cas_ast::ExprId;
+use crate::{Simplifier, Step};
+
+pub struct Orchestrator {
+    // Configuration for the pipeline
+    pub max_iterations: usize,
+}
+
+impl Orchestrator {
+    pub fn new() -> Self {
+        Self {
+            max_iterations: 10,
+        }
+    }
+
+    pub fn simplify(&self, expr: ExprId, simplifier: &mut Simplifier) -> (ExprId, Vec<Step>) {
+        let mut steps = Vec::new();
+        let mut current = expr;
+        
+        // 1. Initial Collection (Normalize)
+        let collected = crate::collect::collect(&mut simplifier.context, current);
+        if collected != current {
+            if simplifier.collect_steps {
+                steps.push(Step::new(
+                    "Initial Collection",
+                    "Collect",
+                    current,
+                    collected,
+                    Vec::new(),
+                ));
+            }
+            current = collected;
+        }
+
+        // 2. Rule-based Simplification Loop
+        let (simplified, rule_steps) = simplifier.apply_rules_loop(current);
+        steps.extend(rule_steps);
+        current = simplified;
+
+        // 3. Final Collection (Ensure canonical form)
+        let final_collected = crate::collect::collect(&mut simplifier.context, current);
+        if final_collected != current {
+            if simplifier.collect_steps {
+                steps.push(Step::new(
+                    "Final Collection",
+                    "Collect",
+                    current,
+                    final_collected,
+                    Vec::new(),
+                ));
+            }
+            current = final_collected;
+        }
+
+        (current, steps)
+    }
+}

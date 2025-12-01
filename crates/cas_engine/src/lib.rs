@@ -8,6 +8,7 @@ pub mod ordering;
 pub mod collect;
 pub mod expand;
 pub mod factor;
+pub mod orchestrator;
 
 pub mod visitors;
 pub mod error;
