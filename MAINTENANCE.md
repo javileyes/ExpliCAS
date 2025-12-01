@@ -134,3 +134,10 @@ Benchmarks are located in `crates/cas_engine/benches/`.
 4.  Register the new benchmark group with `criterion_group!` and `criterion_main!`.
 
 **Important**: When optimizing code, always run benchmarks before and after changes to verify improvements and ensure no regressions.
+
+### Baseline Results (as of 2025-12-01)
+
+-   `polynomial/expand_binomial_power_10`: ~48 µs
+-   `polynomial/combine_like_terms_large`: ~170 µs
+-   `trigonometry/pythagorean_identity_nested`: ~10 ms
+

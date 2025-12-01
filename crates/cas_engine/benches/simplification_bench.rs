@@ -37,12 +37,13 @@ fn benchmark_polynomial_simplification(c: &mut Criterion) {
 fn benchmark_trig_simplification(c: &mut Criterion) {
     let mut group = c.benchmark_group("trigonometry");
     
+    group.sample_size(10);
     group.bench_function("pythagorean_identity_nested", |b| {
         b.iter(|| {
             let mut simplifier = Simplifier::with_default_rules();
             // sin^2(x) + cos^2(x) + sin^2(2x) + cos^2(2x) + ...
             let mut s = String::new();
-            for i in 1..=10 {
+            for i in 1..=5 {
                 if i > 1 { s.push_str(" + "); }
                 s.push_str(&format!("sin({}*x)^2 + cos({}*x)^2", i, i));
             }

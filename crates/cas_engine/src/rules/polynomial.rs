@@ -12,7 +12,7 @@ define_rule!(
     DistributeRule,
     "Distributive Property",
     |ctx, expr| {
-        println!("DistributeRule visiting: {:?}", ctx.get(expr));
+
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(l, r) = expr_data {
             // a * (b + c) -> a*b + a*c
@@ -337,10 +337,7 @@ define_rule!(
                 parsed_terms.push((c, v));
             }
             
-            println!("CombineLikeTerms: {:?}", parsed_terms);
-            for (c, v) in &parsed_terms {
-                println!("  Term: coeff={:?}, var={:?} -> {:?}", c, v, ctx.get(*v));
-            }
+
 
             // Sort by var_part to bring like terms together
             parsed_terms.sort_by(|a, b| compare_expr(ctx, a.1, b.1));

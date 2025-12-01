@@ -63,14 +63,12 @@ impl Simplifier {
 
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
         let rule_rc: Rc<dyn Rule> = rule.into();
-        println!("Registering rule: {}", rule_rc.name());
+
         if let Some(targets) = rule_rc.target_types() {
             for target in targets {
-                println!("  Target: {}", target);
                 self.rules.entry(target.to_string()).or_default().push(rule_rc.clone());
             }
         } else {
-            println!("  Global");
             self.global_rules.push(rule_rc);
         }
     }
