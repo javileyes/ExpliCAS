@@ -201,15 +201,39 @@ impl Repl {
         simplifier.add_rule(Box::new(DiffRule));
         simplifier.add_rule(Box::new(NumberTheoryRule));
 
-        Self {
+        let mut repl = Self {
             simplifier,
             show_steps: true,
             config,
-        }
+        };
+        repl.sync_config_to_simplifier();
+        repl
     }
 
 
-    // ... (new method remains same)
+    fn sync_config_to_simplifier(&mut self) {
+        let config = &self.config;
+        
+        // Helper to toggle rule
+        let mut toggle = |name: &str, enabled: bool| {
+            if enabled {
+                self.simplifier.enable_rule(name);
+            } else {
+                self.simplifier.disable_rule(name);
+            }
+        };
+
+        toggle("Distributive Property", config.distribute);
+        toggle("Binomial Expansion", config.expand_binomials);
+        toggle("Distribute Constant", config.distribute_constants);
+        toggle("Factor Difference of Squares", config.factor_difference_squares);
+        toggle("Root Denesting", config.root_denesting);
+        toggle("Double Angle Identity", config.trig_double_angle);
+        toggle("Angle Sum/Diff Identity", config.trig_angle_sum);
+        toggle("Split Log Exponents", config.log_split_exponents);
+        toggle("Rationalize Denominator", config.rationalize_denominator);
+        toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
+    }
 
     pub fn run(&mut self) -> rustyline::Result<()> {
         println!("Rust CAS Step-by-Step Demo");
@@ -345,7 +369,8 @@ impl Repl {
             },
             "restore" => {
                 self.config = CasConfig::restore();
-                println!("Configuration restored to defaults. Restart CLI to apply changes fully.");
+                self.sync_config_to_simplifier();
+                println!("Configuration restored to defaults.");
             },
             "enable" | "disable" => {
                 if parts.len() < 3 {
@@ -374,7 +399,8 @@ impl Repl {
                 }
                 
                 if changed {
-                    println!("Rule '{}' set to {}. Restart CLI to apply changes.", rule, enable);
+                    self.sync_config_to_simplifier();
+                    println!("Rule '{}' set to {}.", rule, enable);
                 }
             },
             _ => println!("Unknown config command: {}", parts[1]),

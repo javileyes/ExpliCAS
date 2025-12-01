@@ -10,6 +10,7 @@ num-bigint = "0.4"
 num-traits = "0.2"
 num-integer = "0.1"
 thiserror = "1.0"
+tracing = "0.1.43"
 
 [dev-dependencies]
 cas_parser = { path = "../cas_parser" }

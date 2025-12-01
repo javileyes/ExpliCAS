@@ -5,6 +5,8 @@ use std::rc::Rc;
 use num_traits::{Zero, ToPrimitive};
 use std::collections::{HashMap, HashSet};
 
+use tracing::debug;
+
 pub struct Simplifier {
     pub context: Context,
     rules: HashMap<String, Vec<Rc<dyn Rule>>>,
@@ -12,6 +14,7 @@ pub struct Simplifier {
     pub collect_steps: bool,
     pub allow_numerical_verification: bool,
     pub debug_mode: bool,
+    disabled_rules: HashSet<String>,
 }
 
 impl Simplifier {
@@ -23,6 +26,7 @@ impl Simplifier {
             collect_steps: true,
             allow_numerical_verification: true,
             debug_mode: false,
+            disabled_rules: HashSet::new(),
         }
     }
 
@@ -41,9 +45,20 @@ impl Simplifier {
     }
 
     pub fn debug(&self, msg: &str) {
-        if self.debug_mode {
-            eprintln!("[DEBUG] {}", msg);
-        }
+        // Use tracing for structured logging.
+        // We still check debug_mode to allow per-instance toggling if needed,
+        // but ideally this should be controlled by RUST_LOG.
+        // For now, let's log if EITHER debug_mode is on OR tracing is enabled at debug level.
+        // Actually, let's just delegate to tracing. The subscriber will filter.
+        debug!("{}", msg);
+    }
+
+    pub fn disable_rule(&mut self, rule_name: &str) {
+        self.disabled_rules.insert(rule_name.to_string());
+    }
+
+    pub fn enable_rule(&mut self, rule_name: &str) {
+        self.disabled_rules.remove(rule_name);
     }
 
     pub fn register_default_rules(&mut self) {
@@ -100,11 +115,11 @@ impl Simplifier {
             context: &mut self.context,
             rules,
             global_rules,
+            disabled_rules: &self.disabled_rules,
             collect_steps,
             steps: Vec::new(),
             cache: HashMap::new(),
             current_path: Vec::new(),
-            debug_mode: self.debug_mode,
         };
         
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -199,11 +214,11 @@ struct LocalSimplificationTransformer<'a> {
     context: &'a mut Context,
     rules: &'a HashMap<String, Vec<Rc<dyn Rule>>>,
     global_rules: &'a Vec<Rc<dyn Rule>>,
+    disabled_rules: &'a HashSet<String>,
     collect_steps: bool,
     steps: Vec<Step>,
     cache: HashMap<ExprId, ExprId>,
     current_path: Vec<crate::step::PathStep>,
-    debug_mode: bool,
 }
 
 use cas_ast::visitor::Transformer;
@@ -220,10 +235,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
     }
 
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
-        if self.debug_mode {
-            let expr = self.context.get(id);
-            eprintln!("{}[DEBUG] Visiting: {:?}", self.indent(), expr);
-        }
+        // Use tracing for debug logging
+        let expr = self.context.get(id);
+        debug!("{}[DEBUG] Visiting: {:?}", self.indent(), expr);
+
         // println!("Visiting: {:?} {:?}", id, self.context.get(id));
         // println!("Simplifying: {:?}", id);
         if let Some(&cached) = self.cache.get(&id) {
@@ -330,10 +345,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
             // Try specific rules
             if let Some(specific_rules) = self.rules.get(variant) {
                 for rule in specific_rules {
+                    if self.disabled_rules.contains(rule.name()) {
+                        continue;
+                    }
                     if let Some(rewrite) = rule.apply(self.context, expr_id) {
-                        if self.debug_mode {
-                             eprintln!("{}[DEBUG] Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
-                        }
+                        debug!("{}[DEBUG] Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
                         if self.collect_steps {
                             self.steps.push(Step::new(
                                 &rewrite.description,
@@ -356,10 +372,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
             // Try global rules
             for rule in self.global_rules {
+                if self.disabled_rules.contains(rule.name()) {
+                    continue;
+                }
                 if let Some(rewrite) = rule.apply(self.context, expr_id) {
-                    if self.debug_mode {
-                         eprintln!("{}[DEBUG] Global Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
-                    }
+                    debug!("{}[DEBUG] Global Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
                     if self.collect_steps {
                         self.steps.push(Step::new(
                             &rewrite.description,
