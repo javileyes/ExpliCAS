@@ -584,3 +584,21 @@ fn test_log_sqrt_simplification() {
     let output = format!("{}", DisplayExpr { context: &simplifier.context, id: res });
     assert_eq!(output, "0");
 }
+
+#[test]
+fn test_trig_power_simplification() {
+    let mut simplifier = create_full_simplifier();
+    let ctx = &mut simplifier.context;
+    
+    // 8 * sin(x)^4 - (3 - 4*cos(2*x) + cos(4*x)) -> 0
+    // Requires:
+    // 1. cos(4x) expansion (RecursiveTrigExpansionRule)
+    // 2. cos(2x) expansion (DoubleAngleRule)
+    // 3. cos^2(x) -> 1 - sin^2(x) (CanonicalizeTrigSquareRule)
+    // 4. Polynomial simplification
+    let input = "8 * sin(x)^4 - (3 - 4*cos(2*x) + cos(4*x))";
+    let expr = parse(input, ctx).unwrap();
+    let (res, _) = simplifier.simplify(expr);
+    let output = format!("{}", DisplayExpr { context: ctx, id: res });
+    assert_eq!(output, "0");
+}

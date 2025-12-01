@@ -843,26 +843,47 @@ define_rule!(
     CanonicalizeTrigSquareRule,
     "Canonicalize Trig Square",
     |ctx, expr| {
-        // cos^2(x) -> 1 - sin^2(x)
+        // cos^n(x) -> (1 - sin^2(x))^(n/2) for even n
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
-            if let Expr::Number(n) = ctx.get(exp) {
-                if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Function(name, args) = ctx.get(base) {
-                        if name == "cos" && args.len() == 1 {
-                            let arg = args[0];
-                            // 1 - sin^2(x)
-                            let one = ctx.num(1);
-                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
-                            let two = ctx.num(2);
-                            let sin_sq = ctx.add(Expr::Pow(sin_x, two));
-                            let new_expr = ctx.add(Expr::Sub(one, sin_sq));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos^2(x) -> 1 - sin^2(x)".to_string(),
-                            });
+            let n_opt = if let Expr::Number(n) = ctx.get(exp) {
+                Some(n.clone())
+            } else {
+                None
+            };
+
+            if let Some(n) = n_opt {
+                if n.is_integer() && n.to_integer() % 2 == 0.into() && n > num_rational::BigRational::zero() {
+                     // Limit power to avoid explosion? Let's say <= 4 for now.
+                     if n <= num_rational::BigRational::from_integer(4.into()) {
+                        if let Expr::Function(name, args) = ctx.get(base) {
+                            if name == "cos" && args.len() == 1 {
+                                let arg = args[0];
+                                // (1 - sin^2(x))^(n/2)
+                                let one = ctx.num(1);
+                                let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                                let two = ctx.num(2);
+                                let sin_sq = ctx.add(Expr::Pow(sin_x, two));
+                                let base_term = ctx.add(Expr::Sub(one, sin_sq));
+                                
+                                let half_n = n.clone() / num_rational::BigRational::from_integer(2.into());
+                                
+                                if half_n.is_one() {
+                                    return Some(Rewrite {
+                                        new_expr: base_term,
+                                        description: "cos^2(x) -> 1 - sin^2(x)".to_string(),
+                                    });
+                                } else {
+                                    let half_n_expr = ctx.add(Expr::Number(half_n));
+                                    let new_expr = ctx.add(Expr::Pow(base_term, half_n_expr));
+                                    return Some(Rewrite {
+                                        new_expr,
+                                        description: "cos^2k(x) -> (1 - sin^2(x))^k".to_string(),
+                                    });
+                                }
+                            }
                         }
-                    }
+                     }
                 }
             }
         }
@@ -877,7 +898,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
-    // simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule)); // Can prevent simplification (e.g. half-angle)
+    simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule)); // Can prevent simplification (e.g. half-angle)
     simplifier.add_rule(Box::new(AngleConsistencyRule));
 }
 
