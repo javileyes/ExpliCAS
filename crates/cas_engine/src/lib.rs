@@ -7,6 +7,7 @@ pub mod solver;
 pub mod ordering;
 pub mod collect;
 pub mod expand;
+pub mod factor;
 
 pub mod visitors;
 pub mod error;
