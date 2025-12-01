@@ -499,6 +499,29 @@ define_rule!(
     }
 );
 
+define_rule!(
+    PowerQuotientRule,
+    "Power of a Quotient",
+    |ctx, expr| {
+        // (a / b)^n -> a^n / b^n
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            let base_data = ctx.get(base).clone();
+            if let Expr::Div(num, den) = base_data {
+                // Distribute exponent
+                let new_num = ctx.add(Expr::Pow(num, exp));
+                let new_den = ctx.add(Expr::Pow(den, exp));
+                let new_expr = ctx.add(Expr::Div(new_num, new_den));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Distribute power over quotient".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
@@ -506,4 +529,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ZeroOnePowerRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(PowerProductRule));
+    simplifier.add_rule(Box::new(PowerQuotientRule));
 }

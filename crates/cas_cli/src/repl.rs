@@ -1,12 +1,12 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule, PowerProductRule};
+use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule, PowerProductRule, PowerQuotientRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, RationalizeDenominatorRule, FractionAddRule, ExpandRule, FactorRule};
 use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_engine::rules::grouping::CollectRule;
@@ -124,6 +124,8 @@ impl Repl {
         simplifier.add_rule(Box::new(CanonicalizeNegationRule));
         simplifier.add_rule(Box::new(CanonicalizeAddRule));
         simplifier.add_rule(Box::new(CanonicalizeMulRule));
+        simplifier.add_rule(Box::new(RationalizeDenominatorRule));
+        simplifier.add_rule(Box::new(FractionAddRule));
         simplifier.add_rule(Box::new(CanonicalizeRootRule));
         simplifier.add_rule(Box::new(EvaluateAbsRule));
         simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
@@ -188,6 +190,7 @@ impl Repl {
         simplifier.add_rule(Box::new(ProductPowerRule));
         simplifier.add_rule(Box::new(PowerPowerRule));
         simplifier.add_rule(Box::new(PowerProductRule));
+        simplifier.add_rule(Box::new(PowerQuotientRule));
         simplifier.add_rule(Box::new(ZeroOnePowerRule));
         simplifier.add_rule(Box::new(AddZeroRule));
         simplifier.add_rule(Box::new(MulOneRule));

@@ -3,7 +3,10 @@ use crate::define_rule;
 use cas_ast::{Expr, ExprId, Context};
 use crate::polynomial::Polynomial;
 use std::collections::HashSet;
+use crate::ordering::compare_expr;
+use std::cmp::Ordering;
 use num_traits::{One, Signed, ToPrimitive, Zero};
+use num_rational::BigRational;
 
 
 define_rule!(
@@ -1285,12 +1288,95 @@ define_rule!(
     }
 );
 
+define_rule!(
+    FractionAddRule,
+    "Add Fractions",
+    |ctx, expr| {
+        // a/c + b/c -> (a+b)/c
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Add(l, r) = expr_data {
+            let l_data = ctx.get(l).clone();
+            let r_data = ctx.get(r).clone();
+            
+            // Case 1: Both are Divs
+            if let (Expr::Div(ln, ld), Expr::Div(rn, rd)) = (&l_data, &r_data) {
+                if compare_expr(ctx, *ld, *rd) == Ordering::Equal {
+                    let new_num = ctx.add(Expr::Add(*ln, *rn));
+                    let new_expr = ctx.add(Expr::Div(new_num, *ld));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Combine fractions".to_string(),
+                    });
+                }
+            }
+            
+            // Case 2: One is Div, other is Mul(-1, Div) (Subtraction)
+            // A/C - B/C -> (A-B)/C
+            if let Expr::Div(ln, ld) = &l_data {
+                if let Expr::Mul(m_l, m_r) = &r_data {
+                    // Check for -1 * (B/C)
+                    let mut neg_div = None;
+                    if let Expr::Number(n) = ctx.get(*m_l) {
+                        if *n == -BigRational::one() { neg_div = Some(*m_r); }
+                    } else if let Expr::Number(n) = ctx.get(*m_r) {
+                        if *n == -BigRational::one() { neg_div = Some(*m_l); }
+                    }
+                    
+                    if let Some(nd) = neg_div {
+                        if let Expr::Div(rn, rd) = ctx.get(nd) {
+                            if compare_expr(ctx, *ld, *rd) == Ordering::Equal {
+                                let new_num = ctx.add(Expr::Sub(*ln, *rn));
+                                let new_expr = ctx.add(Expr::Div(new_num, *ld));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: "Combine fraction subtraction".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Symmetric case for -B/C + A/C
+            if let Expr::Div(rn, rd) = &r_data {
+                if let Expr::Mul(m_l, m_r) = &l_data {
+                     // Check for -1 * (A/C)
+                    let mut neg_div = None;
+                    if let Expr::Number(n) = ctx.get(*m_l) {
+                        if *n == -BigRational::one() { neg_div = Some(*m_r); }
+                    } else if let Expr::Number(n) = ctx.get(*m_r) {
+                        if *n == -BigRational::one() { neg_div = Some(*m_l); }
+                    }
+                    
+                    if let Some(nd) = neg_div {
+                        if let Expr::Div(ln, ld) = ctx.get(nd) {
+                            if compare_expr(ctx, *ld, *rd) == Ordering::Equal {
+                                // -A/C + B/C -> (B-A)/C
+                                let new_num = ctx.add(Expr::Sub(*rn, *ln));
+                                let new_expr = ctx.add(Expr::Div(new_num, *rd));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: "Combine fraction subtraction".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
     simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(ExpandRule));
+    simplifier.add_rule(Box::new(SimplifyFractionRule));
+    simplifier.add_rule(Box::new(RationalizeDenominatorRule));
+    simplifier.add_rule(Box::new(FractionAddRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
