@@ -200,10 +200,33 @@ define_rule!(
                 }
 
                 // Case 2: Identities for negative arguments
-                if let Expr::Neg(inner) = ctx.get(arg) {
+                // Check for Expr::Neg(inner) OR Expr::Mul(-1, inner)
+                let inner_opt = match ctx.get(arg) {
+                    Expr::Neg(inner) => Some(*inner),
+                    Expr::Mul(l, r) => {
+                        if let Expr::Number(n) = ctx.get(*l) {
+                            if *n == num_rational::BigRational::from_integer((-1).into()) {
+                                Some(*r)
+                            } else {
+                                None
+                            }
+                        } else if let Expr::Number(n) = ctx.get(*r) {
+                            if *n == num_rational::BigRational::from_integer((-1).into()) {
+                                Some(*l)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    },
+                    _ => None
+                };
+
+                if let Some(inner) = inner_opt {
                     match name.as_str() {
                         "sin" => {
-                            let sin_inner = ctx.add(Expr::Function("sin".to_string(), vec![*inner]));
+                            let sin_inner = ctx.add(Expr::Function("sin".to_string(), vec![inner]));
                             let new_expr = ctx.add(Expr::Neg(sin_inner));
                             return Some(Rewrite {
                                 new_expr,
@@ -211,14 +234,14 @@ define_rule!(
                             });
                         },
                         "cos" => {
-                            let new_expr = ctx.add(Expr::Function("cos".to_string(), vec![*inner]));
+                            let new_expr = ctx.add(Expr::Function("cos".to_string(), vec![inner]));
                             return Some(Rewrite {
                                 new_expr,
                                 description: "cos(-x) = cos(x)".to_string(),
                             });
                         },
                         "tan" => {
-                            let tan_inner = ctx.add(Expr::Function("tan".to_string(), vec![*inner]));
+                            let tan_inner = ctx.add(Expr::Function("tan".to_string(), vec![inner]));
                             let new_expr = ctx.add(Expr::Neg(tan_inner));
                             return Some(Rewrite {
                                 new_expr,
