@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn test_solve_mul() {
         // 2 * x = 6 -> x = 6 / 2
-        let mut simplifier = Simplifier::new();
+        let mut simplifier = Simplifier::with_default_rules();
         let eq = make_eq(&mut simplifier.context, "2 * x", "6");
         simplifier.collect_steps = true;
         let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_solve_inequality_flip() {
         // -2x < 10 -> x > -5
-        let mut simplifier = Simplifier::new();
+        let mut simplifier = Simplifier::with_default_rules();
         let eq = Equation {
             lhs: parse("-2*x", &mut simplifier.context).unwrap(),
             rhs: parse("10", &mut simplifier.context).unwrap(),

@@ -18,7 +18,7 @@ define_rule!(
                         if let Some(result) = integrate(ctx, integrand, &var_name) {
                             return Some(Rewrite {
                                 new_expr: result,
-                                description: format!("integrate({:?})", integrand), // Debug format for now
+                                description: format!("integrate({:?})", integrand),
                             });
                         }
                     }

@@ -326,7 +326,7 @@ fn test_enhanced_integration() {
     use cas_engine::rules::calculus::IntegrateRule;
     use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
     use cas_engine::rules::polynomial::{CombineLikeTermsRule};
-    use cas_engine::rules::exponents::EvaluatePowerRule;
+    use cas_engine::rules::exponents::{EvaluatePowerRule, PowerProductRule};
     use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule};
 
     let mut simplifier = Simplifier::new();
@@ -337,6 +337,7 @@ fn test_enhanced_integration() {
     simplifier.add_rule(Box::new(MulZeroRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
+    simplifier.add_rule(Box::new(PowerProductRule));
 
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));

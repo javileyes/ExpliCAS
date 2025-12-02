@@ -1,47 +1,50 @@
+use cas_engine::Simplifier;
+use cas_parser::parse;
+use std::time::Instant;
 
-#[test]
-fn repro_expand_binomial_power_10() {
-    use cas_engine::Simplifier;
-    use cas_parser::parse;
-    use std::time::Instant;
+fn setup_bench(input_str: &str) -> (Simplifier, cas_ast::ExprId) {
+    let mut simplifier = Simplifier::with_default_rules();
+    let expr = parse(input_str, &mut simplifier.context).unwrap();
+    (simplifier, expr)
+}
 
-    let mut simplifier = Simplifier::new();
-    simplifier.register_default_rules();
-    simplifier.collect_steps = false; // Disable for benchmarking
-
-    let expr = parse("(x + 1)^10", &mut simplifier.context).unwrap();
-    
+fn run_bench<F>(name: &str, iterations: u32, mut f: F)
+where
+    F: FnMut(),
+{
     let start = Instant::now();
-    for _ in 0..100 {
-        simplifier.simplify(expr);
+    for _ in 0..iterations {
+        f();
     }
     let duration = start.elapsed();
-    println!("expand_binomial_power_10 (100 runs): {:?}", duration);
-    println!("Average: {:?}", duration / 100);
+    println!("{} ({} runs): {:?}", name, iterations, duration);
+    println!("Average: {:?}", duration / iterations);
 }
 
 #[test]
 fn repro_sum_fractions_10() {
-    use cas_engine::Simplifier;
-    use cas_parser::parse;
-    use std::time::Instant;
+    run_bench("sum_fractions_10", 10, || {
+        let mut s = "1/x".to_string();
+        for i in 1..=10 {
+            s.push_str(&format!(" + 1/(x+{})", i));
+        }
+        let (mut simplifier, input) = setup_bench(&s);
+        simplifier.simplify(input);
+    });
+}
 
-    let mut simplifier = Simplifier::new();
-    simplifier.register_default_rules();
-    simplifier.collect_steps = false;
+#[test]
+fn repro_expand_binomial_power_10() {
+    run_bench("expand_binomial_power_10", 100, || {
+        let (mut simplifier, input) = setup_bench("(x+1)^10");
+        simplifier.simplify(input);
+    });
+}
 
-    // 1/x + 1/(x+1) + ... + 1/(x+9)
-    let mut s = "1/x".to_string();
-    for i in 1..10 {
-        s.push_str(&format!(" + 1/(x+{})", i));
-    }
-    let expr = parse(&s, &mut simplifier.context).unwrap();
-    
-    let start = Instant::now();
-    for _ in 0..10 { // Fewer runs as it's slower
-        simplifier.simplify(expr);
-    }
-    let duration = start.elapsed();
-    println!("sum_fractions_10 (10 runs): {:?}", duration);
-    println!("Average: {:?}", duration / 10);
+#[test]
+fn repro_diff_nested_trig_exp() {
+    run_bench("diff_nested_trig_exp", 100, || {
+        let (mut simplifier, input) = setup_bench("diff(exp(sin(x^2)), x)");
+        simplifier.simplify(input);
+    });
 }

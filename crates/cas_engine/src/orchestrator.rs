@@ -47,8 +47,6 @@ impl Orchestrator {
         // Try polynomial simplification (expand -> simplify -> factor)
         // This handles cases like (x-1)(x+1)... which need full expansion to simplify.
         if self.enable_polynomial_strategy {
-            // Heuristic: Skip if expression contains high powers (e.g. > 6) or many fractions (> 4)
-            // to prevent explosion unless the total size is very small.
             let skip_poly = should_skip_polynomial_strategy(&simplifier.context, current, 6, 4);
             
             if !skip_poly {
@@ -103,6 +101,7 @@ fn should_skip_polynomial_strategy(ctx: &cas_ast::Context, expr: ExprId, power_t
     use cas_ast::Expr;
     let mut stack = vec![expr];
     let mut div_count = 0;
+    let mut has_add_sub = false;
     
     while let Some(id) = stack.pop() {
         match ctx.get(id) {
@@ -128,7 +127,12 @@ fn should_skip_polynomial_strategy(ctx: &cas_ast::Context, expr: ExprId, power_t
                 stack.push(*l);
                 stack.push(*r);
             },
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            Expr::Add(l, r) | Expr::Sub(l, r) => {
+                has_add_sub = true;
+                stack.push(*l);
+                stack.push(*r);
+            },
+            Expr::Mul(l, r) => {
                 stack.push(*l);
                 stack.push(*r);
             },
@@ -137,5 +141,12 @@ fn should_skip_polynomial_strategy(ctx: &cas_ast::Context, expr: ExprId, power_t
             _ => {}
         }
     }
+    
+    // If there are no additions or subtractions, polynomial simplification (expansion/factorization)
+    // is likely unnecessary or redundant with other rules.
+    if !has_add_sub {
+        return true;
+    }
+
     false
 }

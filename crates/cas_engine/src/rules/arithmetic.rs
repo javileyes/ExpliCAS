@@ -225,6 +225,38 @@ define_rule!(
                         });
                     }
                 }
+                
+                // Handle (c * x) / d -> (c/d) * x
+                if let Expr::Number(d) = rhs_data {
+                    if !d.is_zero() {
+                        if let Expr::Mul(ml, mr) = lhs_data {
+                            let ml_data = ctx.get(ml).clone();
+                            let mr_data = ctx.get(mr).clone();
+                            
+                            // Case 1: (c * x) / d
+                            if let Expr::Number(c) = ml_data {
+                                let ratio = &c / &d;
+                                let ratio_expr = ctx.add(Expr::Number(ratio));
+                                let new_expr = ctx.add(Expr::Mul(ratio_expr, mr));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d),
+                                });
+                            }
+                            
+                            // Case 2: (x * c) / d
+                            if let Expr::Number(c) = mr_data {
+                                let ratio = &c / &d;
+                                let ratio_expr = ctx.add(Expr::Number(ratio));
+                                let new_expr = ctx.add(Expr::Mul(ratio_expr, ml));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d),
+                                });
+                            }
+                        }
+                    }
+                }
             }
             _ => {}
         }
