@@ -9,13 +9,17 @@ use num_rational::BigRational;
 ///      x^2 + 2*x^2 -> 3*x^2
 pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
     // 1. Check if expression is an Add/Sub chain
-    let expr_data = ctx.get(expr).clone();
-    match expr_data {
-        Expr::Add(_, _) | Expr::Sub(_, _) => {
-            // Proceed to collect
-        },
-        _ => return expr, // Nothing to collect at top level
-    }
+    // We used to bail out if not Add/Sub, but we want to handle Neg(Neg(x)) -> x
+    // and other simplifications even for single terms.
+    // So we proceed regardless.
+    
+    // let expr_data = ctx.get(expr).clone();
+    // match expr_data {
+    //     Expr::Add(_, _) | Expr::Sub(_, _) => {
+    //         // Proceed to collect
+    //     },
+    //     _ => return expr, // Nothing to collect at top level
+    // }
 
     // 2. Flatten terms
     let terms = flatten_add_chain(ctx, expr);

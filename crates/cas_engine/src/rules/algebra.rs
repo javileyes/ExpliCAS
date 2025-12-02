@@ -591,7 +591,8 @@ mod tests {
         // (x-1) -> -1 + x
         let s = format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr });
         assert!(s.contains("x"));
-        assert!(s.contains("-1"));
+        // With improved display, it might be "x - 1" or "-1 + x"
+        assert!(s.contains("- 1") || s.contains("-1"));
     }
     
     #[test]

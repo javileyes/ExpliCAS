@@ -91,13 +91,64 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 Constant::Undefined => write!(f, "undefined"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
-            Expr::Add(l, r) => {
-                write!(f, "{} + {}", DisplayExpr { context: self.context, id: *l }, DisplayExpr { context: self.context, id: *r })
+            Expr::Add(_, _) => {
+                // Flatten Add chain to handle mixed signs gracefully
+                let terms = collect_add_terms(self.context, self.id);
+                for (i, term) in terms.iter().enumerate() {
+                    let (is_neg, inner_id, val) = check_negative(self.context, *term);
+                    
+                    if i == 0 {
+                        // First term: print as is
+                        write!(f, "{}", DisplayExpr { context: self.context, id: *term })?;
+                    } else {
+                        if is_neg {
+                            // Print " - " then absolute value
+                            write!(f, " - ")?;
+                            
+                            // Re-check locally to extract positive part
+                            match self.context.get(*term) {
+                                Expr::Neg(inner) => {
+                                    write!(f, "{}", DisplayExpr { context: self.context, id: *inner })?;
+                                },
+                                Expr::Number(n) => {
+                                    write!(f, "{}", -n)?;
+                                },
+                                Expr::Mul(a, b) => {
+                                    if let Expr::Number(n) = self.context.get(*a) {
+                                        let pos_n = -n;
+                                        // Print pos_n * b
+                                        let b_prec = precedence(self.context, *b);
+                                        write!(f, "{} * ", pos_n)?;
+                                        if b_prec < 2 {
+                                            write!(f, "({})", DisplayExpr { context: self.context, id: *b })?;
+                                        } else {
+                                            write!(f, "{}", DisplayExpr { context: self.context, id: *b })?;
+                                        }
+                                    } else {
+                                         // Should not happen if check_negative is correct
+                                         write!(f, "{}", DisplayExpr { context: self.context, id: *term })?;
+                                    }
+                                },
+                                _ => {
+                                     // Should not happen
+                                     write!(f, "{}", DisplayExpr { context: self.context, id: *term })?;
+                                }
+                            }
+                        } else {
+                            write!(f, " + {}", DisplayExpr { context: self.context, id: *term })?;
+                        }
+                    }
+                }
+                Ok(())
             },
             Expr::Sub(l, r) => {
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 1; // Sub precedence
-                if rhs_prec <= op_prec { // If RHS is Add/Sub, needs parens: a - (b + c)
+                
+                // Check if RHS is Neg to wrap in parens: a - (-b)
+                let rhs_is_neg = matches!(self.context.get(*r), Expr::Neg(_));
+
+                if rhs_prec <= op_prec || rhs_is_neg { 
                      write!(f, "{} - ({})", DisplayExpr { context: self.context, id: *l }, DisplayExpr { context: self.context, id: *r })
                 } else {
                      write!(f, "{} - {}", DisplayExpr { context: self.context, id: *l }, DisplayExpr { context: self.context, id: *r })
@@ -163,7 +214,10 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             },
             Expr::Neg(e) => {
                 let inner_prec = precedence(self.context, *e);
-                if inner_prec < 4 { // Neg precedence
+                // Check if inner is Neg to wrap in parens: -(-x)
+                let inner_is_neg = matches!(self.context.get(*e), Expr::Neg(_));
+                
+                if inner_prec < 4 || inner_is_neg { // Neg precedence
                      write!(f, "-({})", DisplayExpr { context: self.context, id: *e })
                 } else {
                      write!(f, "-{}", DisplayExpr { context: self.context, id: *e })
@@ -213,5 +267,46 @@ fn precedence(ctx: &Context, id: ExprId) -> i32 {
         Expr::Pow(_, _) => 3,
         Expr::Neg(_) => 4,
         Expr::Function(_, _) | Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => 5,
+    }
+}
+
+fn collect_add_terms(ctx: &Context, id: ExprId) -> Vec<ExprId> {
+    let mut terms = Vec::new();
+    collect_add_terms_recursive(ctx, id, &mut terms);
+    terms
+}
+
+fn collect_add_terms_recursive(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(id) {
+        Expr::Add(l, r) => {
+            collect_add_terms_recursive(ctx, *l, terms);
+            collect_add_terms_recursive(ctx, *r, terms);
+        },
+        _ => terms.push(id),
+    }
+}
+
+fn check_negative(ctx: &Context, id: ExprId) -> (bool, Option<ExprId>, Option<BigRational>) {
+    match ctx.get(id) {
+        Expr::Neg(inner) => (true, Some(*inner), None),
+        Expr::Number(n) => {
+            if *n < num_rational::BigRational::zero() {
+                (true, None, Some(n.clone()))
+            } else {
+                (false, None, None)
+            }
+        },
+        Expr::Mul(a, _) => {
+            if let Expr::Number(n) = ctx.get(*a) {
+                if *n < num_rational::BigRational::zero() {
+                    (true, None, Some(n.clone()))
+                } else {
+                    (false, None, None)
+                }
+            } else {
+                (false, None, None)
+            }
+        },
+        _ => (false, None, None),
     }
 }

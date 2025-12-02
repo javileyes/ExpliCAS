@@ -20,14 +20,17 @@ impl Orchestrator {
         // 1. Initial Collection (Normalize)
         let collected = crate::collect::collect(&mut simplifier.context, current);
         if collected != current {
-            if simplifier.collect_steps {
-                steps.push(Step::new(
-                    "Initial Collection",
-                    "Collect",
-                    current,
-                    collected,
-                    Vec::new(),
-                ));
+            // Only add step if structurally different (collect regenerates IDs)
+            if crate::ordering::compare_expr(&simplifier.context, collected, current) != std::cmp::Ordering::Equal {
+                if simplifier.collect_steps {
+                    steps.push(Step::new(
+                        "Initial Collection",
+                        "Collect",
+                        current,
+                        collected,
+                        Vec::new(),
+                    ));
+                }
             }
             current = collected;
         }
@@ -40,14 +43,16 @@ impl Orchestrator {
         // 3. Final Collection (Ensure canonical form)
         let final_collected = crate::collect::collect(&mut simplifier.context, current);
         if final_collected != current {
-            if simplifier.collect_steps {
-                steps.push(Step::new(
-                    "Final Collection",
-                    "Collect",
-                    current,
-                    final_collected,
-                    Vec::new(),
-                ));
+            if crate::ordering::compare_expr(&simplifier.context, final_collected, current) != std::cmp::Ordering::Equal {
+                if simplifier.collect_steps {
+                    steps.push(Step::new(
+                        "Final Collection",
+                        "Collect",
+                        current,
+                        final_collected,
+                        Vec::new(),
+                    ));
+                }
             }
             current = final_collected;
         }
