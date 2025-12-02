@@ -52,6 +52,13 @@ impl Orchestrator {
             current = final_collected;
         }
 
-        (current, steps)
+        // 4. Optimize Steps
+        let optimized_steps = if simplifier.collect_steps {
+            crate::step_optimization::optimize_steps(steps)
+        } else {
+            steps
+        };
+
+        (current, optimized_steps)
     }
 }

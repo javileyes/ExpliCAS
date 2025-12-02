@@ -9,6 +9,7 @@ pub mod collect;
 pub mod expand;
 pub mod factor;
 pub mod orchestrator;
+pub mod step_optimization;
 
 pub mod visitors;
 pub mod error;
