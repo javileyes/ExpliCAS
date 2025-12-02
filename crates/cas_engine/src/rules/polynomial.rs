@@ -28,7 +28,8 @@ define_rule!(
                     || matches!(l_expr, Expr::Sub(_, _))
                     || matches!(l_expr, Expr::Pow(_, _))
                     || matches!(l_expr, Expr::Mul(_, _))
-                    || matches!(l_expr, Expr::Div(_, _));
+                    || matches!(l_expr, Expr::Div(_, _))
+                    || (matches!(l_expr, Expr::Variable(_)) && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
                 
                 if !should_distribute {
                     return None;
@@ -59,7 +60,8 @@ define_rule!(
                     || matches!(r_expr, Expr::Sub(_, _))
                     || matches!(r_expr, Expr::Pow(_, _))
                     || matches!(r_expr, Expr::Mul(_, _))
-                    || matches!(r_expr, Expr::Div(_, _));
+                    || matches!(r_expr, Expr::Div(_, _))
+                    || (matches!(r_expr, Expr::Variable(_)) && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
 
                 if !should_distribute {
                     return None;
