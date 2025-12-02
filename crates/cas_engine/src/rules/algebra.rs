@@ -747,6 +747,16 @@ define_rule!(
             }
             let var = vars.iter().next().unwrap();
 
+            // Heuristic: Avoid expensive polynomial arithmetic for large expressions
+            // This prevents O(N^2) behavior in large sums of fractions (e.g. sum_fractions_10)
+            let complexity_limit = 20;
+            let c1 = count_nodes(ctx, d1);
+            let c2 = count_nodes(ctx, d2);
+            // eprintln!("AddFractionsRule complexity check: d1={}, d2={}, limit={}", c1, c2, complexity_limit);
+            if c1 + c2 > complexity_limit {
+                return None;
+            }
+
             let p_d1_res = Polynomial::from_expr(ctx, d1, var);
             let p_d2_res = Polynomial::from_expr(ctx, d2, var);
             let p_n1_res = Polynomial::from_expr(ctx, n1, var);

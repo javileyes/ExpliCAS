@@ -1,5 +1,6 @@
 use cas_ast::ExprId;
 use crate::{Simplifier, Step};
+use num_traits::{ToPrimitive, Signed};
 
 pub struct Orchestrator {
     // Configuration for the pipeline
@@ -46,20 +47,26 @@ impl Orchestrator {
         // Try polynomial simplification (expand -> simplify -> factor)
         // This handles cases like (x-1)(x+1)... which need full expansion to simplify.
         if self.enable_polynomial_strategy {
-            let poly_simplified = crate::strategies::simplify_polynomial(&mut simplifier.context, current);
-            if poly_simplified != current {
-                // Only add step if structurally different
-                if crate::ordering::compare_expr(&simplifier.context, poly_simplified, current) != std::cmp::Ordering::Equal {
-                     if simplifier.collect_steps {
-                        steps.push(Step::new(
-                            "Polynomial Strategy",
-                            "Simplify Polynomial",
-                            current,
-                            poly_simplified,
-                            Vec::new(),
-                        ));
+            // Heuristic: Skip if expression contains high powers (e.g. > 6) or many fractions (> 4)
+            // to prevent explosion unless the total size is very small.
+            let skip_poly = should_skip_polynomial_strategy(&simplifier.context, current, 6, 4);
+            
+            if !skip_poly {
+                let poly_simplified = crate::strategies::simplify_polynomial(&mut simplifier.context, current);
+                if poly_simplified != current {
+                    // Only add step if structurally different
+                    if crate::ordering::compare_expr(&simplifier.context, poly_simplified, current) != std::cmp::Ordering::Equal {
+                         if simplifier.collect_steps {
+                            steps.push(Step::new(
+                                "Polynomial Strategy",
+                                "Simplify Polynomial",
+                                current,
+                                poly_simplified,
+                                Vec::new(),
+                            ));
+                        }
+                        current = poly_simplified;
                     }
-                    current = poly_simplified;
                 }
             }
         }
@@ -90,4 +97,45 @@ impl Orchestrator {
 
         (current, optimized_steps)
     }
+}
+
+fn should_skip_polynomial_strategy(ctx: &cas_ast::Context, expr: ExprId, power_threshold: i32, div_threshold: usize) -> bool {
+    use cas_ast::Expr;
+    let mut stack = vec![expr];
+    let mut div_count = 0;
+    
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Pow(b, e) => {
+                if let Expr::Number(n) = ctx.get(*e) {
+                    if let Some(val) = n.to_integer().to_i32() {
+                        if val.abs() > power_threshold {
+                            return true;
+                        }
+                    }
+                }
+                if let Expr::Pow(b_inner, _) = ctx.get(*b) {
+                    stack.push(*b_inner);
+                } else {
+                     stack.push(*b);
+                }
+            },
+            Expr::Div(l, r) => {
+                div_count += 1;
+                if div_count > div_threshold {
+                    return true;
+                }
+                stack.push(*l);
+                stack.push(*r);
+            },
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            },
+            Expr::Neg(e) => stack.push(*e),
+            Expr::Function(_, args) => stack.extend(args),
+            _ => {}
+        }
+    }
+    false
 }
