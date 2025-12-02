@@ -1,0 +1,12 @@
+Benchmark Results - 2025-12-02
+Commit: 3751a96 "mejoras" (with local optimizations)
+
+calculus/diff_nested_trig_exp: 43.67 µs
+rational/sum_fractions_10: 332.05 µs
+polynomial/expand_binomial_power_10: 211.67 µs
+solver/solve_quadratic: 32.88 µs
+stress/deeply_nested_poly: 740.37 µs
+trigonometry/pythagorean_identity_nested: 4.82 ms
+
+Notes:
+- diff_nested_trig_exp improved significantly (previously ~273 µs) due to simplify_polynomial heuristic.

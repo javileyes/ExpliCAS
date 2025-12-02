@@ -323,42 +323,26 @@ fn test_logarithm_simplification() {
 
 #[test]
 fn test_enhanced_integration() {
-    use cas_engine::rules::calculus::IntegrateRule;
-    use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
-    use cas_engine::rules::polynomial::{CombineLikeTermsRule};
-    use cas_engine::rules::exponents::{EvaluatePowerRule, PowerProductRule};
-    use cas_engine::rules::canonicalization::{CanonicalizeAddRule, CanonicalizeMulRule};
-
-    let mut simplifier = Simplifier::new();
-    simplifier.add_rule(Box::new(IntegrateRule));
-    simplifier.add_rule(Box::new(CombineConstantsRule));
-    simplifier.add_rule(Box::new(AddZeroRule));
-    simplifier.add_rule(Box::new(MulOneRule));
-    simplifier.add_rule(Box::new(MulZeroRule));
-    simplifier.add_rule(Box::new(CombineLikeTermsRule));
-    simplifier.add_rule(Box::new(EvaluatePowerRule));
-    simplifier.add_rule(Box::new(PowerProductRule));
-
-    simplifier.add_rule(Box::new(CanonicalizeAddRule));
-    simplifier.add_rule(Box::new(CanonicalizeMulRule));
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.disable_rule("Double Angle Identity");
 
     // Test 1: integrate(sin(2*x), x) -> -cos(2*x)/2
     let input1 = "integrate(sin(2*x), x)";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse");
     let (result1, _) = simplifier.simplify(expr1);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result1 }), "-cos(2 * x) / 2");
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result1 }), "-1/2 * cos(2 * x)");
 
     // Test 2: integrate(exp(3*x + 1), x) -> exp(3*x + 1)/3
     let input2 = "integrate(exp(3*x + 1), x)";
     let expr2 = parse(input2, &mut simplifier.context).expect("Failed to parse");
     let (result2, _) = simplifier.simplify(expr2);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result2 }), "e^(1 + 3 * x) / 3");
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result2 }), "1/3 * e^(1 + 3 * x)");
 
     // Test 3: integrate(1/(2*x + 1), x) -> ln(2*x + 1)/2
     let input3 = "integrate(1/(2*x + 1), x)";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse");
     let (result3, _) = simplifier.simplify(expr3);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result3 }), "ln(1 + 2 * x) / 2");
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result3 }), "1/2 * ln(1 + 2 * x)");
     
     // Test 4: integrate((3*x)^2, x) -> (3*x)^3 / (3*3) -> (3*x)^3 / 9
     // Note: (3x)^2 is Power(Mul(3,x), 2).
