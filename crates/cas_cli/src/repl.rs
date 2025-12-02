@@ -11,7 +11,7 @@ use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_engine::rules::grouping::CollectRule;
 use rustyline::error::ReadlineError;
-use cas_ast::{DisplayExpr, ExprId, Expr, Context};
+use cas_ast::{DisplayExpr, RawDisplayExpr, ExprId, Expr, Context};
 use cas_engine::step::PathStep;
 
 
@@ -514,17 +514,17 @@ impl Repl {
             "expand" => {
                 println!("Command: expand <expr>");
                 println!("Description: Expands polynomials and products.");
-                println!("Example: expand (x+1)^2 -> x^2 + 2*x + 1");
+                println!("Example: expand(x+1)^2 -> x^2 + 2*x + 1");
             },
             "factor" => {
                 println!("Command: factor <expr>");
                 println!("Description: Factors polynomials.");
-                println!("Example: factor x^2 - 1 -> (x - 1) * (x + 1)");
+                println!("Example: factor(x^2 - 1) -> (x - 1) * (x + 1)");
             },
             "collect" => {
                 println!("Command: collect <expr>, <var>");
                 println!("Description: Groups terms by powers of a variable.");
-                println!("Example: collect a*x + b*x + c, x -> (a + b) * x + c");
+                println!("Example: collect(a*x + b*x + c, x) -> (a + b) * x + c");
             },
             "equiv" => {
                 println!("Command: equiv <expr1>, <expr2>");
@@ -792,8 +792,12 @@ impl Repl {
                             if should_show_step(step) {
                                 step_count += 1;
                                 println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
+                                println!("   Local: {} -> {}", 
+                                    RawDisplayExpr { context: &self.simplifier.context, id: step.before },
+                                    RawDisplayExpr { context: &self.simplifier.context, id: step.after }
+                                );
                                 current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                                println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                println!("   Global: {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
                             } else {
                                 current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
                             }

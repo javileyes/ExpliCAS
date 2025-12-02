@@ -310,3 +310,38 @@ fn check_negative(ctx: &Context, id: ExprId) -> (bool, Option<ExprId>, Option<Bi
         _ => (false, None, None),
     }
 }
+
+pub struct RawDisplayExpr<'a> {
+    pub context: &'a Context,
+    pub id: ExprId,
+}
+
+impl<'a> fmt::Display for RawDisplayExpr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let expr = self.context.get(self.id);
+        match expr {
+            Expr::Number(n) => write!(f, "{}", n),
+            Expr::Constant(c) => match c {
+                Constant::Pi => write!(f, "pi"),
+                Constant::E => write!(f, "e"),
+                Constant::Infinity => write!(f, "infinity"),
+                Constant::Undefined => write!(f, "undefined"),
+            },
+            Expr::Variable(s) => write!(f, "{}", s),
+            Expr::Add(l, r) => write!(f, "{} + {}", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
+            Expr::Sub(l, r) => write!(f, "{} - {}", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
+            Expr::Mul(l, r) => write!(f, "({}) * ({})", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
+            Expr::Div(l, r) => write!(f, "({}) / ({})", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
+            Expr::Pow(b, e) => write!(f, "({})^({})", RawDisplayExpr { context: self.context, id: *b }, RawDisplayExpr { context: self.context, id: *e }),
+            Expr::Neg(e) => write!(f, "-({})", RawDisplayExpr { context: self.context, id: *e }),
+            Expr::Function(name, args) => {
+                write!(f, "{}(", name)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", RawDisplayExpr { context: self.context, id: *arg })?;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}

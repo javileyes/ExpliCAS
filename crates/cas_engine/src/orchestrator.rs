@@ -50,18 +50,12 @@ impl Orchestrator {
             let skip_poly = should_skip_polynomial_strategy(&simplifier.context, current, 6, 4);
             
             if !skip_poly {
-                let poly_simplified = crate::strategies::simplify_polynomial(&mut simplifier.context, current);
+                let (poly_simplified, poly_steps) = crate::strategies::simplify_polynomial(&mut simplifier.context, current);
                 if poly_simplified != current {
-                    // Only add step if structurally different
+                    // Only add steps if structurally different
                     if crate::ordering::compare_expr(&simplifier.context, poly_simplified, current) != std::cmp::Ordering::Equal {
                          if simplifier.collect_steps {
-                            steps.push(Step::new(
-                                "Polynomial Strategy",
-                                "Simplify Polynomial",
-                                current,
-                                poly_simplified,
-                                Vec::new(),
-                            ));
+                            steps.extend(poly_steps);
                         }
                         current = poly_simplified;
                     }

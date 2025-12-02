@@ -2,7 +2,7 @@ pub mod expression;
 pub mod domain;
 pub mod visitor;
 
-pub use expression::{Expr, Constant, ExprId, Context, DisplayExpr};
+pub use expression::{Expr, Constant, ExprId, Context, DisplayExpr, RawDisplayExpr};
 pub use visitor::{Visitor, Transformer};
 pub use domain::{Interval, BoundType, SolutionSet};
 // use std::rc::Rc; // Removed Rc usage

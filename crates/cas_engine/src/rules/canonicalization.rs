@@ -18,7 +18,7 @@ define_rule!(
             let new_expr = ctx.add(Expr::Add(lhs, neg_rhs));
             return Some(Rewrite {
                 new_expr,
-                description: "a - b = a + (-b)".to_string(),
+                description: "Convert Subtraction to Addition (a - b -> a + (-b))".to_string(),
             });
         }
 
