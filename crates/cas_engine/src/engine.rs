@@ -366,6 +366,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 expr_id,
                                 rewrite.new_expr,
                                 self.current_path.clone(),
+                                Some(self.context),
                             ));
                         }
                         expr_id = rewrite.new_expr;
@@ -393,6 +394,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             expr_id,
                             rewrite.new_expr,
                             self.current_path.clone(),
+                            Some(self.context),
                         ));
                     }
                     expr_id = rewrite.new_expr;

@@ -17,16 +17,19 @@ pub struct Step {
     pub before: ExprId,
     pub after: ExprId,
     pub path: Vec<PathStep>,
+    pub after_str: Option<String>,
 }
 
 impl Step {
-    pub fn new(description: &str, rule_name: &str, before: ExprId, after: ExprId, path: Vec<PathStep>) -> Self {
+    pub fn new(description: &str, rule_name: &str, before: ExprId, after: ExprId, path: Vec<PathStep>, context: Option<&cas_ast::Context>) -> Self {
+        let after_str = context.map(|ctx| format!("{}", cas_ast::DisplayExpr { context: ctx, id: after }));
         Self {
             description: description.to_string(),
             rule_name: rule_name.to_string(),
             before,
             after,
             path,
+            after_str,
         }
     }
 }

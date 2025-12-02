@@ -24,6 +24,7 @@ pub fn simplify_polynomial(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step
             expr,
             expanded,
             Vec::new(),
+            Some(ctx),
         ));
     }
     
@@ -105,6 +106,7 @@ pub fn simplify_polynomial(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step
                 simplified_expanded,
                 factored,
                 Vec::new(),
+                Some(ctx),
             ));
         }
         return (factored, steps);
@@ -200,6 +202,7 @@ fn apply_rules_to_tree(ctx: &mut Context, expr: ExprId, steps: &mut Vec<Step>, p
                     current_expr,
                     rw.new_expr,
                     path.clone(),
+                    Some(ctx),
                 ));
                 Some(rw.new_expr)
             } else {

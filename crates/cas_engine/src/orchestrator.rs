@@ -32,6 +32,7 @@ impl Orchestrator {
                         current,
                         collected,
                         Vec::new(),
+                        Some(&simplifier.context),
                     ));
                 }
             }
@@ -74,6 +75,7 @@ impl Orchestrator {
                         current,
                         final_collected,
                         Vec::new(),
+                        Some(&simplifier.context),
                     ));
                 }
             }

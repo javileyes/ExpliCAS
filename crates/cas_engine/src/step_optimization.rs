@@ -32,13 +32,14 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                 // Before: First step's before
                 // After: Last step's after
                 let last = &steps[last_same_path_idx];
-                let coalesced = Step::new(
-                    "Canonicalization",
-                    "Canonicalize",
-                    current.before,
-                    last.after,
-                    current.path.clone(),
-                );
+                let coalesced = Step {
+                    description: "Canonicalization".to_string(),
+                    rule_name: "Canonicalize".to_string(),
+                    before: current.before,
+                    after: last.after,
+                    path: current.path.clone(),
+                    after_str: last.after_str.clone(),
+                };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;
                 continue;

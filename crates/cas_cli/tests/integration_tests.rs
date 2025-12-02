@@ -24,8 +24,17 @@ fn create_full_simplifier() -> Simplifier {
 }
 
 fn assert_equivalent(s: &mut Simplifier, expr1: ExprId, expr2: ExprId) {
-    let (sim1, _) = s.simplify(expr1);
-    let (sim2, _) = s.simplify(expr2);
+    let (sim1, steps1) = s.simplify(expr1);
+    println!("Expr1 Result: {}", DisplayExpr { context: &s.context, id: sim1 });
+    for (i, step) in steps1.iter().enumerate() {
+        println!("Expr1 Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &s.context, id: step.after });
+    }
+
+    let (sim2, steps2) = s.simplify(expr2);
+    println!("Expr2 Result: {}", DisplayExpr { context: &s.context, id: sim2 });
+    for (i, step) in steps2.iter().enumerate() {
+        println!("Expr2 Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &s.context, id: step.after });
+    }
     
     if s.are_equivalent(sim1, sim2) {
         return;
@@ -62,6 +71,14 @@ fn test_end_to_end_simplification() {
 
     // Simplify
     let (result, steps) = simplifier.simplify(expr);
+    println!("Result: {}", DisplayExpr { context: &simplifier.context, id: result });
+    for (i, step) in steps.iter().enumerate() {
+        if let Some(s) = &step.after_str {
+             println!("Step {}: {} -> {} (cached)", i + 1, step.rule_name, s);
+        } else {
+             println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+        }
+    }
 
     // Verify Result
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result }), "6");
@@ -90,6 +107,10 @@ fn test_nested_simplification() {
     let expr = parse(input, &mut simplifier.context).expect("Failed to parse");
 
     let (result, steps) = simplifier.simplify(expr);
+    println!("Result: {}", DisplayExpr { context: &simplifier.context, id: result });
+    for (i, step) in steps.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
 
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result }), "21");
     // Steps: 
@@ -115,7 +136,11 @@ fn test_polynomial_simplification() {
     let input = "2 * (x + 3) + 4 * x";
     let expr = parse(input, &mut simplifier.context).expect("Failed to parse");
 
-    let (_result, _steps) = simplifier.simplify(expr);
+    let (result, steps) = simplifier.simplify(expr);
+    println!("Result: {}", DisplayExpr { context: &simplifier.context, id: result });
+    for (i, step) in steps.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
 
     // Expected: 6x + 6 (or 6 + 6x, order depends on implementation)
     // Steps:
@@ -133,7 +158,12 @@ fn test_polynomial_simplification() {
     
     let input_simple = "2 * x + 3 * x";
     let expr_simple = parse(input_simple, &mut simplifier.context).expect("Failed to parse");
-    let (result_simple, _) = simplifier.simplify(expr_simple);
+    let (result_simple, steps_simple) = simplifier.simplify(expr_simple);
+    println!("Result Simple: {}", DisplayExpr { context: &simplifier.context, id: result_simple });
+    for (i, step) in steps_simple.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
+
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result_simple }), "5 * x");
 }
 
@@ -150,19 +180,31 @@ fn test_exponent_simplification() {
     // Test 1: Product of Powers (x^2 * x^3 -> x^5)
     let input1 = "x^2 * x^3";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse input1");
-    let (result1, _) = simplifier.simplify(expr1);
+    let (result1, steps1) = simplifier.simplify(expr1);
+    println!("Result 1: {}", DisplayExpr { context: &simplifier.context, id: result1 });
+    for (i, step) in steps1.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result1 }), "x^5");
 
     // Test 2: Power of Power ((x^2)^3 -> x^6)
     let input2 = "(x^2)^3";
     let expr2 = parse(input2, &mut simplifier.context).expect("Failed to parse input2");
-    let (result2, _) = simplifier.simplify(expr2);
+    let (result2, steps2) = simplifier.simplify(expr2);
+    println!("Result 2: {}", DisplayExpr { context: &simplifier.context, id: result2 });
+    for (i, step) in steps2.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result2 }), "x^6");
     
     // Test 3: Zero Exponent (x^0 -> 1)
     let input3 = "x^0";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse input3");
-    let (result3, _) = simplifier.simplify(expr3);
+    let (result3, steps3) = simplifier.simplify(expr3);
+    println!("Result 3: {}", DisplayExpr { context: &simplifier.context, id: result3 });
+    for (i, step) in steps3.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result3 }), "1");
 }
 
@@ -178,20 +220,32 @@ fn test_fraction_simplification() {
     // Test 1: Addition (1/2 + 1/3 -> 5/6)
     let input1 = "1/2 + 1/3";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse input1");
-    let (result1, _) = simplifier.simplify(expr1);
+    let (result1, steps1) = simplifier.simplify(expr1);
+    println!("Result 1: {}", DisplayExpr { context: &simplifier.context, id: result1 });
+    for (i, step) in steps1.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result1 }), "5/6");
 
     // Test 2: Multiplication (1/2 * 2/3 -> 1/3)
     // Parses as ((1/2) * 2) / 3 -> 1 / 3 -> 1/3
     let input2 = "1/2 * 2/3";
     let expr2 = parse(input2, &mut simplifier.context).expect("Failed to parse input2");
-    let (result2, _) = simplifier.simplify(expr2);
+    let (result2, steps2) = simplifier.simplify(expr2);
+    println!("Result 2: {}", DisplayExpr { context: &simplifier.context, id: result2 });
+    for (i, step) in steps2.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result2 }), "1/3");
 
     // Test 3: Mixed (2 * (1/4) -> 1/2)
     let input3 = "2 * (1/4)";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse input3");
-    let (result3, _) = simplifier.simplify(expr3);
+    let (result3, steps3) = simplifier.simplify(expr3);
+    println!("Result 3: {}", DisplayExpr { context: &simplifier.context, id: result3 });
+    for (i, step) in steps3.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result3 }), "1/2");
 }
 
@@ -215,6 +269,7 @@ fn test_polynomial_factorization_integration() {
     use cas_engine::rules::polynomial::CombineLikeTermsRule;
 
     let mut simplifier = Simplifier::new();
+    simplifier.enable_polynomial_strategy = false; // Disable to avoid redundancy with FactorRule
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(AddZeroRule));
@@ -227,7 +282,11 @@ fn test_polynomial_factorization_integration() {
     // factor(x^2 - 9) -> (x - 3)(x + 3)
     let input1 = "factor(x^2 - 9)";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse");
-    let (result1, _) = simplifier.simplify(expr1);
+    let (result1, steps1) = simplifier.simplify(expr1);
+    println!("Result 1: {}", DisplayExpr { context: &simplifier.context, id: result1 });
+    for (i, step) in steps1.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     let res1 = format!("{}", DisplayExpr { context: &simplifier.context, id: result1 });
     println!("Factor(x^2 - 9) -> {}", res1);
     assert!(res1.contains("x - 3") || res1.contains("-3 + x") || res1.contains("x + -3"));
@@ -237,7 +296,11 @@ fn test_polynomial_factorization_integration() {
     // factor(x^2 + 4x + 4) -> (x + 2)(x + 2)
     let input2 = "factor(x^2 + 4*x + 4)";
     let expr2 = parse(input2, &mut simplifier.context).expect("Failed to parse");
-    let (result2, _) = simplifier.simplify(expr2);
+    let (result2, steps2) = simplifier.simplify(expr2);
+    println!("Result 2: {}", DisplayExpr { context: &simplifier.context, id: result2 });
+    for (i, step) in steps2.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     let res2 = format!("{}", DisplayExpr { context: &simplifier.context, id: result2 });
     assert!(res2.contains("x + 2") || res2.contains("2 + x"));
     // With grouped factors, this becomes (x+2)^2, so check for power instead of mul
@@ -247,7 +310,11 @@ fn test_polynomial_factorization_integration() {
     // factor(x^3 - x) -> x(x-1)(x+1)
     let input3 = "factor(x^3 - x)";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse");
-    let (result3, _) = simplifier.simplify(expr3);
+    let (result3, steps3) = simplifier.simplify(expr3);
+    println!("Result 3: {}", DisplayExpr { context: &simplifier.context, id: result3 });
+    for (i, step) in steps3.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     let res3 = format!("{}", DisplayExpr { context: &simplifier.context, id: result3 });
     assert!(res3.contains("x"));
     assert!(res3.contains("x - 1") || res3.contains("-1 + x") || res3.contains("x + -1"));
@@ -266,7 +333,11 @@ fn test_integration_command() {
     // integrate(x^2, x) -> x^3 / 3
     let input = "integrate(x^2, x)";
     let expr = parse(input, &mut simplifier.context).expect("Failed to parse");
-    let (result, _) = simplifier.simplify(expr);
+    let (result, steps) = simplifier.simplify(expr);
+    println!("Result: {}", DisplayExpr { context: &simplifier.context, id: result });
+    for (i, step) in steps.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result }), "x^3 / 3");
 }
 
@@ -300,14 +371,22 @@ fn test_logarithm_simplification() {
     // -> ln(y)
     let input1 = "ln(x^2 * y) - 2 * ln(x)";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse");
-    let (result1, _) = simplifier.simplify(expr1);
+    let (result1, steps1) = simplifier.simplify(expr1);
+    println!("Result 1: {}", DisplayExpr { context: &simplifier.context, id: result1 });
+    for (i, step) in steps1.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result1 }), "ln(y)");
 
     // Test 2: Numeric Log
     // log(10, 100) -> 2
     let input2 = "log(10, 100)";
     let expr2 = parse(input2, &mut simplifier.context).expect("Failed to parse");
-    let (result2, _) = simplifier.simplify(expr2);
+    let (result2, steps2) = simplifier.simplify(expr2);
+    println!("Result 2: {}", DisplayExpr { context: &simplifier.context, id: result2 });
+    for (i, step) in steps2.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result2 }), "2");
     
     // Test 3: Inverse Property
@@ -317,7 +396,11 @@ fn test_logarithm_simplification() {
     // Let's test simple inverse: exp(ln(x)) -> x
     let input3 = "exp(ln(x))";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse");
-    let (result3, _) = simplifier.simplify(expr3);
+    let (result3, steps3) = simplifier.simplify(expr3);
+    println!("Result 3: {}", DisplayExpr { context: &simplifier.context, id: result3 });
+    for (i, step) in steps3.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result3 }), "x");
 }
 
@@ -329,19 +412,31 @@ fn test_enhanced_integration() {
     // Test 1: integrate(sin(2*x), x) -> -cos(2*x)/2
     let input1 = "integrate(sin(2*x), x)";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse");
-    let (result1, _) = simplifier.simplify(expr1);
+    let (result1, steps1) = simplifier.simplify(expr1);
+    println!("Result 1: {}", DisplayExpr { context: &simplifier.context, id: result1 });
+    for (i, step) in steps1.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result1 }), "-1/2 * cos(2 * x)");
 
     // Test 2: integrate(exp(3*x + 1), x) -> exp(3*x + 1)/3
     let input2 = "integrate(exp(3*x + 1), x)";
     let expr2 = parse(input2, &mut simplifier.context).expect("Failed to parse");
-    let (result2, _) = simplifier.simplify(expr2);
+    let (result2, steps2) = simplifier.simplify(expr2);
+    println!("Result 2: {}", DisplayExpr { context: &simplifier.context, id: result2 });
+    for (i, step) in steps2.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result2 }), "1/3 * e^(1 + 3 * x)");
 
     // Test 3: integrate(1/(2*x + 1), x) -> ln(2*x + 1)/2
     let input3 = "integrate(1/(2*x + 1), x)";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse");
-    let (result3, _) = simplifier.simplify(expr3);
+    let (result3, steps3) = simplifier.simplify(expr3);
+    println!("Result 3: {}", DisplayExpr { context: &simplifier.context, id: result3 });
+    for (i, step) in steps3.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result3 }), "1/2 * ln(1 + 2 * x)");
     
     // Test 4: integrate((3*x)^2, x) -> (3*x)^3 / (3*3) -> (3*x)^3 / 9
@@ -351,6 +446,10 @@ fn test_enhanced_integration() {
     // So it should work.
     let input4 = "integrate((3*x)^2, x)";
     let expr4 = parse(input4, &mut simplifier.context).expect("Failed to parse");
-    let (result4, _) = simplifier.simplify(expr4);
+    let (result4, steps4) = simplifier.simplify(expr4);
+    println!("Result 4: {}", DisplayExpr { context: &simplifier.context, id: result4 });
+    for (i, step) in steps4.iter().enumerate() {
+        println!("Step {}: {} -> {}", i + 1, step.rule_name, DisplayExpr { context: &simplifier.context, id: step.after });
+    }
     assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result4 }), "3 * x^3");
 }
