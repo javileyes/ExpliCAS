@@ -15,6 +15,7 @@ pub struct Simplifier {
     pub allow_numerical_verification: bool,
     pub debug_mode: bool,
     disabled_rules: HashSet<String>,
+    pub enable_polynomial_strategy: bool,
 }
 
 impl Simplifier {
@@ -27,6 +28,7 @@ impl Simplifier {
             allow_numerical_verification: true,
             debug_mode: false,
             disabled_rules: HashSet::new(),
+            enable_polynomial_strategy: true,
         }
     }
 
@@ -107,7 +109,8 @@ impl Simplifier {
     }
 
     pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
-        let orchestrator = crate::orchestrator::Orchestrator::new();
+        let mut orchestrator = crate::orchestrator::Orchestrator::new();
+        orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
         orchestrator.simplify(expr_id, self)
     }
 

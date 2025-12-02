@@ -10,6 +10,7 @@ pub mod expand;
 pub mod factor;
 pub mod orchestrator;
 pub mod step_optimization;
+pub mod strategies;
 
 pub mod visitors;
 pub mod error;

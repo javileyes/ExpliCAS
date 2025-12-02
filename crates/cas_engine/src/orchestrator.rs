@@ -4,12 +4,14 @@ use crate::{Simplifier, Step};
 pub struct Orchestrator {
     // Configuration for the pipeline
     pub max_iterations: usize,
+    pub enable_polynomial_strategy: bool,
 }
 
 impl Orchestrator {
     pub fn new() -> Self {
         Self {
             max_iterations: 10,
+            enable_polynomial_strategy: true,
         }
     }
 
@@ -39,6 +41,28 @@ impl Orchestrator {
         let (simplified, rule_steps) = simplifier.apply_rules_loop(current);
         steps.extend(rule_steps);
         current = simplified;
+
+        // 3. High-Level Strategies (Heuristics)
+        // Try polynomial simplification (expand -> simplify -> factor)
+        // This handles cases like (x-1)(x+1)... which need full expansion to simplify.
+        if self.enable_polynomial_strategy {
+            let poly_simplified = crate::strategies::simplify_polynomial(&mut simplifier.context, current);
+            if poly_simplified != current {
+                // Only add step if structurally different
+                if crate::ordering::compare_expr(&simplifier.context, poly_simplified, current) != std::cmp::Ordering::Equal {
+                     if simplifier.collect_steps {
+                        steps.push(Step::new(
+                            "Polynomial Strategy",
+                            "Simplify Polynomial",
+                            current,
+                            poly_simplified,
+                            Vec::new(),
+                        ));
+                    }
+                    current = poly_simplified;
+                }
+            }
+        }
 
         // 3. Final Collection (Ensure canonical form)
         let final_collected = crate::collect::collect(&mut simplifier.context, current);

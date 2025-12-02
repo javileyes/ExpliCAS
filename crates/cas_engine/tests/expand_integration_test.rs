@@ -28,6 +28,9 @@ fn test_expand_binomial_integration() {
     cas_engine::rules::polynomial::register(&mut simplifier);
     cas_engine::rules::arithmetic::register(&mut simplifier);
     cas_engine::rules::exponents::register(&mut simplifier);
+    
+    // Disable polynomial strategy to prevent re-factoring
+    simplifier.enable_polynomial_strategy = false;
 
     // Test expand((x+1)^2)
     let expr = parse("expand((x + 1)^2)", &mut simplifier.context).unwrap();

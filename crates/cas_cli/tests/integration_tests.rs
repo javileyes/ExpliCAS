@@ -367,5 +367,5 @@ fn test_enhanced_integration() {
     let input4 = "integrate((3*x)^2, x)";
     let expr4 = parse(input4, &mut simplifier.context).expect("Failed to parse");
     let (result4, _) = simplifier.simplify(expr4);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result4 }), "(3 * x)^3 / 9");
+    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: result4 }), "3 * x^3");
 }

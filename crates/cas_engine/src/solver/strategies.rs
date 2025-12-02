@@ -240,6 +240,8 @@ impl SolverStrategy for SubstitutionStrategy {
             };
             steps.append(&mut u_steps);
             
+            // eprintln!("Substitution u_solutions: {:?}", u_solutions);
+
             // Now solve u = val for each solution
             match u_solutions {
                 SolutionSet::Discrete(vals) => {
@@ -257,6 +259,7 @@ impl SolverStrategy for SubstitutionStrategy {
                             Ok(res) => res,
                             Err(e) => return Some(Err(e)),
                         };
+                        // eprintln!("Back-substitute result for val {:?}: {:?}", val, x_sol);
                         steps.append(&mut x_steps);
                         
                         if let SolutionSet::Discrete(xs) = x_sol {
@@ -314,6 +317,7 @@ fn extract_quadratic_coefficients_impl(ctx: &mut Context, expr: ExprId, var: &st
         }
     }
     
+    // eprintln!("Extracted coeffs for {}: a={:?}, b={:?}, c={:?}", var, ctx.get(a), ctx.get(b), ctx.get(c));
     Some((a, b, c))
 }
 
@@ -399,9 +403,14 @@ impl SolverStrategy for QuadraticStrategy {
         
         // Move everything to LHS: lhs - rhs = 0
         let poly_expr = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+        // Simplify first (this might factor it)
         let (sim_poly_expr, _) = simplifier.simplify(poly_expr);
         
-        if let Some((a, b, c)) = extract_quadratic_coefficients_impl(&mut simplifier.context, sim_poly_expr, var) {
+        // Ensure expanded form for coefficient extraction
+        // QuadraticStrategy relies on A*x^2 + B*x + C structure (Add/Sub chain)
+        let expanded_expr = crate::expand::expand(&mut simplifier.context, sim_poly_expr);
+        
+        if let Some((a, b, c)) = extract_quadratic_coefficients_impl(&mut simplifier.context, expanded_expr, var) {
             // Check if it is actually quadratic (a != 0)
             // We need to simplify 'a' to check if it's zero.
             let (sim_a, _) = simplifier.simplify(a);
@@ -805,20 +814,39 @@ impl SolverStrategy for UnwrapStrategy {
                          };
 
                          if is_pos_int(&simplifier.context, e) {
+                             // Don't unwrap x^2, x^4 etc.
                              return None;
                          }
-
+                            
+                         // A^n = B -> A = B^(1/n)
                          let one = simplifier.context.num(1);
                          let inv_exp = simplifier.context.add(Expr::Div(one, e));
                          let new_other = simplifier.context.add(Expr::Pow(other, inv_exp));
-                         // Handle even powers? |A| = ...
-                         // For now, simple inversion.
                          let new_eq = if is_lhs {
                              Equation { lhs: b, rhs: new_other, op }
                          } else {
                              Equation { lhs: new_other, rhs: b, op }
                          };
-                         Some((new_eq, "Take root".to_string()))
+                         Some((new_eq, format!("Raise both sides to 1/{:?}", simplifier.context.get(e))))
+                    } else if !contains_var(&simplifier.context, b, var) && contains_var(&simplifier.context, e, var) {
+                        // A^x = B -> x * ln(A) = ln(B)
+                        // Take ln of both sides
+                        let ln_str = "ln".to_string();
+                        
+                        // ln(A^x) -> x * ln(A)
+                        // We construct x * ln(A) directly
+                        let ln_b = simplifier.context.add(Expr::Function(ln_str.clone(), vec![b]));
+                        let new_lhs_part = simplifier.context.add(Expr::Mul(e, ln_b));
+                        
+                        // ln(B)
+                        let ln_other = simplifier.context.add(Expr::Function(ln_str, vec![other]));
+                        
+                        let new_eq = if is_lhs {
+                            Equation { lhs: new_lhs_part, rhs: ln_other, op }
+                        } else {
+                            Equation { lhs: ln_other, rhs: new_lhs_part, op }
+                        };
+                        Some((new_eq, format!("Take log base e of both sides")))
                     } else {
                         None
                     }

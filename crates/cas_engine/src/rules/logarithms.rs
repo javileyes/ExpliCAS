@@ -152,18 +152,27 @@ define_rule!(
         if let Expr::Pow(base, exp) = expr_data {
             let exp_data = ctx.get(exp).clone();
             
-            // Case 1: b^log(b, x) -> x
-            if let Expr::Function(name, args) = &exp_data {
-                if name == "log" && args.len() == 2 {
-                    let log_base = args[0];
-                    let log_arg = args[1];
-
-                    if compare_expr(ctx, log_base, base) == Ordering::Equal {
-                        return Some(Rewrite {
-                            new_expr: log_arg,
-                            description: "b^log(b, x) = x".to_string(),
-                        });
+            // Helper to get log base and arg
+            let mut get_log_parts = |ctx: &mut Context, e_id: ExprId| -> Option<(ExprId, ExprId)> {
+                let e_data = ctx.get(e_id).clone();
+                if let Expr::Function(name, args) = e_data {
+                    if name == "log" && args.len() == 2 {
+                        return Some((args[0], args[1]));
+                    } else if name == "ln" && args.len() == 1 {
+                        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                        return Some((e, args[0]));
                     }
+                }
+                None
+            };
+
+            // Case 1: b^log(b, x) -> x
+            if let Some((log_base, log_arg)) = get_log_parts(ctx, exp) {
+                 if compare_expr(ctx, log_base, base) == Ordering::Equal {
+                    return Some(Rewrite {
+                        new_expr: log_arg,
+                        description: "b^log(b, x) = x".to_string(),
+                    });
                 }
             }
             
@@ -171,18 +180,14 @@ define_rule!(
             if let Expr::Mul(lhs, rhs) = &exp_data {
                 // Check if lhs or rhs is log(b, x)
                 let mut check_log = |target: ExprId, coeff: ExprId| -> Option<Rewrite> {
-                    if let Expr::Function(name, args) = ctx.get(target) {
-                        if name == "log" && args.len() == 2 {
-                            let log_base = args[0];
-                            let log_arg = args[1];
-                            if compare_expr(ctx, log_base, base) == Ordering::Equal {
-                                // Found log(b, x). Result is x^coeff
-                                let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "b^(c*log(b, x)) = x^c".to_string(),
-                                });
-                            }
+                    if let Some((log_base, log_arg)) = get_log_parts(ctx, target) {
+                        if compare_expr(ctx, log_base, base) == Ordering::Equal {
+                            // Found log(b, x). Result is x^coeff
+                            let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "b^(c*log(b, x)) = x^c".to_string(),
+                            });
                         }
                     }
                     None

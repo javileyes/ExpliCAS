@@ -35,27 +35,39 @@ define_rule!(
             return None;
         }
 
-        // 3. Compute GCD
-        let gcd = p_num.gcd(&p_den);
+        // 3. Compute Polynomial GCD (monic)
+        let poly_gcd = p_num.gcd(&p_den);
 
-        // 4. Check if GCD is non-trivial (degree > 0 or constant != 1)
-        // Actually, even constant GCD is useful for reducing 2x/2 -> x
-        if gcd.degree() == 0 && gcd.leading_coeff().is_one() {
+        // 4. Compute Numeric Content GCD
+        // Polynomial GCD is monic, so it misses numeric factors like 27x^3 / 9 -> gcd=9
+        let content_num = p_num.content();
+        let content_den = p_den.content();
+        
+        // Helper to compute GCD of two rationals (assuming integers for now)
+        let numeric_gcd = gcd_rational(content_num, content_den);
+        
+        // 5. Combine
+        // full_gcd = poly_gcd * numeric_gcd
+        let scalar = Polynomial::new(vec![numeric_gcd.clone()], var.to_string());
+        let full_gcd = poly_gcd.mul(&scalar);
+
+        // 6. Check if GCD is non-trivial
+        // If degree is 0 and constant is 1, it's trivial.
+        if full_gcd.degree() == 0 && full_gcd.leading_coeff().is_one() {
             return None;
         }
 
-        // 5. Divide
-        let (new_num_poly, rem_num) = p_num.div_rem(&gcd);
-        let (new_den_poly, rem_den) = p_den.div_rem(&gcd);
+        // 7. Divide
+        let (new_num_poly, rem_num) = p_num.div_rem(&full_gcd);
+        let (new_den_poly, rem_den) = p_den.div_rem(&full_gcd);
 
         if !rem_num.is_zero() || !rem_den.is_zero() {
-            // Should not happen if GCD is correct
             return None;
         }
 
         let new_num = new_num_poly.to_expr(ctx);
         let new_den = new_den_poly.to_expr(ctx);
-        let gcd_expr = gcd.to_expr(ctx);
+        let gcd_expr = full_gcd.to_expr(ctx);
 
         // If denominator is 1, return numerator
         if let Expr::Number(n) = ctx.get(new_den) {
@@ -73,6 +85,17 @@ define_rule!(
         });
     }
 );
+
+fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
+    if a.is_integer() && b.is_integer() {
+        use num_integer::Integer;
+        let num_a = a.to_integer();
+        let num_b = b.to_integer();
+        let g = num_a.gcd(&num_b);
+        return BigRational::from_integer(g);
+    }
+    BigRational::one()
+}
 
 define_rule!(
     NestedFractionRule,

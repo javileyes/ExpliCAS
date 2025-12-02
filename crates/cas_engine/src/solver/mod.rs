@@ -168,7 +168,7 @@ mod tests {
         if let SolutionSet::Discrete(solutions) = result {
             assert_eq!(solutions.len(), 1);
             let s = format!("{}", DisplayExpr { context: &simplifier.context, id: solutions[0] });
-            assert_eq!(s, "6 / 2");
+            assert_eq!(s, "3");
         } else {
             panic!("Expected Discrete solution");
         }
@@ -238,7 +238,7 @@ mod tests {
             // (-5, inf)
             let s_min = format!("{}", DisplayExpr { context: &simplifier.context, id: interval.min });
             let s_max = format!("{}", DisplayExpr { context: &simplifier.context, id: interval.max });
-            assert_eq!(s_min, "10 / -2"); // Not simplified
+            assert_eq!(s_min, "-5"); // Simplified from 10 / -2
             assert_eq!(interval.min_type, BoundType::Open);
             assert_eq!(s_max, "infinity");
         } else {
