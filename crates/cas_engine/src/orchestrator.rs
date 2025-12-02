@@ -1,6 +1,6 @@
 use cas_ast::ExprId;
 use crate::{Simplifier, Step};
-use num_traits::{ToPrimitive, Signed};
+use num_traits::ToPrimitive;
 
 pub struct Orchestrator {
     // Configuration for the pipeline

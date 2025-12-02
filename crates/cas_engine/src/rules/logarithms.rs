@@ -153,7 +153,7 @@ define_rule!(
             let exp_data = ctx.get(exp).clone();
             
             // Helper to get log base and arg
-            let mut get_log_parts = |ctx: &mut Context, e_id: ExprId| -> Option<(ExprId, ExprId)> {
+            let get_log_parts = |ctx: &mut Context, e_id: ExprId| -> Option<(ExprId, ExprId)> {
                 let e_data = ctx.get(e_id).clone();
                 if let Expr::Function(name, args) = e_data {
                     if name == "log" && args.len() == 2 {

@@ -95,7 +95,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 // Flatten Add chain to handle mixed signs gracefully
                 let terms = collect_add_terms(self.context, self.id);
                 for (i, term) in terms.iter().enumerate() {
-                    let (is_neg, inner_id, val) = check_negative(self.context, *term);
+                    let (is_neg, _, _) = check_negative(self.context, *term);
                     
                     if i == 0 {
                         // First term: print as is

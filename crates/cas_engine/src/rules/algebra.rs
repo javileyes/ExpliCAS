@@ -1150,7 +1150,7 @@ define_rule!(
         }
 
         // Helper to simplify trig binomials: 1 - sin^2 -> cos^2, 2 - 2sin^2 -> 2cos^2
-        let mut simplify_trig_binomial = |ctx: &mut Context, e: ExprId| -> Option<ExprId> {
+        let simplify_trig_binomial = |ctx: &mut Context, e: ExprId| -> Option<ExprId> {
             let mut terms = Vec::new();
             crate::helpers::flatten_add(ctx, e, &mut terms);
             if terms.len() != 2 { return None; }
