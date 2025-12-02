@@ -1,10 +1,10 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule, DistributeConstantRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule, PowerProductRule, PowerQuotientRule};
+use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule};
+use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule, PowerProductRule, PowerQuotientRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeDivRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule};
+use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, RecursiveTrigExpansionRule, CanonicalizeTrigSquareRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule, AddFractionsRule, FactorRule, SimplifyMulDivRule, ExpandRule, PullConstantFromFractionRule};
 use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
@@ -32,6 +32,8 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleConsistencyRule));
     simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
+    simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
+    simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
@@ -40,7 +42,8 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(PowerProductRule));
     simplifier.add_rule(Box::new(PowerQuotientRule));
-    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+    simplifier.add_rule(Box::new(IdentityPowerRule));
+    simplifier.add_rule(Box::new(cas_engine::rules::exponents::NegativeBasePowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(ExpandRule));
@@ -62,7 +65,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
-    simplifier.add_rule(Box::new(DistributeConstantRule));
+
     simplifier.add_rule(Box::new(IntegrateRule));
     simplifier.add_rule(Box::new(DiffRule));
     simplifier.add_rule(Box::new(NumberTheoryRule));
@@ -588,7 +591,6 @@ fn test_log_sqrt_simplification() {
 #[test]
 fn test_trig_power_simplification() {
     let mut simplifier = create_full_simplifier();
-    let ctx = &mut simplifier.context;
     
     // 8 * sin(x)^4 - (3 - 4*cos(2*x) + cos(4*x)) -> 0
     // Requires:
@@ -597,8 +599,8 @@ fn test_trig_power_simplification() {
     // 3. cos^2(x) -> 1 - sin^2(x) (CanonicalizeTrigSquareRule)
     // 4. Polynomial simplification
     let input = "8 * sin(x)^4 - (3 - 4*cos(2*x) + cos(4*x))";
-    let expr = parse(input, ctx).unwrap();
+    let expr = parse(input, &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    let output = format!("{}", DisplayExpr { context: ctx, id: res });
+    let output = format!("{}", DisplayExpr { context: &simplifier.context, id: res });
     assert_eq!(output, "0");
 }

@@ -348,33 +348,7 @@ define_rule!(
     }
 );
 
-define_rule!(
-    ZeroOnePowerRule,
-    "Zero/One Exponent",
-    |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Pow(base, exp) = expr_data {
-            // x^0 -> 1
-            let exp_data = ctx.get(exp).clone();
-            if let Expr::Number(n) = exp_data {
-                if n.is_zero() {
-                    let one = ctx.num(1);
-                    return Some(Rewrite {
-                        new_expr: one,
-                        description: "Anything to the power of 0 is 1".to_string(),
-                    });
-                }
-                if n.is_one() {
-                    return Some(Rewrite {
-                        new_expr: base,
-                        description: "Exponent 1 is identity".to_string(),
-                    });
-                }
-            }
-        }
-        None
-    }
-);
+
 
 #[cfg(test)]
 mod tests {
@@ -423,7 +397,7 @@ mod tests {
     #[test]
     fn test_zero_one_power() {
         let mut ctx = Context::new();
-        let rule = ZeroOnePowerRule;
+        let rule = IdentityPowerRule;
         
         // x^0 -> 1
         let x = ctx.var("x");
@@ -526,8 +500,45 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
-    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+
     simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(PowerProductRule));
     simplifier.add_rule(Box::new(PowerQuotientRule));
+    simplifier.add_rule(Box::new(NegativeBasePowerRule));
 }
+
+define_rule!(
+    NegativeBasePowerRule,
+    "Negative Base Power",
+    |ctx, expr| {
+        // (-x)^n
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            let base_data = ctx.get(base).clone();
+            if let Expr::Neg(inner) = base_data {
+                // Check exponent parity
+                if let Expr::Number(n) = ctx.get(exp) {
+                    if n.is_integer() {
+                        if n.to_integer().is_even() {
+                            // (-x)^even -> x^even
+                            let new_expr = ctx.add(Expr::Pow(inner, exp));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "(-x)^even -> x^even".to_string(),
+                            });
+                        } else {
+                            // (-x)^odd -> -(x^odd)
+                            let pow = ctx.add(Expr::Pow(inner, exp));
+                            let new_expr = ctx.add(Expr::Neg(pow));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "(-x)^odd -> -(x^odd)".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);

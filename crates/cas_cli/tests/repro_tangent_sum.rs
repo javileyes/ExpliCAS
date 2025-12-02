@@ -1,10 +1,10 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule, DistributeConstantRule, BinomialExpansionRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule, PowerProductRule, PowerQuotientRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, RationalizeDenominatorRule, FractionAddRule, ExpandRule, FactorRule, CancelCommonFactorsRule, SimplifyMulDivRule};
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule};
+use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule, BinomialExpansionRule};
+use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule, PowerProductRule, PowerQuotientRule};
+use cas_engine::rules::canonicalization::{CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, FractionAddRule, SimplifyMulDivRule, CancelCommonFactorsRule};
+use cas_engine::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
 use cas_parser::parse;
 use cas_ast::DisplayExpr;
 
@@ -14,7 +14,7 @@ fn create_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(DistributeRule));
-    simplifier.add_rule(Box::new(DistributeConstantRule));
+
     simplifier.add_rule(Box::new(BinomialExpansionRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
@@ -26,7 +26,7 @@ fn create_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
-    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+    simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(FractionAddRule));
     simplifier.add_rule(Box::new(AngleIdentityRule));

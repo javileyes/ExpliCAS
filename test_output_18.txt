@@ -1,0 +1,11 @@
+   Compiling cas_engine v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_engine)
+error[E0599]: no method named `mul` found for mutable reference `&mut cas_ast::Context` in the current scope
+    --> crates/cas_engine/src/rules/algebra.rs:1442:64
+     |
+1442 |                 for &f in num_factors.iter().skip(1) { n = ctx.mul(n, f); }
+     |                                                                ^^^ method not found in `&mut cas_ast::Context`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `cas_engine` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `cas_engine` (lib test) due to 1 previous error

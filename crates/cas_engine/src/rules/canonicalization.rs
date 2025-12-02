@@ -96,12 +96,10 @@ define_rule!(
 
         // 3. Multiplication: a * (-b) -> -(a * b)
         if let Expr::Mul(lhs, rhs) = expr_data {
-            let lhs_data = ctx.get(lhs);
-            let rhs_data = ctx.get(rhs);
-            
             // Check for (-a) * b
-            if let Expr::Neg(inner_l) = lhs_data {
-                let new_mul = ctx.add(Expr::Mul(*inner_l, rhs));
+            let lhs_is_neg = if let Expr::Neg(inner) = ctx.get(lhs) { Some(*inner) } else { None };
+            if let Some(inner_l) = lhs_is_neg {
+                let new_mul = ctx.add(Expr::Mul(inner_l, rhs));
                 let new_expr = ctx.add(Expr::Neg(new_mul));
                 return Some(Rewrite {
                     new_expr,
@@ -110,8 +108,23 @@ define_rule!(
             }
             
             // Check for a * (-b)
-            if let Expr::Neg(inner_r) = rhs_data {
-                let new_mul = ctx.add(Expr::Mul(lhs, *inner_r));
+            let rhs_is_neg = if let Expr::Neg(inner) = ctx.get(rhs) { Some(*inner) } else { None };
+            
+            if let Some(inner_r) = rhs_is_neg {
+                // Special case: if a is a Number, we prefer (-a) * b
+                let n_opt = if let Expr::Number(n) = ctx.get(lhs) { Some(n.clone()) } else { None };
+                
+                if let Some(n) = n_opt {
+                     let neg_n = -n.clone();
+                     let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
+                     let new_expr = ctx.add(Expr::Mul(neg_n_expr, inner_r));
+                     return Some(Rewrite {
+                         new_expr,
+                         description: format!("{} * (-x) = {} * x", n, neg_n),
+                     });
+                }
+
+                let new_mul = ctx.add(Expr::Mul(lhs, inner_r));
                 let new_expr = ctx.add(Expr::Neg(new_mul));
                 return Some(Rewrite {
                     new_expr,

@@ -1060,78 +1060,6 @@ define_rule!(
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
         
-        // Helper to extract num/den from Div, Pow(x, -1), or Mul(x, Pow(y, -1))
-        let (num, den) = match expr_data {
-            Expr::Div(n, d) => (n, d),
-            Expr::Pow(b, e) => {
-                if let Expr::Number(n) = ctx.get(e) {
-                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
-                        (ctx.num(1), b)
-                    } else {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-            },
-            Expr::Mul(l, r) => {
-                // Check l * r^-1
-                if let Expr::Pow(b, e) = ctx.get(r) {
-                     if let Expr::Number(n) = ctx.get(*e) {
-                        if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
-                            (l, *b)
-                        } else {
-                            // Check r * l^-1
-                            if let Expr::Pow(b_l, e_l) = ctx.get(l) {
-                                if let Expr::Number(n_l) = ctx.get(*e_l) {
-                                    if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
-                                        (r, *b_l)
-                                    } else {
-                                        return None;
-                                    }
-                                } else {
-                                    return None;
-                                }
-                            } else {
-                                return None;
-                            }
-                        }
-                    } else {
-                         // Check r * l^-1
-                        if let Expr::Pow(b_l, e_l) = ctx.get(l) {
-                            if let Expr::Number(n_l) = ctx.get(*e_l) {
-                                if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
-                                    (r, *b_l)
-                                } else {
-                                    return None;
-                                }
-                            } else {
-                                return None;
-                            }
-                        } else {
-                            return None;
-                        }
-                    }
-                } else {
-                    // Check r * l^-1
-                    if let Expr::Pow(b_l, e_l) = ctx.get(l) {
-                        if let Expr::Number(n_l) = ctx.get(*e_l) {
-                            if n_l.is_integer() && *n_l == num_rational::BigRational::from_integer((-1).into()) {
-                                (r, *b_l)
-                            } else {
-                                return None;
-                            }
-                        } else {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
-                }
-            },
-            _ => return None,
-        };
-
         // Helper to collect factors
         fn collect_factors(ctx: &Context, e: ExprId) -> Vec<ExprId> {
             let mut factors = Vec::new();
@@ -1147,12 +1075,170 @@ define_rule!(
             factors
         }
 
-        let mut num_factors = collect_factors(ctx, num);
-        let mut den_factors = collect_factors(ctx, den);
-        
-        // println!("Cancel Check: NumFactors={:?} DenFactors={:?}", num_factors, den_factors);
+        let mut num_factors = Vec::new();
+        let mut den_factors = Vec::new();
 
+        match expr_data {
+            Expr::Div(n, d) => {
+                num_factors = collect_factors(ctx, n);
+                den_factors = collect_factors(ctx, d);
+            },
+            Expr::Pow(b, e) => {
+                 if let Expr::Number(n) = ctx.get(e) {
+                     if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                         den_factors = collect_factors(ctx, b);
+                         num_factors.push(ctx.num(1));
+                     } else {
+                         return None;
+                     }
+                 } else {
+                     return None;
+                 }
+            },
+            Expr::Mul(_, _) => {
+                let factors = collect_factors(ctx, expr);
+                for f in factors {
+                    if let Expr::Pow(b, e) = ctx.get(f) {
+                        if let Expr::Number(n) = ctx.get(*e) {
+                            if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                den_factors.extend(collect_factors(ctx, *b));
+                                continue;
+                            }
+                        }
+                    }
+                    num_factors.push(f);
+                }
+                if den_factors.is_empty() {
+                    return None;
+                }
+            },
+            _ => return None,
+        }
+
+        // Helper to simplify trig binomials: 1 - sin^2 -> cos^2, 2 - 2sin^2 -> 2cos^2
+        let mut simplify_trig_binomial = |ctx: &mut Context, e: ExprId| -> Option<ExprId> {
+            let mut terms = Vec::new();
+            crate::helpers::flatten_add(ctx, e, &mut terms);
+            if terms.len() != 2 { return None; }
+
+            let t1 = terms[0];
+            let t2 = terms[1];
+            
+            let check_term = |ctx: &mut Context, c_term: ExprId, t_term: ExprId| -> Option<ExprId> {
+                // Parse t_term for k * trig^2
+                let (base_term, is_neg) = if let Expr::Neg(inner) = ctx.get(t_term) {
+                    (*inner, true)
+                } else {
+                    (t_term, false)
+                };
+
+                let mut factors = Vec::new();
+                let mut stack = vec![base_term];
+                while let Some(curr) = stack.pop() {
+                     if let Expr::Mul(l, r) = ctx.get(curr) {
+                         stack.push(*r);
+                         stack.push(*l);
+                     } else {
+                         factors.push(curr);
+                     }
+                }
+
+                let mut trig_idx = None;
+                let mut func_name = String::new();
+                let mut arg = ExprId(0);
+
+                for (i, &f) in factors.iter().enumerate() {
+                    if let Expr::Pow(b, exp) = ctx.get(f) {
+                         if let Expr::Number(n) = ctx.get(*exp) {
+                             if *n == num_rational::BigRational::from_integer(2.into()) {
+                                 if let Expr::Function(name, args) = ctx.get(*b) {
+                                     if (name == "sin" || name == "cos") && args.len() == 1 {
+                                         trig_idx = Some(i);
+                                         func_name = name.clone();
+                                         arg = args[0];
+                                         break;
+                                     }
+                                 }
+                             }
+                         }
+                    }
+                }
+
+                if let Some(idx) = trig_idx {
+                    let mut coeff_factors = Vec::new();
+                    if is_neg { coeff_factors.push(ctx.num(-1)); }
+                    for (i, &f) in factors.iter().enumerate() {
+                        if i != idx { coeff_factors.push(f); }
+                    }
+                    
+                    let coeff = if coeff_factors.is_empty() {
+                        ctx.num(1)
+                    } else {
+                        let mut c = coeff_factors[0];
+                        for &f in coeff_factors.iter().skip(1) {
+                            c = ctx.add(Expr::Mul(c, f));
+                        }
+                        c
+                    };
+                    
+                    // Check if c_term == -coeff
+                    let neg_coeff = if let Expr::Number(n) = ctx.get(coeff) {
+                        ctx.add(Expr::Number(-n.clone()))
+                    } else if let Expr::Neg(inner) = ctx.get(coeff) {
+                        *inner
+                    } else {
+                        ctx.add(Expr::Neg(coeff))
+                    };
+                    
+                    if crate::ordering::compare_expr(ctx, c_term, neg_coeff) == std::cmp::Ordering::Equal {
+                        let other_name = if func_name == "sin" { "cos" } else { "sin" };
+                        let func = ctx.add(Expr::Function(other_name.to_string(), vec![arg]));
+                        let two = ctx.num(2);
+                        let pow = ctx.add(Expr::Pow(func, two));
+                        return Some(ctx.add(Expr::Mul(c_term, pow)));
+                    }
+                }
+                None
+            };
+
+            if let Some(res) = check_term(ctx, t1, t2) { return Some(res); }
+            if let Some(res) = check_term(ctx, t2, t1) { return Some(res); }
+            None
+        };
+        
         let mut changed = false;
+
+        // Simplify factors
+        let mut new_num_factors = Vec::new();
+        for &f in &num_factors {
+            if let Some(new_expr) = simplify_trig_binomial(ctx, f) {
+                if let Expr::Mul(_, _) = ctx.get(new_expr) {
+                     crate::helpers::flatten_mul(ctx, new_expr, &mut new_num_factors);
+                } else {
+                     new_num_factors.push(new_expr);
+                }
+                changed = true;
+            } else {
+                new_num_factors.push(f);
+            }
+        }
+        num_factors = new_num_factors;
+
+        let mut new_den_factors = Vec::new();
+        for &f in &den_factors {
+             if let Some(new_expr) = simplify_trig_binomial(ctx, f) {
+                if let Expr::Mul(_, _) = ctx.get(new_expr) {
+                     crate::helpers::flatten_mul(ctx, new_expr, &mut new_den_factors);
+                } else {
+                     new_den_factors.push(new_expr);
+                }
+                changed = true;
+            } else {
+                new_den_factors.push(f);
+            }
+        }
+        den_factors = new_den_factors;
+
         let mut i = 0;
         while i < num_factors.len() {
             let nf = num_factors[i];
@@ -1162,7 +1248,6 @@ define_rule!(
                 
                 // Check exact match
                 if crate::ordering::compare_expr(ctx, nf, df) == std::cmp::Ordering::Equal {
-                    // Found common factor
                     den_factors.remove(j);
                     found = true;
                     changed = true;
@@ -1174,9 +1259,6 @@ define_rule!(
                 let nf_pow = if let Expr::Pow(b, e) = ctx.get(nf) { Some((*b, *e)) } else { None };
                 if let Some((b, e)) = nf_pow {
                     if crate::ordering::compare_expr(ctx, b, df) == std::cmp::Ordering::Equal {
-                        // nf = df^e. Cancel df.
-                        // New nf = df^(e-1).
-                        // We need to construct new term.
                         if let Expr::Number(n) = ctx.get(e) {
                              let new_exp = n - num_rational::BigRational::one();
                              let new_term = if new_exp.is_one() {
@@ -1185,9 +1267,9 @@ define_rule!(
                                  let exp_node = ctx.add(Expr::Number(new_exp));
                                  ctx.add(Expr::Pow(b, exp_node))
                              };
-                             num_factors[i] = new_term; // Update factor in place
-                             den_factors.remove(j); // Remove denominator factor
-                             found = false; // We didn't remove num factor entirely, just modified it.
+                             num_factors[i] = new_term;
+                             den_factors.remove(j);
+                             found = false; // Modified num factor
                              changed = true;
                              break;
                         }
@@ -1195,7 +1277,6 @@ define_rule!(
                 }
                 
                 // Case 2: nf = base, df = base^m. (m > 1)
-                // Cancel nf from df. df becomes df^(m-1).
                 let df_pow = if let Expr::Pow(b, e) = ctx.get(df) { Some((*b, *e)) } else { None };
                 if let Some((b, e)) = df_pow {
                     if crate::ordering::compare_expr(ctx, nf, b) == std::cmp::Ordering::Equal {
@@ -1207,7 +1288,7 @@ define_rule!(
                                  let exp_node = ctx.add(Expr::Number(new_exp));
                                  ctx.add(Expr::Pow(b, exp_node))
                              };
-                             den_factors[j] = new_term; // Update den factor
+                             den_factors[j] = new_term;
                              found = true; // Remove num factor
                              changed = true;
                              break;
@@ -1219,11 +1300,8 @@ define_rule!(
                 if let Some((b_n, e_n)) = nf_pow {
                     if let Some((b_d, e_d)) = df_pow {
                         if crate::ordering::compare_expr(ctx, b_n, b_d) == std::cmp::Ordering::Equal {
-                            // Found common base. Compare exponents.
                             if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(e_n), ctx.get(e_d)) {
                                 if n > m {
-                                    // nf = x^n, df = x^m, n > m.
-                                    // Cancel df. nf becomes x^(n-m).
                                     let new_exp = n - m;
                                     let new_term = if new_exp.is_one() {
                                         b_n
@@ -1233,14 +1311,10 @@ define_rule!(
                                     };
                                     num_factors[i] = new_term;
                                     den_factors.remove(j);
-                                    found = false; // Modified num factor, keep checking it against other den factors?
-                                    // Actually, we reduced it. We should probably continue checking THIS factor against others?
-                                    // But for simplicity, let's say we made progress.
+                                    found = false;
                                     changed = true;
                                     break;
                                 } else if m > n {
-                                    // nf = x^n, df = x^m, m > n.
-                                    // Cancel nf. df becomes x^(m-n).
                                     let new_exp = m - n;
                                     let new_term = if new_exp.is_one() {
                                         b_d
@@ -1249,14 +1323,10 @@ define_rule!(
                                         ctx.add(Expr::Pow(b_d, exp_node))
                                     };
                                     den_factors[j] = new_term;
-                                    found = true; // Removed num factor
+                                    found = true;
                                     changed = true;
                                     break;
                                 } else {
-                                    // n == m. Exact match handled above?
-                                    // Exact match might not catch it if they are different ExprIds but structurally equal.
-                                    // But compare_expr should handle it.
-                                    // If we are here, just remove both.
                                     den_factors.remove(j);
                                     found = true;
                                     changed = true;
@@ -1275,15 +1345,10 @@ define_rule!(
         }
         
         if changed {
-            // Reconstruct
-            let new_num = if num_factors.is_empty() {
-                ctx.num(1)
-            } else {
-                let mut res = num_factors[0];
-                for f in num_factors.iter().skip(1) {
-                    res = ctx.add(Expr::Mul(res, *f));
-                }
-                res
+            let new_num = if num_factors.is_empty() { ctx.num(1) } else {
+                let mut n = num_factors[0];
+                for &f in num_factors.iter().skip(1) { n = ctx.add(Expr::Mul(n, f)); }
+                n
             };
             
             let new_den = if den_factors.is_empty() {
@@ -1296,7 +1361,7 @@ define_rule!(
                 res
             };
             
-            // If den is 1, return num
+            // If denominator is 1, return numerator
             if let Expr::Number(n) = ctx.get(new_den) {
                 if n.is_one() {
                     return Some(Rewrite {

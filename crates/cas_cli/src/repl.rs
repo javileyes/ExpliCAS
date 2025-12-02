@@ -1,7 +1,7 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule, EvaluatePowerRule, PowerProductRule, PowerQuotientRule};
+use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule, PowerProductRule, PowerQuotientRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
@@ -169,7 +169,7 @@ impl Repl {
         }
         
         if config.distribute_constants {
-            simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeConstantRule));
+    
         }
         
         if config.expand_binomials {
@@ -196,7 +196,8 @@ impl Repl {
         simplifier.add_rule(Box::new(PowerPowerRule));
         simplifier.add_rule(Box::new(PowerProductRule));
         simplifier.add_rule(Box::new(PowerQuotientRule));
-        simplifier.add_rule(Box::new(ZeroOnePowerRule));
+        simplifier.add_rule(Box::new(IdentityPowerRule));
+        simplifier.add_rule(Box::new(cas_engine::rules::exponents::NegativeBasePowerRule));
         simplifier.add_rule(Box::new(AddZeroRule));
         simplifier.add_rule(Box::new(MulOneRule));
         simplifier.add_rule(Box::new(MulZeroRule));
@@ -833,7 +834,7 @@ impl Repl {
         
         // Ensure we have the aggressive rules we want (DistributeRule is in default)
         // Also add DistributeConstantRule just in case (though DistributeRule covers it)
-        temp_simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeConstantRule));
+
         
         // Set steps mode
         temp_simplifier.collect_steps = self.show_steps;

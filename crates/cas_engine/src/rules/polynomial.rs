@@ -283,45 +283,7 @@ fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: Expr
     }
 }
 
-define_rule!(
-    DistributeConstantRule,
-    "Distribute Constant",
-    |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Mul(l, r) = expr_data {
-            // c * (a + b) -> c*a + c*b where c is a number
-            let l_is_num = matches!(ctx.get(l), Expr::Number(_));
-            let r_is_num = matches!(ctx.get(r), Expr::Number(_));
 
-            if l_is_num {
-                let r_data = ctx.get(r).clone();
-                if let Expr::Add(_, _) = r_data {
-                    let new_expr = crate::expand::expand_mul(ctx, l, r);
-                    if new_expr != expr {
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "Distribute Constant".to_string(),
-                        });
-                    }
-                }
-            }
-            
-            if r_is_num {
-                let l_data = ctx.get(l).clone();
-                if let Expr::Add(_, _) = l_data {
-                    let new_expr = crate::expand::expand_mul(ctx, l, r);
-                    if new_expr != expr {
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "Distribute Constant".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-        None
-    }
-);
 
 define_rule!(
     AnnihilationRule,
@@ -381,48 +343,55 @@ define_rule!(
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
             let base_data = ctx.get(base).clone();
-            if let Expr::Add(a, b) = base_data {
-                let exp_data = ctx.get(exp).clone();
-                if let Expr::Number(n) = exp_data {
-                    if n.is_integer() && !n.is_negative() {
-                        if let Some(n_val) = n.to_integer().to_u32() {
-                            // Limit expansion to reasonable size to prevent explosion
-                            if n_val >= 2 && n_val <= 10 {
-                                // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
-                                let mut terms = Vec::new();
-                                for k in 0..=n_val {
-                                    let coeff = binomial_coeff(n_val, k);
-                                    let exp_a = n_val - k;
-                                    let exp_b = k;
-                                    
-                                    let term_a = if exp_a == 0 { ctx.num(1) } else if exp_a == 1 { a } else { 
-                                        let e = ctx.num(exp_a as i64);
-                                        ctx.add(Expr::Pow(a, e)) 
-                                    };
-                                    let term_b = if exp_b == 0 { ctx.num(1) } else if exp_b == 1 { b } else { 
-                                        let e = ctx.num(exp_b as i64);
-                                        ctx.add(Expr::Pow(b, e)) 
-                                    };
-                                    
-                                    let mut term = ctx.add(Expr::Mul(term_a, term_b));
-                                    if coeff > 1 {
-                                        let c = ctx.num(coeff as i64);
-                                        term = ctx.add(Expr::Mul(c, term));
-                                    }
-                                    terms.push(term);
-                                }
+            let (a, b) = match base_data {
+                Expr::Add(a, b) => (a, b),
+                Expr::Sub(a, b) => {
+                    let neg_b = ctx.add(Expr::Neg(b));
+                    (a, neg_b)
+                },
+                _ => return None,
+            };
+
+            let exp_data = ctx.get(exp).clone();
+            if let Expr::Number(n) = exp_data {
+                if n.is_integer() && !n.is_negative() {
+                    if let Some(n_val) = n.to_integer().to_u32() {
+                        // Limit expansion to reasonable size to prevent explosion
+                        if n_val >= 2 && n_val <= 10 {
+                            // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
+                            let mut terms = Vec::new();
+                            for k in 0..=n_val {
+                                let coeff = binomial_coeff(n_val, k);
+                                let exp_a = n_val - k;
+                                let exp_b = k;
                                 
-                                // Sum up terms
-                                let mut expanded = terms[0];
-                                for i in 1..terms.len() {
-                                    expanded = ctx.add(Expr::Add(expanded, terms[i]));
-                                }
+                                let term_a = if exp_a == 0 { ctx.num(1) } else if exp_a == 1 { a } else { 
+                                    let e = ctx.num(exp_a as i64);
+                                    ctx.add(Expr::Pow(a, e)) 
+                                };
+                                let term_b = if exp_b == 0 { ctx.num(1) } else if exp_b == 1 { b } else { 
+                                    let e = ctx.num(exp_b as i64);
+                                    ctx.add(Expr::Pow(b, e)) 
+                                };
                                 
-                                return Some(Rewrite {
-                                    new_expr: expanded,
-                                    description: format!("Expand binomial power ^{}", n_val),
-                                });
+                                let mut term = ctx.add(Expr::Mul(term_a, term_b));
+                                if coeff > 1 {
+                                    let c = ctx.num(coeff as i64);
+                                    term = ctx.add(Expr::Mul(c, term));
+                                }
+                                terms.push(term);
                             }
+                            
+                            // Sum up terms
+                            let mut expanded = terms[0];
+                            for i in 1..terms.len() {
+                                expanded = ctx.add(Expr::Add(expanded, terms[i]));
+                            }
+                            
+                            return Some(Rewrite {
+                                new_expr: expanded,
+                                description: format!("Expand binomial power ^{}", n_val),
+                            });
                         }
                     }
                 }

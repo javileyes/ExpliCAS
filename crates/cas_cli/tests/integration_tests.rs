@@ -15,11 +15,11 @@ fn create_full_simplifier() -> Simplifier {
     // Add other rules as needed for a "full" simplifier
     // For this specific test, we'll add the rules relevant to root simplification
     use cas_engine::rules::canonicalization::CanonicalizeRootRule;
-    use cas_engine::rules::exponents::{ProductPowerRule, ZeroOnePowerRule, PowerPowerRule};
+    use cas_engine::rules::exponents::{ProductPowerRule, IdentityPowerRule, PowerPowerRule};
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
-    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+    simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier
 }
 
@@ -139,12 +139,12 @@ fn test_polynomial_simplification() {
 
 #[test]
 fn test_exponent_simplification() {
-    use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, ZeroOnePowerRule};
+    use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, IdentityPowerRule};
 
     let mut simplifier = Simplifier::new();
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
-    simplifier.add_rule(Box::new(ZeroOnePowerRule));
+    simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
 
     // Test 1: Product of Powers (x^2 * x^3 -> x^5)
