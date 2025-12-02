@@ -1,9 +1,9 @@
 use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule, BinomialExpansionRule};
+use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule, BinomialExpansionRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule, PowerProductRule, PowerQuotientRule};
 use cas_engine::rules::canonicalization::{CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, FractionAddRule, SimplifyMulDivRule, CancelCommonFactorsRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, AddFractionsRule, SimplifyMulDivRule, CancelCommonFactorsRule};
 use cas_engine::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
 use cas_parser::parse;
 use cas_ast::DisplayExpr;
@@ -28,7 +28,7 @@ fn create_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
-    simplifier.add_rule(Box::new(FractionAddRule));
+    simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));

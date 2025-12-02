@@ -4,14 +4,14 @@ use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, Dist
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule, PowerProductRule, PowerQuotientRule};
 use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeDivRule};
 use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, RecursiveTrigExpansionRule, CanonicalizeTrigSquareRule};
+use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule, RecursiveTrigExpansionRule, CanonicalizeTrigSquareRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
 use cas_engine::rules::algebra::{SimplifyFractionRule, FactorDifferenceSquaresRule, AddFractionsRule, FactorRule, SimplifyMulDivRule, ExpandRule, PullConstantFromFractionRule};
 use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::grouping::CollectRule;
 use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_parser::parse;
-use cas_ast::{Expr, ExprId, DisplayExpr};
+use cas_ast::DisplayExpr;
 use std::collections::HashMap;
 
 fn create_full_simplifier() -> Simplifier {
@@ -104,7 +104,7 @@ fn profile_torture_tests() {
         let mut seen = HashMap::new();
         for (i, step) in steps.iter().enumerate() {
             let s = format!("{}", DisplayExpr { context: &simplifier.context, id: step.after });
-            if let Some(prev_idx) = seen.insert(s.clone(), i) {
+            if let Some(_prev_idx) = seen.insert(s.clone(), i) {
                 // Cycle detected? Not necessarily, could be same state reached via different path.
                 // But if we see the same state multiple times, it's interesting.
                 // println!("  [Cycle/Repeat] State at step {} seen at step {}: {}", i, prev_idx, s);

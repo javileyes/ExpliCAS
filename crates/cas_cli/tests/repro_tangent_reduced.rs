@@ -11,7 +11,7 @@ use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::grouping::CollectRule;
 use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_parser::parse;
-use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
+use cas_ast::DisplayExpr;
 
 fn create_full_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();

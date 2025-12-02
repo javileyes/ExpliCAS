@@ -1,0 +1,159 @@
+warning: unused import: `AngleIdentityRule`
+ --> crates/cas_cli/tests/torture_tests.rs:7:82
+  |
+7 | ...ityRule, AngleIdentityRule, TanToSin...
+  |             ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Context`
+  --> crates/cas_cli/tests/torture_tests.rs:15:62
+   |
+15 | ...ndType, Expr, Context, ExprId, Disp...
+   |                  ^^^^^^^
+
+warning: `cas_cli` (test "torture_tests") generated 2 warnings (run `cargo fix --test "torture_tests"` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running tests/torture_tests.rs (target/debug/deps/torture_tests-f39921c432693e1a)
+
+running 1 test
+Simplifying: ExprId(36) Add(ExprId(30), ExprId(35))
+Simplifying: ExprId(30) Neg(ExprId(24))
+Simplifying: ExprId(24) Pow(ExprId(22), ExprId(23))
+Simplifying: ExprId(22) Variable("h")
+Simplifying: ExprId(23) Number(Ratio { numer: 2, denom: 1 })
+Simplifying: ExprId(35) Add(ExprId(33), ExprId(34))
+Simplifying: ExprId(33) Neg(ExprId(20))
+Simplifying: ExprId(20) Mul(ExprId(18), ExprId(19))
+Simplifying: ExprId(18) Mul(ExprId(16), ExprId(17))
+Simplifying: ExprId(16) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(17) Variable("x")
+Simplifying: ExprId(19) Variable("h")
+Simplifying: ExprId(41) Mul(ExprId(16), ExprId(40))
+Simplifying: ExprId(16) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(40) Mul(ExprId(19), ExprId(17))
+Simplifying: ExprId(19) Variable("h")
+Simplifying: ExprId(17) Variable("x")
+Simplifying: ExprId(48) Mul(ExprId(47), ExprId(40))
+Simplifying: ExprId(47) Number(Ratio { numer: -3, denom: 1 })
+Simplifying: ExprId(40) Mul(ExprId(19), ExprId(17))
+Simplifying: ExprId(34) Add(ExprId(32), ExprId(10))
+Simplifying: ExprId(32) Mul(ExprId(31), ExprId(14))
+Simplifying: ExprId(31) Number(Ratio { numer: -3, denom: 1 })
+Simplifying: ExprId(14) Pow(ExprId(12), ExprId(13))
+Simplifying: ExprId(12) Variable("x")
+Simplifying: ExprId(13) Number(Ratio { numer: 2, denom: 1 })
+Simplifying: ExprId(10) Div(ExprId(8), ExprId(9))
+Simplifying: ExprId(8) Sub(ExprId(4), ExprId(7))
+Simplifying: ExprId(4) Pow(ExprId(2), ExprId(3))
+Simplifying: ExprId(2) Add(ExprId(0), ExprId(1))
+Simplifying: ExprId(0) Variable("x")
+Simplifying: ExprId(1) Variable("h")
+Simplifying: ExprId(55) Add(ExprId(1), ExprId(0))
+Simplifying: ExprId(1) Variable("h")
+Simplifying: ExprId(0) Variable("x")
+Simplifying: ExprId(3) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(81) Add(ExprId(80), ExprId(78))
+Simplifying: ExprId(80) Add(ExprId(79), ExprId(74))
+Simplifying: ExprId(79) Add(ExprId(64), ExprId(69))
+Simplifying: ExprId(64) Mul(ExprId(62), ExprId(63))
+Simplifying: ExprId(62) Pow(ExprId(1), ExprId(61))
+Simplifying: ExprId(1) Variable("h")
+Simplifying: ExprId(61) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(63) Number(Ratio { numer: 1, denom: 1 })
+Simplifying: ExprId(82) Mul(ExprId(63), ExprId(62))
+Simplifying: ExprId(63) Number(Ratio { numer: 1, denom: 1 })
+Simplifying: ExprId(62) Pow(ExprId(1), ExprId(61))
+Simplifying: ExprId(62) Pow(ExprId(1), ExprId(61))
+Simplifying: ExprId(69) Mul(ExprId(68), ExprId(67))
+Simplifying: ExprId(68) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(67) Mul(ExprId(66), ExprId(0))
+Simplifying: ExprId(66) Pow(ExprId(1), ExprId(65))
+Simplifying: ExprId(1) Variable("h")
+Simplifying: ExprId(65) Number(Ratio { numer: 2, denom: 1 })
+Simplifying: ExprId(0) Variable("x")
+Simplifying: ExprId(83) Mul(ExprId(0), ExprId(66))
+Simplifying: ExprId(0) Variable("x")
+Simplifying: ExprId(66) Pow(ExprId(1), ExprId(65))
+Simplifying: ExprId(74) Mul(ExprId(73), ExprId(72))
+Simplifying: ExprId(73) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(72) Mul(ExprId(1), ExprId(71))
+Simplifying: ExprId(1) Variable("h")
+Simplifying: ExprId(71) Pow(ExprId(0), ExprId(70))
+Simplifying: ExprId(0) Variable("x")
+Simplifying: ExprId(70) Number(Ratio { numer: 2, denom: 1 })
+Simplifying: ExprId(102) Add(ExprId(62), ExprId(101))
+Simplifying: ExprId(62) Pow(ExprId(1), ExprId(61))
+Simplifying: ExprId(101) Add(ExprId(74), ExprId(85))
+Simplifying: ExprId(74) Mul(ExprId(73), ExprId(72))
+Simplifying: ExprId(85) Mul(ExprId(68), ExprId(83))
+Simplifying: ExprId(68) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(83) Mul(ExprId(0), ExprId(66))
+Simplifying: ExprId(78) Mul(ExprId(75), ExprId(77))
+Simplifying: ExprId(75) Number(Ratio { numer: 1, denom: 1 })
+Simplifying: ExprId(77) Pow(ExprId(0), ExprId(76))
+Simplifying: ExprId(0) Variable("x")
+Simplifying: ExprId(76) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(77) Pow(ExprId(0), ExprId(76))
+Simplifying: ExprId(130) Add(ExprId(62), ExprId(129))
+Simplifying: ExprId(62) Pow(ExprId(1), ExprId(61))
+Simplifying: ExprId(129) Add(ExprId(77), ExprId(128))
+Simplifying: ExprId(77) Pow(ExprId(0), ExprId(76))
+Simplifying: ExprId(128) Add(ExprId(74), ExprId(85))
+Simplifying: ExprId(74) Mul(ExprId(73), ExprId(72))
+Simplifying: ExprId(85) Mul(ExprId(68), ExprId(83))
+Simplifying: ExprId(7) Pow(ExprId(5), ExprId(6))
+Simplifying: ExprId(5) Variable("x")
+Simplifying: ExprId(6) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(174) Add(ExprId(130), ExprId(173))
+Simplifying: ExprId(130) Add(ExprId(62), ExprId(129))
+Simplifying: ExprId(173) Neg(ExprId(7))
+Simplifying: ExprId(7) Pow(ExprId(5), ExprId(6))
+Simplifying: ExprId(178) Add(ExprId(173), ExprId(177))
+Simplifying: ExprId(173) Neg(ExprId(7))
+Simplifying: ExprId(177) Add(ExprId(62), ExprId(176))
+Simplifying: ExprId(62) Pow(ExprId(1), ExprId(61))
+Simplifying: ExprId(176) Add(ExprId(77), ExprId(175))
+Simplifying: ExprId(77) Pow(ExprId(0), ExprId(76))
+Simplifying: ExprId(175) Add(ExprId(74), ExprId(85))
+Simplifying: ExprId(74) Mul(ExprId(73), ExprId(72))
+Simplifying: ExprId(85) Mul(ExprId(68), ExprId(83))
+Simplifying: ExprId(225) Add(ExprId(62), ExprId(224))
+Simplifying: ExprId(62) Pow(ExprId(1), ExprId(61))
+Simplifying: ExprId(224) Add(ExprId(221), ExprId(223))
+Simplifying: ExprId(221) Mul(ExprId(220), ExprId(72))
+Simplifying: ExprId(220) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(72) Mul(ExprId(1), ExprId(71))
+Simplifying: ExprId(223) Mul(ExprId(222), ExprId(83))
+Simplifying: ExprId(222) Number(Ratio { numer: 3, denom: 1 })
+Simplifying: ExprId(83) Mul(ExprId(0), ExprId(66))
+Simplifying: ExprId(9) Variable("h")
+CancelCommonFactors: Add(ExprId(62), ExprId(224)) / Variable("h")
+  Num factors: [Add(ExprId(62), ExprId(224))]
+  Den factors: [Variable("h")]
+Simplifying: ExprId(270) Add(ExprId(32), ExprId(269))
+Simplifying: ExprId(32) Mul(ExprId(31), ExprId(14))
+Simplifying: ExprId(269) Add(ExprId(48), ExprId(253))
+Simplifying: ExprId(48) Mul(ExprId(47), ExprId(40))
+Simplifying: ExprId(253) Div(ExprId(225), ExprId(9))
+Simplifying: ExprId(225) Add(ExprId(62), ExprId(224))
+Simplifying: ExprId(9) Variable("h")
+CancelCommonFactors: Add(ExprId(62), ExprId(224)) / Variable("h")
+  Num factors: [Add(ExprId(62), ExprId(224))]
+  Den factors: [Variable("h")]
+
+thread 'test_torture_24_difference_quotient' (10821841) panicked at crates/cas_cli/tests/torture_tests.rs:417:5:
+assertion `left == right` failed: Difference Quotient failed to simplify to 0
+  left: "-3 * x^2 - 3 * h * x + 3 * h * x^2 / h + 3 * x * h^2 / h"
+ right: "0"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test test_torture_24_difference_quotient ... FAILED
+
+failures:
+
+failures:
+    test_torture_24_difference_quotient
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 29 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p cas_cli --test torture_tests`

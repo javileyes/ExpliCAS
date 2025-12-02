@@ -1,10 +1,10 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId, Context};
+use cas_ast::{Expr, ExprId, Context, DisplayExpr};
+use cas_ast::expression::count_nodes;
 use crate::polynomial::Polynomial;
 use std::collections::HashSet;
-use crate::ordering::compare_expr;
-use std::cmp::Ordering;
+
 use num_traits::{One, Signed, Zero};
 use num_rational::BigRational;
 
@@ -81,7 +81,7 @@ define_rule!(
 
         return Some(Rewrite {
             new_expr: ctx.add(Expr::Div(new_num, new_den)),
-            description: format!("Simplified fraction by GCD: {:?}", gcd_expr),
+            description: format!("Simplified fraction by GCD: {}", DisplayExpr { context: ctx, id: gcd_expr }),
         });
     }
 );
@@ -572,16 +572,7 @@ define_rule!(
     }
 );
 
-fn count_nodes(ctx: &Context, expr: ExprId) -> usize {
-    match ctx.get(expr) {
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            1 + count_nodes(ctx, *l) + count_nodes(ctx, *r)
-        },
-        Expr::Neg(e) => 1 + count_nodes(ctx, *e),
-        Expr::Function(_, args) => 1 + args.iter().map(|a| count_nodes(ctx, *a)).sum::<usize>(),
-        _ => 1
-    }
-}
+
 
 
 
@@ -597,7 +588,7 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_parser::parse;
-    use cas_ast::{DisplayExpr, Context};
+    use cas_ast::{DisplayExpr, Context, expression::count_nodes};
 
     #[test]
     fn test_simplify_fraction() {
@@ -661,171 +652,7 @@ mod tests {
 }
 
 
-define_rule!(
-    AddFractionsRule,
-    "Add Algebraic Fractions",
-    |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Add(l, r) = expr_data {
-            // eprintln!("AddFractionsRule checking: {:?}", expr);
-            // Check if either is a fraction or Neg(fraction)
-            let is_frac = |e: ExprId| {
-                match ctx.get(e) {
-                    Expr::Div(_, _) => true,
-                    Expr::Neg(inner) => matches!(ctx.get(*inner), Expr::Div(_, _)),
-                    _ => false
-                }
-            };
-            if !is_frac(l) && !is_frac(r) {
-                return None;
-            }
 
-            // Helper to get num/den
-            let mut get_nd = |e: ExprId| -> (ExprId, ExprId) {
-                let expr_data = ctx.get(e).clone();
-                match expr_data {
-                    Expr::Div(n, d) => (n, d),
-                    Expr::Neg(inner) => {
-                        let inner_data = ctx.get(inner).clone();
-                        if let Expr::Div(n, d) = inner_data {
-                            let neg_n = ctx.add(Expr::Neg(n));
-                            (neg_n, d)
-                        } else {
-                            (e, ctx.num(1))
-                        }
-                    },
-                    Expr::Mul(l, r) => {
-                        // Check for c * (n/d) or (n/d) * c
-                        let r_data = ctx.get(r).clone();
-                        if let Expr::Div(n, d) = r_data {
-                            let l_data = ctx.get(l).clone();
-                            if let Expr::Number(_) = l_data {
-                                return (ctx.add(Expr::Mul(l, n)), d);
-                            }
-                        }
-                        let l_data = ctx.get(l).clone();
-                        if let Expr::Div(n, d) = l_data {
-                            let r_data = ctx.get(r).clone();
-                            if let Expr::Number(_) = r_data {
-                                return (ctx.add(Expr::Mul(n, r)), d);
-                            }
-                        }
-                        (e, ctx.num(1))
-                    },
-                    _ => (e, ctx.num(1))
-                }
-            };
-
-            let (n1, d1) = get_nd(l);
-            let (n2, d2) = get_nd(r);
-
-            // If denominators are same, simple add
-            if crate::ordering::compare_expr(ctx, d1, d2) == std::cmp::Ordering::Equal {
-                let new_num = ctx.add(Expr::Add(n1, n2));
-                let new_expr = ctx.add(Expr::Div(new_num, d1));
-                
-                // Complexity check
-                let old_complexity = count_nodes(ctx, expr);
-                let new_complexity = count_nodes(ctx, new_expr);
-                
-                if new_complexity <= old_complexity {
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Add fractions with same denominator".to_string(),
-                    });
-                }
-            }
-
-            // Different denominators. Try to find LCM.
-            // We need variables to use Polynomials.
-            let vars = collect_variables(ctx, expr);
-            if vars.len() != 1 {
-                // Multivariate LCM is hard. Just use product?
-                // For now, only support univariate LCM for "Rational Crusher".
-                // Or simple product if simple expressions.
-                return None; 
-            }
-            let var = vars.iter().next().unwrap();
-
-            // Heuristic: Avoid expensive polynomial arithmetic for large expressions
-            // This prevents O(N^2) behavior in large sums of fractions (e.g. sum_fractions_10)
-            let complexity_limit = 20;
-            let c1 = count_nodes(ctx, d1);
-            let c2 = count_nodes(ctx, d2);
-            // eprintln!("AddFractionsRule complexity check: d1={}, d2={}, limit={}", c1, c2, complexity_limit);
-            if c1 + c2 > complexity_limit {
-                return None;
-            }
-
-            let p_d1_res = Polynomial::from_expr(ctx, d1, var);
-            let p_d2_res = Polynomial::from_expr(ctx, d2, var);
-            let p_n1_res = Polynomial::from_expr(ctx, n1, var);
-            let p_n2_res = Polynomial::from_expr(ctx, n2, var);
-
-            // Check if denominators are negations of each other (d1 = -d2)
-            // This allows combining A/d + B/(-d) -> (A-B)/d even if A, B are not polynomials
-            if let (Ok(p_d1), Ok(p_d2)) = (&p_d1_res, &p_d2_res) {
-                if p_d1.add(p_d2).is_zero() {
-                     let new_num = ctx.add(Expr::Sub(n1, n2));
-                     let new_expr = ctx.add(Expr::Div(new_num, d1));
-                     
-                     // Complexity check
-                     let old_complexity = count_nodes(ctx, expr);
-                     let new_complexity = count_nodes(ctx, new_expr);
-                     
-                     if new_complexity < old_complexity {
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "Add fractions with negated denominator".to_string(),
-                        });
-                     }
-                }
-            }
-
-            let new_expr = if let (Ok(p_d1), Ok(p_d2), Ok(p_n1), Ok(p_n2)) = (p_d1_res, p_d2_res, p_n1_res, p_n2_res) {
-                // Polynomial path (with simplification)
-                let gcd_den = p_d1.gcd(&p_d2);
-                let (lcm_poly, _) = p_d1.mul(&p_d2).div_rem(&gcd_den); 
-                
-                let (m1_poly, _) = p_d2.div_rem(&gcd_den);
-                let (m2_poly, _) = p_d1.div_rem(&gcd_den);
-                
-                let term1 = p_n1.mul(&m1_poly);
-                let term2 = p_n2.mul(&m2_poly);
-                let new_num_poly = term1.add(&term2);
-                
-                let common = new_num_poly.gcd(&lcm_poly);
-                let (final_num_poly, _) = new_num_poly.div_rem(&common);
-                let (final_den_poly, _) = lcm_poly.div_rem(&common);
-                
-                let new_num = final_num_poly.to_expr(ctx);
-                let new_den = final_den_poly.to_expr(ctx);
-                ctx.add(Expr::Div(new_num, new_den))
-            } else {
-                // Fallback path disabled to prevent infinite loops with NestedFractionRule
-                return None;
-            };
-            
-            // Complexity check
-            let old_complexity = count_nodes(ctx, expr);
-            let new_complexity = count_nodes(ctx, new_expr);
-            
-            // println!("AddFractions: {} -> {}", cas_ast::DisplayExpr { context: ctx, id: expr }, cas_ast::DisplayExpr { context: ctx, id: new_expr });
-            // println!("Complexity: {} -> {}", old_complexity, new_complexity);
-
-            if new_complexity < old_complexity {
-                // eprintln!("AddFractionsRule rewriting (fallback): {:?} -> {:?}", expr, new_expr);
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Add fractions (fallback/simplified)".to_string(),
-                });
-            } else {
-                 // println!("Rejected due to complexity increase");
-            }
-        }
-        None
-    }
-);
 
 
 define_rule!(
@@ -940,6 +767,459 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "Combine Mul and Div".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
+
+define_rule!(
+    AddFractionsRule,
+    "Add Fractions",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Add(l, r) = expr_data {
+            let one = ctx.num(1);
+
+            // Helper to extract num/den
+            let mut get_num_den = |e: ExprId| -> (ExprId, ExprId, bool) {
+                let expr_data = ctx.get(e).clone();
+                match expr_data {
+                    Expr::Div(n, d) => (n, d, true),
+                    Expr::Neg(inner) => {
+                        match ctx.get(inner).clone() {
+                            Expr::Div(n, d) => (ctx.add(Expr::Neg(n)), d, true),
+                            Expr::Pow(b, e_inner) => {
+                                if let Expr::Number(n_inner) = ctx.get(e_inner) {
+                                    if n_inner.is_integer() && *n_inner == num_rational::BigRational::from_integer((-1).into()) {
+                                        (ctx.add(Expr::Neg(one)), b, true)
+                                    } else {
+                                        (e, one, false)
+                                    }
+                                } else {
+                                    (e, one, false)
+                                }
+                            },
+                             Expr::Mul(ml, mr) => {
+                                // Check ml * mr^-1
+                                let mr_data = ctx.get(mr).clone();
+                                if let Expr::Pow(b, e_inner) = mr_data {
+                                     if let Expr::Number(n_inner) = ctx.get(e_inner) {
+                                        if n_inner.is_integer() && *n_inner == num_rational::BigRational::from_integer((-1).into()) {
+                                            return (ctx.add(Expr::Neg(ml)), b, true);
+                                        }
+                                    }
+                                }
+                                // Check mr * ml^-1
+                                let ml_data = ctx.get(ml).clone();
+                                if let Expr::Pow(b, e_inner) = ml_data {
+                                     if let Expr::Number(n_inner) = ctx.get(e_inner) {
+                                        if n_inner.is_integer() && *n_inner == num_rational::BigRational::from_integer((-1).into()) {
+                                            return (ctx.add(Expr::Neg(mr)), b, true);
+                                        }
+                                    }
+                                }
+                                (e, one, false)
+                            },
+                            _ => (e, one, false)
+                        }
+                    },
+                    Expr::Pow(b, exp) => {
+                        if let Expr::Number(n) = ctx.get(exp) {
+                            if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                (one, b, true)
+                            } else {
+                                (e, one, false)
+                            }
+                        } else {
+                            (e, one, false)
+                        }
+                    },
+                    Expr::Mul(ml, mr) => {
+                         // Check ml * mr^-1
+                        let mr_data = ctx.get(mr).clone();
+                        if let Expr::Pow(b, exp) = mr_data {
+                             if let Expr::Number(n) = ctx.get(exp) {
+                                if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                    return (ml, b, true);
+                                }
+                            }
+                        }
+                        // Check mr * ml^-1
+                        let ml_data = ctx.get(ml).clone();
+                        if let Expr::Pow(b, exp) = ml_data {
+                             if let Expr::Number(n) = ctx.get(exp) {
+                                if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                    return (mr, b, true);
+                                }
+                            }
+                        }
+                        (e, one, false)
+                    },
+                    _ => (e, one, false)
+                }
+            };
+
+            let (n1, d1, is_frac1) = get_num_den(l);
+            let (n2, d2, is_frac2) = get_num_den(r);
+
+            if !is_frac1 && !is_frac2 {
+                return None;
+            }
+            // eprintln!("AddFractionsRule visiting: {:?}", ctx.get(expr));
+
+            // Check if d2 = -d1 (e.g. x-1 and 1-x)
+            let (n2, d2) = {
+                let vars = collect_variables(ctx, d1);
+                let mut found_neg = false;
+                if !vars.is_empty() {
+                     for var in vars {
+                         if let (Ok(p1), Ok(p2)) = (Polynomial::from_expr(ctx, d1, &var), Polynomial::from_expr(ctx, d2, &var)) {
+                             if p1.add(&p2).is_zero() {
+                                 found_neg = true;
+                                 break;
+                             }
+                         }
+                     }
+                }
+                if found_neg {
+                    (ctx.add(Expr::Neg(n2)), d1)
+                } else {
+                    (n2, d2)
+                }
+            };
+
+            // a/b + c/d = (ad + bc) / bd
+            // If denominators are same, (a+c)/b
+            
+            // Try to compute LCM of denominators to keep expression size small
+            let (common_den, mult1, mult2) = {
+                let mut result = None;
+                let vars = collect_variables(ctx, d1);
+                
+                if !vars.is_empty() {
+                    for var in vars {
+                        if let (Ok(p1), Ok(p2)) = (Polynomial::from_expr(ctx, d1, &var), Polynomial::from_expr(ctx, d2, &var)) {
+                            if p1.is_zero() || p2.is_zero() { continue; }
+                            let gcd = p1.gcd(&p2);
+                            // println!("AddFractions LCM: d1={:?} d2={:?} gcd={:?}", ctx.get(d1), ctx.get(d2), gcd);
+                            if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
+                                // Found non-trivial GCD.
+                                // LCM = (p1 * p2) / gcd
+                                // mult1 = p2 / gcd
+                                // mult2 = p1 / gcd
+                                
+                                let (m1_poly, rem1) = p2.div_rem(&gcd);
+                                let (m2_poly, rem2) = p1.div_rem(&gcd);
+                                
+                                if rem1.is_zero() && rem2.is_zero() {
+                                    let m1 = m1_poly.to_expr(ctx);
+                                    let m2 = m2_poly.to_expr(ctx);
+                                    
+                                    // common_den = d1 * m1
+                                    let cd = ctx.add(Expr::Mul(d1, m1));
+                                    result = Some((cd, m1, m2));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if let Some(res) = result {
+                    res
+                } else {
+                    // Fallback to naive product
+                    if crate::ordering::compare_expr(ctx, d1, d2) == std::cmp::Ordering::Equal {
+                        (d1, ctx.num(1), ctx.num(1))
+                    } else if matches!(ctx.get(d1), Expr::Number(n) if n.is_one()) {
+                        (d2, d2, ctx.num(1))
+                    } else if matches!(ctx.get(d2), Expr::Number(n) if n.is_one()) {
+                        (d1, ctx.num(1), d1)
+                    } else {
+                        (ctx.add(Expr::Mul(d1, d2)), d2, d1)
+                    }
+                }
+            };
+            
+            let term1 = ctx.add(Expr::Mul(n1, mult1));
+            let term2 = ctx.add(Expr::Mul(n2, mult2));
+
+            let new_num = ctx.add(Expr::Add(term1, term2));
+            let new_expr = ctx.add(Expr::Div(new_num, common_den));
+
+            // Complexity check to prevent cycles with DistributeRule and ensure simplification
+            let old_complexity = cas_ast::expression::count_nodes(ctx, expr);
+            let new_complexity = cas_ast::expression::count_nodes(ctx, new_expr);
+
+            // Check if the new fraction simplifies (shares factors)
+            // This allows temporary complexity increase if it leads to simplification
+            // Check if the new fraction simplifies (shares factors)
+            // This allows temporary complexity increase if it leads to simplification
+            let simplifies = |ctx: &mut Context, num: ExprId, den: ExprId| -> bool {
+                // If numerator is zero, it simplifies to 0
+                if let Expr::Number(n) = ctx.get(num) {
+                    if n.is_zero() { return true; }
+                }
+                
+                // Check for structural cancellation: A + (-A)
+                let add_parts = if let Expr::Add(a, b) = ctx.get(num) {
+                    Some((*a, *b))
+                } else {
+                    None
+                };
+
+                if let Some((a, b)) = add_parts {
+                    // Helper to check if e1 == -e2
+                    fn is_negation(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+                        // Direct negation check
+                        if let Expr::Neg(inner) = ctx.get(e1) {
+                            if is_sem_equal(ctx, *inner, e2) { return true; }
+                        }
+                        if let Expr::Neg(inner) = ctx.get(e2) {
+                            if is_sem_equal(ctx, *inner, e1) { return true; }
+                        }
+                        
+                        // Helper to expand Neg(Add(a, b)) -> Add(-a, -b) virtual view
+                        let get_add_parts_expanded = |e: ExprId| -> Option<(ExprId, ExprId, bool, bool)> {
+                            // Returns (l, r, neg_l, neg_r)
+                            match ctx.get(e) {
+                                Expr::Add(l, r) => Some((*l, *r, false, false)),
+                                Expr::Sub(l, r) => Some((*l, *r, false, true)),
+                                Expr::Neg(inner) => {
+                                    match ctx.get(*inner) {
+                                        Expr::Add(l, r) => Some((*l, *r, true, true)),
+                                        Expr::Sub(l, r) => Some((*l, *r, true, false)), // -(l - r) = -l + r
+                                        _ => None
+                                    }
+                                },
+                                _ => None
+                            }
+                        };
+
+                        if let (Some((l1, r1, nl1, nr1)), Some((l2, r2, nl2, nr2))) = (get_add_parts_expanded(e1), get_add_parts_expanded(e2)) {
+                             // Check e1 == -e2
+                             // e1 = s1*l1 + s2*r1. e2 = s3*l2 + s4*r2.
+                             // Need e1 + e2 == 0.
+                             // (s1*l1 + s3*l2 == 0 && s2*r1 + s4*r2 == 0) ...
+                             
+                             let check_term_neg = |t1: ExprId, n1: bool, t2: ExprId, n2: bool| -> bool {
+                                 // t1 (sign n1) vs t2 (sign n2).
+                                 // If n1 == n2, need is_negation(t1, t2).
+                                 // If n1 != n2, need is_equal(t1, t2).
+                                 if n1 == n2 {
+                                     is_negation(ctx, t1, t2)
+                                 } else {
+                                     crate::ordering::compare_expr(ctx, t1, t2) == std::cmp::Ordering::Equal
+                                 }
+                             };
+                             
+                             return (check_term_neg(l1, nl1, l2, nl2) && check_term_neg(r1, nr1, r2, nr2)) ||
+                                    (check_term_neg(l1, nl1, r2, nr2) && check_term_neg(r1, nr1, l2, nl2));
+                        }
+                        
+                        // Check Mul(-1, x) vs y
+                        let is_mul_neg_of = |e: ExprId, target: ExprId| -> bool {
+                            if let Expr::Mul(l, r) = ctx.get(e) {
+                                if let Expr::Number(n) = ctx.get(*l) {
+                                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                        return is_negation(ctx, *r, target);
+                                    }
+                                }
+                                if let Expr::Number(n) = ctx.get(*r) {
+                                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                        return is_negation(ctx, *l, target);
+                                    }
+                                }
+                            }
+                            false
+                        };
+                        
+                        if is_mul_neg_of(e1, e2) || is_mul_neg_of(e2, e1) {
+                            return true;
+                        }
+
+                        // Helper to check semantic equality (handling Neg distribution)
+                        fn is_sem_equal(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+                            if crate::ordering::compare_expr(ctx, e1, e2) == std::cmp::Ordering::Equal {
+                                return true;
+                            }
+                            
+                            // Check Neg(e1) == Neg(e2) -> is_negation(e1, Neg(e2))? No.
+                            // Check e1 == e2.
+                            // If e1 = Neg(x). e2 = y. Check x == -y -> is_negation(x, y).
+                            if let Expr::Neg(inner) = ctx.get(e1) {
+                                return is_negation(ctx, *inner, e2);
+                            }
+                            if let Expr::Neg(inner) = ctx.get(e2) {
+                                return is_negation(ctx, e1, *inner);
+                            }
+                            
+                            // Check Mul(-1, x) == y -> x == -y -> is_negation(x, y)
+                            if let Expr::Mul(l, r) = ctx.get(e1) {
+                                if let Expr::Number(n) = ctx.get(*l) {
+                                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                        return is_negation(ctx, *r, e2);
+                                    }
+                                }
+                                if let Expr::Number(n) = ctx.get(*r) {
+                                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                        return is_negation(ctx, *l, e2);
+                                    }
+                                }
+                            }
+                            if let Expr::Mul(l, r) = ctx.get(e2) {
+                                if let Expr::Number(n) = ctx.get(*l) {
+                                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                        return is_negation(ctx, e1, *r);
+                                    }
+                                }
+                                if let Expr::Number(n) = ctx.get(*r) {
+                                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                        return is_negation(ctx, e1, *l);
+                                    }
+                                }
+                            }
+                            
+                            false
+                        }
+
+                        // Check Mul
+                        if let (Expr::Mul(l1, r1), Expr::Mul(l2, r2)) = (ctx.get(e1), ctx.get(e2)) {
+                            // e1 = l1*r1. e2 = l2*r2.
+                            // e1 == -e2.
+                            // (l1 == -l2 && r1 == r2) || (l1 == l2 && r1 == -r2) ...
+                            
+                            // Helper to check equality
+                            let eq = |a, b| is_sem_equal(ctx, a, b);
+                            // Helper to check negation
+                            let neg = |a, b| is_negation(ctx, a, b);
+                            
+                            // Case 1: l1 matches l2 (equal or neg)
+                            if eq(*l1, *l2) { return neg(*r1, *r2); }
+                            if neg(*l1, *l2) { return eq(*r1, *r2); }
+                            
+                            // Case 2: l1 matches r2
+                            if eq(*l1, *r2) { return neg(*r1, *l2); }
+                            if neg(*l1, *r2) { return eq(*r1, *l2); }
+                        }
+                        
+                        // Check Number negation
+                        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(e1), ctx.get(e2)) {
+                            return n1 == &-n2;
+                        }
+                        
+                        // Check Mul(-1, x)
+                        let is_mul_neg = |e: ExprId, target: ExprId| -> bool {
+                            if let Expr::Mul(l, r) = ctx.get(e) {
+                                if let Expr::Number(n) = ctx.get(*l) {
+                                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                        return *r == target;
+                                    }
+                                }
+                                if let Expr::Number(n) = ctx.get(*r) {
+                                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into()) {
+                                        return *l == target;
+                                    }
+                                }
+                            }
+                            false
+                        };
+                        
+                        if is_mul_neg(e1, e2) || is_mul_neg(e2, e1) {
+                            return true;
+                        }
+                        
+                        false
+                    }
+                    
+                    if is_negation(ctx, a, b) {
+                        return true;
+                    }
+                }
+
+                let get_factors = |e: ExprId| -> Vec<ExprId> {
+                    let mut factors = Vec::new();
+                    let mut stack = vec![e];
+                    while let Some(curr) = stack.pop() {
+                        match ctx.get(curr) {
+                            Expr::Mul(a, b) => {
+                                stack.push(*a);
+                                stack.push(*b);
+                            },
+                            Expr::Pow(b, e) => {
+                                if let Expr::Number(n) = ctx.get(*e) {
+                                    if n.is_integer() && *n > num_rational::BigRational::zero() {
+                                        stack.push(*b);
+                                    } else {
+                                        factors.push(curr);
+                                    }
+                                } else {
+                                    factors.push(curr);
+                                }
+                            },
+                            _ => factors.push(curr),
+                        }
+                    }
+                    factors
+                };
+                
+                let num_factors = get_factors(num);
+                let den_factors = get_factors(den);
+
+                for df in den_factors {
+                    let found = num_factors.iter().any(|nf| {
+                        crate::ordering::compare_expr(ctx, *nf, df) == std::cmp::Ordering::Equal
+                    });
+                    if found { return true; }
+                    
+                    // Check for numeric GCD
+                    if let Expr::Number(n_den) = ctx.get(df) {
+                        let found_numeric = num_factors.iter().any(|nf| {
+                            if let Expr::Number(n_num) = ctx.get(*nf) {
+                                if n_num.is_integer() && n_den.is_integer() {
+                                    let num_int = n_num.to_integer();
+                                    let den_int = n_den.to_integer();
+                                    if !num_int.is_zero() && !den_int.is_zero() {
+                                        use num_integer::Integer;
+                                        let gcd = num_int.gcd(&den_int);
+                                        return gcd > One::one();
+                                    }
+                                }
+                            }
+                            false
+                        });
+                        if found_numeric { return true; }
+                    }
+                }
+                
+                // Polynomial GCD check
+                let vars = collect_variables(ctx, num);
+                // println!("simplifies: num={:?} vars={:?}", ctx.get(num), vars);
+                if !vars.is_empty() {
+                    for var in vars {
+                        if let (Ok(p_num), Ok(p_den)) = (Polynomial::from_expr(ctx, num, &var), Polynomial::from_expr(ctx, den, &var)) {
+                            if p_den.is_zero() { continue; }
+                            let gcd = p_num.gcd(&p_den);
+                            if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
+                                eprintln!("AddFractionsRule simplifies: Poly GCD found: {:?}", gcd);
+                                return true;
+                            }
+                        }
+                    }
+                }
+                false
+            };
+
+            let does_simplify = simplifies(ctx, new_num, common_den);
+            // eprintln!("AddFractionsRule check: old={} new={} simplifies={}", old_complexity, new_complexity, does_simplify);
+            // Allow simplification if complexity doesn't increase too much (1.5x)
+            if new_complexity <= old_complexity || (does_simplify && new_complexity < (old_complexity * 3) / 2) {
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Add fractions: a/b + c/d -> (ad+bc)/bd".to_string(),
                 });
             }
         }
@@ -1276,6 +1556,7 @@ define_rule!(
         let mut i = 0;
         while i < num_factors.len() {
             let nf = num_factors[i];
+            // println!("Processing num factor: {:?}", ctx.get(nf));
             let mut found = false;
             for j in 0..den_factors.len() {
                 let df = den_factors[j];
@@ -1292,7 +1573,9 @@ define_rule!(
                 // Case 1: nf = base^n, df = base. (n > 1)
                 let nf_pow = if let Expr::Pow(b, e) = ctx.get(nf) { Some((*b, *e)) } else { None };
                 if let Some((b, e)) = nf_pow {
+                    // println!("Checking power cancellation: nf={:?} df={:?}", ctx.get(nf), ctx.get(df));
                     if crate::ordering::compare_expr(ctx, b, df) == std::cmp::Ordering::Equal {
+                        // println!("  Base matches!");
                         if let Expr::Number(n) = ctx.get(e) {
                              let new_exp = n - num_rational::BigRational::one();
                              let new_term = if new_exp.is_one() {
@@ -1594,99 +1877,21 @@ define_rule!(
     }
 );
 
-define_rule!(
-    FractionAddRule,
-    "Add Fractions",
-    |ctx, expr| {
-        // a/c + b/c -> (a+b)/c
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Add(l, r) = expr_data {
-            let l_data = ctx.get(l).clone();
-            let r_data = ctx.get(r).clone();
-            
-            // Case 1: Both are Divs
-            if let (Expr::Div(ln, ld), Expr::Div(rn, rd)) = (&l_data, &r_data) {
-                if compare_expr(ctx, *ld, *rd) == Ordering::Equal {
-                    let new_num = ctx.add(Expr::Add(*ln, *rn));
-                    let new_expr = ctx.add(Expr::Div(new_num, *ld));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Combine fractions".to_string(),
-                    });
-                }
-            }
-            
-            // Case 2: One is Div, other is Mul(-1, Div) (Subtraction)
-            // A/C - B/C -> (A-B)/C
-            if let Expr::Div(ln, ld) = &l_data {
-                if let Expr::Mul(m_l, m_r) = &r_data {
-                    // Check for -1 * (B/C)
-                    let mut neg_div = None;
-                    if let Expr::Number(n) = ctx.get(*m_l) {
-                        if *n == -BigRational::one() { neg_div = Some(*m_r); }
-                    } else if let Expr::Number(n) = ctx.get(*m_r) {
-                        if *n == -BigRational::one() { neg_div = Some(*m_l); }
-                    }
-                    
-                    if let Some(nd) = neg_div {
-                        if let Expr::Div(rn, rd) = ctx.get(nd) {
-                            if compare_expr(ctx, *ld, *rd) == Ordering::Equal {
-                                let new_num = ctx.add(Expr::Sub(*ln, *rn));
-                                let new_expr = ctx.add(Expr::Div(new_num, *ld));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "Combine fraction subtraction".to_string(),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Symmetric case for -B/C + A/C
-            if let Expr::Div(rn, rd) = &r_data {
-                if let Expr::Mul(m_l, m_r) = &l_data {
-                     // Check for -1 * (A/C)
-                    let mut neg_div = None;
-                    if let Expr::Number(n) = ctx.get(*m_l) {
-                        if *n == -BigRational::one() { neg_div = Some(*m_r); }
-                    } else if let Expr::Number(n) = ctx.get(*m_r) {
-                        if *n == -BigRational::one() { neg_div = Some(*m_l); }
-                    }
-                    
-                    if let Some(nd) = neg_div {
-                        if let Expr::Div(ln, ld) = ctx.get(nd) {
-                            if compare_expr(ctx, *ld, *rd) == Ordering::Equal {
-                                // -A/C + B/C -> (B-A)/C
-                                let new_num = ctx.add(Expr::Sub(*rn, *ln));
-                                let new_expr = ctx.add(Expr::Div(new_num, *rd));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "Combine fraction subtraction".to_string(),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
-);
+
+
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
-    simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
-    simplifier.add_rule(Box::new(ExpandRule));
+    simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
-    // simplifier.add_rule(Box::new(FractionAddRule)); // Disabled: Conflicts with DistributeRule (Div)
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
     simplifier.add_rule(Box::new(RootDenestingRule));
     simplifier.add_rule(Box::new(SimplifySquareRootRule));
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
+    simplifier.add_rule(Box::new(ExpandRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
 

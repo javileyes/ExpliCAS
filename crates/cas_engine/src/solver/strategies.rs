@@ -2,7 +2,7 @@ use cas_ast::{Expr, Equation, RelOp, SolutionSet, Interval, BoundType, ExprId, C
 use crate::engine::Simplifier;
 use crate::solver::SolveStep;
 use num_rational::BigRational;
-use num_traits::Zero;
+use num_traits::{Zero, Signed};
 use std::cmp::Ordering;
 use crate::solver::solution_set::{neg_inf, pos_inf, compare_values};
 use crate::solver::isolation::{contains_var, isolate};
@@ -405,6 +405,72 @@ impl SolverStrategy for QuadraticStrategy {
         let poly_expr = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
         // Simplify first (this might factor it)
         let (sim_poly_expr, _) = simplifier.simplify(poly_expr);
+        
+        // Check for Zero Product Property: A * B = 0 => A = 0 or B = 0
+        // Only if RHS is 0 (which it is, we moved everything to LHS)
+        // We need to be careful not to recurse infinitely if A or B are not simpler.
+        // But solving A=0 and B=0 breaks it down.
+        
+        let zero = simplifier.context.num(0);
+        
+        // Helper to check if we can split
+        let split_factors = |ctx: &Context, expr: ExprId| -> Option<Vec<ExprId>> {
+            match ctx.get(expr) {
+                Expr::Mul(l, r) => Some(vec![*l, *r]), // We could flatten more
+                Expr::Pow(b, e) => {
+                    if let Expr::Number(n) = ctx.get(*e) {
+                         if n.is_positive() {
+                             return Some(vec![*b]);
+                         }
+                    }
+                    None
+                },
+                _ => None
+            }
+        };
+
+        if let Some(factors) = split_factors(&simplifier.context, sim_poly_expr) {
+             // We found factors.
+             if simplifier.collect_steps {
+                steps.push(SolveStep {
+                    description: format!("Factorized equation: {} = 0", cas_ast::DisplayExpr { context: &simplifier.context, id: sim_poly_expr }),
+                    equation_after: Equation { lhs: sim_poly_expr, rhs: zero, op: RelOp::Eq }
+                });
+             }
+             
+             // For inequalities, splitting is complex (sign analysis).
+             // For Eq, it's simple union.
+             if eq.op == RelOp::Eq {
+                 let mut all_solutions = Vec::new();
+                 for factor in factors {
+                     if simplifier.collect_steps {
+                        steps.push(SolveStep {
+                            description: format!("Solve factor: {} = 0", cas_ast::DisplayExpr { context: &simplifier.context, id: factor }),
+                            equation_after: Equation { lhs: factor, rhs: zero, op: RelOp::Eq }
+                        });
+                     }
+                     let factor_eq = Equation { lhs: factor, rhs: zero, op: RelOp::Eq };
+                     // Recursive solve
+                     // We need to be careful about depth.
+                     match solve(&factor_eq, var, simplifier) {
+                         Ok((sol_set, mut sub_steps)) => {
+                             steps.append(&mut sub_steps);
+                             match sol_set {
+                                 SolutionSet::Discrete(sols) => all_solutions.extend(sols),
+                                 _ => return Some(Err(CasError::SolverError("Continuous solution in factor split not supported yet".to_string()))),
+                             }
+                         },
+                         Err(e) => return Some(Err(e)),
+                     }
+                 }
+                 // Remove duplicates
+                 all_solutions.sort_by(|a, b| compare_expr(&simplifier.context, *a, *b));
+                 all_solutions.dedup_by(|a, b| compare_expr(&simplifier.context, *a, *b) == Ordering::Equal);
+                 
+                 return Some(Ok((SolutionSet::Discrete(all_solutions), steps)));
+             }
+        }
+
         
         // Ensure expanded form for coefficient extraction
         // QuadraticStrategy relies on A*x^2 + B*x + C structure (Add/Sub chain)

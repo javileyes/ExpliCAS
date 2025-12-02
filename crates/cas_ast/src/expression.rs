@@ -311,6 +311,17 @@ fn check_negative(ctx: &Context, id: ExprId) -> (bool, Option<ExprId>, Option<Bi
     }
 }
 
+pub fn count_nodes(context: &Context, id: ExprId) -> usize {
+    match context.get(id) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            1 + count_nodes(context, *l) + count_nodes(context, *r)
+        },
+        Expr::Neg(e) => 1 + count_nodes(context, *e),
+        Expr::Function(_, args) => 1 + args.iter().map(|a| count_nodes(context, *a)).sum::<usize>(),
+        _ => 1
+    }
+}
+
 pub struct RawDisplayExpr<'a> {
     pub context: &'a Context,
     pub id: ExprId,
@@ -333,7 +344,13 @@ impl<'a> fmt::Display for RawDisplayExpr<'a> {
             Expr::Mul(l, r) => write!(f, "({}) * ({})", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
             Expr::Div(l, r) => write!(f, "({}) / ({})", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
             Expr::Pow(b, e) => write!(f, "({})^({})", RawDisplayExpr { context: self.context, id: *b }, RawDisplayExpr { context: self.context, id: *e }),
-            Expr::Neg(e) => write!(f, "-({})", RawDisplayExpr { context: self.context, id: *e }),
+            Expr::Neg(e) => {
+                let inner = self.context.get(*e);
+                match inner {
+                    Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => write!(f, "-{}", RawDisplayExpr { context: self.context, id: *e }),
+                    _ => write!(f, "-({})", RawDisplayExpr { context: self.context, id: *e }),
+                }
+            },
             Expr::Function(name, args) => {
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {

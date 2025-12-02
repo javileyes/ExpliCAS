@@ -8,7 +8,7 @@ proptest! {
     #[test]
     fn test_round_trip_parse(re in strategies::arb_recursive_expr()) {
         let (ctx, expr) = strategies::to_context(re);
-        let s = cas_format::Format::to_latex(&expr, &ctx); // Use to_latex for string representation for now, or Display
+        let _s = cas_format::Format::to_latex(&expr, &ctx); // Use to_latex to ensure it doesn't panicon for now, or Display
         // Actually we should use Display implementation if available.
         // But DisplayExpr is needed.
         let display_expr = cas_ast::DisplayExpr { context: &ctx, id: expr };
@@ -23,7 +23,7 @@ proptest! {
 
     #[test]
     fn test_identity_add_zero(re in strategies::arb_recursive_expr()) {
-        let (mut ctx, expr) = strategies::to_context(re);
+        let (ctx, expr) = strategies::to_context(re);
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx; // Use the generated context
         
@@ -47,7 +47,7 @@ proptest! {
 
     #[test]
     fn test_identity_mul_one(re in strategies::arb_recursive_expr()) {
-        let (mut ctx, expr) = strategies::to_context(re);
+        let (ctx, expr) = strategies::to_context(re);
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx;
 
@@ -65,7 +65,7 @@ proptest! {
     
     #[test]
     fn test_idempotency(re in strategies::arb_recursive_expr()) {
-        let (mut ctx, expr) = strategies::to_context(re);
+        let (ctx, expr) = strategies::to_context(re);
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx;
 
@@ -79,7 +79,7 @@ proptest! {
 
     #[test]
     fn test_constant_folding(re in strategies::arb_recursive_expr()) {
-        let (mut ctx, expr) = strategies::to_context(re);
+        let (ctx, expr) = strategies::to_context(re);
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx;
 
@@ -111,7 +111,7 @@ proptest! {
 
     #[test]
     fn test_identity_preservation(re in strategies::arb_recursive_expr()) {
-        let (mut ctx, expr) = strategies::to_context(re);
+        let (ctx, expr) = strategies::to_context(re);
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx;
         
@@ -145,7 +145,7 @@ proptest! {
 
     #[test]
     fn test_associativity_flattening(re in strategies::arb_recursive_expr()) {
-        let (mut ctx, expr) = strategies::to_context(re);
+        let (ctx, expr) = strategies::to_context(re);
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx;
 

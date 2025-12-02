@@ -569,6 +569,24 @@ pub fn isolate(lhs: ExprId, rhs: ExprId, op: RelOp, var: &str, simplifier: &mut 
                  Err(CasError::IsolationError(var.to_string(), format!("Cannot invert function '{}' with {} arguments", name, args.len())))
             }
         }
+        Expr::Neg(inner) => {
+            // -A = RHS -> A = -RHS
+            // -A < RHS -> A > -RHS (Flip op)
+            
+            let new_rhs = simplifier.context.add(Expr::Neg(rhs));
+            let new_op = flip_inequality(op);
+            let new_eq = Equation { lhs: inner, rhs: new_rhs, op: new_op.clone() };
+            
+            if simplifier.collect_steps {
+                steps.push(SolveStep {
+                    description: "Multiply both sides by -1 (flips inequality)".to_string(),
+                    equation_after: new_eq.clone(),
+                });
+            }
+            
+            let results = isolate(inner, new_rhs, new_op, var, simplifier)?;
+            prepend_steps(results, steps)
+        }
         _ => Err(CasError::IsolationError(var.to_string(), format!("Cannot isolate from {:?}", lhs_expr))),
     }
 }

@@ -357,6 +357,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         continue;
                     }
                     if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                        println!("Rule '{}' applied: {:?} -> {:?}", rule.name(), expr_id, rewrite.new_expr);
                         debug!("{}[DEBUG] Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
                         if self.collect_steps {
                             self.steps.push(Step::new(

@@ -13,7 +13,6 @@ define_rule!(
     DistributeRule,
     "Distributive Property",
     |ctx, expr| {
-
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(l, r) = expr_data {
             // a * (b + c) -> a*b + a*c
@@ -84,12 +83,11 @@ define_rule!(
 
         // Handle Division Distribution: (a + b) / c -> a/c + b/c
         if let Expr::Div(l, r) = expr_data {
-            // println!("DistributeRule Div: l={:?} r={:?}\", ctx.get(l), ctx.get(r));
             let l_data = ctx.get(l).clone();
             
-            // Helper to check if division simplifies (shares factors)
-            let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> bool {
-                if num == den { return true; }
+            // Helper to check if division simplifies (shares factors) and return factor size
+            let get_simplification_reduction = |ctx: &Context, num: ExprId, den: ExprId| -> usize {
+                if num == den { return cas_ast::expression::count_nodes(ctx, num); }
                 
                 // Structural factor check
                 let get_factors = |e: ExprId| -> Vec<ExprId> {
@@ -108,14 +106,6 @@ define_rule!(
                 
                 let num_factors = get_factors(num);
                 let den_factors = get_factors(den);
-                
-                // println!("shares_factor: num={:?} den={:?}", num_factors, den_factors);
-                // for f in &num_factors { println!("  num factor: {:?}", ctx.get(*f)); }
-                // for f in &den_factors { println!("  den factor: {:?}", ctx.get(*f)); }
-                
-                println!("shares_factor: num={:?} den={:?}", num_factors, den_factors);
-                for f in &num_factors { println!("  num factor: {:?} args: {:?}", ctx.get(*f), if let Expr::Function(_, args) = ctx.get(*f) { args.iter().map(|a| ctx.get(*a)).collect::<Vec<_>>() } else { vec![] }); }
-                for f in &den_factors { println!("  den factor: {:?} args: {:?}", ctx.get(*f), if let Expr::Function(_, args) = ctx.get(*f) { args.iter().map(|a| ctx.get(*a)).collect::<Vec<_>>() } else { vec![] }); }
 
                 for df in den_factors {
                     // Check for structural equality using compare_expr
@@ -124,16 +114,20 @@ define_rule!(
                     });
                     
                     if found {
-                        // println!("  Found common factor: {:?}", ctx.get(df));
-                        return true;
+                        let factor_size = cas_ast::expression::count_nodes(ctx, df);
+                        // Factor removed from num and den -> 2 * size
+                        let mut reduction = factor_size * 2;
+                        // If factor is entire denominator, Div is removed -> +1
+                        if df == den {
+                            reduction += 1;
+                        }
+                        return reduction;
                     }
 
                     // Check for numeric GCD
                     if let Expr::Number(n_den) = ctx.get(df) {
                         let found_numeric = num_factors.iter().any(|nf| {
                             if let Expr::Number(n_num) = ctx.get(*nf) {
-                                // Check if they share a common factor > 1
-                                // We can use BigRational logic or just convert to integer if they are integers
                                 if n_num.is_integer() && n_den.is_integer() {
                                     let num_int = n_num.to_integer();
                                     let den_int = n_den.to_integer();
@@ -146,49 +140,78 @@ define_rule!(
                             false
                         });
                         if found_numeric {
-                            return true;
+                            return 1; // Conservative estimate for number simplification
                         }
                     }
                 }
                 
-                // Fallback to Polynomial GCD for polynomial cases (like (x^2+x)/x)
-                // Only if structural check failed
+                // Fallback to Polynomial GCD
                 let vars = crate::rules::algebra::collect_variables(ctx, num);
-                if vars.is_empty() { return false; } 
+                if vars.is_empty() { return 0; } 
                 
                 for var in vars {
                     if let (Ok(p_num), Ok(p_den)) = (Polynomial::from_expr(ctx, num, &var), Polynomial::from_expr(ctx, den, &var)) {
                         if p_den.is_zero() { continue; }
                         let gcd = p_num.gcd(&p_den);
+                        // println!("DistributeRule Poly GCD check: num={:?} den={:?} var={} gcd={:?}", ctx.get(num), ctx.get(den), var, gcd);
                         if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
-                            return true;
+                            // Estimate complexity of GCD
+                            // If GCD cancels denominator (degree match), reduction is high
+                            if gcd.degree() == p_den.degree() {
+                                // Assume denominator is removed (size(den) + 1)
+                                return cas_ast::expression::count_nodes(ctx, den) + 1;
+                            }
+                            // Otherwise, just return 1
+                            return 1;
                         }
                     }
                 }
-                false
+                0
             };
 
             if let Expr::Add(a, b) = l_data {
-                // Only distribute if at least one term simplifies
-                if simplifies(ctx, a, r) || simplifies(ctx, b, r) {
+                let red_a = get_simplification_reduction(ctx, a, r);
+                let red_b = get_simplification_reduction(ctx, b, r);
+                
+                // Only distribute if EITHER term simplifies
+                if red_a > 0 || red_b > 0 {
                     let ac = ctx.add(Expr::Div(a, r));
                     let bc = ctx.add(Expr::Div(b, r));
                     let new_expr = ctx.add(Expr::Add(ac, bc));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Distribute division (simplifying)".to_string(),
-                    });
+                    
+                    // Check complexity to prevent cycles with AddFractionsRule
+                    let old_complexity = cas_ast::expression::count_nodes(ctx, expr);
+                    let new_complexity = cas_ast::expression::count_nodes(ctx, new_expr);
+                    
+                    // Allow if predicted complexity (after simplification) is not worse
+                    if new_complexity <= old_complexity + red_a + red_b {
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Distribute division (simplifying)".to_string(),
+                        });
+                    }
                 }
             }
             if let Expr::Sub(a, b) = l_data {
-                if simplifies(ctx, a, r) || simplifies(ctx, b, r) {
+                let red_a = get_simplification_reduction(ctx, a, r);
+                let red_b = get_simplification_reduction(ctx, b, r);
+
+                if red_a > 0 || red_b > 0 {
                     let ac = ctx.add(Expr::Div(a, r));
                     let bc = ctx.add(Expr::Div(b, r));
                     let new_expr = ctx.add(Expr::Sub(ac, bc));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Distribute division (simplifying)".to_string(),
-                    });
+                    
+                    // Check complexity to prevent cycles with AddFractionsRule
+                    let old_complexity = cas_ast::expression::count_nodes(ctx, expr);
+                    let new_complexity = cas_ast::expression::count_nodes(ctx, new_expr);
+                    
+                    // Allow if predicted complexity (after simplification) is not worse
+                    if new_complexity <= old_complexity + red_a + red_b {
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Distribute division (simplifying)".to_string(),
+                        });
+                    }
                 }
             }
         }

@@ -6,7 +6,7 @@ use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNega
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, RationalizeDenominatorRule, FractionAddRule, ExpandRule, FactorRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, RationalizeDenominatorRule, AddFractionsRule, ExpandRule, FactorRule};
 use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_engine::rules::grouping::CollectRule;
@@ -125,7 +125,7 @@ impl Repl {
         simplifier.add_rule(Box::new(CanonicalizeAddRule));
         simplifier.add_rule(Box::new(CanonicalizeMulRule));
         simplifier.add_rule(Box::new(RationalizeDenominatorRule));
-        simplifier.add_rule(Box::new(FractionAddRule));
+        simplifier.add_rule(Box::new(AddFractionsRule));
         simplifier.add_rule(Box::new(CanonicalizeRootRule));
         simplifier.add_rule(Box::new(EvaluateAbsRule));
         simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
