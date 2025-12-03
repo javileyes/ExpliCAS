@@ -309,10 +309,38 @@ impl Repl {
         Ok(())
     }
 
+    /// Converts function-style commands to command-style
+    /// Examples:
+    ///   simplify(...) -> simplify x^2 + 1
+    ///   solve(...) -> solve x + 2 = 5, x
+    fn preprocess_function_syntax(&self, line: &str) -> String {
+        let line = line.trim();
+        
+        // Check for simplify(...)
+        if line.starts_with("simplify(") && line.ends_with(")") {
+            let content = &line["simplify(".len()..line.len()-1];
+            return format!("simplify {}", content);
+        }
+        
+        // Check for solve(...)
+        if line.starts_with("solve(") && line.ends_with(")") {
+            let content = &line["solve(".len()..line.len()-1];
+            return format!("solve {}", content);
+        }
+        
+        // Return unchanged
+        line.to_string()
+    }
+
     pub fn handle_command(&mut self, line: &str) {
+        // Preprocess: Convert function-style commands to command-style
+        // simplify(...) -> simplify ...
+        // solve(...) -> solve ...
+        let line = self.preprocess_function_syntax(line);
+        
         // Check for "help" command
         if line.starts_with("help") {
-            self.handle_help(line);
+            self.handle_help(&line);
             return;
         }
 
@@ -357,35 +385,35 @@ impl Repl {
 
         // Check for "equiv" command
         if line.starts_with("equiv ") {
-            self.handle_equiv(line);
+            self.handle_equiv(&line);
             return;
         }
 
         // Check for "subst" command
         if line.starts_with("subst ") {
-            self.handle_subst(line);
+            self.handle_subst(&line);
             return;
         }
 
         // Check for "solve" command
         if line.starts_with("solve ") {
-            self.handle_solve(line);
+            self.handle_solve(&line);
             return;
         }
 
         // Check for "simplify" command
         if line.starts_with("simplify ") {
-            self.handle_full_simplify(line);
+            self.handle_full_simplify(&line);
             return;
         }
 
         // Check for "config" command
         if line.starts_with("config ") {
-            self.handle_config(line);
+            self.handle_config(&line);
             return;
         }
 
-        self.handle_eval(line);
+        self.handle_eval(&line);
     }
 
     fn handle_config(&mut self, line: &str) {
