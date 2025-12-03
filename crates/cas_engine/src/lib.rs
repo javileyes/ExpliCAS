@@ -12,6 +12,7 @@ pub mod orchestrator;
 pub mod step_optimization;
 pub mod strategies;
 pub mod profiler;
+pub mod visualizer;
 
 pub mod visitors;
 pub mod error;

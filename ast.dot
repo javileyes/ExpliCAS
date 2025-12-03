@@ -1,0 +1,20 @@
+digraph AST {
+  node [shape=box, style="rounded,filled", fontname="Arial"];
+  edge [arrowsize=0.7];
+  rankdir=TB;
+  bgcolor="#f8f8f8";
+
+  n0 [label="×", fillcolor="#ffe0b2"];
+  n1 [label="+", fillcolor="#fff3e0"];
+  n2 [label="x", shape=ellipse, fillcolor="#c8e6c9"];
+  n3 [label="1", shape=circle, fillcolor="#e3f2fd"];
+  n1 -> n2 [label="L"];
+  n1 -> n3 [label="R"];
+  n4 [label="−", fillcolor="#fff3e0"];
+  n5 [label="x", shape=ellipse, fillcolor="#c8e6c9"];
+  n6 [label="1", shape=circle, fillcolor="#e3f2fd"];
+  n4 -> n5 [label="L"];
+  n4 -> n6 [label="R"];
+  n0 -> n1 [label="L"];
+  n0 -> n4 [label="R"];
+}

@@ -433,6 +433,12 @@ impl Repl {
             return;
         }
 
+        // Check for "visualize" or "dot" command
+        if line.starts_with("visualize ") || line.starts_with("dot ") {
+            self.handle_visualize(&line);
+            return;
+        }
+
         // Check for "profile" commands
         if line.starts_with("profile") {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -787,6 +793,33 @@ impl Repl {
             return;
         }
         println!("Usage: subst <expression>, <var>=<value>");
+    }
+
+    fn handle_visualize(&mut self, line: &str) {
+        let rest = if line.starts_with("visualize ") {
+            &line[10..]
+        } else {
+            &line[4..]
+        }.trim();
+        
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                let mut viz = cas_engine::visualizer::AstVisualizer::new(&self.simplifier.context);
+                let dot = viz.to_dot(expr);
+                
+                // Save to file
+                let filename = "ast.dot";
+                match std::fs::write(filename, &dot) {
+                    Ok(_) => {
+                        println!("AST exported to {}", filename);
+                        println!("Render with: dot -Tsvg {} -o ast.svg", filename);
+                        println!("Or: dot -Tpng {} -o ast.png", filename);
+                    }
+                    Err(e) => println!("Error writing file: {}", e),
+                }
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
     }
 
     fn handle_solve(&mut self, line: &str) {
