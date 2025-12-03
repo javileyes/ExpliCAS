@@ -946,7 +946,6 @@ define_rule!(
             let (n1, d1, is_frac1) = get_num_den(l);
             let (n2, d2, is_frac2) = get_num_den(r);
 
-
             if !is_frac1 && !is_frac2 {
                 return None;
             }
