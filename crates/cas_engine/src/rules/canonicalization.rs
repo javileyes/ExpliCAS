@@ -420,6 +420,43 @@ define_rule!(
     }
 );
 
+define_rule!(
+    NormalizeSignsRule,
+    "Normalize Signs",
+    |ctx, expr| {
+        // Pattern 1: -c + x -> x - c (if c is positive number)
+        if let Expr::Add(l, r) = ctx.get(expr) {
+            if let Expr::Neg(inner_neg) = ctx.get(*l) {
+                if let Expr::Number(n) = ctx.get(*inner_neg) {
+                    if *n > num_rational::BigRational::zero() {
+                        let n_clone = n.clone();
+                        let new_expr = ctx.add(Expr::Sub(*r, *inner_neg));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: format!("-{} + x -> x - {}", n_clone, n_clone),
+                        });
+                    }
+                }
+            }
+            // Also check the opposite order: x + (-c) -> x - c
+            if let Expr::Neg(inner_neg) = ctx.get(*r) {
+                if let Expr::Number(n) = ctx.get(*inner_neg) {
+                    if *n > num_rational::BigRational::zero() {
+                        let n_clone = n.clone();
+                        let new_expr = ctx.add(Expr::Sub(*l, *inner_neg));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: format!("x + (-{}) -> x - {}", n_clone, n_clone),
+                        });
+                    }
+                }
+            }
+        }
+        
+        None
+    }
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,4 +518,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeDivRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
+    simplifier.add_rule(Box::new(NormalizeSignsRule));
 }

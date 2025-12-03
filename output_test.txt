@@ -1,6 +1,6 @@
 ==================================================
 CLI Tests Output - Modo NORMAL
-Fecha: Wed Dec  3 09:50:35 CET 2025
+Fecha: Wed Dec  3 10:08:23 CET 2025
 ==================================================
 
     Finished `release` profile [optimized] target(s) in 0.02s
@@ -523,7 +523,6 @@ Steps (Aggressive Mode):
    Global: 1 + 2 * 1 / x
 Result: 1 + 2 * 1 / x
 Parsed: x / (x + 1) + 1 / (x + 1)
-AddFractionsRule simplifies: Poly GCD found: Polynomial { coeffs: [Ratio { numer: 1, denom: 1 }, Ratio { numer: 1, denom: 1 }], var: "x" }
 Steps (Aggressive Mode):
 1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
    Local: 1 / (1 + x) + x / (1 + x) -> (1 * 1 + x * 1) / ((1 + x) * 1)
@@ -1059,13 +1058,13 @@ No simplification steps needed.
 Result: sin(x)^3
 Parsed: diff(x, x)
 Steps (Aggressive Mode):
-1. diff(ExprId(7009), x)  [Symbolic Differentiation]
+1. diff(x, x)  [Symbolic Differentiation]
    Local: diff(x, x) -> 1
    Global: 1
 Result: 1
 Parsed: diff(x^2, x)
 Steps (Aggressive Mode):
-1. diff(ExprId(7017), x)  [Symbolic Differentiation]
+1. diff(x^2, x)  [Symbolic Differentiation]
    Local: diff(x^2, x) -> 2 * x^(2 - 1) * 1
    Global: 2 * x^(2 - 1) * 1
 2. 2 - 1 = 1  [Combine Constants]
@@ -1074,7 +1073,7 @@ Steps (Aggressive Mode):
 Result: 2 * x
 Parsed: diff(x^3, x)
 Steps (Aggressive Mode):
-1. diff(ExprId(7046), x)  [Symbolic Differentiation]
+1. diff(x^3, x)  [Symbolic Differentiation]
    Local: diff(x^3, x) -> 3 * x^(3 - 1) * 1
    Global: 3 * x^(3 - 1) * 1
 2. 3 - 1 = 2  [Combine Constants]
@@ -1083,27 +1082,27 @@ Steps (Aggressive Mode):
 Result: 3 * x^2
 Parsed: diff(x^n, x)
 Steps (Aggressive Mode):
-1. diff(ExprId(7073), x)  [Symbolic Differentiation]
+1. diff(x^n, x)  [Symbolic Differentiation]
    Local: diff(x^n, x) -> n * x^(n - 1) * 1
    Global: n * x^(n - 1) * 1
 Result: n * x^(-1 + n)
 Parsed: diff(sin(x), x)
 Steps (Aggressive Mode):
-1. diff(ExprId(7108), x)  [Symbolic Differentiation]
+1. diff(sin(x), x)  [Symbolic Differentiation]
    Local: diff(sin(x), x) -> cos(x) * 1
    Global: cos(x) * 1
 Result: cos(x)
 Parsed: diff(cos(x), x)
 Steps (Aggressive Mode):
-1. diff(ExprId(7115), x)  [Symbolic Differentiation]
+1. diff(cos(x), x)  [Symbolic Differentiation]
    Local: diff(cos(x), x) -> -sin(x) * 1
    Global: -sin(x) * 1
 Result: -sin(x)
 Parsed: diff(tan(x), x)
 
-thread 'main' (12252726) has overflowed its stack
+thread 'main' (12289640) has overflowed its stack
 fatal runtime error: stack overflow, aborting
 
 ==================================================
-Tests completados: Wed Dec  3 09:50:36 CET 2025
+Tests completados: Wed Dec  3 10:08:24 CET 2025
 ==================================================

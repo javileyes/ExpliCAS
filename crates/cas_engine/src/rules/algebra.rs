@@ -4,6 +4,10 @@ use cas_ast::{Expr, ExprId, Context, DisplayExpr};
 use cas_ast::expression::count_nodes;
 use crate::polynomial::Polynomial;
 use std::collections::HashSet;
+use crate::helpers;
+use crate::visitors;
+use crate::ordering::compare_expr;
+use std::cmp::Ordering;
 
 use num_traits::{One, Signed, Zero};
 use num_rational::BigRational;
@@ -774,6 +778,59 @@ define_rule!(
     }
 );
 
+// Helper function: Check if two expressions are structurally opposite (e.g., a-b vs b-a)
+fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+    // Debug: print what we're comparing
+    eprintln!("Comparing denominators: e1={:?} vs e2={:?}", ctx.get(e1), ctx.get(e2));
+    
+    match (ctx.get(e1), ctx.get(e2)) {
+        // Case 1: (a - b) vs (b - a)
+        (Expr::Sub(l1, r1), Expr::Sub(l2, r2)) => {
+            compare_expr(ctx, *l1, *r2) == Ordering::Equal &&
+            compare_expr(ctx, *r1, *l2) == Ordering::Equal
+        }
+        // Case 2: (-a + b) vs (a - b) where a and b are ANY expressions
+        // e.g., -1 + x vs 1 - x OR -x^(1/2) + c vs x^(1/2) - c
+        (Expr::Add(l1, r1), Expr::Sub(l2, r2)) => {
+            // Pattern: Add(Neg(a), b) vs Sub(a, b)
+            // This matches: -a + b vs a - b, which are opposites
+            if let Expr::Neg(neg_inner) = ctx.get(*l1) {
+                if compare_expr(ctx, *neg_inner, *l2) == Ordering::Equal &&
+                   compare_expr(ctx, *r1, *r2) == Ordering::Equal {
+                    // eprintln!("  -> MATCH case 2a: Add(Neg(a), b) vs Sub(a, b)");
+                    return true;
+                }
+            }
+            // Also check if l1 is Number(-n) and l2 is Number(n)
+            if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(*l1), ctx.get(*l2)) {
+                if n1 == &-n2 && compare_expr(ctx, *r1, *r2) == Ordering::Equal {
+                    // eprintln!("  -> MATCH case 2b: Add(Number(-n), b) vs Sub(Number(n), b)");
+                    return true;
+                }
+            }
+            false
+        }
+        // Case 3: Reverse of case 2: Sub(a, b) vs Add(Neg(a), b) or Add(Number(-n), b)
+        (Expr::Sub(_, _), Expr::Add(_, _)) => {
+            are_denominators_opposite(ctx, e2, e1)
+        }
+        // Case 4: Add(Neg(a), b) vs Add(Neg(b), a) -- both are negative forms
+        // e.g., -1 + x vs -x + 1
+        (Expr::Add(l1, r1), Expr::Add(l2, r2)) => {
+            if let (Expr::Neg(neg_l1), Expr::Neg(neg_l2)) = (ctx.get(*l1), ctx.get(*l2)) {
+                // -a + b vs -c + d
+                // Opposite if: a == d AND b == c (swapped)
+                if compare_expr(ctx, *neg_l1, *r2) == Ordering::Equal &&
+                   compare_expr(ctx, *r1, *neg_l2) == Ordering::Equal {
+                    // eprintln!("  -> MATCH case 4: Add(Neg(a), b) vs Add(Neg(b), a)");
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false
+    }
+}
 
 define_rule!(
     AddFractionsRule,
@@ -872,18 +929,28 @@ define_rule!(
 
             // Check if d2 = -d1 (e.g. x-1 and 1-x)
             let (n2, d2) = {
-                let vars = collect_variables(ctx, d1);
                 let mut found_neg = false;
-                if !vars.is_empty() {
-                     for var in vars {
-                         if let (Ok(p1), Ok(p2)) = (Polynomial::from_expr(ctx, d1, &var), Polynomial::from_expr(ctx, d2, &var)) {
-                             if p1.add(&p2).is_zero() {
-                                 found_neg = true;
-                                 break;
+                
+                // First try structural comparison (works for sqrt and other non-polynomials)
+                if are_denominators_opposite(ctx, d1, d2) {
+                    found_neg = true;
+                }
+                
+                // Fallback to polynomial check if structural didn't match
+                if !found_neg {
+                    let vars = collect_variables(ctx, d1);
+                    if !vars.is_empty() {
+                         for var in vars {
+                             if let (Ok(p1), Ok(p2)) = (Polynomial::from_expr(ctx, d1, &var), Polynomial::from_expr(ctx, d2, &var)) {
+                                 if p1.add(&p2).is_zero() {
+                                     found_neg = true;
+                                     break;
+                                 }
                              }
                          }
-                     }
+                    }
                 }
+                
                 if found_neg {
                     (ctx.add(Expr::Neg(n2)), d1)
                 } else {
