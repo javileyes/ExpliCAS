@@ -39,10 +39,33 @@ impl Orchestrator {
             current = collected;
         }
 
-        // 2. Rule-based Simplification Loop
-        let (simplified, rule_steps) = simplifier.apply_rules_loop(current);
-        steps.extend(rule_steps);
-        current = simplified;
+        // 2. Rule-based Simplification Loop (WITH MULTIPLE PASSES)
+        // This allows rules to be re-applied after transformations like rationalization
+        // create new opportunities for combination
+        let max_passes = 5; // Safety limit to prevent infinite loops
+        let mut pass_count = 0;
+        
+        loop {
+            let (simplified, rule_steps) = simplifier.apply_rules_loop(current);
+            
+            // Check if anything changed
+            let changed = simplified != current || 
+                         crate::ordering::compare_expr(&simplifier.context, simplified, current) != std::cmp::Ordering::Equal;
+            
+            if changed {
+                steps.extend(rule_steps);
+                current = simplified;
+                pass_count += 1;
+                
+                // Safety check: prevent infinite loops
+                if pass_count >= max_passes {
+                    break;
+                }
+            } else {
+                // No changes in this pass, we're done
+                break;
+            }
+        }
 
         // 3. High-Level Strategies (Heuristics)
         // Try polynomial simplification (expand -> simplify -> factor)
@@ -64,7 +87,7 @@ impl Orchestrator {
             }
         }
 
-        // 3. Final Collection (Ensure canonical form)
+        // 4. Final Collection (Ensure canonical form)
         let final_collected = crate::collect::collect(&mut simplifier.context, current);
         if final_collected != current {
             if crate::ordering::compare_expr(&simplifier.context, final_collected, current) != std::cmp::Ordering::Equal {
@@ -82,7 +105,7 @@ impl Orchestrator {
             current = final_collected;
         }
 
-        // 4. Optimize Steps
+        // 5. Optimize Steps
         let optimized_steps = if simplifier.collect_steps {
             crate::step_optimization::optimize_steps(steps)
         } else {

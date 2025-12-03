@@ -946,39 +946,51 @@ define_rule!(
             let (n1, d1, is_frac1) = get_num_den(l);
             let (n2, d2, is_frac2) = get_num_den(r);
 
+
             if !is_frac1 && !is_frac2 {
                 return None;
             }
             // eprintln!("AddFractionsRule visiting: {:?}", ctx.get(expr));
 
-            // Check if d2 = -d1 (e.g. x-1 and 1-x)
-            let (n2, d2, opposite_denom) = {
+            // Check if d2 = -d1 (e.g. x-1 and 1-x) OR d2 == d1
+            let (n2, d2, opposite_denom, same_denom) = {
                 let mut found_neg = false;
+                let mut found_same = false;
                 
-                            // First try structural comparison (works for sqrt and other non-polynomials)
-                if are_denominators_opposite(ctx, d1, d2) {
-                    found_neg = true;
+                // First check if denominators are exactly equal
+                if crate::ordering::compare_expr(ctx, d1, d2) == std::cmp::Ordering::Equal {
+                    found_same = true;
                 }
                 
-                // Fallback to polynomial check if structural didn't match
-                if !found_neg {
-                    let vars = collect_variables(ctx, d1);
-                    if !vars.is_empty() {
-                         for var in vars {
-                             if let (Ok(p1), Ok(p2)) = (Polynomial::from_expr(ctx, d1, &var), Polynomial::from_expr(ctx, d2, &var)) {
-                                 if p1.add(&p2).is_zero() {
-                                     found_neg = true;
-                                     break;
+                // If not same, check if opposite
+                if !found_same {
+                    // First try structural comparison (works for sqrt and other non-polynomials)
+                    if are_denominators_opposite(ctx, d1, d2) {
+                        found_neg = true;
+                    }
+                    
+                    // Fallback to polynomial check if structural didn't match
+                    if !found_neg {
+                        let vars = collect_variables(ctx, d1);
+                        if !vars.is_empty() {
+                             for var in vars {
+                                 if let (Ok(p1), Ok(p2)) = (Polynomial::from_expr(ctx, d1, &var), Polynomial::from_expr(ctx, d2, &var)) {
+                                     if p1.add(&p2).is_zero() {
+                                         found_neg = true;
+                                         break;
+                                     }
                                  }
                              }
-                         }
+                        }
                     }
                 }
                 
                 if found_neg {
-                    (ctx.add(Expr::Neg(n2)), d1, true)  // Mark that opposite denom detected
+                    (ctx.add(Expr::Neg(n2)), d1, true, false)  // Opposite: negate n2, use d1
+                } else if found_same {
+                    (n2, d1, false, true)  // Same: keep n2, use d1
                 } else {
-                    (n2, d2, false)
+                    (n2, d2, false, false)  // Different: keep both
                 }
             };
 
@@ -1308,8 +1320,8 @@ define_rule!(
 
             let does_simplify = simplifies(ctx, new_num, common_den);
             // Allow simplification if complexity doesn't increase too much (1.5x)
-            // OR if we detected opposite denominators (always beneficial)
-            if opposite_denom || new_complexity <= old_complexity || (does_simplify && new_complexity < (old_complexity * 3) / 2) {
+            // OR if we detected opposite/same denominators (always beneficial to combine)
+            if opposite_denom || same_denom || new_complexity <= old_complexity || (does_simplify && new_complexity < (old_complexity * 3) / 2) {
                 return Some(Rewrite {
                     new_expr,
                     description: "Add fractions: a/b + c/d -> (ad+bc)/bd".to_string(),

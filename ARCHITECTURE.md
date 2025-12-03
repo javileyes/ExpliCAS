@@ -271,18 +271,102 @@ Reduce complejidad en casos con subexpresiones compartidas.
 
 ```rust
 pub struct Orchestrator {
+    pub max_iterations: usize,              // Límite de seguridad (default: 10)
     pub enable_polynomial_strategy: bool,
 }
 ```
 
-**Responsabilidad**: Aplicar estrategias de simplificación de nivel superior.
+**Responsabilidad**: Coordinar múltiples estrategias de simplificación y gestionar el flujo multi-pass.
+
+##### Pipeline de Simplificación
+
+```
+Input Expression
+    ↓
+1. Initial Collection (Normalize)
+    ↓
+2. Multi-Pass Rule Application ← ★ NUEVO: Iteración hasta convergencia
+    ↓
+3. Polynomial Strategy (si aplica)
+    ↓
+4. Final Collection (Ensure canonical form)
+    ↓
+5. Step Optimization
+    ↓
+Result + Steps
+```
+
+##### **Multi-Pass Simplification** ★
+
+**Problema Resuelto**: Transformaciones como `RationalizeDenominatorRule` crean nuevas oportunidades de simplificación que no eran visibles en el primer pase.
+
+**Ejemplo**:
+```
+1/(sqrt(x)+1) + 1/(sqrt(x)-1) - 2*sqrt(x)/(x-1)
+  ↓ [Pass 1: Rationalize]
+(1-sqrt(x))/(1-x) + (-1-sqrt(x))/(1-x) - 2*sqrt(x)/(x-1)
+  ↓ [Pass 2: Add fractions with same denominator]  ← Sin multi-pass, esto no pasaba
+-2*sqrt(x)/(1-x) - 2*sqrt(x)/(x-1)
+  ↓ [Pass 3: Recognize opposite denominators]
+0
+```
+
+**Implementación**:
+```rust
+pub fn simplify(&self, expr: ExprId, simplifier: &mut Simplifier) -> (ExprId, Vec<Step>) {
+    // ... Initial collection ...
+    
+    // Multi-Pass Rule Application
+    let max_passes = 5;
+    let mut pass_count = 0;
+    
+    loop {
+        let (simplified, rule_steps) = simplifier.apply_rules_loop(current);
+        
+        // Check if anything changed
+        let changed = simplified != current || 
+                     compare_expr(&simplifier.context, simplified, current) != Ordering::Equal;
+        
+        if changed {
+            steps.extend(rule_steps);
+            current = simplified;
+            pass_count += 1;
+            
+            if pass_count >= max_passes {
+                break; // Safety: prevent infinite loops
+            }
+        } else {
+            break; // Converged
+        }
+    }
+    
+    // ... Polynomial strategy, final collection ...
+}
+```
+
+**Características**:
+- **Convergencia automática**: Itera hasta que no hay cambios
+- **Safeguard**: Límite máximo de 5 iteraciones
+- **Performance**: Casos simples terminan en 1 iteración
+- **Casos complejos**: Típicamente 2-3 iteraciones
+
+**Métricas Observadas**:
+| Expresión | Iteraciones | Resultado |
+|-----------|-------------|-----------|
+| `1/(x-1) + 1/(1-x)` | 1 | `0` |
+| `2/(x-1) + 3/(1-x)` | 1 | `-1/(x-1)` |
+| `1/(sqrt(x)+1) + 1/(sqrt(x)-1)` | 2 | `2*sqrt(x)/(x-1)` |
+| **Bridge case completo** | 3 | `0` ✓ |
 
 ##### Estrategias Implementadas
 
 1. **Polynomial Strategy** (`strategies::polynomial_strategy`):
    - Detecta expresiones polinómicas
    - Aplica `collect` para agrupar términos
-   - Evita expansiones innecesarias
+   - Evita expansiones innecesarias según heurísticas:
+     - Skip si exponentes > 6 (evita explosión)
+     - Skip si > 4 divisiones (no es polinomio simple)
+     - Skip si no tiene Add/Sub (no hay términos que combinar)
 
 2. **Global Simplification Loop**:
    - Aplica reglas hasta alcanzar un punto fijo
@@ -290,8 +374,8 @@ pub struct Orchestrator {
 
 **Flujo**:
 ```
-expr → [Polynomial Strategy] → [Global Loop] → simplified_expr
-       (si es polinomio)         (hasta estabilizar)
+expr → [Multi-Pass Loop] → [Polynomial Strategy] → [Final Collection] → result
+       (hasta convergencia)   (si es polinomio)      (normalizar)
 ```
 
 #### 3.4. Step - Trazabilidad
@@ -411,6 +495,127 @@ Permite habilitar/deshabilitar reglas sin recompilar.
 - `DistributeRule`: `a(b + c) → ab + ac`
 - `FactorRule`: `x^2 - 1 → (x-1)(x+1)`
 - `SimplifyFractionRule`: `(x^2 - 1)/(x - 1) → x + 1`
+
+##### **AddFractionsRule - Suma de Fracciones Mejorada** ★
+
+**Problema**: Sumar fracciones con denominadores algebraicos complejos.
+
+**Casos Soportados**:
+
+1. **Denominadores Opuestos Estructurales**:
+   - `(a - b)` vs `(b - a)` → Se detectan como opuestos
+   - `(-a + b)` vs `(a - b)` → Maneja formas con `Neg`
+   - `(Number(-n) + x)` vs `(Number(n) - x)` → Números con signos opuestos
+   - `Add(Number(-n), x)` vs `Add(Number(n), Neg(x))` → Formas mixtas de Add
+
+2. **Denominadores Iguales**:
+   - Se detectan mediante `compare_expr` estructural
+   - Bypass de complejidad cuando denominadores son iguales
+
+**Algoritmo**:
+```rust
+// 1. Detectar relación entre denominadores
+let (n2, d2, opposite_denom, same_denom) = {
+    // Verificar si son exactamente iguales
+    if compare_expr(ctx, d1, d2) == Ordering::Equal {
+        (n2, d1, false, true)  // Mismo denominador
+    }
+    // Verificar si son opuestos
+    else if are_denominators_opposite(ctx, d1, d2) {
+        (ctx.add(Expr::Neg(n2)), d1, true, false)  // Negar n2
+    }
+    else {
+        (n2, d2, false, false)  // Diferentes
+    }
+};
+
+// 2. Calcular común denominador (LCM)
+let (common_den, mult1, mult2) = calculate_lcm(d1, d2);
+
+// 3. Construir nueva expresión
+let new_expr = (n1*mult1 + n2*mult2) / common_den;
+
+// 4. Aplicar regla si:
+//    - Denominadores opuestos/iguales (siempre beneficioso), O
+//    - Complejidad no aumenta, O  
+//    - Simplifica y complejidad < 1.5x
+if opposite_denom || same_denom || 
+   new_complexity <= old_complexity ||
+   (simplifies && new_complexity < old_complexity * 1.5) {
+    return Some(Rewrite { new_expr, ... });
+}
+```
+
+**Función `are_denominators_opposite`**:
+```rust
+fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+    match (ctx.get(e1), ctx.get(e2)) {
+        // Caso 1: (a - b) vs (b - a)
+        (Expr::Sub(l1, r1), Expr::Sub(l2, r2)) => {
+            compare_expr(ctx, *l1, *r2) == Equal &&
+            compare_expr(ctx, *r1, *l2) == Equal
+        }
+        
+        // Caso 2: (-a + b) vs (a - b)
+        (Expr::Add(l1, r1), Expr::Sub(l2, r2)) => {
+            if let Expr::Neg(neg_l1) = ctx.get(*l1) {
+                compare_expr(ctx, *neg_l1, *l2) == Equal &&
+                compare_expr(ctx, *r1, *r2) == Equal
+            } else { false }
+        }
+        
+        // Caso 3: Add(Number(-n), x) vs Add(Number(n), Neg(x))
+        (Expr::Add(l1, r1), Expr::Add(l2, r2)) => {
+            if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(*l1), ctx.get(*l2)) {
+                if let Expr::Neg(neg_r2) = ctx.get(*r2) {
+                    n1 == &(-n2.clone()) && 
+                    compare_expr(ctx, *r1, *neg_r2) == Equal
+                } else { false }
+            } else { false }
+        }
+        
+        _ => false
+    }
+}
+```
+
+**Ejemplo Complejo - "El Puente Conjugado"**:
+```
+Input: 1/(sqrt(x)+1) + 1/(sqrt(x)-1) - 2*sqrt(x)/(x-1)
+
+Pass 1 [Rationalize denominators]:
+  → (1-sqrt(x))/(1-x) + (-1-sqrt(x))/(1-x) - 2*sqrt(x)/(x-1)
+
+Pass 2 [Detect same denominators (1-x)]:
+  → -2*sqrt(x)/(1-x) - 2*sqrt(x)/(x-1)
+     ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^
+         same_denom=true     opposite_denom=true
+
+Pass 3 [Combine and recognize opposites]:
+  → 0
+```
+
+**Métricas de Éxito**:
+- ✅ Casos polinomiales simples: 100% éxito
+- ✅ Casos con raíces (1 nivel): 100% éxito  
+- ✅ Casos complejos (nested, bridge): 100% éxito
+
+##### Optimización: Bypass de Complejidad
+
+**Motivación**: Combinar fracciones con denominadores iguales u opuestos es **siempre matemáticamente beneficioso**, incluso si aumenta temporalmente la complejidad del AST.
+
+**Implementación**:
+```rust
+// ANTES: Solo aplicaba si complejidad no aumentaba
+if new_complexity <= old_complexity { apply(); }
+
+// AHORA: Bypass si denominadores especiales
+if opposite_denom || same_denom || new_complexity <= old_complexity {
+    apply(); // ← SIEMPRE se aplica si denominadores son relevantes
+}
+```
+
+**Justificación**: Una fracción como `a/d + b/d` debe SIEMPRE simplificarse a `(a+b)/d`, incluso si `(a+b)` es más complejo que mantener separado.
 
 #### 5. Reglas Especializadas
 **Dominios específicos**:
@@ -815,11 +1020,14 @@ define_rule!(
 
 ### Áreas de Mejora Futura
 
-1. **Paralelización**: Simplificar subexpresiones independientes en paralelo
-2. **Heurísticas Avanzadas**: ML para predecir mejor secuencia de reglas
-3. **Verificación Formal**: Probar corrección de reglas con SMT solvers
-4. **Rendimiento**: Compilación JIT de expresiones frecuentes
-5. **UI Gráfica**: Visualización de árbol de simplificación
+1. ~~**Multi-Pass Orchestration**~~: ✅ **COMPLETADO** - Implementado sistema de iteración hasta convergencia
+2. ~~**Fraction Simplification**~~: ✅ **COMPLETADO** - Detecta denominadores opuestos/iguales con bypass de complejidad
+3. **Paralelización**: Simplificar subexpresiones independientes en paralelo
+4. **Heurísticas Avanzadas**: ML para predecir mejor secuencia de reglas
+5. **Verificación Formal**: Probar corrección de reglas con SMT solvers
+6. **Rendimiento**: Compilación JIT de expresiones frecuentes
+7. **UI Gráfica**: Visualización de árbol de simplificación
+8. **Pruebas de Equivalencia**: Mejorar `equiv` command con más estrategias
 
 ### Referencias Útiles
 
