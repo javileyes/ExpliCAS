@@ -11,7 +11,7 @@ use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_engine::rules::grouping::CollectRule;
 use rustyline::error::ReadlineError;
-use cas_ast::{DisplayExpr, RawDisplayExpr, ExprId, Expr, Context};
+use cas_ast::{Context, Expr, DisplayExpr, ExprId, RelOp};
 use cas_engine::step::PathStep;
 
 
@@ -19,9 +19,17 @@ use crate::completer::CasHelper;
 use crate::config::CasConfig;
 use rustyline::config::Configurer;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verbosity {
+    None,
+    Low,
+    Normal,
+    Verbose,
+}
+
 pub struct Repl {
     simplifier: Simplifier,
-    show_steps: bool,
+    verbosity: Verbosity,
     config: CasConfig,
 }
 
@@ -92,42 +100,35 @@ fn reconstruct_global_expr(context: &mut Context, root: ExprId, path: &[PathStep
     }
 }
 
-fn should_show_step(step: &cas_engine::step::Step) -> bool {
-    let desc = &step.description;
-    let _rule = &step.rule_name;
-    
-    // Filter out trivial identity steps
-    if desc.contains("x * 1 = x") || desc.contains("x + 0 = x") || desc.contains("Identity Property") {
-        return false;
+
+fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool {
+    match verbosity {
+        Verbosity::None => false,
+        Verbosity::Verbose => true,
+        Verbosity::Low | Verbosity::Normal => {
+            // Filter out "noise" rules
+            let name = &step.rule_name;
+            if name.starts_with("Canonicalize") || 
+               name.starts_with("Sort") || 
+               name == "Collect" || 
+               name.starts_with("Identity") ||
+               name == "Add Zero" ||
+               name == "Multiply by One" {
+                false
+            } else {
+                true
+            }
+        }
     }
-    
-    // Filter out associativity fixes (unless verbose?)
-    // "Fix associativity..."
-    if desc.starts_with("Fix associativity") {
-        return false;
-    }
-    
-    // Filter out "Sort..." if it's just reordering?
-    // User complained about "Sorting Jitter". My new "Sort" rule does it in one go.
-    // So "Sort addition terms" is a single step that puts everything in order.
-    // This is probably fine to show, as it explains why the expression changed shape.
-    
-    true
 }
 
 impl Repl {
     pub fn new() -> Self {
         let config = CasConfig::load();
-        let mut simplifier = Simplifier::new();
+        let mut simplifier = Simplifier::with_default_rules();
+        let config = CasConfig::load();
         
         // Always enabled core rules
-        simplifier.add_rule(Box::new(CanonicalizeNegationRule));
-        simplifier.add_rule(Box::new(CanonicalizeAddRule));
-        simplifier.add_rule(Box::new(CanonicalizeMulRule));
-        simplifier.add_rule(Box::new(RationalizeDenominatorRule));
-        simplifier.add_rule(Box::new(AddFractionsRule));
-        simplifier.add_rule(Box::new(CanonicalizeRootRule));
-        simplifier.add_rule(Box::new(EvaluateAbsRule));
         simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
         simplifier.add_rule(Box::new(EvaluateTrigRule));
         simplifier.add_rule(Box::new(PythagoreanIdentityRule));
@@ -209,7 +210,7 @@ impl Repl {
 
         let mut repl = Self {
             simplifier,
-            show_steps: true,
+            verbosity: Verbosity::None,
             config,
         };
         repl.sync_config_to_simplifier();
@@ -315,15 +316,35 @@ impl Repl {
         }
 
         // Check for "steps" command
-        if line == "steps on" {
-            self.show_steps = true;
-            self.simplifier.collect_steps = true;
-            println!("Step-by-step output enabled.");
-            return;
-        } else if line == "steps off" {
-            self.show_steps = false;
-            self.simplifier.collect_steps = false;
-            println!("Step-by-step output disabled.");
+        if line.starts_with("steps ") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                match parts[1] {
+                    "on" | "normal" => {
+                        self.verbosity = Verbosity::Normal;
+                        self.simplifier.collect_steps = true;
+                        println!("Step-by-step output enabled (Normal).");
+                    },
+                    "off" | "none" => {
+                        self.verbosity = Verbosity::None;
+                        self.simplifier.collect_steps = false;
+                        println!("Step-by-step output disabled.");
+                    },
+                    "verbose" => {
+                        self.verbosity = Verbosity::Verbose;
+                        self.simplifier.collect_steps = true;
+                        println!("Step-by-step output enabled (Verbose).");
+                    },
+                    "low" => {
+                        self.verbosity = Verbosity::Low;
+                        self.simplifier.collect_steps = true;
+                        println!("Step-by-step output enabled (Low).");
+                    },
+                    _ => println!("Usage: steps <on|off|normal|verbose|low|none>"),
+                }
+            } else {
+                 println!("Usage: steps <on|off|normal|verbose|low|none>");
+            }
             return;
         }
 
@@ -537,8 +558,13 @@ impl Repl {
                 println!("Example: solve x + 2 = 5, x -> x = 3");
             },
             "steps" => {
-                println!("Command: steps <on|off>");
-                println!("Description: Toggles the display of step-by-step simplification details.");
+                println!("Command: steps <level>");
+                println!("Description: Controls the verbosity of simplification steps.");
+                println!("Levels:");
+                println!("  normal (or on)   Show clarifying steps (Global state). Default.");
+                println!("  low              Minimal output (Global state sequence only).");
+                println!("  verbose          Show all steps (Local + Global details).");
+                println!("  none (or off)    Disable step output.");
             },
             _ => {
                 println!("Unknown command: {}", parts[1]);
@@ -566,7 +592,7 @@ impl Repl {
         println!("  fact <n>                Factorial (or n!)");
         println!("  choose <n, k>           Binomial coefficient (nCk)");
         println!("  perm <n, k>             Permutations (nPk)");
-        println!("  steps on/off            Toggle step-by-step output");
+        println!("  steps <level>           Set step verbosity (normal, low, verbose, none)");
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
         println!();
@@ -629,36 +655,49 @@ impl Repl {
                     // Parse val
                     match cas_parser::parse(val_str, &mut self.simplifier.context) {
                         Ok(val_expr) => {
-                            if self.show_steps {
+
+                            if self.verbosity != Verbosity::None {
                                 println!("Substituting {} = {} into {}", var, val_str, expr_str);
                             }
                             // Substitute
                             let target_var = self.simplifier.context.var(var);
                             let subbed = cas_engine::solver::strategies::substitute_expr(&mut self.simplifier.context, expr, target_var, val_expr);
                             
-                            if self.show_steps {
-                                println!("After substitution: {}", DisplayExpr { context: &self.simplifier.context, id: subbed });
-                            }
-                            
                             let (result, steps) = self.simplifier.simplify(subbed);
-                            if self.show_steps {
-                                println!("Steps:");
+                            if self.verbosity != Verbosity::None {
+                                if self.verbosity != Verbosity::Low {
+                                    println!("Steps:");
+                                }
                                 let mut current_root = subbed;
                                 let mut step_count = 0;
                                 for step in steps.iter() {
-                                    if should_show_step(step) {
+                                    if should_show_step(step, self.verbosity) {
                                         step_count += 1;
-                                        println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
-                                        current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                                        println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                        
+                                        if self.verbosity == Verbosity::Low {
+                                            // Low mode: just global state
+                                            current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                            println!("-> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                        } else {
+                                            // Normal/Verbose
+                                            println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
+                                            
+                                            if self.verbosity == Verbosity::Verbose {
+                                                let after_disp = if let Some(s) = &step.after_str {
+                                                    s.clone()
+                                                } else {
+                                                    format!("{}", DisplayExpr { context: &self.simplifier.context, id: step.after })
+                                                };
+                                                println!("   Local: {} -> {}", 
+                                                    DisplayExpr { context: &self.simplifier.context, id: step.before },
+                                                    after_disp
+                                                );
+                                            }
+                                            
+                                            current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                            println!("   Global: {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                        }
                                     } else {
-                                        // Still need to update current_root even if hidden?
-                                        // Yes, because subsequent steps depend on the state.
-                                        // But reconstruct_global_expr takes `step.after` which is the local replacement.
-                                        // And `step.path`.
-                                        // If we skip printing, we must still update `current_root`?
-                                        // `reconstruct_global_expr` returns the NEW root.
-                                        // So yes, we must update `current_root`.
                                         current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
                                     }
                                 }
@@ -706,17 +745,49 @@ impl Repl {
                 let (sim_lhs, steps_lhs) = self.simplifier.simplify(eq.lhs);
                 let (sim_rhs, steps_rhs) = self.simplifier.simplify(eq.rhs);
                 
-                if self.show_steps && (!steps_lhs.is_empty() || !steps_rhs.is_empty()) {
-                    println!("Simplification Steps:");
+                if self.verbosity != Verbosity::None && (!steps_lhs.is_empty() || !steps_rhs.is_empty()) {
+                    if self.verbosity != Verbosity::Low {
+                        println!("Simplification Steps:");
+                    }
                     for (i, step) in steps_lhs.iter().enumerate() {
-                        println!("LHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
-                        println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
+                        if should_show_step(step, self.verbosity) {
+                            if self.verbosity == Verbosity::Low {
+                                // Low mode: just global state? No, for solve simplification we don't track global state easily here
+                                // because steps_lhs are local to lhs.
+                                // We can show the result of the step on LHS.
+                                // But wait, solve simplification is just pre-simplification.
+                                // Let's just show it if not Low.
+                                // Or if Low, maybe we skip pre-simplification steps display?
+                                // User said "Low mode only shows global changes".
+                                // For solve, the "Global" is the equation.
+                                // But here we simplify LHS and RHS separately.
+                                // Let's skip detailed steps in Low mode for pre-simplification, 
+                                // and just show the simplified equation.
+                            } else {
+                                println!("LHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                if let Some(s) = &step.after_str {
+                                    println!("   -> {}", s);
+                                } else {
+                                    println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
+                                }
+                            }
+                        }
                     }
                     for (i, step) in steps_rhs.iter().enumerate() {
-                        println!("RHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
-                        println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
+                         if should_show_step(step, self.verbosity) {
+                            if self.verbosity != Verbosity::Low {
+                                println!("RHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                if let Some(s) = &step.after_str {
+                                    println!("   -> {}", s);
+                                } else {
+                                    println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
+                                }
+                            }
+                        }
                     }
-                    println!("Solving simplified equation: {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, eq.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                    if self.verbosity != Verbosity::Low {
+                        println!("Solving simplified equation: {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, eq.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                    }
                 }
 
                 let simplified_eq = cas_ast::Equation {
@@ -749,15 +820,28 @@ impl Repl {
                     // If we pass simplified_eq, we lose information about e.g. (x-1) in denominator.
                     match cas_engine::solver::solve(&eq, var, &mut self.simplifier) {
                         Ok((solution_set, steps)) => {
-                            if self.show_steps {
-                                println!("Steps:");
+                            if self.verbosity != Verbosity::None {
+                                if self.verbosity != Verbosity::Low {
+                                    println!("Steps:");
+                                }
                                 for (i, step) in steps.iter().enumerate() {
-                                    // Simplify the equation for display
-                                    let (sim_lhs, _) = self.simplifier.simplify(step.equation_after.lhs);
-                                    let (sim_rhs, _) = self.simplifier.simplify(step.equation_after.rhs);
-                                    
-                                    println!("{}. {}", i + 1, step.description);
-                                    println!("   -> {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, step.equation_after.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                                    // SolveStep is different from Step, so we can't use should_show_step directly.
+                                    // For now, just show all steps if verbosity is not None/Low?
+                                    // Or implement filtering for SolveStep too?
+                                    // SolveStep has description but no rule_name in the same way?
+                                    // Let's just show it.
+                                    if true {
+                                        // Simplify the equation for display
+                                        let (sim_lhs, _) = self.simplifier.simplify(step.equation_after.lhs);
+                                        let (sim_rhs, _) = self.simplifier.simplify(step.equation_after.rhs);
+                                        
+                                        if self.verbosity == Verbosity::Low {
+                                            println!("-> {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, step.equation_after.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                                        } else {
+                                            println!("{}. {}", i + 1, step.description);
+                                            println!("   -> {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, step.equation_after.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                                        }
+                                    }
                                 }
                             }
                             // SolutionSet doesn't implement Display with Context.
@@ -781,23 +865,44 @@ impl Repl {
                 println!("Parsed: {}", DisplayExpr { context: &self.simplifier.context, id: expr });
                 let (simplified, steps) = self.simplifier.simplify(expr);
                 
-                if self.show_steps {
+                if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
-                        println!("No simplification steps needed.");
+                        if self.verbosity != Verbosity::Low {
+                             println!("No simplification steps needed.");
+                        }
                     } else {
-                        println!("Steps:");
+                        if self.verbosity != Verbosity::Low {
+                            println!("Steps:");
+                        }
                         let mut current_root = expr;
                         let mut step_count = 0;
                         for step in steps.iter() {
-                            if should_show_step(step) {
+                            if should_show_step(step, self.verbosity) {
                                 step_count += 1;
-                                println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
-                                println!("   Local: {} -> {}", 
-                                    RawDisplayExpr { context: &self.simplifier.context, id: step.before },
-                                    RawDisplayExpr { context: &self.simplifier.context, id: step.after }
-                                );
-                                current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                                println!("   Global: {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                
+                                if self.verbosity == Verbosity::Low {
+                                    // Low mode: just global state
+                                    current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                    println!("-> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                } else {
+                                    // Normal/Verbose
+                                    println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
+                                    
+                                    if self.verbosity == Verbosity::Verbose {
+                                        let after_disp = if let Some(s) = &step.after_str {
+                                            s.clone()
+                                        } else {
+                                            format!("{}", DisplayExpr { context: &self.simplifier.context, id: step.after })
+                                        };
+                                        println!("   Local: {} -> {}", 
+                                            DisplayExpr { context: &self.simplifier.context, id: step.before },
+                                            after_disp
+                                        );
+                                    }
+                                    
+                                    current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                    println!("   Global: {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                }
                             } else {
                                 current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
                             }
@@ -841,26 +946,45 @@ impl Repl {
 
         
         // Set steps mode
-        temp_simplifier.collect_steps = self.show_steps;
+        temp_simplifier.collect_steps = self.verbosity != Verbosity::None;
         
         match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {
                 println!("Parsed: {}", DisplayExpr { context: &temp_simplifier.context, id: expr });
                 let (simplified, steps) = temp_simplifier.simplify(expr);
                 
-                if self.show_steps {
+                if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
-                        println!("No simplification steps needed.");
+                        if self.verbosity != Verbosity::Low {
+                            println!("No simplification steps needed.");
+                        }
                     } else {
-                        println!("Steps (Aggressive Mode):");
+                        if self.verbosity != Verbosity::Low {
+                            println!("Steps (Aggressive Mode):");
+                        }
                         let mut current_root = expr;
                         let mut step_count = 0;
                         for step in steps.iter() {
-                            if should_show_step(step) {
+                            if should_show_step(step, self.verbosity) {
                                 step_count += 1;
-                                println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
-                                current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
-                                println!("   -> {}", DisplayExpr { context: &temp_simplifier.context, id: current_root });
+                                
+                                if self.verbosity == Verbosity::Low {
+                                    // Low mode: just global state
+                                    current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
+                                    println!("-> {}", DisplayExpr { context: &temp_simplifier.context, id: current_root });
+                                } else {
+                                    // Normal/Verbose
+                                    println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
+                                    
+                                    if self.verbosity == Verbosity::Verbose {
+                                        if let Some(s) = &step.after_str {
+                                            println!("   Local: {}", s);
+                                        }
+                                    }
+                                    
+                                    current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
+                                    println!("   Global: {}", DisplayExpr { context: &temp_simplifier.context, id: current_root });
+                                }
                             } else {
                                 current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
                             }

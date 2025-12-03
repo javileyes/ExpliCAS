@@ -1,0 +1,64 @@
+   Compiling cas_cli v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_cli)
+warning: unused imports: `BoundType`, `Context`, `Equation`, `RelOp`, and `SolutionSet`
+ --> crates/cas_cli/tests/integration_tests.rs:4:15
+  |
+4 | use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
+  |               ^^^^^^^^  ^^^^^  ^^^^^^^^^^^  ^^^^^^^^^        ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cas_cli` (test "integration_tests") generated 1 warning (run `cargo fix --test "integration_tests"` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running tests/integration_tests.rs (target/debug/deps/integration_tests-ba3d0ef9802488da)
+
+running 1 test
+Result 1: (x - 3) * (x + 3)
+Step 1: Factor Polynomial -> (x - 3) * (x + 3)
+Step 2: Combine Like Terms -> -3 + x
+Step 3: Combine Like Terms -> 3 + x
+Step 4: Expand -> 3 * -3 + 3 * x + x * -3 + x * x
+Step 5: Canonicalize Multiplication -> -3 * 3
+Step 6: Combine Constants -> -9
+Step 7: Canonicalize Multiplication -> -3 * x
+Step 8: Product of Powers -> x^2
+Step 9: Combine Like Terms -> x^2 - 3 * x
+Step 10: Combine Like Terms -> x^2
+Step 11: Factor -> (x - 3) * (x + 3)
+Factor(x^2 - 9) -> (x - 3) * (x + 3)
+Result 2: (x + 2)^2
+Step 1: Combine Like Terms -> 4 + x^2 + 4 * x
+Step 2: Factor Polynomial -> (x + 2)^2
+Step 3: Combine Like Terms -> 2 + x
+Step 4: Expand -> 2^2 * 1 + 2 * 2 * x + 1 * x^2
+Step 5: Product of Powers -> 2^2 * x
+Step 6: Canonicalize Multiplication -> x * 2^2
+Step 7: Evaluate Numeric Power -> 4
+Step 8: Canonicalize Multiplication -> 1 * 4
+Step 9: Combine Like Terms -> 4
+Step 10: Combine Like Terms -> 4 + x * 2^2
+Step 11: Combine Like Terms -> 4 + x^2 + x * 2^2
+Step 12: Evaluate Numeric Power -> 4
+Step 13: Canonicalize Multiplication -> 4 * x
+Step 14: Factor -> (x + 2)^2
+Result 3: x * (x - 1) * (x + 1)
+Step 1: Factor Polynomial -> x * (x - 1) * (x + 1)
+Step 2: Combine Like Terms -> -1 + x
+Step 3: Combine Like Terms -> 1 + x
+Step 4: Expand -> 1 * x * -1 + 1 * x * x + x * x * -1 + x * x * x
+Step 5: Canonicalize Multiplication -> -1 * x
+Step 6: Combine Like Terms -> -x
+Step 7: Product of Powers -> x^2
+Step 8: Canonicalize Multiplication -> -1 * x
+Step 9: Combine Like Terms -> -x
+Step 10: Canonicalize Negation -> -(x * x)
+Step 11: Product of Powers -> x^2
+Step 12: Product of Powers -> x^(1 + 2)
+Step 13: Combine Like Terms -> -(x * x) + x^2 + x^(1 + 2)
+Step 14: Product of Powers -> x^2
+Step 15: Combine Like Terms -> 3
+Step 16: Combine Like Terms -> x^3
+Step 17: Factor -> x * (x - 1) * (x + 1)
+test test_polynomial_factorization_integration ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
