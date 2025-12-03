@@ -63,6 +63,73 @@ impl<'a> LaTeXExpr<'a> {
                 format!("\\frac{{{}}}{{{}}}", numer, denom)
             }
             Expr::Pow(base, exp) => {
+                // Check if exponent is a fraction for sqrt conversion
+
+                // Case 1: Exponent is a rational number (after simplification: x^(1/2) becomes x^(Rational(1,2)))
+                if let Expr::Number(rational) = self.context.get(*exp) {
+                    if !rational.is_integer() {
+                        let numer = rational.numer().clone();
+                        let denom = rational.denom().clone();
+                        let base_str = self.expr_to_latex(*base, false);
+
+                        // x^(1/n) → \sqrt[n]{x}
+                        if numer == 1.into() {
+                            if denom == 2.into() {
+                                return format!("\\sqrt{{{}}}", base_str);
+                            } else {
+                                return format!("\\sqrt[{}]{{{}}}", denom, base_str);
+                            }
+                        }
+                        // x^(m/n) → \sqrt[n]{x^m}
+                        else {
+                            let inner = format!("{{{}}}^{{{}}}", base_str, numer);
+                            if denom == 2.into() {
+                                return format!("\\sqrt{{{}}}", inner);
+                            } else {
+                                return format!("\\sqrt[{}]{{{}}}", denom, inner);
+                            }
+                        }
+                    }
+                }
+
+                // Case 2: Exponent is explicit division (before simplification: x^(1/2) as Div(1,2))
+                if let Expr::Div(numer, denom) = self.context.get(*exp) {
+                    // Check if it's a simple fraction number
+                    if let (Expr::Number(n), Expr::Number(d)) =
+                        (self.context.get(*numer), self.context.get(*denom))
+                    {
+                        if n.is_integer() && d.is_integer() {
+                            let n_val = n.numer().clone();
+                            let d_val = d.numer().clone();
+                            let base_str = self.expr_to_latex(*base, false);
+
+                            // x^(1/n) → \sqrt[n]{x}
+                            if n_val == 1.into() {
+                                if d_val == 2.into() {
+                                    return format!("\\sqrt{{{}}}", base_str);
+                                } else {
+                                    return format!("\\sqrt[{}]{{{}}}", d_val, base_str);
+                                }
+                            }
+                            // x^(m/n) → \sqrt[n]{x^m}
+                            else {
+                                let inner = if n_val == 1.into() {
+                                    base_str
+                                } else {
+                                    format!("{{{}}}^{{{}}}", base_str, n_val)
+                                };
+
+                                if d_val == 2.into() {
+                                    return format!("\\sqrt{{{}}}", inner);
+                                } else {
+                                    return format!("\\sqrt[{}]{{{}}}", d_val, inner);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Regular power notation
                 let base_str = self.expr_to_latex_base(*base);
                 let exp_str = self.expr_to_latex(*exp, false);
                 format!("{{{}}}^{{{}}}", base_str, exp_str)
@@ -209,5 +276,83 @@ mod tests {
             id: expr,
         };
         assert_eq!(latex.to_latex(), "{x}^{2}");
+    }
+
+    #[test]
+    fn test_latex_sqrt_from_power() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let half = ctx.add(Expr::Div(one, two));
+        let expr = ctx.add(Expr::Pow(x, half));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\sqrt{x}");
+    }
+
+    #[test]
+    fn test_latex_nth_root() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let three = ctx.num(3);
+        let one_third = ctx.add(Expr::Div(one, three));
+        let expr = ctx.add(Expr::Pow(x, one_third));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\sqrt[3]{x}");
+    }
+
+    #[test]
+    fn test_latex_fractional_power() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let two_thirds = ctx.add(Expr::Div(two, three));
+        let expr = ctx.add(Expr::Pow(x, two_thirds));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\sqrt[3]{{x}^{2}}");
+    }
+
+    #[test]
+    fn test_latex_rational_exponent() {
+        // Test with actual rational number (post-simplification)
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rational = ctx.rational(1, 2); // 1/2 as a rational number
+        let expr = ctx.add(Expr::Pow(x, rational));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\sqrt{x}");
+    }
+
+    #[test]
+    fn test_latex_rational_exponent_2_3() {
+        // Test with 2/3 as a rational number
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rational = ctx.rational(2, 3);
+        let expr = ctx.add(Expr::Pow(x, rational));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\sqrt[3]{{x}^{2}}");
     }
 }

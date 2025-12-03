@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: 5 * 5 + 2 * x</title>
+    <title>CAS Steps: x^(1 / 2) + x^(2 / 3)</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -167,26 +167,26 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[5 * 5 + 2 * x\]
+            \[x^(1 / 2) + x^(2 / 3)\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Collect</h3>
+                    <h3>Combine Constants</h3>
                     <div class="math-expr before">
                         \(\textbf{Before (Global):}\)
-                        \[5\cdot 5 + 2x\]
+                        \[\sqrt{x} + \sqrt[3]{{x}^{2}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Initial Collection}\)</div>
+                        <div class="rule-name">\(\text{1 / 2 = 1/2}\)</div>
                         <div class="local-change">
-                            \[5\cdot 5 + 2x \rightarrow 2x + 5\cdot 5\]
+                            \[\frac{1}{2} \rightarrow \frac{1}{2}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After (Global):}\)
-                        \[2x + 5\cdot 5\]
+                        \[\sqrt{x} + \sqrt[3]{{x}^{2}}\]
                     </div>
                 </div>
             </div>
@@ -196,24 +196,24 @@
                     <h3>Combine Constants</h3>
                     <div class="math-expr before">
                         \(\textbf{Before (Global):}\)
-                        \[2x + 5\cdot 5\]
+                        \[\sqrt{x} + \sqrt[3]{{x}^{2}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{5 * 5 = 25}\)</div>
+                        <div class="rule-name">\(\text{2 / 3 = 2/3}\)</div>
                         <div class="local-change">
-                            \[5\cdot 5 \rightarrow 25\]
+                            \[\frac{2}{3} \rightarrow \frac{2}{3}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After (Global):}\)
-                        \[2x + 25\]
+                        \[\sqrt{x} + \sqrt[3]{{x}^{2}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[25 + 2x\]
+            \[\sqrt{x} + \sqrt[3]{{x}^{2}}\]
         </div>
     </div>
     <footer>
