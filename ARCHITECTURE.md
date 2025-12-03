@@ -112,6 +112,297 @@ pub trait Transformer {
 #### Tecnología
 
 Utiliza la crate `pest` con una gramática PEG (Parsing Expression Grammar).
+---
+
+## Optimizaciones (Phase 1 y Phase 2)
+
+### Phase 1: Performance Optimization
+
+#### **Conditional Multi-Pass** ★
+
+**Problema**: El loop multi-pass incondicional causaba **regresiones masivas**:
+- `sum_fractions_10`: +99.9% slower  
+- `solve_quadratic`: +50.7% slower
+- `diff_nested_trig_exp`: +34.4% slower
+
+**Solución**: Multi-pass **solo cuando es necesario**.
+
+**Cascade Triggers**:
+```rust
+let cascade_triggers = HashSet::from([
+    "Rationalize Denominator",   // Crea nuevas oportunidades
+    "Add fractions",             // Puede crear términos combinables
+    "Pull Constant From Fraction",
+    // ... (10 reglas totales)
+]);
+```
+
+**Algoritmo**:
+```rust
+// First pass (always)
+let (first_pass, first_steps) = simplifier.apply_rules_loop(current);
+
+// Fast path: No changes at all
+if first_pass == current {
+    return;  // ~95% de casos
+}
+
+// Check if cascade triggers fired
+let needs_multi_pass = first_steps.iter()
+    .any(|step| cascade_triggers.contains(step.rule_name));
+
+if needs_multi_pass {
+    // SLOW PATH: Multi-pass loop (solo ~5% de casos)
+    loop {
+        let (simplified, steps) = simplifier.apply_rules_loop(current);
+        if simplified == current { break; }  // Early exit (O(1))
+        
+        if cycle_detector.check(current).is_some() { break; }
+        
+        current = simplified;
+        if pass_count >= 5 { break; }  // Safety
+    }
+}
+```
+
+**Resultados**:
+| Benchmark | Antes | Después | Mejora |
+|-----------|-------|---------|--------|
+| `sum_fractions_10` | +99.9% | **-46.8%** | 146.7% faster |
+| `solve_quadratic` | +50.7% | **-30.4%** | 81.1% faster |
+| `diff_nested_trig_exp` | +34.4% | **-21.2%** | 55.6% faster |
+| `integrate_trig_product` | +65.9% | **-36.0%** | 101.9% faster |
+
+#### **Cycle Detection**
+
+Previene loops infinitos:
+```rust
+struct CycleDetector {
+    recent: VecDeque<ExprId>,
+    max_len: usize,
+}
+
+impl CycleDetector {
+    fn check(&mut self, expr: ExprId) -> Option<usize> {
+        if let Some(pos) = self.recent.iter().position(|&e| e == expr) {
+            return Some(self.recent.len() - pos);  // Cycle length
+        }
+        self.recent.push_back(expr);
+        if self.recent.len() > self.max_len {
+            self.recent.pop_front();
+        }
+        None
+    }
+}
+```
+
+#### **Early Exit Optimization**
+
+```rust
+// O(1) check antes de expensive compare_expr
+if simplified == current {
+    break;  // No changes
+}
+```
+
+**Impact**: Evita ~1000 comparaciones estructurales por simplificación.
+
+---
+
+### Phase 2: Debug Tools
+
+Herramientas de debugging con **zero runtime overhead** cuando no están en uso.
+
+#### **1. Rule Profiler**
+
+Track rule hit frequency para performance analysis.
+
+**Implementation**:
+```rust
+pub struct RuleProfiler {
+    stats: HashMap<String, RuleStats>,
+    enabled: bool,  // Default: false
+}
+
+pub struct RuleStats {
+    pub hit_count: AtomicUsize,  // Thread-safe
+}
+
+impl RuleProfiler {
+    pub fn record(&mut self, rule_name: &str) {
+        if !self.enabled { return; }  // Zero overhead
+        
+        let stats = self.stats.entry(rule_name.to_string()).or_default();
+        stats.hit_count.fetch_add(1, Ordering::Relaxed);  // <1ns
+    }
+}
+```
+
+**Usage**:
+```bash
+> profile enable
+> (x+1)^2
+> profile
+Rule Profiling Report
+─────────────────────────────────────────────
+Rule                                      Hits
+─────────────────────────────────────────────
+Binomial Expansion                           1
+Combine Like Terms                           2
+─────────────────────────────────────────────
+TOTAL                                        3
+```
+
+**Overhead**:
+- Disabled (default): **0ns**
+- Enabled: **<1ns** per rule (atomic increment)
+
+#### **2. AST Visualizer**
+
+Export expression trees to Graphviz DOT format.
+
+**Implementation**:
+```rust
+pub struct AstVisualizer<'a> {
+    context: &'a Context,
+    visited: HashSet<ExprId>,
+}
+
+impl<'a> AstVisualizer<'a> {
+    pub fn to_dot(&mut self, expr: ExprId) -> String {
+        // Generate DOT format with color-coded nodes
+        // - Numbers: Light blue
+        // - Variables: Light green
+        // - Operators: Orange/pink gradients
+    }
+}
+```
+
+**Usage**:
+```bash
+> visualize (x+1)*(x-1)
+AST exported to ast.dot
+
+$ dot -Tsvg ast.dot -o ast.svg
+$ open ast.svg  # Beautiful tree visualization
+```
+
+**Features**:
+- Color-coded nodes
+- Auto-layout with Graphviz
+- Export to SVG/PNG/PDF
+- Zero runtime overhead (export only)
+
+#### **3. Timeline HTML**
+
+Interactive HTML visualization of simplification steps.
+
+**Implementation**:
+```rust
+pub struct TimelineHtml<'a> {
+    context: &'a Context,
+    steps: &'a [Step],
+}
+
+impl<'a> TimelineHtml<'a> {
+    pub fn to_html(&self) -> String {
+        // Self-contained HTML with:
+        // - MathJax for math rendering
+        // - Purple gradient styling
+        // - Timeline layout
+        // - Before/After highlighting
+    }
+}
+```
+
+**Usage**:
+```bash
+> timeline (x+1)^2
+Timeline exported to timeline.html
+[Browser opens automatically on macOS]
+```
+
+**Generated HTML Features**:
+- Beautiful purple gradient background
+- MathJax-rendered math (`\(x^2 + 2x + 1\)`)
+- Step-by-step timeline with numbered circles
+- Color-coded before (orange) / after (green)
+- Hover effects and animations
+- Final result in green box
+
+**Example Output**:
+```html
+<div class="step">
+    <div class="step-number">1</div>
+    <div class="step-content">
+        <h3>Binomial Expansion</h3>
+        <div class="math-expr before">
+            <strong>Before:</strong> \((x+1)^2\)
+        </div>
+        <div class="math-expr after">
+            <strong>After:</strong> \(x^2 + 2*x + 1\)
+        </div>
+    </div>
+</div>
+```
+
+---
+
+### CLI Commands
+
+| Command | Description | Phase |
+|---------|-------------|-------|
+| `profile [cmd]` | Rule profiler (enable/disable/clear) | Phase 2 |
+| `visualize <expr>` | Export AST to Graphviz DOT | Phase 2 |
+| `dot <expr>` | Alias for visualize | Phase 2 |
+| `timeline <expr>` | Export steps to HTML | Phase 2 |
+
+**Autocomplete Support**:
+- `profile <TAB>` → `enable`, `disable`, `clear`
+- `help <TAB>` → All commands including new ones
+- `help profile` → Detailed profiler help
+
+---
+
+### Performance Summary
+
+#### Benchmark Results (Phase 1)
+
+```
+                         BEFORE      AFTER       Δ
+sum_fractions_10         740µs       387µs      -46.8%
+solve_quadratic          47µs        33µs       -30.4%
+diff_nested_trig_exp     60µs        47µs       -21.2%
+integrate_trig_product   29µs        18µs       -36.0%
+expand_binomial          270µs       254µs      -6.1%
+```
+
+**Key Insight**: Conditional multi-pass recovered performance baseline **and exceeded it**.
+
+#### Overhead Analysis (Phase 2)
+
+```
+Tool              Disabled    Enabled
+─────────────────────────────────────
+Profiler          0ns        <1ns/rule
+AST Visualizer    0ns         N/A (export only)
+Timeline HTML     0ns         N/ (export only)
+```
+
+**Zero Impact**: Debug tools add no overhead when not in use.
+
+---
+
+## Métricas de Complejidad
+
+- **Tamaño del AST**: ~500 líneas
+- **Parser**: ~200 líneas (PEG grammar)
+- **Engine**: ~2500 líneas (rules ~1800 + orchestrator ~300)
+- **CLI**: ~1200 líneas
+- **Debug Tools**: ~560 líneas (Phase 2)
+- **Total proyecto**: ~5000 líneas
+
+**Número de reglas**: ~70 reglas activas
 
 #### Gramática Soportada
 

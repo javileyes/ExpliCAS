@@ -33,6 +33,10 @@ impl CasHelper {
                 "config".to_string(),
                 "steps".to_string(),
                 "help".to_string(),
+                "profile".to_string(),
+                "visualize".to_string(),
+                "dot".to_string(),
+                "timeline".to_string(),
                 "quit".to_string(),
                 "exit".to_string(),
             ],
@@ -132,6 +136,25 @@ impl Completer for CasHelper {
                  }
                  return Ok((start, matches));
              }
+        }
+
+        // Check for "profile" context
+        if line.starts_with("profile ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+            
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let subcommands = vec!["enable", "disable", "clear"];
+                for sub in subcommands {
+                    if sub.starts_with(word) {
+                        matches.push(Pair {
+                            display: sub.to_string(),
+                            replacement: sub.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
         }
 
         // Check for "help" context

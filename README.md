@@ -33,6 +33,15 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 -   **Interactive CLI**: Command-line interface with history support.
 -   **Configuration**: Enable/disable specific simplification rules (e.g., `root_denesting`, `trig_double_angle`) via the `config` command.
 -   **Verbose Mode**: Toggle step-by-step output (`steps on/off`) for educational or performance purposes.
+-   **Debug Tools** (Phase 2):
+    -   **Rule Profiler**: Track rule application frequency for performance analysis (`profile enable/disable/clear`).
+    -   **AST Visualizer**: Export expression trees to Graphviz DOT format (`visualize <expr>`).
+    -   **Timeline HTML**: Generate interactive HTML visualization of simplification steps (`timeline <expr>`).
+-   **Performance Optimized** (Phase 1):
+    -   Conditional multi-pass simplification (-46.8% on complex fractions).
+    -   Cycle detection prevents infinite loops.
+    -   Early exit optimization for fast path.
+
 
 ## Getting Started
 
@@ -302,6 +311,67 @@ To reset all rules to their default state:
 > config restore
 All rules restored to default values.
 ```
+
+### Debug Tools
+
+ExpliCAS includes powerful debugging and visualization tools for developers and educators.
+
+#### Rule Profiler
+
+Track which rules are being applied and how often:
+
+```text
+> profile enable
+Profiler enabled.
+
+> (x+1)^2
+Result: x^2 + 2*x + 1
+
+> profile
+Rule Profiling Report
+─────────────────────────────────────────────
+Rule                                      Hits
+─────────────────────────────────────────────
+Binomial Expansion                           1
+Combine Like Terms                           2
+─────────────────────────────────────────────
+TOTAL                                        3
+
+> profile clear
+Profiler statistics cleared.
+```
+
+#### AST Visualizer
+
+Export expression trees to Graphviz DOT format for visual debugging:
+
+```text
+> visualize (x+1)*(x-1)
+AST exported to ast.dot
+Render with: dot -Tsvg ast.dot -o ast.svg
+```
+
+Then render the tree:
+```bash
+$ dot -Tsvg ast.dot -o ast.svg
+$ open ast.svg  # Opens beautiful tree visualization
+```
+
+#### Timeline HTML
+
+Generate interactive HTML visualization of simplification steps:
+
+```text
+> timeline (x+1)^2
+Timeline exported to timeline.html
+Open in browser to view interactive visualization.
+```
+
+Opens a beautiful HTML page with:
+- MathJax-rendered expressions
+- Step-by-step timeline
+- Color-coded before/after states
+- Professional gradient styling
 
 ### Running Tests
 

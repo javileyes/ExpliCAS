@@ -653,6 +653,30 @@ impl Repl {
                 println!("  verbose          Show all steps (Local + Global details).");
                 println!("  none (or off)    Disable step output.");
             },
+            "profile" => {
+                println!("Command: profile [subcommand]");
+                println!("Description: Rule profiler for debugging and performance analysis.");
+                println!("Subcommands:");
+                println!("  (none)           Show profiling report");
+                println!("  enable           Enable profiler");
+                println!("  disable          Disable profiler");
+                println!("  clear            Clear statistics");
+                println!("Example: profile enable, then run expressions, then profile");
+            },
+            "visualize" | "dot" => {
+                println!("Command: visualize <expr> (or dot <expr>)");
+                println!("Description: Export expression tree to Graphviz DOT format.");
+                println!("             Generates ast.dot file for rendering.");
+                println!("Example: visualize (x+1)*(x-1)");
+                println!("Render: dot -Tsvg ast.dot -o ast.svg");
+            },
+            "timeline" => {
+                println!("Command: timeline <expr>");
+                println!("Description: Export simplification steps to interactive HTML.");
+                println!("             Generates timeline.html with MathJax rendering.");
+                println!("Example: timeline (x+1)^2");
+                println!("         Open timeline.html in browser to view.");
+            },
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
@@ -680,6 +704,9 @@ impl Repl {
         println!("  choose <n, k>           Binomial coefficient (nCk)");
         println!("  perm <n, k>             Permutations (nPk)");
         println!("  steps <level>           Set step verbosity (normal, low, verbose, none)");
+        println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
+        println!("  visualize <expr>        Export AST to Graphviz DOT");
+        println!("  timeline <expr>         Export steps to interactive HTML");
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
         println!();
