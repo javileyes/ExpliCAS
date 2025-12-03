@@ -1,10 +1,12 @@
-pub mod expression;
 pub mod domain;
+pub mod expression;
+pub mod latex;
 pub mod visitor;
 
-pub use expression::{Expr, Constant, ExprId, Context, DisplayExpr, RawDisplayExpr};
-pub use visitor::{Visitor, Transformer};
-pub use domain::{Interval, BoundType, SolutionSet};
+pub use domain::{BoundType, Interval, SolutionSet};
+pub use expression::{Constant, Context, DisplayExpr, Expr, ExprId, RawDisplayExpr};
+pub use latex::LaTeXExpr;
+pub use visitor::{Transformer, Visitor};
 // use std::rc::Rc; // Removed Rc usage
 
 #[derive(Debug, Clone, PartialEq)]

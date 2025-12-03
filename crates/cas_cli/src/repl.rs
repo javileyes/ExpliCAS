@@ -1,19 +1,22 @@
+use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
+use cas_engine::rules::exponents::{
+    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
+    ProductPowerRule,
+};
+use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule};
 use cas_engine::Simplifier;
-use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule, PowerProductRule, PowerQuotientRule};
 
-
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
-use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
-use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
-use cas_engine::rules::number_theory::NumberTheoryRule;
+use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_engine::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
+use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
 use cas_engine::rules::grouping::CollectRule;
-use rustyline::error::ReadlineError;
-use cas_ast::{Context, Expr, DisplayExpr, ExprId};
+use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
+use cas_engine::rules::number_theory::NumberTheoryRule;
+use cas_engine::rules::trigonometry::{
+    AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule,
+};
 use cas_engine::step::PathStep;
-
+use rustyline::error::ReadlineError;
 
 use crate::completer::CasHelper;
 use crate::config::CasConfig;
@@ -33,7 +36,12 @@ pub struct Repl {
     config: CasConfig,
 }
 
-fn reconstruct_global_expr(context: &mut Context, root: ExprId, path: &[PathStep], replacement: ExprId) -> ExprId {
+fn reconstruct_global_expr(
+    context: &mut Context,
+    root: ExprId,
+    path: &[PathStep],
+    replacement: ExprId,
+) -> ExprId {
     if path.is_empty() {
         return replacement;
     }
@@ -46,60 +54,60 @@ fn reconstruct_global_expr(context: &mut Context, root: ExprId, path: &[PathStep
         (Expr::Add(l, r), PathStep::Left) => {
             let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
             context.add(Expr::Add(new_l, r))
-        },
+        }
         (Expr::Add(l, r), PathStep::Right) => {
             let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
             context.add(Expr::Add(l, new_r))
-        },
+        }
         (Expr::Sub(l, r), PathStep::Left) => {
             let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
             context.add(Expr::Sub(new_l, r))
-        },
+        }
         (Expr::Sub(l, r), PathStep::Right) => {
             let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
             context.add(Expr::Sub(l, new_r))
-        },
+        }
         (Expr::Mul(l, r), PathStep::Left) => {
             let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
             context.add(Expr::Mul(new_l, r))
-        },
+        }
         (Expr::Mul(l, r), PathStep::Right) => {
             let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
             context.add(Expr::Mul(l, new_r))
-        },
+        }
         (Expr::Div(l, r), PathStep::Left) => {
             let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
             context.add(Expr::Div(new_l, r))
-        },
+        }
         (Expr::Div(l, r), PathStep::Right) => {
             let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
             context.add(Expr::Div(l, new_r))
-        },
+        }
         (Expr::Pow(b, e), PathStep::Base) => {
             let new_b = reconstruct_global_expr(context, b, remaining_path, replacement);
             context.add(Expr::Pow(new_b, e))
-        },
+        }
         (Expr::Pow(b, e), PathStep::Exponent) => {
             let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
             context.add(Expr::Pow(b, new_e))
-        },
+        }
         (Expr::Neg(e), PathStep::Inner) => {
             let new_e = reconstruct_global_expr(context, e, remaining_path, replacement);
             context.add(Expr::Neg(new_e))
-        },
+        }
         (Expr::Function(name, args), PathStep::Arg(idx)) => {
             let mut new_args = args.clone();
             if *idx < new_args.len() {
-                new_args[*idx] = reconstruct_global_expr(context, new_args[*idx], remaining_path, replacement);
+                new_args[*idx] =
+                    reconstruct_global_expr(context, new_args[*idx], remaining_path, replacement);
                 context.add(Expr::Function(name, new_args))
             } else {
                 root // Should not happen if path is valid
             }
-        },
+        }
         _ => root, // Path mismatch or invalid structure
     }
 }
-
 
 fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool {
     match verbosity {
@@ -108,15 +116,16 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
         Verbosity::Low | Verbosity::Normal => {
             // Filter out "noise" rules
             let name = &step.rule_name;
-            if name.starts_with("Canonicalize") || 
-               name.starts_with("Sort") || 
-               name == "Collect" || 
-               name.starts_with("Identity") ||
-               name == "Add Zero" ||
-               name == "Mul By One" {
+            if name.starts_with("Canonicalize")
+                || name.starts_with("Sort")
+                || name == "Collect"
+                || name.starts_with("Identity")
+                || name == "Add Zero"
+                || name == "Mul By One"
+            {
                 return false;
             }
-            
+
             // Filter "Expand" steps that produce no visible change
             if name == "Expand" {
                 // Check if before == after (no actual change)
@@ -124,7 +133,7 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
                     return false; // No change, skip
                 }
             }
-            
+
             // Filter trivial "Combine Constants" (like 1/3 = 1/3)
             if name == "Combine Constants" {
                 let desc = &step.description;
@@ -136,7 +145,7 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
                     }
                 }
             }
-            
+
             true
         }
     }
@@ -147,7 +156,6 @@ impl Repl {
         let config = CasConfig::load();
         let mut simplifier = Simplifier::with_default_rules();
 
-        
         // Always enabled core rules
         simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
         simplifier.add_rule(Box::new(EvaluateTrigRule));
@@ -160,7 +168,9 @@ impl Repl {
             simplifier.add_rule(Box::new(DoubleAngleRule));
         }
         if config.canonicalize_trig_square {
-            simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule));
+            simplifier.add_rule(Box::new(
+                cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
+            ));
         }
         simplifier.add_rule(Box::new(EvaluateLogRule));
         simplifier.add_rule(Box::new(ExponentialLogRule));
@@ -172,33 +182,41 @@ impl Repl {
         simplifier.add_rule(Box::new(EvaluatePowerRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
         if config.log_split_exponents {
-            simplifier.add_rule(Box::new(cas_engine::rules::logarithms::SplitLogExponentsRule));
+            simplifier.add_rule(Box::new(
+                cas_engine::rules::logarithms::SplitLogExponentsRule,
+            ));
         }
-        
+
         // Advanced Algebra Rules (Critical for Solver)
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
         simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
         if config.rationalize_denominator {
-            simplifier.add_rule(Box::new(cas_engine::rules::algebra::RationalizeDenominatorRule));
+            simplifier.add_rule(Box::new(
+                cas_engine::rules::algebra::RationalizeDenominatorRule,
+            ));
         }
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::CancelCommonFactorsRule));
-        
+        simplifier.add_rule(Box::new(
+            cas_engine::rules::algebra::CancelCommonFactorsRule,
+        ));
+
         // Configurable rules
         if config.distribute {
             simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
         }
-        
-        if config.distribute_constants {
-    
-        }
-        
+
+        if config.distribute_constants {}
+
         if config.expand_binomials {
-            simplifier.add_rule(Box::new(cas_engine::rules::polynomial::BinomialExpansionRule));
+            simplifier.add_rule(Box::new(
+                cas_engine::rules::polynomial::BinomialExpansionRule,
+            ));
         }
-        
+
         if config.factor_difference_squares {
-            simplifier.add_rule(Box::new(cas_engine::rules::algebra::FactorDifferenceSquaresRule));
+            simplifier.add_rule(Box::new(
+                cas_engine::rules::algebra::FactorDifferenceSquaresRule,
+            ));
         }
 
         if config.root_denesting {
@@ -209,7 +227,9 @@ impl Repl {
             simplifier.add_rule(Box::new(cas_engine::rules::algebra::AutomaticFactorRule));
         }
 
-        simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleConsistencyRule));
+        simplifier.add_rule(Box::new(
+            cas_engine::rules::trigonometry::AngleConsistencyRule,
+        ));
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
         simplifier.add_rule(Box::new(AnnihilationRule));
@@ -218,7 +238,9 @@ impl Repl {
         simplifier.add_rule(Box::new(PowerProductRule));
         simplifier.add_rule(Box::new(PowerQuotientRule));
         simplifier.add_rule(Box::new(IdentityPowerRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::exponents::NegativeBasePowerRule));
+        simplifier.add_rule(Box::new(
+            cas_engine::rules::exponents::NegativeBasePowerRule,
+        ));
         simplifier.add_rule(Box::new(AddZeroRule));
         simplifier.add_rule(Box::new(MulOneRule));
         simplifier.add_rule(Box::new(MulZeroRule));
@@ -237,10 +259,9 @@ impl Repl {
         repl
     }
 
-
     fn sync_config_to_simplifier(&mut self) {
         let config = &self.config;
-        
+
         // Helper to toggle rule
         let mut toggle = |name: &str, enabled: bool| {
             if enabled {
@@ -253,7 +274,10 @@ impl Repl {
         toggle("Distributive Property", config.distribute);
         toggle("Binomial Expansion", config.expand_binomials);
         toggle("Distribute Constant", config.distribute_constants);
-        toggle("Factor Difference of Squares", config.factor_difference_squares);
+        toggle(
+            "Factor Difference of Squares",
+            config.factor_difference_squares,
+        );
         toggle("Root Denesting", config.root_denesting);
         toggle("Double Angle Identity", config.trig_double_angle);
         toggle("Angle Sum/Diff Identity", config.trig_angle_sum);
@@ -262,7 +286,7 @@ impl Repl {
         toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
         toggle("Rationalize Denominator", config.rationalize_denominator);
         toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
-        
+
         // Auto Factor Logic:
         // If auto_factor is on, we enable AutomaticFactorRule AND ConservativeExpandRule.
         // We DISABLE the aggressive ExpandRule to prevent loops.
@@ -302,24 +326,24 @@ impl Repl {
                     if line.is_empty() {
                         continue;
                     }
-                    
+
                     rl.add_history_entry(line)?;
-                    
+
                     if line == "quit" || line == "exit" {
                         println!("Goodbye!");
                         break;
                     }
 
                     self.handle_command(line);
-                },
+                }
                 Err(ReadlineError::Interrupted) => {
                     println!("CTRL-C");
                     break;
-                },
+                }
                 Err(ReadlineError::Eof) => {
                     println!("CTRL-D");
                     break;
-                },
+                }
                 Err(err) => {
                     println!("Error: {:?}", err);
                     break;
@@ -335,19 +359,19 @@ impl Repl {
     ///   solve(...) -> solve x + 2 = 5, x
     fn preprocess_function_syntax(&self, line: &str) -> String {
         let line = line.trim();
-        
+
         // Check for simplify(...)
         if line.starts_with("simplify(") && line.ends_with(")") {
-            let content = &line["simplify(".len()..line.len()-1];
+            let content = &line["simplify(".len()..line.len() - 1];
             return format!("simplify {}", content);
         }
-        
+
         // Check for solve(...)
         if line.starts_with("solve(") && line.ends_with(")") {
-            let content = &line["solve(".len()..line.len()-1];
+            let content = &line["solve(".len()..line.len() - 1];
             return format!("solve {}", content);
         }
-        
+
         // Return unchanged
         line.to_string()
     }
@@ -357,7 +381,7 @@ impl Repl {
         // simplify(...) -> simplify ...
         // solve(...) -> solve ...
         let line = self.preprocess_function_syntax(line);
-        
+
         // Check for "help" command
         if line.starts_with("help") {
             self.handle_help(&line);
@@ -373,26 +397,26 @@ impl Repl {
                         self.verbosity = Verbosity::Normal;
                         self.simplifier.collect_steps = true;
                         println!("Step-by-step output enabled (Normal).");
-                    },
+                    }
                     "off" | "none" => {
                         self.verbosity = Verbosity::None;
                         self.simplifier.collect_steps = false;
                         println!("Step-by-step output disabled.");
-                    },
+                    }
                     "verbose" => {
                         self.verbosity = Verbosity::Verbose;
                         self.simplifier.collect_steps = true;
                         println!("Step-by-step output enabled (Verbose).");
-                    },
+                    }
                     "low" => {
                         self.verbosity = Verbosity::Low;
                         self.simplifier.collect_steps = true;
                         println!("Step-by-step output enabled (Low).");
-                    },
+                    }
                     _ => println!("Usage: steps <on|off|normal|verbose|low|none>"),
                 }
             } else {
-                 println!("Usage: steps <on|off|normal|verbose|low|none>");
+                println!("Usage: steps <on|off|normal|verbose|low|none>");
             }
             return;
         }
@@ -456,15 +480,15 @@ impl Repl {
                     "enable" => {
                         self.simplifier.profiler.enable();
                         println!("Profiler enabled.");
-                    },
+                    }
                     "disable" => {
                         self.simplifier.profiler.disable();
                         println!("Profiler disabled.");
-                    },
+                    }
                     "clear" => {
                         self.simplifier.profiler.clear();
                         println!("Profiler statistics cleared.");
-                    },
+                    }
                     _ => println!("Usage: profile [enable|disable|clear]"),
                 }
             }
@@ -486,27 +510,37 @@ impl Repl {
                 println!("Current Configuration:");
                 println!("  distribute: {}", self.config.distribute);
                 println!("  expand_binomials: {}", self.config.expand_binomials);
-                println!("  distribute_constants: {}", self.config.distribute_constants);
-                println!("  factor_difference_squares: {}", self.config.factor_difference_squares);
+                println!(
+                    "  distribute_constants: {}",
+                    self.config.distribute_constants
+                );
+                println!(
+                    "  factor_difference_squares: {}",
+                    self.config.factor_difference_squares
+                );
                 println!("  root_denesting: {}", self.config.root_denesting);
                 println!("  trig_double_angle: {}", self.config.trig_double_angle);
                 println!("  trig_angle_sum: {}", self.config.trig_angle_sum);
                 println!("  log_split_exponents: {}", self.config.log_split_exponents);
-                println!("  rationalize_denominator: {}", self.config.rationalize_denominator);
-                println!("  canonicalize_trig_square: {}", self.config.canonicalize_trig_square);
+                println!(
+                    "  rationalize_denominator: {}",
+                    self.config.rationalize_denominator
+                );
+                println!(
+                    "  canonicalize_trig_square: {}",
+                    self.config.canonicalize_trig_square
+                );
                 println!("  auto_factor: {}", self.config.auto_factor);
-            },
-            "save" => {
-                match self.config.save() {
-                    Ok(_) => println!("Configuration saved to cas_config.toml"),
-                    Err(e) => println!("Error saving configuration: {}", e),
-                }
+            }
+            "save" => match self.config.save() {
+                Ok(_) => println!("Configuration saved to cas_config.toml"),
+                Err(e) => println!("Error saving configuration: {}", e),
             },
             "restore" => {
                 self.config = CasConfig::restore();
                 self.sync_config_to_simplifier();
                 println!("Configuration restored to defaults.");
-            },
+            }
             "enable" | "disable" => {
                 if parts.len() < 3 {
                     println!("Usage: config {} <rule>", parts[1]);
@@ -514,7 +548,7 @@ impl Repl {
                 }
                 let rule = parts[2];
                 let enable = parts[1] == "enable";
-                
+
                 let mut changed = true;
                 match rule {
                     "distribute" => self.config.distribute = enable,
@@ -533,12 +567,12 @@ impl Repl {
                         changed = false;
                     }
                 }
-                
+
                 if changed {
                     self.sync_config_to_simplifier();
                     println!("Rule '{}' set to {}.", rule, enable);
                 }
-            },
+            }
             _ => println!("Unknown config command: {}", parts[1]),
         }
     }
@@ -553,52 +587,58 @@ impl Repl {
         match parts[1] {
             "simplify" => {
                 println!("Command: simplify <expr>");
-                println!("Description: Simplifies an expression using the full power of the engine.");
-                println!("             This includes aggressive distribution and other rules that may");
+                println!(
+                    "Description: Simplifies an expression using the full power of the engine."
+                );
+                println!(
+                    "             This includes aggressive distribution and other rules that may"
+                );
                 println!("             undo factorizations, but guarantee maximum simplification.");
                 println!("Example: simplify (x+1)*(x-1) -> x^2 - 1");
-            },
+            }
             "diff" => {
                 println!("Command: diff <expr> <var>");
                 println!("Description: Computes the symbolic derivative of an expression with respect to a variable.");
                 println!("             Supports basic arithmetic, power rule, chain rule, and common functions.");
                 println!("Example: diff(sin(x^2), x) -> 2*x*cos(x^2)");
-            },
+            }
             "gcd" => {
                 println!("Function: gcd <a, b>");
                 println!("Description: Computes the Greatest Common Divisor of two integers.");
                 println!("Example: gcd(12, 18) -> 6");
-            },
+            }
             "lcm" => {
                 println!("Function: lcm <a, b>");
                 println!("Description: Computes the Least Common Multiple of two integers.");
                 println!("Example: lcm(4, 6) -> 12");
-            },
+            }
             "mod" => {
                 println!("Function: mod <a, n>");
-                println!("Description: Computes the remainder of a divided by n (Euclidean modulo).");
+                println!(
+                    "Description: Computes the remainder of a divided by n (Euclidean modulo)."
+                );
                 println!("Example: mod(10, 3) -> 1");
-            },
+            }
             "factors" | "prime_factors" => {
                 println!("Function: factors <n>");
                 println!("Description: Computes the prime factorization of an integer.");
                 println!("Example: factors(12) -> 2^2 * 3");
-            },
+            }
             "fact" | "factorial" => {
                 println!("Function: fact <n> or <n>!");
                 println!("Description: Computes the factorial of a non-negative integer.");
                 println!("Example: fact(5) -> 120, 5! -> 120");
-            },
+            }
             "choose" | "nCr" => {
                 println!("Function: choose <n, k>");
                 println!("Description: Computes the binomial coefficient nCk (combinations).");
                 println!("Example: choose(5, 2) -> 10");
-            },
+            }
             "perm" | "nPr" => {
                 println!("Function: perm <n, k>");
                 println!("Description: Computes the number of permutations nPk.");
                 println!("Example: perm(5, 2) -> 20");
-            },
+            }
             "config" => {
                 println!("Command: config <subcommand> [args]");
                 println!("Description: Manages CLI configuration.");
@@ -613,37 +653,37 @@ impl Repl {
                 println!("  distribute_constants Safe distribution (-1*(x+y) -> -x-y)");
                 println!("  expand_binomials Expand powers ((a+b)^2 -> a^2+2ab+b^2)");
                 println!("  factor_difference_squares Factor difference of squares (a^2-b^2 -> (a-b)(a+b))");
-            },
+            }
             "subst" => {
                 println!("Command: subst <expr>, <var>=<val>");
                 println!("Description: Substitutes a variable with a value (or another expression) and simplifies.");
                 println!("Example: subst x^2 + x, x=3 -> 12");
-            },
+            }
             "expand" => {
                 println!("Command: expand <expr>");
                 println!("Description: Expands polynomials and products.");
                 println!("Example: expand(x+1)^2 -> x^2 + 2*x + 1");
-            },
+            }
             "factor" => {
                 println!("Command: factor <expr>");
                 println!("Description: Factors polynomials.");
                 println!("Example: factor(x^2 - 1) -> (x - 1) * (x + 1)");
-            },
+            }
             "collect" => {
                 println!("Command: collect <expr>, <var>");
                 println!("Description: Groups terms by powers of a variable.");
                 println!("Example: collect(a*x + b*x + c, x) -> (a + b) * x + c");
-            },
+            }
             "equiv" => {
                 println!("Command: equiv <expr1>, <expr2>");
                 println!("Description: Checks if two expressions are mathematically equivalent.");
                 println!("             Returns true if expr1 - expr2 simplifies to 0.");
-            },
+            }
             "solve" => {
                 println!("Command: solve <equation>, <var>");
                 println!("Description: Solves an equation for a variable.");
                 println!("Example: solve x + 2 = 5, x -> x = 3");
-            },
+            }
             "steps" => {
                 println!("Command: steps <level>");
                 println!("Description: Controls the verbosity of simplification steps.");
@@ -652,7 +692,7 @@ impl Repl {
                 println!("  low              Minimal output (Global state sequence only).");
                 println!("  verbose          Show all steps (Local + Global details).");
                 println!("  none (or off)    Disable step output.");
-            },
+            }
             "profile" => {
                 println!("Command: profile [subcommand]");
                 println!("Description: Rule profiler for debugging and performance analysis.");
@@ -662,7 +702,7 @@ impl Repl {
                 println!("  disable          Disable profiler");
                 println!("  clear            Clear statistics");
                 println!("Example: profile enable, then run expressions, then profile");
-            },
+            }
             "visualize" => {
                 println!("Command: visualize <expr>");
                 println!("Description: Export expression tree to Graphviz DOT format.");
@@ -672,14 +712,14 @@ impl Repl {
                 println!("To render the generated file, use Graphviz in your terminal:");
                 println!("  $ dot -Tsvg ast.dot -o ast.svg");
                 println!("  $ open ast.svg");
-            },
+            }
             "timeline" => {
                 println!("Command: timeline <expr>");
                 println!("Description: Export simplification steps to interactive HTML.");
                 println!("             Generates timeline.html with MathJax rendering.");
                 println!("Example: timeline (x+1)^2");
                 println!("         Open timeline.html in browser to view.");
-            },
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
@@ -719,28 +759,28 @@ impl Repl {
     fn handle_equiv(&mut self, line: &str) {
         let rest = line[6..].trim();
         if let Some((expr1_str, expr2_str)) = rsplit_ignoring_parens(rest, ',') {
-             // We need to parse both, but parse takes &mut Context.
-             // We can't borrow self.simplifier.context mutably twice.
-             // So we parse one, then the other.
-             
-             let e1_res = cas_parser::parse(expr1_str.trim(), &mut self.simplifier.context);
-             match e1_res {
-                 Ok(e1) => {
-                     let e2_res = cas_parser::parse(expr2_str.trim(), &mut self.simplifier.context);
-                     match e2_res {
-                         Ok(e2) => {
-                             let are_eq = self.simplifier.are_equivalent(e1, e2);
-                             if are_eq {
-                                 println!("True");
-                             } else {
-                                 println!("False");
-                             }
-                         },
-                         Err(e) => println!("Error parsing second expression: {}", e),
-                     }
-                 },
-                 Err(e) => println!("Error parsing first expression: {}", e),
-             }
+            // We need to parse both, but parse takes &mut Context.
+            // We can't borrow self.simplifier.context mutably twice.
+            // So we parse one, then the other.
+
+            let e1_res = cas_parser::parse(expr1_str.trim(), &mut self.simplifier.context);
+            match e1_res {
+                Ok(e1) => {
+                    let e2_res = cas_parser::parse(expr2_str.trim(), &mut self.simplifier.context);
+                    match e2_res {
+                        Ok(e2) => {
+                            let are_eq = self.simplifier.are_equivalent(e1, e2);
+                            if are_eq {
+                                println!("True");
+                            } else {
+                                println!("False");
+                            }
+                        }
+                        Err(e) => println!("Error parsing second expression: {}", e),
+                    }
+                }
+                Err(e) => println!("Error parsing first expression: {}", e),
+            }
         } else {
             println!("Usage: equiv <expr1>, <expr2>");
         }
@@ -750,7 +790,7 @@ impl Repl {
         // Format: subst <expr>, <var>=<val>
         // Example: subst x+1, x=2
         let rest = line[6..].trim();
-        
+
         // Try splitting by comma first (preferred)
         let (expr_str, assign_str) = if let Some((e, a)) = rsplit_ignoring_parens(rest, ',') {
             (e.trim(), a.trim())
@@ -765,21 +805,25 @@ impl Repl {
         if let Some((var, val_str)) = assign_str.split_once('=') {
             let var = var.trim();
             let val_str = val_str.trim();
-            
+
             // Parse expr first
             match cas_parser::parse(expr_str, &mut self.simplifier.context) {
                 Ok(expr) => {
                     // Parse val
                     match cas_parser::parse(val_str, &mut self.simplifier.context) {
                         Ok(val_expr) => {
-
                             if self.verbosity != Verbosity::None {
                                 println!("Substituting {} = {} into {}", var, val_str, expr_str);
                             }
                             // Substitute
                             let target_var = self.simplifier.context.var(var);
-                            let subbed = cas_engine::solver::strategies::substitute_expr(&mut self.simplifier.context, expr, target_var, val_expr);
-                            
+                            let subbed = cas_engine::solver::strategies::substitute_expr(
+                                &mut self.simplifier.context,
+                                expr,
+                                target_var,
+                                val_expr,
+                            );
+
                             let (result, steps) = self.simplifier.simplify(subbed);
                             if self.verbosity != Verbosity::None {
                                 if self.verbosity != Verbosity::Low {
@@ -790,40 +834,88 @@ impl Repl {
                                 for step in steps.iter() {
                                     if should_show_step(step, self.verbosity) {
                                         step_count += 1;
-                                        
+
                                         if self.verbosity == Verbosity::Low {
                                             // Low mode: just global state
-                                            current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                                            println!("-> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                            current_root = reconstruct_global_expr(
+                                                &mut self.simplifier.context,
+                                                current_root,
+                                                &step.path,
+                                                step.after,
+                                            );
+                                            println!(
+                                                "-> {}",
+                                                DisplayExpr {
+                                                    context: &self.simplifier.context,
+                                                    id: current_root
+                                                }
+                                            );
                                         } else {
                                             // Normal/Verbose
-                                            println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
-                                            
-                                            if self.verbosity == Verbosity::Verbose || self.verbosity == Verbosity::Normal {
+                                            println!(
+                                                "{}. {}  [{}]",
+                                                step_count, step.description, step.rule_name
+                                            );
+
+                                            if self.verbosity == Verbosity::Verbose
+                                                || self.verbosity == Verbosity::Normal
+                                            {
                                                 let after_disp = if let Some(s) = &step.after_str {
                                                     s.clone()
                                                 } else {
-                                                    format!("{}", DisplayExpr { context: &self.simplifier.context, id: step.after })
+                                                    format!(
+                                                        "{}",
+                                                        DisplayExpr {
+                                                            context: &self.simplifier.context,
+                                                            id: step.after
+                                                        }
+                                                    )
                                                 };
-                                                println!("   Local: {} -> {}", 
-                                                    DisplayExpr { context: &self.simplifier.context, id: step.before },
+                                                println!(
+                                                    "   Local: {} -> {}",
+                                                    DisplayExpr {
+                                                        context: &self.simplifier.context,
+                                                        id: step.before
+                                                    },
                                                     after_disp
                                                 );
                                             }
-                                            
-                                            current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                                            println!("   Global: {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+
+                                            current_root = reconstruct_global_expr(
+                                                &mut self.simplifier.context,
+                                                current_root,
+                                                &step.path,
+                                                step.after,
+                                            );
+                                            println!(
+                                                "   Global: {}",
+                                                DisplayExpr {
+                                                    context: &self.simplifier.context,
+                                                    id: current_root
+                                                }
+                                            );
                                         }
                                     } else {
-                                        current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                        current_root = reconstruct_global_expr(
+                                            &mut self.simplifier.context,
+                                            current_root,
+                                            &step.path,
+                                            step.after,
+                                        );
                                     }
                                 }
                             }
-                            println!("Result: {}", DisplayExpr { context: &self.simplifier.context, id: result });
-                        },
+                            println!(
+                                "Result: {}",
+                                DisplayExpr {
+                                    context: &self.simplifier.context,
+                                    id: result
+                                }
+                            );
+                        }
                         Err(e) => println!("Error parsing value: {}", e),
                     }
-                },
+                }
                 Err(e) => println!("Error parsing expression: {}", e),
             }
             return;
@@ -833,37 +925,37 @@ impl Repl {
 
     fn handle_timeline(&mut self, line: &str) {
         let rest = line[9..].trim();
-        
+
         match cas_parser::parse(rest, &mut self.simplifier.context) {
             Ok(expr) => {
                 let (_, steps) = self.simplifier.simplify(expr);
-                
+
                 if steps.is_empty() {
                     println!("No simplification steps to visualize.");
                     return;
                 }
-                
+
                 // Convert CLI verbosity to timeline verbosity
                 let timeline_verbosity = match self.verbosity {
                     Verbosity::None | Verbosity::Low => cas_engine::timeline::VerbosityLevel::Low,
                     Verbosity::Normal => cas_engine::timeline::VerbosityLevel::Normal,
                     Verbosity::Verbose => cas_engine::timeline::VerbosityLevel::Verbose,
                 };
-                
-                let timeline = cas_engine::timeline::TimelineHtml::new(
-                    &self.simplifier.context,
+
+                let mut timeline = cas_engine::timeline::TimelineHtml::new(
+                    &mut self.simplifier.context,
                     &steps,
                     expr,
-                    timeline_verbosity
+                    timeline_verbosity,
                 );
                 let html = timeline.to_html();
-                
+
                 let filename = "timeline.html";
                 match std::fs::write(filename, &html) {
                     Ok(_) => {
                         println!("Timeline exported to {}", filename);
                         println!("Open in browser to view interactive visualization.");
-                        
+
                         // Try to auto-open on macOS
                         #[cfg(target_os = "macos")]
                         {
@@ -882,13 +974,14 @@ impl Repl {
             &line[10..]
         } else {
             &line[4..]
-        }.trim();
-        
+        }
+        .trim();
+
         match cas_parser::parse(rest, &mut self.simplifier.context) {
             Ok(expr) => {
                 let mut viz = cas_engine::visualizer::AstVisualizer::new(&self.simplifier.context);
                 let dot = viz.to_dot(expr);
-                
+
                 // Save to file
                 let filename = "ast.dot";
                 match std::fs::write(filename, &dot) {
@@ -907,7 +1000,7 @@ impl Repl {
     fn handle_solve(&mut self, line: &str) {
         // solve <equation>, <var>
         let rest = line[6..].trim();
-        
+
         // Split by comma or space to get equation and var
         let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
             (e.trim(), v.trim())
@@ -916,13 +1009,13 @@ impl Repl {
             // We only accept "eq var" if "eq" is a valid equation.
             // Otherwise, we assume the whole string is the equation (e.g. "ln(x) = a + b")
             if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
-                 let v_trim = v.trim();
-                 // Check if v is a variable name (alphabetic)
-                 if !v_trim.is_empty() && v_trim.chars().all(char::is_alphabetic) {
-                     (e.trim(), v_trim)
-                 } else {
-                     (rest, "x")
-                 }
+                let v_trim = v.trim();
+                // Check if v is a variable name (alphabetic)
+                if !v_trim.is_empty() && v_trim.chars().all(char::is_alphabetic) {
+                    (e.trim(), v_trim)
+                } else {
+                    (rest, "x")
+                }
             } else {
                 (rest, "x")
             }
@@ -934,8 +1027,10 @@ impl Repl {
                 // We should simplify the equation first to handle cases like "ln(x) + ln(x) = 2" -> "2*ln(x) = 2"
                 let (sim_lhs, steps_lhs) = self.simplifier.simplify(eq.lhs);
                 let (sim_rhs, steps_rhs) = self.simplifier.simplify(eq.rhs);
-                
-                if self.verbosity != Verbosity::None && (!steps_lhs.is_empty() || !steps_rhs.is_empty()) {
+
+                if self.verbosity != Verbosity::None
+                    && (!steps_lhs.is_empty() || !steps_rhs.is_empty())
+                {
                     if self.verbosity != Verbosity::Low {
                         println!("Simplification Steps:");
                     }
@@ -951,40 +1046,81 @@ impl Repl {
                                 // User said "Low mode only shows global changes".
                                 // For solve, the "Global" is the equation.
                                 // But here we simplify LHS and RHS separately.
-                                // Let's skip detailed steps in Low mode for pre-simplification, 
+                                // Let's skip detailed steps in Low mode for pre-simplification,
                                 // and just show the simplified equation.
                             } else {
-                                println!("LHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                println!(
+                                    "LHS {}. {}  [{}]",
+                                    i + 1,
+                                    step.description,
+                                    step.rule_name
+                                );
                                 let after_disp = if let Some(s) = &step.after_str {
                                     s.clone()
                                 } else {
-                                    format!("{}", DisplayExpr { context: &self.simplifier.context, id: step.after })
+                                    format!(
+                                        "{}",
+                                        DisplayExpr {
+                                            context: &self.simplifier.context,
+                                            id: step.after
+                                        }
+                                    )
                                 };
-                                println!("   Local: {} -> {}", 
-                                    DisplayExpr { context: &self.simplifier.context, id: step.before },
+                                println!(
+                                    "   Local: {} -> {}",
+                                    DisplayExpr {
+                                        context: &self.simplifier.context,
+                                        id: step.before
+                                    },
                                     after_disp
                                 );
                             }
                         }
                     }
                     for (i, step) in steps_rhs.iter().enumerate() {
-                         if should_show_step(step, self.verbosity) {
+                        if should_show_step(step, self.verbosity) {
                             if self.verbosity != Verbosity::Low {
-                                println!("RHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
+                                println!(
+                                    "RHS {}. {}  [{}]",
+                                    i + 1,
+                                    step.description,
+                                    step.rule_name
+                                );
                                 let after_disp = if let Some(s) = &step.after_str {
                                     s.clone()
                                 } else {
-                                    format!("{}", DisplayExpr { context: &self.simplifier.context, id: step.after })
+                                    format!(
+                                        "{}",
+                                        DisplayExpr {
+                                            context: &self.simplifier.context,
+                                            id: step.after
+                                        }
+                                    )
                                 };
-                                println!("   Local: {} -> {}", 
-                                    DisplayExpr { context: &self.simplifier.context, id: step.before },
+                                println!(
+                                    "   Local: {} -> {}",
+                                    DisplayExpr {
+                                        context: &self.simplifier.context,
+                                        id: step.before
+                                    },
                                     after_disp
                                 );
                             }
                         }
                     }
                     if self.verbosity != Verbosity::Low {
-                        println!("Solving simplified equation: {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, eq.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                        println!(
+                            "Solving simplified equation: {} {} {}",
+                            DisplayExpr {
+                                context: &self.simplifier.context,
+                                id: sim_lhs
+                            },
+                            eq.op,
+                            DisplayExpr {
+                                context: &self.simplifier.context,
+                                id: sim_rhs
+                            }
+                        );
                     }
                 }
 
@@ -994,8 +1130,16 @@ impl Repl {
                     op: eq.op.clone(),
                 };
 
-                let lhs_has = cas_engine::solver::contains_var(&self.simplifier.context, simplified_eq.lhs, var);
-                let rhs_has = cas_engine::solver::contains_var(&self.simplifier.context, simplified_eq.rhs, var);
+                let lhs_has = cas_engine::solver::contains_var(
+                    &self.simplifier.context,
+                    simplified_eq.lhs,
+                    var,
+                );
+                let rhs_has = cas_engine::solver::contains_var(
+                    &self.simplifier.context,
+                    simplified_eq.rhs,
+                    var,
+                );
 
                 if !lhs_has && !rhs_has {
                     // Constant equation (w.r.t var). Evaluate truthiness.
@@ -1010,10 +1154,19 @@ impl Repl {
                         println!("True (Identity)");
                     } else {
                         println!("False (Contradiction)");
-                        println!("{} != {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                        println!(
+                            "{} != {}",
+                            DisplayExpr {
+                                context: &self.simplifier.context,
+                                id: sim_lhs
+                            },
+                            DisplayExpr {
+                                context: &self.simplifier.context,
+                                id: sim_rhs
+                            }
+                        );
                     }
                 } else {
-
                     // Pass the ORIGINAL equation to solve, so it can check for domain restrictions (singularities).
                     // If we pass simplified_eq, we lose information about e.g. (x-1) in denominator.
                     match cas_engine::solver::solve(&eq, var, &mut self.simplifier) {
@@ -1030,29 +1183,56 @@ impl Repl {
                                     // Let's just show it.
                                     if true {
                                         // Simplify the equation for display
-                                        let (sim_lhs, _) = self.simplifier.simplify(step.equation_after.lhs);
-                                        let (sim_rhs, _) = self.simplifier.simplify(step.equation_after.rhs);
-                                        
+                                        let (sim_lhs, _) =
+                                            self.simplifier.simplify(step.equation_after.lhs);
+                                        let (sim_rhs, _) =
+                                            self.simplifier.simplify(step.equation_after.rhs);
+
                                         if self.verbosity == Verbosity::Low {
-                                            println!("-> {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, step.equation_after.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                                            println!(
+                                                "-> {} {} {}",
+                                                DisplayExpr {
+                                                    context: &self.simplifier.context,
+                                                    id: sim_lhs
+                                                },
+                                                step.equation_after.op,
+                                                DisplayExpr {
+                                                    context: &self.simplifier.context,
+                                                    id: sim_rhs
+                                                }
+                                            );
                                         } else {
                                             println!("{}. {}", i + 1, step.description);
-                                            println!("   -> {} {} {}", DisplayExpr { context: &self.simplifier.context, id: sim_lhs }, step.equation_after.op, DisplayExpr { context: &self.simplifier.context, id: sim_rhs });
+                                            println!(
+                                                "   -> {} {} {}",
+                                                DisplayExpr {
+                                                    context: &self.simplifier.context,
+                                                    id: sim_lhs
+                                                },
+                                                step.equation_after.op,
+                                                DisplayExpr {
+                                                    context: &self.simplifier.context,
+                                                    id: sim_rhs
+                                                }
+                                            );
                                         }
                                     }
                                 }
                             }
                             // SolutionSet doesn't implement Display with Context.
                             // We need to manually display it.
-                            println!("Result: {}", display_solution_set(&self.simplifier.context, &solution_set));
-                        },
+                            println!(
+                                "Result: {}",
+                                display_solution_set(&self.simplifier.context, &solution_set)
+                            );
+                        }
                         Err(e) => println!("Error solving: {}", e),
                     }
                 }
-            },
+            }
             Ok(cas_parser::Statement::Expression(_)) => {
                 println!("Error: Expected an equation, got an expression.");
-            },
+            }
             Err(e) => println!("Error parsing equation: {}", e),
         }
     }
@@ -1060,13 +1240,19 @@ impl Repl {
     fn handle_eval(&mut self, line: &str) {
         match cas_parser::parse(line, &mut self.simplifier.context) {
             Ok(expr) => {
-                println!("Parsed: {}", DisplayExpr { context: &self.simplifier.context, id: expr });
+                println!(
+                    "Parsed: {}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: expr
+                    }
+                );
                 let (simplified, steps) = self.simplifier.simplify(expr);
-                
+
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
                         if self.verbosity != Verbosity::Low {
-                             println!("No simplification steps needed.");
+                            println!("No simplification steps needed.");
                         }
                     } else {
                         if self.verbosity != Verbosity::Low {
@@ -1077,37 +1263,85 @@ impl Repl {
                         for step in steps.iter() {
                             if should_show_step(step, self.verbosity) {
                                 step_count += 1;
-                                
+
                                 if self.verbosity == Verbosity::Low {
                                     // Low mode: just global state
-                                    current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                                    println!("-> {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+                                    current_root = reconstruct_global_expr(
+                                        &mut self.simplifier.context,
+                                        current_root,
+                                        &step.path,
+                                        step.after,
+                                    );
+                                    println!(
+                                        "-> {}",
+                                        DisplayExpr {
+                                            context: &self.simplifier.context,
+                                            id: current_root
+                                        }
+                                    );
                                 } else {
                                     // Normal/Verbose
-                                    println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
-                                    
-                                    if self.verbosity == Verbosity::Verbose || self.verbosity == Verbosity::Normal {
+                                    println!(
+                                        "{}. {}  [{}]",
+                                        step_count, step.description, step.rule_name
+                                    );
+
+                                    if self.verbosity == Verbosity::Verbose
+                                        || self.verbosity == Verbosity::Normal
+                                    {
                                         let after_disp = if let Some(s) = &step.after_str {
                                             s.clone()
                                         } else {
-                                            format!("{}", DisplayExpr { context: &self.simplifier.context, id: step.after })
+                                            format!(
+                                                "{}",
+                                                DisplayExpr {
+                                                    context: &self.simplifier.context,
+                                                    id: step.after
+                                                }
+                                            )
                                         };
-                                        println!("   Local: {} -> {}", 
-                                            DisplayExpr { context: &self.simplifier.context, id: step.before },
+                                        println!(
+                                            "   Local: {} -> {}",
+                                            DisplayExpr {
+                                                context: &self.simplifier.context,
+                                                id: step.before
+                                            },
                                             after_disp
                                         );
                                     }
-                                    
-                                    current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
-                                    println!("   Global: {}", DisplayExpr { context: &self.simplifier.context, id: current_root });
+
+                                    current_root = reconstruct_global_expr(
+                                        &mut self.simplifier.context,
+                                        current_root,
+                                        &step.path,
+                                        step.after,
+                                    );
+                                    println!(
+                                        "   Global: {}",
+                                        DisplayExpr {
+                                            context: &self.simplifier.context,
+                                            id: current_root
+                                        }
+                                    );
                                 }
                             } else {
-                                current_root = reconstruct_global_expr(&mut self.simplifier.context, current_root, &step.path, step.after);
+                                current_root = reconstruct_global_expr(
+                                    &mut self.simplifier.context,
+                                    current_root,
+                                    &step.path,
+                                    step.after,
+                                );
                             }
                         }
                     }
                 }
-                println!("Result: {}", DisplayExpr { context: &self.simplifier.context, id: simplified });
+                println!(
+                    "Result: {}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: simplified
+                    }
+                );
             }
             Err(e) => println!("Error: {}", e),
         }
@@ -1116,41 +1350,46 @@ impl Repl {
         // simplify <expr>
         // Uses a temporary simplifier with ALL default rules (including aggressive distribution)
         let expr_str = line[9..].trim();
-        
+
         // We need to use the existing context to parse, but then we want to simplify using a different rule set.
         // The Simplifier struct owns the context.
         // Option 1: Create a new Simplifier, parse into it.
         // Option 2: Swap rules in current simplifier? (Hard)
         // Option 3: Create a new Simplifier, copy context? (Hard)
-        
-        // Easiest: Create new simplifier, parse string into it. 
+
+        // Easiest: Create new simplifier, parse string into it.
         // Note: Variables from previous history won't be available if we don't copy context.
         // But REPL history is just text in rustyline, not context state (unless we implement variable storage).
         // Current implementation: Context is reset per line? No, self.simplifier.context persists.
         // If we want to support "x = 5; simplify x", we need to share context.
-        
+
         // Better approach:
         // 1. Parse expression using current context.
-        // 2. Create a temporary Simplifier that SHARES the context? 
+        // 2. Create a temporary Simplifier that SHARES the context?
         //    Simplifier owns Context. We can't easily share.
         //    But we can temporarily TAKE the context, use it in a new Simplifier, and then put it back.
-        
+
         let mut temp_simplifier = Simplifier::with_default_rules();
         // Swap context
         std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
-        
+
         // Ensure we have the aggressive rules we want (DistributeRule is in default)
         // Also add DistributeConstantRule just in case (though DistributeRule covers it)
 
-        
         // Set steps mode
         temp_simplifier.collect_steps = self.verbosity != Verbosity::None;
-        
+
         match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {
-                println!("Parsed: {}", DisplayExpr { context: &temp_simplifier.context, id: expr });
+                println!(
+                    "Parsed: {}",
+                    DisplayExpr {
+                        context: &temp_simplifier.context,
+                        id: expr
+                    }
+                );
                 let (simplified, steps) = temp_simplifier.simplify(expr);
-                
+
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
                         if self.verbosity != Verbosity::Low {
@@ -1165,41 +1404,89 @@ impl Repl {
                         for step in steps.iter() {
                             if should_show_step(step, self.verbosity) {
                                 step_count += 1;
-                                
+
                                 if self.verbosity == Verbosity::Low {
                                     // Low mode: just global state
-                                    current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
-                                    println!("-> {}", DisplayExpr { context: &temp_simplifier.context, id: current_root });
+                                    current_root = reconstruct_global_expr(
+                                        &mut temp_simplifier.context,
+                                        current_root,
+                                        &step.path,
+                                        step.after,
+                                    );
+                                    println!(
+                                        "-> {}",
+                                        DisplayExpr {
+                                            context: &temp_simplifier.context,
+                                            id: current_root
+                                        }
+                                    );
                                 } else {
                                     // Normal/Verbose
-                                    println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
-                                    
-                                    if self.verbosity == Verbosity::Verbose || self.verbosity == Verbosity::Normal {
+                                    println!(
+                                        "{}. {}  [{}]",
+                                        step_count, step.description, step.rule_name
+                                    );
+
+                                    if self.verbosity == Verbosity::Verbose
+                                        || self.verbosity == Verbosity::Normal
+                                    {
                                         let after_disp = if let Some(s) = &step.after_str {
                                             s.clone()
                                         } else {
-                                            format!("{}", DisplayExpr { context: &temp_simplifier.context, id: step.after })
+                                            format!(
+                                                "{}",
+                                                DisplayExpr {
+                                                    context: &temp_simplifier.context,
+                                                    id: step.after
+                                                }
+                                            )
                                         };
-                                        println!("   Local: {} -> {}", 
-                                            DisplayExpr { context: &temp_simplifier.context, id: step.before },
+                                        println!(
+                                            "   Local: {} -> {}",
+                                            DisplayExpr {
+                                                context: &temp_simplifier.context,
+                                                id: step.before
+                                            },
                                             after_disp
                                         );
                                     }
-                                    
-                                    current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
-                                    println!("   Global: {}", DisplayExpr { context: &temp_simplifier.context, id: current_root });
+
+                                    current_root = reconstruct_global_expr(
+                                        &mut temp_simplifier.context,
+                                        current_root,
+                                        &step.path,
+                                        step.after,
+                                    );
+                                    println!(
+                                        "   Global: {}",
+                                        DisplayExpr {
+                                            context: &temp_simplifier.context,
+                                            id: current_root
+                                        }
+                                    );
                                 }
                             } else {
-                                current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
+                                current_root = reconstruct_global_expr(
+                                    &mut temp_simplifier.context,
+                                    current_root,
+                                    &step.path,
+                                    step.after,
+                                );
                             }
                         }
                     }
                 }
-                println!("Result: {}", DisplayExpr { context: &temp_simplifier.context, id: simplified });
+                println!(
+                    "Result: {}",
+                    DisplayExpr {
+                        context: &temp_simplifier.context,
+                        id: simplified
+                    }
+                );
             }
             Err(e) => println!("Error: {}", e),
         }
-        
+
         // Swap context back
         std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
     }
@@ -1209,7 +1496,7 @@ impl Repl {
 fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
     let mut balance = 0;
     let mut split_idx = None;
-    
+
     for (i, c) in s.char_indices().rev() {
         if c == ')' {
             balance += 1;
@@ -1220,9 +1507,9 @@ fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
             break;
         }
     }
-    
+
     if let Some(idx) = split_idx {
-        Some((&s[..idx], &s[idx+1..]))
+        Some((&s[..idx], &s[idx + 1..]))
     } else {
         None
     }
@@ -1233,9 +1520,20 @@ fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> S
         cas_ast::SolutionSet::Empty => "Empty Set".to_string(),
         cas_ast::SolutionSet::AllReals => "All Real Numbers".to_string(),
         cas_ast::SolutionSet::Discrete(exprs) => {
-            let s: Vec<String> = exprs.iter().map(|e| format!("{}", DisplayExpr { context: ctx, id: *e })).collect();
+            let s: Vec<String> = exprs
+                .iter()
+                .map(|e| {
+                    format!(
+                        "{}",
+                        DisplayExpr {
+                            context: ctx,
+                            id: *e
+                        }
+                    )
+                })
+                .collect();
             format!("{{ {} }}", s.join(", "))
-        },
+        }
         cas_ast::SolutionSet::Continuous(interval) => display_interval(ctx, interval),
         cas_ast::SolutionSet::Union(intervals) => {
             let s: Vec<String> = intervals.iter().map(|i| display_interval(ctx, i)).collect();
@@ -1253,5 +1551,17 @@ fn display_interval(ctx: &cas_ast::Context, interval: &cas_ast::Interval) -> Str
         cas_ast::BoundType::Open => ")",
         cas_ast::BoundType::Closed => "]",
     };
-    format!("{}{}, {}{}", min_bracket, DisplayExpr { context: ctx, id: interval.min }, DisplayExpr { context: ctx, id: interval.max }, max_bracket)
+    format!(
+        "{}{}, {}{}",
+        min_bracket,
+        DisplayExpr {
+            context: ctx,
+            id: interval.min
+        },
+        DisplayExpr {
+            context: ctx,
+            id: interval.max
+        },
+        max_bracket
+    )
 }

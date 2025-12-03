@@ -1,10 +1,11 @@
-use crate::step::Step;
-use cas_ast::{Context, DisplayExpr, ExprId};
+use crate::step::{PathStep, Step};
+use cas_ast::{Context, DisplayExpr, Expr, ExprId, LaTeXExpr};
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
 pub struct TimelineHtml<'a> {
-    context: &'a Context,
+    context: &'a mut Context,
     steps: &'a [Step],
+    original_expr: ExprId,
     title: String,
     verbosity_level: VerbosityLevel,
 }
@@ -18,7 +19,7 @@ pub enum VerbosityLevel {
 
 impl<'a> TimelineHtml<'a> {
     pub fn new(
-        context: &'a Context,
+        context: &'a mut Context,
         steps: &'a [Step],
         original_expr: ExprId,
         verbosity: VerbosityLevel,
@@ -33,13 +34,14 @@ impl<'a> TimelineHtml<'a> {
         Self {
             context,
             steps,
+            original_expr,
             title,
             verbosity_level: verbosity,
         }
     }
 
     /// Generate complete HTML document
-    pub fn to_html(&self) -> String {
+    pub fn to_html(&mut self) -> String {
         let mut html = Self::html_header(&self.title);
         html.push_str(&self.render_timeline());
         html.push_str(Self::html_footer());
@@ -172,14 +174,27 @@ impl<'a> TimelineHtml<'a> {
         }}
         .rule-description {{
             text-align: center;
-            padding: 8px 15px;
-            margin: 10px 0;
-            background: #f5f5f5;
-            border-radius: 4px;
-            font-size: 0.85em;
+            padding: 12px 20px;
+            margin: 15px 0;
+            background: #f9f5ff;
+            border-radius: 6px;
+            font-size: 0.95em;
             color: #667eea;
-            font-style: italic;
-            border: 1px dashed #667eea;
+            border: 2px dashed #667eea;
+        }}
+        .local-change {{
+            font-size: 1.1em;
+            margin: 8px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            text-align: center;
+        }}
+        .rule-name {{
+            font-size: 0.85em;
+            color: #764ba2;
+            font-weight: bold;
+            margin-bottom: 5px;
         }}
         .final-result {{
             text-align: center;
@@ -204,8 +219,8 @@ impl<'a> TimelineHtml<'a> {
         <h1>CAS Simplification Steps</h1>
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
-            <strong>Original Expression:</strong><br>
-            \({}\)
+            \(\textbf{{Original Expression:}}\)
+            \[{}\]
         </div>
 "#,
             escaped_title,
@@ -236,31 +251,122 @@ impl<'a> TimelineHtml<'a> {
         }
     }
 
-    fn render_timeline(&self) -> String {
+    fn reconstruct_global_expr(
+        &mut self,
+        root: ExprId,
+        path: &[PathStep],
+        replacement: ExprId,
+    ) -> ExprId {
+        if path.is_empty() {
+            return replacement;
+        }
+
+        let current_step = &path[0];
+        let remaining_path = &path[1..];
+        let expr = self.context.get(root).clone();
+
+        match (expr, current_step) {
+            (Expr::Add(l, r), PathStep::Left) => {
+                let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
+                self.context.add(Expr::Add(new_l, r))
+            }
+            (Expr::Add(l, r), PathStep::Right) => {
+                let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
+                self.context.add(Expr::Add(l, new_r))
+            }
+            (Expr::Sub(l, r), PathStep::Left) => {
+                let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
+                self.context.add(Expr::Sub(new_l, r))
+            }
+            (Expr::Sub(l, r), PathStep::Right) => {
+                let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
+                self.context.add(Expr::Sub(l, new_r))
+            }
+            (Expr::Mul(l, r), PathStep::Left) => {
+                let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
+                self.context.add(Expr::Mul(new_l, r))
+            }
+            (Expr::Mul(l, r), PathStep::Right) => {
+                let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
+                self.context.add(Expr::Mul(l, new_r))
+            }
+            (Expr::Div(l, r), PathStep::Left) => {
+                let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
+                self.context.add(Expr::Div(new_l, r))
+            }
+            (Expr::Div(l, r), PathStep::Right) => {
+                let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
+                self.context.add(Expr::Div(l, new_r))
+            }
+            (Expr::Pow(b, e), PathStep::Base) => {
+                let new_b = self.reconstruct_global_expr(b, remaining_path, replacement);
+                self.context.add(Expr::Pow(new_b, e))
+            }
+            (Expr::Pow(b, e), PathStep::Exponent) => {
+                let new_e = self.reconstruct_global_expr(e, remaining_path, replacement);
+                self.context.add(Expr::Pow(b, new_e))
+            }
+            (Expr::Neg(e), PathStep::Inner) => {
+                let new_e = self.reconstruct_global_expr(e, remaining_path, replacement);
+                self.context.add(Expr::Neg(new_e))
+            }
+            (Expr::Function(name, args), PathStep::Arg(idx)) => {
+                let mut new_args = args.clone();
+                if *idx < new_args.len() {
+                    new_args[*idx] =
+                        self.reconstruct_global_expr(new_args[*idx], remaining_path, replacement);
+                    self.context.add(Expr::Function(name, new_args))
+                } else {
+                    root
+                }
+            }
+            _ => root,
+        }
+    }
+
+    fn render_timeline(&mut self) -> String {
         let mut html = String::from("        <div class=\"timeline\">\n");
 
         let mut step_number = 0;
+        let mut current_global = self.original_expr;
+
         for step in self.steps.iter() {
             // Filter based on verbosity
             if !self.should_show_step(step) {
+                current_global =
+                    self.reconstruct_global_expr(current_global, &step.path, step.after);
                 continue;
             }
 
             step_number += 1;
-            let before = format!(
-                "{}",
-                DisplayExpr {
-                    context: self.context,
-                    id: step.before
-                }
-            );
-            let after = format!(
-                "{}",
-                DisplayExpr {
-                    context: self.context,
-                    id: step.after
-                }
-            );
+
+            // Global state BEFORE this step
+            let global_before = LaTeXExpr {
+                context: self.context,
+                id: current_global,
+            }
+            .to_latex();
+
+            // Apply the change to get global AFTER
+            let global_after_id =
+                self.reconstruct_global_expr(current_global, &step.path, step.after);
+            let global_after = LaTeXExpr {
+                context: self.context,
+                id: global_after_id,
+            }
+            .to_latex();
+
+            // Local change (before -> after)
+            let local_before = LaTeXExpr {
+                context: self.context,
+                id: step.before,
+            }
+            .to_latex();
+            let local_after = LaTeXExpr {
+                context: self.context,
+                id: step.after,
+            }
+            .to_latex();
 
             html.push_str(&format!(
                 r#"            <div class="step">
@@ -268,48 +374,50 @@ impl<'a> TimelineHtml<'a> {
                 <div class="step-content">
                     <h3>{}</h3>
                     <div class="math-expr before">
-                        <strong>Before:</strong><br>
-                        \({}\)
+                        \(\textbf{{Before (Global):}}\)
+                        \[{}\]
                     </div>
                     <div class="rule-description">
-                        {} 
+                        <div class="rule-name">\(\text{{{}}}\)</div>
+                        <div class="local-change">
+                            \[{} \rightarrow {}\]
+                        </div>
                     </div>
                     <div class="math-expr after">
-                        <strong>After:</strong><br>
-                        \({}\)
+                        \(\textbf{{After (Global):}}\)
+                        \[{}\]
                     </div>
                 </div>
             </div>
 "#,
                 step_number,
                 html_escape(&step.rule_name),
-                latex_escape(&before),
-                html_escape(&step.description),
-                latex_escape(&after)
+                global_before,
+                step.description,
+                local_before,
+                local_after,
+                global_after
             ));
+
+            // Update current global state
+            current_global = global_after_id;
         }
 
         // Add final result
-        if let Some(last_step) = self.steps.last() {
-            let final_expr = format!(
-                "{}",
-                DisplayExpr {
-                    context: self.context,
-                    id: last_step.after
-                }
-            );
-            html.push_str(&format!(
-                r#"        </div>
+        let final_expr = LaTeXExpr {
+            context: self.context,
+            id: current_global,
+        }
+        .to_latex();
+        html.push_str(&format!(
+            r#"        </div>
         <div class="final-result">
-            <strong>Final Result:</strong><br>
-            \({}\)
+            \(\textbf{{Final Result:}}\)
+            \[{}\]
         </div>
 "#,
-                latex_escape(&final_expr)
-            ));
-        } else {
-            html.push_str("        </div>\n");
-        }
+            final_expr
+        ));
 
         html
     }
@@ -346,11 +454,11 @@ mod tests {
 
     #[test]
     fn test_html_generation() {
-        let ctx = Context::new();
+        let mut ctx = Context::new();
         let steps = vec![];
         let expr = ctx.num(1);
 
-        let timeline = TimelineHtml::new(&ctx, &steps, expr, VerbosityLevel::Normal);
+        let mut timeline = TimelineHtml::new(&mut ctx, &steps, expr, VerbosityLevel::Normal);
         let html = timeline.to_html();
 
         assert!(html.contains("<!DOCTYPE html"));
