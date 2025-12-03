@@ -134,12 +134,19 @@ impl<'a> LaTeXExpr<'a> {
     fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
         // Check if we need explicit \cdot
         match (self.context.get(left), self.context.get(right)) {
-            // Number * Number needs \cdot
+            // Number * Number ALWAYS needs \cdot (5*5 = 5\cdot 5, not 55)
             (Expr::Number(_), Expr::Number(_)) => true,
-            // Number * (expr with +/-) needs \cdot
+
+            // Number * (complex expr) needs \cdot to avoid ambiguity
             (Expr::Number(_), Expr::Add(_, _)) => true,
             (Expr::Number(_), Expr::Sub(_, _)) => true,
-            // Everything else can be implicit (2x, xy, etc.)
+            (Expr::Number(_), Expr::Div(_, _)) => true,
+
+            // Anything * Number might need \cdot (e.g., x*2 is fine as x2, but (x+1)*2 needs parens already)
+            (Expr::Add(_, _), Expr::Number(_)) => true,
+            (Expr::Sub(_, _), Expr::Number(_)) => true,
+
+            // Everything else can be implicit (2x, xy, x*sin(x), etc.)
             _ => false,
         }
     }
