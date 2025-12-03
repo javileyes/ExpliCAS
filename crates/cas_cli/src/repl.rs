@@ -2,16 +2,16 @@ use cas_engine::Simplifier;
 use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
 use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule};
 use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule, PowerProductRule, PowerQuotientRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
-use cas_engine::rules::functions::EvaluateAbsRule;
+
+
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, RationalizeDenominatorRule, AddFractionsRule, ExpandRule, FactorRule};
+use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule, FactorRule};
 use cas_engine::rules::calculus::{IntegrateRule, DiffRule};
 use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_engine::rules::grouping::CollectRule;
 use rustyline::error::ReadlineError;
-use cas_ast::{Context, Expr, DisplayExpr, ExprId, RelOp};
+use cas_ast::{Context, Expr, DisplayExpr, ExprId};
 use cas_engine::step::PathStep;
 
 
@@ -126,7 +126,7 @@ impl Repl {
     pub fn new() -> Self {
         let config = CasConfig::load();
         let mut simplifier = Simplifier::with_default_rules();
-        let config = CasConfig::load();
+
         
         // Always enabled core rules
         simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));

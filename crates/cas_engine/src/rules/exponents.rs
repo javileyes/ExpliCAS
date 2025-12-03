@@ -1,9 +1,10 @@
 use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId};
-use num_traits::{Zero, One, ToPrimitive};
+use cas_ast::{Expr, ExprId, Context};
+use num_traits::{Zero, One, ToPrimitive, Signed};
 use num_integer::Integer;
 use num_rational::BigRational;
+use num_bigint::BigInt;
 use crate::ordering::compare_expr;
 use std::cmp::Ordering;
 
@@ -12,6 +13,20 @@ define_rule!(
     "Product of Powers",
     |ctx, expr| {
         // x^a * x^b -> x^(a+b)
+        let should_combine = |ctx: &Context, base: ExprId, e1: ExprId, e2: ExprId| -> bool {
+            if let Expr::Number(_) = ctx.get(base) {
+                if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(e1), ctx.get(e2)) {
+                    let sum = n1 + n2;
+                    if sum.is_integer() { return true; }
+                    // Check if proper fraction: |num| < den
+                    let num = sum.numer().abs();
+                    let den = sum.denom().abs();
+                    return num < den;
+                }
+            }
+            true
+        };
+
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
 
@@ -23,12 +38,14 @@ define_rule!(
             // Case 1: Both are powers with same base: x^a * x^b
             if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
                 if compare_expr(ctx, *base1, *base2) == Ordering::Equal {
-                    let sum_exp = ctx.add(Expr::Add(*exp1, *exp2));
-                    let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Combine powers with same base".to_string(),
-                    });
+                    if should_combine(ctx, *base1, *exp1, *exp2) {
+                        let sum_exp = ctx.add(Expr::Add(*exp1, *exp2));
+                        let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Combine powers with same base".to_string(),
+                        });
+                    }
                 }
             }
             // Case 2: One is power, one is base: x^a * x -> x^(a+1)
@@ -36,24 +53,28 @@ define_rule!(
             if let Expr::Pow(base1, exp1) = &lhs_data {
                 if compare_expr(ctx, *base1, rhs) == Ordering::Equal {
                     let one = ctx.num(1);
-                    let sum_exp = ctx.add(Expr::Add(*exp1, one));
-                    let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Combine power and base".to_string(),
-                    });
+                    if should_combine(ctx, *base1, *exp1, one) {
+                        let sum_exp = ctx.add(Expr::Add(*exp1, one));
+                        let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Combine power and base".to_string(),
+                        });
+                    }
                 }
             }
             // Right is power
             if let Expr::Pow(base2, exp2) = &rhs_data {
                 if compare_expr(ctx, *base2, lhs) == Ordering::Equal {
                     let one = ctx.num(1);
-                    let sum_exp = ctx.add(Expr::Add(one, *exp2));
-                    let new_expr = ctx.add(Expr::Pow(*base2, sum_exp));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Combine base and power".to_string(),
-                    });
+                    if should_combine(ctx, *base2, one, *exp2) {
+                        let sum_exp = ctx.add(Expr::Add(one, *exp2));
+                        let new_expr = ctx.add(Expr::Pow(*base2, sum_exp));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Combine base and power".to_string(),
+                        });
+                    }
                 }
             }
             // Case 3: Both are same base (implicit power 1): x * x -> x^2
@@ -304,41 +325,46 @@ define_rule!(
                 
                 // Case 2: Fractional Exponent (Roots)
                 // e = num / den.
-                // We want to check if b is a perfect root.
-                // b^(num/den) = (b^(1/den))^num
-                // Let's try to find nth_root where n = den.
                 let numer = e.numer();
                 let denom = e.denom();
                 
-                // Only handle if numerator is 1 for now (standard roots), or maybe simple fractions.
-                // If we have 27^(1/3), numer=1, denom=3.
-                // We check if b is a perfect 3rd root.
-                // BigRational doesn't have nth_root. We need to work with numerator and denominator of base separately.
-                // base = b_num / b_den.
-                // root = nth_root(b_num) / nth_root(b_den).
-                
-                // We need to convert denom (BigInt) to u32 for nth_root.
                 if let Some(n) = denom.to_u32() {
                     let b_num = b.numer();
                     let b_den = b.denom();
                     
-                    let root_num = b_num.nth_root(n);
-                    let root_den = b_den.nth_root(n);
+                    let (out_n, in_n) = extract_root_factor(b_num, n);
+                    let (out_d, in_d) = extract_root_factor(b_den, n);
                     
-                    // Check if perfect root
-                    if root_num.pow(n) == *b_num && root_den.pow(n) == *b_den {
-                        // It is a perfect root!
-                        // So b^(1/n) = root_num / root_den.
-                        let root = BigRational::new(root_num, root_den);
+                    // If we extracted anything (outside parts are not 1)
+                    if !out_n.is_one() || !out_d.is_one() {
+                        // b^(num/den) = ( (out_n^n * in_n) / (out_d^n * in_d) ) ^ (num/n)
+                        //             = (out_n/out_d)^num * (in_n/in_d)^(num/n)
                         
-                        // Now raise to numerator power: (b^(1/n))^numer
                         if let Some(pow_num) = numer.to_i32() {
-                             let res = root.pow(pow_num);
-                             let new_expr = ctx.add(Expr::Number(res));
-                             return Some(Rewrite {
-                                 new_expr,
-                                 description: format!("Evaluate perfect root: {}^{}", b, e),
-                             });
+                            let coeff_num = out_n.pow(pow_num as u32); // BigInt pow takes u32
+                            let coeff_den = out_d.pow(pow_num as u32);
+                            let coeff = BigRational::new(coeff_num, coeff_den);
+                            
+                            let new_base_val = BigRational::new(in_n, in_d);
+                            
+                            let coeff_expr = ctx.add(Expr::Number(coeff));
+                            
+                            if new_base_val.is_one() {
+                                // Perfect root
+                                return Some(Rewrite {
+                                    new_expr: coeff_expr,
+                                    description: format!("Evaluate perfect root: {}^{}", b, e),
+                                });
+                            } else {
+                                // Partial root
+                                let new_base = ctx.add(Expr::Number(new_base_val));
+                                let new_pow = ctx.add(Expr::Pow(new_base, exp)); // Keep original exponent for the remainder
+                                let new_expr = ctx.add(Expr::Mul(coeff_expr, new_pow));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description: format!("Simplify root: {}^{}", b, e),
+                                });
+                            }
                         }
                     }
                 }
@@ -542,3 +568,67 @@ define_rule!(
         None
     }
 );
+
+fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
+    if n.is_zero() { return (BigInt::zero(), BigInt::one()); }
+    if n.is_one() { return (BigInt::one(), BigInt::one()); }
+    
+    let sign = if n.is_negative() { -1 } else { 1 };
+    let mut n_abs = n.abs();
+    
+    let mut outside = BigInt::one();
+    let mut inside = BigInt::one();
+    
+    // Trial division
+    // Check 2
+    let mut count = 0;
+    while n_abs.is_even() {
+        count += 1;
+        n_abs /= 2;
+    }
+    if count > 0 {
+        let out_exp = count / k;
+        let in_exp = count % k;
+        if out_exp > 0 {
+            outside *= BigInt::from(2).pow(out_exp);
+        }
+        if in_exp > 0 {
+            inside *= BigInt::from(2).pow(in_exp);
+        }
+    }
+
+    let mut d = BigInt::from(3);
+    while &d * &d <= n_abs {
+        if (&n_abs % &d).is_zero() {
+            let mut count = 0;
+            while (&n_abs % &d).is_zero() {
+                count += 1;
+                n_abs /= &d;
+            }
+            let out_exp = count / k;
+            let in_exp = count % k;
+            if out_exp > 0 {
+                outside *= d.pow(out_exp);
+            }
+            if in_exp > 0 {
+                inside *= d.pow(in_exp);
+            }
+        }
+        d += 2;
+    }
+    
+    if n_abs > BigInt::one() {
+        inside *= n_abs;
+    }
+    
+    // Handle sign
+    if sign == -1 {
+        if k % 2 != 0 {
+            outside = -outside;
+        } else {
+            inside = -inside;
+        }
+    }
+    
+    (outside, inside)
+}
