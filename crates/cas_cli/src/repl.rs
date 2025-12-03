@@ -210,7 +210,7 @@ impl Repl {
 
         let mut repl = Self {
             simplifier,
-            verbosity: Verbosity::None,
+            verbosity: Verbosity::Normal,
             config,
         };
         repl.sync_config_to_simplifier();
@@ -264,6 +264,7 @@ impl Repl {
 
     pub fn run(&mut self) -> rustyline::Result<()> {
         println!("Rust CAS Step-by-Step Demo");
+        println!("Step-by-step output enabled (Normal).");
         println!("Enter an expression (e.g., '2 * 3 + 0'):");
 
         let helper = CasHelper::new();

@@ -1731,7 +1731,7 @@ define_rule!(
         if inner.is_none() { return None; }
         let inner = inner.unwrap();
         let inner_data = ctx.get(inner).clone();
-        println!("RootDenesting checking inner: {:?}", inner_data);
+        //println!("RootDenesting checking inner: {:?}", inner_data);
 
         let (a, b, is_add) = match inner_data {
             Expr::Add(l, r) => (l, r, true),

@@ -332,8 +332,10 @@ define_rule!(
                     let b_num = b.numer();
                     let b_den = b.denom();
                     
+                    // println!("Checking root: base={}/{}, n={}", b_num, b_den, n);
                     let (out_n, in_n) = extract_root_factor(b_num, n);
                     let (out_d, in_d) = extract_root_factor(b_den, n);
+                    // println!("Extracted: num=({},{}), den=({},{})", out_n, in_n, out_d, in_d);
                     
                     // If we extracted anything (outside parts are not 1)
                     if !out_n.is_one() || !out_d.is_one() {
