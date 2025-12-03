@@ -682,7 +682,7 @@ impl Repl {
                                             // Normal/Verbose
                                             println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
                                             
-                                            if self.verbosity == Verbosity::Verbose {
+                                            if self.verbosity == Verbosity::Verbose || self.verbosity == Verbosity::Normal {
                                                 let after_disp = if let Some(s) = &step.after_str {
                                                     s.clone()
                                                 } else {
@@ -888,7 +888,7 @@ impl Repl {
                                     // Normal/Verbose
                                     println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
                                     
-                                    if self.verbosity == Verbosity::Verbose {
+                                    if self.verbosity == Verbosity::Verbose || self.verbosity == Verbosity::Normal {
                                         let after_disp = if let Some(s) = &step.after_str {
                                             s.clone()
                                         } else {
@@ -976,7 +976,7 @@ impl Repl {
                                     // Normal/Verbose
                                     println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
                                     
-                                    if self.verbosity == Verbosity::Verbose {
+                                    if self.verbosity == Verbosity::Verbose || self.verbosity == Verbosity::Normal {
                                         if let Some(s) = &step.after_str {
                                             println!("   Local: {}", s);
                                         }

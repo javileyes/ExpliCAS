@@ -31,12 +31,7 @@ impl CasHelper {
                 "perm".to_string(),
                 "simplify".to_string(),
                 "config".to_string(),
-                "steps on".to_string(),
-                "steps off".to_string(),
-                "steps normal".to_string(),
-                "steps low".to_string(),
-                "steps verbose".to_string(),
-                "steps none".to_string(),
+                "steps".to_string(),
                 "help".to_string(),
                 "quit".to_string(),
                 "exit".to_string(),
@@ -117,6 +112,26 @@ impl Completer for CasHelper {
                      return Ok((start, matches));
                  }
             }
+        }
+
+        // Check for "steps" context
+        if line.starts_with("steps ") {
+             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+             let ends_with_space = line[..pos].ends_with(' ');
+             
+             // Case: "steps <TAB>" or "steps no<TAB>"
+             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                 let levels = vec!["normal", "low", "verbose", "none", "on", "off"];
+                 for level in levels {
+                     if level.starts_with(word) {
+                         matches.push(Pair {
+                             display: level.to_string(),
+                             replacement: level.to_string(),
+                         });
+                     }
+                 }
+                 return Ok((start, matches));
+             }
         }
 
         // Check for "help" context
