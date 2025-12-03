@@ -113,11 +113,31 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
                name == "Collect" || 
                name.starts_with("Identity") ||
                name == "Add Zero" ||
-               name == "Multiply by One" {
-                false
-            } else {
-                true
+               name == "Mul By One" {
+                return false;
             }
+            
+            // Filter "Expand" steps that produce no visible change
+            if name == "Expand" {
+                // Check if before == after (no actual change)
+                if step.before == step.after {
+                    return false; // No change, skip
+                }
+            }
+            
+            // Filter trivial "Combine Constants" (like 1/3 = 1/3)
+            if name == "Combine Constants" {
+                let desc = &step.description;
+                // Heuristic: if description shows "a/b = a/b" or similar, it's trivial
+                if desc.contains(" / ") && desc.contains(" = ") {
+                    let parts: Vec<&str> = desc.split(" = ").collect();
+                    if parts.len() == 2 && parts[0].trim() == parts[1].trim() {
+                        return false; // Trivial, no actual combination
+                    }
+                }
+            }
+            
+            true
         }
     }
 }

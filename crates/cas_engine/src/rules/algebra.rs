@@ -1204,7 +1204,7 @@ define_rule!(
                             if p_den.is_zero() { continue; }
                             let gcd = p_num.gcd(&p_den);
                             if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
-                                eprintln!("AddFractionsRule simplifies: Poly GCD found: {:?}", gcd);
+                                // Debug: Poly GCD found
                                 return true;
                             }
                         }
@@ -1749,7 +1749,7 @@ define_rule!(
                 Expr::Pow(b, e) => {
                     // Check for b^(3/2) -> b * sqrt(b)
                     if let Expr::Number(n) = ctx.get(*e) {
-                        println!("Checking Pow: base={:?}, exp={}", b, n);
+                        // Debug: Checking Pow for root denesting
                         if *n.numer() == 3.into() && *n.denom() == 2.into() {
                             return Some((Some(*b), *b));
                         }

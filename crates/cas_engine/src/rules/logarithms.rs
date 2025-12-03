@@ -360,19 +360,19 @@ define_rule!(
             let check_log_denom = |ctx: &Context, denom: cas_ast::ExprId| -> Option<Option<cas_ast::ExprId>> {
                 // println!("check_log_denom checking {:?}", denom);
                 if let Expr::Function(name, args) = ctx.get(denom) {
-                    println!("check_log_denom: name={}, args={:?}", name, args);
+                    // Debug: checking log denominator
                     if name == "log" && args.len() == 2 {
                         let log_base = args[0];
                         let log_arg = args[1];
                         // Check if log_arg == base
                         if compare_expr(ctx, log_arg, base) == Ordering::Equal {
-                            println!("check_log_denom found log({:?}, {:?})", log_base, log_arg);
+                            // Debug: found matching log
                             return Some(Some(log_base));
                         }
                     } else if name == "ln" && args.len() == 1 {
                         let log_arg = args[0];
                         if compare_expr(ctx, log_arg, base) == Ordering::Equal {
-                            println!("check_log_denom found ln({:?})", log_arg);
+                            // Debug: found matching ln
                             return Some(None); // Base e
                         }
                     }
@@ -434,7 +434,7 @@ define_rule!(
             if let (Some(b_opt), Some(c)) = (target_b_opt, coeff) {
                 // Result is b^c
                 let b = b_opt.unwrap_or_else(|| ctx.add(Expr::Constant(cas_ast::Constant::E)));
-                println!("LogInversePowerRule: Rewriting x^(c/log(b, x)) -> b^c. b={:?}, c={:?}", b, c);
+                // Debug: applying log inverse power rule
                 let new_expr = ctx.add(Expr::Pow(b, c));
                 return Some(Rewrite {
                     new_expr,

@@ -18,7 +18,9 @@ define_rule!(
                         if let Some(result) = integrate(ctx, integrand, &var_name) {
                             return Some(Rewrite {
                                 new_expr: result,
-                                description: format!("integrate({:?})", integrand),
+                                description: format!("integrate({}, {})", 
+                                    cas_ast::DisplayExpr { context: ctx, id: integrand },
+                                    var_name),
                             });
                         }
                     }
@@ -29,7 +31,8 @@ define_rule!(
                     if let Some(result) = integrate(ctx, integrand, "x") {
                         return Some(Rewrite {
                             new_expr: result,
-                            description: format!("integrate({:?})", integrand),
+                            description: format!("integrate({}, x)", 
+                                cas_ast::DisplayExpr { context: ctx, id: integrand }),
                             });
                     }
                 }
@@ -53,7 +56,9 @@ define_rule!(
                         if let Some(result) = differentiate(ctx, target, &var_name) {
                             return Some(Rewrite {
                                 new_expr: result,
-                                description: format!("diff({:?}, {})", target, var_name),
+                                description: format!("diff({}, {})", 
+                                    cas_ast::DisplayExpr { context: ctx, id: target },
+                                    var_name),
                             });
                         }
                     }
