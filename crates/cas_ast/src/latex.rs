@@ -92,7 +92,52 @@ impl<'a> LaTeXExpr<'a> {
                     }
                 }
 
-                // Case 2: Exponent is explicit division (before simplification: x^(1/2) as Div(1,2))
+                // Case 2: Exponent is multiplication like 1/3 * 2 (becomes Mul(Rational{1/3}, Number{2}))
+                if let Expr::Mul(l, r) = self.context.get(*exp) {
+                    // Check if it's Rational * Integer or Integer * Rational
+                    let (maybe_rational, maybe_int) =
+                        match (self.context.get(*l), self.context.get(*r)) {
+                            (Expr::Number(rat), Expr::Number(num))
+                                if !rat.is_integer() && num.is_integer() =>
+                            {
+                                (Some(rat), Some(num))
+                            }
+                            (Expr::Number(num), Expr::Number(rat))
+                                if num.is_integer() && !rat.is_integer() =>
+                            {
+                                (Some(rat), Some(num))
+                            }
+                            _ => (None, None),
+                        };
+
+                    if let (Some(rational), Some(integer)) = (maybe_rational, maybe_int) {
+                        // Compute m/n * k = (m*k)/n
+                        let m = rational.numer().clone();
+                        let n = rational.denom().clone();
+                        let k = integer.numer().clone();
+                        let new_numer = m * k;
+
+                        let base_str = self.expr_to_latex(*base, false);
+
+                        // x^(k/n) → \sqrt[n]{x^k}
+                        if new_numer == 1.into() {
+                            if n == 2.into() {
+                                return format!("\\sqrt{{{}}}", base_str);
+                            } else {
+                                return format!("\\sqrt[{}]{{{}}}", n, base_str);
+                            }
+                        } else {
+                            let inner = format!("{{{}}}^{{{}}}", base_str, new_numer);
+                            if n == 2.into() {
+                                return format!("\\sqrt{{{}}}", inner);
+                            } else {
+                                return format!("\\sqrt[{}]{{{}}}", n, inner);
+                            }
+                        }
+                    }
+                }
+
+                // Case 3: Exponent is explicit division (before simplification: x^(1/2) as Div(1,2))
                 if let Expr::Div(numer, denom) = self.context.get(*exp) {
                     // Check if it's a simple fraction number
                     if let (Expr::Number(n), Expr::Number(d)) =

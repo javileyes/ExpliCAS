@@ -935,6 +935,13 @@ impl Repl {
                     return;
                 }
 
+                // Filter out non-productive steps (where global state doesn't change)
+                let filtered_steps = cas_engine::strategies::filter_non_productive_steps(
+                    &mut self.simplifier.context,
+                    expr,
+                    steps,
+                );
+
                 // Convert CLI verbosity to timeline verbosity
                 let timeline_verbosity = match self.verbosity {
                     Verbosity::None | Verbosity::Low => cas_engine::timeline::VerbosityLevel::Low,
@@ -942,9 +949,10 @@ impl Repl {
                     Verbosity::Verbose => cas_engine::timeline::VerbosityLevel::Verbose,
                 };
 
+                // Generate HTML timeline with filtered steps
                 let mut timeline = cas_engine::timeline::TimelineHtml::new(
                     &mut self.simplifier.context,
-                    &steps,
+                    &filtered_steps,
                     expr,
                     timeline_verbosity,
                 );

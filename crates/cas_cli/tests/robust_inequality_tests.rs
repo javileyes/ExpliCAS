@@ -1,40 +1,25 @@
-use cas_engine::Simplifier;
-use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
+use cas_ast::{BoundType, Context, DisplayExpr, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_engine::rules::algebra::SimplifyFractionRule;
+use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
+use cas_engine::rules::canonicalization::{
+    CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule, CanonicalizeRootRule,
+};
+use cas_engine::rules::exponents::{
+    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, ProductPowerRule,
+};
 use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule};
-use cas_parser::parse;
-use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
+use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
+use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::solver::solve;
+use cas_engine::Simplifier;
+use cas_parser::parse;
 use num_traits::Zero;
 
 fn create_full_simplifier() -> Simplifier {
-    let mut simplifier = Simplifier::new();
-    simplifier.add_rule(Box::new(CanonicalizeNegationRule));
-    simplifier.add_rule(Box::new(CanonicalizeAddRule));
-    simplifier.add_rule(Box::new(CanonicalizeMulRule));
-    simplifier.add_rule(Box::new(CanonicalizeRootRule));
-    simplifier.add_rule(Box::new(EvaluateAbsRule));
-    simplifier.add_rule(Box::new(EvaluateTrigRule));
-    simplifier.add_rule(Box::new(PythagoreanIdentityRule));
-    simplifier.add_rule(Box::new(EvaluateLogRule));
-    simplifier.add_rule(Box::new(ExponentialLogRule));
-    simplifier.add_rule(Box::new(ProductPowerRule));
-    simplifier.add_rule(Box::new(PowerPowerRule));
-    simplifier.add_rule(Box::new(IdentityPowerRule));
-    simplifier.add_rule(Box::new(EvaluatePowerRule));
-    simplifier.add_rule(Box::new(DistributeRule));
-    simplifier.add_rule(Box::new(CombineLikeTermsRule));
-    simplifier.add_rule(Box::new(AnnihilationRule));
-    simplifier.add_rule(Box::new(SimplifyFractionRule));
-    simplifier.add_rule(Box::new(CombineConstantsRule));
-    simplifier.add_rule(Box::new(AddZeroRule));
-    simplifier.add_rule(Box::new(MulOneRule));
-    simplifier
+    // Use with_default_rules to get the orchestrator and all standard rules
+    // This ensures complete simplification including power evaluation and fraction handling
+    Simplifier::with_default_rules()
 }
 
 #[test]
@@ -45,22 +30,44 @@ fn test_mixed_abs_linear() {
     // -4 < x+1 < 4
     // -5 < x < 3
     // Result: (-5, 3)
-    
+
     let mut simplifier = create_full_simplifier();
     let lhs = parse("2 * |x + 1| - 3", &mut simplifier.context).unwrap();
     let rhs = parse("5", &mut simplifier.context).unwrap();
-    let eq = Equation { lhs, rhs, op: RelOp::Lt };
-    
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Lt,
+    };
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     let expected_min = "-5";
     let expected_max = "3";
 
     if let SolutionSet::Continuous(interval) = result {
         let min = simplifier.simplify(interval.min.clone()).0;
         let max = simplifier.simplify(interval.max.clone()).0;
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: min }), expected_min);
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: max }), expected_max);
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: min
+                }
+            ),
+            expected_min
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: max
+                }
+            ),
+            expected_max
+        );
         assert_eq!(interval.min_type, BoundType::Open);
         assert_eq!(interval.max_type, BoundType::Open);
     } else {
@@ -77,32 +84,62 @@ fn test_nested_abs_simple() {
     // |x| > 1 -> (-inf, -1) U (1, inf)
     // |x| < 3 -> (-3, 3)
     // Intersection: (-3, -1) U (1, 3)
-    
+
     let mut simplifier = create_full_simplifier();
     let lhs = parse("||x| - 2|", &mut simplifier.context).unwrap();
     let rhs = parse("1", &mut simplifier.context).unwrap();
-    let eq = Equation { lhs, rhs, op: RelOp::Lt };
-    
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Lt,
+    };
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     // We expect a Union of two intervals
     if let SolutionSet::Union(intervals) = result {
         assert_eq!(intervals.len(), 2);
-        
+
         // Check if we have (-3, -1)
         let has_neg = intervals.iter().any(|i| {
             let min = simplifier.simplify(i.min.clone()).0;
             let max = simplifier.simplify(i.max.clone()).0;
-            format!("{}", DisplayExpr { context: &simplifier.context, id: min }) == "-3" && format!("{}", DisplayExpr { context: &simplifier.context, id: max }) == "-1"
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: min
+                }
+            ) == "-3"
+                && format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &simplifier.context,
+                        id: max
+                    }
+                ) == "-1"
         });
-        
+
         // Check if we have (1, 3)
         let has_pos = intervals.iter().any(|i| {
             let min = simplifier.simplify(i.min.clone()).0;
             let max = simplifier.simplify(i.max.clone()).0;
-            format!("{}", DisplayExpr { context: &simplifier.context, id: min }) == "1" && format!("{}", DisplayExpr { context: &simplifier.context, id: max }) == "3"
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: min
+                }
+            ) == "1"
+                && format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &simplifier.context,
+                        id: max
+                    }
+                ) == "3"
         });
-        
+
         assert!(has_neg, "Missing interval (-3, -1)");
         assert!(has_pos, "Missing interval (1, 3)");
     } else {
@@ -116,10 +153,14 @@ fn test_impossible_abs() {
     let mut simplifier = create_full_simplifier();
     let lhs = parse("|x|", &mut simplifier.context).unwrap();
     let rhs = parse("-5", &mut simplifier.context).unwrap();
-    let eq = Equation { lhs, rhs, op: RelOp::Lt };
-    
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Lt,
+    };
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     if let SolutionSet::Empty = result {
         // Pass
     } else {
@@ -132,20 +173,24 @@ fn test_always_true_abs() {
     // |x| > -5 -> All Reals (since |x| >= 0)
     // Our solver splits into x > -5 OR x < 5.
     // Union of (-5, inf) and (-inf, 5) is (-inf, inf) i.e. All Reals.
-    
+
     let mut simplifier = create_full_simplifier();
     let lhs = parse("|x|", &mut simplifier.context).unwrap();
     let rhs = parse("-5", &mut simplifier.context).unwrap();
-    let eq = Equation { lhs, rhs, op: RelOp::Gt };
-    
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Gt,
+    };
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     match result {
-        SolutionSet::AllReals => {}, // Ideal
+        SolutionSet::AllReals => {} // Ideal
         SolutionSet::Union(intervals) => {
-            // Check if it covers everything. 
-             assert!(intervals.len() >= 2);
-        },
+            // Check if it covers everything.
+            assert!(intervals.len() >= 2);
+        }
         _ => panic!("Expected AllReals or covering Union, got {:?}", result),
     }
 }
@@ -156,28 +201,41 @@ fn test_rational_inequality() {
     // If x > 0: 1 < 2x -> x > 1/2 -> (1/2, inf)
     // If x < 0: 1 > 2x -> x < 1/2 (but x < 0) -> (-inf, 0)
     // Result: (-inf, 0) U (1/2, inf)
-    
+
     // Note: Our solver currently might treat 1/x as x^(-1) or Div(1, x).
     // Isolate logic for Div:
     // 1/x < 2 -> 1 < 2x (if x>0) or 1 > 2x (if x<0).
-    // Our current implementation of `isolate` for `Div` assumes standard algebraic manipulation 
+    // Our current implementation of `isolate` for `Div` assumes standard algebraic manipulation
     // and might not handle the case split for variable denominator sign automatically.
     // It likely just does 1 < 2x -> x > 1/2.
     // Let's see what it does. If it fails to capture (-inf, 0), we know we need to improve it.
     // For now, let's assert what it DOES produce, and if it's incomplete, we note it.
-    
+
     let mut simplifier = create_full_simplifier();
     let lhs = parse("1 / x", &mut simplifier.context).unwrap();
     let rhs = parse("2", &mut simplifier.context).unwrap();
-    let eq = Equation { lhs, rhs, op: RelOp::Lt };
-    
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Lt,
+    };
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     // If it returns just (1/2, inf), that's "partial" correctness for positive x.
     if let SolutionSet::Continuous(interval) = result {
-         let min = simplifier.simplify(interval.min).0;
-         // Expect 1/2
-         assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: min }), "1 / 2");
+        let min = simplifier.simplify(interval.min).0;
+        // Expect 1/2
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: min
+                }
+            ),
+            "1 / 2"
+        );
     } else if let SolutionSet::Union(_) = result {
         // If it handles both cases, great!
     } else {
@@ -200,19 +258,41 @@ fn test_quadratic_inequality() {
     // It simplifies to x < 2.
     // So it misses the negative side.
     // This is a known limitation of x^(2/2) -> x simplification (it loses |x|).
-    
+
     let mut simplifier = create_full_simplifier();
     let lhs = parse("x^2", &mut simplifier.context).unwrap();
     let rhs = parse("4", &mut simplifier.context).unwrap();
-    let eq = Equation { lhs, rhs, op: RelOp::Lt };
-    
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Lt,
+    };
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     if let SolutionSet::Continuous(interval) = result {
         let min = simplifier.simplify(interval.min).0;
         let max = simplifier.simplify(interval.max).0;
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: min }), "-2");
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: max }), "2");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: min
+                }
+            ),
+            "-2"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: max
+                }
+            ),
+            "2"
+        );
     } else {
         panic!("Expected Continuous solution, got {:?}", result);
     }
@@ -224,21 +304,43 @@ fn test_quadratic_inequality_gt() {
     let mut simplifier = create_full_simplifier();
     let lhs = parse("x^2", &mut simplifier.context).unwrap();
     let rhs = parse("4", &mut simplifier.context).unwrap();
-    let eq = Equation { lhs, rhs, op: RelOp::Gt };
-    
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Gt,
+    };
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     if let SolutionSet::Union(intervals) = result {
         assert_eq!(intervals.len(), 2);
         // Sorted: (-inf, -2), (2, inf)
         let i1 = &intervals[0];
         let i2 = &intervals[1];
-        
+
         let max1 = simplifier.simplify(i1.max).0;
         let min2 = simplifier.simplify(i2.min).0;
-        
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: max1 }), "-2");
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: min2 }), "2");
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: max1
+                }
+            ),
+            "-2"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: min2
+                }
+            ),
+            "2"
+        );
     } else {
         panic!("Expected Union solution, got {:?}", result);
     }

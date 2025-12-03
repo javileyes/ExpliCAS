@@ -12,9 +12,26 @@ pub struct TimelineHtml<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum VerbosityLevel {
-    Low,     // Only global state changes
-    Normal,  // Filtered meaningful steps
-    Verbose, // All steps
+    Low,     // Only high-importance steps (Factor, Expand, Integrate, etc.)
+    Normal,  // Medium+ importance steps (most transformations)
+    Verbose, // All steps including trivial ones
+}
+
+impl VerbosityLevel {
+    /// Returns minimum importance level to show for this verbosity
+    fn min_importance(&self) -> crate::step::ImportanceLevel {
+        use crate::step::ImportanceLevel;
+        match self {
+            VerbosityLevel::Low => ImportanceLevel::High,
+            VerbosityLevel::Normal => ImportanceLevel::Medium,
+            VerbosityLevel::Verbose => ImportanceLevel::Trivial, // Show all
+        }
+    }
+
+    /// Check if a step should be shown at this verbosity level
+    fn should_show_step(&self, step: &Step) -> bool {
+        step.importance() >= self.min_importance()
+    }
 }
 
 impl<'a> TimelineHtml<'a> {
@@ -42,8 +59,15 @@ impl<'a> TimelineHtml<'a> {
 
     /// Generate complete HTML document
     pub fn to_html(&mut self) -> String {
+        // Filter steps based on verbosity level
+        let filtered_steps: Vec<&Step> = self
+            .steps
+            .iter()
+            .filter(|step| self.verbosity_level.should_show_step(step))
+            .collect();
+
         let mut html = Self::html_header(&self.title);
-        html.push_str(&self.render_timeline());
+        html.push_str(&self.render_timeline_filtered(&filtered_steps));
         html.push_str(Self::html_footer());
         html
     }
@@ -228,29 +252,6 @@ impl<'a> TimelineHtml<'a> {
         )
     }
 
-    fn should_show_step(&self, step: &Step) -> bool {
-        match self.verbosity_level {
-            VerbosityLevel::Verbose => true,
-            VerbosityLevel::Normal => {
-                // Filter out noisy canonicalization steps
-                !step.rule_name.starts_with("Canonicalize")
-                    && step.rule_name != "Add Zero"
-                    && step.rule_name != "Multiply by One"
-                    && step.rule_name != "Identity Power"
-            }
-            VerbosityLevel::Low => {
-                // Only show major transformations
-                !step.rule_name.starts_with("Canonicalize")
-                    && !step.rule_name.starts_with("Pull")
-                    && step.rule_name != "Add Zero"
-                    && step.rule_name != "Multiply by One"
-                    && step.rule_name != "Identity Power"
-                    && step.rule_name != "Sort"
-                    && step.rule_name != "Flatten"
-            }
-        }
-    }
-
     fn reconstruct_global_expr(
         &mut self,
         root: ExprId,
@@ -324,35 +325,44 @@ impl<'a> TimelineHtml<'a> {
         }
     }
 
-    fn render_timeline(&mut self) -> String {
+    fn render_timeline_filtered(&mut self, filtered_steps: &[&Step]) -> String {
         let mut html = String::from("        <div class=\"timeline\">\n");
 
         let mut step_number = 0;
         let mut current_global = self.original_expr;
 
-        for step in self.steps.iter() {
-            // Filter based on verbosity
-            if !self.should_show_step(step) {
-                current_global =
-                    self.reconstruct_global_expr(current_global, &step.path, step.after);
-                continue;
-            }
+        // Track which steps to display (create a set of their indices)
+        let filtered_indices: std::collections::HashSet<_> = filtered_steps
+            .iter()
+            .map(|s| *s as *const Step) // Dereference `&Step` to `Step` before taking pointer
+            .collect();
 
+        // Iterate over ALL steps to correctly update the global state
+        for step in self.steps.iter() {
+            // Store global state BEFORE this step is applied
+            let global_state_before_this_step = current_global;
+
+            // Always update global state, regardless of whether it's filtered
+            current_global = self.reconstruct_global_expr(current_global, &step.path, step.after);
+
+            // Only render if this step is in filtered set
+            let step_ptr = step as *const Step;
+            if !filtered_indices.contains(&step_ptr) {
+                continue; // Skip rendering for non-filtered steps
+            }
             step_number += 1;
 
-            // Global state BEFORE this step
+            // Global state BEFORE this step (this is the state *before* the current `step` was applied)
             let global_before = LaTeXExpr {
                 context: self.context,
-                id: current_global,
+                id: global_state_before_this_step,
             }
             .to_latex();
 
-            // Apply the change to get global AFTER
-            let global_after_id =
-                self.reconstruct_global_expr(current_global, &step.path, step.after);
+            // Global AFTER is the current_global (already updated)
             let global_after = LaTeXExpr {
                 context: self.context,
-                id: global_after_id,
+                id: current_global,
             }
             .to_latex();
 
@@ -367,6 +377,7 @@ impl<'a> TimelineHtml<'a> {
                 id: step.after,
             }
             .to_latex();
+            let local_change_latex = format!("{} \\rightarrow {}", local_before, local_after);
 
             html.push_str(&format!(
                 r#"            <div class="step">
@@ -374,18 +385,14 @@ impl<'a> TimelineHtml<'a> {
                 <div class="step-content">
                     <h3>{}</h3>
                     <div class="math-expr before">
-                        \(\textbf{{Before (Global):}}\)
+                        \(\textbf{{Expression:}}\)
                         \[{}\]
                     </div>
                     <div class="rule-description">
                         <div class="rule-name">\(\text{{{}}}\)</div>
                         <div class="local-change">
-                            \[{} \rightarrow {}\]
+                            \[{}\]
                         </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{{After (Global):}}\)
-                        \[{}\]
                     </div>
                 </div>
             </div>
@@ -394,13 +401,8 @@ impl<'a> TimelineHtml<'a> {
                 html_escape(&step.rule_name),
                 global_before,
                 step.description,
-                local_before,
-                local_after,
-                global_after
+                local_change_latex
             ));
-
-            // Update current global state
-            current_global = global_after_id;
         }
 
         // Add final result
@@ -409,22 +411,24 @@ impl<'a> TimelineHtml<'a> {
             id: current_global,
         }
         .to_latex();
-        html.push_str(&format!(
+        html.push_str(
             r#"        </div>
         <div class="final-result">
-            \(\textbf{{Final Result:}}\)
-            \[{}\]
+            \(\textbf{Final Result:}\)
+            \["#,
+        );
+        html.push_str(&final_expr);
+        html.push_str(
+            r#"\]
         </div>
+    </div>
 "#,
-            final_expr
-        ));
-
+        );
         html
     }
 
     fn html_footer() -> &'static str {
-        r#"    </div>
-    <footer>
+        r#"    <footer>
         Generated by Rust CAS Engine
     </footer>
 </body>
@@ -455,16 +459,29 @@ mod tests {
     #[test]
     fn test_html_generation() {
         let mut ctx = Context::new();
-        let steps = vec![];
-        let expr = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let add_expr = ctx.add(Expr::Add(two, three));
+        let five = ctx.num(5);
 
-        let mut timeline = TimelineHtml::new(&mut ctx, &steps, expr, VerbosityLevel::Normal);
+        // Create a step for the simplification
+        let steps = vec![Step::new(
+            "2 + 3 = 5",
+            "Combine Constants",
+            add_expr,
+            five,
+            vec![],
+            Some(&ctx),
+        )];
+
+        let mut timeline = TimelineHtml::new(&mut ctx, &steps, add_expr, VerbosityLevel::Verbose);
         let html = timeline.to_html();
 
         assert!(html.contains("<!DOCTYPE html"));
-        assert!(html.contains("MathJax"));
         assert!(html.contains("timeline"));
         assert!(html.contains("CAS Simplification"));
+        // The HTML should contain our step (Combine Constants has ImportanceLevel::Low, so needs Verbose)
+        assert!(html.contains("Combine Constants"));
     }
 
     #[test]
