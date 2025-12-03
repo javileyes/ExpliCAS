@@ -781,7 +781,7 @@ define_rule!(
 // Helper function: Check if two expressions are structurally opposite (e.g., a-b vs b-a)
 fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
     // Debug: print what we're comparing
-    eprintln!("Comparing denominators: e1={:?} vs e2={:?}", ctx.get(e1), ctx.get(e2));
+    // eprintln!("Comparing denominators: e1={:?} vs e2={:?}", ctx.get(e1), ctx.get(e2));
     
     match (ctx.get(e1), ctx.get(e2)) {
         // Case 1: (a - b) vs (b - a)
@@ -803,7 +803,9 @@ fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
             }
             // Also check if l1 is Number(-n) and l2 is Number(n)
             if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(*l1), ctx.get(*l2)) {
-                if n1 == &-n2 && compare_expr(ctx, *r1, *r2) == Ordering::Equal {
+                let neg_n2 = -n2.clone();
+
+                if n1 == &neg_n2 && compare_expr(ctx, *r1, *r2) == Ordering::Equal {
                     // eprintln!("  -> MATCH case 2b: Add(Number(-n), b) vs Sub(Number(n), b)");
                     return true;
                 }
@@ -814,16 +816,38 @@ fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
         (Expr::Sub(_, _), Expr::Add(_, _)) => {
             are_denominators_opposite(ctx, e2, e1)
         }
-        // Case 4: Add(Neg(a), b) vs Add(Neg(b), a) -- both are negative forms
-        // e.g., -1 + x vs -x + 1
+        // Case 4: Both Add - various patterns
         (Expr::Add(l1, r1), Expr::Add(l2, r2)) => {
+
+            
+            // Pattern 4a: Add(Neg(a), b) vs Add(Neg(b), a) -- both terms negated, swapped
             if let (Expr::Neg(neg_l1), Expr::Neg(neg_l2)) = (ctx.get(*l1), ctx.get(*l2)) {
-                // -a + b vs -c + d
-                // Opposite if: a == d AND b == c (swapped)
                 if compare_expr(ctx, *neg_l1, *r2) == Ordering::Equal &&
                    compare_expr(ctx, *r1, *neg_l2) == Ordering::Equal {
-                    // eprintln!("  -> MATCH case 4: Add(Neg(a), b) vs Add(Neg(b), a)");
+
                     return true;
+                }
+            }
+            
+            // Pattern 4b: Add(Number(-n), x) vs Add(Number(m), Neg(x))
+            // e.g., -1 + x vs 1 + (-x) which should be detected as opposite
+            if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(*l1), ctx.get(*l2)) {
+                // Check if r2 = -r1 and n1 = -n2
+                if let Expr::Neg(neg_r2) = ctx.get(*r2) {
+                    let neg_n2 = -n2.clone();
+                    if n1 == &neg_n2 && compare_expr(ctx, *r1, *neg_r2) == Ordering::Equal {
+
+                        return true;
+                    }
+                }
+                // Also check reverse: r1 = -r2
+                if let Expr::Neg(neg_r1) = ctx.get(*r1) {
+                    let neg_n2 = -n2.clone();
+
+                    if n1 == &neg_n2 && compare_expr(ctx, *neg_r1, *r2) == Ordering::Equal {
+
+                        return true;
+                    }
                 }
             }
             false
@@ -928,10 +952,10 @@ define_rule!(
             // eprintln!("AddFractionsRule visiting: {:?}", ctx.get(expr));
 
             // Check if d2 = -d1 (e.g. x-1 and 1-x)
-            let (n2, d2) = {
+            let (n2, d2, opposite_denom) = {
                 let mut found_neg = false;
                 
-                // First try structural comparison (works for sqrt and other non-polynomials)
+                            // First try structural comparison (works for sqrt and other non-polynomials)
                 if are_denominators_opposite(ctx, d1, d2) {
                     found_neg = true;
                 }
@@ -952,9 +976,9 @@ define_rule!(
                 }
                 
                 if found_neg {
-                    (ctx.add(Expr::Neg(n2)), d1)
+                    (ctx.add(Expr::Neg(n2)), d1, true)  // Mark that opposite denom detected
                 } else {
-                    (n2, d2)
+                    (n2, d2, false)
                 }
             };
 
@@ -1010,6 +1034,8 @@ define_rule!(
                     }
                 }
             };
+            
+
             
             let term1 = ctx.add(Expr::Mul(n1, mult1));
             let term2 = ctx.add(Expr::Mul(n2, mult2));
@@ -1281,9 +1307,9 @@ define_rule!(
             };
 
             let does_simplify = simplifies(ctx, new_num, common_den);
-            // eprintln!("AddFractionsRule check: old={} new={} simplifies={}", old_complexity, new_complexity, does_simplify);
             // Allow simplification if complexity doesn't increase too much (1.5x)
-            if new_complexity <= old_complexity || (does_simplify && new_complexity < (old_complexity * 3) / 2) {
+            // OR if we detected opposite denominators (always beneficial)
+            if opposite_denom || new_complexity <= old_complexity || (does_simplify && new_complexity < (old_complexity * 3) / 2) {
                 return Some(Rewrite {
                     new_expr,
                     description: "Add fractions: a/b + c/d -> (ad+bc)/bd".to_string(),

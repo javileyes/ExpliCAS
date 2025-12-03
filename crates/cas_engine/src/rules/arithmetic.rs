@@ -304,10 +304,41 @@ mod tests {
     }
 }
 
+define_rule!(
+    AddInverseRule,
+    "Add Inverse",
+    |ctx, expr| {
+        // Pattern: a + (-a) = 0 or (-a) + a = 0
+        if let Expr::Add(l, r) = ctx.get(expr) {
+            // Check if r = -l or l = -r
+            if let Expr::Neg(neg_inner) = ctx.get(*r) {
+                if *neg_inner == *l {
+                    // a + (-a) = 0
+                    return Some(Rewrite {
+                        new_expr: ctx.num(0),
+                        description: "a + (-a) = 0".to_string(),
+                    });
+                }
+            }
+            if let Expr::Neg(neg_inner) = ctx.get(*l) {
+                if *neg_inner == *r {
+                    // (-a) + a = 0
+                    return Some(Rewrite {
+                        new_expr: ctx.num(0),
+                        description: "(-a) + a = 0".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(MulZeroRule));
     simplifier.add_rule(Box::new(DivZeroRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(AddInverseRule));
 }
