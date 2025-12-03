@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAS Steps: (x + 1)^2</title>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .original {
+            text-align: center;
+            font-size: 1.2em;
+            padding: 15px;
+            background: #f0f4ff;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 2px solid #667eea;
+        }
+        .timeline {
+            position: relative;
+            padding: 20px 0;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 30px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(to bottom, #667eea, #764ba2);
+        }
+        .step {
+            position: relative;
+            margin-bottom: 30px;
+            padding-left: 80px;
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .step-number {
+            position: absolute;
+            left: 0;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .step-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .step-content:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+        .step-content h3 {
+            margin-top: 0;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+        .math-expr {
+            padding: 12px 15px;
+            background: #fafafa;
+            border-left: 4px solid #667eea;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-size: 1.05em;
+        }
+        .math-expr.before {
+            border-left-color: #ff9800;
+            background: #fff8f0;
+        }
+        .math-expr.after {
+            border-left-color: #4caf50;
+            background: #f0fff4;
+        }
+        .math-expr strong {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .final-result {
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: white;
+            border-radius: 10px;
+            margin-top: 30px;
+            font-size: 1.2em;
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: white;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CAS Simplification Steps</h1>
+        <p class="subtitle">Step-by-step visualization</p>
+        <div class="original">
+            <strong>Original Expression:</strong><br>
+            \((x + 1)^2\)
+        </div>
+        <div class="timeline">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Canonicalize Addition</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \(x + 1\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \(1 + x\)
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Binomial Expansion</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \((1 + x)^2\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \(1^2 * 1 + 2 * 1 * x + 1 * x^2\)
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Evaluate Numeric Power</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \(1^2\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \(1\)
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Identity Property of Multiplication</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \(1 * 1\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \(1\)
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Identity Property of Multiplication</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \(1 * x\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \(x\)
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <h3>Identity Property of Multiplication</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \(1 * x^2\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \(x^2\)
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">7</div>
+                <div class="step-content">
+                    <h3>Canonicalize Addition</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \(1 + 2 * x + x^2\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \(1 + x^2 + 2 * x\)
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">8</div>
+                <div class="step-content">
+                    <h3>Expand</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \(1 + x^2 + 2 * x\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \(1 + x^2 + 2 * x\)
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">9</div>
+                <div class="step-content">
+                    <h3>Factor</h3>
+                    <div class="math-expr before">
+                        <strong>Before:</strong><br>
+                        \(1 + x^2 + 2 * x\)
+                    </div>
+                    <div class="math-expr after">
+                        <strong>After:</strong><br>
+                        \((x + 1)^2\)
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="final-result">
+            <strong>Final Result:</strong><br>
+            \((x + 1)^2\)
+        </div>
+    </div>
+    <footer>
+        Generated by Rust CAS Engine
+    </footer>
+</body>
+</html>

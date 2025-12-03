@@ -433,6 +433,12 @@ impl Repl {
             return;
         }
 
+        // Check for "timeline" command
+        if line.starts_with("timeline ") {
+            self.handle_timeline(&line);
+            return;
+        }
+
         // Check for "visualize" or "dot" command
         if line.starts_with("visualize ") || line.starts_with("dot ") {
             self.handle_visualize(&line);
@@ -793,6 +799,44 @@ impl Repl {
             return;
         }
         println!("Usage: subst <expression>, <var>=<value>");
+    }
+
+    fn handle_timeline(&mut self, line: &str) {
+        let rest = line[9..].trim();
+        
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                let (_, steps) = self.simplifier.simplify(expr);
+                
+                if steps.is_empty() {
+                    println!("No simplification steps to visualize.");
+                    return;
+                }
+                
+                let timeline = cas_engine::timeline::TimelineHtml::new(
+                    &self.simplifier.context,
+                    &steps,
+                    expr
+                );
+                let html = timeline.to_html();
+                
+                let filename = "timeline.html";
+                match std::fs::write(filename, &html) {
+                    Ok(_) => {
+                        println!("Timeline exported to {}", filename);
+                        println!("Open in browser to view interactive visualization.");
+                        
+                        // Try to auto-open on macOS
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = std::process::Command::new("open").arg(filename).spawn();
+                        }
+                    }
+                    Err(e) => println!("Error writing file: {}", e),
+                }
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
     }
 
     fn handle_visualize(&mut self, line: &str) {
