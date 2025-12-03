@@ -35,7 +35,6 @@ impl CasHelper {
                 "help".to_string(),
                 "profile".to_string(),
                 "visualize".to_string(),
-                "dot".to_string(),
                 "timeline".to_string(),
                 "quit".to_string(),
                 "exit".to_string(),

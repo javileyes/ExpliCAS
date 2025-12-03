@@ -439,8 +439,8 @@ impl Repl {
             return;
         }
 
-        // Check for "visualize" or "dot" command
-        if line.starts_with("visualize ") || line.starts_with("dot ") {
+        // Check for "visualize" command
+        if line.starts_with("visualize ") {
             self.handle_visualize(&line);
             return;
         }
@@ -663,12 +663,15 @@ impl Repl {
                 println!("  clear            Clear statistics");
                 println!("Example: profile enable, then run expressions, then profile");
             },
-            "visualize" | "dot" => {
-                println!("Command: visualize <expr> (or dot <expr>)");
+            "visualize" => {
+                println!("Command: visualize <expr>");
                 println!("Description: Export expression tree to Graphviz DOT format.");
                 println!("             Generates ast.dot file for rendering.");
                 println!("Example: visualize (x+1)*(x-1)");
-                println!("Render: dot -Tsvg ast.dot -o ast.svg");
+                println!();
+                println!("To render the generated file, use Graphviz in your terminal:");
+                println!("  $ dot -Tsvg ast.dot -o ast.svg");
+                println!("  $ open ast.svg");
             },
             "timeline" => {
                 println!("Command: timeline <expr>");
@@ -705,7 +708,7 @@ impl Repl {
         println!("  perm <n, k>             Permutations (nPk)");
         println!("  steps <level>           Set step verbosity (normal, low, verbose, none)");
         println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
-        println!("  visualize <expr>        Export AST to Graphviz DOT");
+        println!("  visualize <expr>        Export AST to Graphviz DOT (generates ast.dot)");
         println!("  timeline <expr>         Export steps to interactive HTML");
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
