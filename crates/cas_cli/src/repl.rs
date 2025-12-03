@@ -843,10 +843,18 @@ impl Repl {
                     return;
                 }
                 
+                // Convert CLI verbosity to timeline verbosity
+                let timeline_verbosity = match self.verbosity {
+                    Verbosity::None | Verbosity::Low => cas_engine::timeline::VerbosityLevel::Low,
+                    Verbosity::Normal => cas_engine::timeline::VerbosityLevel::Normal,
+                    Verbosity::Verbose => cas_engine::timeline::VerbosityLevel::Verbose,
+                };
+                
                 let timeline = cas_engine::timeline::TimelineHtml::new(
                     &self.simplifier.context,
                     &steps,
-                    expr
+                    expr,
+                    timeline_verbosity
                 );
                 let html = timeline.to_html();
                 

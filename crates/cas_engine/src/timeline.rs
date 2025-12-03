@@ -1,19 +1,43 @@
 use crate::step::Step;
-use cas_ast::{Context, ExprId, DisplayExpr};
+use cas_ast::{Context, DisplayExpr, ExprId};
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
 pub struct TimelineHtml<'a> {
     context: &'a Context,
     steps: &'a [Step],
     title: String,
+    verbosity_level: VerbosityLevel,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum VerbosityLevel {
+    Low,     // Only global state changes
+    Normal,  // Filtered meaningful steps
+    Verbose, // All steps
 }
 
 impl<'a> TimelineHtml<'a> {
-    pub fn new(context: &'a Context, steps: &'a [Step], original_expr: ExprId) -> Self {
-        let title = format!("{}", DisplayExpr { context, id: original_expr });
-        Self { context, steps, title }
+    pub fn new(
+        context: &'a Context,
+        steps: &'a [Step],
+        original_expr: ExprId,
+        verbosity: VerbosityLevel,
+    ) -> Self {
+        let title = format!(
+            "{}",
+            DisplayExpr {
+                context,
+                id: original_expr
+            }
+        );
+        Self {
+            context,
+            steps,
+            title,
+            verbosity_level: verbosity,
+        }
     }
-    
+
     /// Generate complete HTML document
     pub fn to_html(&self) -> String {
         let mut html = Self::html_header(&self.title);
@@ -21,10 +45,11 @@ impl<'a> TimelineHtml<'a> {
         html.push_str(Self::html_footer());
         html
     }
-    
+
     fn html_header(title: &str) -> String {
         let escaped_title = html_escape(title);
-        format!(r#"<!DOCTYPE html>
+        format!(
+            r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -145,6 +170,17 @@ impl<'a> TimelineHtml<'a> {
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }}
+        .rule-description {{
+            text-align: center;
+            padding: 8px 15px;
+            margin: 10px 0;
+            background: #f5f5f5;
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: #667eea;
+            font-style: italic;
+            border: 1px dashed #667eea;
+        }}
         .final-result {{
             text-align: center;
             padding: 20px;
@@ -171,17 +207,63 @@ impl<'a> TimelineHtml<'a> {
             <strong>Original Expression:</strong><br>
             \({}\)
         </div>
-"#, escaped_title, latex_escape(title))
+"#,
+            escaped_title,
+            latex_escape(title)
+        )
     }
-    
+
+    fn should_show_step(&self, step: &Step) -> bool {
+        match self.verbosity_level {
+            VerbosityLevel::Verbose => true,
+            VerbosityLevel::Normal => {
+                // Filter out noisy canonicalization steps
+                !step.rule_name.starts_with("Canonicalize")
+                    && step.rule_name != "Add Zero"
+                    && step.rule_name != "Multiply by One"
+                    && step.rule_name != "Identity Power"
+            }
+            VerbosityLevel::Low => {
+                // Only show major transformations
+                !step.rule_name.starts_with("Canonicalize")
+                    && !step.rule_name.starts_with("Pull")
+                    && step.rule_name != "Add Zero"
+                    && step.rule_name != "Multiply by One"
+                    && step.rule_name != "Identity Power"
+                    && step.rule_name != "Sort"
+                    && step.rule_name != "Flatten"
+            }
+        }
+    }
+
     fn render_timeline(&self) -> String {
         let mut html = String::from("        <div class=\"timeline\">\n");
-        
-        for (i, step) in self.steps.iter().enumerate() {
-            let before = format!("{}", DisplayExpr { context: self.context, id: step.before });
-            let after = format!("{}", DisplayExpr { context: self.context, id: step.after });
-            
-            html.push_str(&format!(r#"            <div class="step">
+
+        let mut step_number = 0;
+        for step in self.steps.iter() {
+            // Filter based on verbosity
+            if !self.should_show_step(step) {
+                continue;
+            }
+
+            step_number += 1;
+            let before = format!(
+                "{}",
+                DisplayExpr {
+                    context: self.context,
+                    id: step.before
+                }
+            );
+            let after = format!(
+                "{}",
+                DisplayExpr {
+                    context: self.context,
+                    id: step.after
+                }
+            );
+
+            html.push_str(&format!(
+                r#"            <div class="step">
                 <div class="step-number">{}</div>
                 <div class="step-content">
                     <h3>{}</h3>
@@ -189,31 +271,49 @@ impl<'a> TimelineHtml<'a> {
                         <strong>Before:</strong><br>
                         \({}\)
                     </div>
+                    <div class="rule-description">
+                        {} 
+                    </div>
                     <div class="math-expr after">
                         <strong>After:</strong><br>
                         \({}\)
                     </div>
                 </div>
             </div>
-"#, i + 1, html_escape(&step.rule_name), latex_escape(&before), latex_escape(&after)));
+"#,
+                step_number,
+                html_escape(&step.rule_name),
+                latex_escape(&before),
+                html_escape(&step.description),
+                latex_escape(&after)
+            ));
         }
-        
+
         // Add final result
         if let Some(last_step) = self.steps.last() {
-            let final_expr = format!("{}", DisplayExpr { context: self.context, id: last_step.after });
-            html.push_str(&format!(r#"        </div>
+            let final_expr = format!(
+                "{}",
+                DisplayExpr {
+                    context: self.context,
+                    id: last_step.after
+                }
+            );
+            html.push_str(&format!(
+                r#"        </div>
         <div class="final-result">
             <strong>Final Result:</strong><br>
             \({}\)
         </div>
-"#, latex_escape(&final_expr)));
+"#,
+                latex_escape(&final_expr)
+            ));
         } else {
             html.push_str("        </div>\n");
         }
-        
+
         html
     }
-    
+
     fn html_footer() -> &'static str {
         r#"    </div>
     <footer>
@@ -243,22 +343,22 @@ fn latex_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_html_generation() {
         let ctx = Context::new();
         let steps = vec![];
         let expr = ctx.num(1);
-        
-        let timeline = TimelineHtml::new(&ctx, &steps, expr);
+
+        let timeline = TimelineHtml::new(&ctx, &steps, expr, VerbosityLevel::Normal);
         let html = timeline.to_html();
-        
+
         assert!(html.contains("<!DOCTYPE html"));
         assert!(html.contains("MathJax"));
         assert!(html.contains("timeline"));
         assert!(html.contains("CAS Simplification"));
     }
-    
+
     #[test]
     fn test_html_escape() {
         assert_eq!(html_escape("<script>"), "&lt;script&gt;");
