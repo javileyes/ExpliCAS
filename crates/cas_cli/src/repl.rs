@@ -765,11 +765,15 @@ impl Repl {
                                 // and just show the simplified equation.
                             } else {
                                 println!("LHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
-                                if let Some(s) = &step.after_str {
-                                    println!("   -> {}", s);
+                                let after_disp = if let Some(s) = &step.after_str {
+                                    s.clone()
                                 } else {
-                                    println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
-                                }
+                                    format!("{}", DisplayExpr { context: &self.simplifier.context, id: step.after })
+                                };
+                                println!("   Local: {} -> {}", 
+                                    DisplayExpr { context: &self.simplifier.context, id: step.before },
+                                    after_disp
+                                );
                             }
                         }
                     }
@@ -777,11 +781,15 @@ impl Repl {
                          if should_show_step(step, self.verbosity) {
                             if self.verbosity != Verbosity::Low {
                                 println!("RHS {}. {}  [{}]", i + 1, step.description, step.rule_name);
-                                if let Some(s) = &step.after_str {
-                                    println!("   -> {}", s);
+                                let after_disp = if let Some(s) = &step.after_str {
+                                    s.clone()
                                 } else {
-                                    println!("   -> {}", DisplayExpr { context: &self.simplifier.context, id: step.after });
-                                }
+                                    format!("{}", DisplayExpr { context: &self.simplifier.context, id: step.after })
+                                };
+                                println!("   Local: {} -> {}", 
+                                    DisplayExpr { context: &self.simplifier.context, id: step.before },
+                                    after_disp
+                                );
                             }
                         }
                     }
@@ -977,9 +985,15 @@ impl Repl {
                                     println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
                                     
                                     if self.verbosity == Verbosity::Verbose || self.verbosity == Verbosity::Normal {
-                                        if let Some(s) = &step.after_str {
-                                            println!("   Local: {}", s);
-                                        }
+                                        let after_disp = if let Some(s) = &step.after_str {
+                                            s.clone()
+                                        } else {
+                                            format!("{}", DisplayExpr { context: &temp_simplifier.context, id: step.after })
+                                        };
+                                        println!("   Local: {} -> {}", 
+                                            DisplayExpr { context: &temp_simplifier.context, id: step.before },
+                                            after_disp
+                                        );
                                     }
                                     
                                     current_root = reconstruct_global_expr(&mut temp_simplifier.context, current_root, &step.path, step.after);
