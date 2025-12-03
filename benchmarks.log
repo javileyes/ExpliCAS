@@ -10,3 +10,86 @@ trigonometry/pythagorean_identity_nested: 4.82 ms
 
 Notes:
 - diff_nested_trig_exp improved significantly (previously ~273 µs) due to simplify_polynomial heuristic.
+
++++++++++++++++++++++++++++++++
+
+Running benches/simplification_bench.rs (target/release/deps/simplification_bench-e25dca3cadba6ae0)
+Gnuplot not found, using plotters backend
+Benchmarking parser/parse_complex_poly: Collecting 100 samples in estimated 
+parser/parse_complex_poly
+                        time:   [8.0830 µs 8.1005 µs 8.1179 µs]
+                        change: [−6.2174% −5.5880% −5.0096%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+
+Benchmarking polynomial/expand_binomial_power_10: Collecting 100 samples in 
+polynomial/expand_binomial_power_10
+                        time:   [245.81 µs 246.29 µs 246.79 µs]
+                        change: [−8.5935% −7.7837% −7.0141%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
+Benchmarking polynomial/combine_like_terms_large: Collecting 100 samples in 
+polynomial/combine_like_terms_large
+                        time:   [24.564 µs 24.710 µs 24.864 µs]
+                        change: [−4.2667% −3.7566% −3.2473%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 9 outliers among 100 measurements (9.00%)
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+
+Benchmarking trigonometry/pythagorean_identity_nested: Warming up for 3.0000
+Benchmarking trigonometry/pythagorean_identity_nested: Collecting 10 samples
+trigonometry/pythagorean_identity_nested
+                        time:   [5.4397 ms 5.4664 ms 5.4960 ms]
+                        change: [−4.0783% −3.3664% −2.7817%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+Benchmarking rational/sum_fractions_10: Collecting 100 samples in estimated 
+rational/sum_fractions_10
+                        time:   [386.33 µs 387.27 µs 388.23 µs]
+                        change: [−2.4431% −2.1395% −1.8497%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  2 (2.00%) low mild
+  3 (3.00%) high mild
+
+Benchmarking calculus/diff_nested_trig_exp: Collecting 100 samples in estima
+calculus/diff_nested_trig_exp
+                        time:   [46.104 µs 46.348 µs 46.601 µs]
+                        change: [−3.4365% −2.8194% −2.2194%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 9 outliers among 100 measurements (9.00%)
+  1 (1.00%) low mild
+  6 (6.00%) high mild
+  2 (2.00%) high severe
+Benchmarking calculus/integrate_trig_product: Collecting 100 samples in esti
+calculus/integrate_trig_product
+                        time:   [18.212 µs 18.260 µs 18.308 µs]
+                        change: [−3.1906% −2.4608% −1.7697%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  1 (1.00%) low severe
+  2 (2.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+
+Benchmarking solver/solve_quadratic: Collecting 100 samples in estimated 5.0
+solver/solve_quadratic  time:   [35.485 µs 35.551 µs 35.619 µs]
+                        change: [−7.9209% −6.4818% −5.0809%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 100 measurements (6.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+
+Benchmarking stress/deeply_nested_poly: Collecting 10 samples in estimated 5
+stress/deeply_nested_poly
+                        time:   [843.16 µs 844.90 µs 846.04 µs]
+                        change: [−4.5853% −2.7251% −0.8569%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+
+     Running unittests src/lib.rs (target/release/deps/cas_format-bb42933079daef63)

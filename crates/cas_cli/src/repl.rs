@@ -433,6 +433,32 @@ impl Repl {
             return;
         }
 
+        // Check for "profile" commands
+        if line.starts_with("profile") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() == 1 {
+                // Just "profile" - show report
+                println!("{}", self.simplifier.profiler.report());
+            } else {
+                match parts[1] {
+                    "enable" => {
+                        self.simplifier.profiler.enable();
+                        println!("Profiler enabled.");
+                    },
+                    "disable" => {
+                        self.simplifier.profiler.disable();
+                        println!("Profiler disabled.");
+                    },
+                    "clear" => {
+                        self.simplifier.profiler.clear();
+                        println!("Profiler statistics cleared.");
+                    },
+                    _ => println!("Usage: profile [enable|disable|clear]"),
+                }
+            }
+            return;
+        }
+
         self.handle_eval(&line);
     }
 

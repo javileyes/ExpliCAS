@@ -1,5 +1,6 @@
 use crate::rule::Rule;
 use crate::step::Step;
+use crate::profiler::RuleProfiler;
 use cas_ast::{Expr, ExprId, Context};
 use std::rc::Rc;
 use num_traits::{Zero, ToPrimitive};
@@ -16,6 +17,7 @@ pub struct Simplifier {
     pub debug_mode: bool,
     disabled_rules: HashSet<String>,
     pub enable_polynomial_strategy: bool,
+    pub profiler: RuleProfiler,
 }
 
 impl Simplifier {
@@ -29,6 +31,7 @@ impl Simplifier {
             debug_mode: false,
             disabled_rules: HashSet::new(),
             enable_polynomial_strategy: true,
+            profiler: RuleProfiler::new(false),  // Disabled by default
         }
     }
 
@@ -128,6 +131,7 @@ impl Simplifier {
             steps: Vec::new(),
             cache: HashMap::new(),
             current_path: Vec::new(),
+            profiler: &mut self.profiler,
         };
         
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -227,6 +231,7 @@ struct LocalSimplificationTransformer<'a> {
     steps: Vec<Step>,
     cache: HashMap<ExprId, ExprId>,
     current_path: Vec<crate::step::PathStep>,
+    profiler: &'a mut RuleProfiler,
 }
 
 use cas_ast::visitor::Transformer;
@@ -357,6 +362,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         continue;
                     }
                     if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                        // Record rule application for profiling
+                        self.profiler.record(rule.name());
+                        
                         println!("Rule '{}' applied: {:?} -> {:?}", rule.name(), expr_id, rewrite.new_expr);
                         debug!("{}[DEBUG] Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
                         if self.collect_steps {
@@ -386,6 +394,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     continue;
                 }
                 if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                    // Record rule application for profiling
+                    self.profiler.record(rule.name());
+                    
                     debug!("{}[DEBUG] Global Rule '{}' applied: {:?} -> {:?}", self.indent(), rule.name(), expr_id, rewrite.new_expr);
                     if self.collect_steps {
                         self.steps.push(Step::new(
