@@ -110,6 +110,19 @@ Located in `tests/property_tests.rs`. Use `proptest` to generate random expressi
 cargo test
 ```
 
+### Ejecutar el CLI
+
+#### Opción 1: Compilar release y usar el binario directamente
+##### clean si es necesario
+cargo clean
+##### build release
+cargo build --release
+##### ejecutar
+echo "simplify ((x+1)*(x-1))^2" | target/release/cas_cli | grep -c "^[0-9]"
+
+#### Opción 2: Ejecutar con cargo run --release
+echo "simplify ((x+1)*(x-1))^2" | cargo run --release | grep -c "^[0-9]"
+
 ## 5. Benchmarks
 
 The project uses `criterion` for benchmarking performance, specifically for simplification rules.

@@ -330,18 +330,31 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 }
             }
             Expr::Pow(b, e) => {
-                self.current_path.push(crate::step::PathStep::Base);
-                let new_b = self.transform_expr_recursive(b);
-                self.current_path.pop();
-
-                self.current_path.push(crate::step::PathStep::Exponent);
-                let new_e = self.transform_expr_recursive(e);
-                self.current_path.pop();
-
-                if new_b != b || new_e != e {
-                    self.context.add(Expr::Pow(new_b, new_e))
+                // Check if this Pow is canonical before recursing into children
+                // If it's canonical (like ((x+1)*(x-1))^2), we should NOT simplify the base
+                if crate::canonical_forms::is_canonical_form(self.context, id) {
+                    eprintln!(
+                        "DEBUG: Skipping simplification of canonical Pow: {}",
+                        cas_ast::DisplayExpr {
+                            context: self.context,
+                            id
+                        }
+                    );
+                    id // Return as-is without recursing
                 } else {
-                    id
+                    self.current_path.push(crate::step::PathStep::Base);
+                    let new_b = self.transform_expr_recursive(b);
+                    self.current_path.pop();
+
+                    self.current_path.push(crate::step::PathStep::Exponent);
+                    let new_e = self.transform_expr_recursive(e);
+                    self.current_path.pop();
+
+                    if new_b != b || new_e != e {
+                        self.context.add(Expr::Pow(new_b, new_e))
+                    } else {
+                        id
+                    }
                 }
             }
             Expr::Neg(e) => {

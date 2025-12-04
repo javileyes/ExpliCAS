@@ -5,21 +5,42 @@ use std::cmp::Ordering;
 /// Detects if an expression is in a canonical (elegant) form that should not be expanded.
 /// These forms are mathematically clean and expanding them would only create unnecessary complexity.
 pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
+    use cas_ast::DisplayExpr;
+    eprintln!(
+        "DEBUG is_canonical_form called with: {}",
+        DisplayExpr {
+            context: ctx,
+            id: expr
+        }
+    );
+
+    let result = match ctx.get(expr) {
         // Case 1: (product)^n where product is factored elegantly
         Expr::Pow(base, exp) => {
             if is_product_of_factors(ctx, *base) && is_small_positive_integer(ctx, *exp) {
-                return true;
+                eprintln!("DEBUG: Match case 1 - Pow with product base");
+                true
+            } else {
+                false
             }
-            false
         }
 
         // Case 2: Product of conjugates without power (e.g., (x+y)*(x-y))
         // This is already in difference of squares form, expanding serves no purpose
-        Expr::Mul(l, r) => is_conjugate(ctx, *l, *r),
+        Expr::Mul(l, r) => {
+            let is_conj = is_conjugate(ctx, *l, *r);
+            eprintln!("DEBUG: Match case 2 - Mul, is_conjugate: {}", is_conj);
+            is_conj
+        }
 
-        _ => false,
-    }
+        _ => {
+            eprintln!("DEBUG: No match, returning false");
+            false
+        }
+    };
+
+    eprintln!("DEBUG is_canonical_form returning: {}", result);
+    result
 }
 
 /// Checks if base is already a product in elegant factored form
@@ -82,87 +103,164 @@ fn is_small_positive_integer(ctx: &Context, exp: ExprId) -> bool {
 }
 
 /// Checks for conjugate pairs: (A+B) and (A-B)
+/// Order-invariant: handles (x+1)(x-1), (x-1)(x+1), (-1+x)(1+x), etc.
 fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    let a_expr = ctx.get(a);
-    let b_expr = ctx.get(b);
+    use cas_ast::DisplayExpr;
 
-    match (a_expr, b_expr) {
-        (Expr::Add(a1, a2), Expr::Sub(b1, b2)) | (Expr::Sub(b1, b2), Expr::Add(a1, a2)) => {
-            let a1 = *a1;
-            let a2 = *a2;
-            let b1 = *b1;
-            let b2 = *b2;
-
-            // Check: A+B vs A-B
-            if compare_expr(ctx, a1, b1) == Ordering::Equal
-                && compare_expr(ctx, a2, b2) == Ordering::Equal
-            {
-                return true;
-            }
-            // Check commutative: B+A vs A-B
-            if compare_expr(ctx, a2, b1) == Ordering::Equal
-                && compare_expr(ctx, a1, b2) == Ordering::Equal
-            {
-                return true;
-            }
-            false
+    eprintln!(
+        "DEBUG is_conjugate called with: ({}) and ({})",
+        DisplayExpr {
+            context: ctx,
+            id: a
+        },
+        DisplayExpr {
+            context: ctx,
+            id: b
         }
-        (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
-            // Handle (A+B) vs (A+(-B)) patterns
-            let a1 = *a1;
-            let a2 = *a2;
-            let b1 = *b1;
-            let b2 = *b2;
+    );
 
-            // b2 is neg(a2) -> (A+B)(A-B)
-            if is_negation(ctx, a2, b2) && compare_expr(ctx, a1, b1) == Ordering::Equal {
-                return true;
-            }
-            // b1 is neg(a2) -> (A+B)(-B+A)
-            if is_negation(ctx, a2, b1) && compare_expr(ctx, a1, b2) == Ordering::Equal {
-                return true;
-            }
-            // b2 is neg(a1) -> (A+B)(B-A)
-            if is_negation(ctx, a1, b2) && compare_expr(ctx, a2, b1) == Ordering::Equal {
-                return true;
-            }
-            // b1 is neg(a1) -> (A+B)(-A+B)
-            if is_negation(ctx, a1, b1) && compare_expr(ctx, a2, b2) == Ordering::Equal {
-                return true;
-            }
-            false
+    // Extract terms and base signs from both binomials
+    let (a_terms, a_base_signs) = match ctx.get(a) {
+        Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
+        Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
+        _ => {
+            eprintln!("DEBUG: a is not Add/Sub, returning false");
+            return false;
         }
-        _ => false,
+    };
+
+    let (b_terms, b_base_signs) = match ctx.get(b) {
+        Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
+        Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
+        _ => {
+            eprintln!("DEBUG: b is not Add/Sub, returning false");
+            return false;
+        }
+    };
+
+    // Normalize each term (extract negative signs from numbers/Neg)
+    let mut a_norm = Vec::new();
+    let mut a_signs = Vec::new();
+    for (&term, &base_sign) in a_terms.iter().zip(a_base_signs.iter()) {
+        let (norm_term, is_pos) = normalize_term(ctx, term);
+        a_norm.push(norm_term);
+        let final_sign = base_sign == is_pos;
+        a_signs.push(final_sign);
+        eprintln!(
+            "DEBUG a term: {} → norm: {}, is_pos: {}, base_sign: {}, final_sign: {}",
+            DisplayExpr {
+                context: ctx,
+                id: term
+            },
+            DisplayExpr {
+                context: ctx,
+                id: norm_term
+            },
+            is_pos,
+            base_sign,
+            final_sign
+        );
     }
+
+    let mut b_norm = Vec::new();
+    let mut b_signs = Vec::new();
+    for (&term, &base_sign) in b_terms.iter().zip(b_base_signs.iter()) {
+        let (norm_term, is_pos) = normalize_term(ctx, term);
+        b_norm.push(norm_term);
+        let final_sign = base_sign == is_pos;
+        b_signs.push(final_sign);
+        eprintln!(
+            "DEBUG b term: {} → norm: {}, is_pos: {}, base_sign: {}, final_sign: {}",
+            DisplayExpr {
+                context: ctx,
+                id: term
+            },
+            DisplayExpr {
+                context: ctx,
+                id: norm_term
+            },
+            is_pos,
+            base_sign,
+            final_sign
+        );
+    }
+
+    // Check if terms match in same order
+    let same_order = a_norm.len() == b_norm.len()
+        && a_norm
+            .iter()
+            .zip(b_norm.iter())
+            .all(|(&x, &y)| terms_equal_normalized(ctx, x, y));
+
+    eprintln!("DEBUG same_order: {}", same_order);
+
+    // Check if terms match in swapped order
+    let swapped_order = a_norm.len() == 2
+        && b_norm.len() == 2
+        && terms_equal_normalized(ctx, a_norm[0], b_norm[1])
+        && terms_equal_normalized(ctx, a_norm[1], b_norm[0]);
+
+    eprintln!("DEBUG swapped_order: {}", swapped_order);
+
+    if !same_order && !swapped_order {
+        eprintln!("DEBUG: Terms don't match, returning false");
+        return false;
+    }
+
+    // Check signs: exactly one should differ
+    let b_signs_to_check = if same_order {
+        b_signs
+    } else {
+        vec![b_signs[1], b_signs[0]] // Swap to match order
+    };
+
+    let diff_count = a_signs
+        .iter()
+        .zip(b_signs_to_check.iter())
+        .filter(|(a, b)| a != b)
+        .count();
+
+    eprintln!("DEBUG diff_count: {} (need exactly 1)", diff_count);
+    eprintln!(
+        "DEBUG a_signs: {:?}, b_signs_to_check: {:?}",
+        a_signs, b_signs_to_check
+    );
+
+    let result = diff_count == 1;
+    eprintln!("DEBUG is_conjugate returning: {}", result);
+    result
 }
 
-fn is_negation(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    check_negation_structure(ctx, b, a) || check_negation_structure(ctx, a, b)
+/// Compare two terms that have been normalized (signs extracted)
+/// For numbers, compare by absolute value
+fn terms_equal_normalized(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    use num_traits::Signed;
+    use std::cmp::Ordering;
+
+    // Special case: if both are numbers, compare absolute values
+    if let (Expr::Number(na), Expr::Number(nb)) = (ctx.get(a), ctx.get(b)) {
+        return na.abs() == nb.abs();
+    }
+
+    // Otherwise use normal comparison
+    compare_expr(ctx, a, b) == Ordering::Equal
 }
 
-fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: ExprId) -> bool {
-    match ctx.get(potential_neg) {
-        Expr::Neg(n) => compare_expr(ctx, original, *n) == Ordering::Equal,
-        Expr::Mul(l, r) => {
-            // Check for -1 * original
-            if let Expr::Number(n) = ctx.get(*l) {
-                if *n == -num_rational::BigRational::from_integer(1.into())
-                    && compare_expr(ctx, *r, original) == Ordering::Equal
-                {
-                    return true;
-                }
+/// Normalize a term: extract sign, return (term_without_sign, is_positive)
+fn normalize_term(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => (*inner, false),
+        Expr::Number(n) => {
+            use num_traits::Signed;
+            if n.is_negative() {
+                // For negative numbers, we need to compare by absolute value
+                // Since we can't mutate ctx, we compare numbers directly
+                (expr, false)
+            } else {
+                (expr, true)
             }
-            // Check for original * -1
-            if let Expr::Number(n) = ctx.get(*r) {
-                if *n == -num_rational::BigRational::from_integer(1.into())
-                    && compare_expr(ctx, *l, original) == Ordering::Equal
-                {
-                    return true;
-                }
-            }
-            false
         }
-        _ => false,
+        _ => (expr, true),
     }
 }
 
@@ -219,4 +317,23 @@ mod tests {
         // This is NOT a product, so not canonical
         assert!(!is_canonical_form(&ctx, expr));
     }
+}
+
+#[test]
+fn test_canonicalized_conjugate_add_add() {
+    let mut ctx = Context::new();
+    // (-1 + x) * (1 + x) should be detected as conjugates
+    let x = ctx.var("x");
+    let one = ctx.num(1);
+    let neg_one = ctx.num(-1);
+
+    // (-1 + x) * (1 + x)
+    let left = ctx.add(Expr::Add(neg_one, x));
+    let right = ctx.add(Expr::Add(one, x));
+    let product = ctx.add(Expr::Mul(left, right));
+
+    assert!(
+        is_canonical_form(&ctx, product),
+        "(-1+x)*(1+x) should be canonical"
+    );
 }
