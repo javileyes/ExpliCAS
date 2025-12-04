@@ -10,6 +10,12 @@ use num_traits::{Signed, ToPrimitive};
 use std::cmp::Ordering;
 
 define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
+    // Don't distribute if expression is in canonical form (e.g., inside abs() or sqrt())
+    // This protects patterns like abs((x-2)(x+2)) from expanding
+    if crate::canonical_forms::is_canonical_form(ctx, expr) {
+        return None;
+    }
+
     let expr_data = ctx.get(expr).clone();
     if let Expr::Mul(l, r) = expr_data {
         // a * (b + c) -> a*b + a*c
