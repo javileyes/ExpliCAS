@@ -88,16 +88,16 @@ impl<'a> TimelineHtml<'a> {
         }}
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 900px;
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 20px 15px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
         }}
         .container {{
             background: white;
             border-radius: 12px;
-            padding: 30px;
+            padding: 30px 25px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }}
         h1 {{

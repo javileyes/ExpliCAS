@@ -11,16 +11,16 @@
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 900px;
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 20px 15px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
         }
         .container {
             background: white;
             border-radius: 12px;
-            padding: 30px;
+            padding: 30px 25px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
         h1 {
@@ -173,223 +173,15 @@
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Power of a Product</h3>
+                    <h3>Factor</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
                         \[{((-1 + x)(1 + x))}^{2}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute power over product}\)</div>
-                        <div class="local-change">
-                            \[{((-1 + x)(1 + x))}^{2} \rightarrow {(-1 + x)}^{2}{(1 + x)}^{2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Binomial Expansion</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[{(-1 + x)}^{2}{(1 + x)}^{2}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Expand binomial power ^2}\)</div>
-                        <div class="local-change">
-                            \[{(-1 + x)}^{2} \rightarrow {-1}^{2}1 + 2-1x + 1{x}^{2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[(1 + 2-1x + 1{x}^{2}){(1 + x)}^{2}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
-                        <div class="local-change">
-                            \[-1x \rightarrow -x\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Binomial Expansion</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[(1 + {x}^{2} + -2x){(1 + x)}^{2}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Expand binomial power ^2}\)</div>
-                        <div class="local-change">
-                            \[{(1 + x)}^{2} \rightarrow {1}^{2}1 + 21x + 1{x}^{2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
-                    <h3>Expand</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[(1 + {x}^{2} + -2x)(1 + {x}^{2} + 2x)\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Expand Polynomial}\)</div>
-                        <div class="local-change">
-                            \[(1 + {x}^{2} + -2x)(1 + {x}^{2} + 2x) \rightarrow 1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2}1 + {x}^{2}{x}^{2} + {x}^{2}-2x + 2x1 + 2x{x}^{2} + 2x-2x\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">6</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2}1 + {x}^{2}{x}^{2} + {x}^{2}-2x + 2x1 + 1{x}^{2} + 2x-2x\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
-                        <div class="local-change">
-                            \[1{x}^{2} \rightarrow {x}^{2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">7</div>
-                <div class="step-content">
-                    <h3>Product of Powers</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2}1 + {x}^{2}{x}^{2} + {x}^{2}-2x + 2x1 + {x}^{2} + 2x-2x\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine powers with same base}\)</div>
-                        <div class="local-change">
-                            \[{x}^{2}{x}^{2} \rightarrow {x}^{2 + 2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">8</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2}1 + {x}^{2}{x}^{2} + {x}^{2}-2x + 2x1 + {x}^{2} + {x}^{2 + 2}-2x{x}^{2}x\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
-                        <div class="local-change">
-                            \[2x + -4xx + 2x{x}^{2} \rightarrow -4xx + 2x + 2x{x}^{2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">9</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2}1 + {x}^{2}{x}^{2} + {x}^{2}-2x + 2x1 + {x}^{2} + {x}^{2 + 2}-2x{x}^{2}(-4xx + 2x + 2x{x}^{2})\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
-                        <div class="local-change">
-                            \[-2x{x}^{2} + -4xx + 2x + 2x{x}^{2} \rightarrow -4xx + 2x\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">10</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2}1 + {x}^{2}{x}^{2} + {x}^{2}-2x + 2x1 + {x}^{2} + {x}^{2 + 2}(-4xx + 2x)\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
-                        <div class="local-change">
-                            \[-2x + {x}^{2} + {x}^{2 + 2} + -4xx + 2x \rightarrow {x}^{2} + {x}^{2 + 2} + -4xx\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">11</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2}1 + {x}^{2}{x}^{2} + {x}^{2}-2x + {x}^{2} + {x}^{2 + 2} + -4xx\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
-                        <div class="local-change">
-                            \[{x}^{2} + {x}^{2} + {x}^{2 + 2} + -4xx \rightarrow {x}^{2 + 2} + -4xx + 2{x}^{2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">12</div>
-                <div class="step-content">
-                    <h3>Product of Powers</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2 + 2} + -4xx + 2{x}^{2}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Multiply identical terms}\)</div>
-                        <div class="local-change">
-                            \[xx \rightarrow {x}^{2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">13</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2 + 2} + -4{x}^{2} + 2{x}^{2}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
-                        <div class="local-change">
-                            \[-4{x}^{2} + 2{x}^{2} \rightarrow -2{x}^{2}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">14</div>
-                <div class="step-content">
-                    <h3>Factor</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[1\cdot 1 + 1{x}^{2} + 1-2x + {x}^{2 + 2} + -2{x}^{2}\]
-                    </div>
-                    <div class="rule-description">
                         <div class="rule-name">\(\text{Factor Polynomial}\)</div>
                         <div class="local-change">
-                            \[1 + {x}^{4} + -2{x}^{2} \rightarrow {(x + -1)}^{2}{(x + 1)}^{2}\]
+                            \[{((-1 + x)(1 + x))}^{2} \rightarrow {(x + -1)}^{2}{(x + 1)}^{2}\]
                         </div>
                     </div>
                 </div>
