@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: ((x + 1) * (x - 1))^2</title>
+    <title>CAS Steps: 1 / (sqrt(x) + 1) + 1 / (sqrt(x) - 1) - 2 * sqrt(x) / (x - 1)</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -167,21 +167,213 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[((x + 1) * (x - 1))^2\]
+            \[1 / (sqrt(x) + 1) + 1 / (sqrt(x) - 1) - 2 * sqrt(x) / (x - 1)\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Factor</h3>
+                    <h3>Collect</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[{((-1 + x)(1 + x))}^{2}\]
+                        \[{\color{red}{\frac{1}{\sqrt{x} + 1} + \frac{1}{\sqrt{x} - 1} - \frac{2\sqrt{x}}{x - 1}}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Factor Polynomial}\)</div>
+                        <div class="rule-name">\(\text{Initial Collection}\)</div>
                         <div class="local-change">
-                            \[{((-1 + x)(1 + x))}^{2} \rightarrow {(x - 1)}^{2}{(x + 1)}^{2}\]
+                            \[\frac{1}{\sqrt{x} + 1} + \frac{1}{\sqrt{x} - 1} - \frac{2\sqrt{x}}{x - 1} \rightarrow -\frac{2\sqrt{x}}{x - 1} + \frac{1}{\sqrt{x} + 1} + \frac{1}{\sqrt{x} - 1}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Pull Constant From Fraction</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-{\color{red}{\frac{2\sqrt{x}}{-1 + x}}} + \frac{1}{\sqrt{x} + 1} + \frac{1}{\sqrt{x} - 1}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Pull constant from numerator}\)</div>
+                        <div class="local-change">
+                            \[\frac{2\sqrt{x}}{-1 + x} \rightarrow 2\cdot \frac{\sqrt{x}}{-1 + x}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Rationalize Denominator</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + {\color{red}{\frac{1}{1 + \sqrt{x}}}} + \frac{1}{\sqrt{x} - 1}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
+                        <div class="local-change">
+                            \[\frac{1}{1 + \sqrt{x}} \rightarrow \frac{1\cdot (1 - \sqrt{x})}{{1}^{2} - {\sqrt{x}}^{2}}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Power of a Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{1 - \sqrt{x}}{1 - {\color{red}{{\sqrt{x}}^{2}}}} + \frac{1}{\sqrt{x} - 1}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="local-change">
+                            \[{{x}^{\frac{1}{2}}}^{2} \rightarrow {x}^{\frac{1}{2}\cdot 2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Rationalize Denominator</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{1 - \sqrt{x}}{1 - x} + {\color{red}{\frac{1}{-1 + \sqrt{x}}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
+                        <div class="local-change">
+                            \[\frac{1}{-1 + \sqrt{x}} \rightarrow \frac{1\cdot (-1 - \sqrt{x})}{{-1}^{2} - {\sqrt{x}}^{2}}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <h3>Power of a Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{1 - \sqrt{x}}{1 - x} + \frac{-1 - \sqrt{x}}{1 - {\color{red}{{\sqrt{x}}^{2}}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="local-change">
+                            \[{{x}^{\frac{1}{2}}}^{2} \rightarrow {x}^{\frac{1}{2}\cdot 2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">7</div>
+                <div class="step-content">
+                    <h3>Add Fractions</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + {\color{red}{\frac{-1 - \sqrt{x}}{1 - x} + \frac{1 - \sqrt{x}}{1 - x}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
+                        <div class="local-change">
+                            \[\frac{-1 - \sqrt{x}}{1 - x} + \frac{1 - \sqrt{x}}{1 - x} \rightarrow \frac{(-1 - \sqrt{x})\cdot -1 + (1 - \sqrt{x})\cdot -1}{(1 - x)\cdot -1}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">8</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{{\color{red}{-1\cdot (-1 - \sqrt{x})}} + (1 - \sqrt{x})\cdot -1}{(1 - x)\cdot -1}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-1\cdot (-1 - \sqrt{x}) \rightarrow --1 - \sqrt{x}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">9</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{1 + \sqrt{x} + {\color{red}{-1\cdot (1 - \sqrt{x})}}}{(1 - x)\cdot -1}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-1\cdot (1 - \sqrt{x}) \rightarrow -1 - \sqrt{x}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">10</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{-1 + 1 + {\color{red}{\sqrt{x} + \sqrt{x}}}}{(1 - x)\cdot -1}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[\sqrt{x} + \sqrt{x} \rightarrow 2\sqrt{x}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">11</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{2\sqrt{x}}{{\color{red}{-1\cdot (1 - x)}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-1\cdot (1 - x) \rightarrow -1 - x\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">12</div>
+                <div class="step-content">
+                    <h3>Pull Constant From Fraction</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + {\color{red}{\frac{2\sqrt{x}}{-1 + x}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Pull constant from numerator}\)</div>
+                        <div class="local-change">
+                            \[\frac{2\sqrt{x}}{-1 + x} \rightarrow 2\cdot \frac{\sqrt{x}}{-1 + x}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">13</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[{\color{red}{-2\cdot \frac{\sqrt{x}}{-1 + x} + 2\cdot \frac{\sqrt{x}}{-1 + x}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-2\cdot \frac{\sqrt{x}}{-1 + x} + 2\cdot \frac{\sqrt{x}}{-1 + x} \rightarrow 0\]
                         </div>
                     </div>
                 </div>
@@ -189,7 +381,7 @@
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[{(x - 1)}^{2}{(x + 1)}^{2}\]
+            \[0\]
         </div>
     </div>
     <footer>

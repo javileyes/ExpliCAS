@@ -226,9 +226,18 @@ impl<'a> LaTeXExpr<'a> {
                     format!("\\ln({})", arg)
                 }
                 "log" if args.len() == 2 => {
-                    let base = self.expr_to_latex(args[0], false);
-                    let arg = self.expr_to_latex(args[1], false);
-                    format!("\\log_{{{}}}({})", base, arg)
+                    let base = args[0];
+                    let arg = args[1];
+
+                    // Check if base is constant e - if so, use ln instead
+                    if let Expr::Constant(Constant::E) = self.context.get(base) {
+                        let arg_latex = self.expr_to_latex(arg, false);
+                        format!("\\ln({})", arg_latex)
+                    } else {
+                        let base_latex = self.expr_to_latex(base, false);
+                        let arg_latex = self.expr_to_latex(arg, false);
+                        format!("\\log_{{{}}}({})", base_latex, arg_latex)
+                    }
                 }
                 "abs" => {
                     let arg = self.expr_to_latex(args[0], false);

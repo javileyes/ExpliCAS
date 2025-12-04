@@ -1,5 +1,6 @@
 use crate::step::{PathStep, Step};
 use cas_ast::{Context, DisplayExpr, Expr, ExprId, LaTeXExpr};
+use num_traits::Signed;
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
 pub struct TimelineHtml<'a> {
@@ -54,6 +55,430 @@ impl<'a> TimelineHtml<'a> {
             original_expr,
             title,
             verbosity_level: verbosity,
+        }
+    }
+
+    /// Generate LaTeX for an expression with a specific subexpression highlighted
+    /// by following the path to find the target subexpression.
+    /// Uses smart context: if the target is deep in the tree, highlights a meaningful parent.
+    fn generate_latex_with_highlight(
+        &self,
+        root_expr: ExprId,
+        path: &[PathStep],
+        target_expr: ExprId,
+    ) -> String {
+        // Strategy: If path is very deep (>3 levels) and goes into fraction denominator or
+        // exponent, highlight the whole fraction/power instead of the tiny part
+        let should_highlight_parent = self.should_use_parent_context(root_expr, path);
+
+        if should_highlight_parent {
+            // Find a good "stopping point" in the path (e.g., before entering fraction denominator)
+            let shortened_path = self.find_highlight_context_path(root_expr, path);
+            self.latex_with_highlight_recursive(root_expr, &shortened_path, 0, target_expr)
+        } else {
+            self.latex_with_highlight_recursive(root_expr, path, 0, target_expr)
+        }
+    }
+
+    /// Determine if we should highlight a parent context instead of the exact target.
+    /// Only do this in truly confusing cases (deep nesting in exponents of complex expressions)
+    fn should_use_parent_context(&self, root_expr: ExprId, path: &[PathStep]) -> bool {
+        // If path is very short, always highlight exact target
+        if path.len() <= 3 {
+            return false;
+        }
+
+        // Only use parent context in very specific confusing scenarios:
+        // 1. Very deep paths (>4 levels) going into exponents
+        // 2. Denominators of fractions that are themselves fractions (nested fractions)
+
+        let mut current = root_expr;
+        let mut in_fraction_denominator = false;
+
+        for (i, step) in path.iter().enumerate() {
+            match (self.context.get(current), step) {
+                // Track if we're entering a fraction denominator
+                (Expr::Div(_, _), PathStep::Right) => {
+                    // If we're already in a denominator and going deeper, that's confusing
+                    if in_fraction_denominator && i > 2 {
+                        return true;
+                    }
+                    in_fraction_denominator = true;
+                }
+                // Very deep exponent (>3 levels deep)
+                (Expr::Pow(_, _), PathStep::Exponent) if i > 3 => return true,
+                _ => {}
+            }
+
+            // Navigate to next node
+            current = match (self.context.get(current), step) {
+                (Expr::Add(l, _), PathStep::Left) => *l,
+                (Expr::Add(_, r), PathStep::Right) => *r,
+                (Expr::Sub(l, _), PathStep::Left) => *l,
+                (Expr::Sub(_, r), PathStep::Right) => *r,
+                (Expr::Mul(l, _), PathStep::Left) => *l,
+                (Expr::Mul(_, r), PathStep::Right) => *r,
+                (Expr::Div(n, _), PathStep::Left) => *n,
+                (Expr::Div(_, d), PathStep::Right) => *d,
+                (Expr::Pow(b, _), PathStep::Base) => *b,
+                (Expr::Pow(_, e), PathStep::Exponent) => *e,
+                (Expr::Neg(e), PathStep::Inner) => *e,
+                (Expr::Function(_, args), PathStep::Arg(idx)) => args[*idx],
+                _ => break,
+            };
+        }
+
+        false
+    }
+
+    /// Find a good "stopping point" for highlighting.
+    /// This should only trigger in rare, truly confusing cases.
+    fn find_highlight_context_path(
+        &self,
+        root_expr: ExprId,
+        full_path: &[PathStep],
+    ) -> Vec<PathStep> {
+        if full_path.len() <= 1 {
+            return full_path.to_vec();
+        }
+
+        let mut current = root_expr;
+        let mut in_fraction = false;
+
+        for (i, step) in full_path.iter().enumerate() {
+            match (self.context.get(current), step) {
+                // If we're in a fraction denominator and it's getting complex, stop before entering
+                (Expr::Div(_, _), PathStep::Right) => {
+                    if in_fraction && i > 2 {
+                        // Already in a fraction and going into denominator of another - stop here
+                        return full_path[..i].to_vec();
+                    }
+                    in_fraction = true;
+                }
+                // For very deep exponents (>3 levels), stop before the exponent
+                (Expr::Pow(_, _), PathStep::Exponent) if i > 3 => {
+                    return full_path[..i].to_vec();
+                }
+                _ => {}
+            }
+
+            // Navigate
+            current = match (self.context.get(current), step) {
+                (Expr::Add(l, _), PathStep::Left) => *l,
+                (Expr::Add(_, r), PathStep::Right) => *r,
+                (Expr::Sub(l, _), PathStep::Left) => *l,
+                (Expr::Sub(_, r), PathStep::Right) => *r,
+                (Expr::Mul(l, _), PathStep::Left) => *l,
+                (Expr::Mul(_, r), PathStep::Right) => *r,
+                (Expr::Div(n, _), PathStep::Left) => *n,
+                (Expr::Div(_, d), PathStep::Right) => *d,
+                (Expr::Pow(b, _), PathStep::Base) => *b,
+                (Expr::Pow(_, e), PathStep::Exponent) => *e,
+                (Expr::Neg(e), PathStep::Inner) => *e,
+                (Expr::Function(_, args), PathStep::Arg(idx)) => args[*idx],
+                _ => break,
+            };
+        }
+
+        // Default: use full path (highlight exact target)
+        full_path.to_vec()
+    }
+
+    /// Recursive helper that generates LaTeX and highlights the target based on path
+    fn latex_with_highlight_recursive(
+        &self,
+        current_expr: ExprId,
+        path: &[PathStep],
+        path_index: usize,
+        target_expr: ExprId,
+    ) -> String {
+        // If we've reached the end of the path, this is the expression to highlight
+        if path_index >= path.len() {
+            // Wrap the target expression in red color with limited scope
+            let inner_latex = LaTeXExpr {
+                context: self.context,
+                id: target_expr,
+            }
+            .to_latex();
+            return format!("{{\\color{{red}}{{{}}}}}", inner_latex);
+        }
+
+        // Otherwise, continue following the path
+        match self.context.get(current_expr) {
+            Expr::Add(l, r) => {
+                let left_latex = if matches!(path.get(path_index), Some(PathStep::Left)) {
+                    self.latex_with_highlight_recursive(*l, path, path_index + 1, target_expr)
+                } else {
+                    LaTeXExpr {
+                        context: self.context,
+                        id: *l,
+                    }
+                    .to_latex()
+                };
+
+                let (is_negative, right_latex) = match self.context.get(*r) {
+                    Expr::Number(n) if n.is_negative() => {
+                        let positive = -n;
+                        let positive_str = if positive.is_integer() {
+                            format!("{}", positive.numer())
+                        } else {
+                            format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+                        };
+                        (true, positive_str)
+                    }
+                    Expr::Neg(inner) => {
+                        let inner_str = if matches!(path.get(path_index), Some(PathStep::Right)) {
+                            // Need to highlight inside the negation
+                            self.latex_with_highlight_recursive(
+                                *r,
+                                path,
+                                path_index + 1,
+                                target_expr,
+                            )
+                        } else {
+                            LaTeXExpr {
+                                context: self.context,
+                                id: *inner,
+                            }
+                            .to_latex()
+                        };
+                        (true, inner_str)
+                    }
+                    _ => {
+                        let right_str = if matches!(path.get(path_index), Some(PathStep::Right)) {
+                            self.latex_with_highlight_recursive(
+                                *r,
+                                path,
+                                path_index + 1,
+                                target_expr,
+                            )
+                        } else {
+                            LaTeXExpr {
+                                context: self.context,
+                                id: *r,
+                            }
+                            .to_latex()
+                        };
+                        (false, right_str)
+                    }
+                };
+
+                if is_negative {
+                    format!("{} - {}", left_latex, right_latex)
+                } else {
+                    format!("{} + {}", left_latex, right_latex)
+                }
+            }
+            Expr::Sub(l, r) => {
+                let left_latex = if matches!(path.get(path_index), Some(PathStep::Left)) {
+                    self.latex_with_highlight_recursive(*l, path, path_index + 1, target_expr)
+                } else {
+                    LaTeXExpr {
+                        context: self.context,
+                        id: *l,
+                    }
+                    .to_latex()
+                };
+
+                let right_latex = if matches!(path.get(path_index), Some(PathStep::Right)) {
+                    self.latex_with_highlight_recursive(*r, path, path_index + 1, target_expr)
+                } else {
+                    // Need parens for subtraction
+                    let r_str = LaTeXExpr {
+                        context: self.context,
+                        id: *r,
+                    }
+                    .to_latex();
+                    // Add parens if needed
+                    match self.context.get(*r) {
+                        Expr::Add(_, _) | Expr::Sub(_, _) => format!("({})", r_str),
+                        _ => r_str,
+                    }
+                };
+
+                format!("{} - {}", left_latex, right_latex)
+            }
+            Expr::Mul(l, r) => {
+                let needs_parens_left =
+                    matches!(self.context.get(*l), Expr::Add(_, _) | Expr::Sub(_, _));
+                let needs_parens_right =
+                    matches!(self.context.get(*r), Expr::Add(_, _) | Expr::Sub(_, _));
+
+                let mut left_latex = if matches!(path.get(path_index), Some(PathStep::Left)) {
+                    self.latex_with_highlight_recursive(*l, path, path_index + 1, target_expr)
+                } else {
+                    LaTeXExpr {
+                        context: self.context,
+                        id: *l,
+                    }
+                    .to_latex()
+                };
+
+                let mut right_latex = if matches!(path.get(path_index), Some(PathStep::Right)) {
+                    self.latex_with_highlight_recursive(*r, path, path_index + 1, target_expr)
+                } else {
+                    LaTeXExpr {
+                        context: self.context,
+                        id: *r,
+                    }
+                    .to_latex()
+                };
+
+                if needs_parens_left {
+                    left_latex = format!("({})", left_latex);
+                }
+                if needs_parens_right {
+                    right_latex = format!("({})", right_latex);
+                }
+
+                // Smart multiplication detection
+                let needs_cdot = matches!(
+                    (self.context.get(*l), self.context.get(*r)),
+                    (Expr::Number(_), Expr::Number(_))
+                        | (Expr::Number(_), Expr::Add(_, _))
+                        | (Expr::Number(_), Expr::Sub(_, _))
+                        | (Expr::Add(_, _), Expr::Number(_))
+                        | (Expr::Sub(_, _), Expr::Number(_))
+                );
+
+                if needs_cdot {
+                    format!("{}\\cdot {}", left_latex, right_latex)
+                } else {
+                    format!("{}{}", left_latex, right_latex)
+                }
+            }
+            Expr::Div(n, d) => {
+                let numer_latex = if matches!(path.get(path_index), Some(PathStep::Left)) {
+                    self.latex_with_highlight_recursive(*n, path, path_index + 1, target_expr)
+                } else {
+                    LaTeXExpr {
+                        context: self.context,
+                        id: *n,
+                    }
+                    .to_latex()
+                };
+
+                let denom_latex = if matches!(path.get(path_index), Some(PathStep::Right)) {
+                    self.latex_with_highlight_recursive(*d, path, path_index + 1, target_expr)
+                } else {
+                    LaTeXExpr {
+                        context: self.context,
+                        id: *d,
+                    }
+                    .to_latex()
+                };
+
+                format!("\\frac{{{}}}{{{}}}", numer_latex, denom_latex)
+            }
+            Expr::Pow(base, exp) => {
+                let base_latex = if matches!(path.get(path_index), Some(PathStep::Base)) {
+                    self.latex_with_highlight_recursive(*base, path, path_index + 1, target_expr)
+                } else {
+                    let base_str = LaTeXExpr {
+                        context: self.context,
+                        id: *base,
+                    }
+                    .to_latex();
+                    // Add parens if needed
+                    match self.context.get(*base) {
+                        Expr::Add(_, _)
+                        | Expr::Sub(_, _)
+                        | Expr::Mul(_, _)
+                        | Expr::Div(_, _)
+                        | Expr::Neg(_) => format!("({})", base_str),
+                        _ => base_str,
+                    }
+                };
+
+                let exp_latex = if matches!(path.get(path_index), Some(PathStep::Exponent)) {
+                    self.latex_with_highlight_recursive(*exp, path, path_index + 1, target_expr)
+                } else {
+                    LaTeXExpr {
+                        context: self.context,
+                        id: *exp,
+                    }
+                    .to_latex()
+                };
+
+                format!("{{{}}}^{{{}}}", base_latex, exp_latex)
+            }
+            Expr::Neg(e) => {
+                let inner_latex = if matches!(path.get(path_index), Some(PathStep::Inner)) {
+                    self.latex_with_highlight_recursive(*e, path, path_index + 1, target_expr)
+                } else {
+                    // Add parens if needed
+                    let e_str = LaTeXExpr {
+                        context: self.context,
+                        id: *e,
+                    }
+                    .to_latex();
+                    match self.context.get(*e) {
+                        Expr::Add(_, _) | Expr::Sub(_, _) => format!("({})", e_str),
+                        _ => e_str,
+                    }
+                };
+
+                format!("-{}", inner_latex)
+            }
+            Expr::Function(name, args) => {
+                // Check if we need to highlight a specific argument
+                let highlighted_args: Vec<String> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &arg)| {
+                        if matches!(path.get(path_index), Some(PathStep::Arg(idx)) if *idx == i) {
+                            self.latex_with_highlight_recursive(
+                                arg,
+                                path,
+                                path_index + 1,
+                                target_expr,
+                            )
+                        } else {
+                            LaTeXExpr {
+                                context: self.context,
+                                id: arg,
+                            }
+                            .to_latex()
+                        }
+                    })
+                    .collect();
+
+                match name.as_str() {
+                    "sqrt" if highlighted_args.len() == 1 => {
+                        format!("\\sqrt{{{}}}", highlighted_args[0])
+                    }
+                    "sqrt" if highlighted_args.len() == 2 => {
+                        format!("\\sqrt[{}]{{{}}}", highlighted_args[1], highlighted_args[0])
+                    }
+                    "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
+                        format!("\\{}({})", name, highlighted_args[0])
+                    }
+                    "ln" => {
+                        format!("\\ln({})", highlighted_args[0])
+                    }
+                    "log" if highlighted_args.len() == 2 => {
+                        // Check if base (args[0]) is constant e - if so, use ln
+                        let base_arg = args[0];
+                        if let Expr::Constant(cas_ast::Constant::E) = self.context.get(base_arg) {
+                            format!("\\ln({})", highlighted_args[1])
+                        } else {
+                            format!("\\log_{{{}}}({})", highlighted_args[0], highlighted_args[1])
+                        }
+                    }
+                    "abs" if highlighted_args.len() == 1 => {
+                        format!("|{}|", highlighted_args[0])
+                    }
+                    _ => {
+                        format!("\\text{{{}}}({})", name, highlighted_args.join(", "))
+                    }
+                }
+            }
+            // Leaf nodes - should not be reached if path is valid
+            _ => LaTeXExpr {
+                context: self.context,
+                id: current_expr,
+            }
+            .to_latex(),
         }
     }
 
@@ -353,11 +778,12 @@ impl<'a> TimelineHtml<'a> {
             step_number += 1;
 
             // Global state BEFORE this step (this is the state *before* the current `step` was applied)
-            let global_before = LaTeXExpr {
-                context: self.context,
-                id: global_state_before_this_step,
-            }
-            .to_latex();
+            // Highlight the part that will change
+            let global_before = self.generate_latex_with_highlight(
+                global_state_before_this_step,
+                &step.path,
+                step.before,
+            );
 
             // Global AFTER is the current_global (already updated)
             let _global_after = LaTeXExpr {
