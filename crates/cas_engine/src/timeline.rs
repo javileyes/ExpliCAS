@@ -366,18 +366,36 @@ impl<'a> TimelineHtml<'a> {
             }
             .to_latex();
 
-            // Local change (before -> after) - use LatexNoRoots to preserve exponent notation
-            let local_before = cas_ast::LatexNoRoots {
-                context: self.context,
-                id: step.before,
-            }
-            .to_latex();
-            let local_after = cas_ast::LatexNoRoots {
-                context: self.context,
-                id: step.after,
-            }
-            .to_latex();
-            let local_change_latex = format!("{} \\rightarrow {}", local_before, local_after);
+            // Local change (before -> after)
+            // For certain rules, preserve exponent notation instead of converting to roots
+            let should_preserve_exponents = step.rule_name.contains("Multiply exponents")
+                || step.rule_name.contains("Power of a Power");
+
+            let local_change_latex = if should_preserve_exponents {
+                let local_before = cas_ast::LatexNoRoots {
+                    context: self.context,
+                    id: step.before,
+                }
+                .to_latex();
+                let local_after = cas_ast::LatexNoRoots {
+                    context: self.context,
+                    id: step.after,
+                }
+                .to_latex();
+                format!("{} \\rightarrow {}", local_before, local_after)
+            } else {
+                let local_before = LaTeXExpr {
+                    context: self.context,
+                    id: step.before,
+                }
+                .to_latex();
+                let local_after = LaTeXExpr {
+                    context: self.context,
+                    id: step.after,
+                }
+                .to_latex();
+                format!("{} \\rightarrow {}", local_before, local_after)
+            };
 
             html.push_str(&format!(
                 r#"            <div class="step">
