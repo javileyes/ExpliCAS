@@ -79,6 +79,7 @@ impl Simplifier {
         calculus::register(self);
         functions::register(self);
         grouping::register(self);
+        number_theory::register(self);
     }
 
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {

@@ -531,6 +531,42 @@ const PRESERVE_EXPONENT_RULES: &[&str] = &[
 ];
 ```
 
+#### **5. Sistema de Debug Parametrizable (tracing)** ★
+
+Sistema profesional de debug logging con **zero overhead** cuando está desactivado.
+
+**Implementación**:
+```rust
+// canonical_forms.rs, engine.rs, etc.
+use tracing::debug;
+
+pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {
+    debug!("Checking if canonical: {:?}", ctx.get(expr));
+    // ... lógica
+}
+```
+
+**Ventajas**:
+- ✅ **Zero overhead** en producción (compilación optimizada elimina el código)
+- ✅ **Control granular** por módulo
+- ✅ **No contamina** benchmarks ni tests
+- ✅ **Estándar Rust** - compatible con herramientas de observabilidad
+
+**Usage**:
+```bash
+# Sin debug (default)
+cargo test
+cargo bench
+
+# Con debug de módulos específicos
+RUST_LOG=cas_engine::canonical_forms=debug cargo test
+
+# Muy verbose
+RUST_LOG=cas_engine=trace ./target/release/cas_cli
+```
+
+**Documentación Completa**: Ver [DEBUG_SYSTEM.md](../DEBUG_SYSTEM.md) para guía detallada de uso.
+
 
 #### **4. Sistema de Detección de Formas Canónicas** ★
 

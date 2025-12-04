@@ -1,8 +1,7 @@
 ==================================================
 CLI Tests Output - Modo NORMAL
-Fecha: Thu Dec  4 10:42:53 CET 2025
+Fecha: Thu Dec  4 12:48:38 CET 2025
 ==================================================
-
 
 Rust CAS Step-by-Step Demo
 Step-by-step output enabled (Normal).
@@ -454,65 +453,14 @@ Steps (Aggressive Mode):
 Result: 1
 Parsed: ((x + 1) * (x - 1))^2
 Steps (Aggressive Mode):
-1. Distribute  [Distributive Property]
-   Local: (-1 + x) * (1 + x) -> (-1 + x) * 1 + (-1 + x) * x
-   Global: ((-1 + x) * 1 + (-1 + x) * x)^2
-2. Expand binomial power ^2  [Binomial Expansion]
-   Local: (-1 + x + x * (-1 + x))^2 -> -1^2 * 1 + 2 * -1 * (x + x * (-1 + x)) + 1 * (x + x * (-1 + x))^2
-   Global: -1^2 * 1 + 2 * -1 * (x + x * (-1 + x)) + 1 * (x + x * (-1 + x))^2
-3. Evaluate power: -1^2  [Evaluate Numeric Power]
-   Local: -1^2 -> 1
-   Global: 1 * 1 + 2 * -1 * (x + x * (-1 + x)) + 1 * (x + x * (-1 + x))^2
-4. Distribute  [Distributive Property]
-   Local: -1 * (x + x * (-1 + x)) -> -1 * x - 1 * x * (-1 + x)
-   Global: 1 + 2 * (-1 * x - 1 * x * (-1 + x)) + 1 * (x + x * (-1 + x))^2
-5. Global Combine Like Terms  [Combine Like Terms]
-   Local: -1 * x -> -x
-   Global: 1 + 2 * (-x - 1 * x * (-1 + x)) + 1 * (x + x * (-1 + x))^2
-6. Global Combine Like Terms  [Combine Like Terms]
-   Local: -1 * x * (-1 + x) -> -(x * (-1 + x))
-   Global: 1 + 2 * (-x - x * (-1 + x)) + 1 * (x + x * (-1 + x))^2
-7. Distribute  [Distributive Property]
-   Local: 2 * (-x - x * (-1 + x)) -> 2 * -x + 2 * -(x * (-1 + x))
-   Global: 1 + 2 * -x + 2 * -(x * (-1 + x)) + 1 * (x + x * (-1 + x))^2
-8. Expand binomial power ^2  [Binomial Expansion]
-   Local: (x + x * (-1 + x))^2 -> x^2 * 1 + 2 * x * x * (-1 + x) + 1 * (x * (-1 + x))^2
-   Global: 1 - 2 * x - 2 * x * (-1 + x) + 1 * (x^2 * 1 + 2 * x * x * (-1 + x) + 1 * (x * (-1 + x))^2)
-9. Combine nested identical terms  [Product of Powers]
-   Local: x * x * (-1 + x) -> x^2 * (-1 + x)
-   Global: 1 - 2 * x - 2 * x * (-1 + x) + 1 * (x^2 + 2 * x^2 * (-1 + x) + 1 * (x * (-1 + x))^2)
-10. Distribute  [Distributive Property]
-   Local: x^2 * (-1 + x) -> x^2 * -1 + x^2 * x
-   Global: 1 - 2 * x - 2 * x * (-1 + x) + 1 * (x^2 + 2 * (x^2 * -1 + x^2 * x) + 1 * (x * (-1 + x))^2)
-11. Global Combine Like Terms  [Combine Like Terms]
-   Local: -1 * x^2 -> -(x^2)
-   Global: 1 - 2 * x - 2 * x * (-1 + x) + 1 * (x^2 + 2 * (-(x^2) + x^2 * x) + 1 * (x * (-1 + x))^2)
-12. Combine base and power  [Product of Powers]
-   Local: x * x^2 -> x^(1 + 2)
-   Global: 1 - 2 * x - 2 * x * (-1 + x) + 1 * (x^2 + 2 * (-(x^2) + x^(1 + 2)) + 1 * (x * (-1 + x))^2)
-13. Distribute  [Distributive Property]
-   Local: 2 * (-(x^2) + x^3) -> 2 * -(x^2) + 2 * x^3
-   Global: 1 - 2 * x - 2 * x * (-1 + x) + 1 * (x^2 + 2 * -(x^2) + 2 * x^3 + 1 * (x * (-1 + x))^2)
-14. Global Combine Like Terms  [Combine Like Terms]
-   Local: x^2 - 2 * x^2 + 2 * x^3 -> -(x^2) + 2 * x^3
-   Global: 1 - 2 * x - 2 * x * (-1 + x) + 1 * (-(x^2) + 2 * x^3 + 1 * (x * (-1 + x))^2)
-15. Expand Polynomial  [Expand]
-   Local: 1 - x^2 + (x * (-1 + x))^2 - 2 * x - 2 * x * (-1 + x) + 2 * x^3 -> 1 - x^2 + (x * (-1 + x))^2 - 2 * x - 2 * x * -1 - 2 * x * x + 2 * x^3
-   Global: 1 - x^2 + (x * (-1 + x))^2 - 2 * x - 2 * x * -1 - 2 * x * x + 2 * x^3
-16. Global Combine Like Terms  [Combine Like Terms]
-   Local: -1 * x -> -x
-   Global: 1 - x^2 + (x * (-1 + x))^2 - 2 * x - 2 * x * -1 - x + 2 * x^3
-17. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * x - 2 * x^2 + 2 * x^3 -> -2 * x^2 + 2 * x + 2 * x^3
-   Global: 1 - x^2 + (x * (-1 + x))^2 - 2 * x - 2 * x^2 + 2 * x + 2 * x^3
-18. Global Combine Like Terms  [Combine Like Terms]
-   Local: -2 * x - 2 * x^2 + 2 * x + 2 * x^3 -> -2 * x^2 + 2 * x^3
-   Global: 1 - x^2 + (x * (-1 + x))^2 - 2 * x^2 + 2 * x^3
-19. Global Combine Like Terms  [Combine Like Terms]
-   Local: -(x^2) + (x * (-1 + x))^2 - 2 * x^2 + 2 * x^3 -> (x * (-1 + x))^2 - 3 * x^2 + 2 * x^3
-   Global: 1 + (x * (-1 + x))^2 - 3 * x^2 + 2 * x^3
-20. Factor Polynomial  [Factor]
-   Local: 1 + (x * (-1 + x))^2 - 3 * x^2 + 2 * x^3 -> (x - 1)^2 * (x + 1)^2
+1. Global Combine Like Terms  [Combine Like Terms]
+   Local: x + 1 -> 1 + x
+   Global: ((1 + x) * (x - 1))^2
+2. Global Combine Like Terms  [Combine Like Terms]
+   Local: x - 1 -> -1 + x
+   Global: ((1 + x) * (-1 + x))^2
+3. Factor Polynomial  [Factor]
+   Local: ((-1 + x) * (1 + x))^2 -> (x - 1)^2 * (x + 1)^2
    Global: (x - 1)^2 * (x + 1)^2
 Result: (x - 1)^2 * (x + 1)^2
 Parsed: (x^2 - 1)^2
@@ -561,8 +509,11 @@ Steps (Aggressive Mode):
    Global: x^(2 * 3)
 Result: x^6
 Parsed: (x * y)^2
-No simplification steps needed.
-Result: (x * y)^2
+Steps (Aggressive Mode):
+1. Distribute power over product  [Power of a Product]
+   Local: (x * y)^2 -> x^2 * y^2
+   Global: x^2 * y^2
+Result: x^2 * y^2
 Parsed: (x / y)^2
 Steps (Aggressive Mode):
 1. Distribute power over quotient  [Power of a Quotient]
@@ -585,8 +536,14 @@ Parsed: x^1
 Steps (Aggressive Mode):
 Result: x
 Parsed: (2 * x)^3
-No simplification steps needed.
-Result: (2 * x)^3
+Steps (Aggressive Mode):
+1. Distribute power over product  [Power of a Product]
+   Local: (2 * x)^3 -> 2^3 * x^3
+   Global: 2^3 * x^3
+2. Evaluate power: 2^3  [Evaluate Numeric Power]
+   Local: 2^3 -> 8
+   Global: 8 * x^3
+Result: 8 * x^3
 Parsed: x^2 * x^3
 Steps (Aggressive Mode):
 1. Combine powers with same base  [Product of Powers]
@@ -1048,46 +1005,25 @@ No simplification steps needed.
 Result: perm(10, 3)
 Parsed: 1 / x / (1 / y)
 Steps (Aggressive Mode):
-1. Multiply by common denominator ExprId(7917)  [Simplify Nested Fraction]
+1. Multiply by common denominator ExprId(7027)  [Simplify Nested Fraction]
    Local: 1 / x / (1 / y) -> 1 * 1 * y / (1 * x * 1)
    Global: 1 * 1 * y / (1 * x * 1)
 Result: y / x
 Parsed: x / y / (a / b)
 Steps (Aggressive Mode):
-1. Multiply by common denominator ExprId(7947)  [Simplify Nested Fraction]
+1. Multiply by common denominator ExprId(7057)  [Simplify Nested Fraction]
    Local: x / y / (a / b) -> x * 1 * b / (a * y * 1)
    Global: x * 1 * b / (a * y * 1)
 Result: b * x / (a * y)
 Parsed: 1 / (1 / x)
 Steps (Aggressive Mode):
-1. Multiply by common denominator ExprId(7973)  [Simplify Nested Fraction]
+1. Multiply by common denominator ExprId(7083)  [Simplify Nested Fraction]
    Local: 1 / (1 / x) -> 1 * x / (1 * 1)
    Global: 1 * x / (1 * 1)
 Result: x
 Parsed: (x + y) * (x - y)
 Steps (Aggressive Mode):
-1. Expand Polynomial  [Expand]
-   Local: (x + y) * (x - y) -> x * x + x * y + -y * x + -y * y
-   Global: x * x + x * y + -y * x + -y * y
-2. Multiply identical terms  [Product of Powers]
-   Local: x * x -> x^2
-   Global: x^2 + -y * x + -y * y
-3. Global Combine Like Terms  [Combine Like Terms]
-   Local: x * y - y * x - y * y -> -(y * x) - y * y + x * y
-   Global: x^2 - y * x - y * y + x * y
-4. Global Combine Like Terms  [Combine Like Terms]
-   Local: x^2 - y * x - y * y + x * y -> -(y * x) - y * y + x^2 + x * y
-   Global: -(y * x) - y * y + x^2 + x * y
-5. Multiply identical terms  [Product of Powers]
-   Local: y * y -> y^2
-   Global: -(x * y) - y^2 + x^2 + x * y
-6. Global Combine Like Terms  [Combine Like Terms]
-   Local: -(x * y) - y^2 + x^2 + x * y -> -(y^2) + x^2
-   Global: -(y^2) + x^2
-7. Factor Polynomial  [Factor]
-   Local: -(y^2) + x^2 -> (x - y) * (x + y)
-   Global: (x - y) * (x + y)
-Result: (x - y) * (x + y)
+Result: (x + y) * (x - y)
 Parsed: (a + b)^2 - (a - b)^2
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
@@ -1277,5 +1213,5 @@ Error solving: Solver error: No strategy could solve this equation.
 Goodbye!
 
 ==================================================
-Tests completados: Thu Dec  4 10:42:53 CET 2025
+Tests completados: Thu Dec  4 12:48:38 CET 2025
 ==================================================
