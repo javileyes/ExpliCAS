@@ -1,52 +1,59 @@
-use cas_ast::{Expr, ExprId, Context};
-use num_traits::{ToPrimitive, Signed};
+use cas_ast::{Context, Expr, ExprId};
 use num_integer::Integer;
+use num_traits::{Signed, ToPrimitive};
 
 /// Expands an expression.
 /// This is the main entry point for expansion.
 /// It recursively expands children and then applies specific expansion rules.
 pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
+    // CRITICAL: Skip expansion for canonical (elegant) forms
+    // e.g., ((x+1)*(x-1))^2 should stay as is, not be expanded
+    // This protects against expand-then-factor cycles at the architectural level
+    if crate::canonical_forms::is_canonical_form(ctx, expr) {
+        return expr;
+    }
+
     // 1. Expand children first (bottom-up)
     // Actually, for expansion, sometimes top-down is better?
     // But let's stick to the pattern: expand arguments, then expand self.
     // However, `expand(a*(b+c))` needs `b+c` to be available.
     // If we expand children, we get `a*(b+c)`. Then we distribute.
-    
+
     let expr_data = ctx.get(expr).clone();
     let expanded_expr = match expr_data {
         Expr::Add(l, r) => {
             let el = expand(ctx, l);
             let er = expand(ctx, r);
             ctx.add(Expr::Add(el, er))
-        },
+        }
         Expr::Sub(l, r) => {
             let el = expand(ctx, l);
             let er = expand(ctx, r);
             ctx.add(Expr::Sub(el, er))
-        },
+        }
         Expr::Mul(l, r) => {
             let el = expand(ctx, l);
             let er = expand(ctx, r);
             // Apply distribution
             expand_mul(ctx, el, er)
-        },
+        }
         Expr::Div(l, r) => {
             let el = expand(ctx, l);
             let er = expand(ctx, r);
             // Distribute division? (a+b)/c -> a/c + b/c
             // This is usually considered "expansion".
             expand_div(ctx, el, er)
-        },
+        }
         Expr::Pow(b, e) => {
             let eb = expand(ctx, b);
             let ee = expand(ctx, e);
             // Apply binomial expansion if applicable
             expand_pow(ctx, eb, ee)
-        },
+        }
         Expr::Neg(e) => {
             let ee = expand(ctx, e);
             ctx.add(Expr::Neg(ee))
-        },
+        }
         Expr::Function(name, args) => {
             if name == "expand" && args.len() == 1 {
                 // Unwrap explicit expand call
@@ -54,7 +61,7 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
             }
             let new_args: Vec<ExprId> = args.iter().map(|a| expand(ctx, *a)).collect();
             ctx.add(Expr::Function(name, new_args))
-        },
+        }
         _ => expr,
     };
 
@@ -65,7 +72,7 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
 /// a * (b + c) -> a*b + a*c
 pub fn expand_mul(ctx: &mut Context, l: ExprId, r: ExprId) -> ExprId {
     // Logic from `distribute` in algebra.rs
-    
+
     // Try to distribute l into r
     if let Some(res) = distribute_single(ctx, l, r) {
         return res;
@@ -86,13 +93,13 @@ fn distribute_single(ctx: &mut Context, multiplier: ExprId, target: ExprId) -> O
             let ma = expand_mul(ctx, multiplier, a);
             let mb = expand_mul(ctx, multiplier, b);
             Some(ctx.add(Expr::Add(ma, mb)))
-        },
+        }
         Expr::Sub(a, b) => {
             let ma = expand_mul(ctx, multiplier, a);
             let mb = expand_mul(ctx, multiplier, b);
             Some(ctx.add(Expr::Sub(ma, mb)))
-        },
-        _ => None
+        }
+        _ => None,
     }
 }
 
@@ -105,13 +112,13 @@ pub fn expand_div(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
             let da = expand_div(ctx, a, den);
             let db = expand_div(ctx, b, den);
             ctx.add(Expr::Add(da, db))
-        },
+        }
         Expr::Sub(a, b) => {
             let da = expand_div(ctx, a, den);
             let db = expand_div(ctx, b, den);
             ctx.add(Expr::Sub(da, db))
-        },
-        _ => ctx.add(Expr::Div(num, den))
+        }
+        _ => ctx.add(Expr::Div(num, den)),
     }
 }
 
@@ -140,16 +147,24 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
                             let coeff = binomial_coeff(n_val, k);
                             let exp_a = n_val - k;
                             let exp_b = k;
-                            
-                            let term_a = if exp_a == 0 { ctx.num(1) } else if exp_a == 1 { a } else { 
+
+                            let term_a = if exp_a == 0 {
+                                ctx.num(1)
+                            } else if exp_a == 1 {
+                                a
+                            } else {
                                 let e = ctx.num(exp_a as i64);
-                                ctx.add(Expr::Pow(a, e)) 
+                                ctx.add(Expr::Pow(a, e))
                             };
-                            let term_b = if exp_b == 0 { ctx.num(1) } else if exp_b == 1 { b } else { 
+                            let term_b = if exp_b == 0 {
+                                ctx.num(1)
+                            } else if exp_b == 1 {
+                                b
+                            } else {
                                 let e = ctx.num(exp_b as i64);
-                                ctx.add(Expr::Pow(b, e)) 
+                                ctx.add(Expr::Pow(b, e))
                             };
-                            
+
                             let mut term = ctx.add(Expr::Mul(term_a, term_b));
                             if coeff > 1 {
                                 let c = ctx.num(coeff as i64);
@@ -157,13 +172,13 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
                             }
                             terms.push(term);
                         }
-                        
+
                         // Sum up terms
                         let mut expanded = terms[0];
                         for i in 1..terms.len() {
                             expanded = ctx.add(Expr::Add(expanded, terms[i]));
                         }
-                        
+
                         return expand(ctx, expanded);
                     }
                 }
@@ -194,7 +209,7 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
             }
         }
     }
-    
+
     ctx.add(Expr::Pow(base, exp))
 }
 
@@ -215,8 +230,8 @@ fn binomial_coeff(n: u32, k: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_parser::parse;
     use cas_ast::DisplayExpr;
+    use cas_parser::parse;
 
     fn s(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
