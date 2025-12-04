@@ -1,97 +1,155 @@
-use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId, Context};
-use num_traits::{Zero, One, Signed};
-use num_integer::Integer;
+use crate::rule::Rewrite;
+use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
+use num_integer::Integer;
 use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
 
-define_rule!(
-    NumberTheoryRule,
-    "Number Theory Operations",
-    |ctx, expr| {
-        let (name, args) = if let Expr::Function(name, args) = ctx.get(expr) {
-            (name.clone(), args.clone())
-        } else {
-            return None;
-        };
+define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
+    let (name, args) = if let Expr::Function(name, args) = ctx.get(expr) {
+        (name.clone(), args.clone())
+    } else {
+        return None;
+    };
 
-        match name.as_str() {
-            "gcd" => {
-                if args.len() == 2 {
-                    if let Some(res) = compute_gcd(ctx, args[0], args[1]) {
-                        return Some(Rewrite {
-                            new_expr: res,
-                            description: format!("gcd({:?}, {:?})", args[0], args[1]),
-                        });
-                    }
+    match name.as_str() {
+        "gcd" => {
+            if args.len() == 2 {
+                if let Some(res) = compute_gcd(ctx, args[0], args[1]) {
+                    return Some(Rewrite {
+                        new_expr: res,
+                        description: format!(
+                            "gcd({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        ),
+                    });
                 }
-            },
-            "lcm" => {
-                if args.len() == 2 {
-                    if let Some(res) = compute_lcm(ctx, args[0], args[1]) {
-                        return Some(Rewrite {
-                            new_expr: res,
-                            description: format!("lcm({:?}, {:?})", args[0], args[1]),
-                        });
-                    }
-                }
-            },
-            "mod" => {
-                if args.len() == 2 {
-                    if let Some(res) = compute_mod(ctx, args[0], args[1]) {
-                        return Some(Rewrite {
-                            new_expr: res,
-                            description: format!("mod({:?}, {:?})", args[0], args[1]),
-                        });
-                    }
-                }
-            },
-            "prime_factors" | "factors" => {
-                if args.len() == 1 {
-                    if let Some(res) = compute_prime_factors(ctx, args[0]) {
-                        return Some(Rewrite {
-                            new_expr: res,
-                            description: format!("prime_factors({:?})", args[0]),
-                        });
-                    }
-                }
-            },
-            "fact" | "factorial" => {
-                if args.len() == 1 {
-                    if let Some(res) = compute_factorial(ctx, args[0]) {
-                        return Some(Rewrite {
-                            new_expr: res,
-                            description: format!("fact({:?})", args[0]),
-                        });
-                    }
-                }
-            },
-            "choose" | "nCr" => {
-                if args.len() == 2 {
-                    if let Some(res) = compute_choose(ctx, args[0], args[1]) {
-                        return Some(Rewrite {
-                            new_expr: res,
-                            description: format!("choose({:?}, {:?})", args[0], args[1]),
-                        });
-                    }
-                }
-            },
-            "perm" | "nPr" => {
-                if args.len() == 2 {
-                    if let Some(res) = compute_perm(ctx, args[0], args[1]) {
-                        return Some(Rewrite {
-                            new_expr: res,
-                            description: format!("perm({:?}, {:?})", args[0], args[1]),
-                        });
-                    }
-                }
-            },
-            _ => {}
+            }
         }
-        None
+        "lcm" => {
+            if args.len() == 2 {
+                if let Some(res) = compute_lcm(ctx, args[0], args[1]) {
+                    return Some(Rewrite {
+                        new_expr: res,
+                        description: format!(
+                            "lcm({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        ),
+                    });
+                }
+            }
+        }
+        "mod" => {
+            if args.len() == 2 {
+                if let Some(res) = compute_mod(ctx, args[0], args[1]) {
+                    return Some(Rewrite {
+                        new_expr: res,
+                        description: format!(
+                            "mod({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        ),
+                    });
+                }
+            }
+        }
+        "prime_factors" | "factors" => {
+            if args.len() == 1 {
+                if let Some(res) = compute_prime_factors(ctx, args[0]) {
+                    return Some(Rewrite {
+                        new_expr: res,
+                        description: format!(
+                            "factors({})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            }
+                        ),
+                    });
+                }
+            }
+        }
+        "fact" | "factorial" => {
+            if args.len() == 1 {
+                if let Some(res) = compute_factorial(ctx, args[0]) {
+                    return Some(Rewrite {
+                        new_expr: res,
+                        description: format!(
+                            "fact({})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            }
+                        ),
+                    });
+                }
+            }
+        }
+        "choose" | "nCr" => {
+            if args.len() == 2 {
+                if let Some(res) = compute_choose(ctx, args[0], args[1]) {
+                    return Some(Rewrite {
+                        new_expr: res,
+                        description: format!(
+                            "choose({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        ),
+                    });
+                }
+            }
+        }
+        "perm" | "nPr" => {
+            if args.len() == 2 {
+                if let Some(res) = compute_perm(ctx, args[0], args[1]) {
+                    return Some(Rewrite {
+                        new_expr: res,
+                        description: format!(
+                            "perm({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        ),
+                    });
+                }
+            }
+        }
+        _ => {}
     }
-);
+    None
+});
 
 fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
     let val_a = get_integer(ctx, a)?;
@@ -123,23 +181,27 @@ fn compute_mod(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
 
 fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = get_integer(ctx, n)?;
-    if val.is_zero() { return Some(ctx.num(0)); }
-    if val.is_one() { return Some(ctx.num(1)); }
-    
+    if val.is_zero() {
+        return Some(ctx.num(0));
+    }
+    if val.is_one() {
+        return Some(ctx.num(1));
+    }
+
     let sign = if val.is_negative() { -1 } else { 1 };
     let mut n_abs = val.abs();
-    
+
     let mut factors = Vec::new();
-    
+
     // Simple trial division
     let one = BigInt::one();
-    
+
     // Optimization: check 2 separately
     while n_abs.is_even() {
         factors.push(BigInt::from(2));
         n_abs /= 2;
     }
-    
+
     let mut d = BigInt::from(3);
     while &d * &d <= n_abs {
         while (&n_abs % &d).is_zero() {
@@ -151,7 +213,7 @@ fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     if n_abs > one {
         factors.push(n_abs);
     }
-    
+
     // Group factors: 2, 2, 3 -> 2^2 * 3
     // Since factors are sorted, we can just iterate
     let mut grouped = Vec::new();
@@ -169,13 +231,13 @@ fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         }
         grouped.push((current, count));
     }
-    
+
     // Construct expression
     let mut exprs = Vec::new();
     if sign == -1 {
         exprs.push(ctx.num(-1));
     }
-    
+
     for (base, exp) in grouped {
         let base_expr = ctx.add(Expr::Number(BigRational::from_integer(base)));
         if exp == 1 {
@@ -183,14 +245,17 @@ fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         } else {
             let exp_expr = ctx.num(exp);
             // Use "factored_pow" to prevent EvaluateNumericPower from simplifying 2^2 -> 4
-            exprs.push(ctx.add(Expr::Function("factored_pow".to_string(), vec![base_expr, exp_expr])));
+            exprs.push(ctx.add(Expr::Function(
+                "factored_pow".to_string(),
+                vec![base_expr, exp_expr],
+            )));
         }
     }
-    
+
     if exprs.is_empty() {
         return Some(ctx.num(1));
     }
-    
+
     // Return as a "factored" function to prevent CombineConstants from undoing it
     Some(ctx.add(Expr::Function("factored".to_string(), exprs)))
 }
@@ -200,53 +265,53 @@ fn compute_factorial(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     if val.is_negative() {
         return None; // Undefined for negative integers
     }
-    
+
     // Limit factorial size to prevent hanging
     if val > BigInt::from(1000) {
         return None; // Too large to compute
     }
-    
+
     let mut res = BigInt::one();
     let mut i = BigInt::one();
     while i <= val {
         res = res * &i;
         i = i + 1;
     }
-    
+
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
 }
 
 fn compute_choose(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
     let val_n = get_integer(ctx, n)?;
     let val_k = get_integer(ctx, k)?;
-    
+
     if val_k.is_negative() || val_k > val_n {
         return Some(ctx.num(0));
     }
-    
+
     // Optimization: nC0 = 1, nCn = 1
     if val_k.is_zero() || val_k == val_n {
         return Some(ctx.num(1));
     }
-    
+
     // Symmetry: nCk = nC(n-k)
     let k_eff = if &val_k * 2 > val_n {
         &val_n - &val_k
     } else {
         val_k.clone()
     };
-    
+
     // Compute: n * (n-1) * ... * (n-k+1) / k!
     let mut num = BigInt::one();
     let mut den = BigInt::one();
-    
+
     let mut i = BigInt::zero();
     while i < k_eff {
         num = num * (&val_n - &i);
         den = den * (&i + 1);
         i = i + 1;
     }
-    
+
     let res = num / den;
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
 }
@@ -254,15 +319,15 @@ fn compute_choose(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
 fn compute_perm(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
     let val_n = get_integer(ctx, n)?;
     let val_k = get_integer(ctx, k)?;
-    
+
     if val_k.is_negative() || val_k > val_n {
         return Some(ctx.num(0));
     }
-    
+
     if val_k.is_zero() {
         return Some(ctx.num(1));
     }
-    
+
     // Compute: n * (n-1) * ... * (n-k+1)
     let mut res = BigInt::one();
     let mut i = BigInt::zero();
@@ -270,7 +335,7 @@ fn compute_perm(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
         res = res * (&val_n - &i);
         i = i + 1;
     }
-    
+
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
 }
 
@@ -282,11 +347,9 @@ fn get_integer(ctx: &Context, expr: ExprId) -> Option<BigInt> {
             } else {
                 None
             }
-        },
-        Expr::Neg(e) => {
-            get_integer(ctx, *e).map(|n| -n)
-        },
-        _ => None
+        }
+        Expr::Neg(e) => get_integer(ctx, *e).map(|n| -n),
+        _ => None,
     }
 }
 
