@@ -6,13 +6,18 @@ use std::cmp::Ordering;
 /// These forms are mathematically clean and expanding them would only create unnecessary complexity.
 pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
-        // (product)^n where product is factored elegantly
+        // Case 1: (product)^n where product is factored elegantly
         Expr::Pow(base, exp) => {
             if is_product_of_factors(ctx, *base) && is_small_positive_integer(ctx, *exp) {
                 return true;
             }
             false
         }
+
+        // Case 2: Product of conjugates without power (e.g., (x+y)*(x-y))
+        // This is already in difference of squares form, expanding serves no purpose
+        Expr::Mul(l, r) => is_conjugate(ctx, *l, *r),
+
         _ => false,
     }
 }

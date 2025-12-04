@@ -1,33 +1,9 @@
 ==================================================
 CLI Tests Output - Modo NORMAL
-Fecha: Thu Dec  4 10:20:52 CET 2025
+Fecha: Thu Dec  4 10:42:53 CET 2025
 ==================================================
 
-warning: unused import: `crate::helpers`
- --> crates/cas_engine/src/rules/algebra.rs:7:5
-  |
-7 | use crate::helpers;
-  |     ^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
-warning: unused import: `crate::visitors`
- --> crates/cas_engine/src/rules/algebra.rs:8:5
-  |
-8 | use crate::visitors;
-  |     ^^^^^^^^^^^^^^^
-
-warning: unused variable: `global_after`
-   --> crates/cas_engine/src/timeline.rs:363:17
-    |
-363 |             let global_after = LaTeXExpr {
-    |                 ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_global_after`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: `cas_engine` (lib) generated 3 warnings (run `cargo fix --lib -p cas_engine` to apply 2 suggestions)
-    Finished `release` profile [optimized] target(s) in 0.02s
-     Running `target/release/cas_cli`
 Rust CAS Step-by-Step Demo
 Step-by-step output enabled (Normal).
 Enter an expression (e.g., '2 * 3 + 0'):
@@ -1301,5 +1277,5 @@ Error solving: Solver error: No strategy could solve this equation.
 Goodbye!
 
 ==================================================
-Tests completados: Thu Dec  4 10:20:52 CET 2025
+Tests completados: Thu Dec  4 10:42:53 CET 2025
 ==================================================
