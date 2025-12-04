@@ -1,9 +1,7 @@
 use crate::define_rule;
-use crate::helpers;
 use crate::ordering::compare_expr;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
-use crate::visitors;
 use cas_ast::expression::count_nodes;
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use std::cmp::Ordering;

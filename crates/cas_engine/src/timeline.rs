@@ -360,7 +360,7 @@ impl<'a> TimelineHtml<'a> {
             .to_latex();
 
             // Global AFTER is the current_global (already updated)
-            let global_after = LaTeXExpr {
+            let _global_after = LaTeXExpr {
                 context: self.context,
                 id: current_global,
             }

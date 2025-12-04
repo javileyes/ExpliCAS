@@ -1,7 +1,5 @@
 use crate::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::Signed;
-use std::cmp::Ordering;
 use tracing::debug;
 
 /// Detects if an expression is in a canonical (elegant) form that should not be expanded.

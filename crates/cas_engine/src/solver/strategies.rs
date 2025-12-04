@@ -1237,11 +1237,11 @@ impl SolverStrategy for UnwrapStrategy {
     }
 }
 
-// --- Helper for CollectTermsStrategy ---
+// --- Helper for CollectTermsStrategy (currently unused) ---
 
-fn is_zero(ctx: &Context, expr: ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Number(n) if n.is_zero())
-}
+// fn is_zero(ctx: &Context, expr: ExprId) -> bool {
+//     matches!(ctx.get(expr), Expr::Number(n) if n.is_zero())
+// }
 
 // --- CollectTermsStrategy: Handles linear equations with variables on both sides ---
 

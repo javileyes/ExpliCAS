@@ -367,22 +367,34 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 }
             }
             Expr::Function(name, args) => {
-                let mut new_args = Vec::new();
-                let mut changed = false;
-                for (i, arg) in args.iter().enumerate() {
-                    self.current_path.push(crate::step::PathStep::Arg(i));
-                    let new_arg = self.transform_expr_recursive(*arg);
-                    self.current_path.pop();
-
-                    if new_arg != *arg {
-                        changed = true;
-                    }
-                    new_args.push(new_arg);
-                }
-                if changed {
-                    self.context.add(Expr::Function(name, new_args))
+                // Check if this function is canonical before recursing into children
+                // For sqrt() and abs(), we might want to preserve certain forms like sqrt((x-1)^2)
+                if (name == "sqrt" || name == "abs")
+                    && crate::canonical_forms::is_canonical_form(self.context, id)
+                {
+                    debug!(
+                        "Skipping simplification of canonical Function: {:?}",
+                        self.context.get(id)
+                    );
+                    id // Return as-is without recursing into children
                 } else {
-                    id
+                    let mut new_args = Vec::new();
+                    let mut changed = false;
+                    for (i, arg) in args.iter().enumerate() {
+                        self.current_path.push(crate::step::PathStep::Arg(i));
+                        let new_arg = self.transform_expr_recursive(*arg);
+                        self.current_path.pop();
+
+                        if new_arg != *arg {
+                            changed = true;
+                        }
+                        new_args.push(new_arg);
+                    }
+                    if changed {
+                        self.context.add(Expr::Function(name, new_args))
+                    } else {
+                        id
+                    }
                 }
             }
         };
