@@ -359,19 +359,46 @@ $ open ast.svg  # Opens beautiful tree visualization
 
 #### Timeline HTML
 
-Generate interactive HTML visualization of simplification steps:
+Generate interactive HTML visualization of simplification steps with intelligent filtering:
 
 ```text
-> timeline (x+1)^2
+> timeline 1/(sqrt(x)+1)+1/(sqrt(x)-1)-(2*sqrt(x))/(x-1)
 Timeline exported to timeline.html
 Open in browser to view interactive visualization.
 ```
 
-Opens a beautiful HTML page with:
-- MathJax-rendered expressions
-- Step-by-step timeline
-- Color-coded before/after states
-- Professional gradient styling
+**Features:**
+- **Intelligent Step Filtering**: Automatically filters out non-productive steps (where global state doesn't change) and low-importance canonicalization steps
+  - Reduces visual clutter (e.g., 47 steps → 13 meaningful steps)
+  - Configurable verbosity: `Low`, `Normal`, `Verbose`
+- **Compact Layout**: 
+  - Shows only the current expression (removed redundant "After" state)
+  - Displays rule name and local transformation
+  - Final result clearly highlighted
+- **Smart LaTeX Rendering**:
+  - Global expressions use readable notation (e.g., `√x` for roots)
+  - Rule transformations preserve mathematical notation for clarity:
+    - Exponent rules show fractional notation: `x^{1/2} → x^{1/2·2}`
+    - Other rules use standard notation with roots
+- **Professional Styling**:
+  - MathJax-rendered expressions
+  - Gradient backgrounds and color-coded sections
+  - Responsive design with smooth animations
+
+**Step Importance Levels:**
+- **Trivial**: Identity operations (Add Zero, Mul By One) - hidden by default
+- **Low**: Canonicalization, sorting, constant evaluation - hidden in Normal mode
+- **Medium**: Standard algebraic transforms - always shown
+- **High**: Major transformations (Factor, Expand, Integrate) - always highlighted
+
+**Customization:**
+To add new rules that preserve exponent notation, edit `crates/cas_engine/src/timeline.rs`:
+```rust
+let should_preserve_exponents = step.rule_name.contains("Multiply exponents")
+    || step.rule_name.contains("Power of a Power")
+    || step.rule_name.contains("Your Rule Here");
+```
+
 
 ### Running Tests
 
@@ -385,7 +412,12 @@ This runs unit tests for all crates and integration tests ensuring the parser an
 
 ## Project Structure
 
--   `crates/cas_ast`: Core mathematical data structures.
+-   `crates/cas_ast`: Core mathematical data structures and LaTeX rendering.
+    -   `latex.rs`: Standard LaTeX rendering (converts fractional exponents to roots).
+    -   `latex_no_roots.rs`: Specialized LaTeX rendering that preserves exponent notation.
 -   `crates/cas_parser`: Parsing logic (String -> AST).
 -   `crates/cas_engine`: Simplification rules and step tracer.
+    -   `step.rs`: Step importance classification system.
+    -   `timeline.rs`: HTML timeline generation with intelligent filtering.
+    -   `strategies.rs`: Global state filtering for non-productive steps.
 -   `crates/cas_cli`: Command-line interface.

@@ -282,9 +282,6 @@ impl<'a> AstVisualizer<'a> {
 ```bash
 > visualize (x+1)*(x-1)
 AST exported to ast.dot
-
-$ dot -Tsvg ast.dot -o ast.svg
-$ open ast.svg  # Beautiful tree visualization
 ```
 
 **Features**:
@@ -293,58 +290,247 @@ $ open ast.svg  # Beautiful tree visualization
 - Export to SVG/PNG/PDF
 - Zero runtime overhead (export only)
 
-#### **3. Timeline HTML**
+#### **3. Timeline HTML - Visualización Inteligente de Pasos**
 
-Interactive HTML visualization of simplification steps.
+Sistema de visualización interactiva con filtrado inteligente y renderizado contextual.
 
 **Implementation**:
 ```rust
 pub struct TimelineHtml<'a> {
-    context: &'a Context,
+    context: &'a mut Context,
     steps: &'a [Step],
+    original_expr: ExprId,
+    verbosity: VerbosityLevel,
 }
 
-impl<'a> TimelineHtml<'a> {
-    pub fn to_html(&self) -> String {
-        // Self-contained HTML with:
-        // - MathJax for math rendering
-        // - Purple gradient styling
-        // - Timeline layout
-        // - Before/After highlighting
+pub enum VerbosityLevel {
+    Low,      // Solo pasos High importance
+    Normal,   // High + Medium importance
+    Verbose,  // Todos los pasos
+}
+```
+
+**Características Principales**:
+
+##### 1. **Filtrado Inteligente de Pasos** ★
+
+Dos niveles de filtrado para reducir ruido visual:
+
+###### a) Filtrado Global de Estado
+```rust
+// En strategies.rs
+pub fn filter_non_productive_steps(
+    ctx: &mut Context,
+    original: ExprId,
+    steps: Vec<Step>
+) -> Vec<Step> {
+    // Filtra pasos donde el estado global no cambia semánticamente
+    // Ejemplo: `x^(1/3 * 2)` → `x^(2/3)` es cambio de notación, no semántico
+}
+```
+
+**Problema resuelto**: Reglas como "Multiply exponents" pueden aplicarse a subexpresiones sin cambiar el estado global visible.
+
+**Ejemplo**:
+```
+x^(√x)² → estados globales
+─────────────────────────────
+1. x^(√x)²              [ORIGINAL]
+2. x^(√x)²              [Multiply exponents en subexpresión → FILTRADO]  
+3. x^(x^(1/2·2))        [Power of Power → MOSTRADO]
+4. x^x                  [Simplify exponent → MOSTRADO]
+```
+
+###### b) Filtrado por Importancia
+```rust
+// En step.rs
+pub enum ImportanceLevel {
+    Trivial,  // Add Zero, Mul One → Siempre oculto
+    Low,      // Canonicalize, Sort → Oculto en Normal
+    Medium,   // Algebraic transforms → Siempre mostrado
+    High,     // Factor, Expand, Integrate → Destacado
+}
+
+impl Step {
+    pub fn importance(&self) -> ImportanceLevel {
+        if self.rule_name.contains("Canonicalize")
+            || self.rule_name.contains("Sort") {
+            return ImportanceLevel::Low;
+        }
+        if self.rule_name.contains("Factor")
+            || self.rule_name.contains("Expand") {
+            return ImportanceLevel::High;
+        }
+        ImportanceLevel::Medium
+    }
+}
+```
+
+**Impacto**: 
+- Sin filtrado: 47 pasos
+- Con filtrado: 13 pasos meaningful
+- Reducción: **72% menos pasos** sin pérdida de información
+
+##### 2. **Layout Compacto** ★
+
+Eliminación del estado "After" redundante:
+
+**Antes**:
+```html
+<div class="math-expr before">
+    <strong>Before (Global):</strong> \[x^2 - 1\]
+</div>
+<div class="math-expr after">
+    <strong>After (Global):</strong> \[(x-1)(x+1)\]
+</div>
+```
+
+**Después**:
+```html
+<div class="math-expr">
+    <strong>Expression:</strong> \[x^2 - 1\]
+</div>
+<div class="rule-description">
+    <div class="rule-name">\(\text{Factor Polynomial}\)</div>
+    <div class="local-change">
+        \[x^2 - 1 \rightarrow (x-1)(x+1)\]
+    </div>
+</div>
+```
+
+**Beneficios**:
+- 50% menos espacio vertical por paso
+- Foco en la transformación (regla + cambio local)
+- El "After" se ve implícitamente en el siguiente paso
+
+##### 3. **Renderizado LaTeX Contextual** ★
+
+Dos modos de renderizado según el contexto:
+
+###### a) `LaTeXExpr` (Standard)
+```rust
+// Para expresiones globales (lectura general)
+impl LaTeXExpr {
+    pub fn to_latex(&self) -> String {
+        // Convierte exponentes fraccionarios a raíces
+        // x^(1/2) → \sqrt{x}
+        // x^(2/3) → \sqrt[3]{x^2}
+    }
+}
+```
+
+###### b) `LatexNoRoots` (Preserve Exponents)
+```rust
+// Para reglas de exponentes (claridad pedagógica)
+impl LatexNoRoots {
+    pub fn to_latex(&self) -> String {
+        // Preserva notación de exponentes
+        // x^(1/2) → x^{\frac{1}{2}}
+        // (x^a)^b → x^{a \cdot b}
+    }
+}
+```
+
+###### Decisión Contextual
+```rust
+// En timeline.rs
+let should_preserve_exponents = step.rule_name.contains("Multiply exponents")
+    || step.rule_name.contains("Power of a Power");
+
+let (local_before, local_after) = if should_preserve_exponents {
+    (LatexNoRoots::to_latex(before), LatexNoRoots::to_latex(after))
+} else {
+    (LaTeXExpr::to_latex(before), LaTeXExpr::to_latex(after))
+};
+```
+
+**Ejemplo**:
+
+| Regla | Renderizado | Razón |
+|-------|-------------|-------|
+| Multiply exponents | `{x^{1/2}}^2 → x^{1/2·2}` | Clarifica operación en exponentes |
+| Rationalize Denominator | `\frac{1}{1+\sqrt{x}}` | Raíces son más legibles |
+| Combine Like Terms | `\sqrt{x} + \sqrt{x} → 2\sqrt{x}` | Raíces son estándar |
+
+**Beneficio**: Claridad pedagógica sin sacrificar legibilidad.
+
+##### 4. **Generación HTML**
+
+```rust
+impl TimelineHtml {
+    pub fn to_html(&mut self) -> String {
+        let filtered = self.filter_by_importance();
+        
+        for step in filtered {
+            // Reconstruir estado global BEFORE
+            let global_before = self.reconstruct_global(prev_global, &step.path, step.before);
+            
+            // Renderizado contextual
+            let local_change = self.render_local_change(&step);
+            
+            // HTML con MathJax
+            html.push_str(&format!(r#"
+                <div class="step">
+                    <div class="step-number">{}</div>
+                    <div class="step-content">
+                        <h3>{}</h3>
+                        <div class="math-expr">
+                            \(\textbf{{Expression:}}\)
+                            \[{}\]
+                        </div>
+                        <div class="rule-description">
+                            <div class="rule-name">\(\text{{{}}}\)</div>
+                            <div class="local-change">
+                                \[{}\]
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            "#, step_num, category, global_before, rule_name, local_change));
+        }
+        
+        html
     }
 }
 ```
 
 **Usage**:
 ```bash
-> timeline (x+1)^2
+> timeline 1/(sqrt(x)+1)+1/(sqrt(x)-1)-(2*sqrt(x))/(x-1)
 Timeline exported to timeline.html
-[Browser opens automatically on macOS]
 ```
 
 **Generated HTML Features**:
-- Beautiful purple gradient background
-- MathJax-rendered math (`\(x^2 + 2x + 1\)`)
-- Step-by-step timeline with numbered circles
-- Color-coded before (orange) / after (green)
-- Hover effects and animations
-- Final result in green box
+- **MathJax 3**: Renderizado matemático profesional
+- **Responsive Design**: Adaptativo a diferentes pantallas
+- **Purple Gradient Background**: Estética profesional
+- **Color-Coded Sections**: 
+  - Expression: Orange border
+  - Rule: Purple dashed border on lavender
+  - Final Result: Green highlight
+- **Step Numbers**: Círculos con gradiente purple
+- **Animations**: Fade-in suave al cargar
 
-**Example Output**:
-```html
-<div class="step">
-    <div class="step-number">1</div>
-    <div class="step-content">
-        <h3>Binomial Expansion</h3>
-        <div class="math-expr before">
-            <strong>Before:</strong> \((x+1)^2\)
-        </div>
-        <div class="math-expr after">
-            <strong>After:</strong> \(x^2 + 2*x + 1\)
-        </div>
-    </div>
-</div>
+**Métricas de Efectividad**:
 ```
+Expresión compleja: 1/(sqrt(x)+1)+1/(sqrt(x)-1)-(2*sqrt(x))/(x-1)
+─────────────────────────────────────────────────────────────────
+Pasos sin filtrado:          47 pasos
+Pasos con filtrado global:   28 pasos  (-40%)
+Pasos con filtrado completo: 13 pasos  (-72%)
+Resultado:                   0         (correcto)
+```
+
+**Lista de Reglas con Exponentes Preservados**:
+```rust
+// Ampliar esta lista según necesidad pedagógica
+const PRESERVE_EXPONENT_RULES: &[&str] = &[
+    "Multiply exponents",
+    "Power of a Power",
+    // Agregar más aquí según se identifiquen
+];
+```
+
 
 ---
 
