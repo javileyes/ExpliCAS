@@ -32,8 +32,16 @@ fn is_product_of_factors(ctx: &Context, expr: ExprId) -> bool {
                 return true;
             }
 
-            // Check if factors are linear or simple
-            if is_linear_or_simple(ctx, *l) && is_linear_or_simple(ctx, *r) {
+            // Only protect if at least one factor is a binomial (Add/Sub)
+            // This prevents protecting simple monomials like (3*x)^3
+            // which should expand to 27*x^3
+            let l_is_binomial = matches!(ctx.get(*l), Expr::Add(_, _) | Expr::Sub(_, _));
+            let r_is_binomial = matches!(ctx.get(*r), Expr::Add(_, _) | Expr::Sub(_, _));
+
+            if (l_is_binomial || r_is_binomial)
+                && is_linear_or_simple(ctx, *l)
+                && is_linear_or_simple(ctx, *r)
+            {
                 return true;
             }
 
