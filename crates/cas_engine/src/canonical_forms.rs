@@ -1,46 +1,25 @@
 use crate::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
+use num_traits::Signed;
 use std::cmp::Ordering;
+use tracing::debug;
 
 /// Detects if an expression is in a canonical (elegant) form that should not be expanded.
 /// These forms are mathematically clean and expanding them would only create unnecessary complexity.
 pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {
-    use cas_ast::DisplayExpr;
-    eprintln!(
-        "DEBUG is_canonical_form called with: {}",
-        DisplayExpr {
-            context: ctx,
-            id: expr
-        }
-    );
-
-    let result = match ctx.get(expr) {
+    debug!("Checking if canonical: {:?}", ctx.get(expr));
+    match ctx.get(expr) {
         // Case 1: (product)^n where product is factored elegantly
         Expr::Pow(base, exp) => {
-            if is_product_of_factors(ctx, *base) && is_small_positive_integer(ctx, *exp) {
-                eprintln!("DEBUG: Match case 1 - Pow with product base");
-                true
-            } else {
-                false
-            }
+            is_product_of_factors(ctx, *base) && is_small_positive_integer(ctx, *exp)
         }
 
         // Case 2: Product of conjugates without power (e.g., (x+y)*(x-y))
         // This is already in difference of squares form, expanding serves no purpose
-        Expr::Mul(l, r) => {
-            let is_conj = is_conjugate(ctx, *l, *r);
-            eprintln!("DEBUG: Match case 2 - Mul, is_conjugate: {}", is_conj);
-            is_conj
-        }
+        Expr::Mul(l, r) => is_conjugate(ctx, *l, *r),
 
-        _ => {
-            eprintln!("DEBUG: No match, returning false");
-            false
-        }
-    };
-
-    eprintln!("DEBUG is_canonical_form returning: {}", result);
-    result
+        _ => false,
+    }
 }
 
 /// Checks if base is already a product in elegant factored form
@@ -105,37 +84,18 @@ fn is_small_positive_integer(ctx: &Context, exp: ExprId) -> bool {
 /// Checks for conjugate pairs: (A+B) and (A-B)
 /// Order-invariant: handles (x+1)(x-1), (x-1)(x+1), (-1+x)(1+x), etc.
 fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    use cas_ast::DisplayExpr;
-
-    eprintln!(
-        "DEBUG is_conjugate called with: ({}) and ({})",
-        DisplayExpr {
-            context: ctx,
-            id: a
-        },
-        DisplayExpr {
-            context: ctx,
-            id: b
-        }
-    );
-
+    debug!("Checking conjugate: {:?} vs {:?}", ctx.get(a), ctx.get(b));
     // Extract terms and base signs from both binomials
     let (a_terms, a_base_signs) = match ctx.get(a) {
         Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
         Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
-        _ => {
-            eprintln!("DEBUG: a is not Add/Sub, returning false");
-            return false;
-        }
+        _ => return false,
     };
 
     let (b_terms, b_base_signs) = match ctx.get(b) {
         Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
         Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
-        _ => {
-            eprintln!("DEBUG: b is not Add/Sub, returning false");
-            return false;
-        }
+        _ => return false,
     };
 
     // Normalize each term (extract negative signs from numbers/Neg)
@@ -144,22 +104,7 @@ fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     for (&term, &base_sign) in a_terms.iter().zip(a_base_signs.iter()) {
         let (norm_term, is_pos) = normalize_term(ctx, term);
         a_norm.push(norm_term);
-        let final_sign = base_sign == is_pos;
-        a_signs.push(final_sign);
-        eprintln!(
-            "DEBUG a term: {} → norm: {}, is_pos: {}, base_sign: {}, final_sign: {}",
-            DisplayExpr {
-                context: ctx,
-                id: term
-            },
-            DisplayExpr {
-                context: ctx,
-                id: norm_term
-            },
-            is_pos,
-            base_sign,
-            final_sign
-        );
+        a_signs.push(base_sign == is_pos);
     }
 
     let mut b_norm = Vec::new();
@@ -167,22 +112,7 @@ fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     for (&term, &base_sign) in b_terms.iter().zip(b_base_signs.iter()) {
         let (norm_term, is_pos) = normalize_term(ctx, term);
         b_norm.push(norm_term);
-        let final_sign = base_sign == is_pos;
-        b_signs.push(final_sign);
-        eprintln!(
-            "DEBUG b term: {} → norm: {}, is_pos: {}, base_sign: {}, final_sign: {}",
-            DisplayExpr {
-                context: ctx,
-                id: term
-            },
-            DisplayExpr {
-                context: ctx,
-                id: norm_term
-            },
-            is_pos,
-            base_sign,
-            final_sign
-        );
+        b_signs.push(base_sign == is_pos);
     }
 
     // Check if terms match in same order
@@ -192,18 +122,13 @@ fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
             .zip(b_norm.iter())
             .all(|(&x, &y)| terms_equal_normalized(ctx, x, y));
 
-    eprintln!("DEBUG same_order: {}", same_order);
-
     // Check if terms match in swapped order
     let swapped_order = a_norm.len() == 2
         && b_norm.len() == 2
         && terms_equal_normalized(ctx, a_norm[0], b_norm[1])
         && terms_equal_normalized(ctx, a_norm[1], b_norm[0]);
 
-    eprintln!("DEBUG swapped_order: {}", swapped_order);
-
     if !same_order && !swapped_order {
-        eprintln!("DEBUG: Terms don't match, returning false");
         return false;
     }
 
@@ -220,15 +145,7 @@ fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
         .filter(|(a, b)| a != b)
         .count();
 
-    eprintln!("DEBUG diff_count: {} (need exactly 1)", diff_count);
-    eprintln!(
-        "DEBUG a_signs: {:?}, b_signs_to_check: {:?}",
-        a_signs, b_signs_to_check
-    );
-
-    let result = diff_count == 1;
-    eprintln!("DEBUG is_conjugate returning: {}", result);
-    result
+    diff_count == 1
 }
 
 /// Compare two terms that have been normalized (signs extracted)

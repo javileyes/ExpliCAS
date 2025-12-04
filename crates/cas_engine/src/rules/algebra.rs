@@ -406,23 +406,11 @@ define_rule!(
 );
 
 define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
-    use cas_ast::DisplayExpr;
-    eprintln!(
-        "DEBUG DistributeRule checking: {}",
-        DisplayExpr {
-            context: ctx,
-            id: expr
-        }
-    );
-
     // Skip canonical (elegant) forms - even in aggressive mode
     // e.g., (x+y)*(x-y) should stay factored, not be distributed
     if crate::canonical_forms::is_canonical_form(ctx, expr) {
-        eprintln!("DEBUG DistributeRule: is_canonical, skipping");
         return None;
     }
-    eprintln!("DEBUG DistributeRule: NOT canonical, checking if can distribute");
-
     if let Expr::Mul(l, r) = ctx.get(expr) {
         let l_id = *l;
         let r_id = *r;

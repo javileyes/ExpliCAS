@@ -333,12 +333,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 // Check if this Pow is canonical before recursing into children
                 // If it's canonical (like ((x+1)*(x-1))^2), we should NOT simplify the base
                 if crate::canonical_forms::is_canonical_form(self.context, id) {
-                    eprintln!(
-                        "DEBUG: Skipping simplification of canonical Pow: {}",
-                        cas_ast::DisplayExpr {
-                            context: self.context,
-                            id
-                        }
+                    debug!(
+                        "Skipping simplification of canonical Pow: {:?}",
+                        self.context.get(id)
                     );
                     id // Return as-is without recursing
                 } else {
