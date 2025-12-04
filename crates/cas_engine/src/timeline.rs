@@ -366,13 +366,13 @@ impl<'a> TimelineHtml<'a> {
             }
             .to_latex();
 
-            // Local change (before -> after)
-            let local_before = LaTeXExpr {
+            // Local change (before -> after) - use LatexNoRoots to preserve exponent notation
+            let local_before = cas_ast::LatexNoRoots {
                 context: self.context,
                 id: step.before,
             }
             .to_latex();
-            let local_after = LaTeXExpr {
+            let local_after = cas_ast::LatexNoRoots {
                 context: self.context,
                 id: step.after,
             }

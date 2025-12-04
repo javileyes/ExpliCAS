@@ -1,11 +1,13 @@
 pub mod domain;
 pub mod expression;
 pub mod latex;
+pub mod latex_no_roots;
 pub mod visitor;
 
 pub use domain::{BoundType, Interval, SolutionSet};
 pub use expression::{Constant, Context, DisplayExpr, Expr, ExprId, RawDisplayExpr};
 pub use latex::LaTeXExpr;
+pub use latex_no_roots::LatexNoRoots;
 pub use visitor::{Transformer, Visitor};
 // use std::rc::Rc; // Removed Rc usage
 
