@@ -1,4 +1,5 @@
 use crate::{Constant, Context, Expr, ExprId};
+use num_traits::Signed;
 
 /// Converts an expression to LaTeX format for rendering with MathJax
 pub struct LaTeXExpr<'a> {
@@ -29,8 +30,31 @@ impl<'a> LaTeXExpr<'a> {
             },
             Expr::Add(l, r) => {
                 let left = self.expr_to_latex(*l, false);
-                let right = self.expr_to_latex(*r, false);
-                format!("{} + {}", left, right)
+
+                // Check if right side is a negative number or negation
+                // If so, render as subtraction instead of addition
+                let (is_negative, right_str) = match self.context.get(*r) {
+                    // Case 1: Negative number literal
+                    Expr::Number(n) if n.is_negative() => {
+                        let positive = -n;
+                        let positive_str = if positive.is_integer() {
+                            format!("{}", positive.numer())
+                        } else {
+                            format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+                        };
+                        (true, positive_str)
+                    }
+                    // Case 2: Neg(expr) - extract the inner expression
+                    Expr::Neg(inner) => (true, self.expr_to_latex(*inner, true)),
+                    // Case 3: Regular positive expression
+                    _ => (false, self.expr_to_latex(*r, false)),
+                };
+
+                if is_negative {
+                    format!("{} - {}", left, right_str)
+                } else {
+                    format!("{} + {}", left, right_str)
+                }
             }
             Expr::Sub(l, r) => {
                 let left = self.expr_to_latex(*l, false);
