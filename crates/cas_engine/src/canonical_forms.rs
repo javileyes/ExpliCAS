@@ -18,6 +18,29 @@ pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {
         // This is already in difference of squares form, expanding serves no purpose
         Expr::Mul(l, r) => is_conjugate(ctx, *l, *r),
 
+        // Case 3: Functions containing powers or products that should be preserved
+        // Examples: sqrt((x-1)^2), sqrt((x-2)(x+2)), abs((x+y)^3)
+        Expr::Function(name, args) if (name == "sqrt" || name == "abs") && args.len() == 1 => {
+            let inner = args[0];
+            match ctx.get(inner) {
+                // Protect sqrt(x^2), sqrt((x-1)^2), etc.
+                Expr::Pow(base, exp) => {
+                    // Any power of 2, or product raised to a power
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into())
+                        {
+                            return true; // sqrt(anything^2) should use SimplifySqrtSquareRule
+                        }
+                    }
+                    // Also protect if base is a product
+                    is_product_of_factors(ctx, *base) && is_small_positive_integer(ctx, *exp)
+                }
+                // Protect sqrt((x-2)(x+2)), abs((x+1)(x-1)), etc.
+                Expr::Mul(l, r) => is_conjugate(ctx, *l, *r) || is_product_of_factors(ctx, inner),
+                _ => false,
+            }
+        }
+
         _ => false,
     }
 }
