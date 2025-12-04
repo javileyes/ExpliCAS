@@ -77,7 +77,13 @@ define_rule!(
             if n.is_one() {
                 return Some(Rewrite {
                     new_expr: new_num,
-                    description: format!("Simplified fraction by GCD: {:?}", gcd_expr), // Debug format
+                    description: format!(
+                        "Simplified fraction by GCD: {}",
+                        DisplayExpr {
+                            context: ctx,
+                            id: gcd_expr
+                        }
+                    ),
                 });
             }
         }

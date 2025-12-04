@@ -1258,11 +1258,6 @@ impl SolverStrategy for CollectTermsStrategy {
         var: &str,
         simplifier: &mut Simplifier,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        // Only handle Eq relation for now
-        if eq.op != RelOp::Eq {
-            return None;
-        }
-
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
 

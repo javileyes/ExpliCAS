@@ -1,0 +1,1007 @@
+==================================================
+
+
+CLI Precalculus Tests - Valores Absolutos, Inecuaciones, Conjuntos
+Fecha: Thu Dec  4 16:16:37 CET 2025
+==================================================
+
+   Compiling cas_engine v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_engine)
+warning: unused import: `std::cmp::Ordering`
+ --> crates/cas_engine/src/canonical_forms.rs:4:5
+  |
+4 | use std::cmp::Ordering;
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::helpers`
+ --> crates/cas_engine/src/rules/algebra.rs:2:5
+  |
+2 | use crate::helpers;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `crate::visitors`
+ --> crates/cas_engine/src/rules/algebra.rs:6:5
+  |
+6 | use crate::visitors;
+  |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `num_traits::Signed`
+ --> crates/cas_engine/src/canonical_forms.rs:3:5
+  |
+3 | use num_traits::Signed;
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `global_after`
+   --> crates/cas_engine/src/timeline.rs:363:17
+    |
+363 |             let global_after = LaTeXExpr {
+    |                 ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_global_after`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_zero` is never used
+    --> crates/cas_engine/src/solver/strategies.rs:1242:4
+     |
+1242 | fn is_zero(ctx: &Context, expr: ExprId) -> bool {
+     |    ^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cas_engine` (lib) generated 6 warnings (run `cargo fix --lib -p cas_engine` to apply 3 suggestions)
+   Compiling cas_cli v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_cli)
+    Finished `release` profile [optimized] target(s) in 1.84s
+     Running `target/release/cas_cli`
+Rust CAS Step-by-Step Demo
+Step-by-step output enabled (Normal).
+Enter an expression (e.g., '2 * 3 + 0'):
+Step-by-step output enabled (Normal).
+Parsed: |-5|
+Steps (Aggressive Mode):
+1. abs(-5) = 5  [Evaluate Absolute Value]
+   Local: |-5| -> 5
+   Global: 5
+Result: 5
+Parsed: |5|
+Steps (Aggressive Mode):
+1. abs(5) = 5  [Evaluate Absolute Value]
+   Local: |5| -> 5
+   Global: 5
+Result: 5
+Parsed: |0|
+Steps (Aggressive Mode):
+1. abs(0) = 0  [Evaluate Absolute Value]
+   Local: |0| -> 0
+   Global: 0
+Result: 0
+Parsed: |-x|
+Steps (Aggressive Mode):
+1. abs(-x) = abs(x)  [Evaluate Absolute Value]
+   Local: |-x| -> |x|
+   Global: |x|
+Result: |x|
+Parsed: |x^2|
+No simplification steps needed.
+Result: |x^2|
+Parsed: |-3 * x|
+Steps (Aggressive Mode):
+Result: |-3 * x|
+Parsed: |x * y|
+No simplification steps needed.
+Result: |x * y|
+Parsed: |x / y|
+No simplification steps needed.
+Result: |x / y|
+Parsed: |x^2 * y|
+Steps (Aggressive Mode):
+Result: |y * x^2|
+Parsed: |-(x^2)|
+Steps (Aggressive Mode):
+1. abs(-x) = abs(x)  [Evaluate Absolute Value]
+   Local: |-(x^2)| -> |x^2|
+   Global: |x^2|
+Result: |x^2|
+Parsed: |x + 3|
+Steps (Aggressive Mode):
+Result: |3 + x|
+Parsed: |2 * x - 4|
+Steps (Aggressive Mode):
+Result: |-4 + 2 * x|
+Parsed: |x^2 - 1|
+Steps (Aggressive Mode):
+Result: |-1 + x^2|
+Parsed: ||x||
+No simplification steps needed.
+Result: ||x||
+Parsed: |-|x||
+Steps (Aggressive Mode):
+1. abs(-x) = abs(x)  [Evaluate Absolute Value]
+   Local: |-|x|| -> ||x||
+   Global: ||x||
+Result: ||x||
+Steps:
+1. Split absolute value (Case 1): x = 5
+   -> x = 5
+2. Split absolute value (Case 2): x = -5
+   -> x = -5
+Result: { 5, -5 }
+Steps:
+1. Split absolute value (Case 1): x = 0
+   -> x = 0
+2. Split absolute value (Case 2): x = -0
+   -> x = 0
+Result: { 0, 0 }
+Simplification Steps:
+Solving simplified equation: |x| = -1
+Steps:
+1. Split absolute value (Case 1): x = -1
+   -> x = -1
+2. Split absolute value (Case 2): x = -(-1)
+   -> x = 1
+Result: {  }
+Simplification Steps:
+Solving simplified equation: |-2 + x| = 3
+Steps:
+1. Split absolute value (Case 1): x - 2 = 3
+   -> -2 + x = 3
+2. Add 2 to both sides
+   -> x = 5
+3. Split absolute value (Case 2): x - 2 = -3
+   -> -2 + x = -3
+4. Add 2 to both sides
+   -> x = -1
+Result: { 5, -1 }
+Simplification Steps:
+Solving simplified equation: |1 + x| = 4
+Steps:
+1. Split absolute value (Case 1): x + 1 = 4
+   -> 1 + x = 4
+2. Subtract 1 from both sides
+   -> x = 3
+3. Split absolute value (Case 2): x + 1 = -4
+   -> 1 + x = -4
+4. Subtract 1 from both sides
+   -> x = -5
+Result: { 3, -5 }
+Steps:
+1. Split absolute value (Case 1): 2 * x = 6
+   -> 2 * x = 6
+2. Divide both sides by 2
+   -> x = 3
+3. Split absolute value (Case 2): 2 * x = -6
+   -> 2 * x = -6
+4. Divide both sides by 2
+   -> x = -3
+Result: { 3, -3 }
+Simplification Steps:
+Solving simplified equation: |-1 + 3 * x| = 5
+Steps:
+1. Split absolute value (Case 1): 3 * x - 1 = 5
+   -> -1 + 3 * x = 5
+2. Add 1 to both sides
+   -> 3 * x = 6
+3. Divide both sides by 3
+   -> x = 2
+4. Split absolute value (Case 2): 3 * x - 1 = -5
+   -> -1 + 3 * x = -5
+5. Add 1 to both sides
+   -> 3 * x = -4
+6. Divide both sides by 3
+   -> x = -4/3
+Result: { 2, -4/3 }
+Simplification Steps:
+RHS 1. abs(3) = 3  [Evaluate Absolute Value]
+   Local: |3| -> 3
+Solving simplified equation: |x| = 3
+Steps:
+1. Split absolute value (Case 1): x = |3|
+   -> x = 3
+2. Split absolute value (Case 2): x = -|3|
+   -> x = -3
+Result: { 3, -3 }
+Simplification Steps:
+Solving simplified equation: |-1 + x| = |1 + x|
+Steps:
+1. Subtract |x + 1| from both sides
+   -> |-1 + x| - |1 + x| = 0
+2. Subtract -|1 + x| from both sides
+   -> |-1 + x| = |1 + x|
+3. Split absolute value (Case 1): -1 + x = |1 + x|
+   -> -1 + x = |1 + x|
+4. Subtract -1 from both sides
+   -> x = 1 + |1 + x|
+5. Split absolute value (Case 2): -1 + x = -|1 + x|
+   -> -1 + x = -|1 + x|
+6. Subtract -1 from both sides
+   -> x = 1 - |1 + x|
+Result: {  }
+Steps:
+1. Split absolute value (Case 1): x < 5
+   -> x < 5
+2. Split absolute value (Case 2): x > -5
+   -> x > -5
+Result: (-5, 5)
+Steps:
+1. Split absolute value (Case 1): x <= 3
+   -> x <= 3
+2. Split absolute value (Case 2): x >= -3
+   -> x >= -3
+Result: [-3, 3]
+Steps:
+1. Split absolute value (Case 1): x > 2
+   -> x > 2
+2. Split absolute value (Case 2): x < -2
+   -> x < -2
+Result: (-infinity, -2) U (2, infinity)
+Steps:
+1. Split absolute value (Case 1): x >= 4
+   -> x >= 4
+2. Split absolute value (Case 2): x <= -4
+   -> x <= -4
+Result: (-infinity, -4] U [4, infinity)
+Simplification Steps:
+Solving simplified equation: |-3 + x| < 2
+Steps:
+1. Split absolute value (Case 1): x - 3 < 2
+   -> -3 + x < 2
+2. Add 3 to both sides
+   -> x < 5
+3. Split absolute value (Case 2): x - 3 > -2
+   -> -3 + x > -2
+4. Add 3 to both sides
+   -> x > 1
+Result: (1, 5)
+Simplification Steps:
+Solving simplified equation: |1 + x| <= 5
+Steps:
+1. Split absolute value (Case 1): x + 1 <= 5
+   -> 1 + x <= 5
+2. Subtract 1 from both sides
+   -> x <= 4
+3. Split absolute value (Case 2): x + 1 >= -5
+   -> 1 + x >= -5
+4. Subtract 1 from both sides
+   -> x >= -6
+Result: [-6, 4]
+Simplification Steps:
+Solving simplified equation: |-2 + x| > 4
+Steps:
+1. Split absolute value (Case 1): x - 2 > 4
+   -> -2 + x > 4
+2. Add 2 to both sides
+   -> x > 6
+3. Split absolute value (Case 2): x - 2 < -4
+   -> -2 + x < -4
+4. Add 2 to both sides
+   -> x < -2
+Result: (-infinity, -2) U (6, infinity)
+Steps:
+1. Split absolute value (Case 1): 2 * x < 8
+   -> 2 * x < 8
+2. Divide both sides by 2
+   -> x < 4
+3. Split absolute value (Case 2): 2 * x > -8
+   -> 2 * x > -8
+4. Divide both sides by 2
+   -> x > -4
+Result: (-4, 4)
+Simplification Steps:
+Solving simplified equation: |1 + 3 * x| <= 7
+Steps:
+1. Split absolute value (Case 1): 3 * x + 1 <= 7
+   -> 1 + 3 * x <= 7
+2. Subtract 1 from both sides
+   -> 3 * x <= 6
+3. Divide both sides by 3
+   -> x <= 2
+4. Split absolute value (Case 2): 3 * x + 1 >= -7
+   -> 1 + 3 * x >= -7
+5. Subtract 1 from both sides
+   -> 3 * x >= -8
+6. Divide both sides by 3
+   -> x >= -8/3
+Result: [-8/3, 2]
+Simplification Steps:
+Solving simplified equation: |x| < -1
+Steps:
+1. Split absolute value (Case 1): x < -1
+   -> x < -1
+2. Split absolute value (Case 2): x > -(-1)
+   -> x > 1
+Result: Empty Set
+Steps:
+1. Split absolute value (Case 1): x > 0
+   -> x > 0
+2. Split absolute value (Case 2): x < -0
+   -> x < 0
+Result: (-infinity, 0) U (0, infinity)
+Simplification Steps:
+Solving simplified equation: 5 + x = 0
+Steps:
+1. Subtract 5 from both sides
+   -> x = -5
+Result: { -5 }
+Simplification Steps:
+Solving simplified equation: -7 + 3 * x = 0
+Steps:
+1. Add 7 to both sides
+   -> 3 * x = 7
+2. Divide both sides by 3
+   -> x = 7/3
+Result: { 7/3 }
+Simplification Steps:
+Solving simplified equation: 1 + 2 * x = 5
+Steps:
+1. Subtract 1 from both sides
+   -> 2 * x = 4
+2. Divide both sides by 2
+   -> x = 2
+Result: { 2 }
+Simplification Steps:
+Solving simplified equation: 2 + 3 * x = -4 + x
+Steps:
+1. Subtract x - 4 from both sides
+   -> 6 + 2 * x = 0
+2. Subtract 6 from both sides
+   -> 2 * x = -6
+3. Divide both sides by 2
+   -> x = -3
+Result: { -3 }
+Simplification Steps:
+RHS 2. Factor Polynomial  [Factor]
+   Local: 6 + 2 * x -> 2 * x + 6
+Solving simplified equation: -3 + 5 * x = 6 + 2 * x
+Steps:
+1. Subtract 2 * x + 6 from both sides
+   -> -9 + 3 * x = 0
+2. Subtract -9 from both sides
+   -> 3 * x = 9
+3. Divide both sides by 3
+   -> x = 3
+Result: { 3 }
+Simplification Steps:
+Solving simplified equation: 1/2 * x = -4 + 3 * x
+Steps:
+1. Subtract 3 * x - 4 from both sides
+   -> 4 - 5/2 * x = 0
+2. Subtract 4 from both sides
+   -> -5/2 * x = -4
+3. Divide both sides by -5/2
+   -> x = 8/5
+Result: { 8/5 }
+Simplification Steps:
+LHS 4. Global Combine Like Terms  [Combine Like Terms]
+   Local: 1/3 * x + 1/2 * x -> 5/6 * x
+Solving simplified equation: 5/6 * x = 5
+Steps:
+1. Subtract x / 3 from both sides
+   -> 1/2 * x = 5 - 1/3 * x
+2. Multiply both sides by 2
+   -> x = 10 - 2/3 * x
+Result: {  }
+Steps:
+1. Isolate denominator x
+   -> x = 1/2
+Result: { 1/2 }
+Steps:
+1. Factorized equation: (x - 3) * (x + 3) = 0
+   -> (x - 3) * (x + 3) = 0
+2. Solve factor: x - 3 = 0
+   -> -3 + x = 0
+3. Subtract -3 from both sides
+   -> x = 3
+4. Solve factor: x + 3 = 0
+   -> 3 + x = 0
+5. Subtract 3 from both sides
+   -> x = -3
+Result: { -3, 3 }
+Steps:
+1. Factorized equation: x^2 = 0
+   -> x^2 = 0
+2. Solve factor: x = 0
+   -> x = 0
+Result: { 0 }
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: x + x^2 -> x * (x + 1)
+Solving simplified equation: x * (x + 1) = 0
+Steps:
+1. Factorized equation: x * (x + 1) = 0
+   -> x * (x + 1) = 0
+2. Solve factor: x = 0
+   -> x = 0
+3. Solve factor: x + 1 = 0
+   -> 1 + x = 0
+4. Subtract 1 from both sides
+   -> x = -1
+Result: { -1, 0 }
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: -x + x^2 -> x * (x - 1)
+Solving simplified equation: x * (x - 1) = 0
+Steps:
+1. Factorized equation: x * (x - 1) = 0
+   -> x * (x - 1) = 0
+2. Solve factor: x = 0
+   -> x = 0
+3. Solve factor: x - 1 = 0
+   -> -1 + x = 0
+4. Subtract -1 from both sides
+   -> x = 1
+Result: { 0, 1 }
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 6 + x^2 - 5 * x -> (x - 2) * (x - 3)
+Solving simplified equation: (x - 2) * (x - 3) = 0
+Steps:
+1. Factorized equation: (x - 2) * (x - 3) = 0
+   -> (x - 2) * (x - 3) = 0
+2. Solve factor: x - 2 = 0
+   -> -2 + x = 0
+3. Subtract -2 from both sides
+   -> x = 2
+4. Solve factor: x - 3 = 0
+   -> -3 + x = 0
+5. Subtract -3 from both sides
+   -> x = 3
+Result: { 2, 3 }
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 4 + x^2 + 4 * x -> (x + 2)^2
+Solving simplified equation: (x + 2)^2 = 0
+Steps:
+1. Factorized equation: (x + 2)^2 = 0
+   -> (x + 2)^2 = 0
+2. Solve factor: x + 2 = 0
+   -> 2 + x = 0
+3. Subtract 2 from both sides
+   -> x = -2
+Result: { -2 }
+Simplification Steps:
+LHS 5. Expand Polynomial  [Expand]
+   Local: (-2 + x) * (3 + x) -> 3 * -2 + 3 * x + x * -2 + x * x
+LHS 7. -2 * 3 = -6  [Combine Constants]
+   Local: -2 * 3 -> -6
+LHS 9. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 10. Global Combine Like Terms  [Combine Like Terms]
+   Local: -2 * x + x^2 -> x^2 - 2 * x
+LHS 11. Global Combine Like Terms  [Combine Like Terms]
+   Local: 3 * x + x^2 - 2 * x -> x + x^2
+LHS 12. Factor Polynomial  [Factor]
+   Local: -6 + x + x^2 -> (x - 2) * (x + 3)
+Solving simplified equation: (x - 2) * (x + 3) = 0
+Steps:
+1. Factorized equation: (x - 2) * (x + 3) = 0
+   -> (x - 2) * (x + 3) = 0
+2. Solve factor: x - 2 = 0
+   -> -2 + x = 0
+3. Subtract -2 from both sides
+   -> x = 2
+4. Solve factor: x + 3 = 0
+   -> 3 + x = 0
+5. Subtract 3 from both sides
+   -> x = -3
+Result: { -3, 2 }
+Simplification Steps:
+LHS 4. Expand Polynomial  [Expand]
+   Local: x * (-4 + x) -> x * -4 + x * x
+LHS 6. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 7. Global Combine Like Terms  [Combine Like Terms]
+   Local: -4 * x + x^2 -> x^2 - 4 * x
+LHS 8. Factor Polynomial  [Factor]
+   Local: x^2 - 4 * x -> x * (x - 4)
+Solving simplified equation: x * (x - 4) = 0
+Steps:
+1. Factorized equation: x * (x - 4) = 0
+   -> x * (x - 4) = 0
+2. Solve factor: x = 0
+   -> x = 0
+3. Solve factor: x - 4 = 0
+   -> -4 + x = 0
+4. Subtract -4 from both sides
+   -> x = 4
+Result: { 0, 4 }
+Steps:
+Result: (5, infinity)
+Simplification Steps:
+Solving simplified equation: x < -2
+Steps:
+Result: (-infinity, -2)
+Steps:
+Result: [0, infinity)
+Steps:
+Result: (-infinity, 10]
+Steps:
+1. Divide both sides by 2
+   -> x > 3
+Result: (3, infinity)
+Simplification Steps:
+Solving simplified equation: -3 * x < 9
+Steps:
+1. Divide both sides by -3
+   -> x > -3
+Result: (-3, infinity)
+Steps:
+1. Divide both sides by 5
+   -> x >= 3
+Result: [3, infinity)
+Simplification Steps:
+Solving simplified equation: -2 * x <= 8
+Steps:
+1. Divide both sides by -2
+   -> x >= -4
+Result: [-4, infinity)
+Simplification Steps:
+Solving simplified equation: 3 + x > 7
+Steps:
+1. Subtract 3 from both sides
+   -> x > 4
+Result: (4, infinity)
+Simplification Steps:
+Solving simplified equation: -1 + 2 * x < 5
+Steps:
+1. Add 1 to both sides
+   -> 2 * x < 6
+2. Divide both sides by 2
+   -> x < 3
+Result: (-infinity, 3)
+Simplification Steps:
+Solving simplified equation: 4 + 3 * x >= 10
+Steps:
+1. Subtract 4 from both sides
+   -> 3 * x >= 6
+2. Divide both sides by 3
+   -> x >= 2
+Result: [2, infinity)
+Simplification Steps:
+Solving simplified equation: 2 - x <= 6
+Steps:
+1. Subtract 2 from both sides
+   -> -x <= 4
+2. Multiply both sides by -1 (flips inequality)
+   -> x >= -4
+Result: [-4, infinity)
+Simplification Steps:
+Solving simplified equation: 2 * x > 3 + x
+Steps:
+1. Subtract x + 3 from both sides
+   -> -3 + x > 0
+2. Subtract -3 from both sides
+   -> x > 3
+Result: (3, infinity)
+Simplification Steps:
+Solving simplified equation: 1 + 3 * x < 5 + 2 * x
+Steps:
+1. Subtract 2 * x + 5 from both sides
+   -> -4 + x < 0
+2. Subtract -4 from both sides
+   -> x < 4
+Result: (-infinity, 4)
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: -2 + 4 * x -> 4 * x - 2
+Solving simplified equation: -2 + 4 * x >= 7 + x
+Steps:
+1. Subtract x + 7 from both sides
+   -> -9 + 3 * x >= 0
+2. Subtract -9 from both sides
+   -> 3 * x >= 9
+3. Divide both sides by 3
+   -> x >= 3
+Result: [3, infinity)
+Simplification Steps:
+Solving simplified equation: -2 * x > 10
+Steps:
+1. Divide both sides by -2
+   -> x < -5
+Result: (-infinity, -5)
+Steps:
+1. Multiply both sides by -1 (flips inequality)
+   -> x > -5
+Result: (-5, infinity)
+Steps:
+1. Take 2-th root of both sides (even root implies absolute value)
+   -> |x| < 2
+2. Split absolute value (Case 1): x < 4^(1 / 2)
+   -> x < 2
+3. Split absolute value (Case 2): x > -(4^(1 / 2))
+   -> x > -2
+Result: (-2, 2)
+Steps:
+1. Take 2-th root of both sides (even root implies absolute value)
+   -> |x| > 3
+2. Split absolute value (Case 1): x > 9^(1 / 2)
+   -> x > 3
+3. Split absolute value (Case 2): x < -(9^(1 / 2))
+   -> x < -3
+Result: (-infinity, -3) U (3, infinity)
+Steps:
+1. Take 2-th root of both sides (even root implies absolute value)
+   -> |x| <= 1
+2. Split absolute value (Case 1): x <= 1^(1 / 2)
+   -> x <= 1
+3. Split absolute value (Case 2): x >= -(1^(1 / 2))
+   -> x >= -1
+Result: [-1, 1]
+Steps:
+1. Take 2-th root of both sides (even root implies absolute value)
+   -> |x| >= 4
+2. Split absolute value (Case 1): x >= 16^(1 / 2)
+   -> x >= 4
+3. Split absolute value (Case 2): x <= -(16^(1 / 2))
+   -> x <= -4
+Result: (-infinity, -4] U [4, infinity)
+Simplification Steps:
+LHS 8. Expand Polynomial  [Expand]
+   Local: (-3 + x) * (-1 + x) -> -1 * -3 - 1 * x + x * -3 + x * x
+LHS 11. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 12. Global Combine Like Terms  [Combine Like Terms]
+   Local: -3 * x + x^2 -> x^2 - 3 * x
+LHS 13. Global Combine Like Terms  [Combine Like Terms]
+   Local: -x + x^2 - 3 * x -> x^2 - 4 * x
+LHS 14. Factor Polynomial  [Factor]
+   Local: 3 + x^2 - 4 * x -> (x - 1) * (x - 3)
+Solving simplified equation: (x - 1) * (x - 3) > 0
+Steps:
+1. Factorized equation: (x - 1) * (x - 3) = 0
+   -> (x - 1) * (x - 3) = 0
+2. Detected quadratic equation. Applying quadratic formula.
+   -> (x - 1) * (x - 3) = 0
+Result: (-infinity, 1) U (3, infinity)
+Simplification Steps:
+LHS 6. Factor Polynomial  [Factor]
+   Local: (-2 + x) * (2 + x) -> (x - 2) * (x + 2)
+Solving simplified equation: (x - 2) * (x + 2) < 0
+Steps:
+1. Divide both sides by x - 2
+   -> 2 + x < 0
+2. Subtract 2 from both sides
+   -> x < -2
+Result: (-infinity, -2)
+Simplification Steps:
+LHS 4. Expand Polynomial  [Expand]
+   Local: x * (-4 + x) -> x * -4 + x * x
+LHS 6. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 7. Global Combine Like Terms  [Combine Like Terms]
+   Local: -4 * x + x^2 -> x^2 - 4 * x
+LHS 8. Factor Polynomial  [Factor]
+   Local: x^2 - 4 * x -> x * (x - 4)
+Solving simplified equation: x * (x - 4) >= 0
+Steps:
+1. Factorized equation: x * (x - 4) = 0
+   -> x * (x - 4) = 0
+2. Detected quadratic equation. Applying quadratic formula.
+   -> x * (x - 4) = 0
+Result: (-infinity, 0] U [4, infinity)
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 6 + x^2 - 5 * x -> (x - 2) * (x - 3)
+Solving simplified equation: (x - 2) * (x - 3) > 0
+Steps:
+1. Factorized equation: (x - 2) * (x - 3) = 0
+   -> (x - 2) * (x - 3) = 0
+2. Detected quadratic equation. Applying quadratic formula.
+   -> (x - 2) * (x - 3) = 0
+Result: (-infinity, 2) U (3, infinity)
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: -3 + x^2 + 2 * x -> (x - 1) * (x + 3)
+Solving simplified equation: (x - 1) * (x + 3) < 0
+Steps:
+1. Factorized equation: (x - 1) * (x + 3) = 0
+   -> (x - 1) * (x + 3) = 0
+2. Detected quadratic equation. Applying quadratic formula.
+   -> (x - 1) * (x + 3) = 0
+Result: (-3, 1)
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 4 + x^2 - 4 * x -> (x - 2)^2
+Solving simplified equation: (x - 2)^2 <= 0
+Steps:
+1. Factorized equation: (x - 2)^2 = 0
+   -> (x - 2)^2 = 0
+2. Detected quadratic equation. Applying quadratic formula.
+   -> (x - 2)^2 = 0
+Result: { 2 }
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 4 - x^2 -> (x - 2) * (-x - 2)
+Solving simplified equation: (x - 2) * (-x - 2) > 0
+Steps:
+1. Subtract 4 from both sides
+   -> -(x^2) > -4
+2. Multiply both sides by -1 (flips inequality)
+   -> x^2 < 4
+3. Even power cannot be negative (x < --4)
+   -> x^2 < 4
+Result: Empty Set
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 1 - x^2 -> (x - 1) * (-x - 1)
+Solving simplified equation: (x - 1) * (-x - 1) >= 0
+Steps:
+1. Subtract 1 from both sides
+   -> -(x^2) >= -1
+2. Multiply both sides by -1 (flips inequality)
+   -> x^2 <= 1
+3. Even power cannot be negative (x <= --1)
+   -> x^2 <= 1
+Result: Empty Set
+Steps:
+1. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x < undefined
+2. --- End of Case 1 ---
+   -> x > undefined
+3. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x < undefined
+4. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
+   -> x > undefined
+Result: (0, undefined)
+Steps:
+1. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x > undefined
+2. --- End of Case 1 ---
+   -> x < undefined
+3. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x > undefined
+4. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
+   -> x < undefined
+Result: (-infinity, 0) U (undefined, infinity)
+Steps:
+1. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x <= 1
+2. --- End of Case 1 ---
+   -> x >= 1
+3. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x <= 1
+4. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
+   -> x >= 1
+Result: (0, 1]
+Simplification Steps:
+Solving simplified equation: x / (-1 + x) > 0
+Steps:
+1. Case 1: Assume x - 1 > 0. Multiply by positive denominator.
+   -> x > 0
+2. --- End of Case 1 ---
+   -> x > 0
+3. Case 1: Assume x - 1 > 0. Multiply by positive denominator.
+   -> x > 0
+4. Case 2: Assume x - 1 < 0. Multiply by negative denominator (flips inequality).
+   -> x < 0
+Result: (-infinity, 0) U (1, infinity)
+Simplification Steps:
+Solving simplified equation: (2 + x) / (-3 + x) < 0
+Steps:
+1. Case 1: Assume x - 3 > 0. Multiply by positive denominator.
+   -> 2 + x < 0
+2. Subtract 2 from both sides
+   -> x < -2
+3. --- End of Case 1 ---
+   -> 2 + x < 0
+4. Case 1: Assume x - 3 > 0. Multiply by positive denominator.
+   -> 2 + x < 0
+5. Case 2: Assume x - 3 < 0. Multiply by negative denominator (flips inequality).
+   -> 2 + x > 0
+6. Subtract 2 from both sides
+   -> x > -2
+Result: (-2, 3)
+Simplification Steps:
+Solving simplified equation: (-1 + x) / (1 + x) >= 0
+Steps:
+1. Case 1: Assume x + 1 > 0. Multiply by positive denominator.
+   -> -1 + x >= 0
+2. Add 1 to both sides
+   -> x >= 1
+3. --- End of Case 1 ---
+   -> -1 + x >= 0
+4. Case 1: Assume x + 1 > 0. Multiply by positive denominator.
+   -> -1 + x >= 0
+5. Case 2: Assume x + 1 < 0. Multiply by negative denominator (flips inequality).
+   -> -1 + x <= 0
+6. Add 1 to both sides
+   -> x <= 1
+Result: (-infinity, -1) U [1, infinity)
+Parsed: (x^2 - 1) / (x - 1)
+Steps (Aggressive Mode):
+1. Simplified fraction by GCD: x - 1  [Simplify Nested Fraction]
+   Local: (-1 + x^2) / (-1 + x) -> x + 1
+   Global: x + 1
+Result: 1 + x
+Parsed: (x^2 - 4) / (x + 2)
+Steps (Aggressive Mode):
+1. Simplified fraction by GCD: x + 2  [Simplify Nested Fraction]
+   Local: (-4 + x^2) / (2 + x) -> x - 2
+   Global: x - 2
+Result: -2 + x
+Parsed: (x^2 + 3 * x + 2) / (x + 1)
+Steps (Aggressive Mode):
+1. Simplified fraction by GCD: x + 1  [Simplify Nested Fraction]
+   Local: (2 + x^2 + 3 * x) / (1 + x) -> x + 2
+   Global: x + 2
+Result: 2 + x
+Parsed: (x^3 - 1) / (x - 1)
+Steps (Aggressive Mode):
+1. Simplified fraction by GCD: x - 1  [Simplify Nested Fraction]
+   Local: (-1 + x^3) / (-1 + x) -> x^2 + x + 1
+   Global: x^2 + x + 1
+Result: 1 + x + x^2
+Parsed: (x^2 + 5 * x + 6) / (x + 2)
+Steps (Aggressive Mode):
+1. Simplified fraction by GCD: x + 2  [Simplify Nested Fraction]
+   Local: (6 + x^2 + 5 * x) / (2 + x) -> x + 3
+   Global: x + 3
+Result: 3 + x
+Parsed: (2 * x^2 - 8) / (x - 2)
+Steps (Aggressive Mode):
+1. Simplified fraction by GCD: x - 2  [Simplify Nested Fraction]
+   Local: (-8 + 2 * x^2) / (-2 + x) -> 2 * x + 4
+   Global: 2 * x + 4
+2. Factor Polynomial  [Factor]
+   Local: 4 + 2 * x -> 2 * x + 4
+   Global: 2 * x + 4
+Result: 4 + 2 * x
+Parsed: 1 / x + 1 / (x + 1)
+Steps (Aggressive Mode):
+Result: 1 / x + 1 / (1 + x)
+Parsed: 1 / (x - 1) - 1 / (x + 1)
+Steps (Aggressive Mode):
+Result: -(1 / (1 + x)) + 1 / (-1 + x)
+Parsed: x / (x + 1) + 1 / (x + 1)
+Steps (Aggressive Mode):
+1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
+   Local: 1 / (1 + x) + x / (1 + x) -> (1 * 1 + x * 1) / ((1 + x) * 1)
+   Global: (1 * 1 + x * 1) / ((1 + x) * 1)
+2. Simplified fraction by GCD: x + 1  [Simplify Nested Fraction]
+   Local: (1 + x) / (1 + x) -> 1
+   Global: 1
+Result: 1
+Parsed: |x - 1|
+Steps (Aggressive Mode):
+Result: |-1 + x|
+Parsed: |x^2 - 4|
+Steps (Aggressive Mode):
+Result: |-4 + x^2|
+Parsed: |(x - 2) * (x + 2)|
+Steps (Aggressive Mode):
+1. Distribute  [Distributive Property]
+   Local: (-2 + x) * (2 + x) -> (-2 + x) * 2 + (-2 + x) * x
+   Global: |(-2 + x) * 2 + (-2 + x) * x|
+2. Distribute  [Distributive Property]
+   Local: 2 * (-2 + x) -> 2 * -2 + 2 * x
+   Global: |2 * -2 + 2 * x + (-2 + x) * x|
+3. 2 * -2 = -4  [Combine Constants]
+   Local: 2 * -2 -> -4
+   Global: |-4 + 2 * x + (-2 + x) * x|
+4. Expand Polynomial  [Expand]
+   Local: |-4 + 2 * x + x * (-2 + x)| -> |-4 + 2 * x + x * -2 + x * x|
+   Global: |-4 + 2 * x + x * -2 + x * x|
+5. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+   Global: |-4 + 2 * x - 2 * x + x^2|
+6. Global Combine Like Terms  [Combine Like Terms]
+   Local: -2 * x + x^2 -> x^2 - 2 * x
+   Global: |-4 + 2 * x + x^2 - 2 * x|
+7. Global Combine Like Terms  [Combine Like Terms]
+   Local: 2 * x + x^2 - 2 * x -> x^2
+   Global: |-4 + x^2|
+Result: |-4 + x^2|
+Parsed: sqrt(x^2)
+Steps (Aggressive Mode):
+Result: |x|
+Parsed: sqrt((x - 1)^2)
+Steps (Aggressive Mode):
+1. Expand binomial power ^2  [Binomial Expansion]
+   Local: (-1 + x)^2 -> -1^2 * 1 + 2 * -1 * x + 1 * x^2
+   Global: sqrt(-1^2 * 1 + 2 * -1 * x + 1 * x^2)
+2. Evaluate power: -1^2  [Evaluate Numeric Power]
+   Local: -1^2 -> 1
+   Global: sqrt(1 * 1 + 2 * -1 * x + 1 * x^2)
+3. Global Combine Like Terms  [Combine Like Terms]
+   Local: -1 * x -> -x
+   Global: sqrt(1 + 2 * -x + 1 * x^2)
+4. Simplify perfect square root  [Simplify Square Root]
+   Local: (1 + x^2 - 2 * x)^(1/2) -> |x - 1|
+   Global: |x - 1|
+Result: |-1 + x|
+Parsed: sqrt(x)
+Steps (Aggressive Mode):
+Result: x^(1/2)
+Parsed: sqrt(x - 2)
+Steps (Aggressive Mode):
+Result: (-2 + x)^(1/2)
+Parsed: sqrt(4 - x^2)
+Steps (Aggressive Mode):
+Result: (4 - x^2)^(1/2)
+Parsed: 1 / x
+No simplification steps needed.
+Result: 1 / x
+Parsed: 1 / (x - 3)
+Steps (Aggressive Mode):
+Result: 1 / (-3 + x)
+Parsed: 1 / (x^2 - 4)
+Steps (Aggressive Mode):
+Result: 1 / (-4 + x^2)
+Parsed: ln(x)
+No simplification steps needed.
+Result: ln(x)
+Parsed: ln(x - 1)
+Steps (Aggressive Mode):
+Result: ln(-1 + x)
+Parsed: ln(x^2 + 1)
+Steps (Aggressive Mode):
+Result: ln(1 + x^2)
+Parsed: (x^2 - 1) / (x - 1)
+Steps (Aggressive Mode):
+1. Simplified fraction by GCD: x - 1  [Simplify Nested Fraction]
+   Local: (-1 + x^2) / (-1 + x) -> x + 1
+   Global: x + 1
+Result: 1 + x
+Parsed: (x^2 + x) / x
+Steps (Aggressive Mode):
+1. Distribute division (simplifying)  [Distributive Property]
+   Local: (x + x^2) / x -> x / x + x^2 / x
+   Global: x / x + x^2 / x
+2. Simplified fraction by GCD: x  [Simplify Nested Fraction]
+   Local: x / x -> 1
+   Global: 1 + x^2 / x
+3. Simplified fraction by GCD: x  [Simplify Nested Fraction]
+   Local: x^2 / x -> x
+   Global: 1 + x
+Result: 1 + x
+Parsed: (x^3 - 8) / (x - 2)
+Steps (Aggressive Mode):
+1. Simplified fraction by GCD: x - 2  [Simplify Nested Fraction]
+   Local: (-8 + x^3) / (-2 + x) -> x^2 + 2 * x + 4
+   Global: x^2 + 2 * x + 4
+Result: 4 + x^2 + 2 * x
+Parsed: (sqrt(x + 1) - 1) / x
+Steps (Aggressive Mode):
+Result: (-1 + (1 + x)^(1/2)) / x
+Parsed: (x - 1) / (sqrt(x) - 1)
+Steps (Aggressive Mode):
+1. Rationalize denominator (diff squares)  [Rationalize Denominator]
+   Local: (-1 + x) / (-1 + x^(1/2)) -> (-1 + x) * (-1 - x^(1/2)) / (-1^2 - x^(1/2)^2)
+   Global: (-1 + x) * (-1 - x^(1/2)) / (-1^2 - x^(1/2)^2)
+2. Distribute  [Distributive Property]
+   Local: (-1 + x) * (-1 - x^(1/2)) -> (-1 + x) * -1 + (-1 + x) * -(x^(1/2))
+   Global: ((-1 + x) * -1 + (-1 + x) * -(x^(1/2))) / (-1^2 - x^(1/2)^2)
+3. Distribute  [Distributive Property]
+   Local: -1 * (-1 + x) -> -1 * -1 - 1 * x
+   Global: (-1 * -1 - 1 * x + (-1 + x) * -(x^(1/2))) / (-1^2 - x^(1/2)^2)
+4. -1 * -1 = 1  [Combine Constants]
+   Local: -1 * -1 -> 1
+   Global: (1 - 1 * x + (-1 + x) * -(x^(1/2))) / (-1^2 - x^(1/2)^2)
+5. Global Combine Like Terms  [Combine Like Terms]
+   Local: -1 * x -> -x
+   Global: (1 - x + (-1 + x) * -(x^(1/2))) / (-1^2 - x^(1/2)^2)
+6. Distribute  [Distributive Property]
+   Local: x^(1/2) * (-1 + x) -> x^(1/2) * -1 + x^(1/2) * x
+   Global: (1 - x - x^(1/2) * -1 + x^(1/2) * x) / (-1^2 - x^(1/2)^2)
+7. Global Combine Like Terms  [Combine Like Terms]
+   Local: -1 * x^(1/2) -> -(x^(1/2))
+   Global: (1 - x - -(x^(1/2)) + x^(1/2) * x) / (-1^2 - x^(1/2)^2)
+8. Combine base and power  [Product of Powers]
+   Local: x * x^(1/2) -> x^(1 + 1/2)
+   Global: (1 - x - -(x^(1/2)) + x^(1 + 1/2)) / (-1^2 - x^(1/2)^2)
+9. Evaluate power: -1^2  [Evaluate Numeric Power]
+   Local: -1^2 -> 1
+   Global: (1 - x - x^(3/2) + x^(1/2)) / (1 - x^(1/2)^2)
+10. Multiply exponents  [Power of a Power]
+   Local: x^(1/2)^2 -> x^(1/2 * 2)
+   Global: (1 - x - x^(3/2) + x^(1/2)) / (1 - x^(1/2 * 2))
+Result: (1 - x - x^(3/2) + x^(1/2)) / (1 - x)
+Parsed: (x^2 - a^2) / (x - a)
+Steps (Aggressive Mode):
+Result: (-(a^2) + x^2) / (x - a)
+Parsed: (x^3 - a^3) / (x - a)
+Steps (Aggressive Mode):
+Result: (-(a^3) + x^3) / (x - a)
+Goodbye!
+
+==================================================
+Tests de precálculo completados: Thu Dec  4 16:16:40 CET 2025
+==================================================
