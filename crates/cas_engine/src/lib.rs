@@ -3,6 +3,7 @@ pub mod collect;
 pub mod engine;
 pub mod expand;
 pub mod factor;
+pub mod matrix;
 pub mod orchestrator;
 pub mod ordering;
 pub mod polynomial;
