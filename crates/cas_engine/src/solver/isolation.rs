@@ -171,6 +171,144 @@ pub fn isolate(
         }
         Expr::Mul(l, r) => {
             // A * B = RHS
+
+            // CRITICAL: For inequalities with products, need sign analysis
+            // if both factors contain variables or if RHS != 0
+            let both_have_var = contains_var(&simplifier.context, l, var)
+                && contains_var(&simplifier.context, r, var);
+            let is_inequality = matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq);
+
+            // Check if RHS is zero - special case for sign analysis
+            let rhs_is_zero = matches!(simplifier.context.get(rhs), Expr::Number(n) if n.is_zero());
+
+            if both_have_var && is_inequality && rhs_is_zero {
+                // Product inequality: A * B > 0 (or < 0, etc.)
+                // For A * B > 0: need (A > 0 AND B > 0) OR (A < 0 AND B < 0)
+                // For A * B < 0: need (A > 0 AND B < 0) OR (A < 0 AND B > 0)
+
+                let zero = simplifier.context.num(0);
+
+                match op {
+                    RelOp::Gt | RelOp::Geq => {
+                        // A * B > 0: Both same sign
+                        // Case 1: Both positive
+                        let eq_a_pos = Equation {
+                            lhs: l,
+                            rhs: zero,
+                            op: if matches!(op, RelOp::Gt) {
+                                RelOp::Gt
+                            } else {
+                                RelOp::Geq
+                            },
+                        };
+                        let eq_b_pos = Equation {
+                            lhs: r,
+                            rhs: zero,
+                            op: if matches!(op, RelOp::Gt) {
+                                RelOp::Gt
+                            } else {
+                                RelOp::Geq
+                            },
+                        };
+
+                        let (set_a_pos, _) = solve(&eq_a_pos, var, simplifier)?;
+                        let (set_b_pos, _) = solve(&eq_b_pos, var, simplifier)?;
+                        let case_pos =
+                            intersect_solution_sets(&simplifier.context, set_a_pos, set_b_pos);
+
+                        // Case 2: Both negative
+                        let eq_a_neg = Equation {
+                            lhs: l,
+                            rhs: zero,
+                            op: if matches!(op, RelOp::Gt) {
+                                RelOp::Lt
+                            } else {
+                                RelOp::Leq
+                            },
+                        };
+                        let eq_b_neg = Equation {
+                            lhs: r,
+                            rhs: zero,
+                            op: if matches!(op, RelOp::Gt) {
+                                RelOp::Lt
+                            } else {
+                                RelOp::Leq
+                            },
+                        };
+
+                        let (set_a_neg, _) = solve(&eq_a_neg, var, simplifier)?;
+                        let (set_b_neg, _) = solve(&eq_b_neg, var, simplifier)?;
+                        let case_neg =
+                            intersect_solution_sets(&simplifier.context, set_a_neg, set_b_neg);
+
+                        let final_set =
+                            union_solution_sets(&simplifier.context, case_pos, case_neg);
+
+                        return Ok((final_set, steps));
+                    }
+                    RelOp::Lt | RelOp::Leq => {
+                        // A * B < 0: Different signs
+                        // Case 1: A positive, B negative
+                        let eq_a_pos = Equation {
+                            lhs: l,
+                            rhs: zero,
+                            op: if matches!(op, RelOp::Lt) {
+                                RelOp::Gt
+                            } else {
+                                RelOp::Geq
+                            },
+                        };
+                        let eq_b_neg = Equation {
+                            lhs: r,
+                            rhs: zero,
+                            op: if matches!(op, RelOp::Lt) {
+                                RelOp::Lt
+                            } else {
+                                RelOp::Leq
+                            },
+                        };
+
+                        let (set_a_pos, _) = solve(&eq_a_pos, var, simplifier)?;
+                        let (set_b_neg, _) = solve(&eq_b_neg, var, simplifier)?;
+                        let case1 =
+                            intersect_solution_sets(&simplifier.context, set_a_pos, set_b_neg);
+
+                        // Case 2: A negative, B positive
+                        let eq_a_neg = Equation {
+                            lhs: l,
+                            rhs: zero,
+                            op: if matches!(op, RelOp::Lt) {
+                                RelOp::Lt
+                            } else {
+                                RelOp::Leq
+                            },
+                        };
+                        let eq_b_pos = Equation {
+                            lhs: r,
+                            rhs: zero,
+                            op: if matches!(op, RelOp::Lt) {
+                                RelOp::Gt
+                            } else {
+                                RelOp::Geq
+                            },
+                        };
+
+                        let (set_a_neg, _) = solve(&eq_a_neg, var, simplifier)?;
+                        let (set_b_pos, _) = solve(&eq_b_pos, var, simplifier)?;
+                        let case2 =
+                            intersect_solution_sets(&simplifier.context, set_a_neg, set_b_pos);
+
+                        let final_set = union_solution_sets(&simplifier.context, case1, case2);
+
+                        return Ok((final_set, steps));
+                    }
+                    _ => {
+                        // Equality - fall through to regular division
+                    }
+                }
+            }
+
+            // Default behavior: divide by one factor (for equations or when only one has var)
             if contains_var(&simplifier.context, l, var) {
                 // A = RHS / B
                 // Check if B is negative constant to flip inequality
