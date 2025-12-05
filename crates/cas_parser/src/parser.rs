@@ -1,4 +1,4 @@
-use cas_ast::{Expr, Constant, ExprId, Context, Equation, RelOp};
+use cas_ast::{Constant, Context, Equation, Expr, ExprId, RelOp};
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -25,6 +25,7 @@ enum ParseNode {
     Pow(Box<ParseNode>, Box<ParseNode>),
     Neg(Box<ParseNode>),
     Function(String, Vec<ParseNode>),
+    Matrix(Vec<Vec<ParseNode>>), // 2D structure for validation during parsing
 }
 
 impl ParseNode {
@@ -37,35 +38,50 @@ impl ParseNode {
                 let lid = l.lower(ctx);
                 let rid = r.lower(ctx);
                 ctx.add(Expr::Add(lid, rid))
-            },
+            }
             ParseNode::Sub(l, r) => {
                 let lid = l.lower(ctx);
                 let rid = r.lower(ctx);
                 ctx.add(Expr::Sub(lid, rid))
-            },
+            }
             ParseNode::Mul(l, r) => {
                 let lid = l.lower(ctx);
                 let rid = r.lower(ctx);
                 ctx.add(Expr::Mul(lid, rid))
-            },
+            }
             ParseNode::Div(l, r) => {
                 let lid = l.lower(ctx);
                 let rid = r.lower(ctx);
                 ctx.add(Expr::Div(lid, rid))
-            },
+            }
             ParseNode::Pow(b, e) => {
                 let bid = b.lower(ctx);
                 let eid = e.lower(ctx);
                 ctx.add(Expr::Pow(bid, eid))
-            },
+            }
             ParseNode::Neg(e) => {
                 let eid = e.lower(ctx);
                 ctx.add(Expr::Neg(eid))
-            },
+            }
             ParseNode::Function(name, args) => {
                 let arg_ids = args.into_iter().map(|a| a.lower(ctx)).collect();
                 ctx.add(Expr::Function(name, arg_ids))
-            },
+            }
+            ParseNode::Matrix(rows) => {
+                // Flatten 2D structure to 1D for storage
+                let num_rows = rows.len();
+                let num_cols = if num_rows > 0 { rows[0].len() } else { 0 };
+
+                // Collect all elements in row-major order
+                let mut data = Vec::new();
+                for row in rows {
+                    for elem in row {
+                        data.push(elem.lower(ctx));
+                    }
+                }
+
+                ctx.matrix(num_rows, num_cols, data)
+            }
         }
     }
 }
@@ -77,7 +93,9 @@ fn parse_i64(input: &str) -> IResult<&str, i64> {
 
 // Parser for numbers
 fn parse_number(input: &str) -> IResult<&str, ParseNode> {
-    map(parse_i64, |n| ParseNode::Number(BigRational::from_integer(BigInt::from(n))))(input)
+    map(parse_i64, |n| {
+        ParseNode::Number(BigRational::from_integer(BigInt::from(n)))
+    })(input)
 }
 
 // Parser for constants
@@ -106,32 +124,128 @@ fn parse_parens(input: &str) -> IResult<&str, ParseNode> {
 fn parse_function(input: &str) -> IResult<&str, ParseNode> {
     let (input, name) = alpha1(input)?;
     let (input, _) = preceded(multispace0, tag("("))(input)?;
-    let (input, args) = separated_list0(
-        preceded(multispace0, tag(",")),
-        parse_expr,
-    )(input)?;
+    let (input, args) = separated_list0(preceded(multispace0, tag(",")), parse_expr)(input)?;
     let (input, _) = preceded(multispace0, tag(")"))(input)?;
-    
+
     if name == "ln" && args.len() == 1 {
         // ln(x) -> log(e, x)
-        return Ok((input, ParseNode::Function("log".to_string(), vec![ParseNode::Constant(Constant::E), args[0].clone()])));
+        return Ok((
+            input,
+            ParseNode::Function(
+                "log".to_string(),
+                vec![ParseNode::Constant(Constant::E), args[0].clone()],
+            ),
+        ));
     }
-    
+
     if name == "exp" && args.len() == 1 {
         // exp(x) -> e^x
-        return Ok((input, ParseNode::Pow(Box::new(ParseNode::Constant(Constant::E)), Box::new(args[0].clone()))));
+        return Ok((
+            input,
+            ParseNode::Pow(
+                Box::new(ParseNode::Constant(Constant::E)),
+                Box::new(args[0].clone()),
+            ),
+        ));
     }
-    
+
     Ok((input, ParseNode::Function(name.to_string(), args)))
 }
 
-// Parser for absolute value
 fn parse_abs(input: &str) -> IResult<&str, ParseNode> {
     delimited(
         preceded(multispace0, tag("|")),
         parse_expr,
         preceded(multispace0, tag("|")),
-    )(input).map(|(next_input, expr)| (next_input, ParseNode::Function("abs".to_string(), vec![expr])))
+    )(input)
+    .map(|(next_input, expr)| {
+        (
+            next_input,
+            ParseNode::Function("abs".to_string(), vec![expr]),
+        )
+    })
+}
+
+// Parser for matrices and vectors
+// Matrices: [[a, b], [c, d]]
+// Vectors: [x, y, z] (default: column vector, nx1)
+fn parse_matrix(input: &str) -> IResult<&str, ParseNode> {
+    let (input, _) = preceded(multispace0, tag("["))(input)?;
+
+    // Try to parse first element
+    let (input, first_elem) = preceded(
+        multispace0,
+        alt((
+            // Nested array for multi-row matrix
+            |inp| {
+                let (inp, _) = tag("[")(inp)?;
+                let (inp, row) = separated_list0(preceded(multispace0, tag(",")), parse_expr)(inp)?;
+                let (inp, _) = preceded(multispace0, tag("]"))(inp)?;
+                Ok((inp, ParseNode::Matrix(vec![row])))
+            },
+            // Single expression for vector
+            |inp| {
+                let (inp, expr) = parse_expr(inp)?;
+                Ok((inp, ParseNode::Matrix(vec![vec![expr]])))
+            },
+        )),
+    )(input)?;
+
+    // Extract first row structure
+    let first_row = match first_elem {
+        ParseNode::Matrix(ref rows) => rows[0].clone(),
+        _ => unreachable!(),
+    };
+
+    // Try to parse remaining rows/elements
+    let (input, remaining) = fold_many0(
+        preceded(
+            preceded(multispace0, tag(",")),
+            preceded(
+                multispace0,
+                alt((
+                    // Nested array for matrix row
+                    |inp| {
+                        let (inp, _) = tag("[")(inp)?;
+                        let (inp, row) =
+                            separated_list0(preceded(multispace0, tag(",")), parse_expr)(inp)?;
+                        let (inp, _) = preceded(multispace0, tag("]"))(inp)?;
+                        Ok((inp, row))
+                    },
+                    // Single expression for vector
+                    |inp| {
+                        let (inp, expr) = parse_expr(inp)?;
+                        Ok((inp, vec![expr]))
+                    },
+                )),
+            ),
+        ),
+        Vec::new,
+        |mut acc, row| {
+            acc.push(row);
+            acc
+        },
+    )(input)?;
+
+    let (input, _) = preceded(multispace0, tag("]"))(input)?;
+
+    // Build final matrix structure
+    let mut all_rows = vec![first_row];
+    all_rows.extend(remaining);
+
+    // Validate: all rows must have same length
+    let cols = all_rows[0].len();
+    for row in all_rows.iter() {
+        if row.len() != cols {
+            // Return error via nom - inconsistent row lengths
+            return Err(nom::Err::Error(nom::error::Error::new(
+                input,
+                nom::error::ErrorKind::Verify,
+            )));
+        }
+    }
+
+    Ok((input, ParseNode::Matrix(all_rows)))
 }
 
 // Atom
@@ -143,6 +257,7 @@ fn parse_atom(input: &str) -> IResult<&str, ParseNode> {
             parse_function,
             parse_constant,
             parse_variable,
+            parse_matrix, // Try matrix before parens (since [ ] syntax)
             parse_parens,
             parse_abs,
         )),
@@ -169,10 +284,7 @@ fn parse_factorial(input: &str) -> IResult<&str, ParseNode> {
 fn parse_power(input: &str) -> IResult<&str, ParseNode> {
     let (input, init) = parse_factorial(input)?;
     fold_many0(
-        pair(
-            preceded(multispace0, tag("^")),
-            parse_factorial,
-        ),
+        pair(preceded(multispace0, tag("^")), parse_factorial),
         move || init.clone(),
         |acc, (_, val)| ParseNode::Pow(Box::new(acc), Box::new(val)),
     )(input)
@@ -211,10 +323,7 @@ fn parse_term(input: &str) -> IResult<&str, ParseNode> {
 fn parse_expr(input: &str) -> IResult<&str, ParseNode> {
     let (input, init) = parse_term(input)?;
     fold_many0(
-        pair(
-            preceded(multispace0, alt((tag("+"), tag("-")))),
-            parse_term,
-        ),
+        pair(preceded(multispace0, alt((tag("+"), tag("-")))), parse_term),
         move || init.clone(),
         |acc, (op, val)| match op {
             "+" => ParseNode::Add(Box::new(acc), Box::new(val)),
@@ -256,14 +365,14 @@ fn parse_equation(input: &str) -> IResult<&str, (ParseNode, RelOp, ParseNode)> {
 use crate::error::ParseError;
 
 pub fn parse(input: &str, ctx: &mut Context) -> Result<ExprId, ParseError> {
-    let (remaining, expr_node) = parse_expr(input)
-        .map_err(|e| ParseError::NomError(format!("{}", e)))?;
-    
+    let (remaining, expr_node) =
+        parse_expr(input).map_err(|e| ParseError::NomError(format!("{}", e)))?;
+
     let remaining = remaining.trim();
     if !remaining.is_empty() {
         return Err(ParseError::UnconsumedInput(remaining.to_string()));
     }
-    
+
     Ok(expr_node.lower(ctx))
 }
 
@@ -273,7 +382,11 @@ pub fn parse_statement(input: &str, ctx: &mut Context) -> Result<Statement, Pars
         if remaining.trim().is_empty() {
             let lhs_id = lhs.lower(ctx);
             let rhs_id = rhs.lower(ctx);
-            return Ok(Statement::Equation(Equation { lhs: lhs_id, rhs: rhs_id, op }));
+            return Ok(Statement::Equation(Equation {
+                lhs: lhs_id,
+                rhs: rhs_id,
+                op,
+            }));
         }
     }
 
@@ -299,37 +412,156 @@ mod tests {
     fn test_parse_number() {
         let mut ctx = Context::new();
         let e = parse("123", &mut ctx).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: e }), "123");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e
+                }
+            ),
+            "123"
+        );
     }
 
     #[test]
     fn test_parse_variable() {
         let mut ctx = Context::new();
         let e = parse("x", &mut ctx).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: e }), "x");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e
+                }
+            ),
+            "x"
+        );
     }
 
     #[test]
     fn test_parse_arithmetic() {
         let mut ctx = Context::new();
         let e = parse("1 + 2 * x", &mut ctx).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: e }), "1 + 2 * x");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e
+                }
+            ),
+            "1 + 2 * x"
+        );
     }
 
     #[test]
     fn test_parse_parens() {
         let mut ctx = Context::new();
         let e = parse("(1 + 2) * x", &mut ctx).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: e }), "(1 + 2) * x");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e
+                }
+            ),
+            "(1 + 2) * x"
+        );
     }
 
     #[test]
     fn test_parse_power() {
         let mut ctx = Context::new();
         let e = parse("x^2", &mut ctx).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: e }), "x^2");
-        
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e
+                }
+            ),
+            "x^2"
+        );
+
         let e2 = parse("x^2 * y", &mut ctx).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: e2 }), "x^2 * y");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e2
+                }
+            ),
+            "x^2 * y"
+        );
+    }
+
+    #[test]
+    fn test_parse_vector() {
+        let mut ctx = Context::new();
+        // Column vector (nx1)
+        let e = parse("[1, 2, 3]", &mut ctx).unwrap();
+        if let Expr::Matrix { rows, cols, .. } = ctx.get(e) {
+            assert_eq!(*rows, 3);
+            assert_eq!(*cols, 1);
+        } else {
+            panic!("Expected Matrix variant");
+        }
+    }
+
+    #[test]
+    fn test_parse_row_matrix() {
+        let mut ctx = Context::new();
+        // Single row matrix (1xn) - needs double brackets
+        let e = parse("[[1, 2, 3]]", &mut ctx).unwrap();
+        if let Expr::Matrix { rows, cols, .. } = ctx.get(e) {
+            assert_eq!(*rows, 1);
+            assert_eq!(*cols, 3);
+        } else {
+            panic!("Expected Matrix variant");
+        }
+    }
+
+    #[test]
+    fn test_parse_matrix_2x2() {
+        let mut ctx = Context::new();
+        let e = parse("[[1, 2], [3, 4]]", &mut ctx).unwrap();
+        // Verify it's a matrix
+        if let Expr::Matrix { rows, cols, .. } = ctx.get(e) {
+            assert_eq!(*rows, 2);
+            assert_eq!(*cols, 2);
+        } else {
+            panic!("Expected Matrix variant");
+        }
+    }
+
+    #[test]
+    fn test_parse_matrix_with_expressions() {
+        let mut ctx = Context::new();
+        let e = parse("[[x + 1, y], [2 * z, 0]]", &mut ctx).unwrap();
+        if let Expr::Matrix { rows, cols, data } = ctx.get(e) {
+            assert_eq!(*rows, 2);
+            assert_eq!(*cols, 2);
+            assert_eq!(data.len(), 4);
+        } else {
+            panic!("Expected Matrix variant");
+        }
+    }
+
+    #[test]
+    fn test_parse_vector_with_variables() {
+        let mut ctx = Context::new();
+        let e = parse("[x, y, z]", &mut ctx).unwrap();
+        if let Expr::Matrix { rows, cols, data } = ctx.get(e) {
+            assert_eq!(*rows, 3);
+            assert_eq!(*cols, 1);
+            assert_eq!(data.len(), 3);
+        } else {
+            panic!("Expected Matrix variant");
+        }
     }
 }
