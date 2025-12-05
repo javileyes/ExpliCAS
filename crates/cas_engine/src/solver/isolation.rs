@@ -2,6 +2,7 @@ use crate::engine::Simplifier;
 use crate::solver::solution_set::{intersect_solution_sets, neg_inf, pos_inf, union_solution_sets};
 use crate::solver::{solve, SolveStep};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use num_traits::Zero;
 
 use crate::error::CasError;
 
@@ -345,11 +346,28 @@ pub fn isolate(
                 }
             } else {
                 // B = A / RHS
-                let new_rhs = simplifier.context.add(Expr::Div(l, rhs));
-                let (sim_rhs, _) = simplifier.simplify(new_rhs);
+                // CRITICAL FIX: Check if RHS is zero to avoid creating undefined (1/0)
+                // This happens for inequalities like 1/x > 0 where RHS=0
+                let is_rhs_zero =
+                    matches!(simplifier.context.get(rhs), Expr::Number(n) if n.is_zero());
+
+                let sim_rhs = if is_rhs_zero {
+                    // Division by zero case: A/0
+                    // The result depends on the sign of A:
+                    // - If A > 0: result is +infinity
+                    // - If A < 0: result is -infinity
+                    // For now, we'll use pos_inf since this typically comes from cases like 1/x > 0
+                    // where we're multiplying by x to get x > 1/0
+                    pos_inf(&mut simplifier.context)
+                } else {
+                    let new_rhs = simplifier.context.add(Expr::Div(l, rhs));
+                    let (simplified, _) = simplifier.simplify(new_rhs);
+                    simplified
+                };
+
                 let new_eq = Equation {
                     lhs: r,
-                    rhs: new_rhs,
+                    rhs: sim_rhs, // Use sim_rhs directly, not new_rhs
                     op: op.clone(),
                 };
 

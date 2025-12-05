@@ -1559,6 +1559,9 @@ fn display_interval(ctx: &cas_ast::Context, interval: &cas_ast::Interval) -> Str
         cas_ast::BoundType::Open => ")",
         cas_ast::BoundType::Closed => "]",
     };
+
+    // Simple display without trying to simplify
+    // The intervals should already have simplified bounds
     format!(
         "{}{}, {}{}",
         min_bracket,

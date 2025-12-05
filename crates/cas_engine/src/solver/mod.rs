@@ -34,7 +34,24 @@ pub fn solve(
         return Err(CasError::VariableNotFound(var.to_string()));
     }
 
-    // 2. Define strategies
+    // 2. Simplify both sides BEFORE applying strategies
+    // This is crucial for equations like "1/3*x + 1/2*x = 5"
+    // which need to be simplified to "5/6*x = 5" before isolation
+    let mut simplified_eq = eq.clone();
+
+    // Simplify LHS if it contains the variable
+    if contains_var(&simplifier.context, eq.lhs, var) {
+        let (sim_lhs, _) = simplifier.simplify(eq.lhs);
+        simplified_eq.lhs = sim_lhs;
+    }
+
+    // Simplify RHS if it contains the variable
+    if contains_var(&simplifier.context, eq.rhs, var) {
+        let (sim_rhs, _) = simplifier.simplify(eq.rhs);
+        simplified_eq.rhs = sim_rhs;
+    }
+
+    // 3. Define strategies
     // In a real app, these might be configured in Simplifier or passed in.
     let strategies: Vec<Box<dyn SolverStrategy>> = vec![
         Box::new(SubstitutionStrategy),
@@ -44,9 +61,9 @@ pub fn solve(
         Box::new(IsolationStrategy),
     ];
 
-    // 3. Try strategies
+    // 4. Try strategies on the simplified equation
     for strategy in strategies {
-        if let Some(res) = strategy.apply(eq, var, simplifier) {
+        if let Some(res) = strategy.apply(&simplified_eq, var, simplifier) {
             match res {
                 Ok((result, steps)) => {
                     // Verify solutions if Discrete
@@ -56,6 +73,9 @@ pub fn solve(
                         }
                         let mut valid_sols = Vec::new();
                         for sol in sols {
+                            // CRITICAL: Verify against ORIGINAL equation, not simplified
+                            // This ensures we reject solutions that cause division by zero
+                            // in the original equation, even if they work in the simplified form
                             if verify_solution(eq, var, sol, simplifier) {
                                 valid_sols.push(sol);
                             }

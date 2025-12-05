@@ -2,55 +2,12 @@
 
 
 CLI Precalculus Tests - Valores Absolutos, Inecuaciones, Conjuntos
-Fecha: Thu Dec  4 16:16:37 CET 2025
+Fecha: Thu Dec  4 23:17:23 CET 2025
 ==================================================
 
    Compiling cas_engine v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_engine)
-warning: unused import: `std::cmp::Ordering`
- --> crates/cas_engine/src/canonical_forms.rs:4:5
-  |
-4 | use std::cmp::Ordering;
-  |     ^^^^^^^^^^^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
-warning: unused import: `crate::helpers`
- --> crates/cas_engine/src/rules/algebra.rs:2:5
-  |
-2 | use crate::helpers;
-  |     ^^^^^^^^^^^^^^
-
-warning: unused import: `crate::visitors`
- --> crates/cas_engine/src/rules/algebra.rs:6:5
-  |
-6 | use crate::visitors;
-  |     ^^^^^^^^^^^^^^^
-
-warning: unused import: `num_traits::Signed`
- --> crates/cas_engine/src/canonical_forms.rs:3:5
-  |
-3 | use num_traits::Signed;
-  |     ^^^^^^^^^^^^^^^^^^
-
-warning: unused variable: `global_after`
-   --> crates/cas_engine/src/timeline.rs:363:17
-    |
-363 |             let global_after = LaTeXExpr {
-    |                 ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_global_after`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: function `is_zero` is never used
-    --> crates/cas_engine/src/solver/strategies.rs:1242:4
-     |
-1242 | fn is_zero(ctx: &Context, expr: ExprId) -> bool {
-     |    ^^^^^^^
-     |
-     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: `cas_engine` (lib) generated 6 warnings (run `cargo fix --lib -p cas_engine` to apply 3 suggestions)
    Compiling cas_cli v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_cli)
-    Finished `release` profile [optimized] target(s) in 1.84s
+    Finished `release` profile [optimized] target(s) in 1.72s
      Running `target/release/cas_cli`
 Rust CAS Step-by-Step Demo
 Step-by-step output enabled (Normal).
@@ -866,46 +823,13 @@ Parsed: |x^2 - 4|
 Steps (Aggressive Mode):
 Result: |-4 + x^2|
 Parsed: |(x - 2) * (x + 2)|
-Steps (Aggressive Mode):
-1. Distribute  [Distributive Property]
-   Local: (-2 + x) * (2 + x) -> (-2 + x) * 2 + (-2 + x) * x
-   Global: |(-2 + x) * 2 + (-2 + x) * x|
-2. Distribute  [Distributive Property]
-   Local: 2 * (-2 + x) -> 2 * -2 + 2 * x
-   Global: |2 * -2 + 2 * x + (-2 + x) * x|
-3. 2 * -2 = -4  [Combine Constants]
-   Local: 2 * -2 -> -4
-   Global: |-4 + 2 * x + (-2 + x) * x|
-4. Expand Polynomial  [Expand]
-   Local: |-4 + 2 * x + x * (-2 + x)| -> |-4 + 2 * x + x * -2 + x * x|
-   Global: |-4 + 2 * x + x * -2 + x * x|
-5. Multiply identical terms  [Product of Powers]
-   Local: x * x -> x^2
-   Global: |-4 + 2 * x - 2 * x + x^2|
-6. Global Combine Like Terms  [Combine Like Terms]
-   Local: -2 * x + x^2 -> x^2 - 2 * x
-   Global: |-4 + 2 * x + x^2 - 2 * x|
-7. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * x + x^2 - 2 * x -> x^2
-   Global: |-4 + x^2|
-Result: |-4 + x^2|
+No simplification steps needed.
+Result: |(x - 2) * (x + 2)|
 Parsed: sqrt(x^2)
 Steps (Aggressive Mode):
 Result: |x|
 Parsed: sqrt((x - 1)^2)
 Steps (Aggressive Mode):
-1. Expand binomial power ^2  [Binomial Expansion]
-   Local: (-1 + x)^2 -> -1^2 * 1 + 2 * -1 * x + 1 * x^2
-   Global: sqrt(-1^2 * 1 + 2 * -1 * x + 1 * x^2)
-2. Evaluate power: -1^2  [Evaluate Numeric Power]
-   Local: -1^2 -> 1
-   Global: sqrt(1 * 1 + 2 * -1 * x + 1 * x^2)
-3. Global Combine Like Terms  [Combine Like Terms]
-   Local: -1 * x -> -x
-   Global: sqrt(1 + 2 * -x + 1 * x^2)
-4. Simplify perfect square root  [Simplify Square Root]
-   Local: (1 + x^2 - 2 * x)^(1/2) -> |x - 1|
-   Global: |x - 1|
 Result: |-1 + x|
 Parsed: sqrt(x)
 Steps (Aggressive Mode):
@@ -1003,5 +927,5 @@ Result: (-(a^3) + x^3) / (x - a)
 Goodbye!
 
 ==================================================
-Tests de precálculo completados: Thu Dec  4 16:16:40 CET 2025
+Tests de precálculo completados: Thu Dec  4 23:17:25 CET 2025
 ==================================================
