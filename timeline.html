@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: cos(x) * cos(x)^2</title>
+    <title>CAS Steps: gcd(2 * x^2 + 7 * x + 3, 2 * x^2 + 5 * x + 2)</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -167,21 +167,21 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[cos(x) * cos(x)^2\]
+            \[gcd(2 * x^2 + 7 * x + 3, 2 * x^2 + 5 * x + 2)\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Product of Powers</h3>
+                    <h3>Number Theory Operations</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[{\color{red}{\cos(x){\cos(x)}^{2}}}\]
+                        \[{\color{red}{\text{gcd}(3 + 2{x}^{2} + 7x, 2 + 2{x}^{2} + 5x)}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine base and power}\)</div>
+                        <div class="rule-name">\(\text{gcd(3 + 2 * x^2 + 7 * x, 2 + 2 * x^2 + 5 * x)}\)</div>
                         <div class="local-change">
-                            \[\cos(x){\cos(x)}^{2} \rightarrow {\cos(x)}^{3}\]
+                            \[\text{gcd}(3 + 2{x}^{2} + 7x, 2 + 2{x}^{2} + 5x) \rightarrow 2x + 1\]
                         </div>
                     </div>
                 </div>
@@ -189,7 +189,7 @@
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[{\cos(x)}^{3}\]
+            \[1 + 2x\]
         </div>
     </div>
     <footer>

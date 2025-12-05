@@ -6,6 +6,12 @@ use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
+/// Result of a GCD computation, optionally including educational steps
+pub struct GcdResult {
+    pub value: Option<ExprId>,
+    pub steps: Vec<String>,
+}
+
 define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
     let (name, args) = if let Expr::Function(name, args) = ctx.get(expr) {
         (name.clone(), args.clone())
@@ -16,7 +22,8 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
     match name.as_str() {
         "gcd" => {
             if args.len() == 2 {
-                if let Some(res) = compute_gcd(ctx, args[0], args[1]) {
+                let gcd_result = compute_gcd(ctx, args[0], args[1], false);
+                if let Some(res) = gcd_result.value {
                     return Some(Rewrite {
                         new_expr: res,
                         description: format!(
@@ -151,11 +158,32 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
     None
 });
 
-fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
+pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> GcdResult {
+    let mut steps = Vec::new();
+
     // Try integer GCD first
     if let (Some(val_a), Some(val_b)) = (get_integer(ctx, a), get_integer(ctx, b)) {
-        let gcd = val_a.gcd(&val_b);
-        return Some(ctx.add(Expr::Number(BigRational::from_integer(gcd))));
+        if explain {
+            steps.push(format!(
+                "Intentando GCD numérico entre {} y {}",
+                val_a, val_b
+            ));
+            // Call educational version
+            let (gcd, sub_steps) = verbose_integer_gcd(val_a, val_b);
+            steps.extend(sub_steps);
+            let res = ctx.add(Expr::Number(BigRational::from_integer(gcd)));
+            return GcdResult {
+                value: Some(res),
+                steps,
+            };
+        } else {
+            // Fast version (original code)
+            let gcd = val_a.gcd(&val_b);
+            return GcdResult {
+                value: Some(ctx.add(Expr::Number(BigRational::from_integer(gcd)))),
+                steps: vec![],
+            };
+        }
     }
 
     // Try polynomial GCD
@@ -173,12 +201,36 @@ fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
             Polynomial::from_expr(ctx, a, var),
             Polynomial::from_expr(ctx, b, var),
         ) {
-            let gcd_poly = p_a.gcd(&p_b);
-            return Some(gcd_poly.to_expr(ctx));
+            if explain {
+                steps.push(format!(
+                    "Detectados polinomios univariados en '{}'. Aplicando Euclides polinómico.",
+                    var
+                ));
+                let (gcd_poly, sub_steps) = verbose_poly_gcd(ctx, &p_a, &p_b);
+                steps.extend(sub_steps);
+                return GcdResult {
+                    value: Some(gcd_poly.to_expr(ctx)),
+                    steps,
+                };
+            } else {
+                let gcd_poly = p_a.gcd(&p_b);
+                return GcdResult {
+                    value: Some(gcd_poly.to_expr(ctx)),
+                    steps: vec![],
+                };
+            }
         }
     }
 
-    None
+    if explain {
+        steps.push("No se pudo calcular el GCD".to_string());
+    }
+    GcdResult { value: None, steps }
+}
+
+/// Helper function to compute GCD with educational explanation
+pub fn explain_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> GcdResult {
+    compute_gcd(ctx, a, b, true)
 }
 
 fn compute_lcm(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
@@ -374,6 +426,177 @@ fn get_integer(ctx: &Context, expr: ExprId) -> Option<BigInt> {
         Expr::Neg(e) => get_integer(ctx, *e).map(|n| -n),
         _ => None,
     }
+}
+
+/// Compute GCD of two integers with educational step-by-step explanation
+fn verbose_integer_gcd(mut a: BigInt, mut b: BigInt) -> (BigInt, Vec<String>) {
+    let mut steps = Vec::new();
+    steps.push("Algoritmo de Euclides para enteros:".to_string());
+
+    // Handle initial display - show original values
+    let orig_a = a.clone();
+    let orig_b = b.clone();
+    steps.push(format!("Calculamos GCD({}, {})", orig_a, orig_b));
+
+    while !b.is_zero() {
+        let q = &a / &b; // Cociente
+        let r = &a % &b; // Resto
+
+        // Mensaje Educativo: Mostramos la reducción
+        steps.push(format!(
+            "Dividimos {} entre {}: Cociente = {}, Resto = {}",
+            a, b, q, r
+        ));
+
+        if !r.is_zero() {
+            steps.push(format!(
+                "   → Como el resto es {}, el nuevo problema es GCD({}, {})",
+                r, b, r
+            ));
+        } else {
+            steps.push("   → El resto es 0. ¡Hemos terminado!".to_string());
+        }
+
+        a = b;
+        b = r;
+    }
+
+    steps.push(format!("El Máximo Común Divisor es: {}", a));
+    (a, steps)
+}
+
+/// Compute GCD of two polynomials with educational step-by-step explanation
+fn verbose_poly_gcd(
+    ctx: &mut Context,
+    p1: &crate::polynomial::Polynomial,
+    p2: &crate::polynomial::Polynomial,
+) -> (crate::polynomial::Polynomial, Vec<String>) {
+    use crate::polynomial::Polynomial;
+    use cas_ast::DisplayExpr;
+
+    let mut a = p1.clone();
+    let mut b = p2.clone();
+    let mut steps = Vec::new();
+
+    steps.push("Algoritmo de Euclides para Polinomios:".to_string());
+    steps.push(
+        "Objetivo: Reducir el grado del polinomio mediante divisiones sucesivas.".to_string(),
+    );
+
+    let mut step_count = 1;
+
+    while !b.is_zero() {
+        steps.push(format!("--- Paso {} ---", step_count));
+
+        // Convert to expressions for display
+        let a_expr = a.to_expr(ctx);
+        let b_expr = b.to_expr(ctx);
+
+        steps.push(format!(
+            "Polinomio A (grado {}): {}",
+            a.degree(),
+            DisplayExpr {
+                context: ctx,
+                id: a_expr
+            }
+        ));
+        steps.push(format!(
+            "Polinomio B (grado {}): {}",
+            b.degree(),
+            DisplayExpr {
+                context: ctx,
+                id: b_expr
+            }
+        ));
+
+        // División
+        let (_, r) = a.div_rem(&b);
+
+        steps.push("Dividimos A entre B.".to_string());
+        if r.is_zero() {
+            steps.push("El resto es 0 (división exacta).".to_string());
+        } else {
+            let r_expr = r.to_expr(ctx);
+            steps.push(format!(
+                "El resto R es: {} (grado {})",
+                DisplayExpr {
+                    context: ctx,
+                    id: r_expr
+                },
+                r.degree()
+            ));
+            steps.push("La propiedad gcd(A, B) = gcd(B, R) nos permite descartar A.".to_string());
+        }
+
+        a = b;
+        b = r;
+        step_count += 1;
+    }
+
+    // Normalización (Paso clave en álgebra computacional)
+    steps.push("--- Paso Final ---".to_string());
+    let a_before_norm = a.to_expr(ctx);
+    steps.push(format!(
+        "El último divisor no nulo es: {}",
+        DisplayExpr {
+            context: ctx,
+            id: a_before_norm
+        }
+    ));
+
+    // Normalize to primitive (integer coefficients with GCD=1)
+    // instead of monic (leading coefficient=1)
+    let gcd_final = if !a.is_zero() {
+        let content = a.content();
+        if !content.is_zero() && content != num_rational::BigRational::one() {
+            let inv_content = num_rational::BigRational::one() / &content;
+            let scalar = Polynomial::new(vec![inv_content], a.var.clone());
+            let normalized = a.mul(&scalar);
+
+            steps.push(format!(
+                "Normalizamos el polinomio (contenido = {})",
+                content
+            ));
+            steps.push(
+                "Dividimos todos los coeficientes por el GCD para obtener coeficientes enteros:"
+                    .to_string(),
+            );
+            let norm_expr = normalized.to_expr(ctx);
+            steps.push(format!(
+                "Resultado final: {}",
+                DisplayExpr {
+                    context: ctx,
+                    id: norm_expr
+                }
+            ));
+            normalized
+        } else {
+            // Already primitive, just ensure positive leading coefficient
+            let lc = a.leading_coeff();
+            if lc < num_rational::BigRational::zero() {
+                steps.push("Hacemos el coeficiente principal positivo:".to_string());
+                let result = a.neg();
+                let result_expr = result.to_expr(ctx);
+                steps.push(format!(
+                    "Resultado final: {}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: result_expr
+                    }
+                ));
+                result
+            } else {
+                steps.push(
+                    "El polinomio ya es primitivo (coeficientes enteros con GCD=1)".to_string(),
+                );
+                a
+            }
+        }
+    } else {
+        a
+    };
+
+    (gcd_final, steps)
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {

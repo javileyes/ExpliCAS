@@ -469,6 +469,12 @@ impl Repl {
             return;
         }
 
+        // Check for "explain" command
+        if line.starts_with("explain ") {
+            self.handle_explain(&line);
+            return;
+        }
+
         // Check for "profile" commands
         if line.starts_with("profile") {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -720,6 +726,19 @@ impl Repl {
                 println!("Example: timeline (x+1)^2");
                 println!("         Open timeline.html in browser to view.");
             }
+            "explain" => {
+                println!("Command: explain <function>");
+                println!(
+                    "Description: Provides step-by-step educational explanations of mathematical"
+                );
+                println!("             operations. Shows the detailed algorithm steps in Spanish.");
+                println!("Supported functions:");
+                println!("  gcd(a, b)    Greatest Common Divisor using Euclidean algorithm");
+                println!("               Works for both integers and polynomials.");
+                println!("Examples:");
+                println!("  explain gcd(48, 18)");
+                println!("  explain gcd(2*x^2 + 7*x + 3, 2*x^2 + 5*x + 2)");
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
@@ -747,6 +766,7 @@ impl Repl {
         println!("  choose <n, k>           Binomial coefficient (nCk)");
         println!("  perm <n, k>             Permutations (nPk)");
         println!("  steps <level>           Set step verbosity (normal, low, verbose, none)");
+        println!("  explain <function>      Show step-by-step explanation of a function");
         println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
         println!("  visualize <expr>        Export AST to Graphviz DOT (generates ast.dot)");
         println!("  timeline <expr>         Export steps to interactive HTML");
@@ -1047,6 +1067,66 @@ impl Repl {
                         println!("Or: dot -Tpng {} -o ast.png", filename);
                     }
                     Err(e) => println!("Error writing file: {}", e),
+                }
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    fn handle_explain(&mut self, line: &str) {
+        let rest = line[8..].trim(); // Remove "explain "
+
+        // Parse the expression
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                // Check if it's a function call
+                let expr_data = self.simplifier.context.get(expr).clone();
+                if let Expr::Function(name, args) = expr_data {
+                    match name.as_str() {
+                        "gcd" => {
+                            if args.len() == 2 {
+                                // Call the explain_gcd function
+                                let result = cas_engine::rules::number_theory::explain_gcd(
+                                    &mut self.simplifier.context,
+                                    args[0],
+                                    args[1],
+                                );
+
+                                println!("Parsed: {}", rest);
+                                println!();
+                                println!("Educational Steps:");
+                                println!("{}", "─".repeat(60));
+
+                                for step in &result.steps {
+                                    println!("{}", step);
+                                }
+
+                                println!("{}", "─".repeat(60));
+                                println!();
+
+                                if let Some(result_expr) = result.value {
+                                    println!(
+                                        "Result: {}",
+                                        DisplayExpr {
+                                            context: &self.simplifier.context,
+                                            id: result_expr
+                                        }
+                                    );
+                                } else {
+                                    println!("Could not compute GCD");
+                                }
+                            } else {
+                                println!("Usage: explain gcd(a, b)");
+                            }
+                        }
+                        _ => {
+                            println!("Explain mode not yet implemented for function '{}'", name);
+                            println!("Currently supported: gcd");
+                        }
+                    }
+                } else {
+                    println!("Explain mode currently only supports function calls");
+                    println!("Try: explain gcd(48, 18)");
                 }
             }
             Err(e) => println!("Parse error: {}", e),

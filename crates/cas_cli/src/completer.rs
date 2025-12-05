@@ -5,7 +5,6 @@ use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
 use rustyline::{Context, Helper};
 
-
 pub struct CasHelper {
     commands: Vec<String>,
     functions: Vec<String>,
@@ -32,6 +31,7 @@ impl CasHelper {
                 "simplify".to_string(),
                 "config".to_string(),
                 "steps".to_string(),
+                "explain".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "visualize".to_string(),
@@ -72,11 +72,11 @@ impl Completer for CasHelper {
         if line.starts_with("config ") {
             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
             let ends_with_space = line[..pos].ends_with(' ');
-            
+
             // Case 1: "config <TAB>" or "config li<TAB>"
             // If ends with space, we are starting a new word (subcommand). parts=["config"]
             // If not ends with space, we are completing subcommand. parts=["config", "li"]
-            
+
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
                 let subcommands = vec!["list", "enable", "disable", "save", "restore"];
                 // If new word, word is empty. If completing, word is partial subcommand.
@@ -90,58 +90,58 @@ impl Completer for CasHelper {
                 }
                 return Ok((start, matches));
             }
-            
+
             // Case 2: "config enable <TAB>" or "config enable dis<TAB>"
             // parts=["config", "enable"] (ends with space) -> show rules
             // parts=["config", "enable", "dis"] (!ends with space) -> show rules matching "dis"
-            
+
             if parts.len() >= 2 && (parts[1] == "enable" || parts[1] == "disable") {
-                 if (parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space) {
-                     let rules = vec![
-                         "distribute",
-                         "distribute_constants",
-                         "expand_binomials",
-                         "factor_difference_squares",
-                     ];
-                     
-                     for rule in rules {
-                         if rule.starts_with(word) {
-                             matches.push(Pair {
-                                 display: rule.to_string(),
-                                 replacement: rule.to_string(),
-                             });
-                         }
-                     }
-                     return Ok((start, matches));
-                 }
+                if (parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space) {
+                    let rules = vec![
+                        "distribute",
+                        "distribute_constants",
+                        "expand_binomials",
+                        "factor_difference_squares",
+                    ];
+
+                    for rule in rules {
+                        if rule.starts_with(word) {
+                            matches.push(Pair {
+                                display: rule.to_string(),
+                                replacement: rule.to_string(),
+                            });
+                        }
+                    }
+                    return Ok((start, matches));
+                }
             }
         }
 
         // Check for "steps" context
         if line.starts_with("steps ") {
-             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
-             let ends_with_space = line[..pos].ends_with(' ');
-             
-             // Case: "steps <TAB>" or "steps no<TAB>"
-             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                 let levels = vec!["normal", "low", "verbose", "none", "on", "off"];
-                 for level in levels {
-                     if level.starts_with(word) {
-                         matches.push(Pair {
-                             display: level.to_string(),
-                             replacement: level.to_string(),
-                         });
-                     }
-                 }
-                 return Ok((start, matches));
-             }
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+
+            // Case: "steps <TAB>" or "steps no<TAB>"
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let levels = vec!["normal", "low", "verbose", "none", "on", "off"];
+                for level in levels {
+                    if level.starts_with(word) {
+                        matches.push(Pair {
+                            display: level.to_string(),
+                            replacement: level.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
         }
 
         // Check for "profile" context
         if line.starts_with("profile ") {
             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
             let ends_with_space = line[..pos].ends_with(' ');
-            
+
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
                 let subcommands = vec!["enable", "disable", "clear"];
                 for sub in subcommands {
@@ -167,7 +167,7 @@ impl Completer for CasHelper {
                     });
                 }
             }
-             return Ok((start, matches));
+            return Ok((start, matches));
         }
 
         // Check commands
@@ -215,7 +215,15 @@ fn extract_word(line: &str, pos: usize) -> (usize, &str) {
 
     let mut start = pos;
     for (i, c) in line.char_indices().rev() {
-        if c.is_whitespace() || c == '(' || c == ',' || c == '+' || c == '-' || c == '*' || c == '/' || c == '=' {
+        if c.is_whitespace()
+            || c == '('
+            || c == ','
+            || c == '+'
+            || c == '-'
+            || c == '*'
+            || c == '/'
+            || c == '='
+        {
             break;
         }
         start = i;
