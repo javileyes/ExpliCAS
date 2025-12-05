@@ -71,13 +71,34 @@ impl<'a> TimelineHtml<'a> {
         // exponent, highlight the whole fraction/power instead of the tiny part
         let should_highlight_parent = self.should_use_parent_context(root_expr, path);
 
-        if should_highlight_parent {
+        let latex = if should_highlight_parent {
             // Find a good "stopping point" in the path (e.g., before entering fraction denominator)
             let shortened_path = self.find_highlight_context_path(root_expr, path);
             self.latex_with_highlight_recursive(root_expr, &shortened_path, 0, target_expr)
         } else {
             self.latex_with_highlight_recursive(root_expr, path, 0, target_expr)
-        }
+        };
+
+        // Phase 2: Clean up LaTeX patterns
+        // This fixes issues like "+ -" and "- -" that can occur with nested negative terms
+        Self::clean_latex_negatives(&latex)
+    }
+
+    /// Post-process LaTeX to fix negative sign patterns
+    /// Handles cases like "+ -" → "-" and "- -" → "+"
+    fn clean_latex_negatives(latex: &str) -> String {
+        let mut result = latex.to_string();
+
+        // Fix "+ -" → "-" (but not inside parentheses like "+ -(...")
+        // We need to be careful not to match "+ -(" which is valid
+        result = result.replace("+ -\\", "- \\"); // Before LaTeX commands
+        result = result.replace("+ -{", "- {"); // Before braces
+
+        // Fix "- -" → "+"
+        result = result.replace("- -\\", "+ \\"); // Before LaTeX commands
+        result = result.replace("- -{", "+ {"); // Before braces
+
+        result
     }
 
     /// Determine if we should highlight a parent context instead of the exact target.
@@ -227,22 +248,121 @@ impl<'a> TimelineHtml<'a> {
                         (true, positive_str)
                     }
                     Expr::Neg(inner) => {
-                        let inner_str = if matches!(path.get(path_index), Some(PathStep::Right)) {
-                            // Need to highlight inside the negation
-                            self.latex_with_highlight_recursive(
-                                *r,
-                                path,
-                                path_index + 1,
-                                target_expr,
-                            )
-                        } else {
-                            LaTeXExpr {
-                                context: self.context,
-                                id: *inner,
-                            }
-                            .to_latex()
-                        };
+                        // Always recursively generate to preserve highlighting
+                        // DO NOT increment path_index - path already points to the right level
+                        let inner_str = self.latex_with_highlight_recursive(
+                            *inner,
+                            path,
+                            path_index,
+                            target_expr,
+                        );
                         (true, inner_str)
+                    }
+
+                    // Case: Mul with negative leading coefficient
+                    Expr::Mul(ml, mr) => {
+                        if let Expr::Number(coef) = self.context.get(*ml) {
+                            if coef.is_negative() {
+                                let positive_coef = -coef;
+
+                                // Get the rest of the multiplication either with highlighting or normally
+                                let rest_latex =
+                                    if matches!(path.get(path_index), Some(PathStep::Right)) {
+                                        // Highlight within the multiplication
+                                        // Pass *mr (right side) not *r (the Mul itself)
+                                        self.latex_with_highlight_recursive(
+                                            *mr,
+                                            path,
+                                            path_index + 1,
+                                            target_expr,
+                                        )
+                                    } else {
+                                        // No explicit path, but still recurse to preserve potential highlighting deeper
+                                        let mr_str = self.latex_with_highlight_recursive(
+                                            *mr,
+                                            path,
+                                            path_index,
+                                            target_expr,
+                                        );
+
+                                        // Add parentheses if needed
+                                        if matches!(
+                                            self.context.get(*mr),
+                                            Expr::Add(_, _) | Expr::Sub(_, _)
+                                        ) {
+                                            format!("({})", mr_str)
+                                        } else {
+                                            mr_str
+                                        }
+                                    };
+
+                                if positive_coef.is_integer() && *positive_coef.numer() == 1.into()
+                                {
+                                    (true, rest_latex)
+                                } else {
+                                    let coef_str = if positive_coef.is_integer() {
+                                        format!("{}", positive_coef.numer())
+                                    } else {
+                                        format!(
+                                            "\\frac{{{}}}{{{}}}",
+                                            positive_coef.numer(),
+                                            positive_coef.denom()
+                                        )
+                                    };
+
+                                    let needs_cdot = matches!(
+                                        (self.context.get(*ml), self.context.get(*mr)),
+                                        (Expr::Number(_), Expr::Number(_))
+                                            | (Expr::Number(_), Expr::Add(_, _))
+                                            | (Expr::Number(_), Expr::Sub(_, _))
+                                    );
+
+                                    if needs_cdot {
+                                        (true, format!("{}\\cdot {}", coef_str, rest_latex))
+                                    } else {
+                                        (true, format!("{}{}", coef_str, rest_latex))
+                                    }
+                                }
+                            } else {
+                                // Positive coefficient
+                                let right_str =
+                                    if matches!(path.get(path_index), Some(PathStep::Right)) {
+                                        self.latex_with_highlight_recursive(
+                                            *r,
+                                            path,
+                                            path_index + 1,
+                                            target_expr,
+                                        )
+                                    } else {
+                                        self.latex_with_highlight_recursive(
+                                            *r,
+                                            path,
+                                            path_index,
+                                            target_expr,
+                                        )
+                                    };
+                                (false, right_str)
+                            }
+                        } else {
+                            // Left factor is not a number
+                            let right_str = if matches!(path.get(path_index), Some(PathStep::Right))
+                            {
+                                self.latex_with_highlight_recursive(
+                                    *r,
+                                    path,
+                                    path_index + 1,
+                                    target_expr,
+                                )
+                            } else {
+                                self.latex_with_highlight_recursive(
+                                    *r,
+                                    path,
+                                    path_index,
+                                    target_expr,
+                                )
+                            };
+                            (false, right_str)
+                        }
                     }
                     _ => {
                         let right_str = if matches!(path.get(path_index), Some(PathStep::Right)) {
@@ -253,13 +373,38 @@ impl<'a> TimelineHtml<'a> {
                                 target_expr,
                             )
                         } else {
-                            LaTeXExpr {
-                                context: self.context,
-                                id: *r,
-                            }
-                            .to_latex()
+                            self.latex_with_highlight_recursive(*r, path, path_index, target_expr)
                         };
-                        (false, right_str)
+
+                        // Check if right side is an Add whose leftmost term is negative
+                        // This prevents `+ -` patterns when nested Adds have negative first terms
+                        let is_neg = if let Expr::Add(nested_l, _) = self.context.get(*r) {
+                            let nested_left_expr = self.context.get(*nested_l);
+                            matches!(nested_left_expr, Expr::Neg(_))
+                                || if let Expr::Number(n) = nested_left_expr {
+                                    n.is_negative()
+                                } else if let Expr::Mul(ml, _) = nested_left_expr {
+                                    if let Expr::Number(n) = self.context.get(*ml) {
+                                        n.is_negative()
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                }
+                        } else {
+                            false
+                        };
+
+                        // If the nested Add starts with a negative term, strip the leading "-"
+                        // to avoid "- -" pattern when we use "-" operator
+                        let right_str_clean = if is_neg && right_str.starts_with('-') {
+                            right_str[1..].trim_start().to_string()
+                        } else {
+                            right_str
+                        };
+
+                        (is_neg, right_str_clean)
                     }
                 };
 
