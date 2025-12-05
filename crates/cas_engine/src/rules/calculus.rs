@@ -1,77 +1,84 @@
-use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId, Context};
-use num_traits::{One};
+use crate::rule::Rewrite;
+use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
+use num_traits::One;
 
-define_rule!(
-    IntegrateRule,
-    "Symbolic Integration",
-    |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
-            if name == "integrate" {
-                if args.len() == 2 {
-                    let integrand = args[0];
-                    let var_expr = args[1];
-                    if let Expr::Variable(var_name) = ctx.get(var_expr) {
-                        let var_name = var_name.clone(); // Clone to drop borrow
-                        if let Some(result) = integrate(ctx, integrand, &var_name) {
-                            return Some(Rewrite {
-                                new_expr: result,
-                                description: format!("integrate({}, {})", 
-                                    cas_ast::DisplayExpr { context: ctx, id: integrand },
-                                    var_name),
-                            });
-                        }
-                    }
-                } else if args.len() == 1 {
-                    // Default to 'x' if not specified? Or fail?
-                    // Let's assume 'x' for convenience if only 1 arg.
-                    let integrand = args[0];
-                    if let Some(result) = integrate(ctx, integrand, "x") {
+define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "integrate" {
+            if args.len() == 2 {
+                let integrand = args[0];
+                let var_expr = args[1];
+                if let Expr::Variable(var_name) = ctx.get(var_expr) {
+                    let var_name = var_name.clone(); // Clone to drop borrow
+                    if let Some(result) = integrate(ctx, integrand, &var_name) {
                         return Some(Rewrite {
                             new_expr: result,
-                            description: format!("integrate({}, x)", 
-                                cas_ast::DisplayExpr { context: ctx, id: integrand }),
-                            });
+                            description: format!(
+                                "integrate({}, {})",
+                                cas_ast::DisplayExpr {
+                                    context: ctx,
+                                    id: integrand
+                                },
+                                var_name
+                            ),
+                        });
                     }
+                }
+            } else if args.len() == 1 {
+                // Default to 'x' if not specified? Or fail?
+                // Let's assume 'x' for convenience if only 1 arg.
+                let integrand = args[0];
+                if let Some(result) = integrate(ctx, integrand, "x") {
+                    return Some(Rewrite {
+                        new_expr: result,
+                        description: format!(
+                            "integrate({}, x)",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: integrand
+                            }
+                        ),
+                    });
                 }
             }
         }
-        None
     }
-);
+    None
+});
 
-define_rule!(
-    DiffRule,
-    "Symbolic Differentiation",
-    |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
-            if name == "diff" {
-                if args.len() == 2 {
-                    let target = args[0];
-                    let var_expr = args[1];
-                    if let Expr::Variable(var_name) = ctx.get(var_expr) {
-                        let var_name = var_name.clone();
-                        if let Some(result) = differentiate(ctx, target, &var_name) {
-                            return Some(Rewrite {
-                                new_expr: result,
-                                description: format!("diff({}, {})", 
-                                    cas_ast::DisplayExpr { context: ctx, id: target },
-                                    var_name),
-                            });
-                        }
+define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "diff" {
+            if args.len() == 2 {
+                let target = args[0];
+                let var_expr = args[1];
+                if let Expr::Variable(var_name) = ctx.get(var_expr) {
+                    let var_name = var_name.clone();
+                    if let Some(result) = differentiate(ctx, target, &var_name) {
+                        return Some(Rewrite {
+                            new_expr: result,
+                            description: format!(
+                                "diff({}, {})",
+                                cas_ast::DisplayExpr {
+                                    context: ctx,
+                                    id: target
+                                },
+                                var_name
+                            ),
+                        });
                     }
                 }
             }
         }
-        None
     }
-);
+    None
+});
 
 fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     let expr_data = ctx.get(expr).clone();
-    
+
     // 1. Constant Rule: diff(c, x) = 0
     if !contains_var(ctx, expr, var) {
         return Some(ctx.num(0));
@@ -84,17 +91,17 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             } else {
                 Some(ctx.num(0))
             }
-        },
+        }
         Expr::Add(l, r) => {
             let dl = differentiate(ctx, l, var)?;
             let dr = differentiate(ctx, r, var)?;
             Some(ctx.add(Expr::Add(dl, dr)))
-        },
+        }
         Expr::Sub(l, r) => {
             let dl = differentiate(ctx, l, var)?;
             let dr = differentiate(ctx, r, var)?;
             Some(ctx.add(Expr::Sub(dl, dr)))
-        },
+        }
         Expr::Mul(l, r) => {
             // Product Rule: (uv)' = u'v + uv'
             let dl = differentiate(ctx, l, var)?;
@@ -102,7 +109,7 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             let term1 = ctx.add(Expr::Mul(dl, r));
             let term2 = ctx.add(Expr::Mul(l, dr));
             Some(ctx.add(Expr::Add(term1, term2)))
-        },
+        }
         Expr::Div(l, r) => {
             // Quotient Rule: (u/v)' = (u'v - uv') / v^2
             let dl = differentiate(ctx, l, var)?;
@@ -113,15 +120,15 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             let two = ctx.num(2);
             let den = ctx.add(Expr::Pow(r, two));
             Some(ctx.add(Expr::Div(num, den)))
-        },
+        }
         Expr::Pow(base, exp) => {
             // Generalized Power Rule: (u^v)' = u^v * (v'*ln(u) + v*u'/u)
             // Simplified for constant exponent n: (u^n)' = n*u^(n-1)*u'
             // Simplified for exponential a^u: (a^u)' = a^u * ln(a) * u'
-            
+
             let db = differentiate(ctx, base, var)?;
             let de = differentiate(ctx, exp, var)?;
-            
+
             // If exponent is constant (de = 0)
             if !contains_var(ctx, exp, var) {
                 // n * u^(n-1) * u'
@@ -145,24 +152,24 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 let inner = ctx.add(Expr::Add(term1, term2));
                 Some(ctx.add(Expr::Mul(expr, inner)))
             }
-        },
+        }
         Expr::Function(name, args) => {
             if args.len() == 1 {
                 let arg = args[0];
                 let da = differentiate(ctx, arg, var)?;
-                
+
                 match name.as_str() {
                     "sin" => {
                         // cos(u) * u'
                         let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
                         Some(ctx.add(Expr::Mul(cos_u, da)))
-                    },
+                    }
                     "cos" => {
                         // -sin(u) * u'
                         let sin_u = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
                         let neg_sin = ctx.add(Expr::Neg(sin_u));
                         Some(ctx.add(Expr::Mul(neg_sin, da)))
-                    },
+                    }
                     "tan" => {
                         // sec^2(u) * u' = (1/cos^2(u)) * u'
                         let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
@@ -171,28 +178,28 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                         let one = ctx.num(1);
                         let sec_sq = ctx.add(Expr::Div(one, cos_sq));
                         Some(ctx.add(Expr::Mul(sec_sq, da)))
-                    },
+                    }
                     "exp" => {
                         // exp(u) * u'
                         Some(ctx.add(Expr::Mul(expr, da)))
-                    },
+                    }
                     "ln" => {
                         // u'/u
                         Some(ctx.add(Expr::Div(da, arg)))
-                    },
+                    }
                     "abs" => {
                         // abs(u)/u * u' (sign(u) * u')
                         // or u/abs(u) * u'
                         let term = ctx.add(Expr::Div(arg, expr)); // u / abs(u)
                         Some(ctx.add(Expr::Mul(term, da)))
-                    },
-                    _ => None // Unknown function
+                    }
+                    _ => None, // Unknown function
                 }
             } else {
                 None // Multi-arg functions not supported yet (except log base?)
             }
-        },
-        _ => None
+        }
+        _ => None,
     }
 }
 
@@ -205,7 +212,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
         let int_r = integrate(ctx, r, var)?;
         return Some(ctx.add(Expr::Add(int_l, int_r)));
     }
-    
+
     // 2. Linearity: integrate(a - b) = integrate(a) - integrate(b)
     if let Expr::Sub(l, r) = expr_data {
         let int_l = integrate(ctx, l, var)?;
@@ -229,7 +236,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     }
 
     // 4. Basic Rules & Linear Substitution
-    
+
     // Constant: integrate(c) = c*x
     if !contains_var(ctx, expr, var) {
         let var_expr = ctx.var(var);
@@ -245,35 +252,43 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             if !contains_var(ctx, exp, var) {
                 // Check for n = -1 case (1/u)
                 if let Expr::Number(n) = ctx.get(exp) {
-                     if *n == BigRational::from_integer((-1).into()) {
-                         // ln(u) / a
-                         let ln_u = ctx.add(Expr::Function("ln".to_string(), vec![base]));
-                         return Some(ctx.add(Expr::Div(ln_u, a)));
-                     }
+                    if *n == BigRational::from_integer((-1).into()) {
+                        // ln(u) / a
+                        let ln_u = ctx.add(Expr::Function("ln".to_string(), vec![base]));
+                        return Some(ctx.add(Expr::Div(ln_u, a)));
+                    }
                 }
-                
+
                 let one = ctx.num(1);
                 let new_exp = ctx.add(Expr::Add(exp, one));
-                
-                let is_a_one = if let Expr::Number(n) = ctx.get(a) { n.is_one() } else { false };
+
+                let is_a_one = if let Expr::Number(n) = ctx.get(a) {
+                    n.is_one()
+                } else {
+                    false
+                };
                 let new_denom = if is_a_one {
                     new_exp
                 } else {
                     ctx.add(Expr::Mul(a, new_exp))
                 };
-                
+
                 let pow_expr = ctx.add(Expr::Pow(base, new_exp));
                 return Some(ctx.add(Expr::Div(pow_expr, new_denom)));
             }
         }
-        
+
         // Case 2: c^u where u is linear (ax+b)
         // integrate(c^(ax+b)) = c^(ax+b) / (a * ln(c))
         // If c = e, ln(c) = 1, so e^(ax+b) / a
         if !contains_var(ctx, base, var) {
             if let Some((a, _)) = get_linear_coeffs(ctx, exp, var) {
-                let is_a_one = if let Expr::Number(n) = ctx.get(a) { n.is_one() } else { false };
-                
+                let is_a_one = if let Expr::Number(n) = ctx.get(a) {
+                    n.is_one()
+                } else {
+                    false
+                };
+
                 // Check if base is e
                 let is_e = if let Expr::Constant(c) = ctx.get(base) {
                     c == &cas_ast::Constant::E
@@ -282,10 +297,12 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 };
 
                 if is_e {
-                    if is_a_one { return Some(expr); }
+                    if is_a_one {
+                        return Some(expr);
+                    }
                     return Some(ctx.add(Expr::Div(expr, a)));
                 }
-                
+
                 // General base c
                 let ln_c = ctx.add(Expr::Function("ln".to_string(), vec![base]));
                 let denom = if is_a_one {
@@ -311,16 +328,16 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             return Some(ctx.add(Expr::Div(pow_expr, two)));
         }
     }
-    
+
     // 1/u case (if represented as Div(1, u))
     if let Expr::Div(num, den) = expr_data {
         if let Expr::Number(n) = ctx.get(num) {
             if n.is_one() {
-                 if let Some((a, _)) = get_linear_coeffs(ctx, den, var) {
-                     // integrate(1/(ax+b)) = ln(ax+b)/a
-                     let ln_den = ctx.add(Expr::Function("ln".to_string(), vec![den]));
-                     return Some(ctx.add(Expr::Div(ln_den, a)));
-                 }
+                if let Some((a, _)) = get_linear_coeffs(ctx, den, var) {
+                    // integrate(1/(ax+b)) = ln(ax+b)/a
+                    let ln_den = ctx.add(Expr::Function("ln".to_string(), vec![den]));
+                    return Some(ctx.add(Expr::Div(ln_den, a)));
+                }
             }
         }
     }
@@ -330,28 +347,38 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
         if args.len() == 1 {
             let arg = args[0];
             if let Some((a, _)) = get_linear_coeffs(ctx, arg, var) {
-                let is_a_one = if let Expr::Number(n) = ctx.get(a) { n.is_one() } else { false };
-                
+                let is_a_one = if let Expr::Number(n) = ctx.get(a) {
+                    n.is_one()
+                } else {
+                    false
+                };
+
                 match name.as_str() {
                     "sin" => {
                         // integrate(sin(ax+b)) = -cos(ax+b)/a
                         let cos_arg = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
                         let integral = ctx.add(Expr::Neg(cos_arg));
-                        if is_a_one { return Some(integral); }
+                        if is_a_one {
+                            return Some(integral);
+                        }
                         return Some(ctx.add(Expr::Div(integral, a)));
-                    },
+                    }
                     "cos" => {
                         // integrate(cos(ax+b)) = sin(ax+b)/a
                         let integral = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
-                        if is_a_one { return Some(integral); }
+                        if is_a_one {
+                            return Some(integral);
+                        }
                         return Some(ctx.add(Expr::Div(integral, a)));
-                    },
+                    }
                     "exp" => {
                         // integrate(exp(ax+b)) = exp(ax+b)/a
                         let integral = expr;
-                        if is_a_one { return Some(integral); }
+                        if is_a_one {
+                            return Some(integral);
+                        }
                         return Some(ctx.add(Expr::Div(integral, a)));
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -367,16 +394,17 @@ fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
         Expr::Number(_) | Expr::Constant(_) => false,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             contains_var(ctx, *l, var) || contains_var(ctx, *r, var)
-        },
+        }
         Expr::Neg(e) => contains_var(ctx, *e, var),
         Expr::Function(_, args) => args.iter().any(|a| contains_var(ctx, *a, var)),
+        Expr::Matrix { data, .. } => data.iter().any(|elem| contains_var(ctx, *elem, var)),
     }
 }
 
 // Returns (a, b) such that expr = a*var + b
 fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(ExprId, ExprId)> {
     let expr_data = ctx.get(expr).clone();
-    
+
     if !contains_var(ctx, expr, var) {
         return Some((ctx.num(0), expr));
     }
@@ -393,35 +421,35 @@ fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(Expr
                 return Some((r, ctx.num(0)));
             }
             None
-        },
+        }
         Expr::Add(l, r) => {
             // (ax) + b or b + (ax)
             let l_coeffs = get_linear_coeffs(ctx, l, var);
             let r_coeffs = get_linear_coeffs(ctx, r, var);
-            
+
             if let (Some((a1, b1)), Some((a2, b2))) = (l_coeffs, r_coeffs) {
                 if !contains_var(ctx, a1, var) && !contains_var(ctx, a2, var) {
-                     let a = ctx.add(Expr::Add(a1, a2));
-                     let b = ctx.add(Expr::Add(b1, b2));
-                     return Some((a, b));
+                    let a = ctx.add(Expr::Add(a1, a2));
+                    let b = ctx.add(Expr::Add(b1, b2));
+                    return Some((a, b));
                 }
             }
             None
-        },
+        }
 
         Expr::Sub(l, r) => {
-             let l_coeffs = get_linear_coeffs(ctx, l, var);
-             let r_coeffs = get_linear_coeffs(ctx, r, var);
-             if let (Some((a1, b1)), Some((a2, b2))) = (l_coeffs, r_coeffs) {
-                 if !contains_var(ctx, a1, var) && !contains_var(ctx, a2, var) {
-                     let a = ctx.add(Expr::Sub(a1, a2));
-                     let b = ctx.add(Expr::Sub(b1, b2));
-                     return Some((a, b));
+            let l_coeffs = get_linear_coeffs(ctx, l, var);
+            let r_coeffs = get_linear_coeffs(ctx, r, var);
+            if let (Some((a1, b1)), Some((a2, b2))) = (l_coeffs, r_coeffs) {
+                if !contains_var(ctx, a1, var) && !contains_var(ctx, a2, var) {
+                    let a = ctx.add(Expr::Sub(a1, a2));
+                    let b = ctx.add(Expr::Sub(b1, b2));
+                    return Some((a, b));
                 }
-             }
-             None
-        },
-        _ => None
+            }
+            None
+        }
+        _ => None,
     }
 }
 
@@ -437,8 +465,8 @@ fn is_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 mod tests {
     use super::*;
     use crate::rule::Rule;
+    use cas_ast::{Context, DisplayExpr};
     use cas_parser::parse;
-    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_integrate_power() {
@@ -447,7 +475,16 @@ mod tests {
         // integrate(x^2, x) -> x^3/3
         let expr = parse("integrate(x^2, x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "x^(2 + 1) / (2 + 1)");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "x^(2 + 1) / (2 + 1)"
+        );
     }
 
     #[test]
@@ -457,7 +494,16 @@ mod tests {
         // integrate(5, x) -> 5x
         let expr = parse("integrate(5, x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "5 * x");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "5 * x"
+        );
     }
 
     #[test]
@@ -467,7 +513,16 @@ mod tests {
         // integrate(sin(x), x) -> -cos(x)
         let expr = parse("integrate(sin(x), x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "-cos(x)");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "-cos(x)"
+        );
     }
 
     #[test]
@@ -477,10 +532,16 @@ mod tests {
         // integrate(x + 1, x) -> x^2/2 + x
         let expr = parse("integrate(x + 1, x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        let res = format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr });
+        let res = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        );
         // x^2/2 + 1*x
         assert!(res.contains("x^2 / 2"));
-        assert!(res.contains("1 * x") || res.contains("x")); 
+        assert!(res.contains("1 * x") || res.contains("x"));
     }
     #[test]
     fn test_integrate_linear_subst_trig() {
@@ -489,7 +550,16 @@ mod tests {
         // integrate(sin(2*x), x) -> -cos(2*x)/2
         let expr = parse("integrate(sin(2*x), x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "-cos(2 * x) / 2");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "-cos(2 * x) / 2"
+        );
     }
 
     #[test]
@@ -499,7 +569,16 @@ mod tests {
         // integrate(exp(3*x), x) -> exp(3*x)/3
         let expr = parse("integrate(exp(3*x), x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "e^(3 * x) / 3");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "e^(3 * x) / 3"
+        );
     }
 
     #[test]
@@ -513,7 +592,16 @@ mod tests {
         // Simplification happens later in the pipeline.
         // So we expect (2*x + 1)^(2+1) / (2 * (2+1))
         // Actually get_linear_coeffs returns a=2+0 for 2x+1.
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "(2 * x + 1)^(2 + 1) / ((2 + 0) * (2 + 1))");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "(2 * x + 1)^(2 + 1) / ((2 + 0) * (2 + 1))"
+        );
     }
 
     #[test]
@@ -523,7 +611,16 @@ mod tests {
         // integrate(1/(3*x), x) -> ln(3*x)/3
         let expr = parse("integrate(1/(3*x), x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "ln(3 * x) / 3");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "ln(3 * x) / 3"
+        );
     }
 }
 

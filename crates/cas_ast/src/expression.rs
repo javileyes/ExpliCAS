@@ -1,7 +1,7 @@
-use std::fmt;
+use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::Zero;
-use num_bigint::BigInt;
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExprId(pub u32);
@@ -26,6 +26,16 @@ pub enum Expr {
     Pow(ExprId, ExprId),
     Neg(ExprId),
     Function(String, Vec<ExprId>),
+    /// Matrix: Unified representation for matrices and vectors
+    /// - Vector column (nx1): rows=n, cols=1
+    /// - Vector row (1xn): rows=1, cols=n
+    /// - Matrix (mxn): rows=m, cols=n
+    /// - Data stored in row-major order: data[row * cols + col]
+    Matrix {
+        rows: usize,
+        cols: usize,
+        data: Vec<ExprId>, // Length must be rows * cols
+    },
 }
 
 #[derive(Default, Clone)]
@@ -47,20 +57,53 @@ impl Context {
     pub fn get(&self, id: ExprId) -> &Expr {
         &self.nodes[id.0 as usize]
     }
-    
+
     // Helper constructors that add to context immediately
     pub fn num(&mut self, n: i64) -> ExprId {
         self.add(Expr::Number(BigRational::from_integer(BigInt::from(n))))
     }
 
     pub fn rational(&mut self, num: i64, den: i64) -> ExprId {
-        self.add(Expr::Number(BigRational::new(BigInt::from(num), BigInt::from(den))))
+        self.add(Expr::Number(BigRational::new(
+            BigInt::from(num),
+            BigInt::from(den),
+        )))
     }
 
     pub fn var(&mut self, name: &str) -> ExprId {
         self.add(Expr::Variable(name.to_string()))
     }
-    
+
+    // Matrix helpers
+
+    /// Create a matrix with given dimensions and data
+    /// Panics if data.len() != rows * cols
+    pub fn matrix(&mut self, rows: usize, cols: usize, data: Vec<ExprId>) -> ExprId {
+        assert_eq!(
+            data.len(),
+            rows * cols,
+            "Matrix data length {} does not match dimensions {}x{}",
+            data.len(),
+            rows,
+            cols
+        );
+        self.add(Expr::Matrix { rows, cols, data })
+    }
+
+    /// Get element at (row, col) from a matrix (0-indexed)
+    /// Returns None if id is not a matrix or indices are out of bounds
+    pub fn matrix_element(&self, id: ExprId, row: usize, col: usize) -> Option<ExprId> {
+        if let Expr::Matrix { rows, cols, data } = self.get(id) {
+            if row < *rows && col < *cols {
+                Some(data[row * cols + col])
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     // ... other helpers would need &mut self ...
 }
 
@@ -96,23 +139,37 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 let terms = collect_add_terms(self.context, self.id);
                 for (i, term) in terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
-                    
+
                     if i == 0 {
                         // First term: print as is
-                        write!(f, "{}", DisplayExpr { context: self.context, id: *term })?;
+                        write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *term
+                            }
+                        )?;
                     } else {
                         if is_neg {
                             // Print " - " then absolute value
                             write!(f, " - ")?;
-                            
+
                             // Re-check locally to extract positive part
                             match self.context.get(*term) {
                                 Expr::Neg(inner) => {
-                                    write!(f, "{}", DisplayExpr { context: self.context, id: *inner })?;
-                                },
+                                    write!(
+                                        f,
+                                        "{}",
+                                        DisplayExpr {
+                                            context: self.context,
+                                            id: *inner
+                                        }
+                                    )?;
+                                }
                                 Expr::Number(n) => {
                                     write!(f, "{}", -n)?;
-                                },
+                                }
                                 Expr::Mul(a, b) => {
                                     if let Expr::Number(n) = self.context.get(*a) {
                                         let pos_n = -n;
@@ -120,79 +177,221 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                                         let b_prec = precedence(self.context, *b);
                                         write!(f, "{} * ", pos_n)?;
                                         if b_prec < 2 {
-                                            write!(f, "({})", DisplayExpr { context: self.context, id: *b })?;
+                                            write!(
+                                                f,
+                                                "({})",
+                                                DisplayExpr {
+                                                    context: self.context,
+                                                    id: *b
+                                                }
+                                            )?;
                                         } else {
-                                            write!(f, "{}", DisplayExpr { context: self.context, id: *b })?;
+                                            write!(
+                                                f,
+                                                "{}",
+                                                DisplayExpr {
+                                                    context: self.context,
+                                                    id: *b
+                                                }
+                                            )?;
                                         }
                                     } else {
-                                         // Should not happen if check_negative is correct
-                                         write!(f, "{}", DisplayExpr { context: self.context, id: *term })?;
+                                        // Should not happen if check_negative is correct
+                                        write!(
+                                            f,
+                                            "{}",
+                                            DisplayExpr {
+                                                context: self.context,
+                                                id: *term
+                                            }
+                                        )?;
                                     }
-                                },
+                                }
                                 _ => {
-                                     // Should not happen
-                                     write!(f, "{}", DisplayExpr { context: self.context, id: *term })?;
+                                    // Should not happen
+                                    write!(
+                                        f,
+                                        "{}",
+                                        DisplayExpr {
+                                            context: self.context,
+                                            id: *term
+                                        }
+                                    )?;
                                 }
                             }
                         } else {
-                            write!(f, " + {}", DisplayExpr { context: self.context, id: *term })?;
+                            write!(
+                                f,
+                                " + {}",
+                                DisplayExpr {
+                                    context: self.context,
+                                    id: *term
+                                }
+                            )?;
                         }
                     }
                 }
                 Ok(())
-            },
+            }
             Expr::Sub(l, r) => {
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 1; // Sub precedence
-                
+
                 // Check if RHS is Neg to wrap in parens: a - (-b)
                 let rhs_is_neg = matches!(self.context.get(*r), Expr::Neg(_));
 
-                if rhs_prec <= op_prec || rhs_is_neg { 
-                     write!(f, "{} - ({})", DisplayExpr { context: self.context, id: *l }, DisplayExpr { context: self.context, id: *r })
+                if rhs_prec <= op_prec || rhs_is_neg {
+                    write!(
+                        f,
+                        "{} - ({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *l
+                        },
+                        DisplayExpr {
+                            context: self.context,
+                            id: *r
+                        }
+                    )
                 } else {
-                     write!(f, "{} - {}", DisplayExpr { context: self.context, id: *l }, DisplayExpr { context: self.context, id: *r })
+                    write!(
+                        f,
+                        "{} - {}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *l
+                        },
+                        DisplayExpr {
+                            context: self.context,
+                            id: *r
+                        }
+                    )
                 }
-            },
+            }
             Expr::Mul(l, r) => {
                 let lhs_prec = precedence(self.context, *l);
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 2; // Mul precedence
-                
-                if lhs_prec < op_prec { write!(f, "({})", DisplayExpr { context: self.context, id: *l })? }
-                else { write!(f, "{}", DisplayExpr { context: self.context, id: *l })? }
-                
+
+                if lhs_prec < op_prec {
+                    write!(
+                        f,
+                        "({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *l
+                        }
+                    )?
+                } else {
+                    write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *l
+                        }
+                    )?
+                }
+
                 write!(f, " * ")?;
-                
-                if rhs_prec < op_prec { write!(f, "({})", DisplayExpr { context: self.context, id: *r }) }
-                else { write!(f, "{}", DisplayExpr { context: self.context, id: *r }) }
-            },
+
+                if rhs_prec < op_prec {
+                    write!(
+                        f,
+                        "({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *r
+                        }
+                    )
+                } else {
+                    write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *r
+                        }
+                    )
+                }
+            }
             Expr::Div(l, r) => {
                 let lhs_prec = precedence(self.context, *l);
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 2; // Div precedence (same as Mul)
-                
-                if lhs_prec < op_prec { write!(f, "({})", DisplayExpr { context: self.context, id: *l })? }
-                else { write!(f, "{}", DisplayExpr { context: self.context, id: *l })? }
-                
+
+                if lhs_prec < op_prec {
+                    write!(
+                        f,
+                        "({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *l
+                        }
+                    )?
+                } else {
+                    write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *l
+                        }
+                    )?
+                }
+
                 write!(f, " / ")?;
-                
-                // RHS of div always needs parens if it's Mul/Div or lower to be unambiguous? 
+
+                // RHS of div always needs parens if it's Mul/Div or lower to be unambiguous?
                 // a / b * c -> (a / b) * c usually.
                 // a / (b * c).
                 // If RHS is Mul/Div, we need parens: a / (b * c) vs a / b * c.
-                if rhs_prec <= op_prec { write!(f, "({})", DisplayExpr { context: self.context, id: *r }) }
-                else { write!(f, "{}", DisplayExpr { context: self.context, id: *r }) }
-            },
+                if rhs_prec <= op_prec {
+                    write!(
+                        f,
+                        "({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *r
+                        }
+                    )
+                } else {
+                    write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *r
+                        }
+                    )
+                }
+            }
             Expr::Pow(b, e) => {
                 let base_prec = precedence(self.context, *b);
                 let op_prec = 3; // Pow precedence
-                
-                if base_prec < op_prec { write!(f, "({})", DisplayExpr { context: self.context, id: *b })? }
-                else { write!(f, "{}", DisplayExpr { context: self.context, id: *b })? }
-                
+
+                if base_prec < op_prec {
+                    write!(
+                        f,
+                        "({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *b
+                        }
+                    )?
+                } else {
+                    write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *b
+                        }
+                    )?
+                }
+
                 write!(f, "^")?;
-                
+
                 // Exponent usually doesn't need parens if it's simple, but for clarity maybe?
                 // x^(a+b) needs parens.
                 // x^2 doesn't.
@@ -207,53 +406,179 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 };
 
                 if needs_parens {
-                    write!(f, "({})", DisplayExpr { context: self.context, id: *e })
+                    write!(
+                        f,
+                        "({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *e
+                        }
+                    )
                 } else {
-                    write!(f, "{}", DisplayExpr { context: self.context, id: *e })
+                    write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *e
+                        }
+                    )
                 }
-            },
+            }
             Expr::Neg(e) => {
                 let inner_prec = precedence(self.context, *e);
                 // Check if inner is Neg to wrap in parens: -(-x)
                 let inner_is_neg = matches!(self.context.get(*e), Expr::Neg(_));
-                
-                if inner_prec < 4 || inner_is_neg { // Neg precedence
-                     write!(f, "-({})", DisplayExpr { context: self.context, id: *e })
+
+                if inner_prec < 4 || inner_is_neg {
+                    // Neg precedence
+                    write!(
+                        f,
+                        "-({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *e
+                        }
+                    )
                 } else {
-                     write!(f, "-{}", DisplayExpr { context: self.context, id: *e })
+                    write!(
+                        f,
+                        "-{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *e
+                        }
+                    )
                 }
-            },
+            }
             Expr::Function(name, args) => {
                 if name == "abs" && args.len() == 1 {
-                    write!(f, "|{}|", DisplayExpr { context: self.context, id: args[0] })
+                    write!(
+                        f,
+                        "|{}|",
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[0]
+                        }
+                    )
                 } else if name == "log" && args.len() == 2 {
                     // Check if base is 'e'
                     let base = self.context.get(args[0]);
                     if let Expr::Constant(Constant::E) = base {
-                        write!(f, "ln({})", DisplayExpr { context: self.context, id: args[1] })
+                        write!(
+                            f,
+                            "ln({})",
+                            DisplayExpr {
+                                context: self.context,
+                                id: args[1]
+                            }
+                        )
                     } else {
                         write!(f, "{}(", name)?;
                         for (i, arg) in args.iter().enumerate() {
-                            if i > 0 { write!(f, ", ")?; }
-                            write!(f, "{}", DisplayExpr { context: self.context, id: *arg })?;
+                            if i > 0 {
+                                write!(f, ", ")?;
+                            }
+                            write!(
+                                f,
+                                "{}",
+                                DisplayExpr {
+                                    context: self.context,
+                                    id: *arg
+                                }
+                            )?;
                         }
                         write!(f, ")")
                     }
                 } else if name == "factored" {
                     for (i, arg) in args.iter().enumerate() {
-                        if i > 0 { write!(f, " * ")?; }
-                        write!(f, "{}", DisplayExpr { context: self.context, id: *arg })?;
+                        if i > 0 {
+                            write!(f, " * ")?;
+                        }
+                        write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *arg
+                            }
+                        )?;
                     }
                     Ok(())
                 } else if name == "factored_pow" && args.len() == 2 {
-                    write!(f, "{}^{}", DisplayExpr { context: self.context, id: args[0] }, DisplayExpr { context: self.context, id: args[1] })
+                    write!(
+                        f,
+                        "{}^{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[0]
+                        },
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[1]
+                        }
+                    )
                 } else {
                     write!(f, "{}(", name)?;
                     for (i, arg) in args.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")?; }
-                        write!(f, "{}", DisplayExpr { context: self.context, id: *arg })?;
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *arg
+                            }
+                        )?;
                     }
                     write!(f, ")")
+                }
+            }
+            Expr::Matrix { rows, cols, data } => {
+                if *rows == 1 {
+                    // Row vector: [a, b, c]
+                    write!(f, "[")?;
+                    for (i, elem) in data.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *elem
+                            }
+                        )?;
+                    }
+                    write!(f, "]")
+                } else {
+                    // Matrix or column vector: [[a, b], [c, d]]
+                    write!(f, "[")?;
+                    for r in 0..*rows {
+                        if r > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "[")?;
+                        for c in 0..*cols {
+                            if c > 0 {
+                                write!(f, ", ")?;
+                            }
+                            let idx = r * cols + c;
+                            write!(
+                                f,
+                                "{}",
+                                DisplayExpr {
+                                    context: self.context,
+                                    id: data[idx]
+                                }
+                            )?;
+                        }
+                        write!(f, "]")?;
+                    }
+                    write!(f, "]")
                 }
             }
         }
@@ -266,7 +591,11 @@ fn precedence(ctx: &Context, id: ExprId) -> i32 {
         Expr::Mul(_, _) | Expr::Div(_, _) => 2,
         Expr::Pow(_, _) => 3,
         Expr::Neg(_) => 4,
-        Expr::Function(_, _) | Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => 5,
+        Expr::Function(_, _)
+        | Expr::Variable(_)
+        | Expr::Number(_)
+        | Expr::Constant(_)
+        | Expr::Matrix { .. } => 5,
     }
 }
 
@@ -281,7 +610,7 @@ fn collect_add_terms_recursive(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId
         Expr::Add(l, r) => {
             collect_add_terms_recursive(ctx, *l, terms);
             collect_add_terms_recursive(ctx, *r, terms);
-        },
+        }
         _ => terms.push(id),
     }
 }
@@ -295,7 +624,7 @@ fn check_negative(ctx: &Context, id: ExprId) -> (bool, Option<ExprId>, Option<Bi
             } else {
                 (false, None, None)
             }
-        },
+        }
         Expr::Mul(a, _) => {
             if let Expr::Number(n) = ctx.get(*a) {
                 if *n < num_rational::BigRational::zero() {
@@ -306,7 +635,7 @@ fn check_negative(ctx: &Context, id: ExprId) -> (bool, Option<ExprId>, Option<Bi
             } else {
                 (false, None, None)
             }
-        },
+        }
         _ => (false, None, None),
     }
 }
@@ -315,10 +644,13 @@ pub fn count_nodes(context: &Context, id: ExprId) -> usize {
     match context.get(id) {
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             1 + count_nodes(context, *l) + count_nodes(context, *r)
-        },
+        }
         Expr::Neg(e) => 1 + count_nodes(context, *e),
         Expr::Function(_, args) => 1 + args.iter().map(|a| count_nodes(context, *a)).sum::<usize>(),
-        _ => 1
+        Expr::Matrix { data, .. } => {
+            1 + data.iter().map(|e| count_nodes(context, *e)).sum::<usize>()
+        }
+        _ => 1,
     }
 }
 
@@ -339,25 +671,121 @@ impl<'a> fmt::Display for RawDisplayExpr<'a> {
                 Constant::Undefined => write!(f, "undefined"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
-            Expr::Add(l, r) => write!(f, "{} + {}", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
-            Expr::Sub(l, r) => write!(f, "{} - {}", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
-            Expr::Mul(l, r) => write!(f, "({}) * ({})", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
-            Expr::Div(l, r) => write!(f, "({}) / ({})", RawDisplayExpr { context: self.context, id: *l }, RawDisplayExpr { context: self.context, id: *r }),
-            Expr::Pow(b, e) => write!(f, "({})^({})", RawDisplayExpr { context: self.context, id: *b }, RawDisplayExpr { context: self.context, id: *e }),
+            Expr::Add(l, r) => write!(
+                f,
+                "{} + {}",
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *l
+                },
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *r
+                }
+            ),
+            Expr::Sub(l, r) => write!(
+                f,
+                "{} - {}",
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *l
+                },
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *r
+                }
+            ),
+            Expr::Mul(l, r) => write!(
+                f,
+                "({}) * ({})",
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *l
+                },
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *r
+                }
+            ),
+            Expr::Div(l, r) => write!(
+                f,
+                "({}) / ({})",
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *l
+                },
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *r
+                }
+            ),
+            Expr::Pow(b, e) => write!(
+                f,
+                "({})^({})",
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *b
+                },
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *e
+                }
+            ),
             Expr::Neg(e) => {
                 let inner = self.context.get(*e);
                 match inner {
-                    Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => write!(f, "-{}", RawDisplayExpr { context: self.context, id: *e }),
-                    _ => write!(f, "-({})", RawDisplayExpr { context: self.context, id: *e }),
+                    Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => write!(
+                        f,
+                        "-{}",
+                        RawDisplayExpr {
+                            context: self.context,
+                            id: *e
+                        }
+                    ),
+                    _ => write!(
+                        f,
+                        "-({})",
+                        RawDisplayExpr {
+                            context: self.context,
+                            id: *e
+                        }
+                    ),
                 }
-            },
+            }
             Expr::Function(name, args) => {
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
-                    write!(f, "{}", RawDisplayExpr { context: self.context, id: *arg })?;
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(
+                        f,
+                        "{}",
+                        RawDisplayExpr {
+                            context: self.context,
+                            id: *arg
+                        }
+                    )?;
                 }
                 write!(f, ")")
+            }
+            Expr::Matrix { rows, cols, data } => {
+                // Raw display: show structure explicitly
+                write!(f, "Matrix({}x{}, [", rows, cols)?;
+                for (i, elem) in data.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(
+                        f,
+                        "{}",
+                        RawDisplayExpr {
+                            context: self.context,
+                            id: *elem
+                        }
+                    )?;
+                }
+                write!(f, "])")
             }
         }
     }

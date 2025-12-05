@@ -1,4 +1,4 @@
-use cas_ast::{Expr, Visitor, ExprId, Context};
+use cas_ast::{Context, Expr, ExprId, Visitor};
 use std::collections::HashSet;
 
 pub struct VariableCollector {
@@ -39,7 +39,7 @@ impl Visitor for DepthVisitor {
         if self.current_depth > self.depth {
             self.depth = self.current_depth;
         }
-        
+
         // Manual dispatch to traverse children
         match ctx.get(expr) {
             Expr::Number(n) => self.visit_number(n),
@@ -52,8 +52,13 @@ impl Visitor for DepthVisitor {
             Expr::Pow(b, e) => self.visit_pow(ctx, *b, *e),
             Expr::Neg(e) => self.visit_neg(ctx, *e),
             Expr::Function(name, args) => self.visit_function(ctx, name, args),
+            Expr::Matrix { data, .. } => {
+                for elem in data.iter() {
+                    self.visit_expr(ctx, *elem); // Recursively visit elements for depth
+                }
+            }
         }
-        
+
         self.current_depth -= 1;
     }
 }

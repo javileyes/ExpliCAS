@@ -332,6 +332,24 @@ impl<'a> LaTeXExpr<'a> {
                     format!("\\text{{{}}}({})", name, args_str.join(", "))
                 }
             },
+            Expr::Matrix { rows, cols, data } => {
+                // Render matrix as LaTeX bmatrix
+                let mut result = String::from("\\begin{bmatrix}\n");
+                for r in 0..*rows {
+                    for c in 0..*cols {
+                        if c > 0 {
+                            result.push_str(" & ");
+                        }
+                        let idx = r * cols + c;
+                        result.push_str(&self.expr_to_latex(data[idx], false));
+                    }
+                    if r < rows - 1 {
+                        result.push_str(" \\\\\n");
+                    }
+                }
+                result.push_str("\n\\end{bmatrix}");
+                result
+            }
         }
     }
 

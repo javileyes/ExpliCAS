@@ -226,6 +226,7 @@ fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Opti
             cas_ast::Constant::Infinity => Some(f64::INFINITY),
             cas_ast::Constant::Undefined => Some(f64::NAN),
         },
+        Expr::Matrix { .. } => None, // Matrix evaluation not supported in f64
     }
 }
 
@@ -397,6 +398,29 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     }
                 }
             }
+            Expr::Matrix { rows, cols, data } => {
+                // Recursively simplify matrix elements
+                let mut new_data = Vec::new();
+                let mut changed = false;
+                for (i, elem) in data.iter().enumerate() {
+                    self.current_path.push(crate::step::PathStep::Arg(i));
+                    let new_elem = self.transform_expr_recursive(*elem);
+                    self.current_path.pop();
+                    if new_elem != *elem {
+                        changed = true;
+                    }
+                    new_data.push(new_elem);
+                }
+                if changed {
+                    self.context.add(Expr::Matrix {
+                        rows,
+                        cols,
+                        data: new_data,
+                    })
+                } else {
+                    id
+                }
+            }
         };
 
         // 2. Apply rules
@@ -525,5 +549,6 @@ fn get_variant_name(expr: &Expr) -> &'static str {
         Expr::Variable(_) => "Variable",
         Expr::Number(_) => "Number",
         Expr::Constant(_) => "Constant",
+        Expr::Matrix { .. } => "Matrix",
     }
 }
