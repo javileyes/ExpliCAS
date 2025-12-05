@@ -69,6 +69,7 @@ dependencies = [
  "num-bigint",
  "num-rational",
  "num-traits",
+ "regex",
 ]
 
 [[package]]
@@ -99,6 +100,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "proptest",
+ "regex",
  "thiserror",
  "tracing",
 ]

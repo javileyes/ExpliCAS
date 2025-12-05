@@ -100,6 +100,17 @@ impl<'a> TimelineHtml<'a> {
         result = result.replace("- -{", "+ {"); // Before braces
         result = result.replace("- -(", "+ ("); // Before parentheses
 
+        // Fix "+ -" before digits (e.g., "+ -4" → "- 4")
+        use regex::Regex;
+        let re_plus_minus_digit = Regex::new(r"\+ -(\d)").unwrap();
+        result = re_plus_minus_digit.replace_all(&result, "- $1").to_string();
+
+        // Fix "- -" before digits (e.g., "- -4" → "+ 4")
+        let re_minus_minus_digit = Regex::new(r"- -(\d)").unwrap();
+        result = re_minus_minus_digit
+            .replace_all(&result, "+ $1")
+            .to_string();
+
         result
     }
 
