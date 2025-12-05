@@ -928,65 +928,100 @@ impl Repl {
 
         // Check if the user wants to use "simplify" within timeline
         // e.g., "timeline simplify(expr)" or "timeline simplify expr"
-        let expr_str = if rest.starts_with("simplify(") && rest.ends_with(')') {
+        let (expr_str, use_aggressive) = if rest.starts_with("simplify(") && rest.ends_with(')') {
             // Extract expression from "simplify(expr)"
-            &rest[9..rest.len() - 1]
+            (&rest[9..rest.len() - 1], true)
         } else if rest.starts_with("simplify ") {
             // Extract expression from "simplify expr"
-            &rest[9..]
+            (&rest[9..], true)
         } else {
             // No simplify prefix, treat entire rest as expression
-            rest
+            (rest, false)
         };
 
-        match cas_parser::parse(expr_str.trim(), &mut self.simplifier.context) {
-            Ok(expr) => {
-                let (_, steps) = self.simplifier.simplify(expr);
+        // Choose simplifier based on whether aggressive mode is requested
+        let (steps, expr_id) = if use_aggressive {
+            // Create temporary simplifier with aggressive rules (like handle_full_simplify)
+            let mut temp_simplifier = Simplifier::with_default_rules();
+            temp_simplifier.collect_steps = true; // Always collect steps for timeline
 
-                if steps.is_empty() {
-                    println!("No simplification steps to visualize.");
+            // Swap context to preserve variables
+            std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+
+            match cas_parser::parse(expr_str.trim(), &mut temp_simplifier.context) {
+                Ok(expr) => {
+                    let (_, steps) = temp_simplifier.simplify(expr);
+
+                    // Swap context back
+                    std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+
+                    (steps, expr)
+                }
+                Err(e) => {
+                    // Swap context back even on error
+                    std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+                    println!("Parse error: {}", e);
                     return;
                 }
-
-                // Filter out non-productive steps (where global state doesn't change)
-                let filtered_steps = cas_engine::strategies::filter_non_productive_steps(
-                    &mut self.simplifier.context,
-                    expr,
-                    steps,
-                );
-
-                // Convert CLI verbosity to timeline verbosity
-                let timeline_verbosity = match self.verbosity {
-                    Verbosity::None | Verbosity::Low => cas_engine::timeline::VerbosityLevel::Low,
-                    Verbosity::Normal => cas_engine::timeline::VerbosityLevel::Normal,
-                    Verbosity::Verbose => cas_engine::timeline::VerbosityLevel::Verbose,
-                };
-
-                // Generate HTML timeline with filtered steps
-                let mut timeline = cas_engine::timeline::TimelineHtml::new(
-                    &mut self.simplifier.context,
-                    &filtered_steps,
-                    expr,
-                    timeline_verbosity,
-                );
-                let html = timeline.to_html();
-
-                let filename = "timeline.html";
-                match std::fs::write(filename, &html) {
-                    Ok(_) => {
-                        println!("Timeline exported to {}", filename);
-                        println!("Open in browser to view interactive visualization.");
-
-                        // Try to auto-open on macOS
-                        #[cfg(target_os = "macos")]
-                        {
-                            let _ = std::process::Command::new("open").arg(filename).spawn();
-                        }
-                    }
-                    Err(e) => println!("Error writing file: {}", e),
+            }
+        } else {
+            // Use normal simplification
+            match cas_parser::parse(expr_str.trim(), &mut self.simplifier.context) {
+                Ok(expr) => {
+                    let (_, steps) = self.simplifier.simplify(expr);
+                    (steps, expr)
+                }
+                Err(e) => {
+                    println!("Parse error: {}", e);
+                    return;
                 }
             }
-            Err(e) => println!("Parse error: {}", e),
+        };
+
+        if steps.is_empty() {
+            println!("No simplification steps to visualize.");
+            return;
+        }
+
+        // Filter out non-productive steps (where global state doesn't change)
+        let filtered_steps = cas_engine::strategies::filter_non_productive_steps(
+            &mut self.simplifier.context,
+            expr_id,
+            steps,
+        );
+
+        // Convert CLI verbosity to timeline verbosity
+        let timeline_verbosity = match self.verbosity {
+            Verbosity::None | Verbosity::Low => cas_engine::timeline::VerbosityLevel::Low,
+            Verbosity::Normal => cas_engine::timeline::VerbosityLevel::Normal,
+            Verbosity::Verbose => cas_engine::timeline::VerbosityLevel::Verbose,
+        };
+
+        // Generate HTML timeline with filtered steps
+        let mut timeline = cas_engine::timeline::TimelineHtml::new(
+            &mut self.simplifier.context,
+            &filtered_steps,
+            expr_id,
+            timeline_verbosity,
+        );
+        let html = timeline.to_html();
+
+        let filename = "timeline.html";
+        match std::fs::write(filename, &html) {
+            Ok(_) => {
+                println!("Timeline exported to {}", filename);
+                if use_aggressive {
+                    println!("(Aggressive simplification mode)");
+                }
+                println!("Open in browser to view interactive visualization.");
+
+                // Try to auto-open on macOS
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = std::process::Command::new("open").arg(filename).spawn();
+                }
+            }
+            Err(e) => println!("Error writing file: {}", e),
         }
     }
 
