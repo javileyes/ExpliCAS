@@ -9,7 +9,27 @@ pub struct LaTeXExpr<'a> {
 
 impl<'a> LaTeXExpr<'a> {
     pub fn to_latex(&self) -> String {
-        self.expr_to_latex(self.id, false)
+        let latex = self.expr_to_latex(self.id, false);
+        Self::clean_latex_negatives(&latex)
+    }
+
+    /// Post-process LaTeX to fix negative sign patterns
+    /// Handles cases like "+ -" → "-" and "- -" → "+"
+    fn clean_latex_negatives(latex: &str) -> String {
+        let mut result = latex.to_string();
+
+        // Fix "+ -" → "-" in all contexts
+        // Even "+ -(" is simplified to "-(" since +(-(x)) = -(x)
+        result = result.replace("+ -\\", "- \\");
+        result = result.replace("+ -{", "- {");
+        result = result.replace("+ -(", "- (");
+
+        // Fix "- -" → "+" (double negative)
+        result = result.replace("- -\\", "+ \\");
+        result = result.replace("- -{", "+ {");
+        result = result.replace("- -(", "+ (");
+
+        result
     }
 
     fn expr_to_latex(&self, id: ExprId, parent_needs_parens: bool) -> String {

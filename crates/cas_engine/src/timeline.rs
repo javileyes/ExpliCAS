@@ -89,14 +89,16 @@ impl<'a> TimelineHtml<'a> {
     fn clean_latex_negatives(latex: &str) -> String {
         let mut result = latex.to_string();
 
-        // Fix "+ -" → "-" (but not inside parentheses like "+ -(...")
-        // We need to be careful not to match "+ -(" which is valid
+        // Fix "+ -" → "-" in all contexts
+        // Even "+ -(" is simplified to "-(" since +(-(x)) = -(x)
         result = result.replace("+ -\\", "- \\"); // Before LaTeX commands
         result = result.replace("+ -{", "- {"); // Before braces
+        result = result.replace("+ -(", "- ("); // Before parentheses
 
-        // Fix "- -" → "+"
+        // Fix "- -" → "+" (double negative)
         result = result.replace("- -\\", "+ \\"); // Before LaTeX commands
         result = result.replace("- -{", "+ {"); // Before braces
+        result = result.replace("- -(", "+ ("); // Before parentheses
 
         result
     }
