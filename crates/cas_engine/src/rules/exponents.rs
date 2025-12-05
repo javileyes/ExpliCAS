@@ -8,6 +8,28 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
 
+/// Helper: Add two exponents, folding if both are constants
+/// This prevents ugly exponents like x^(1+2) and produces x^3 instead
+fn add_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
+    if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(e1), ctx.get(e2)) {
+        let sum = n1 + n2;
+        ctx.add(Expr::Number(sum))
+    } else {
+        ctx.add(Expr::Add(e1, e2))
+    }
+}
+
+/// Helper: Multiply two exponents, folding if both are constants
+/// This prevents ugly exponents like x^(2*3) and produces x^6 instead
+fn mul_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
+    if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(e1), ctx.get(e2)) {
+        let prod = n1 * n2;
+        ctx.add(Expr::Number(prod))
+    } else {
+        ctx.add(Expr::Mul(e1, e2))
+    }
+}
+
 define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
     // x^a * x^b -> x^(a+b)
     let should_combine = |ctx: &Context, base: ExprId, e1: ExprId, e2: ExprId| -> bool {
@@ -35,7 +57,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
         if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
             if compare_expr(ctx, *base1, *base2) == Ordering::Equal {
                 if should_combine(ctx, *base1, *exp1, *exp2) {
-                    let sum_exp = ctx.add(Expr::Add(*exp1, *exp2));
+                    let sum_exp = add_exp(ctx, *exp1, *exp2);
                     let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
                     return Some(Rewrite {
                         new_expr,
@@ -50,7 +72,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             if compare_expr(ctx, *base1, rhs) == Ordering::Equal {
                 let one = ctx.num(1);
                 if should_combine(ctx, *base1, *exp1, one) {
-                    let sum_exp = ctx.add(Expr::Add(*exp1, one));
+                    let sum_exp = add_exp(ctx, *exp1, one);
                     let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
                     return Some(Rewrite {
                         new_expr,
@@ -64,7 +86,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             if compare_expr(ctx, *base2, lhs) == Ordering::Equal {
                 let one = ctx.num(1);
                 if should_combine(ctx, *base2, one, *exp2) {
-                    let sum_exp = ctx.add(Expr::Add(one, *exp2));
+                    let sum_exp = add_exp(ctx, one, *exp2);
                     let new_expr = ctx.add(Expr::Pow(*base2, sum_exp));
                     return Some(Rewrite {
                         new_expr,
@@ -112,7 +134,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
 
             if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rhs_pow) {
                 if compare_expr(ctx, base1, base2) == Ordering::Equal {
-                    let sum_exp = ctx.add(Expr::Add(exp1, exp2));
+                    let sum_exp = add_exp(ctx, exp1, exp2);
                     let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
                     let new_expr = ctx.add(Expr::Mul(new_pow, rr));
                     return Some(Rewrite {
@@ -126,7 +148,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             if let Some((base2, exp2)) = rhs_pow {
                 if compare_expr(ctx, lhs, base2) == Ordering::Equal {
                     let one = ctx.num(1);
-                    let sum_exp = ctx.add(Expr::Add(exp2, one));
+                    let sum_exp = add_exp(ctx, exp2, one);
                     let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
                     let new_expr = ctx.add(Expr::Mul(new_pow, rr));
                     return Some(Rewrite {
@@ -171,7 +193,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
 
                     if let (Some((base1, exp1)), Some((base2, exp2))) = (lr_pow, rhs_pow) {
                         if compare_expr(ctx, base1, base2) == Ordering::Equal {
-                            let sum_exp = ctx.add(Expr::Add(exp1, exp2));
+                            let sum_exp = add_exp(ctx, exp1, exp2);
                             let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
                             let new_expr = ctx.add(Expr::Mul(ll, new_pow));
                             return Some(Rewrite {
@@ -212,7 +234,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     if let Some((base2, exp2)) = rhs_pow {
                         if compare_expr(ctx, lr, base2) == Ordering::Equal {
                             let one = ctx.num(1);
-                            let sum_exp = ctx.add(Expr::Add(exp2, one));
+                            let sum_exp = add_exp(ctx, exp2, one);
                             let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
                             let new_expr = ctx.add(Expr::Mul(ll, new_pow));
                             return Some(Rewrite {
@@ -272,7 +294,7 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
                 // (x^(2k))^(1/2) -> |x|^k
                 // If k=1, |x|.
                 // new_exp = inner_exp * outer_exp = 2k * 1/2 = k.
-                let prod_exp = ctx.add(Expr::Mul(inner_exp, outer_exp));
+                let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
                 // We need to wrap base in abs.
                 let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![inner_base]));
                 let new_expr = ctx.add(Expr::Pow(abs_base, prod_exp));
@@ -282,7 +304,7 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
                 });
             }
 
-            let prod_exp = ctx.add(Expr::Mul(inner_exp, outer_exp));
+            let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
             let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
             return Some(Rewrite {
                 new_expr,
@@ -414,7 +436,7 @@ mod tests {
                     id: rewrite.new_expr
                 }
             ),
-            "x^(2 + 3)"
+            "x^5"
         );
 
         // x * x -> x^2
@@ -453,7 +475,7 @@ mod tests {
                     id: rewrite.new_expr
                 }
             ),
-            "x^(2 * 3)"
+            "x^6"
         );
     }
 
