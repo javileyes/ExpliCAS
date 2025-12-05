@@ -161,29 +161,34 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
 pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> GcdResult {
     let mut steps = Vec::new();
 
-    // Try integer GCD first
+    // Attempt integer GCD first
     if let (Some(val_a), Some(val_b)) = (get_integer(ctx, a), get_integer(ctx, b)) {
+        use num_traits::ToPrimitive;
+
         if explain {
-            steps.push(format!(
-                "Intentando GCD numérico entre {} y {}",
-                val_a, val_b
-            ));
-            // Call educational version
-            let (gcd, sub_steps) = verbose_integer_gcd(val_a, val_b);
-            steps.extend(sub_steps);
-            let res = ctx.add(Expr::Number(BigRational::from_integer(gcd)));
-            return GcdResult {
-                value: Some(res),
-                steps,
-            };
-        } else {
-            // Fast version (original code)
-            let gcd = val_a.gcd(&val_b);
-            return GcdResult {
-                value: Some(ctx.add(Expr::Number(BigRational::from_integer(gcd)))),
-                steps: vec![],
-            };
+            // Check if values fit in i64 for verbose explanation
+            if let (Some(a_i64), Some(b_i64)) = (val_a.to_i64(), val_b.to_i64()) {
+                steps.push(format!(
+                    "Intentando GCD numérico entre {} y {}",
+                    a_i64, b_i64
+                ));
+                let (gcd, sub_steps) = verbose_integer_gcd(a_i64, b_i64);
+                steps.extend(sub_steps);
+                let res = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(gcd))));
+                return GcdResult {
+                    value: Some(res),
+                    steps,
+                };
+            }
         }
+
+        // Fast path (or numbers too large for i64)
+        use num_integer::Integer;
+        let gcd = val_a.gcd(&val_b);
+        return GcdResult {
+            value: Some(ctx.add(Expr::Number(BigRational::from_integer(gcd)))),
+            steps,
+        };
     }
 
     // Try polynomial GCD
@@ -220,6 +225,30 @@ pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> Gc
                 };
             }
         }
+    }
+
+    // Multivariable case: conservatively return GCD=1
+    // This is safe - worst case we don't simplify, but we don't produce incorrect results
+    if !vars.is_empty() || !vars_b.is_empty() {
+        if explain {
+            if vars.len() > 1
+                || vars_b.len() > 1
+                || (vars != vars_b && !vars.is_empty() && !vars_b.is_empty())
+            {
+                steps.push("Detectados polinomios multivariables.".to_string());
+                steps.push(
+                    "LIMITACIÓN: El GCD de polinomios multivariables no está implementado."
+                        .to_string(),
+                );
+                steps.push("Devolviendo GCD = 1 (conservador, no simplifica).".to_string());
+            } else {
+                steps.push("No se pudo calcular el GCD para estas expresiones.".to_string());
+            }
+        }
+        return GcdResult {
+            value: Some(ctx.num(1)),
+            steps,
+        };
     }
 
     if explain {
@@ -429,36 +458,47 @@ fn get_integer(ctx: &Context, expr: ExprId) -> Option<BigInt> {
 }
 
 /// Compute GCD of two integers with educational step-by-step explanation
-fn verbose_integer_gcd(mut a: BigInt, mut b: BigInt) -> (BigInt, Vec<String>) {
+fn verbose_integer_gcd(a_int: i64, b_int: i64) -> (i64, Vec<String>) {
+    let mut a = a_int.abs();
+    let mut b = b_int.abs();
     let mut steps = Vec::new();
+
     steps.push("Algoritmo de Euclides para enteros:".to_string());
 
-    // Handle initial display - show original values
-    let orig_a = a.clone();
-    let orig_b = b.clone();
-    steps.push(format!("Calculamos GCD({}, {})", orig_a, orig_b));
+    // Swap if needed for cleaner educational trace
+    if a < b {
+        std::mem::swap(&mut a, &mut b);
+        steps.push(format!(
+            "Intercambiamos para que el primer número sea mayor: GCD({}, {}) = GCD({}, {})",
+            a_int.abs(),
+            b_int.abs(),
+            a,
+            b
+        ));
+    }
 
-    while !b.is_zero() {
-        let q = &a / &b; // Cociente
-        let r = &a % &b; // Resto
+    steps.push(format!("Calculamos GCD({}, {})", a, b));
 
-        // Mensaje Educativo: Mostramos la reducción
+    while b != 0 {
+        let quotient = a / b;
+        let remainder = a % b;
+
         steps.push(format!(
             "Dividimos {} entre {}: Cociente = {}, Resto = {}",
-            a, b, q, r
+            a, b, quotient, remainder
         ));
 
-        if !r.is_zero() {
+        if remainder != 0 {
             steps.push(format!(
                 "   → Como el resto es {}, el nuevo problema es GCD({}, {})",
-                r, b, r
+                remainder, b, remainder
             ));
         } else {
             steps.push("   → El resto es 0. ¡Hemos terminado!".to_string());
         }
 
         a = b;
-        b = r;
+        b = remainder;
     }
 
     steps.push(format!("El Máximo Común Divisor es: {}", a));

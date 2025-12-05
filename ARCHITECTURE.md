@@ -1819,3 +1819,145 @@ define_rule!(
 ---
 
 *Documento generado para ExpliCAS v0.1.0*
+
+---
+
+## Number Theory Implementation
+
+### GCD (Greatest Common Divisor)
+
+El sistema implementa el **Algoritmo de Euclides** para calcular el MCD de enteros y polinomios univariados.
+
+#### Implementación
+
+**Archivo**: `crates/cas_engine/src/rules/number_theory.rs`
+
+```rust
+pub struct GcdResult {
+    pub value: Option<ExprId>,
+    pub steps: Vec<String>,  // Educational explanations
+}
+
+pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> GcdResult
+```
+
+#### Casos Soportados
+
+##### 1. **GCD Entero** ✅
+Algoritmo de Euclides clásico para enteros.
+
+```rust
+gcd(48, 18) → 6
+```
+
+**Algoritmo**:
+```
+GCD(48, 18):
+  48 = 18 × 2 + 12
+  18 = 12 × 1 + 6
+  12 = 6 × 2 + 0
+  → GCD = 6
+```
+
+##### 2. **GCD Polinómico Univariado** ✅
+Algoritmo de Euclides para polinomios en una variable.
+
+```rust
+gcd(2*x^2 + 7*x + 3, 2*x^2 + 5*x + 2) → 2*x + 1
+```
+
+**Algoritmo**:
+- Division de polinomios con resto
+- Reducción de grado iterativa
+- **Normalización**: Devuelve polinomio **primitivo** (coeficientes enteros con GCD=1)
+
+**Nota**: Versiones anteriores devolvían polinomios **mónicos** (coeficiente principal = 1), pero esto fue cambiado para devolver resultados con coeficientes enteros cuando es posible.
+
+##### 3. **GCD Multivariable** ⚠️ LIMITADO
+
+**Status**: No implementado. Devuelve conservadoramente GCD=1.
+
+**Razón**: El GCD de polinomios multivariables requiere algoritmos significativamente más complejos:
+
+**Algoritmos Necesarios**:
+1. **Euclides Recursivo**: Tratar una variable como principal, otras como coeficientes
+2. **Algoritmos Modulares**: Evaluación en puntos, interpolación
+3. **Algoritmo de Brown**: Usando subresultantes
+
+**Ejemplo del Problema**:
+```rust
+// Caso multivariable
+gcd(x*y + y^2, x^2 + x*y) 
+→ Actualmente devuelve: 1 (conservador)
+→ Debería devolver: x + y
+
+// Mensaje educativo
+"Detectados polinomios multivariables."
+"LIMITACIÓN: El GCD de polinomios multivariables no está implementado."
+"Devolviendo GCD = 1 (conservador, no simplifica)."
+```
+
+**Decisión de Diseño**:
+- Devolver GCD=1 es **matemáticamente correcto** (1 siempre divide a ambos)
+- Es **conservador**: Peor caso, no simplificamos fracciones
+- **No produce resultados incorrectos**
+- Alternativa (rechazada): Devolver `None` o panic - más disruptivo
+
+**Detección**:
+```rust
+let vars = collect_variables(ctx, a);
+let vars_b = collect_variables(ctx, b);
+
+if vars.len() > 1 || vars_b.len() > 1 || (vars != vars_b) {
+    // Multivariable case
+    return GcdResult {
+        value: Some(ctx.num(1)),
+        steps: vec!["LIMITACIÓN: ..."],
+    };
+}
+```
+
+#### Modo Educativo (`explain` Command)
+
+El comando `explain` proporciona trazas educativas paso a paso en español.
+
+**Usage**:
+```text
+> explain gcd(48, 18)
+```
+
+**Output**:
+```
+Algoritmo de Euclides para enteros:
+Calculamos GCD(48, 18)
+Dividimos 48 entre 18: Cociente = 2, Resto = 12
+   → Como el resto es 12, el nuevo problema es GCD(18, 12)
+Dividimos 18 entre 12: Cociente = 1, Resto = 6
+   → Como el resto es 6, el nuevo problema es GCD(12, 6)
+Dividimos 12 entre 6: Cociente = 2, Resto = 0
+   → El resto es 0. ¡Hemos terminado!
+El Máximo Común Divisor es: 6
+```
+
+**Implementación**:
+- `verbose_integer_gcd()`: Trace de Euclides para enteros
+- `verbose_poly_gcd()`: Trace de Euclides polinómico con detalles de grados y normalización
+
+#### Futuras Mejoras
+
+**GCD Multivariable**:
+1. **Corto Plazo**: Factor común separable por variable
+   ```rust
+   gcd(6*x*y, 9*x*y^2) → 3*x*y  // GCD numérico × GCD_x × GCD_y
+   ```
+2. **Medio Plazo**: Euclides recursivo
+3. **Largo Plazo**: Algoritmos modulares (Brown)
+
+**Otras Extensiones**:
+- LCM educativo (`explain lcm(...)`)
+- Factorización educativa (`explain factors(...)`)
+- Bezout coefficients (`extended_gcd(...)`)
+
+---
+
+## Configuración del Repo

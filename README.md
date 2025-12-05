@@ -168,6 +168,40 @@ Result: 10
 Result: 4
 ```
 
+#### 8. Educational Mode (`explain` Command)
+Get detailed, step-by-step explanations of mathematical algorithms. Currently supports GCD with the Euclidean algorithm.
+
+**Integer GCD:**
+```text
+> explain gcd(48, 18)
+```
+**Output:**
+```
+Educational Steps:
+────────────────────────────────────────────────────────────
+Intentando GCD numérico entre 48 y 18
+Algoritmo de Euclides para enteros:
+Calculamos GCD(48, 18)
+Dividimos 48 entre 18: Cociente = 2, Resto = 12
+   → Como el resto es 12, el nuevo problema es GCD(18, 12)
+Dividimos 18 entre 12: Cociente = 1, Resto = 6
+   → Como el resto es 6, el nuevo problema es GCD(12, 6)
+Dividimos 12 entre 6: Cociente = 2, Resto = 0
+   → El resto es 0. ¡Hemos terminado!
+El Máximo Común Divisor es: 6
+────────────────────────────────────────────────────────────
+Result: 6
+```
+
+**Polynomial GCD:**
+```text
+> explain gcd(2*x^2 + 7*x + 3, 2*x^2 + 5*x + 2)
+```
+Shows degree reduction steps and normalization.
+
+> **Note**: GCD currently supports integers and univariate polynomials. Multivariable polynomials conservatively return GCD=1.
+
+
 #### 7. Pre-Calculus (Absolute Value & Inequalities)
 The solver handles absolute values (branching) and inequalities (sign flipping).
 
