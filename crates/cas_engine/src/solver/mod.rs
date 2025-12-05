@@ -51,6 +51,36 @@ pub fn solve(
         simplified_eq.rhs = sim_rhs;
     }
 
+    // CRITICAL: After simplification, check for identities and contradictions
+    // Do this by moving everything to one side: LHS - RHS
+    let difference = simplifier
+        .context
+        .add(cas_ast::Expr::Sub(simplified_eq.lhs, simplified_eq.rhs));
+    let (diff_simplified, _) = simplifier.simplify(difference);
+
+    // Check if the difference has NO variable
+    if !contains_var(&simplifier.context, diff_simplified, var) {
+        // Variable disappeared - this is either an identity or contradiction
+        // Simplify the difference and check if it's zero
+        use cas_ast::Expr;
+        match simplifier.context.get(diff_simplified) {
+            Expr::Number(n) => {
+                use num_traits::Zero;
+                if n.is_zero() {
+                    // 0 = 0: Identity, all real numbers
+                    return Ok((SolutionSet::AllReals, vec![]));
+                } else {
+                    // c = 0 where c ≠ 0: Contradiction, no solution
+                    return Ok((SolutionSet::Empty, vec![]));
+                }
+            }
+            _ => {
+                // Difference couldn't simplify to a number
+                // This might be a complex case, proceed with normal solving
+            }
+        }
+    }
+
     // 3. Define strategies
     // In a real app, these might be configured in Simplifier or passed in.
     let strategies: Vec<Box<dyn SolverStrategy>> = vec![
