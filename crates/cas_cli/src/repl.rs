@@ -475,6 +475,24 @@ impl Repl {
             return;
         }
 
+        // Check for "det" command
+        if line.starts_with("det ") {
+            self.handle_det(&line);
+            return;
+        }
+
+        // Check for "transpose" command
+        if line.starts_with("transpose ") {
+            self.handle_transpose(&line);
+            return;
+        }
+
+        // Check for "trace" command
+        if line.starts_with("trace ") {
+            self.handle_trace(&line);
+            return;
+        }
+
         // Check for "profile" commands
         if line.starts_with("profile") {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -739,6 +757,33 @@ impl Repl {
                 println!("  explain gcd(48, 18)");
                 println!("  explain gcd(2*x^2 + 7*x + 3, 2*x^2 + 5*x + 2)");
             }
+            "det" => {
+                println!("Command: det <matrix>");
+                println!("Description: Compute the determinant of a square matrix.");
+                println!("             Supports 1×1, 2×2, and 3×3 matrices.");
+                println!("Examples:");
+                println!("  det [[1, 2], [3, 4]]        → -2");
+                println!("  det [[2]]                    → 2");
+                println!("  det [[1, 2, 3], [4, 5, 6], [7, 8, 9]]");
+            }
+            "transpose" => {
+                println!("Command: transpose <matrix>");
+                println!("Description: Transpose a matrix (swap rows and columns).");
+                println!("             Works with any rectangular matrix.");
+                println!("Examples:");
+                println!("  transpose [[1, 2, 3], [4, 5, 6]]");
+                println!("    → [[1, 4], [2, 5], [3, 6]]");
+                println!("  transpose [[1, 2], [3, 4]]");
+                println!("    → [[1, 3], [2, 4]]");
+            }
+            "trace" => {
+                println!("Command: trace <matrix>");
+                println!("Description: Compute the trace of a square matrix.");
+                println!("             The trace is the sum of diagonal elements.");
+                println!("Examples:");
+                println!("  trace [[1, 2], [3, 4]]      → 5");
+                println!("  trace [[5, 0, 0], [0, 3, 0], [0, 0, 2]]  → 10");
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
@@ -748,16 +793,27 @@ impl Repl {
 
     fn print_general_help(&self) {
         println!("Rust CAS Commands:");
+        println!();
+
+        println!("Basic Operations:");
         println!("  <expr>                  Evaluate and simplify an expression");
         println!("  simplify <expr>         Aggressive simplification (full power)");
-        println!("  config <subcmd>         Manage configuration (list, enable, disable...)");
-        println!("  subst <expr>, <var>=<val> Substitute a variable and simplify");
         println!("  expand <expr>           Expand polynomials");
         println!("  factor <expr>           Factor polynomials");
         println!("  collect <expr>, <var>   Group terms by variable");
-        println!("  equiv <e1>, <e2>        Check if two expressions are equivalent");
+        println!();
+
+        println!("Equation Solving:");
         println!("  solve <eq>, <var>       Solve equation for variable");
+        println!("  equiv <e1>, <e2>        Check if two expressions are equivalent");
+        println!("  subst <expr>, <var>=<val> Substitute a variable and simplify");
+        println!();
+
+        println!("Calculus:");
         println!("  diff <expr>, <var>      Compute symbolic derivative");
+        println!();
+
+        println!("Number Theory:");
         println!("  gcd <a, b>              Greatest Common Divisor");
         println!("  lcm <a, b>              Least Common Multiple");
         println!("  mod <a, n>              Modular arithmetic");
@@ -765,11 +821,27 @@ impl Repl {
         println!("  fact <n>                Factorial (or n!)");
         println!("  choose <n, k>           Binomial coefficient (nCk)");
         println!("  perm <n, k>             Permutations (nPk)");
+        println!();
+
+        println!("Matrix Operations:");
+        println!("  det <matrix>            Compute determinant (up to 3×3)");
+        println!("  transpose <matrix>      Transpose a matrix");
+        println!("  trace <matrix>          Compute trace (sum of diagonal)");
+        println!();
+
+        println!("Analysis & Verification:");
+        println!("  explain <function>      Show step-by-step explanation");
         println!("  steps <level>           Set step verbosity (normal, low, verbose, none)");
-        println!("  explain <function>      Show step-by-step explanation of a function");
-        println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
+        println!();
+
+        println!("Visualization & Output:");
         println!("  visualize <expr>        Export AST to Graphviz DOT (generates ast.dot)");
         println!("  timeline <expr>         Export steps to interactive HTML");
+        println!();
+
+        println!("System:");
+        println!("  config <subcmd>         Manage configuration (list, enable, disable...)");
+        println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
         println!();
@@ -1128,6 +1200,117 @@ impl Repl {
                     println!("Explain mode currently only supports function calls");
                     println!("Try: explain gcd(48, 18)");
                 }
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    fn handle_det(&mut self, line: &str) {
+        let rest = line[4..].trim(); // Remove "det "
+
+        // Parse the matrix expression
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                // Wrap in det() function call
+                let det_expr = self
+                    .simplifier
+                    .context
+                    .add(Expr::Function("det".to_string(), vec![expr]));
+
+                // Simplify to compute determinant
+                let (result, steps) = self.simplifier.simplify(det_expr);
+
+                println!("Parsed: det({})", rest);
+
+                // Print steps if verbosity is not None
+                if self.verbosity != Verbosity::None && !steps.is_empty() {
+                    println!("Steps:");
+                    for (i, step) in steps.iter().enumerate() {
+                        println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                    }
+                }
+
+                println!(
+                    "Result: {}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: result
+                    }
+                );
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    fn handle_transpose(&mut self, line: &str) {
+        let rest = line[10..].trim(); // Remove "transpose "
+
+        // Parse the matrix expression
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                // Wrap in transpose() function call
+                let transpose_expr = self
+                    .simplifier
+                    .context
+                    .add(Expr::Function("transpose".to_string(), vec![expr]));
+
+                // Simplify to compute transpose
+                let (result, steps) = self.simplifier.simplify(transpose_expr);
+
+                println!("Parsed: transpose({})", rest);
+
+                // Print steps if verbosity is not None
+                if self.verbosity != Verbosity::None && !steps.is_empty() {
+                    println!("Steps:");
+                    for (i, step) in steps.iter().enumerate() {
+                        println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                    }
+                }
+
+                println!(
+                    "Result: {}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: result
+                    }
+                );
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    fn handle_trace(&mut self, line: &str) {
+        let rest = line[6..].trim(); // Remove "trace "
+
+        // Parse the matrix expression
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                // Wrap in trace() function call
+                let trace_expr = self
+                    .simplifier
+                    .context
+                    .add(Expr::Function("trace".to_string(), vec![expr]));
+
+                // Simplify to compute trace
+                let (result, steps) = self.simplifier.simplify(trace_expr);
+
+                println!("Parsed: trace({})", rest);
+
+                // Print steps if verbosity is not None
+                if self.verbosity != Verbosity::None && !steps.is_empty() {
+                    println!("Steps:");
+                    for (i, step) in steps.iter().enumerate() {
+                        println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                    }
+                }
+
+                println!(
+                    "Result: {}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: result
+                    }
+                );
             }
             Err(e) => println!("Parse error: {}", e),
         }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: gcd(2 * x^2 + 7 * x + 3, 2 * x^2 + 5 * x + 2)</title>
+    <title>CAS Steps: transpose([[1, 2, 3], [4, 5, 6]])</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -167,21 +167,31 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[gcd(2 * x^2 + 7 * x + 3, 2 * x^2 + 5 * x + 2)\]
+            \[transpose([[1, 2, 3], [4, 5, 6]])\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Number Theory Operations</h3>
+                    <h3>Matrix Functions</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[{\color{red}{\text{gcd}(3 + 2{x}^{2} + 7x, 2 + 2{x}^{2} + 5x)}}\]
+                        \[{\color{red}{\text{transpose}(\begin{bmatrix}
+1 & 2 & 3 \\
+4 & 5 & 6
+\end{bmatrix})}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{gcd(3 + 2 * x^2 + 7 * x, 2 + 2 * x^2 + 5 * x)}\)</div>
+                        <div class="rule-name">\(\text{transpose(2×3) = 3×2}\)</div>
                         <div class="local-change">
-                            \[\text{gcd}(3 + 2{x}^{2} + 7x, 2 + 2{x}^{2} + 5x) \rightarrow 2x + 1\]
+                            \[\text{transpose}(\begin{bmatrix}
+1 & 2 & 3 \\
+4 & 5 & 6
+\end{bmatrix}) \rightarrow \begin{bmatrix}
+1 & 4 \\
+2 & 5 \\
+3 & 6
+\end{bmatrix}\]
                         </div>
                     </div>
                 </div>
@@ -189,7 +199,11 @@
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[1 + 2x\]
+            \[\begin{bmatrix}
+1 & 4 \\
+2 & 5 \\
+3 & 6
+\end{bmatrix}\]
         </div>
     </div>
     <footer>
