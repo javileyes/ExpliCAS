@@ -152,10 +152,33 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
 });
 
 fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
-    let val_a = get_integer(ctx, a)?;
-    let val_b = get_integer(ctx, b)?;
-    let gcd = val_a.gcd(&val_b);
-    Some(ctx.add(Expr::Number(BigRational::from_integer(gcd))))
+    // Try integer GCD first
+    if let (Some(val_a), Some(val_b)) = (get_integer(ctx, a), get_integer(ctx, b)) {
+        let gcd = val_a.gcd(&val_b);
+        return Some(ctx.add(Expr::Number(BigRational::from_integer(gcd))));
+    }
+
+    // Try polynomial GCD
+    use crate::polynomial::Polynomial;
+    use crate::rules::algebra::collect_variables;
+
+    let vars = collect_variables(ctx, a);
+    let vars_b = collect_variables(ctx, b);
+
+    // Must be univariate and same variable
+    if vars.len() == 1 && vars == vars_b {
+        let var = vars.iter().next().unwrap();
+
+        if let (Ok(p_a), Ok(p_b)) = (
+            Polynomial::from_expr(ctx, a, var),
+            Polynomial::from_expr(ctx, b, var),
+        ) {
+            let gcd_poly = p_a.gcd(&p_b);
+            return Some(gcd_poly.to_expr(ctx));
+        }
+    }
+
+    None
 }
 
 fn compute_lcm(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
