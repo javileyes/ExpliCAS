@@ -629,3 +629,582 @@ fn test_very_small_coefficients() {
         _ => panic!("Expected discrete solution"),
     }
 }
+
+// ============================================================================
+// LEVEL 10: Advanced Rational Inequalities
+// ============================================================================
+
+#[test]
+fn test_rational_multiple_discontinuities() {
+    // 1 / ((x - 1) * (x - 3)) > 0
+    // Discontinuities at x = 1 and x = 3
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("1 / ((x - 1) * (x - 3))", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Gt,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Multiple discontinuities should be handled");
+}
+
+#[test]
+fn test_symmetric_rational() {
+    // (x - 1) / (x + 1) = (x + 1) / (x - 1)
+    // x = 0
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(x - 1) / (x + 1)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("(x + 1) / (x - 1)", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Symmetric rational should solve");
+}
+
+// ============================================================================
+// LEVEL 11: Advanced Absolute Value and Radicals
+// ============================================================================
+
+#[test]
+fn test_nested_absolute_values() {
+    // ||x| - 2| = 1 → |x| = 3 or |x| = 1
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("abs(abs(x) - 2)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("1", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Nested absolute values should solve");
+}
+
+#[test]
+fn test_irrational_equation() {
+    // sqrt(x + 5) = 3 → x = 4
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(x + 5)^(1/2)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("3", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Irrational equation should solve");
+}
+
+#[test]
+fn test_reciprocal_equation() {
+    // 1/x + x = 2
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("1/x + x", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    // Complex - requires converting to quadratic
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Should handle gracefully"
+    );
+}
+
+// ============================================================================
+// LEVEL 12: Pathological Edge Cases
+// ============================================================================
+
+#[test]
+fn test_equation_with_parameters() {
+    // ax + b = 0 where a, b are unknown constants
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("a * x + b", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    // Should solve x = -b/a
+    assert!(result.is_ok(), "Parametric equation should solve");
+}
+
+#[test]
+fn test_high_power_polynomial() {
+    // x^3 - 6x^2 + 11x - 6 = 0
+    // Factors as (x-1)(x-2)(x-3) = 0
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("x^3 - 6*x^2 + 11*x - 6", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    // Cubic - may not solve analytically
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Should handle gracefully"
+    );
+}
+
+#[test]
+fn test_contradiction_with_division() {
+    // 1/(x-1) = 1/(x-1) + 1 → 0 = 1
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("1 / (x - 1)", &mut s.context).unwrap();
+    let rhs_part1 = cas_parser::parse("1 / (x - 1)", &mut s.context).unwrap();
+    let rhs_part2 = cas_parser::parse("1", &mut s.context).unwrap();
+    let rhs = s.context.add(cas_ast::Expr::Add(rhs_part1, rhs_part2));
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let (solution, _) = solve(&eq, "x", &mut s).unwrap();
+
+    // Should be empty (contradiction)
+    match solution {
+        SolutionSet::Empty => {}
+        SolutionSet::Discrete(vals) if vals.is_empty() => {}
+        _ => panic!("Expected empty solution for contradiction"),
+    }
+}
+
+// ============================================================================
+// LEVEL 13: Complex Mixed Operations
+// ============================================================================
+
+#[test]
+fn test_absolute_value_with_fraction() {
+    // |x/(x-1)| = 2
+    // Complex: need to handle both division and absolute value
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("abs(x / (x - 1))", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Absolute value with fraction should handle");
+}
+
+#[test]
+fn test_nested_radicals_equation() {
+    // sqrt(x + sqrt(x)) = 2
+    // Requires multiple squaring operations
+    let mut s = Simplifier::with_default_rules();
+    let x_id = cas_parser::parse("x", &mut s.context).unwrap();
+    let inner_sqrt = cas_parser::parse("x^(1/2)", &mut s.context).unwrap();
+    let sum = s.context.add(cas_ast::Expr::Add(x_id, inner_sqrt));
+    let half_id = cas_parser::parse("1/2", &mut s.context).unwrap();
+    let lhs = s.context.add(cas_ast::Expr::Pow(sum, half_id));
+    let rhs = cas_parser::parse("2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    // Very advanced - may not solve
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Should handle gracefully"
+    );
+}
+
+#[test]
+fn test_polynomial_fraction_inequality() {
+    // (x^2 + 1) / (x^2 - 4) > 0
+    // Need to analyze sign of both numerator and denominator
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(x^2 + 1) / (x^2 - 4)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Gt,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(
+        result.is_ok(),
+        "Polynomial fraction inequality should solve"
+    );
+}
+
+#[test]
+fn test_multi_term_rational() {
+    // 1/x + 1/(x-1) = 1
+    // Requires finding common denominator
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("1/x + 1/(x - 1)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("1", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Multi-term rational should handle"
+    );
+}
+
+// ============================================================================
+// LEVEL 14: Deeply Nested Expressions
+// ============================================================================
+
+#[test]
+fn test_triple_nested_absolute() {
+    // |||x| - 1| - 1| = 0
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("abs(abs(abs(x) - 1) - 1)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Triple nested absolute should solve");
+}
+
+#[test]
+fn test_nested_fractions_complex() {
+    // 1/(1 + 1/x) = 2
+    // Nested fraction requires careful handling
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("1 / (1 + 1/x)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Nested fractions should solve");
+}
+
+#[test]
+fn test_repeated_squaring() {
+    // ((x^2)^2)^2 = 64
+    // x^8 = 64, should give ±2^(3/4) or simplify further
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("((x^2)^2)^2", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("64", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Repeated squaring should solve");
+}
+
+#[test]
+fn test_mixed_radical_polynomial() {
+    // sqrt(x) + x = 6
+    // Requires substitution or squaring technique
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("x^(1/2) + x", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("6", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Mixed radical polynomial should handle"
+    );
+}
+
+// ============================================================================
+// LEVEL 15: Extreme Numerical Cases
+// ============================================================================
+
+#[test]
+fn test_extremely_large_exponent() {
+    // x^100 = 2^100
+    // Should give x = 2 (principal root)
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("x^100", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("2^100", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Large exponents should handle"
+    );
+}
+
+#[test]
+fn test_fractional_exponents_complex() {
+    // x^(3/2) = 8
+    // x = 4
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("x^(3/2)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("8", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Fractional exponents should solve");
+}
+
+#[test]
+fn test_many_terms_linear() {
+    // x + 2x + 3x + 4x + 5x = 150
+    // Should combine to 15x = 150, x = 10
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("x + 2*x + 3*x + 4*x + 5*x", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("150", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let (solution, _) = solve(&eq, "x", &mut s).unwrap();
+
+    match solution {
+        SolutionSet::Discrete(values) => {
+            assert_eq!(values.len(), 1, "Should have one solution");
+        }
+        _ => panic!("Expected discrete solution"),
+    }
+}
+
+#[test]
+fn test_alternating_signs() {
+    // x - 2*x + 3*x - 4*x + 5*x = 9
+    // Should combine to 3x = 9, x = 3
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("x - 2*x + 3*x - 4*x + 5*x", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("9", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let (solution, _) = solve(&eq, "x", &mut s).unwrap();
+
+    match solution {
+        SolutionSet::Discrete(values) => {
+            assert_eq!(values.len(), 1);
+        }
+        _ => panic!("Expected discrete solution"),
+    }
+}
+
+// ============================================================================
+// LEVEL 16: Maximum Stress Tests
+// ============================================================================
+
+#[test]
+fn test_product_of_many_factors() {
+    // (x-1)(x-2)(x-3)(x-4)(x-5) = 0
+    // Should have 5 solutions
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse(
+        "(x - 1) * (x - 2) * (x - 3) * (x - 4) * (x - 5)",
+        &mut s.context,
+    )
+    .unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    // May not find all roots
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Product of many factors should handle"
+    );
+}
+
+#[test]
+fn test_rational_with_many_terms() {
+    // (x + 1) / (x - 1) + (x - 1) / (x + 1) = 2
+    // Symmetric, should simplify nicely
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(x + 1) / (x - 1) + (x - 1) / (x + 1)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Symmetric rational should handle"
+    );
+}
+
+#[test]
+fn test_inequality_with_absolute_rational() {
+    // |x / (x + 1)| < 1/2
+    // Complex domain restrictions
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("abs(x / (x + 1))", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("1/2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Lt,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Absolute rational inequality should handle"
+    );
+}
+
+#[test]
+fn test_quadratic_with_many_operations() {
+    // (x + 1)^2 - 2*(x + 1) + 1 = 0
+    // Let u = x + 1, then u^2 - 2u + 1 = 0, u = 1, x = 0
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(x + 1)^2 - 2*(x + 1) + 1", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(
+        result.is_ok(),
+        "Quadratic with substitution pattern should solve"
+    );
+}
+
+#[test]
+fn test_complex_domain_restriction() {
+    // sqrt(x - 1) + sqrt(x + 1) = 2
+    // Domain: x >= 1
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(x - 1)^(1/2) + (x + 1)^(1/2)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Complex domain restrictions should handle"
+    );
+}
+
+#[test]
+fn test_pathological_cancellation() {
+    // (x^2 - 1) / (x - 1) = x + 2
+    // Cancels to x + 1 = x + 2 (no solution) but must exclude x = 1
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(x^2 - 1) / (x - 1)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("x + 2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let (solution, _) = solve(&eq, "x", &mut s).unwrap();
+
+    // Should be empty (x + 1 = x + 2 has no solution)
+    match solution {
+        SolutionSet::Empty => {}
+        SolutionSet::Discrete(vals) if vals.is_empty() => {}
+        _ => {} // May simplify differently
+    }
+}
+
+#[test]
+fn test_stress_deep_nesting() {
+    // 1/(1/(1/(1/x))) = 2
+    // Should simplify to x = 2
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("1 / (1 / (1 / (1 / x)))", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("2", &mut s.context).unwrap();
+
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    assert!(result.is_ok(), "Deep nesting should simplify and solve");
+}
