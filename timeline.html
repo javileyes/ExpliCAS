@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: 1 / (sqrt(x) + 1) + 1 / (sqrt(x) - 1) - 2 * sqrt(x) / (x - 1)</title>
+    <title>CAS Steps: 8 * sin(x)^4 - (3 - 4 * cos(2 * x) + cos(4 * x))</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -167,7 +167,7 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[1 / (sqrt(x) + 1) + 1 / (sqrt(x) - 1) - 2 * sqrt(x) / (x - 1)\]
+            \[8 * sin(x)^4 - (3 - 4 * cos(2 * x) + cos(4 * x))\]
         </div>
         <div class="timeline">
             <div class="step">
@@ -176,12 +176,12 @@
                     <h3>Collect</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[{\color{red}{\frac{1}{\sqrt{x} + 1} + \frac{1}{\sqrt{x} - 1} - \frac{2\sqrt{x}}{x - 1}}}\]
+                        \[{\color{red}{8{\sin(x)}^{4} - 3 - (4\cos(2x)) + \cos(4x)}}\]
                     </div>
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Initial Collection}\)</div>
                         <div class="local-change">
-                            \[\frac{1}{\sqrt{x} + 1} + \frac{1}{\sqrt{x} - 1} - \frac{2\sqrt{x}}{x - 1} \rightarrow -\frac{2\sqrt{x}}{x - 1} + \frac{1}{\sqrt{x} + 1} + \frac{1}{\sqrt{x} - 1}\]
+                            \[8{\sin(x)}^{4} - 3 - (4\cos(2x)) + \cos(4x) \rightarrow -3 + -\cos(4x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                         </div>
                     </div>
                 </div>
@@ -189,15 +189,15 @@
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Pull Constant From Fraction</h3>
+                    <h3>Recursive Trig Expansion</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-{\color{red}{\frac{2\sqrt{x}}{-1 + x}}} + \frac{1}{\sqrt{x} + 1} + \frac{1}{\sqrt{x} - 1}\]
+                        \[-3 + -{\color{red}{\cos(4x)}} + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Pull constant from numerator}\)</div>
+                        <div class="rule-name">\(\text{cos(4x) expansion}\)</div>
                         <div class="local-change">
-                            \[\frac{2\sqrt{x}}{-1 + x} \rightarrow 2\cdot \frac{\sqrt{x}}{-1 + x}\]
+                            \[\cos(4x) \rightarrow \cos(3x)\cos(x) - (\sin(3x)\sin(x))\]
                         </div>
                     </div>
                 </div>
@@ -205,15 +205,15 @@
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Rationalize Denominator</h3>
+                    <h3>Recursive Trig Expansion</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + {\color{red}{\frac{1}{1 + \sqrt{x}}}} + \frac{1}{\sqrt{x} - 1}\]
+                        \[-3 + -{\color{red}{\cos(3x)}}\cos(x) - \sin(3x)\sin(x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
+                        <div class="rule-name">\(\text{cos(3x) expansion}\)</div>
                         <div class="local-change">
-                            \[\frac{1}{1 + \sqrt{x}} \rightarrow \frac{1\cdot (1 - \sqrt{x})}{{1}^{2} - {\sqrt{x}}^{2}}\]
+                            \[\cos(3x) \rightarrow \cos(2x)\cos(x) - (\sin(2x)\sin(x))\]
                         </div>
                     </div>
                 </div>
@@ -221,15 +221,15 @@
             <div class="step">
                 <div class="step-number">4</div>
                 <div class="step-content">
-                    <h3>Power of a Power</h3>
+                    <h3>Double Angle Identity</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{1 - \sqrt{x}}{1 - {\color{red}{{\sqrt{x}}^{2}}}} + \frac{1}{\sqrt{x} - 1}\]
+                        \[-3 + -({\color{red}{\cos(2x)}}\cos(x) - \sin(2x)\sin(x))\cos(x) - \sin(3x)\sin(x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="rule-name">\(\text{cos(2x) -> cos^2(x) - sin^2(x)}\)</div>
                         <div class="local-change">
-                            \[{{x}^{\frac{1}{2}}}^{2} \rightarrow {x}^{\frac{1}{2}\cdot 2}\]
+                            \[\cos(2x) \rightarrow {\cos(x)}^{2} - {\sin(x)}^{2}\]
                         </div>
                     </div>
                 </div>
@@ -237,15 +237,15 @@
             <div class="step">
                 <div class="step-number">5</div>
                 <div class="step-content">
-                    <h3>Rationalize Denominator</h3>
+                    <h3>Double Angle Identity</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{1 - \sqrt{x}}{1 - x} + {\color{red}{\frac{1}{-1 + \sqrt{x}}}}\]
+                        \[-3 + -(\cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2}) - {\color{red}{\sin(2x)}}\sin(x))\cos(x) - \sin(3x)\sin(x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
+                        <div class="rule-name">\(\text{sin(2x) -> 2sin(x)cos(x)}\)</div>
                         <div class="local-change">
-                            \[\frac{1}{-1 + \sqrt{x}} \rightarrow \frac{1\cdot (-1 - \sqrt{x})}{{-1}^{2} - {\sqrt{x}}^{2}}\]
+                            \[\sin(2x) \rightarrow 2\sin(x)\cos(x)\]
                         </div>
                     </div>
                 </div>
@@ -253,15 +253,15 @@
             <div class="step">
                 <div class="step-number">6</div>
                 <div class="step-content">
-                    <h3>Power of a Power</h3>
+                    <h3>Product of Powers</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{1 - \sqrt{x}}{1 - x} + \frac{-1 - \sqrt{x}}{1 - {\color{red}{{\sqrt{x}}^{2}}}}\]
+                        \[-3 + -(\cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2}) - 2\cos(x){\color{red}{\sin(x)\sin(x)}})\cos(x) - \sin(3x)\sin(x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="rule-name">\(\text{Multiply identical terms}\)</div>
                         <div class="local-change">
-                            \[{{x}^{\frac{1}{2}}}^{2} \rightarrow {x}^{\frac{1}{2}\cdot 2}\]
+                            \[\sin(x)\sin(x) \rightarrow {\sin(x)}^{2}\]
                         </div>
                     </div>
                 </div>
@@ -269,15 +269,15 @@
             <div class="step">
                 <div class="step-number">7</div>
                 <div class="step-content">
-                    <h3>Add Fractions</h3>
+                    <h3>Recursive Trig Expansion</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + {\color{red}{\frac{-1 - \sqrt{x}}{1 - x} + \frac{1 - \sqrt{x}}{1 - x}}}\]
+                        \[-3 + -\cos(x)(-2\cos(x){\sin(x)}^{2} + \cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2})) - {\color{red}{\sin(3x)}}\sin(x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
+                        <div class="rule-name">\(\text{sin(3x) expansion}\)</div>
                         <div class="local-change">
-                            \[\frac{-1 - \sqrt{x}}{1 - x} + \frac{1 - \sqrt{x}}{1 - x} \rightarrow \frac{(-1 - \sqrt{x})\cdot -1 + (1 - \sqrt{x})\cdot -1}{(1 - x)\cdot -1}\]
+                            \[\sin(3x) \rightarrow \sin(2x)\cos(x) + \cos(2x)\sin(x)\]
                         </div>
                     </div>
                 </div>
@@ -285,15 +285,15 @@
             <div class="step">
                 <div class="step-number">8</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Double Angle Identity</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{{\color{red}{-1\cdot (-1 - \sqrt{x})}} + (1 - \sqrt{x})\cdot -1}{(1 - x)\cdot -1}\]
+                        \[-3 + -\cos(x)(-2\cos(x){\sin(x)}^{2} + \cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2})) - ({\color{red}{\sin(2x)}}\cos(x) + \cos(2x)\sin(x))\sin(x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="rule-name">\(\text{sin(2x) -> 2sin(x)cos(x)}\)</div>
                         <div class="local-change">
-                            \[-1\cdot (-1 - \sqrt{x}) \rightarrow --1 - \sqrt{x}\]
+                            \[\sin(2x) \rightarrow 2\sin(x)\cos(x)\]
                         </div>
                     </div>
                 </div>
@@ -301,15 +301,15 @@
             <div class="step">
                 <div class="step-number">9</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Product of Powers</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{1 + \sqrt{x} + {\color{red}{-1\cdot (1 - \sqrt{x})}}}{(1 - x)\cdot -1}\]
+                        \[-3 + -\cos(x)(-2\cos(x){\sin(x)}^{2} + \cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2})) - (2{\color{red}{\cos(x)\cos(x)\sin(x)}} + \cos(2x)\sin(x))\sin(x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="rule-name">\(\text{Combine nested identical terms}\)</div>
                         <div class="local-change">
-                            \[-1\cdot (1 - \sqrt{x}) \rightarrow -1 - \sqrt{x}\]
+                            \[\cos(x)\cos(x)\sin(x) \rightarrow {\cos(x)}^{2}\sin(x)\]
                         </div>
                     </div>
                 </div>
@@ -317,15 +317,15 @@
             <div class="step">
                 <div class="step-number">10</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Double Angle Identity</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{-1 + 1 + {\color{red}{\sqrt{x} + \sqrt{x}}}}{(1 - x)\cdot -1}\]
+                        \[-3 + -\cos(x)(-2\cos(x){\sin(x)}^{2} + \cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2})) - (2\sin(x){\cos(x)}^{2} + {\color{red}{\cos(2x)}}\sin(x))\sin(x) + 4\cos(2x) + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="rule-name">\(\text{cos(2x) -> cos^2(x) - sin^2(x)}\)</div>
                         <div class="local-change">
-                            \[\sqrt{x} + \sqrt{x} \rightarrow 2\sqrt{x}\]
+                            \[\cos(2x) \rightarrow {\cos(x)}^{2} - {\sin(x)}^{2}\]
                         </div>
                     </div>
                 </div>
@@ -333,15 +333,15 @@
             <div class="step">
                 <div class="step-number">11</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Double Angle Identity</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + \frac{2\sqrt{x}}{{\color{red}{-1\cdot (1 - x)}}}\]
+                        \[-3 + -(\cos(x)(-2\cos(x){\sin(x)}^{2} + \cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2}))) + \sin(x)(2\sin(x){\cos(x)}^{2} + \sin(x)(-{\sin(x)}^{2} + {\cos(x)}^{2})) + 4{\color{red}{\cos(2x)}} + 8{\sin(x)}^{4}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="rule-name">\(\text{cos(2x) -> cos^2(x) - sin^2(x)}\)</div>
                         <div class="local-change">
-                            \[-1\cdot (1 - x) \rightarrow -1 - x\]
+                            \[\cos(2x) \rightarrow {\cos(x)}^{2} - {\sin(x)}^{2}\]
                         </div>
                     </div>
                 </div>
@@ -349,15 +349,15 @@
             <div class="step">
                 <div class="step-number">12</div>
                 <div class="step-content">
-                    <h3>Pull Constant From Fraction</h3>
+                    <h3>Expand</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[-2\cdot \frac{\sqrt{x}}{-1 + x} + {\color{red}{\frac{2\sqrt{x}}{-1 + x}}}\]
+                        \[{\color{red}{-3 + -(\cos(x)(-2\cos(x){\sin(x)}^{2} + \cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2}))) + 4\cdot (-{\sin(x)}^{2} + {\cos(x)}^{2}) + 8{\sin(x)}^{4} + \sin(x)(2\sin(x){\cos(x)}^{2} + \sin(x)(-{\sin(x)}^{2} + {\cos(x)}^{2}))}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Pull constant from numerator}\)</div>
+                        <div class="rule-name">\(\text{Expand Polynomial}\)</div>
                         <div class="local-change">
-                            \[\frac{2\sqrt{x}}{-1 + x} \rightarrow 2\cdot \frac{\sqrt{x}}{-1 + x}\]
+                            \[-3 + -(\cos(x)(-2\cos(x){\sin(x)}^{2} + \cos(x)(-{\sin(x)}^{2} + {\cos(x)}^{2}))) + 4\cdot (-{\sin(x)}^{2} + {\cos(x)}^{2}) + 8{\sin(x)}^{4} + \sin(x)(2\sin(x){\cos(x)}^{2} + \sin(x)(-{\sin(x)}^{2} + {\cos(x)}^{2})) \rightarrow -3 + -\cos(x)-2\cos(x){\sin(x)}^{2} + \cos(x)\cos(x)-{\sin(x)}^{2} + \cos(x)\cos(x){\cos(x)}^{2} + 4-{\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + \sin(x)2\sin(x){\cos(x)}^{2} + \sin(x)\sin(x)-{\sin(x)}^{2} + \sin(x)\sin(x){\cos(x)}^{2}\]
                         </div>
                     </div>
                 </div>
@@ -365,15 +365,271 @@
             <div class="step">
                 <div class="step-number">13</div>
                 <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + --2\cos(x)\cos(x){\sin(x)}^{2} + -(\cos(x)\cos(x){\sin(x)}^{2}) + \cos(x){\color{red}{\cos(x){\cos(x)}^{2}}} + 4-{\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + \sin(x)2\sin(x){\cos(x)}^{2} + \sin(x)\sin(x)-{\sin(x)}^{2} + \sin(x)\sin(x){\cos(x)}^{2}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine base and power}\)</div>
+                        <div class="local-change">
+                            \[\cos(x){\cos(x)}^{2} \rightarrow {\cos(x)}^{1 + 2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">14</div>
+                <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + --2\cos(x)\cos(x){\sin(x)}^{2} + -(\cos(x)\cos(x){\sin(x)}^{2}) + {\color{red}{\cos(x){\cos(x)}^{1 + 2}}} + 4-{\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + \sin(x)2\sin(x){\cos(x)}^{2} + \sin(x)\sin(x)-{\sin(x)}^{2} + \sin(x)\sin(x){\cos(x)}^{2}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine base and power}\)</div>
+                        <div class="local-change">
+                            \[\cos(x){\cos(x)}^{1 + 2} \rightarrow {\cos(x)}^{1 + 1 + 2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">15</div>
+                <div class="step-content">
                     <h3>Combine Like Terms</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[{\color{red}{-2\cdot \frac{\sqrt{x}}{-1 + x} + 2\cdot \frac{\sqrt{x}}{-1 + x}}}\]
+                        \[-3 + -{\color{red}{-2\cos(x)\cos(x){\sin(x)}^{2} + -(\cos(x)\cos(x){\sin(x)}^{2}) + {\cos(x)}^{1 + 1 + 2}}} + 4-{\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + \sin(x)2\sin(x){\cos(x)}^{2} + \sin(x)\sin(x)-{\sin(x)}^{2} + \sin(x)\sin(x){\cos(x)}^{2}\]
                     </div>
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
                         <div class="local-change">
-                            \[-2\cdot \frac{\sqrt{x}}{-1 + x} + 2\cdot \frac{\sqrt{x}}{-1 + x} \rightarrow 0\]
+                            \[-2\cos(x)\cos(x){\sin(x)}^{2} + -(\cos(x)\cos(x){\sin(x)}^{2}) + {\cos(x)}^{1 + 1 + 2} \rightarrow {\cos(x)}^{1 + 1 + 2} + -3\cos(x)\cos(x){\sin(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">16</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + {\color{red}{-{\cos(x)}^{1 + 1 + 2} - (-3\cos(x)\cos(x){\sin(x)}^{2})}} + 4-{\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + \sin(x)2\sin(x){\cos(x)}^{2} + \sin(x)\sin(x)-{\sin(x)}^{2} + \sin(x)\sin(x){\cos(x)}^{2}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-{\cos(x)}^{1 + 1 + 2} - (-3\cos(x)\cos(x){\sin(x)}^{2}) \rightarrow -{\cos(x)}^{1 + 1 + 2} + 3\cos(x)\cos(x){\sin(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">17</div>
+                <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + 3\cos(x)\cos(x){\sin(x)}^{2} + -4{\sin(x)}^{2} + 8{\sin(x)}^{4} + \sin(x)2\sin(x){\cos(x)}^{2} + 2\sin(x)\sin(x){\cos(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}){\color{red}{\sin(x)\sin(x){\cos(x)}^{2}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine nested identical terms}\)</div>
+                        <div class="local-change">
+                            \[\sin(x)\sin(x){\cos(x)}^{2} \rightarrow {\sin(x)}^{2}{\cos(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">18</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + 3\cos(x)\cos(x){\sin(x)}^{2} + -4{\sin(x)}^{2} + 8{\sin(x)}^{4} + \sin(x)2\sin(x){\cos(x)}^{2} + {\color{red}{2\sin(x)\sin(x){\cos(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + {\cos(x)}^{2}{\sin(x)}^{2}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[2\sin(x)\sin(x){\cos(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + {\cos(x)}^{2}{\sin(x)}^{2} \rightarrow -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">19</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + 3\cos(x)\cos(x){\sin(x)}^{2} + -4{\sin(x)}^{2} + 8{\sin(x)}^{4} + {\color{red}{8{\sin(x)}^{4} + -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + {\cos(x)}^{2}{\sin(x)}^{2}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[8{\sin(x)}^{4} + -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + {\cos(x)}^{2}{\sin(x)}^{2} \rightarrow -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">20</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + 3\cos(x)\cos(x){\sin(x)}^{2} + -4{\sin(x)}^{2} + {\color{red}{4{\cos(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[4{\cos(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2} \rightarrow -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">21</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + 3\cos(x)\cos(x){\sin(x)}^{2} + {\color{red}{-4{\sin(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-4{\sin(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + 2\sin(x)\sin(x){\cos(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2} \rightarrow -(\sin(x)\sin(x){\sin(x)}^{2}) + -4{\sin(x)}^{2} + 2\sin(x)\sin(x){\cos(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">22</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + {\color{red}{-{\cos(x)}^{1 + 1 + 2} + 3\cos(x)\cos(x){\sin(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + -4{\sin(x)}^{2} + 2\sin(x)\sin(x){\cos(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-{\cos(x)}^{1 + 1 + 2} + 3\cos(x)\cos(x){\sin(x)}^{2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + -4{\sin(x)}^{2} + 2\sin(x)\sin(x){\cos(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2} \rightarrow -{\cos(x)}^{1 + 1 + 2} + -(\sin(x)\sin(x){\sin(x)}^{2}) + -4{\sin(x)}^{2} + 2\sin(x)\sin(x){\cos(x)}^{2} + 3\cos(x)\cos(x){\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">23</div>
+                <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + -\sin(x){\color{red}{\sin(x){\sin(x)}^{2}}} + -4{\sin(x)}^{2} + 2\sin(x)\sin(x){\cos(x)}^{2} + 3\cos(x)\cos(x){\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine base and power}\)</div>
+                        <div class="local-change">
+                            \[\sin(x){\sin(x)}^{2} \rightarrow {\sin(x)}^{1 + 2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">24</div>
+                <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + -{\color{red}{\sin(x){\sin(x)}^{1 + 2}}} + -4{\sin(x)}^{2} + 2\sin(x)\sin(x){\cos(x)}^{2} + 3\cos(x)\cos(x){\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine base and power}\)</div>
+                        <div class="local-change">
+                            \[\sin(x){\sin(x)}^{1 + 2} \rightarrow {\sin(x)}^{1 + 1 + 2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">25</div>
+                <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + -{\sin(x)}^{1 + 1 + 2} + -4{\sin(x)}^{2} + 2{\color{red}{\sin(x)\sin(x){\cos(x)}^{2}}} + 3\cos(x)\cos(x){\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine nested identical terms}\)</div>
+                        <div class="local-change">
+                            \[\sin(x)\sin(x){\cos(x)}^{2} \rightarrow {\sin(x)}^{2}{\cos(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">26</div>
+                <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + -{\sin(x)}^{1 + 1 + 2} + -4{\sin(x)}^{2} + 2{\cos(x)}^{2}{\sin(x)}^{2} + 3{\color{red}{\cos(x)\cos(x){\sin(x)}^{2}}} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine nested identical terms}\)</div>
+                        <div class="local-change">
+                            \[\cos(x)\cos(x){\sin(x)}^{2} \rightarrow {\cos(x)}^{2}{\sin(x)}^{2}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">27</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + -{\sin(x)}^{1 + 1 + 2} + -4{\sin(x)}^{2} + 2{\cos(x)}^{2}{\sin(x)}^{2} + {\color{red}{3{\cos(x)}^{2}{\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[3{\cos(x)}^{2}{\sin(x)}^{2} + 4{\cos(x)}^{2} + 8{\sin(x)}^{4} + {\cos(x)}^{2}{\sin(x)}^{2} \rightarrow 4{\cos(x)}^{2} + 4{\cos(x)}^{2}{\sin(x)}^{2} + 8{\sin(x)}^{4}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">28</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + -{\sin(x)}^{1 + 1 + 2} + -4{\sin(x)}^{2} + {\color{red}{2{\cos(x)}^{2}{\sin(x)}^{2} + 4{\cos(x)}^{2} + 4{\cos(x)}^{2}{\sin(x)}^{2} + 8{\sin(x)}^{4}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[2{\cos(x)}^{2}{\sin(x)}^{2} + 4{\cos(x)}^{2} + 4{\cos(x)}^{2}{\sin(x)}^{2} + 8{\sin(x)}^{4} \rightarrow 4{\cos(x)}^{2} + 6{\cos(x)}^{2}{\sin(x)}^{2} + 8{\sin(x)}^{4}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">29</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[-3 + -{\cos(x)}^{1 + 1 + 2} + {\color{red}{-{\sin(x)}^{4} + -4{\sin(x)}^{2} + 4{\cos(x)}^{2} + 6{\cos(x)}^{2}{\sin(x)}^{2} + 8{\sin(x)}^{4}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-{\sin(x)}^{4} + -4{\sin(x)}^{2} + 4{\cos(x)}^{2} + 6{\cos(x)}^{2}{\sin(x)}^{2} + 8{\sin(x)}^{4} \rightarrow -4{\sin(x)}^{2} + 4{\cos(x)}^{2} + 6{\cos(x)}^{2}{\sin(x)}^{2} + 7{\sin(x)}^{4}\]
                         </div>
                     </div>
                 </div>
@@ -381,7 +637,7 @@
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[0\]
+            \[-3 + -{\cos(x)}^{1 + 1 + 2} + -4{\sin(x)}^{2} + 4{\cos(x)}^{2} + 6{\cos(x)}^{2}{\sin(x)}^{2} + 7{\sin(x)}^{4}\]
         </div>
     </div>
     <footer>

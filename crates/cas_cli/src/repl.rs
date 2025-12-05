@@ -926,7 +926,20 @@ impl Repl {
     fn handle_timeline(&mut self, line: &str) {
         let rest = line[9..].trim();
 
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        // Check if the user wants to use "simplify" within timeline
+        // e.g., "timeline simplify(expr)" or "timeline simplify expr"
+        let expr_str = if rest.starts_with("simplify(") && rest.ends_with(')') {
+            // Extract expression from "simplify(expr)"
+            &rest[9..rest.len() - 1]
+        } else if rest.starts_with("simplify ") {
+            // Extract expression from "simplify expr"
+            &rest[9..]
+        } else {
+            // No simplify prefix, treat entire rest as expression
+            rest
+        };
+
+        match cas_parser::parse(expr_str.trim(), &mut self.simplifier.context) {
             Ok(expr) => {
                 let (_, steps) = self.simplifier.simplify(expr);
 
