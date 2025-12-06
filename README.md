@@ -50,18 +50,37 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 
 ### Prerequisites
 
--   [Rust and Cargo](https://rustup.rs/) installed.
+-   [Rust ```bash
+# Clonar el repositorio
+git clone <repository-url>
+cd math
 
-### Running the CLI
-
-To start the interactive demo:
-
-```bash
+# Compilar y ejecutar
 cargo run -p cas_cli
+
+# O compilar en modo release (más rápido)
+cargo build --release -p cas_cli
+./target/release/cas_cli
 ```
 
-### Examples
-Once inside the CLI, try these expressions to see the step-by-step engine in action:
+## Otras Características
+
+- **Simplificación algebraica** paso a paso
+- **Resolución de ecuaciones** con múltiples soluciones y casos especiales
+- **Derivadas simbólicas** con reglas explicativas
+- **Verificación de equivalencia** entre expresiones
+- **Factorización** (cuadráticas, diferencia de cuadrados)
+- **Expansión** (binomios con potencias)
+- **Trigonometría** (evaluación e identidades)
+- **Logaritmos y exponenciales**
+- **Teoría de números** (LCM, módulo, factorización prima, combinatoria)
+- **Control de verbosidad**: minimal/low/normal/verbose
+- **Perfiles** de expresiones (análisis de comp lejidad)
+
+## Ejemplos de Uso
+
+### 1. Simplificación Básica
+de the CLI, try these expressions to see the step-by-step engine in action:
 
 #### 1. Polynomial Factorization
 The engine uses the Rational Root Theorem to factor polynomials.
@@ -440,6 +459,68 @@ Open in browser to view interactive visualization.
   - Global expressions use readable notation (e.g., `√x` for roots)
   - Rule transformations preserve mathematical notation for clarity:
     - Exponent rules show fractional notation: `x^{1/2} → x^{1/2·2}`
+# ExpliCAS - Computer Algebra System with Step-by-Step Explanations
+
+Un sistema de álgebra computacional (CAS) educativo que muestra el proceso paso a paso de simplificación de expresiones matemáticas.
+
+## ✨ Características Principales
+
+### 🔢 Operaciones Matriciales Completas
+- **Suma y resta** de matrices de cualquier tamaño
+- **Multiplicación matricial** y escalar
+- **Determinante** generalizado (cualquier tamaño n×n mediante expansión por cofactores)
+- **Transpuesta** y **traza**
+- Soporte completo en CLI y como funciones: `det()`, `transpose()`, `trace()`
+
+```text
+> [[1, 2], [3, 4]] + [[5, 6], [7, 8]]
+Result: [[6, 8], [10, 12]]
+
+> det [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]
+Result: 0
+
+> transpose [[1, 2, 3], [4, 5, 6]]
+Result: [[1, 4], [2, 5], [3, 6]]
+```
+
+### 📐 GCD Educativo (Enteros y Polinomios)
+Calcula el MCD de enteros y **polinomios univariados** con explicaciones paso a paso del algoritmo de Euclides:
+
+```text
+> explain gcd(48, 18)
+Educational Steps:
+Step 1: gcd(48, 18)
+  48 = 2 × 18 + 12
+Step 2: gcd(18, 12)
+  18 = 1 × 12 + 6
+Step 3: gcd(12, 6)
+  12 = 2 × 6 + 0
+Final: gcd(48, 18) = 6
+
+> explain gcd(x^2 - 1, x^2 - 2*x + 1)
+[Muestra pasos de división polinomial y simplificación]
+Result: x - 1
+```
+
+### 🌐 Timeline - Visualización Web Interactiva
+Genera una página web HTML con **renderizado LaTeX** de todas las transformaciones:
+
+```text
+> timeline
+```
+
+Abre automáticamente una visualización en el navegador mostrando:
+- Cada paso de simplificación en notación matemática LaTeX
+- Descripción de la regla aplicada
+- Navegación interactiva por el historial de transformaciones
+
+## Instalación y Uso
+
+### Requisitos
+- Rust 1.70 o superior
+- Cargo (incluido con Rust)
+
+### Compilar y Ejecutar
     - Other rules use standard notation with roots
 - **Professional Styling**:
   - MathJax-rendered expressions
