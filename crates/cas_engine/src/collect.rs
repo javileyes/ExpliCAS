@@ -1,18 +1,25 @@
-use cas_ast::{Expr, ExprId, Context};
+use cas_ast::{Context, Expr, ExprId};
 
-use num_traits::{One, Zero};
 use num_rational::BigRational;
+use num_traits::{One, Zero};
 
 /// Collects like terms in an expression.
 /// e.g. 2*x + 3*x -> 5*x
 ///      x + x -> 2*x
 ///      x^2 + 2*x^2 -> 3*x^2
 pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
+    // CRITICAL: Do NOT collect matrix expressions
+    // Matrix addition/subtraction has dedicated rules (MatrixAddRule, MatrixSubRule)
+    // Collecting M + M would incorrectly produce 2*M
+    if contains_matrix(ctx, expr) {
+        return expr;
+    }
+
     // 1. Check if expression is an Add/Sub chain
     // We used to bail out if not Add/Sub, but we want to handle Neg(Neg(x)) -> x
     // and other simplifications even for single terms.
     // So we proceed regardless.
-    
+
     // let expr_data = ctx.get(expr).clone();
     // match expr_data {
     //     Expr::Add(_, _) | Expr::Sub(_, _) => {
@@ -30,20 +37,20 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
     //      x -> (1, x)
     //      3*x*y -> (3, x*y)
     //      5 -> (5, 1)
-    
+
     // Map: TermSignature -> Coefficient
-    // We can't use ExprId as key directly because we want structural equality, 
+    // We can't use ExprId as key directly because we want structural equality,
     // but for now let's assume canonicalization handles structural equality or we use a string key?
-    // Using a string key is slow but safe for now. 
+    // Using a string key is slow but safe for now.
     // Better: Use a helper to extract (coeff, rest) and compare 'rest' structurally.
-    
+
     // Let's use a Vec of groups to avoid complex hashing for now.
     // Vec<(coeff, term_part)>
     let mut groups: Vec<(BigRational, ExprId)> = Vec::new();
 
     for term in terms {
         let (coeff, term_part) = extract_numerical_coeff(ctx, term);
-        
+
         // Find if we already have this term_part in groups
         let mut found = false;
         for (g_coeff, g_term) in groups.iter_mut() {
@@ -53,7 +60,7 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
                 break;
             }
         }
-        
+
         if !found {
             groups.push((coeff, term_part));
         }
@@ -68,7 +75,7 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
         if coeff.is_zero() {
             continue;
         }
-        
+
         let term = if is_one_term(ctx, term_part) {
             // Just the coefficient (constant term)
             ctx.add(Expr::Number(coeff))
@@ -119,11 +126,11 @@ fn flatten_recursive(ctx: &mut Context, expr: ExprId, terms: &mut Vec<ExprId>, n
         Expr::Add(l, r) => {
             flatten_recursive(ctx, l, terms, negate);
             flatten_recursive(ctx, r, terms, negate);
-        },
+        }
         Expr::Sub(l, r) => {
             flatten_recursive(ctx, l, terms, negate);
             flatten_recursive(ctx, r, terms, !negate);
-        },
+        }
         _ => {
             if negate {
                 terms.push(ctx.add(Expr::Neg(expr)));
@@ -141,7 +148,7 @@ fn extract_numerical_coeff(ctx: &mut Context, expr: ExprId) -> (BigRational, Exp
         Expr::Neg(e) => {
             let (c, t) = extract_numerical_coeff(ctx, e);
             (-c, t)
-        },
+        }
         Expr::Mul(l, r) => {
             // Check if l is number
             if let Expr::Number(n) = ctx.get(l) {
@@ -149,7 +156,7 @@ fn extract_numerical_coeff(ctx: &mut Context, expr: ExprId) -> (BigRational, Exp
             } else {
                 (BigRational::one(), expr)
             }
-        },
+        }
         _ => (BigRational::one(), expr),
     }
 }
@@ -166,13 +173,24 @@ fn is_one_term(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-
+/// Helper function to check if an expression contains a matrix
+fn contains_matrix(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Matrix { .. } => true,
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            contains_matrix(ctx, *l) || contains_matrix(ctx, *r)
+        }
+        Expr::Neg(e) => contains_matrix(ctx, *e),
+        Expr::Function(_, args) => args.iter().any(|arg| contains_matrix(ctx, *arg)),
+        _ => false,
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_parser::parse;
     use cas_ast::DisplayExpr;
+    use cas_parser::parse;
 
     fn s(ctx: &Context, id: ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
@@ -212,7 +230,7 @@ mod tests {
         let res = collect(&mut ctx, expr);
         assert_eq!(s(&ctx, res), "0");
     }
-    
+
     #[test]
     fn test_collect_powers() {
         let mut ctx = Context::new();

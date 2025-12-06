@@ -352,6 +352,13 @@ define_rule!(CombineLikeTermsRule, "Combine Like Terms", |ctx, expr| {
     };
 
     if is_add_or_mul {
+        // CRITICAL: Do NOT apply to expressions containing matrices
+        // Matrix addition/subtraction has dedicated rules (MatrixAddRule, MatrixSubRule)
+        // and collect() incorrectly simplifies M + M to 2*M
+        if contains_matrix(ctx, expr) {
+            return None;
+        }
+
         let new_expr = crate::collect::collect(ctx, expr);
         if new_expr != expr {
             // Check if structurally different to avoid infinite loops with ID regeneration
@@ -367,6 +374,19 @@ define_rule!(CombineLikeTermsRule, "Combine Like Terms", |ctx, expr| {
     }
     None
 });
+
+/// Helper function to check if an expression contains a matrix
+fn contains_matrix(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Matrix { .. } => true,
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            contains_matrix(ctx, *l) || contains_matrix(ctx, *r)
+        }
+        Expr::Neg(e) => contains_matrix(ctx, *e),
+        Expr::Function(_, args) => args.iter().any(|arg| contains_matrix(ctx, *arg)),
+        _ => false,
+    }
+}
 
 define_rule!(BinomialExpansionRule, "Binomial Expansion", |ctx, expr| {
     // Skip if expression is in canonical (elegant) form

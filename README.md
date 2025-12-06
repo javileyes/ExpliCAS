@@ -197,12 +197,36 @@ Result: 6
 ```text
 > explain gcd(2*x^2 + 7*x + 3, 2*x^2 + 5*x + 2)
 ```
-Shows degree reduction steps and normalization.
 
-> **Note**: GCD currently supports integers and univariate polynomials. Multivariable polynomials conservatively return GCD=1.
+**Limitations:** Currently only supports univariate polynomials. Multivariable polynomials will return GCD=1.
 
+#### 9. Matrix Operations
+Perform basic matrix operations including determinant, transpose, and trace.
 
-#### 7. Pre-Calculus (Absolute Value & Inequalities)
+**Determinant (up to 3×3):**
+```text
+> det [[1, 2], [3, 4]]
+Result: -2
+
+> det [[2]]
+Result: 2
+```
+
+**Transpose:**
+```text
+> transpose [[1, 2, 3], [4, 5, 6]]
+Result: [[1, 4], [2, 5], [3, 6]]
+```
+
+**Trace (sum of diagonal):**
+```text
+> trace [[1, 2], [3, 4]]
+Result: 5
+```
+
+**Supported matrices:** Any size for transpose and trace. Determinant supports 1×1, 2×2, and 3×3 matrices.
+
+#### 10. Pre-Calculus (Absolute Value & Inequalities)
 The solver handles absolute values (branching) and inequalities (sign flipping).
 
 **Example: Absolute Value Equation**

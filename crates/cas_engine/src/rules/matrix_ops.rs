@@ -10,6 +10,10 @@ impl Rule for MatrixAddRule {
         "Matrix Addition"
     }
 
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Add"])
+    }
+
     fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         if let Expr::Add(left, right) = ctx.get(expr) {
             let left_id = *left;
@@ -44,6 +48,10 @@ impl Rule for MatrixSubRule {
         "Matrix Subtraction"
     }
 
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Sub"])
+    }
+
     fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         if let Expr::Sub(left, right) = ctx.get(expr) {
             let left_id = *left;
@@ -74,6 +82,10 @@ pub struct ScalarMatrixRule;
 impl Rule for ScalarMatrixRule {
     fn name(&self) -> &'static str {
         "Scalar Matrix Multiplication"
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Mul"])
     }
 
     fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
@@ -119,6 +131,10 @@ impl Rule for MatrixMultiplyRule {
         "Matrix Multiplication"
     }
 
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Mul"])
+    }
+
     fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         if let Expr::Mul(left, right) = ctx.get(expr) {
             let left_id = *left;
@@ -153,6 +169,10 @@ pub struct MatrixFunctionRule;
 impl Rule for MatrixFunctionRule {
     fn name(&self) -> &'static str {
         "Matrix Functions"
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
     }
 
     fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
@@ -285,7 +305,9 @@ mod tests {
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(MatrixAddRule));
     simplifier.add_rule(Box::new(MatrixSubRule));
-    simplifier.add_rule(Box::new(ScalarMatrixRule));
+    // IMPORTANT: MatrixMultiplyRule MUST come before ScalarMatrixRule
+    // so that matrix-matrix multiplication is checked before scalar-matrix
     simplifier.add_rule(Box::new(MatrixMultiplyRule));
+    simplifier.add_rule(Box::new(ScalarMatrixRule));
     simplifier.add_rule(Box::new(MatrixFunctionRule));
 }

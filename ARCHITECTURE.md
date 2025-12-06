@@ -1812,9 +1812,136 @@ define_rule!(
 ### Referencias Útiles
 
 - **Código fuente**: `/crates/cas_engine/src/`
+- **Design Decision**: Para polinomios multivariables, el sistema conservadoramente retorna GCD=1 en lugar de fallar, ya que la implementación actual solo soporta polinomios univariados.
 - **Tests**: `/crates/cas_engine/tests/`
 - **Documentación**: `README.md`, `MAINTENANCE.md`
 - **Ejemplos**: `/crates/cas_cli/` (comandos interactivos)
+
+---
+
+*Documento generado para ExpliCAS v0.1.0*
+
+---
+
+## Matrix Operations
+
+### Overview
+El módulo de matrices proporciona operaciones básicas de álgebra lineal con soporte para matrices de cualquier tamaño. La implementación está diseñada para integrarse seamlessly con el sistema de reglas del simplificador.
+
+### Architecture
+
+**Files:**
+- `crates/cas_engine/src/matrix.rs` - Core matrix implementation
+- `crates/cas_engine/src/rules/matrix_ops.rs` - Simplification rules
+- `crates/cas_cli/src/repl.rs` - CLI command handlers
+
+### Matrix Representation
+
+Las matrices se representan en el AST como:
+
+```rust
+Expr::Matrix {
+    rows: usize,
+    cols: usize,
+    data: Vec<ExprId>,  // Row-major order
+}
+```
+
+**Row-major order**: Los elementos se almacenan fila por fila:
+- Matrix `[[a, b], [c, d]]` → `data = [a, b, c, d]`
+
+### Core Operations
+
+#### 1. **Determinant** (`matrix.rs`)
+
+Implementado para matrices hasta 3×3 usando expansión directa:
+
+```rust
+pub fn determinant(ctx: &mut Context, matrix: ExprId) -> Option<ExprId>
+```
+
+**Casos soportados:**
+- **1×1**: Directamente el elemento único
+- **2×2**: `ad - bc` formula
+- **3×3**: Sarrus rule / cofactor expansion
+
+**Limitaciones**: No soporta matrices >3×3 (requerirían expansión por cofactores recursiva o LU decomposition).
+
+#### 2. **Transpose** (`matrix.rs`)
+
+Intercambia filas y columnas:
+
+```rust
+pub fn transpose(ctx: &mut Context, matrix: ExprId) -> Option<ExprId>
+```
+
+**Complejidad**: O(rows × cols)
+
+#### 3. **Trace** (`matrix.rs`)
+
+Suma de elementos diagonales (solo matrices cuadradas):
+
+```rust
+pub fn trace(ctx: &mut Context, matrix: ExprId) -> Option<ExprId>
+```
+
+### Simplification Rules
+
+#### MatrixFunctionRule (`rules/matrix_ops.rs`)
+
+Evaluates matrix functions when applied to matrix expressions:
+
+```rust
+pub struct MatrixFunctionRule;
+
+impl Rule for MatrixFunctionRule {
+    fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite>
+}
+```
+
+**Supported functions:**
+- `det(M)` or `determinant(M)`
+- `transpose(M)` or `T(M)`  
+- `trace(M)` or `tr(M)`
+
+**Function aliases** allow for both verbose and concise notation.
+
+### CLI Integration
+
+**Commands** (in `repl.rs`):
+- `det <matrix>` - Compute determinant
+- `transpose <matrix>` - Transpose matrix
+- `trace <matrix>` - Compute trace
+
+**Help System**: Organized in "Matrix Operations" category with specific help for each command.
+
+**Autocomplete**: All three commands included in the autocomplete suggestions.
+
+### Example Usage
+
+```rust
+// Parse matrix
+let matrix = parse("[[1, 2], [3, 4]]", &mut ctx)?;
+
+// Compute determinant
+let det_expr = ctx.add(Expr::Function("det".to_string(), vec![matrix]));
+let (result, _) = simplifier.simplify(det_expr);
+// Result: -2
+
+// Transpose
+let t_expr = ctx.add(Expr::Function("transpose".to_string(), vec![matrix]));
+let (result, _) = simplifier.simplify(t_expr);
+// Result: [[1, 3], [2, 4]]
+```
+
+### Future Enhancements
+
+Potential additions to matrix support:
+- **Matrix inverse** (requires determinant ≠ 0 and cofactor matrix)
+- **Matrix multiplication** (already supported via `MatrixMultiplyRule`)
+- **Eigenvalues/eigenvectors** (requires characteristic polynomial)
+- **LU/QR decomposition** (for larger determinants)
+- **Rank** calculation
 
 ---
 

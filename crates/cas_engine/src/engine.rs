@@ -74,13 +74,16 @@ impl Simplifier {
         exponents::register(self);
         logarithms::register(self);
         trigonometry::register(self);
+        // CRITICAL: matrix_ops MUST come before polynomial and grouping
+        // so that MatrixAddRule and MatrixSubRule can handle matrix addition/subtraction
+        // before CombineLikeTermsRule tries to collect them
+        matrix_ops::register(self);
         polynomial::register(self);
         algebra::register(self);
         calculus::register(self);
         functions::register(self);
         grouping::register(self);
         number_theory::register(self);
-        matrix_ops::register(self);
     }
 
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
