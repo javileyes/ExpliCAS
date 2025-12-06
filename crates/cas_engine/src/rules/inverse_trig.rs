@@ -1,8 +1,70 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::Expr;
+use cas_ast::{Context, Expr, ExprId};
 use num_traits::One;
 use std::cmp::Ordering;
+
+// ==================== Helper Functions for Pattern Matching ====================
+
+/// Check if expression equals 1
+fn is_one(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        n.is_one()
+    } else {
+        false
+    }
+}
+
+/// Check if two expressions are reciprocals: a = 1/b or b = 1/a
+fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
+    // Get clones to avoid borrow issues
+    let data1 = ctx.get(expr1).clone();
+    let data2 = ctx.get(expr2).clone();
+
+    // Case 1: expr2 = 1 / expr1
+    if let Expr::Div(num, den) = &data2 {
+        if is_one(ctx, *num) {
+            // Compare semantically, not just ExprId
+            if crate::ordering::compare_expr(ctx, *den, expr1) == Ordering::Equal {
+                return true;
+            }
+        }
+    }
+
+    // Case 2: expr1 = 1 / expr2
+    if let Expr::Div(num, den) = &data1 {
+        if is_one(ctx, *num) {
+            // Compare semantically, not just ExprId
+            if crate::ordering::compare_expr(ctx, *den, expr2) == Ordering::Equal {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Check if expression is sin(x)/cos(x) pattern (expanded tan)
+/// Returns Some(x) if pattern matches, None otherwise
+fn is_expanded_tan(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        if let (Expr::Function(num_fn, num_args), Expr::Function(den_fn, den_args)) =
+            (ctx.get(*num), ctx.get(*den))
+        {
+            if num_fn == "sin"
+                && den_fn == "cos"
+                && num_args.len() == 1
+                && den_args.len() == 1
+                && num_args[0] == den_args[0]
+            {
+                return Some(num_args[0]); // Return the argument x
+            }
+        }
+    }
+    None
+}
+
+// ==================== Inverse Trig Identity Rules ====================
 
 // Rule 1: Composition Identities - sin(arcsin(x)) = x, etc.
 define_rule!(
@@ -13,6 +75,8 @@ define_rule!(
         if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
             if outer_args.len() == 1 {
                 let inner_expr = outer_args[0];
+
+                // Check for literal function composition first
                 if let Expr::Function(inner_name, inner_args) = ctx.get(inner_expr) {
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
@@ -64,6 +128,16 @@ define_rule!(
                                 description: "arctan(tan(x)) = x".to_string(),
                             });
                         }
+                    }
+                }
+
+                // ✨ NEW: Check for expanded tan in arctan: arctan(sin(x)/cos(x)) = x
+                if outer_name == "arctan" {
+                    if let Some(arg) = is_expanded_tan(ctx, inner_expr) {
+                        return Some(Rewrite {
+                            new_expr: arg,
+                            description: "arctan(sin(x)/cos(x)) = arctan(tan(x)) = x".to_string(),
+                        });
                     }
                 }
             }
@@ -133,39 +207,15 @@ define_rule!(
                     && l_args.len() == 1
                     && r_args.len() == 1
                 {
-                    let x = l_args[0];
-                    let y_data = ctx.get(r_args[0]).clone();
-
-                    // Check if y = 1/x
-                    if let Expr::Div(num, den) = y_data {
-                        if let Expr::Number(n) = ctx.get(num) {
-                            if n.is_one() && den == x {
-                                let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                                let two = ctx.num(2);
-                                let new_expr = ctx.add(Expr::Div(pi, two));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "arctan(x) + arctan(1/x) = π/2".to_string(),
-                                });
-                            }
-                        }
-                    }
-
-                    // Also check the reverse: arctan(1/x) + arctan(x) = π/2
-                    let x2 = r_args[0];
-                    let y2_data = ctx.get(l_args[0]).clone();
-                    if let Expr::Div(num, den) = y2_data {
-                        if let Expr::Number(n) = ctx.get(num) {
-                            if n.is_one() && den == x2 {
-                                let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                                let two = ctx.num(2);
-                                let new_expr = ctx.add(Expr::Div(pi, two));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "arctan(1/x) + arctan(x) = π/2".to_string(),
-                                });
-                            }
-                        }
+                    // ✨ ENHANCED: Use are_reciprocals helper for better pattern matching
+                    if are_reciprocals(ctx, l_args[0], r_args[0]) {
+                        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                        let two = ctx.num(2);
+                        let new_expr = ctx.add(Expr::Div(pi, two));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "arctan(x) + arctan(1/x) = π/2".to_string(),
+                        });
                     }
                 }
             }

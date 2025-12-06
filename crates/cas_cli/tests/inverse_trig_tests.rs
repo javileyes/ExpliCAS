@@ -48,7 +48,7 @@ fn test_arccos_cos_composition() {
 }
 
 #[test]
-#[ignore] // TODO: tan(x) expands to sin(x)/cos(x) before composition rule applies
+// Fixed: Now recognizes sin(x)/cos(x) as expanded tan
 fn test_arctan_tan_composition() {
     let result = simplify_str("arctan(tan(x))");
     assert_eq!(result, "x", "arctan(tan(x)) should simplify to x");
@@ -80,7 +80,7 @@ fn test_arccos_arcsin_sum() {
 // ==================== Arctan Relations ====================
 
 #[test]
-#[ignore] // TODO: Requires additional canonicalization for 1/x pattern matching
+// Fixed: Now uses are_reciprocals() helper
 fn test_arctan_reciprocal_sum() {
     let result = simplify_str("arctan(x) + arctan(1/x)");
     assert!(
@@ -91,7 +91,7 @@ fn test_arctan_reciprocal_sum() {
 }
 
 #[test]
-#[ignore] // TODO: Requires additional canonicalization for 1/x pattern matching
+// Fixed: Now uses are_reciprocals() with semantic comparison
 fn test_arctan_reciprocal_sum_reverse() {
     let result = simplify_str("arctan(1/a) + arctan(a)");
     assert!(
@@ -232,7 +232,7 @@ fn test_mixed_trig_and_inverse() {
 }
 
 #[test]
-#[ignore] // TODO: Requires pattern matching for 1/x^2 forms
+// Fixed: are_reciprocals() handles polynomial arguments
 fn test_arctan_with_polynomial() {
     let result = simplify_str("arctan(x^2) + arctan(1/x^2)");
     assert!(
