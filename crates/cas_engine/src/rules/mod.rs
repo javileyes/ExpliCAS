@@ -11,4 +11,5 @@ pub mod logarithms;
 pub mod matrix_ops;
 pub mod number_theory;
 pub mod polynomial;
+pub mod reciprocal_trig;
 pub mod trigonometry;

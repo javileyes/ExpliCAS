@@ -75,6 +75,7 @@ impl Simplifier {
         logarithms::register(self);
         trigonometry::register(self);
         inverse_trig::register(self); // Inverse trig identities
+        reciprocal_trig::register(self); // Reciprocal trig functions
         hyperbolic::register(self); // Hyperbolic functions
                                     // CRITICAL: matrix_ops MUST come before polynomial and grouping
                                     // so that MatrixAddRule and MatrixSubRule can handle matrix addition/subtraction
