@@ -37,23 +37,24 @@ fn is_pi_over_four(ctx: &Context, expr: ExprId) -> bool {
         }
     }
 
-    // Also check for 1/4 * pi form (canonicalized as Mul)
+    // Also check for 1/4 * pi form (after simplification, becomes Number(1/4) * Pi)
     if let Expr::Mul(l, r) = ctx.get(expr) {
         // Could be pi * 1/4 or 1/4 * pi
-        let (frac, const_part) = if let Expr::Constant(c) = ctx.get(*l) {
+        let (num_part, const_part) = if let Expr::Constant(_) = ctx.get(*l) {
             (*r, *l)
-        } else if let Expr::Constant(c) = ctx.get(*r) {
+        } else if let Expr::Constant(_) = ctx.get(*r) {
             (*l, *r)
         } else {
             return false;
         };
 
+        // Check if const_part is Pi
         if let Expr::Constant(c) = ctx.get(const_part) {
             if matches!(c, cas_ast::Constant::Pi) {
-                if let Expr::Div(num, den) = ctx.get(frac) {
-                    if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(*num), ctx.get(*den)) {
-                        return n1.is_one() && *n2 == num_rational::Ratio::from_integer(4.into());
-                    }
+                // Check if num_part is 1/4 (as a Number)
+                if let Expr::Number(n) = ctx.get(num_part) {
+                    // Check if it's 1/4
+                    return *n == num_rational::Ratio::new(1.into(), 4.into());
                 }
             }
         }
@@ -75,10 +76,10 @@ fn is_pi_over_two(ctx: &Context, expr: ExprId) -> bool {
         }
     }
 
-    // Also check for 1/2 * pi form (canonicalized as Mul)
+    // Also check for 1/2 * pi form (after simplification, becomes Number(1/2) * Pi)
     if let Expr::Mul(l, r) = ctx.get(expr) {
         // Could be pi * 1/2 or 1/2 * pi
-        let (frac, const_part) = if let Expr::Constant(c) = ctx.get(*l) {
+        let (num_part, const_part) = if let Expr::Constant(c) = ctx.get(*l) {
             (*r, *l)
         } else if let Expr::Constant(c) = ctx.get(*r) {
             (*l, *r)
@@ -86,12 +87,13 @@ fn is_pi_over_two(ctx: &Context, expr: ExprId) -> bool {
             return false;
         };
 
+        // Check if const_part is Pi
         if let Expr::Constant(c) = ctx.get(const_part) {
             if matches!(c, cas_ast::Constant::Pi) {
-                if let Expr::Div(num, den) = ctx.get(frac) {
-                    if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(*num), ctx.get(*den)) {
-                        return n1.is_one() && *n2 == num_rational::Ratio::from_integer(2.into());
-                    }
+                // Check if num_part is 1/2 (as a Number)
+                if let Expr::Number(n) = ctx.get(num_part) {
+                    // Check if it's 1/2
+                    return *n == num_rational::Ratio::new(1.into(), 2.into());
                 }
             }
         }
