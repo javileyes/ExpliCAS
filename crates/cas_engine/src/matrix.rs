@@ -222,7 +222,7 @@ impl Matrix {
     }
 
     /// Compute determinant
-    /// Currently supports 1×1, 2×2, and 3×3 matrices
+    /// Supports any square matrix size using cofactor expansion for n≥4
     pub fn determinant(&self, ctx: &mut Context) -> Option<ExprId> {
         if self.rows != self.cols {
             return None; // Not square
@@ -232,8 +232,133 @@ impl Matrix {
             1 => Some(self.data[0]),
             2 => Some(self.det_2x2(ctx)),
             3 => Some(self.det_3x3(ctx)),
-            _ => None, // Not yet implemented for larger matrices
+            _ => {
+                // Use cofactor expansion for matrices 4×4 and larger
+                Self::determinant_cofactor(ctx, self.rows, &self.data)
+            }
         }
+    }
+
+    /// Compute determinant using cofactor expansion along the first row
+    /// For n×n matrices where n ≥ 4
+    fn determinant_cofactor(ctx: &mut Context, n: usize, data: &[ExprId]) -> Option<ExprId> {
+        // det(M) = Σ(j=0 to n-1) (-1)^j * M[0][j] * det(Minor[0][j])
+
+        let mut terms = Vec::new();
+
+        for j in 0..n {
+            let element = data[j]; // Element M[0][j]
+
+            // Compute minor: submatrix without row 0 and column j
+            let minor_data = Self::get_minor(data, n, 0, j);
+
+            // Recursively compute determinant of the (n-1)×(n-1) minor
+            let minor_det = if n - 1 == 1 {
+                // Base case: 1×1 minor
+                Some(minor_data[0])
+            } else if n - 1 == 2 {
+                // 2×2 minor
+                let a = minor_data[0];
+                let b = minor_data[1];
+                let c = minor_data[2];
+                let d = minor_data[3];
+                let ad = ctx.add(Expr::Mul(a, d));
+                let bc = ctx.add(Expr::Mul(b, c));
+                Some(ctx.add(Expr::Sub(ad, bc)))
+            } else if n - 1 == 3 {
+                // 3×3 minor
+                // This calls the private det_3x3 function, but it's a method of Matrix.
+                // We need a standalone function or to pass a Matrix instance.
+                // For now, let's assume a helper `det_3x3_from_slice` or similar.
+                // Given the context, it's likely the user intends to call a helper that operates on a slice.
+                // For now, I'll assume a placeholder or a direct implementation if it's simple enough.
+                // The original det_3x3 takes `&self` and `ctx`.
+                // Let's implement it directly here for the slice.
+                let get = |r: usize, c: usize| minor_data[r * 3 + c];
+
+                let a11 = get(0, 0);
+                let a12 = get(0, 1);
+                let a13 = get(0, 2);
+                let a21 = get(1, 0);
+                let a22 = get(1, 1);
+                let a23 = get(1, 2);
+                let a31 = get(2, 0);
+                let a32 = get(2, 1);
+                let a33 = get(2, 2);
+
+                let a22_a33 = ctx.add(Expr::Mul(a22, a33));
+                let t1 = ctx.add(Expr::Mul(a11, a22_a33));
+
+                let a23_a31 = ctx.add(Expr::Mul(a23, a31));
+                let t2 = ctx.add(Expr::Mul(a12, a23_a31));
+
+                let a21_a32 = ctx.add(Expr::Mul(a21, a32));
+                let t3 = ctx.add(Expr::Mul(a13, a21_a32));
+
+                let a22_a31 = ctx.add(Expr::Mul(a22, a31));
+                let t4 = ctx.add(Expr::Mul(a13, a22_a31));
+
+                let a23_a32 = ctx.add(Expr::Mul(a23, a32));
+                let t5 = ctx.add(Expr::Mul(a11, a23_a32));
+
+                let a21_a33 = ctx.add(Expr::Mul(a21, a33));
+                let t6 = ctx.add(Expr::Mul(a12, a21_a33));
+
+                let t2_t3 = ctx.add(Expr::Add(t2, t3));
+                let pos = ctx.add(Expr::Add(t1, t2_t3));
+
+                let t5_t6 = ctx.add(Expr::Add(t5, t6));
+                let neg = ctx.add(Expr::Add(t4, t5_t6));
+
+                Some(ctx.add(Expr::Sub(pos, neg)))
+            } else {
+                // Recursive case for larger minors
+                Self::determinant_cofactor(ctx, n - 1, &minor_data)
+            }?;
+
+            // Cofactor = (-1)^(0+j) * element * det(minor)
+            let cofactor = if j % 2 == 0 {
+                // Positive: element * minor_det
+                ctx.add(Expr::Mul(element, minor_det))
+            } else {
+                // Negative: -(element * minor_det)
+                let product = ctx.add(Expr::Mul(element, minor_det));
+                ctx.add(Expr::Neg(product))
+            };
+
+            terms.push(cofactor);
+        }
+
+        // Sum all cofactors
+        if terms.is_empty() {
+            return Some(ctx.num(0));
+        }
+
+        let mut result = terms[0];
+        for term in terms.iter().skip(1) {
+            result = ctx.add(Expr::Add(result, *term));
+        }
+
+        Some(result)
+    }
+
+    /// Extract minor matrix: remove row i and column j from n×n matrix
+    fn get_minor(data: &[ExprId], n: usize, row: usize, col: usize) -> Vec<ExprId> {
+        let mut minor = Vec::new();
+
+        for r in 0..n {
+            if r == row {
+                continue; // Skip row
+            }
+            for c in 0..n {
+                if c == col {
+                    continue; // Skip column
+                }
+                minor.push(data[r * n + c]);
+            }
+        }
+
+        minor
     }
 }
 
