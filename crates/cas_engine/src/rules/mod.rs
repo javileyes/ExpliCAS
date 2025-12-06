@@ -5,6 +5,7 @@ pub mod canonicalization;
 pub mod exponents;
 pub mod functions;
 pub mod grouping;
+pub mod inverse_trig;
 pub mod logarithms;
 pub mod matrix_ops;
 pub mod number_theory;
