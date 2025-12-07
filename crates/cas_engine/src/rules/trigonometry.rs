@@ -1,8 +1,8 @@
-use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::{Expr, ExprId};
-use num_traits::{Zero, One};
 use crate::helpers::extract_double_angle_arg;
+use crate::rule::Rewrite;
+use cas_ast::{Expr, ExprId};
+use num_traits::{One, Zero};
 
 use std::cmp::Ordering;
 
@@ -14,7 +14,7 @@ define_rule!(
         if let Expr::Function(name, args) = expr_data {
             if args.len() == 1 {
                 let arg = args[0];
-                
+
                 // Case 1: Known Values (0)
                 if let Expr::Number(n) = ctx.get(arg) {
                     if n.is_zero() {
@@ -25,14 +25,14 @@ define_rule!(
                                     new_expr: zero,
                                     description: format!("{}(0) = 0", name),
                                 });
-                            },
+                            }
                             "cos" => {
                                 let one = ctx.num(1);
                                 return Some(Rewrite {
                                     new_expr: one,
                                     description: "cos(0) = 1".to_string(),
                                 });
-                            },
+                            }
                             "arccos" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let two = ctx.num(2);
@@ -41,7 +41,7 @@ define_rule!(
                                     new_expr,
                                     description: "arccos(0) = pi/2".to_string(),
                                 });
-                            },
+                            }
                             _ => {}
                         }
                     } else if n.is_one() {
@@ -54,14 +54,14 @@ define_rule!(
                                     new_expr,
                                     description: "arcsin(1) = pi/2".to_string(),
                                 });
-                            },
+                            }
                             "arccos" => {
                                 let zero = ctx.num(0);
                                 return Some(Rewrite {
                                     new_expr: zero,
                                     description: "arccos(1) = 0".to_string(),
                                 });
-                            },
+                            }
                             "arctan" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let four = ctx.num(4);
@@ -70,11 +70,12 @@ define_rule!(
                                     new_expr,
                                     description: "arctan(1) = pi/4".to_string(),
                                 });
-                            },
+                            }
                             _ => {}
                         }
-                    } else if *n == num_rational::BigRational::new(1.into(), 2.into()) { // 1/2
-                         match name.as_str() {
+                    } else if *n == num_rational::BigRational::new(1.into(), 2.into()) {
+                        // 1/2
+                        match name.as_str() {
                             "arcsin" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let six = ctx.num(6);
@@ -83,7 +84,7 @@ define_rule!(
                                     new_expr,
                                     description: "arcsin(1/2) = pi/6".to_string(),
                                 });
-                            },
+                            }
                             "arccos" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let three = ctx.num(3);
@@ -92,9 +93,9 @@ define_rule!(
                                     new_expr,
                                     description: "arccos(1/2) = pi/3".to_string(),
                                 });
-                            },
+                            }
                             _ => {}
-                         }
+                        }
                     }
                 }
 
@@ -108,24 +109,26 @@ define_rule!(
                                 new_expr: zero,
                                 description: format!("{}(pi) = 0", name),
                             });
-                        },
+                        }
                         "cos" => {
                             let neg_one = ctx.num(-1);
                             return Some(Rewrite {
                                 new_expr: neg_one,
                                 description: "cos(pi) = -1".to_string(),
                             });
-                        },
+                        }
                         _ => {}
                     }
                 }
-                
+
                 // Case 3: Known Values (pi/2) - Div format
                 let arg_data = ctx.get(arg).clone();
                 if let Expr::Div(lhs, rhs) = arg_data {
                     let lhs_data = ctx.get(lhs);
                     let rhs_data = ctx.get(rhs);
-                    if let (Expr::Constant(cas_ast::Constant::Pi), Expr::Number(n)) = (lhs_data, rhs_data) {
+                    if let (Expr::Constant(cas_ast::Constant::Pi), Expr::Number(n)) =
+                        (lhs_data, rhs_data)
+                    {
                         if *n == num_rational::BigRational::from_integer(2.into()) {
                             match name.as_str() {
                                 "sin" => {
@@ -134,21 +137,22 @@ define_rule!(
                                         new_expr: one,
                                         description: "sin(pi/2) = 1".to_string(),
                                     });
-                                },
+                                }
                                 "cos" => {
                                     let zero = ctx.num(0);
                                     return Some(Rewrite {
                                         new_expr: zero,
                                         description: "cos(pi/2) = 0".to_string(),
                                     });
-                                },
+                                }
                                 "tan" => {
-                                    let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                                    let undefined =
+                                        ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
                                     return Some(Rewrite {
                                         new_expr: undefined,
                                         description: "tan(pi/2) = undefined".to_string(),
                                     });
-                                },
+                                }
                                 _ => {}
                             }
                         }
@@ -159,11 +163,19 @@ define_rule!(
                 if let Expr::Mul(lhs, rhs) = arg_data {
                     let lhs_data = ctx.get(lhs);
                     let rhs_data = ctx.get(rhs);
-                    
+
                     let coeff = if let Expr::Constant(cas_ast::Constant::Pi) = lhs_data {
-                        if let Expr::Number(n) = rhs_data { Some(n) } else { None }
+                        if let Expr::Number(n) = rhs_data {
+                            Some(n)
+                        } else {
+                            None
+                        }
                     } else if let Expr::Constant(cas_ast::Constant::Pi) = rhs_data {
-                        if let Expr::Number(n) = lhs_data { Some(n) } else { None }
+                        if let Expr::Number(n) = lhs_data {
+                            Some(n)
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     };
@@ -178,21 +190,22 @@ define_rule!(
                                         new_expr: one,
                                         description: "sin(pi/2) = 1".to_string(),
                                     });
-                                },
+                                }
                                 "cos" => {
                                     let zero = ctx.num(0);
                                     return Some(Rewrite {
                                         new_expr: zero,
                                         description: "cos(pi/2) = 0".to_string(),
                                     });
-                                },
+                                }
                                 "tan" => {
-                                    let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                                    let undefined =
+                                        ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
                                     return Some(Rewrite {
                                         new_expr: undefined,
                                         description: "tan(pi/2) = undefined".to_string(),
                                     });
-                                },
+                                }
                                 _ => {}
                             }
                         }
@@ -219,8 +232,8 @@ define_rule!(
                         } else {
                             None
                         }
-                    },
-                    _ => None
+                    }
+                    _ => None,
                 };
 
                 if let Some(inner) = inner_opt {
@@ -232,14 +245,14 @@ define_rule!(
                                 new_expr,
                                 description: "sin(-x) = -sin(x)".to_string(),
                             });
-                        },
+                        }
                         "cos" => {
                             let new_expr = ctx.add(Expr::Function("cos".to_string(), vec![inner]));
                             return Some(Rewrite {
                                 new_expr,
                                 description: "cos(-x) = cos(x)".to_string(),
                             });
-                        },
+                        }
                         "tan" => {
                             let tan_inner = ctx.add(Expr::Function("tan".to_string(), vec![inner]));
                             let new_expr = ctx.add(Expr::Neg(tan_inner));
@@ -247,7 +260,7 @@ define_rule!(
                                 new_expr,
                                 description: "tan(-x) = -tan(x)".to_string(),
                             });
-                        },
+                        }
                         _ => {}
                     }
                 }
@@ -263,22 +276,26 @@ define_rule!(
     |ctx, expr| {
         // Look for sin(x)^2 + cos(x)^2 = 1
         // Or a*sin(x)^2 + a*cos(x)^2 = a
-        
+
         let expr_data = ctx.get(expr).clone();
         if let Expr::Add(_, _) = expr_data {
             // Flatten add
             let mut terms = Vec::new();
             crate::helpers::flatten_add(ctx, expr, &mut terms);
-            
+
             // Helper to extract (coeff, func_name, arg) from a term
             // Returns (coeff_expr_id, func_name, arg_expr_id)
-            let extract_trig_part = |ctx: &mut cas_ast::Context, term: ExprId| -> Option<(ExprId, String, ExprId)> {
+            let extract_trig_part = |ctx: &mut cas_ast::Context,
+                                     term: ExprId|
+             -> Option<(ExprId, String, ExprId)> {
                 let term_data = ctx.get(term).clone();
-                
+
                 // Check if term itself is sin^n or cos^n with n >= 2
                 if let Expr::Pow(base, exp) = term_data.clone() {
                     if let Expr::Number(n) = ctx.get(exp) {
-                        if n.clone() >= num_rational::BigRational::from_integer(2.into()) && n.is_integer() {
+                        if n.clone() >= num_rational::BigRational::from_integer(2.into())
+                            && n.is_integer()
+                        {
                             let trig_info = if let Expr::Function(name, args) = ctx.get(base) {
                                 if (name == "sin" || name == "cos") && args.len() == 1 {
                                     Some((name.clone(), args[0]))
@@ -308,34 +325,40 @@ define_rule!(
                         }
                     }
                 }
-                
+
                 // Check if term is Mul containing sin^n or cos^n
                 if let Expr::Mul(_, _) = term_data {
                     let mut factors = Vec::new();
                     crate::helpers::flatten_mul(ctx, term, &mut factors);
-                    
+
                     // Find the trig square factor (or higher power)
                     let mut trig_idx = None;
                     let mut trig_info = None;
                     let mut trig_rem = None; // Remaining power if n > 2
-                    
+
                     for (i, &factor) in factors.iter().enumerate() {
                         if let Expr::Pow(base, exp) = ctx.get(factor).clone() {
                             if let Expr::Number(n) = ctx.get(exp) {
-                                if n.clone() >= num_rational::BigRational::from_integer(2.into()) && n.is_integer() {
+                                if n.clone() >= num_rational::BigRational::from_integer(2.into())
+                                    && n.is_integer()
+                                {
                                     if let Expr::Function(name, args) = ctx.get(base) {
                                         if (name == "sin" || name == "cos") && args.len() == 1 {
                                             trig_idx = Some(i);
                                             trig_info = Some((name.clone(), args[0]));
-                                            
-                                            let two = num_rational::BigRational::from_integer(2.into());
+
+                                            let two =
+                                                num_rational::BigRational::from_integer(2.into());
                                             if n.clone() > two {
                                                 let rem_exp = n.clone() - two;
                                                 if rem_exp.is_one() {
                                                     trig_rem = Some(base);
                                                 } else {
-                                                    let rem_exp_expr = ctx.add(Expr::Number(rem_exp));
-                                                    trig_rem = Some(ctx.add(Expr::Pow(base, rem_exp_expr)));
+                                                    let rem_exp_expr =
+                                                        ctx.add(Expr::Number(rem_exp));
+                                                    trig_rem = Some(
+                                                        ctx.add(Expr::Pow(base, rem_exp_expr)),
+                                                    );
                                                 }
                                             }
                                             break;
@@ -345,7 +368,7 @@ define_rule!(
                             }
                         }
                     }
-                    
+
                     if let (Some(idx), Some((name, arg))) = (trig_idx, trig_info) {
                         // Construct coefficient from remaining factors AND remaining power
                         let mut coeff_factors = Vec::new();
@@ -357,7 +380,7 @@ define_rule!(
                         if let Some(rem) = trig_rem {
                             coeff_factors.push(rem);
                         }
-                        
+
                         let coeff = if coeff_factors.is_empty() {
                             ctx.num(1)
                         } else {
@@ -370,7 +393,7 @@ define_rule!(
                         return Some((coeff, name, arg));
                     }
                 }
-                
+
                 None
             };
 
@@ -381,7 +404,7 @@ define_rule!(
                 func_name: String,
                 arg: ExprId,
             }
-            
+
             let mut trig_terms = Vec::new();
             for (i, &term) in terms.iter().enumerate() {
                 if let Some((coeff, name, arg)) = extract_trig_part(ctx, term) {
@@ -393,258 +416,256 @@ define_rule!(
                     });
                 }
             }
-            
+
             // Find pairs
             for i in 0..trig_terms.len() {
                 for j in (i + 1)..trig_terms.len() {
                     let t1 = &trig_terms[i];
                     let t2 = &trig_terms[j];
-                    
-                    if t1.func_name != t2.func_name { 
+
+                    if t1.func_name != t2.func_name {
                         // Check args equality
-                        if t1.arg == t2.arg || crate::ordering::compare_expr(ctx, t1.arg, t2.arg) == std::cmp::Ordering::Equal {
+                        if t1.arg == t2.arg
+                            || crate::ordering::compare_expr(ctx, t1.arg, t2.arg)
+                                == std::cmp::Ordering::Equal
+                        {
                             // Check coefficient equality
-                            if t1.coeff == t2.coeff || crate::ordering::compare_expr(ctx, t1.coeff, t2.coeff) == std::cmp::Ordering::Equal {
+                            if t1.coeff == t2.coeff
+                                || crate::ordering::compare_expr(ctx, t1.coeff, t2.coeff)
+                                    == std::cmp::Ordering::Equal
+                            {
                                 // Found match!
-                            // Found match!
-                            // coeff * sin^2 + coeff * cos^2 = coeff
-                            
-                            // Construct new expression
-                            let mut new_terms = Vec::new();
-                            for k in 0..terms.len() {
-                                if k != t1.index && k != t2.index {
-                                    new_terms.push(terms[k]);
+                                // Found match!
+                                // coeff * sin^2 + coeff * cos^2 = coeff
+
+                                // Construct new expression
+                                let mut new_terms = Vec::new();
+                                for k in 0..terms.len() {
+                                    if k != t1.index && k != t2.index {
+                                        new_terms.push(terms[k]);
+                                    }
                                 }
-                            }
-                            
-                            // Add 'coeff'
-                            new_terms.push(t1.coeff);
-                            
-                            if new_terms.is_empty() {
+
+                                // Add 'coeff'
+                                new_terms.push(t1.coeff);
+
+                                if new_terms.is_empty() {
+                                    return Some(Rewrite {
+                                        new_expr: ctx.num(0),
+                                        description: "Pythagorean Identity (empty)".to_string(),
+                                    });
+                                }
+
+                                let mut new_expr = new_terms[0];
+                                for k in 1..new_terms.len() {
+                                    new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                                }
+
                                 return Some(Rewrite {
-                                    new_expr: ctx.num(0),
-                                    description: "Pythagorean Identity (empty)".to_string(),
+                                    new_expr,
+                                    description: "a*sin^2 + a*cos^2 = a".to_string(),
                                 });
                             }
-                            
-                            let mut new_expr = new_terms[0];
-                            for k in 1..new_terms.len() {
-                                new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
-                            }
-                            
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "a*sin^2 + a*cos^2 = a".to_string(),
-                            });
                         }
                     }
                 }
-            }
             }
         }
         None
     }
 );
 
-define_rule!(
-    AngleIdentityRule,
-    "Angle Sum/Diff Identity",
-    |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
-            if args.len() == 1 {
-                let inner = args[0];
+define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if args.len() == 1 {
+            let inner = args[0];
+            match name.as_str() {
+                "sin" => {
+                    let inner_data = ctx.get(inner).clone();
+                    if let Expr::Add(lhs, rhs) = inner_data {
+                        // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
+                        let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
+                        let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
+                        let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
+
+                        let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
+                        let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
+                        let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
+
+                        let new_expr = ctx.add(Expr::Add(term1, term2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)".to_string(),
+                        });
+                    } else if let Expr::Sub(lhs, rhs) = inner_data {
+                        // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
+                        let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
+                        let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
+                        let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
+
+                        let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
+                        let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
+                        let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
+
+                        let new_expr = ctx.add(Expr::Sub(term1, term2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)".to_string(),
+                        });
+                    } else if let Expr::Div(num, den) = inner_data {
+                        // sin((a + b) / c) -> sin(a/c + b/c) -> ...
+                        let num_data = ctx.get(num).clone();
+                        if let Expr::Add(lhs, rhs) = num_data {
+                            let a = ctx.add(Expr::Div(lhs, den));
+                            let b = ctx.add(Expr::Div(rhs, den));
+
+                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
+                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
+                            let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
+
+                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
+                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
+                            let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
+
+                            let new_expr = ctx.add(Expr::Add(term1, term2));
+                            return Some(Rewrite {
+                                new_expr,
+                                description:
+                                    "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)"
+                                        .to_string(),
+                            });
+                        }
+                    }
+                }
+                "cos" => {
+                    let inner_data = ctx.get(inner).clone();
+                    if let Expr::Add(lhs, rhs) = inner_data {
+                        // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)
+                        let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
+                        let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
+                        let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
+
+                        let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
+                        let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
+                        let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
+
+                        let new_expr = ctx.add(Expr::Sub(term1, term2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)".to_string(),
+                        });
+                    } else if let Expr::Sub(lhs, rhs) = inner_data {
+                        // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
+                        let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
+                        let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
+                        let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
+
+                        let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
+                        let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
+                        let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
+
+                        let new_expr = ctx.add(Expr::Add(term1, term2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)".to_string(),
+                        });
+                    } else if let Expr::Div(num, den) = inner_data {
+                        // cos((a + b) / c) -> cos(a/c + b/c) -> ...
+                        let num_data = ctx.get(num).clone();
+                        if let Expr::Add(lhs, rhs) = num_data {
+                            let a = ctx.add(Expr::Div(lhs, den));
+                            let b = ctx.add(Expr::Div(rhs, den));
+
+                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
+                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
+                            let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
+
+                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
+                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
+                            let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
+
+                            let new_expr = ctx.add(Expr::Sub(term1, term2));
+                            return Some(Rewrite {
+                                new_expr,
+                                description:
+                                    "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)"
+                                        .to_string(),
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+});
+
+define_rule!(TanToSinCosRule, "Tan to Sin/Cos", |ctx, expr| {
+    let expr_data = ctx.get(expr).clone();
+    if let Expr::Function(name, args) = expr_data {
+        if name == "tan" && args.len() == 1 {
+            // tan(x) -> sin(x) / cos(x)
+            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![args[0]]));
+            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![args[0]]));
+            let new_expr = ctx.add(Expr::Div(sin_x, cos_x));
+            return Some(Rewrite {
+                new_expr,
+                description: "tan(x) -> sin(x)/cos(x)".to_string(),
+            });
+        }
+    }
+    None
+});
+
+define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if args.len() == 1 {
+            // Check if arg is 2*x or x*2
+            // We need to match "2 * x"
+            if let Some(inner_var) = extract_double_angle_arg(ctx, args[0]) {
                 match name.as_str() {
                     "sin" => {
-                        let inner_data = ctx.get(inner).clone();
-                        if let Expr::Add(lhs, rhs) = inner_data {
-                            // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
-                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
-                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                            let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
-                            
-                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
-                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                            let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
-                            
-                            let new_expr = ctx.add(Expr::Add(term1, term2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)".to_string(),
-                            });
-                        } else if let Expr::Sub(lhs, rhs) = inner_data {
-                            // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
-                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
-                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                            let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
-                            
-                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
-                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                            let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
-                            
-                            let new_expr = ctx.add(Expr::Sub(term1, term2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)".to_string(),
-                            });
-                        } else if let Expr::Div(num, den) = inner_data {
-                            // sin((a + b) / c) -> sin(a/c + b/c) -> ...
-                            let num_data = ctx.get(num).clone();
-                            if let Expr::Add(lhs, rhs) = num_data {
-                                let a = ctx.add(Expr::Div(lhs, den));
-                                let b = ctx.add(Expr::Div(rhs, den));
-                                
-                                let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
-                                let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
-                                let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
-                                
-                                let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
-                                let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
-                                let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
-                                
-                                let new_expr = ctx.add(Expr::Add(term1, term2));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)".to_string(),
-                                });
-                            }
-                        }
-                    },
+                        // sin(2x) -> 2sin(x)cos(x)
+                        let two = ctx.num(2);
+                        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+                        let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+                        let sin_cos = ctx.add(Expr::Mul(sin_x, cos_x));
+                        let new_expr = ctx.add(Expr::Mul(two, sin_cos));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "sin(2x) -> 2sin(x)cos(x)".to_string(),
+                        });
+                    }
                     "cos" => {
-                        let inner_data = ctx.get(inner).clone();
-                        if let Expr::Add(lhs, rhs) = inner_data {
-                            // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)
-                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
-                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                            let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
-                            
-                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
-                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                            let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
-                            
-                            let new_expr = ctx.add(Expr::Sub(term1, term2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)".to_string(),
-                            });
-                        } else if let Expr::Sub(lhs, rhs) = inner_data {
-                            // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
-                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
-                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                            let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
-                            
-                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
-                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                            let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
-                            
-                            let new_expr = ctx.add(Expr::Add(term1, term2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)".to_string(),
-                            });
-                        } else if let Expr::Div(num, den) = inner_data {
-                            // cos((a + b) / c) -> cos(a/c + b/c) -> ...
-                            let num_data = ctx.get(num).clone();
-                            if let Expr::Add(lhs, rhs) = num_data {
-                                let a = ctx.add(Expr::Div(lhs, den));
-                                let b = ctx.add(Expr::Div(rhs, den));
-                                
-                                let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
-                                let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
-                                let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
-                                
-                                let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
-                                let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
-                                let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
-                                
-                                let new_expr = ctx.add(Expr::Sub(term1, term2));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)".to_string(),
-                                });
-                            }
-                        }
-                    },
+                        // cos(2x) -> cos^2(x) - sin^2(x)
+                        let two = ctx.num(2);
+                        let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+                        let cos2 = ctx.add(Expr::Pow(cos_x, two));
+
+                        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+                        let sin2 = ctx.add(Expr::Pow(sin_x, two));
+
+                        let new_expr = ctx.add(Expr::Sub(cos2, sin2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "cos(2x) -> cos^2(x) - sin^2(x)".to_string(),
+                        });
+                    }
                     _ => {}
                 }
             }
         }
-        None
     }
-);
-
-define_rule!(
-    TanToSinCosRule,
-    "Tan to Sin/Cos",
-    |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(name, args) = expr_data {
-            if name == "tan" && args.len() == 1 {
-                // tan(x) -> sin(x) / cos(x)
-                let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![args[0]]));
-                let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![args[0]]));
-                let new_expr = ctx.add(Expr::Div(sin_x, cos_x));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "tan(x) -> sin(x)/cos(x)".to_string(),
-                });
-            }
-        }
-        None
-    }
-);
-
-define_rule!(
-    DoubleAngleRule,
-    "Double Angle Identity",
-    |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
-            if args.len() == 1 {
-                // Check if arg is 2*x or x*2
-                // We need to match "2 * x"
-                if let Some(inner_var) = extract_double_angle_arg(ctx, args[0]) {
-                    match name.as_str() {
-                        "sin" => {
-                            // sin(2x) -> 2sin(x)cos(x)
-                            let two = ctx.num(2);
-                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
-                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
-                            let sin_cos = ctx.add(Expr::Mul(sin_x, cos_x));
-                            let new_expr = ctx.add(Expr::Mul(two, sin_cos));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sin(2x) -> 2sin(x)cos(x)".to_string(),
-                            });
-                        },
-                        "cos" => {
-                            // cos(2x) -> cos^2(x) - sin^2(x)
-                            let two = ctx.num(2);
-                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
-                            let cos2 = ctx.add(Expr::Pow(cos_x, two));
-                            
-                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
-                            let sin2 = ctx.add(Expr::Pow(sin_x, two));
-                            
-                            let new_expr = ctx.add(Expr::Sub(cos2, sin2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos(2x) -> cos^2(x) - sin^2(x)".to_string(),
-                            });
-                        },
-                        _ => {}
-                    }
-                }
-            }
-        }
-        None
-    }
-);
+    None
+});
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rule::Rule;
+    use cas_ast::{Context, DisplayExpr};
     use cas_parser::parse;
-    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_evaluate_trig_zero() {
@@ -654,17 +675,44 @@ mod tests {
         // sin(0) -> 0
         let expr = parse("sin(0)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "0");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
 
         // cos(0) -> 1
         let expr = parse("cos(0)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "1");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "1"
+        );
 
         // tan(0) -> 0
         let expr = parse("tan(0)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "0");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
     }
 
     #[test]
@@ -675,40 +723,87 @@ mod tests {
         // sin(-x) -> -sin(x)
         let expr = parse("sin(-x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "-sin(x)");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "-sin(x)"
+        );
 
         // cos(-x) -> cos(x)
         let expr = parse("cos(-x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "cos(x)");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "cos(x)"
+        );
 
         // tan(-x) -> -tan(x)
         let expr = parse("tan(-x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "-tan(x)");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "-tan(x)"
+        );
     }
 
     #[test]
     fn test_trig_identities() {
         let mut ctx = Context::new();
         let rule = AngleIdentityRule;
-        
+
         // sin(x + y)
         let expr = parse("sin(x + y)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }).contains("sin(x)"));
-        
+        assert!(format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+        .contains("sin(x)"));
+
         // cos(x + y) -> cos(x)cos(y) - sin(x)sin(y)
         let expr = parse("cos(x + y)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        let res = format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr });
+        let res = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        );
         assert!(res.contains("cos(x)"));
         assert!(res.contains("-"));
-        
+
         // sin(x - y)
         let expr = parse("sin(x - y)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }).contains("-"));
+        assert!(format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+        .contains("-"));
     }
 
     #[test]
@@ -717,23 +812,46 @@ mod tests {
         let rule = TanToSinCosRule;
         let expr = parse("tan(x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "sin(x) / cos(x)");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "sin(x) / cos(x)"
+        );
     }
 
     #[test]
     fn test_double_angle() {
         let mut ctx = Context::new();
         let rule = DoubleAngleRule;
-        
+
         // sin(2x)
         let expr = parse("sin(2 * x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }).contains("2 * sin(x) * cos(x)")); // Approx check
-        
+        assert!(format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+        .contains("2 * sin(x) * cos(x)")); // Approx check
+
         // cos(2x)
         let expr = parse("cos(2 * x)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }).contains("cos(x)^2 - sin(x)^2"));
+        assert!(format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+        .contains("cos(x)^2 - sin(x)^2"));
     }
 
     #[test]
@@ -744,25 +862,71 @@ mod tests {
         // arcsin(0) -> 0
         let expr = parse("arcsin(0)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "0");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
 
         // arccos(1) -> 0
         let expr = parse("arccos(1)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "0");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
 
         // arcsin(1) -> pi/2
         // Note: pi/2 might be formatted as "pi / 2" or similar depending on Display impl
         let expr = parse("arcsin(1)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }).contains("pi"));
-        assert!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }).contains("2"));
+        assert!(format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+        .contains("pi"));
+        assert!(format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+        .contains("2"));
 
         // arccos(0) -> pi/2
         let expr = parse("arccos(0)", &mut ctx).unwrap();
         let rewrite = rule.apply(&mut ctx, expr).unwrap();
-        assert!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }).contains("pi"));
-        assert!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }).contains("2"));
+        assert!(format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+        .contains("pi"));
+        assert!(format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+        .contains("2"));
     }
 }
 
@@ -776,7 +940,7 @@ define_rule!(
                 // Check for n * x where n is integer > 2
                 let inner = args[0];
                 let inner_data = ctx.get(inner).clone();
-                
+
                 let (n_val, x_val) = if let Expr::Mul(l, r) = inner_data {
                     if let Expr::Number(n) = ctx.get(l) {
                         if n.is_integer() {
@@ -799,19 +963,21 @@ define_rule!(
 
                 if n_val > num_bigint::BigInt::from(2) {
                     // Rewrite sin(nx) -> sin((n-1)x + x)
-                    
+
                     let n_minus_1 = n_val.clone() - 1;
-                    let n_minus_1_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(n_minus_1)));
+                    let n_minus_1_expr = ctx.add(Expr::Number(
+                        num_rational::BigRational::from_integer(n_minus_1),
+                    ));
                     let term_nm1 = ctx.add(Expr::Mul(n_minus_1_expr, x_val));
-                    
+
                     // sin(nx) = sin((n-1)x)cos(x) + cos((n-1)x)sin(x)
                     // cos(nx) = cos((n-1)x)cos(x) - sin((n-1)x)sin(x)
-                    
+
                     let sin_nm1 = ctx.add(Expr::Function("sin".to_string(), vec![term_nm1]));
                     let cos_nm1 = ctx.add(Expr::Function("cos".to_string(), vec![term_nm1]));
                     let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x_val]));
                     let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![x_val]));
-                    
+
                     if name == "sin" {
                         let t1 = ctx.add(Expr::Mul(sin_nm1, cos_x));
                         let t2 = ctx.add(Expr::Mul(cos_nm1, sin_x));
@@ -837,8 +1003,6 @@ define_rule!(
     }
 );
 
-
-
 define_rule!(
     CanonicalizeTrigSquareRule,
     "Canonicalize Trig Square",
@@ -853,9 +1017,12 @@ define_rule!(
             };
 
             if let Some(n) = n_opt {
-                if n.is_integer() && n.to_integer() % 2 == 0.into() && n > num_rational::BigRational::zero() {
-                     // Limit power to avoid explosion? Let's say <= 4 for now.
-                     if n <= num_rational::BigRational::from_integer(4.into()) {
+                if n.is_integer()
+                    && n.to_integer() % 2 == 0.into()
+                    && n > num_rational::BigRational::zero()
+                {
+                    // Limit power to avoid explosion? Let's say <= 4 for now.
+                    if n <= num_rational::BigRational::from_integer(4.into()) {
                         if let Expr::Function(name, args) = ctx.get(base) {
                             if name == "cos" && args.len() == 1 {
                                 let arg = args[0];
@@ -865,9 +1032,10 @@ define_rule!(
                                 let two = ctx.num(2);
                                 let sin_sq = ctx.add(Expr::Pow(sin_x, two));
                                 let base_term = ctx.add(Expr::Sub(one, sin_sq));
-                                
-                                let half_n = n.clone() / num_rational::BigRational::from_integer(2.into());
-                                
+
+                                let half_n =
+                                    n.clone() / num_rational::BigRational::from_integer(2.into());
+
                                 if half_n.is_one() {
                                     return Some(Rewrite {
                                         new_expr: base_term,
@@ -883,7 +1051,7 @@ define_rule!(
                                 }
                             }
                         }
-                     }
+                    }
                 }
             }
         }
@@ -898,7 +1066,15 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
-    simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule)); // Can prevent simplification (e.g. half-angle)
+
+    // DISABLED: Conflicts with Pythagorean identity rules causing infinite loops
+    // This rule converts cos²(x) → 1-sin²(x) which interacts badly with:
+    // - Pythagorean identities (sec²-tan²=1)
+    // - Reciprocal trig canonicalization
+    // Creating transformation cycles like: sec² → 1/cos² → 1/(1-sin²) → ...
+    // See: debug_sec_tan.rs test and GitHub issue #X
+    // simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule));
+
     simplifier.add_rule(Box::new(AngleConsistencyRule));
 }
 
@@ -908,36 +1084,42 @@ define_rule!(
     |ctx, expr| {
         // Only run on Add/Sub/Mul/Div to capture context
         match ctx.get(expr) {
-            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _) => {},
+            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _) => {}
             _ => return None,
         }
 
         // 1. Collect all trig arguments
         let mut trig_args = Vec::new();
         collect_trig_args_recursive(ctx, expr, &mut trig_args);
-        
-        if trig_args.is_empty() { return None; }
-        
+
+        if trig_args.is_empty() {
+            return None;
+        }
+
         // 2. Check for half-angle relationship
         // We look for pair (A, B) such that A = 2*B.
         // Then we expand trig(A) into trig(B).
-        
+
         let mut target_expansion: Option<(ExprId, ExprId)> = None; // (A, B) where A=2B
-        
+
         for i in 0..trig_args.len() {
             for j in 0..trig_args.len() {
-                if i == j { continue; }
+                if i == j {
+                    continue;
+                }
                 let a = trig_args[i];
                 let b = trig_args[j];
-                
+
                 if is_double(ctx, a, b) {
                     target_expansion = Some((a, b));
                     break;
                 }
             }
-            if target_expansion.is_some() { break; }
+            if target_expansion.is_some() {
+                break;
+            }
         }
-        
+
         if let Some((large_angle, small_angle)) = target_expansion {
             // Expand all occurrences of trig(large_angle) in expr
             // We need a recursive replacement helper
@@ -949,7 +1131,7 @@ define_rule!(
                 });
             }
         }
-        
+
         None
     }
 );
@@ -963,11 +1145,11 @@ fn collect_trig_args_recursive(ctx: &cas_ast::Context, expr: ExprId, args: &mut 
             for arg in fargs {
                 collect_trig_args_recursive(ctx, *arg, args);
             }
-        },
+        }
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             collect_trig_args_recursive(ctx, *l, args);
             collect_trig_args_recursive(ctx, *r, args);
-        },
+        }
         Expr::Neg(e) => collect_trig_args_recursive(ctx, *e, args),
         _ => {}
     }
@@ -975,53 +1157,70 @@ fn collect_trig_args_recursive(ctx: &cas_ast::Context, expr: ExprId, args: &mut 
 
 fn is_double(ctx: &cas_ast::Context, large: ExprId, small: ExprId) -> bool {
     // Check if large == 2 * small
-    
+
     // Case 1: large = 2 * small
     if let Expr::Mul(l, r) = ctx.get(large) {
         if let Expr::Number(n) = ctx.get(*l) {
-            if n == &num_rational::BigRational::from_integer(2.into()) && crate::ordering::compare_expr(ctx, *r, small) == Ordering::Equal {
+            if n == &num_rational::BigRational::from_integer(2.into())
+                && crate::ordering::compare_expr(ctx, *r, small) == Ordering::Equal
+            {
                 return true;
             }
         }
         if let Expr::Number(n) = ctx.get(*r) {
-            if n == &num_rational::BigRational::from_integer(2.into()) && crate::ordering::compare_expr(ctx, *l, small) == Ordering::Equal {
+            if n == &num_rational::BigRational::from_integer(2.into())
+                && crate::ordering::compare_expr(ctx, *l, small) == Ordering::Equal
+            {
                 return true;
             }
         }
     }
-    
+
     // Case 2: small = large / 2
     if let Expr::Div(n, d) = ctx.get(small) {
         if let Expr::Number(val) = ctx.get(*d) {
-            if val == &num_rational::BigRational::from_integer(2.into()) && crate::ordering::compare_expr(ctx, *n, large) == Ordering::Equal {
+            if val == &num_rational::BigRational::from_integer(2.into())
+                && crate::ordering::compare_expr(ctx, *n, large) == Ordering::Equal
+            {
                 return true;
             }
         }
     }
-    
+
     // Case 3: small = large * 0.5
     if let Expr::Mul(l, r) = ctx.get(small) {
         if let Expr::Number(n) = ctx.get(*l) {
-             if n == &num_rational::BigRational::new(1.into(), 2.into()) && crate::ordering::compare_expr(ctx, *r, large) == Ordering::Equal {
-                 return true;
-             }
+            if n == &num_rational::BigRational::new(1.into(), 2.into())
+                && crate::ordering::compare_expr(ctx, *r, large) == Ordering::Equal
+            {
+                return true;
+            }
         }
         if let Expr::Number(n) = ctx.get(*r) {
-             if n == &num_rational::BigRational::new(1.into(), 2.into()) && crate::ordering::compare_expr(ctx, *l, large) == Ordering::Equal {
-                 return true;
-             }
+            if n == &num_rational::BigRational::new(1.into(), 2.into())
+                && crate::ordering::compare_expr(ctx, *l, large) == Ordering::Equal
+            {
+                return true;
+            }
         }
     }
-    
+
     false
 }
 
-fn expand_trig_angle(ctx: &mut cas_ast::Context, expr: ExprId, large_angle: ExprId, small_angle: ExprId) -> ExprId {
+fn expand_trig_angle(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    large_angle: ExprId,
+    small_angle: ExprId,
+) -> ExprId {
     let expr_data = ctx.get(expr).clone();
-    
+
     // Check if this node is trig(large_angle)
     if let Expr::Function(name, args) = &expr_data {
-        if args.len() == 1 && crate::ordering::compare_expr(ctx, args[0], large_angle) == Ordering::Equal {
+        if args.len() == 1
+            && crate::ordering::compare_expr(ctx, args[0], large_angle) == Ordering::Equal
+        {
             match name.as_str() {
                 "sin" => {
                     // sin(A) -> 2sin(A/2)cos(A/2)
@@ -1030,7 +1229,7 @@ fn expand_trig_angle(ctx: &mut cas_ast::Context, expr: ExprId, large_angle: Expr
                     let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![small_angle]));
                     let term = ctx.add(Expr::Mul(sin_half, cos_half));
                     return ctx.add(Expr::Mul(two, term));
-                },
+                }
                 "cos" => {
                     // cos(A) -> 2cos^2(A/2) - 1
                     let two = ctx.num(2);
@@ -1039,65 +1238,95 @@ fn expand_trig_angle(ctx: &mut cas_ast::Context, expr: ExprId, large_angle: Expr
                     let cos_sq = ctx.add(Expr::Pow(cos_half, two));
                     let term = ctx.add(Expr::Mul(two, cos_sq));
                     return ctx.add(Expr::Sub(term, one));
-                },
+                }
                 "tan" => {
                     // tan(A) -> 2tan(A/2) / (1 - tan^2(A/2))
                     let two = ctx.num(2);
                     let one = ctx.num(1);
                     let tan_half = ctx.add(Expr::Function("tan".to_string(), vec![small_angle]));
                     let num = ctx.add(Expr::Mul(two, tan_half));
-                    
+
                     let tan_sq = ctx.add(Expr::Pow(tan_half, two));
                     let den = ctx.add(Expr::Sub(one, tan_sq));
-                    
+
                     return ctx.add(Expr::Div(num, den));
-                },
+                }
                 _ => {}
             }
         }
     }
-    
+
     // Recurse
     match expr_data {
         Expr::Add(l, r) => {
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
-            if nl != l || nr != r { ctx.add(Expr::Add(nl, nr)) } else { expr }
-        },
+            if nl != l || nr != r {
+                ctx.add(Expr::Add(nl, nr))
+            } else {
+                expr
+            }
+        }
         Expr::Sub(l, r) => {
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
-            if nl != l || nr != r { ctx.add(Expr::Sub(nl, nr)) } else { expr }
-        },
+            if nl != l || nr != r {
+                ctx.add(Expr::Sub(nl, nr))
+            } else {
+                expr
+            }
+        }
         Expr::Mul(l, r) => {
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
-            if nl != l || nr != r { ctx.add(Expr::Mul(nl, nr)) } else { expr }
-        },
+            if nl != l || nr != r {
+                ctx.add(Expr::Mul(nl, nr))
+            } else {
+                expr
+            }
+        }
         Expr::Div(l, r) => {
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
-            if nl != l || nr != r { ctx.add(Expr::Div(nl, nr)) } else { expr }
-        },
+            if nl != l || nr != r {
+                ctx.add(Expr::Div(nl, nr))
+            } else {
+                expr
+            }
+        }
         Expr::Pow(b, e) => {
             let nb = expand_trig_angle(ctx, b, large_angle, small_angle);
             let ne = expand_trig_angle(ctx, e, large_angle, small_angle);
-            if nb != b || ne != e { ctx.add(Expr::Pow(nb, ne)) } else { expr }
-        },
+            if nb != b || ne != e {
+                ctx.add(Expr::Pow(nb, ne))
+            } else {
+                expr
+            }
+        }
         Expr::Neg(e) => {
             let ne = expand_trig_angle(ctx, e, large_angle, small_angle);
-            if ne != e { ctx.add(Expr::Neg(ne)) } else { expr }
-        },
+            if ne != e {
+                ctx.add(Expr::Neg(ne))
+            } else {
+                expr
+            }
+        }
         Expr::Function(name, args) => {
             let mut new_args = Vec::new();
             let mut changed = false;
             for arg in args {
                 let na = expand_trig_angle(ctx, arg, large_angle, small_angle);
-                if na != arg { changed = true; }
+                if na != arg {
+                    changed = true;
+                }
                 new_args.push(na);
             }
-            if changed { ctx.add(Expr::Function(name, new_args)) } else { expr }
-        },
-        _ => expr
+            if changed {
+                ctx.add(Expr::Function(name, new_args))
+            } else {
+                expr
+            }
+        }
+        _ => expr,
     }
 }

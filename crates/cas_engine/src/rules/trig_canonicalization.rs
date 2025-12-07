@@ -85,18 +85,6 @@ fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if expression is a Pythagorean pattern: f²±g², 1±f²
-fn is_pythagorean_pattern(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Add(l, r) | Expr::Sub(l, r) => {
-            (is_squared_trig(ctx, *l) && is_squared_trig(ctx, *r))
-                || (is_one(ctx, *l) && is_squared_trig(ctx, *r))
-                || (is_squared_trig(ctx, *l) && is_one(ctx, *r))
-        }
-        _ => false,
-    }
-}
-
 // ==================== Tier 1: Preserve Compositions (Negative Rule) ====================
 
 /// NEVER convert reciprocal trig if it's a composition with inverse trig
@@ -119,101 +107,157 @@ define_rule!(
     }
 );
 
-// ==================== Tier 2: Pattern-Based Conversion ====================
+// =================================================================================
+// Direct Pythagorean Identity Rules (No Conversion)
+// =================================================================================
+// Instead of converting to sin/cos (which creates complex intermediate forms),
+// directly apply the Pythagorean identities:
+// - sec²(x) - tan²(x) = 1
+// - csc²(x) - cot²(x) = 1
+// - 1 + tan²(x) = sec²(x)
+// - 1 + cot²(x) = csc²(x)
 
-/// Convert reciprocal trig in Pythagorean contexts
-/// Examples: sec²(x) - tan²(x), 1 + tan²(x), csc²(x) - cot²(x)
+/// sec²(x) - tan²(x) → 1
 define_rule!(
-    ConvertForPythagoreanRule,
-    "Convert trig in Pythagorean patterns",
-    Some(vec!["Add", "Sub"]),
+    SecTanPythagoreanRule,
+    "sec²(x) - tan²(x) = 1",
+    Some(vec!["Sub"]),
     |ctx, expr| {
-        if !is_pythagorean_pattern(ctx, expr) {
-            return None;
-        }
+        if let Expr::Sub(l, r) = ctx.get(expr) {
+            let l_val = *l;
+            let r_val = *r;
 
-        // We have a Pythagorean pattern - convert all reciprocal trig to sin/cos
-        match ctx.get(expr) {
-            Expr::Add(l, r) => {
-                let l_val = *l;
-                let r_val = *r;
-                let l_converted = convert_reciprocal_to_sincos(ctx, l_val);
-                let r_converted = convert_reciprocal_to_sincos(ctx, r_val);
-
-                if l_converted != l_val || r_converted != r_val {
+            // Check if l is sec²(arg) and r is tan²(arg) with same argument
+            if let (Some(sec_arg), Some(tan_arg)) = (
+                is_function_squared(ctx, l_val, "sec"),
+                is_function_squared(ctx, r_val, "tan"),
+            ) {
+                if sec_arg == tan_arg {
                     return Some(Rewrite {
-                        new_expr: ctx.add(Expr::Add(l_converted, r_converted)),
-                        description: "Convert reciprocal trig in Pythagorean pattern".to_string(),
+                        new_expr: ctx.num(1),
+                        description: "sec²(x) - tan²(x) = 1".to_string(),
                     });
                 }
             }
-            Expr::Sub(l, r) => {
-                let l_val = *l;
-                let r_val = *r;
-                let l_converted = convert_reciprocal_to_sincos(ctx, l_val);
-                let r_converted = convert_reciprocal_to_sincos(ctx, r_val);
-
-                if l_converted != l_val || r_converted != r_val {
-                    return Some(Rewrite {
-                        new_expr: ctx.add(Expr::Sub(l_converted, r_converted)),
-                        description: "Convert reciprocal trig in Pythagorean pattern".to_string(),
-                    });
-                }
-            }
-            _ => {}
         }
-
         None
     }
 );
 
-/// Helper: Recursively convert reciprocal trig to sin/cos
-fn convert_reciprocal_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
+/// csc²(x) - cot²(x) → 1
+define_rule!(
+    CscCotPythagoreanRule,
+    "csc²(x) - cot²(x) = 1",
+    Some(vec!["Sub"]),
+    |ctx, expr| {
+        if let Expr::Sub(l, r) = ctx.get(expr) {
+            let l_val = *l;
+            let r_val = *r;
+
+            if let (Some(csc_arg), Some(cot_arg)) = (
+                is_function_squared(ctx, l_val, "csc"),
+                is_function_squared(ctx, r_val, "cot"),
+            ) {
+                if csc_arg == cot_arg {
+                    return Some(Rewrite {
+                        new_expr: ctx.num(1),
+                        description: "csc²(x) - cot²(x) = 1".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
+/// 1 + tan²(x) → sec²(x)
+define_rule!(
+    TanToSecPythagoreanRule,
+    "1 + tan²(x) = sec²(x)",
+    Some(vec!["Add"]),
+    |ctx, expr| {
+        if let Expr::Add(l, r) = ctx.get(expr) {
+            let l_val = *l;
+            let r_val = *r;
+
+            // Check both orders: 1 + tan² and tan² + 1
+            if is_one(ctx, l_val) {
+                if let Some(tan_arg) = is_function_squared(ctx, r_val, "tan") {
+                    let two = ctx.num(2);
+                    let sec_expr = ctx.add(Expr::Function("sec".to_string(), vec![tan_arg]));
+                    let sec_squared = ctx.add(Expr::Pow(sec_expr, two));
+                    return Some(Rewrite {
+                        new_expr: sec_squared,
+                        description: "1 + tan²(x) = sec²(x)".to_string(),
+                    });
+                }
+            } else if is_one(ctx, r_val) {
+                if let Some(tan_arg) = is_function_squared(ctx, l_val, "tan") {
+                    let two = ctx.num(2);
+                    let sec_expr = ctx.add(Expr::Function("sec".to_string(), vec![tan_arg]));
+                    let sec_squared = ctx.add(Expr::Pow(sec_expr, two));
+                    return Some(Rewrite {
+                        new_expr: sec_squared,
+                        description: "1 + tan²(x) = sec²(x)".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
+/// 1 + cot²(x) → csc²(x)
+define_rule!(
+    CotToCscPythagoreanRule,
+    "1 + cot²(x) = csc²(x)",
+    Some(vec!["Add"]),
+    |ctx, expr| {
+        if let Expr::Add(l, r) = ctx.get(expr) {
+            let l_val = *l;
+            let r_val = *r;
+
+            if is_one(ctx, l_val) {
+                if let Some(cot_arg) = is_function_squared(ctx, r_val, "cot") {
+                    let two = ctx.num(2);
+                    let csc_expr = ctx.add(Expr::Function("csc".to_string(), vec![cot_arg]));
+                    let csc_squared = ctx.add(Expr::Pow(csc_expr, two));
+                    return Some(Rewrite {
+                        new_expr: csc_squared,
+                        description: "1 + cot²(x) = csc²(x)".to_string(),
+                    });
+                }
+            } else if is_one(ctx, r_val) {
+                if let Some(cot_arg) = is_function_squared(ctx, l_val, "cot") {
+                    let two = ctx.num(2);
+                    let csc_expr = ctx.add(Expr::Function("csc".to_string(), vec![cot_arg]));
+                    let csc_squared = ctx.add(Expr::Pow(csc_expr, two));
+                    return Some(Rewrite {
+                        new_expr: csc_squared,
+                        description: "1 + cot²(x) = csc²(x)".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
+/// Helper: Check if expr is f²(arg) for a specific function name
+/// Returns Some(arg) if match, None otherwise
+fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprId> {
     match ctx.get(expr) {
-        // Base case: reciprocal trig function
-        Expr::Function(name, args) if args.len() == 1 => {
-            let name = name.clone();
-            let arg = args[0];
-
-            match name.as_str() {
-                "tan" => {
-                    let sin_arg = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
-                    let cos_arg = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
-                    ctx.add(Expr::Div(sin_arg, cos_arg))
-                }
-                "cot" => {
-                    let cos_arg = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
-                    let sin_arg = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
-                    ctx.add(Expr::Div(cos_arg, sin_arg))
-                }
-                "sec" => {
-                    let one = ctx.num(1);
-                    let cos_arg = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
-                    ctx.add(Expr::Div(one, cos_arg))
-                }
-                "csc" => {
-                    let one = ctx.num(1);
-                    let sin_arg = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
-                    ctx.add(Expr::Div(one, sin_arg))
-                }
-                _ => expr, // Not a reciprocal trig, return as-is
-            }
-        }
-
-        // Recurse into powers (for sec², tan², etc.)
         Expr::Pow(base, exp) => {
-            let base_val = *base;
-            let exp_val = *exp;
-            let base_converted = convert_reciprocal_to_sincos(ctx, base_val);
-            if base_converted != base_val {
-                ctx.add(Expr::Pow(base_converted, exp_val))
+            if is_two(ctx, *exp) {
+                match ctx.get(*base) {
+                    Expr::Function(name, args) if name == fname && args.len() == 1 => Some(args[0]),
+                    _ => None,
+                }
             } else {
-                expr
+                None
             }
         }
-
-        // For other expressions, return as-is
-        _ => expr,
+        _ => None,
     }
 }
 
@@ -265,26 +309,18 @@ fn check_reciprocal_pair(ctx: &Context, expr1: ExprId, expr2: ExprId) -> (bool, 
 // ==================== Registration ====================
 
 /// Register sophisticated canonicalization rules
-/// Order is CRITICAL:
-/// 1. Negative rules (preserve) first
-/// 2. Pattern-based conversion rules
-/// 3. No blanket conversion by default
 pub fn register(simplifier: &mut crate::engine::Simplifier) {
-    // Tier 1: Preserve compositions (HIGHEST PRIORITY)
-    // Note: This is currently a no-op rule, but it documents intent
-    // Real preservation happens by NOT having blanket conversion rules
+    // Direct Pythagorean identities (NO conversion, direct simplification)
+    simplifier.add_rule(Box::new(SecTanPythagoreanRule));
+    simplifier.add_rule(Box::new(CscCotPythagoreanRule));
+    simplifier.add_rule(Box::new(TanToSecPythagoreanRule));
+    simplifier.add_rule(Box::new(CotToCscPythagoreanRule));
 
-    // Tier 2: Pattern-based smart conversion
-
-    // TEMPORARILY DISABLED: Causes stack overflow with test_52
-    // TODO: Fix the interaction between Pythagorean detection and other rules
-    // The pattern detection works but creates an infinite loop during simplification
-    // simplifier.add_rule(Box::new(ConvertForPythagoreanRule));
-
+    // Reciprocal product simplification
     simplifier.add_rule(Box::new(ConvertReciprocalProductRule));
 
-    // Future: Add ConvertForMixedFractionRule
+    // Future: Add ConvertForMixedFractionRule if needed
 
-    // Note: NO blanket "convert all tan to sin/cos" rules
-    // Conversion only happens in specific beneficial contexts
+    // Note: NO generic conversion rules
+    // Each identity is applied directly without intermediate conversions
 }
