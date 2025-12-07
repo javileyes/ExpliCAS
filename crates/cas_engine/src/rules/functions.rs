@@ -147,7 +147,7 @@ mod tests {
         // Note: Parser might produce Number(-5) or Neg(Number(5)).
         // Our parser likely produces Number(-5) for literals.
         let expr1 = parse("abs(-5)", &mut ctx).expect("Failed to parse abs(-5)");
-        let rewrite1 = rule.apply(&mut ctx, expr1).expect("Rule failed to apply");
+        let rewrite1 = rule.apply(&mut ctx, expr1, &crate::parent_context::ParentContext::root()).expect("Rule failed to apply");
         assert_eq!(
             format!(
                 "{}",
@@ -161,7 +161,7 @@ mod tests {
 
         // abs(5) -> 5
         let expr2 = parse("abs(5)", &mut ctx).expect("Failed to parse abs(5)");
-        let rewrite2 = rule.apply(&mut ctx, expr2).expect("Rule failed to apply");
+        let rewrite2 = rule.apply(&mut ctx, expr2, &crate::parent_context::ParentContext::root()).expect("Rule failed to apply");
         assert_eq!(
             format!(
                 "{}",
@@ -175,7 +175,7 @@ mod tests {
 
         // abs(-x) -> abs(x)
         let expr3 = parse("abs(-x)", &mut ctx).expect("Failed to parse abs(-x)");
-        let rewrite3 = rule.apply(&mut ctx, expr3).expect("Rule failed to apply");
+        let rewrite3 = rule.apply(&mut ctx, expr3, &crate::parent_context::ParentContext::root()).expect("Rule failed to apply");
         assert_eq!(
             format!(
                 "{}",

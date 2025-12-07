@@ -277,7 +277,7 @@ mod tests {
         let x = ctx.var("x");
         let zero = ctx.num(0);
         let expr = ctx.add(Expr::Add(x, zero));
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "x");
     }
 
@@ -288,7 +288,7 @@ mod tests {
         let one = ctx.num(1);
         let y = ctx.var("y");
         let expr = ctx.add(Expr::Mul(one, y));
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "y");
     }
 
@@ -299,7 +299,7 @@ mod tests {
         let two = ctx.num(2);
         let three = ctx.num(3);
         let expr = ctx.add(Expr::Add(two, three));
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "5");
     }
 }

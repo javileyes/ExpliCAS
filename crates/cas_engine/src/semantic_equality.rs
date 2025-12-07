@@ -191,7 +191,7 @@ pub fn apply_rule_with_semantic_check(
     rule: &dyn Rule,
     expr_id: ExprId,
 ) -> Option<Rewrite> {
-    if let Some(rewrite) = rule.apply(ctx, expr_id) {
+    if let Some(rewrite) = rule.apply(ctx, expr_id, &crate::parent_context::ParentContext::root()) {
         // Check if the result is semantically different
         let checker = SemanticEqualityChecker::new(ctx);
         if !checker.are_equal(expr_id, rewrite.new_expr) {

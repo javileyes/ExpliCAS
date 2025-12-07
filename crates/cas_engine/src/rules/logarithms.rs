@@ -272,7 +272,7 @@ mod tests {
         let rule = EvaluateLogRule;
         // log(x, 1) -> 0
         let expr = parse("log(x, 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "0");
     }
 
@@ -282,7 +282,7 @@ mod tests {
         let rule = EvaluateLogRule;
         // log(x, x) -> 1
         let expr = parse("log(x, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "1");
     }
 
@@ -292,7 +292,7 @@ mod tests {
         let rule = EvaluateLogRule;
         // log(x, x^2) -> 2
         let expr = parse("log(x, x^2)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "2");
     }
 
@@ -302,7 +302,7 @@ mod tests {
         let rule = EvaluateLogRule;
         // log(b, x^y) -> y * log(b, x)
         let expr = parse("log(2, x^3)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "3 * log(2, x)");
     }
 
@@ -312,7 +312,7 @@ mod tests {
         let rule = EvaluateLogRule;
         // log(b, x*y) -> log(b, x) + log(b, y)
         let expr = parse("log(2, x * y)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let res = format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr });
         assert!(res.contains("log(2, x)"));
         assert!(res.contains("log(2, y)"));
@@ -325,7 +325,7 @@ mod tests {
         let rule = EvaluateLogRule;
         // log(b, x/y) -> log(b, x) - log(b, y)
         let expr = parse("log(2, x / y)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let res = format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr });
         assert!(res.contains("log(2, x)"));
         assert!(res.contains("log(2, y)"));
@@ -339,7 +339,7 @@ mod tests {
         // ln(e) -> 1
         // Note: ln(e) parses to log(e, e)
         let expr = parse("ln(e)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "1");
     }
 }

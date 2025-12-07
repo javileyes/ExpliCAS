@@ -474,7 +474,7 @@ mod tests {
         let rule = IntegrateRule;
         // integrate(x^2, x) -> x^3/3
         let expr = parse("integrate(x^2, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -493,7 +493,7 @@ mod tests {
         let rule = IntegrateRule;
         // integrate(5, x) -> 5x
         let expr = parse("integrate(5, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -512,7 +512,7 @@ mod tests {
         let rule = IntegrateRule;
         // integrate(sin(x), x) -> -cos(x)
         let expr = parse("integrate(sin(x), x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -531,7 +531,7 @@ mod tests {
         let rule = IntegrateRule;
         // integrate(x + 1, x) -> x^2/2 + x
         let expr = parse("integrate(x + 1, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let res = format!(
             "{}",
             DisplayExpr {
@@ -549,7 +549,7 @@ mod tests {
         let rule = IntegrateRule;
         // integrate(sin(2*x), x) -> -cos(2*x)/2
         let expr = parse("integrate(sin(2*x), x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -568,7 +568,7 @@ mod tests {
         let rule = IntegrateRule;
         // integrate(exp(3*x), x) -> exp(3*x)/3
         let expr = parse("integrate(exp(3*x), x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -587,7 +587,7 @@ mod tests {
         let rule = IntegrateRule;
         // integrate((2*x + 1)^2, x) -> (2*x + 1)^3 / (2*3) -> (2*x+1)^3 / 6
         let expr = parse("integrate((2*x + 1)^2, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         // Note: 2*3 is not simplified by IntegrateRule, it produces Expr::mul(2, 3).
         // Simplification happens later in the pipeline.
         // So we expect (2*x + 1)^(2+1) / (2 * (2+1))
@@ -610,7 +610,7 @@ mod tests {
         let rule = IntegrateRule;
         // integrate(1/(3*x), x) -> ln(3*x)/3
         let expr = parse("integrate(1/(3*x), x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",

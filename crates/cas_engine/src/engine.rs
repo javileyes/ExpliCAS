@@ -135,6 +135,28 @@ impl Simplifier {
         sorted_names
     }
 
+    pub fn local_simplify(
+        &mut self,
+        expr_id: ExprId,
+        pattern_marks: &crate::pattern_marks::PatternMarks,
+    ) -> (ExprId, Vec<Step>) {
+        let mut local_transformer = LocalSimplificationTransformer {
+            context: &mut self.context,
+            rules: &self.rules,
+            global_rules: &self.global_rules,
+            disabled_rules: &self.disabled_rules,
+            collect_steps: self.collect_steps,
+            steps: Vec::new(),
+            cache: HashMap::new(),
+            current_path: Vec::new(),
+            profiler: &mut self.profiler,
+            pattern_marks: pattern_marks.clone(), // Clone the marks for use in rules
+        };
+
+        let new_expr = local_transformer.transform_expr_recursive(expr_id);
+        (new_expr, local_transformer.steps)
+    }
+
     pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
         let mut orchestrator = crate::orchestrator::Orchestrator::new();
         orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
@@ -156,6 +178,7 @@ impl Simplifier {
             cache: HashMap::new(),
             current_path: Vec::new(),
             profiler: &mut self.profiler,
+            pattern_marks: crate::pattern_marks::PatternMarks::new(), // Empty marks for apply_rules_loop
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -260,6 +283,7 @@ struct LocalSimplificationTransformer<'a> {
     cache: HashMap<ExprId, ExprId>,
     current_path: Vec<crate::step::PathStep>,
     profiler: &'a mut RuleProfiler,
+    pattern_marks: crate::pattern_marks::PatternMarks, // NEW: For context-aware guards
 }
 
 use cas_ast::visitor::Transformer;
@@ -460,7 +484,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     if self.disabled_rules.contains(rule.name()) {
                         continue;
                     }
-                    if let Some(rewrite) = rule.apply(self.context, expr_id) {
+                    if let Some(rewrite) = rule.apply(
+                        self.context,
+                        expr_id,
+                        &crate::parent_context::ParentContext::root(),
+                    ) {
                         // Check semantic equality - skip if no real change
                         use crate::semantic_equality::SemanticEqualityChecker;
                         let checker = SemanticEqualityChecker::new(self.context);

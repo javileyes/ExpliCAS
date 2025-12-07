@@ -251,7 +251,7 @@ mod tests {
         let rule = CollectRule;
         // collect(a*x + b*x, x) -> (a+b)*x
         let expr = parse("collect(a*x + b*x, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         // Result could be (a+b)*x or (b+a)*x
         let s = format!(
             "{}",
@@ -270,7 +270,7 @@ mod tests {
         let rule = CollectRule;
         // collect(a*x + 2*x + 5, x) -> (a+2)*x + 5
         let expr = parse("collect(a*x + 2*x + 5, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let s = format!(
             "{}",
             DisplayExpr {
@@ -288,7 +288,7 @@ mod tests {
         let rule = CollectRule;
         // collect(3*x^2 + y*x^2 + x, x) -> (3+y)*x^2 + x
         let expr = parse("collect(3*x^2 + y*x^2 + x, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let s = format!(
             "{}",
             DisplayExpr {

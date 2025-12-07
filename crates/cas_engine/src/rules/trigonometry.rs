@@ -674,7 +674,7 @@ mod tests {
 
         // sin(0) -> 0
         let expr = parse("sin(0)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -688,7 +688,7 @@ mod tests {
 
         // cos(0) -> 1
         let expr = parse("cos(0)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -702,7 +702,7 @@ mod tests {
 
         // tan(0) -> 0
         let expr = parse("tan(0)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -722,7 +722,7 @@ mod tests {
 
         // sin(-x) -> -sin(x)
         let expr = parse("sin(-x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -736,7 +736,7 @@ mod tests {
 
         // cos(-x) -> cos(x)
         let expr = parse("cos(-x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -750,7 +750,7 @@ mod tests {
 
         // tan(-x) -> -tan(x)
         let expr = parse("tan(-x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -770,7 +770,7 @@ mod tests {
 
         // sin(x + y)
         let expr = parse("sin(x + y)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {
@@ -782,7 +782,7 @@ mod tests {
 
         // cos(x + y) -> cos(x)cos(y) - sin(x)sin(y)
         let expr = parse("cos(x + y)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let res = format!(
             "{}",
             DisplayExpr {
@@ -795,7 +795,7 @@ mod tests {
 
         // sin(x - y)
         let expr = parse("sin(x - y)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {
@@ -811,7 +811,7 @@ mod tests {
         let mut ctx = Context::new();
         let rule = TanToSinCosRule;
         let expr = parse("tan(x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -831,7 +831,7 @@ mod tests {
 
         // sin(2x)
         let expr = parse("sin(2 * x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {
@@ -843,7 +843,7 @@ mod tests {
 
         // cos(2x)
         let expr = parse("cos(2 * x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {
@@ -861,7 +861,7 @@ mod tests {
 
         // arcsin(0) -> 0
         let expr = parse("arcsin(0)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -875,7 +875,7 @@ mod tests {
 
         // arccos(1) -> 0
         let expr = parse("arccos(1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -890,7 +890,7 @@ mod tests {
         // arcsin(1) -> pi/2
         // Note: pi/2 might be formatted as "pi / 2" or similar depending on Display impl
         let expr = parse("arcsin(1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {
@@ -910,7 +910,7 @@ mod tests {
 
         // arccos(0) -> pi/2
         let expr = parse("arccos(0)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {

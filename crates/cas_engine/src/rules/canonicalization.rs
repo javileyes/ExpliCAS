@@ -470,7 +470,7 @@ mod tests {
         let rule = CanonicalizeNegationRule;
         // -5 -> -5 (Number)
         let expr = parse("-5", &mut ctx).unwrap(); // Neg(Number(5))
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         // The display might look the same "-5", but the structure is different.
         // Let's check if it's a Number.
         if let Expr::Number(n) = ctx.get(rewrite.new_expr) {
@@ -487,7 +487,7 @@ mod tests {
         // sqrt(x)
         let x = ctx.var("x");
         let expr = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         // Should be x^(1/2)
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "x^(1/2)");
     }
@@ -501,13 +501,13 @@ mod tests {
         let x = ctx.var("x");
         let three = ctx.num(3);
         let expr = ctx.add(Expr::Function("sqrt".to_string(), vec![x, three]));
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "x^(1 / 3)");
 
         // root(x, 4) -> x^(1/4)
         let four = ctx.num(4);
         let expr2 = ctx.add(Expr::Function("root".to_string(), vec![x, four]));
-        let rewrite2 = rule.apply(&mut ctx, expr2).unwrap();
+        let rewrite2 = rule.apply(&mut ctx, expr2, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite2.new_expr }), "x^(1 / 4)");
     }
 }

@@ -10,15 +10,15 @@ macro_rules! define_rule {
         $(#[$meta])*
         pub struct $struct_name;
 
-        impl crate::rule::Rule for $struct_name {
+        impl crate::rule::SimpleRule for $struct_name {
             fn name(&self) -> &str {
                 $name_str
             }
 
-            fn apply(&self, $ctx: &mut cas_ast::Context, $arg: cas_ast::ExprId) -> Option<crate::rule::Rewrite> {
+            fn apply_simple(&self, $ctx: &mut cas_ast::Context, $arg: cas_ast::ExprId) -> Option<crate::rule::Rewrite> {
                 $body
             }
-            
+
             fn target_types(&self) -> Option<Vec<&str>> {
                 $targets
             }

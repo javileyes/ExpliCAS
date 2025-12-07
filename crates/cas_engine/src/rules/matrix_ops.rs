@@ -1,11 +1,11 @@
 use crate::matrix::Matrix;
-use crate::rule::{Rewrite, Rule};
+use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, Expr, ExprId};
 
 /// Rule to add two matrices
 pub struct MatrixAddRule;
 
-impl Rule for MatrixAddRule {
+impl SimpleRule for MatrixAddRule {
     fn name(&self) -> &'static str {
         "Matrix Addition"
     }
@@ -14,7 +14,7 @@ impl Rule for MatrixAddRule {
         Some(vec!["Add"])
     }
 
-    fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         if let Expr::Add(left, right) = ctx.get(expr) {
             let left_id = *left;
             let right_id = *right;
@@ -43,7 +43,7 @@ impl Rule for MatrixAddRule {
 /// Rule to subtract two matrices
 pub struct MatrixSubRule;
 
-impl Rule for MatrixSubRule {
+impl SimpleRule for MatrixSubRule {
     fn name(&self) -> &'static str {
         "Matrix Subtraction"
     }
@@ -52,7 +52,7 @@ impl Rule for MatrixSubRule {
         Some(vec!["Sub"])
     }
 
-    fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         if let Expr::Sub(left, right) = ctx.get(expr) {
             let left_id = *left;
             let right_id = *right;
@@ -79,7 +79,7 @@ impl Rule for MatrixSubRule {
 /// Rule to multiply a matrix by a scalar
 pub struct ScalarMatrixRule;
 
-impl Rule for ScalarMatrixRule {
+impl SimpleRule for ScalarMatrixRule {
     fn name(&self) -> &'static str {
         "Scalar Matrix Multiplication"
     }
@@ -88,7 +88,7 @@ impl Rule for ScalarMatrixRule {
         Some(vec!["Mul"])
     }
 
-    fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         if let Expr::Mul(left, right) = ctx.get(expr) {
             let left_id = *left;
             let right_id = *right;
@@ -126,7 +126,7 @@ impl Rule for ScalarMatrixRule {
 /// Rule to multiply two matrices
 pub struct MatrixMultiplyRule;
 
-impl Rule for MatrixMultiplyRule {
+impl SimpleRule for MatrixMultiplyRule {
     fn name(&self) -> &'static str {
         "Matrix Multiplication"
     }
@@ -135,7 +135,7 @@ impl Rule for MatrixMultiplyRule {
         Some(vec!["Mul"])
     }
 
-    fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         if let Expr::Mul(left, right) = ctx.get(expr) {
             let left_id = *left;
             let right_id = *right;
@@ -166,7 +166,7 @@ impl Rule for MatrixMultiplyRule {
 /// Rule to evaluate matrix functions: det(), transpose(), trace()
 pub struct MatrixFunctionRule;
 
-impl Rule for MatrixFunctionRule {
+impl SimpleRule for MatrixFunctionRule {
     fn name(&self) -> &'static str {
         "Matrix Functions"
     }
@@ -175,7 +175,7 @@ impl Rule for MatrixFunctionRule {
         Some(vec!["Function"])
     }
 
-    fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         if let Expr::Function(name, args) = ctx.get(expr) {
             let name = name.clone();
             let args = args.clone();
@@ -255,7 +255,7 @@ mod tests {
         let m2 = ctx.matrix(2, 2, vec![n5, n6, n7, n8]);
         let add_expr = ctx.add(Expr::Add(m1, m2));
 
-        let result = rule.apply(&mut ctx, add_expr);
+        let result = rule.apply_simple(&mut ctx, add_expr);
         assert!(result.is_some());
     }
 
@@ -274,7 +274,7 @@ mod tests {
         let matrix = ctx.matrix(2, 2, vec![n1, n2, n3, n4]);
         let mul_expr = ctx.add(Expr::Mul(scalar, matrix));
 
-        let result = rule.apply(&mut ctx, mul_expr);
+        let result = rule.apply_simple(&mut ctx, mul_expr);
         assert!(result.is_some());
     }
 
@@ -297,7 +297,7 @@ mod tests {
         let m2 = ctx.matrix(2, 2, vec![n5, n6, n7, n8]);
         let mul_expr = ctx.add(Expr::Mul(m1, m2));
 
-        let result = rule.apply(&mut ctx, mul_expr);
+        let result = rule.apply_simple(&mut ctx, mul_expr);
         assert!(result.is_some());
     }
 }

@@ -495,7 +495,7 @@ mod tests {
         let add = ctx.add(Expr::Add(x, three));
         let expr = ctx.add(Expr::Mul(two, add));
 
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         // Should be (2 * x) + (2 * 3)
         // Note: Simplification of 2*3 happens in a later pass by CombineConstantsRule
         assert_eq!(
@@ -516,7 +516,7 @@ mod tests {
         let rule = AnnihilationRule;
         let x = ctx.var("x");
         let expr = ctx.add(Expr::Sub(x, x));
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -542,7 +542,7 @@ mod tests {
         let term2 = ctx.add(Expr::Mul(three, x));
         let expr = ctx.add(Expr::Add(term1, term2));
 
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -558,7 +558,7 @@ mod tests {
         let term1 = x;
         let term2 = ctx.add(Expr::Mul(two, x));
         let expr2 = ctx.add(Expr::Add(term1, term2));
-        let rewrite2 = rule.apply(&mut ctx, expr2).unwrap();
+        let rewrite2 = rule.apply(&mut ctx, expr2, &crate::parent_context::ParentContext::root()).unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -573,7 +573,7 @@ mod tests {
         // ln(x) + ln(x) -> 2 * ln(x)
         let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![x]));
         let expr3 = ctx.add(Expr::Add(ln_x, ln_x));
-        let rewrite3 = rule.apply(&mut ctx, expr3).unwrap();
+        let rewrite3 = rule.apply(&mut ctx, expr3, &crate::parent_context::ParentContext::root()).unwrap();
         // ln(x) is log(e, x), prints as ln(x)
         assert_eq!(
             format!(

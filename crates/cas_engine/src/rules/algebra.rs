@@ -640,7 +640,7 @@ mod tests {
 
         // (x^2 - 1) / (x + 1) -> x - 1
         let expr = parse("(x^2 - 1) / (x + 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         // Result might be -1 + x or x - 1 depending on polynomial to_expr order
         // Polynomial to_expr outputs lowest degree first?
         // My implementation: "1 + x" for x+1.
@@ -664,7 +664,7 @@ mod tests {
         let rule = SimplifyFractionRule;
         // (x^2 + 2*x + 1) / (x + 1) -> x + 1
         let expr = parse("(x^2 + 2*x + 1) / (x + 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let s = format!(
             "{}",
             DisplayExpr {
@@ -686,7 +686,7 @@ mod tests {
         // Roots are 1, -1.
         // Factors: (x-1), (x+1).
         let expr = parse("factor(x^2 - 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let res = format!(
             "{}",
             DisplayExpr {
@@ -704,7 +704,7 @@ mod tests {
         let rule = FactorRule;
         // factor(x^2 + 2x + 1) -> (x + 1)(x + 1)
         let expr = parse("factor(x^2 + 2*x + 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr).unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
         let res = format!(
             "{}",
             DisplayExpr {

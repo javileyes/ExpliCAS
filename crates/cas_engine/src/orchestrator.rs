@@ -10,6 +10,8 @@ pub struct Orchestrator {
     /// Rules that trigger multi-pass simplification
     /// These rules often create new opportunities for other rules
     cascade_triggers: HashSet<&'static str>,
+    /// Pre-scanned pattern marks for context-aware guards
+    pub pattern_marks: crate::pattern_marks::PatternMarks,
 }
 
 impl Orchestrator {
@@ -27,10 +29,20 @@ impl Orchestrator {
             max_iterations: 10,
             enable_polynomial_strategy: true,
             cascade_triggers,
+            pattern_marks: crate::pattern_marks::PatternMarks::new(),
         }
     }
 
-    pub fn simplify(&self, expr: ExprId, simplifier: &mut Simplifier) -> (ExprId, Vec<Step>) {
+    pub fn simplify(&mut self, expr: ExprId, simplifier: &mut Simplifier) -> (ExprId, Vec<Step>) {
+        // PRE-ANALYSIS PASS: Scan entire tree and mark Pythagorean patterns
+        // This allows context-aware guards to work correctly even with bottom-up processing
+        self.pattern_marks = crate::pattern_marks::PatternMarks::new();
+        crate::pattern_scanner::scan_and_mark_patterns(
+            &simplifier.context,
+            expr,
+            &mut self.pattern_marks,
+        );
+
         let mut steps = Vec::new();
         let mut current = expr;
 
@@ -87,7 +99,9 @@ impl Orchestrator {
                 let mut cycle_detector = CycleDetector::new(5);
 
                 loop {
-                    let (simplified, rule_steps) = simplifier.apply_rules_loop(current);
+                    // 2. Local Simplification (Rule-based transformation)
+                    let (simplified, mut local_steps) =
+                        simplifier.local_simplify(current, &self.pattern_marks);
 
                     // OPTIMIZATION: Fast path with ExprId comparison (O(1))
                     if simplified == current {
@@ -104,7 +118,7 @@ impl Orchestrator {
                         break;
                     }
 
-                    steps.extend(rule_steps);
+                    steps.extend(local_steps);
                     current = simplified;
                     pass_count += 1;
 

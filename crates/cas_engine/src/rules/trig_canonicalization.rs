@@ -429,6 +429,79 @@ define_rule!(
     }
 );
 
+// ==================== Pythagorean Identity Variants with Constants ====================
+
+/// sec²(x) - tan²(x) - 1 → 0
+/// This handles the variant where we have the full identity minus 1
+define_rule!(
+    SecTanMinusOneIdentityRule,
+    "sec²(x) - tan²(x) - 1 = 0",
+    Some(vec!["Sub"]),
+    |ctx, expr| {
+        // Pattern: (sec² - tan²) - 1
+        // We know sec² - tan² = 1, so (sec² - tan²) - 1 = 0
+        if let Expr::Sub(left, right) = ctx.get(expr) {
+            let left_val = *left;
+            let right_val = *right;
+
+            // Check if right is 1
+            if is_one(ctx, right_val) {
+                // Check if left is  sec² - tan² pattern
+                if let Expr::Sub(ll, lr) = ctx.get(left_val) {
+                    let ll_val = *ll;
+                    let lr_val = *lr;
+
+                    if let (Some(sec_arg), Some(tan_arg)) = (
+                        is_function_squared(ctx, ll_val, "sec"),
+                        is_function_squared(ctx, lr_val, "tan"),
+                    ) {
+                        if sec_arg == tan_arg {
+                            return Some(Rewrite {
+                                new_expr: ctx.num(0),
+                                description: "sec²(x) - tan²(x) - 1 = 0".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+/// csc²(x) - cot²(x) - 1 → 0  
+define_rule!(
+    CscCotMinusOneIdentityRule,
+    "csc²(x) - cot²(x) - 1 = 0",
+    Some(vec!["Sub"]),
+    |ctx, expr| {
+        if let Expr::Sub(left, right) = ctx.get(expr) {
+            let left_val = *left;
+            let right_val = *right;
+
+            if is_one(ctx, right_val) {
+                if let Expr::Sub(ll, lr) = ctx.get(left_val) {
+                    let ll_val = *ll;
+                    let lr_val = *lr;
+
+                    if let (Some(csc_arg), Some(cot_arg)) = (
+                        is_function_squared(ctx, ll_val, "csc"),
+                        is_function_squared(ctx, lr_val, "cot"),
+                    ) {
+                        if csc_arg == cot_arg {
+                            return Some(Rewrite {
+                                new_expr: ctx.num(0),
+                                description: "csc²(x) - cot²(x) - 1 = 0".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 /// Helper: Check if expr is f²(arg) for a specific function name
 /// Returns Some(arg) if match, None otherwise
 fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprId> {
@@ -524,22 +597,28 @@ define_rule!(
 
 // ==================== Registration ====================
 
-/// Register sophisticated canonicalization rules
-/// CRITICAL: These rules are applied AFTER compositions resolve
-/// so that tan(arctan(x)) → x happens before any conversion attempts
-pub fn register(simplifier: &mut crate::engine::Simplifier) {
-    // Tier 2: Pattern-based conversions
-    // Only convert when we detect patterns that benefit from canonicalization
-
-    // Direct Pythagorean identity rules (no conversion, direct application)
+/// Register ONLY direct Pythagorean identity rules
+/// CRITICAL: Must be called BEFORE any conversion rules to preserve patterns
+/// sec²-tan²-1 must match BEFORE tan² becomes sin²/cos²
+pub fn register_pythagorean_identities(simplifier: &mut crate::engine::Simplifier) {
+    // These are the HIGHEST PRIORITY rules that must fire first
     simplifier.add_rule(Box::new(SecTanPythagoreanRule));
     simplifier.add_rule(Box::new(CscCotPythagoreanRule));
     simplifier.add_rule(Box::new(TanToSecPythagoreanRule));
     simplifier.add_rule(Box::new(CotToCscPythagoreanRule));
 
-    // Reciprocal product simplification: tan*cot → 1, etc.
+    // Pythagorean variants with constants
+    simplifier.add_rule(Box::new(SecTanMinusOneIdentityRule));
+    simplifier.add_rule(Box::new(CscCotMinusOneIdentityRule));
+}
+
+/// Register sophisticated canonicalization rules
+/// CRITICAL: These rules are applied AFTER compositions resolve
+/// so that tan(arctan(x)) → x happens before any conversion attempts
+pub fn register(simplifier: &mut crate::engine::Simplifier) {
+    // Reciprocal product simplification
     simplifier.add_rule(Box::new(ConvertReciprocalProductRule));
 
-    // Phase 4: Mixed fraction conversion
+    // Mixed fraction conversion
     simplifier.add_rule(Box::new(ConvertForMixedFractionRule));
 }
