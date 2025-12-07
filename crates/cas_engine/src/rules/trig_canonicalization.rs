@@ -85,6 +85,192 @@ fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+// ==================== Phase 4: Mixed Fraction Helpers ====================
+
+use std::collections::HashSet;
+
+/// Recursively collect all trig function names in an expression
+fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<String>) {
+    match ctx.get(expr) {
+        Expr::Function(name, args) => {
+            // Add if it's a trig function
+            if matches!(name.as_str(), "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
+                funcs.insert(name.clone());
+            }
+            // Recurse into arguments
+            for &arg in args {
+                collect_trig_recursive(ctx, arg, funcs);
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            collect_trig_recursive(ctx, *l, funcs);
+            collect_trig_recursive(ctx, *r, funcs);
+        }
+        Expr::Pow(base, exp) => {
+            collect_trig_recursive(ctx, *base, funcs);
+            collect_trig_recursive(ctx, *exp, funcs);
+        }
+        Expr::Neg(inner) => {
+            collect_trig_recursive(ctx, *inner, funcs);
+        }
+        _ => {}
+    }
+}
+
+/// Collect all trig function names in expression
+fn collect_trig_functions(ctx: &Context, expr: ExprId) -> HashSet<String> {
+    let mut funcs = HashSet::new();
+    collect_trig_recursive(ctx, expr, &mut funcs);
+    funcs
+}
+
+/// Check if has multiple different trig function types
+fn has_multiple_trig_types(funcs: &HashSet<String>) -> bool {
+    funcs.len() >= 2
+}
+
+/// Check if expression is f²(x) where f is any trig function
+/// Returns the argument of the trig function if it matches, otherwise None.
+fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            if is_two(ctx, *exp) {
+                match ctx.get(*base) {
+                    Expr::Function(name, args) if args.len() == 1 => {
+                        // Check if it's a trig function (sin, cos, tan, cot, sec, csc)
+                        if matches!(name.as_str(), "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
+                            return Some(args[0]);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Check if expression is a Pythagorean-style pattern (f² ± g² or 1 ± f²)
+/// These should be handled by direct Pythagorean rules, not converted
+fn is_pythagorean_style(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Add(l, r) | Expr::Sub(l, r) => {
+            let l_is_squared = is_any_trig_function_squared(ctx, *l).is_some();
+            let r_is_squared = is_any_trig_function_squared(ctx, *r).is_some();
+            let l_is_one = is_one(ctx, *l);
+            let r_is_one = is_one(ctx, *r);
+
+            // Patterns: f²±g², 1±f², f²±1
+            (l_is_squared && r_is_squared)
+                || (l_is_one && r_is_squared)
+                || (l_is_squared && r_is_one)
+        }
+        _ => false,
+    }
+}
+
+/// Check if should trigger mixed fraction conversion
+fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
+    // Don't convert if numerator or denominator is a Pythagorean pattern
+    // Those are handled better by direct Pythagorean identity rules
+    if is_pythagorean_style(ctx, num) || is_pythagorean_style(ctx, den) {
+        return false;
+    }
+
+    let num_funcs = collect_trig_functions(ctx, num);
+    let den_funcs = collect_trig_functions(ctx, den);
+
+    // Must have some trig functions
+    if num_funcs.is_empty() && den_funcs.is_empty() {
+        return false;
+    }
+
+    // Check for mixed types in numerator OR denominator
+    let num_has_mixed = has_multiple_trig_types(&num_funcs);
+    let den_has_mixed = has_multiple_trig_types(&den_funcs);
+
+    // Check if there's any reciprocal trig
+    let has_reciprocal = num_funcs.iter().any(|n| is_reciprocal_trig_name(n))
+        || den_funcs.iter().any(|n| is_reciprocal_trig_name(n));
+
+    (num_has_mixed || den_has_mixed) && has_reciprocal
+}
+
+/// Recursively convert trig functions to sin/cos
+fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let expr_data = ctx.get(expr).clone();
+    match expr_data {
+        Expr::Function(name, args) if args.len() == 1 => {
+            let arg = args[0];
+            let converted_arg = convert_trig_to_sincos(ctx, arg);
+
+            match name.as_str() {
+                "tan" => {
+                    // tan(x) → sin(x)/cos(x)
+                    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![converted_arg]));
+                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![converted_arg]));
+                    ctx.add(Expr::Div(sin_x, cos_x))
+                }
+                "cot" => {
+                    // cot(x) → cos(x)/sin(x)
+                    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![converted_arg]));
+                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![converted_arg]));
+                    ctx.add(Expr::Div(cos_x, sin_x))
+                }
+                "sec" => {
+                    // sec(x) → 1/cos(x)
+                    let one = ctx.num(1);
+                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![converted_arg]));
+                    ctx.add(Expr::Div(one, cos_x))
+                }
+                "csc" => {
+                    // csc(x) → 1/sin(x)
+                    let one = ctx.num(1);
+                    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![converted_arg]));
+                    ctx.add(Expr::Div(one, sin_x))
+                }
+                _ => {
+                    // Keep sin/cos as-is, but with converted arg
+                    ctx.add(Expr::Function(name, vec![converted_arg]))
+                }
+            }
+        }
+        Expr::Add(l, r) => {
+            let new_l = convert_trig_to_sincos(ctx, l);
+            let new_r = convert_trig_to_sincos(ctx, r);
+            ctx.add(Expr::Add(new_l, new_r))
+        }
+        Expr::Sub(l, r) => {
+            let new_l = convert_trig_to_sincos(ctx, l);
+            let new_r = convert_trig_to_sincos(ctx, r);
+            ctx.add(Expr::Sub(new_l, new_r))
+        }
+        Expr::Mul(l, r) => {
+            let new_l = convert_trig_to_sincos(ctx, l);
+            let new_r = convert_trig_to_sincos(ctx, r);
+            ctx.add(Expr::Mul(new_l, new_r))
+        }
+        Expr::Div(l, r) => {
+            let new_l = convert_trig_to_sincos(ctx, l);
+            let new_r = convert_trig_to_sincos(ctx, r);
+            ctx.add(Expr::Div(new_l, new_r))
+        }
+        Expr::Pow(base, exp) => {
+            let new_base = convert_trig_to_sincos(ctx, base);
+            // Don't recurse into exponent
+            ctx.add(Expr::Pow(new_base, exp))
+        }
+        Expr::Neg(inner) => {
+            let new_inner = convert_trig_to_sincos(ctx, inner);
+            ctx.add(Expr::Neg(new_inner))
+        }
+        _ => expr, // Return as-is for other types
+    }
+}
+
+// ==================== End Phase 4 Helpers ====================
+
 // ==================== Tier 1: Preserve Compositions (Negative Rule) ====================
 
 /// NEVER convert reciprocal trig if it's a composition with inverse trig
@@ -306,21 +492,54 @@ fn check_reciprocal_pair(ctx: &Context, expr1: ExprId, expr2: ExprId) -> (bool, 
     }
 }
 
+// ==================== Phase 4: Mixed Fraction Conversion ====================
+
+/// Convert mixed trig fractions to sin/cos for better algebraic simplification
+define_rule!(
+    ConvertForMixedFractionRule,
+    "Convert Mixed Trig Fraction to sin/cos",
+    Some(vec!["Div"]),
+    |ctx, expr| {
+        if let Expr::Div(num, den) = ctx.get(expr) {
+            let num = *num;
+            let den = *den;
+
+            // Check if this is a mixed trig fraction
+            if is_mixed_trig_fraction(ctx, num, den) {
+                // Convert both numerator and denominator to sin/cos
+                let new_num = convert_trig_to_sincos(ctx, num);
+                let new_den = convert_trig_to_sincos(ctx, den);
+
+                let result = ctx.add(Expr::Div(new_num, new_den));
+
+                return Some(Rewrite {
+                    new_expr: result,
+                    description: "Convert mixed trig fraction to sin/cos".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
 // ==================== Registration ====================
 
 /// Register sophisticated canonicalization rules
+/// CRITICAL: These rules are applied AFTER compositions resolve
+/// so that tan(arctan(x)) → x happens before any conversion attempts
 pub fn register(simplifier: &mut crate::engine::Simplifier) {
-    // Direct Pythagorean identities (NO conversion, direct simplification)
+    // Tier 2: Pattern-based conversions
+    // Only convert when we detect patterns that benefit from canonicalization
+
+    // Direct Pythagorean identity rules (no conversion, direct application)
     simplifier.add_rule(Box::new(SecTanPythagoreanRule));
     simplifier.add_rule(Box::new(CscCotPythagoreanRule));
     simplifier.add_rule(Box::new(TanToSecPythagoreanRule));
     simplifier.add_rule(Box::new(CotToCscPythagoreanRule));
 
-    // Reciprocal product simplification
+    // Reciprocal product simplification: tan*cot → 1, etc.
     simplifier.add_rule(Box::new(ConvertReciprocalProductRule));
 
-    // Future: Add ConvertForMixedFractionRule if needed
-
-    // Note: NO generic conversion rules
-    // Each identity is applied directly without intermediate conversions
+    // Phase 4: Mixed fraction conversion
+    simplifier.add_rule(Box::new(ConvertForMixedFractionRule));
 }
