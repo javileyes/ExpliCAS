@@ -41,6 +41,11 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   Conditional multi-pass simplification (-46.8% on complex fractions).
     -   Cycle detection prevents infinite loops.
     -   Early exit optimization for fast path.
+-   **Context-Aware Pattern Detection** ★ (2025-12):
+    -   Pre-analysis system that detects mathematical patterns before simplification.
+    -   Prevents premature conversions (e.g., preserves Pythagorean identities like `sec²(x) - tan²(x) = 1`).
+    -   Pattern marks thread through transformations via ParentContext.
+    -   See [ARCHITECTURE.md](ARCHITECTURE.md#25-cas_engine---pattern-detection-infrastructure-) for details.
 -   **Development Debug System** (tracing-based):
     -   Parametrizable debug logging with zero overhead when disabled.
     -   See [DEBUG_SYSTEM.md](DEBUG_SYSTEM.md) for usage details.

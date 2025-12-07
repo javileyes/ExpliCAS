@@ -100,7 +100,7 @@ impl Orchestrator {
 
                 loop {
                     // 2. Local Simplification (Rule-based transformation)
-                    let (simplified, mut local_steps) =
+                    let (simplified, local_steps) =
                         simplifier.local_simplify(current, &self.pattern_marks);
 
                     // OPTIMIZATION: Fast path with ExprId comparison (O(1))

@@ -53,6 +53,7 @@ fn is_inverse_trig_name(name: &str) -> bool {
 }
 
 /// Check if expression is a reciprocal trig function
+#[allow(dead_code)]
 fn is_reciprocal_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Function(name, _) => is_reciprocal_trig_name(name),
@@ -61,6 +62,7 @@ fn is_reciprocal_trig(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Check if expression is f²(x) where f is a trig function
+#[allow(dead_code)]
 fn is_squared_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => is_two(ctx, *exp) && is_reciprocal_trig(ctx, *base),

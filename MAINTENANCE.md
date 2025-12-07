@@ -4,40 +4,73 @@ This document provides a comprehensive overview of the project's architecture, d
 
 ## 1. Debug Logging System
 
-A concise debug logging system is built into the `Simplifier` to trace rule applications.
+**Status**: ✅ Uses `tracing` for professional structured logging (see [DEBUG_SYSTEM.md](DEBUG_SYSTEM.md) for full guide)
 
-### Usage
+### Quick Start
 
-To enable debug logging:
+**No code changes needed!** Control logging via environment variable:
+
+```bash
+# Enable debug logging for entire engine
+RUST_LOG=cas_engine=debug cargo test
+
+# Specific module only  
+RUST_LOG=cas_engine::canonical_forms=debug cargo run -p cas_cli
+
+# Very verbose (trace level)
+RUST_LOG=cas_engine=trace ./target/release/cas_cli
+```
+
+### Log Levels
+
+- `error` - Critical errors only
+- `warn` - Warnings  
+- `info` - General information
+- `debug` - ⭐ **Recommended for development** - Detailed debugging info
+- `trace` - Very verbose, every detail
+
+### What's Logged
+
+Currently instrumented modules:
+- `canonical_forms.rs` - Conjugate detection, canonical form checks
+- `engine.rs` - AST traversal (`transform_expr_recursive`)
+- More modules can be added as needed
+
+### Example Output
+
+```bash
+$ RUST_LOG=cas_engine=debug echo "simplify x^2 + 2x + 1" | cargo run -p cas_cli
+
+# Shows detailed trace of expression simplification
+```
+
+### Adding Debug Logging
 
 ```rust
-let mut simplifier = Simplifier::with_default_rules();
-simplifier.enable_debug();
+use tracing::debug;
+
+pub fn my_function() {
+    debug!("Checking value: {:?}", value);    // General debugging
+    debug!("Processing expr: {:?}", expr);    // AST debugging
+}
 ```
 
-To disable it:
+**Benefits over `eprintln!`**:
+- ✅ Zero overhead when disabled (compiled out)
+- ✅ Granular control per module  
+- ✅ Professional industry standard
+- ✅ Doesn't pollute benchmarks/tests
+- ✅ Change log level without recompiling
 
-```rust
-simplifier.disable_debug();
-```
+**See [DEBUG_SYSTEM.md](DEBUG_SYSTEM.md)** for:
+- Pattern Detection debugging
+- Component-by-component debugging
+- Common troubleshooting scenarios
+- End-to-end trace guides
 
-### Output Format
+---
 
-Logs are printed to `stderr` with indentation to show the recursion depth:
-
-```
-[DEBUG] Visiting: Mul(ExprId(1), ExprId(2))
-  [DEBUG] Visiting: Add(ExprId(0), ExprId(0))
-    [DEBUG] Visiting: Variable("x")
-  [DEBUG] Global Rule 'Combine Like Terms' applied: ExprId(1) -> ExprId(5)
-```
-
-This format visualizes the simplification tree.
-
-### Implementation
-
--   **`Simplifier`**: Holds a `debug_mode` flag.
--   **`LocalSimplificationTransformer`**: Checks `debug_mode` before applying rules and prints logs using `eprintln!`.
+**Note**: `Simplifier.enable_debug()` method exists for backward compatibility but is deprecated. All debug logging now uses `tracing` controlled by `RUST_LOG`.
 
 ## 2. Architecture Overview
 

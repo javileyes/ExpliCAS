@@ -2,7 +2,6 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Zero};
-use std::cmp::Ordering;
 
 // ==================== Helper Functions ====================
 
@@ -79,9 +78,9 @@ fn is_pi_over_two(ctx: &Context, expr: ExprId) -> bool {
     // Also check for 1/2 * pi form (after simplification, becomes Number(1/2) * Pi)
     if let Expr::Mul(l, r) = ctx.get(expr) {
         // Could be pi * 1/2 or 1/2 * pi
-        let (num_part, const_part) = if let Expr::Constant(c) = ctx.get(*l) {
+        let (num_part, const_part) = if let Expr::Constant(_) = ctx.get(*l) {
             (*r, *l)
-        } else if let Expr::Constant(c) = ctx.get(*r) {
+        } else if let Expr::Constant(_) = ctx.get(*r) {
             (*l, *r)
         } else {
             return false;

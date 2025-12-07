@@ -297,7 +297,8 @@ struct LocalSimplificationTransformer<'a> {
     cache: HashMap<ExprId, ExprId>,
     current_path: Vec<crate::step::PathStep>,
     profiler: &'a mut RuleProfiler,
-    pattern_marks: crate::pattern_marks::PatternMarks, // For context-aware guards
+    #[allow(dead_code)]
+    pattern_marks: crate::pattern_marks::PatternMarks, // For context-aware guards (used via initial_parent_ctx)
     initial_parent_ctx: crate::parent_context::ParentContext, // Carries marks to rules
 }
 
