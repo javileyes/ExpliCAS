@@ -3,6 +3,7 @@
 ## Índice
 1. [Visión General](#visión-general)
 2. [Componentes Principales](#componentes-principales)
+   - 2.5. [Pattern Detection Infrastructure ★](#25-cas_engine---pattern-detection-infrastructure-)
 3. [Arquitectura del Sistema de Reglas](#arquitectura-del-sistema-de-reglas)
 4. [Orquestación y Estrategias](#orquestación-y-estrategias)
 5. [Flujo de Datos](#flujo-de-datos)
@@ -102,6 +103,558 @@ pub trait Transformer {
 ```
 
 **Uso**: Recolección de variables, cálculo de profundidad, validación, etc.
+
+---
+
+### 2.5. `cas_engine` - Pattern Detection Infrastructure ★★★
+
+**CRÍTICO**: Sistema agregado en 2025-12 después de 10+ horas de implementación y debugging.
+
+#### Motivación
+
+**Problema Fundamental**: El sistema de simplificación bottom-up pierde contexto.
+
+**Ejemplo del Problema**:
+```
+Input: sec²(x) - tan²(x)
+
+Bottom-Up Processing:
+1. Simplifica tan²(x) primero
+2. TanToSinCosRule: tan(x) → sin(x)/cos(x)
+3. Se pierde la oportunidad de aplicar sec²-tan²=1
+4. Result: Expresión compleja en sin/cos
+```
+
+**Solución**: **Pre-análisis de patrones antes de la simplificación**.
+
+---
+
+#### Arquitectura del Sistema
+
+```
+┌─────────────────────────────────────────┐
+│  1. Pattern Detection (Pre-Analysis)    │
+│     - Scan AST before simplification    │
+│     - Mark protected expressions        │
+│     - O(n) traversal, one time cost     │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  2. Pattern Marks (Data Structure)      │
+│     - HashSet<ExprId>                   │
+│     - O(1) lookups                      │
+│     - Marks base trig functions         │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  3. Data Flow (Orchestrator → Rules)    │
+│     - Thread through transformers       │
+│     - Via ParentContext                 │
+│     - No global state                   │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  4. Guards & Direct Rules                │
+│     - Guards: Skip premature conversion │
+│     - Direct: Apply identity directly   │
+│     - Context-aware decisions           │
+└─────────────────────────────────────────┘
+```
+
+---
+
+#### Componente 1: PatternMarks (`pattern_marks.rs`)
+
+**Responsabilidad**: Lightweight data structure para marcar expresiones protegidas.
+
+```rust
+pub struct PatternMarks {
+    protected: HashSet<ExprId>,
+}
+
+impl PatternMarks {
+    pub fn new() -> Self {
+        Self { protected: HashSet::new() }
+    }
+    
+    pub fn mark_protected(&mut self, expr: ExprId) {
+        self.protected.insert(expr);
+    }
+    
+    pub fn is_pythagorean_protected(&self, expr: ExprId) -> bool {
+        self.protected.contains(&expr)
+    }
+}
+```
+
+**Características**:
+- O(1) lookups
+- ~8 bytes por expresión marcada
+- Clone-friendly (para threading)
+- No lifetime issues
+
+---
+
+#### Componente 2: PatternScanner (`pattern_scanner.rs`)
+
+**Responsabilidad**: Detectar patrones Pythagorean antes de simplificación.
+
+```rust
+pub fn scan_and_mark_patterns(
+    ctx: &Context,
+    expr_id: ExprId,
+    marks: &mut PatternMarks
+) {
+    // Recursive depth-first traversal
+    match ctx.get(expr_id) {
+        Expr::Add(left, right) => {
+            // Check for sec²-tan² or csc²-cot² pattern
+            if is_pythagorean_difference(ctx, *left, *right) {
+                // Mark base expressions (tan(x), sec(x), etc.)
+                marks.mark_protected(extract_base(*left));
+                marks.mark_protected(extract_base(*right));
+            }
+            
+            // Recurse to children
+            scan_and_mark_patterns(ctx, *left, marks);
+            scan_and_mark_patterns(ctx, *right, marks);
+        }
+        
+        // ... other cases ...
+    }
+}
+```
+
+**Patrones Detectados**:
+1. **sec²(x) - tan²(x)**: Marca `sec(x)` y `tan(x)`
+2. **csc²(x) - cot²(x)**: Marca `csc(x)` y `cot(x)`
+
+**Complejidad**: O(n) donde n = tamaño del AST, ejecutado **una única vez**.
+
+---
+
+#### Componente 3: ParentContext (`parent_context.rs`)
+
+**Responsabilidad**: Pasar contexto de padres a hijos durante transformación.
+
+```rust
+pub struct ParentContext {
+    ancestors: Vec<ExprId>,           // From closest to furthest
+    pattern_marks: Option<PatternMarks>, // Pre-scanned marks
+}
+
+impl ParentContext {
+    pub fn root() -> Self {
+        Self { ancestors: Vec::new(), pattern_marks: None }
+    }
+    
+    pub fn with_marks(marks: PatternMarks) -> Self {
+        Self { ancestors: Vec::new(), pattern_marks: Some(marks) }
+    }
+    
+    pub fn extend(&self, parent_id: ExprId) -> Self {
+        let mut new_ancestors = self.ancestors.clone();
+        new_ancestors.push(parent_id); // Add to end
+        Self {
+            ancestors: new_ancestors,
+            pattern_marks: self.pattern_marks.clone(),
+        }
+    }
+    
+    pub fn pattern_marks(&self) -> Option<&PatternMarks> {
+        self.pattern_marks.as_ref()
+    }
+    
+    pub fn immediate_parent(&self) -> Option<ExprId> {
+        self.ancestors.last().copied() // Most recent is last
+    }
+}
+```
+
+**Uso**: Threading de pattern_marks desde Orchestrator hasta Rules.
+
+---
+
+#### Componente 4: Pattern Detection Helpers (`pattern_detection.rs`)
+
+**Responsabilidad**: Funciones auxiliares para detectar patrones específicos.
+
+```rust
+/// Check if expression is sec²(x)
+pub fn is_sec_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if is_constant_two(ctx, *exp) {
+            if let Expr::Function(name, args) = ctx.get(*base) {
+                if name == "sec" && args.len() == 1 {
+                    return Some(args[0]); // Return argument of sec(x)
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Similarly for tan², csc², cot²
+pub fn is_tan_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> { ... }
+pub fn is_csc_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> { ... }
+pub fn is_cot_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> { ... }
+```
+
+**Tests**: 17/17 passing para detección de patrones.
+
+---
+
+#### Data Flow Completo
+
+```
+User Input: sec²(x) - tan²(x)
+    ↓
+┌────────────────────────────────────────┐
+│ Orchestrator::simplify()               │
+│   1. pattern_marks = PatternScanner    │
+│      ::scan_and_mark_patterns(expr)    │
+│      → Marks: {tan(x), sec(x)}         │
+└──────────┬─────────────────────────────┘
+           │
+           ▼
+┌────────────────────────────────────────┐
+│ Simplifier::apply_rules_loop(expr,     │
+│                             &pattern_marks)
+│   → Passes marks to transformer        │
+└──────────┬─────────────────────────────┘
+           │
+           ▼
+┌────────────────────────────────────────┐
+│ LocalSimplificationTransformer         │
+│   initial_parent_ctx:                  │
+│     ParentContext::with_marks(marks)   │
+└──────────┬─────────────────────────────┘
+           │
+           ▼ (for each node)
+┌────────────────────────────────────────┐
+│ Rule::apply(ctx, expr, parent_ctx)     │
+│                                        │
+│ ┌──────────────────────────────────┐  │
+│ │ TanToSinCosRule (GUARD):         │  │
+│ │   if parent_ctx.pattern_marks()  │  │
+│ │      .is_pythagorean_protected() │  │
+│ │      { return None; } // SKIP!   │  │
+│ └──────────────────────────────────┘  │
+│                                        │
+│ ┌──────────────────────────────────┐  │
+│ │ SecTanPythagoreanRule (DIRECT):  │  │
+│ │   sec²(x) - tan²(x) → 1          │  │
+│ │   Matches Add(sec², Neg(tan²))   │  │
+│ │   Returns: Rewrite { 1 }         │  │
+│ └──────────────────────────────────┘  │
+└────────────────────────────────────────┘
+```
+
+---
+
+#### Cambios en el Motor de Simplificación
+
+**engine.rs** - Modificaciones clave:
+
+```rust
+// ANTES: apply_rules_loop no recibía pattern_marks
+pub fn apply_rules_loop(&mut self, expr: ExprId) -> (ExprId, Vec<Step>)
+
+// AHORA: Recibe y utiliza pattern_marks
+pub fn apply_rules_loop(
+    &mut self,
+    expr: ExprId,
+    pattern_marks: &PatternMarks  // ← NUEVO parámetro
+) -> (ExprId, Vec<Step>) {
+    let initial_parent_ctx = ParentContext::with_marks(pattern_marks.clone());
+    
+    let transformer = LocalSimplificationTransformer {
+        // ...
+        initial_parent_ctx,  // ← NUEVO campo
+    };
+    
+    // ...
+}
+```
+
+**LocalSimplificationTransformer** - Nuevo campo:
+
+```rust
+struct LocalSimplificationTransformer<'a> {
+    context: &'a mut Context,
+    rules: &'a HashMap<String, Vec<Rc<dyn Rule>>>,
+    global_rules: &'a Vec<Rc<dyn Rule>>,
+    cache: HashMap<ExprId, ExprId>,
+    steps: Vec<Step>,
+    current_path: Vec<PathStep>,
+    initial_parent_ctx: ParentContext,  // ← NUEVO: Pattern marks threading
+}
+```
+
+**apply_rules** - Uso del ParentContext:
+
+```rust
+fn apply_rules(
+    &mut self,
+    expr: ExprId,
+    parent_ctx: &ParentContext,  // ← Recibe context
+) -> ExprId {
+    // Pass parent_ctx to each rule
+    for rule in specific_rules {
+        if let Some(rewrite) = rule.apply(&mut self.context, expr, parent_ctx) {
+            // ... record step ...
+            return self.apply_rules(rewrite.new_expr, parent_ctx);
+        }
+    }
+    expr
+}
+```
+
+---
+
+#### Implementación de Reglas con Guards
+
+**TanToSinCosRule** - Conversión manual de macro a implementación:
+
+```rust
+pub struct TanToSinCosRule;
+
+impl Rule for TanToSinCosRule {
+    fn name(&self) -> &str {
+        "Tan to Sin/Cos"
+    }
+    
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &ParentContext,  // ← Recibe context
+    ) -> Option<Rewrite> {
+        // GUARD: Check if protected by pattern detection
+        if let Some(marks) = parent_ctx.pattern_marks() {
+            if marks.is_pythagorean_protected(expr) {
+                return None; // ← SKIP conversion!
+            }
+        }
+        
+        // Normal logic: tan(x) → sin(x)/cos(x)
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "tan" && args.len() == 1 {
+                let sin_expr = ctx.add(Expr::Function("sin".to_string(), args.clone()));
+                let cos_expr = ctx.add(Expr::Function("cos".to_string(), args.clone()));
+                let div_expr = ctx.add(Expr::Div(sin_expr, cos_expr));
+                
+                return Some(Rewrite {
+                    new_expr: div_expr,
+                    description: "tan(x) → sin(x)/cos(x)".to_string(),
+                });
+            }
+        }
+        None
+    }
+}
+```
+
+---
+
+#### Implementación de Reglas Directas
+
+**SecTanPythagoreanRule** - Identidad directa sec²-tan²=1:
+
+**CRÍTICO - AST Normalization Insight**:
+```
+CAS normaliza: a - b → Add(a, Neg(b))  NO Sub(a, b)!
+
+Por tanto, sec²(x) - tan²(x) en el AST es:
+  Add(Pow(sec(x), 2), Neg(Pow(tan(x), 2)))
+  
+NO es:
+  Sub(Pow(sec(x), 2), Pow(tan(x), 2))  ← Este NUNCA existe!
+```
+
+**Implementación correcta**:
+
+```rust
+define_rule!(
+    SecTanPythagoreanRule,
+    "Secant-Tangent Pythagorean Identity",
+    |ctx, expr| {
+        use crate::pattern_detection::{is_sec_squared, is_tan_squared};
+        
+        let expr_data = ctx.get(expr).clone();
+        
+        // Pattern: sec²(x) - tan²(x) = 1
+        // CRITICAL: Matches Add(sec², Neg(tan²))
+        if let Expr::Add(left, right) = expr_data {
+            // Try both orderings
+            for (pos, neg) in [(left, right), (right, left)] {
+                if let Expr::Neg(neg_inner) = ctx.get(neg) {
+                    if let (Some(sec_arg), Some(tan_arg)) =
+                        (is_sec_squared(ctx, pos), is_tan_squared(ctx, *neg_inner))
+                    {
+                        // Check arguments match
+                        if compare_expr(ctx, sec_arg, tan_arg) == Ordering::Equal {
+                            return Some(Rewrite {
+                                new_expr: ctx.num(1),
+                                description: "sec²(x) - tan²(x) = 1".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+```
+
+**CscCotPythagoreanRule** - Misma estructura para csc²-cot²=1.
+
+---
+
+#### Registro de Reglas
+
+**trigonometry.rs** - Función `register`:
+
+```rust
+pub fn register(simplifier: &mut Simplifier) {
+    // ... existing rules ...
+    
+    // NEW: Pythagorean identity rules
+    simplifier.add_rule(Box::new(SecTanPythagoreanRule));
+    simplifier.add_rule(Box::new(CscCotPythagoreanRule));
+    
+    // NOTE: TanToSinCosRule now has guard, manual impl
+    simplifier.add_rule(Box::new(TanToSinCosRule));
+}
+```
+
+---
+
+#### Tests y Verificación
+
+**Cobertura**:
+- `pattern_scanner.rs`: 17/17 tests passing
+- `pythagorean_variants_test.rs`: 3/3 tests passing
+- `debug_sec_tan.rs`: 3/3 tests passing
+- Full test suite: 102/102 passing
+
+**Ejemplos de test**:
+
+```rust
+#[test]
+fn test_sec_tan_equals_one() {
+    let expr = parse("sec(x)^2 - tan(x)^2");
+    let (result, _) = simplifier.simplify(expr);
+    assert_eq!(display(result), "1");
+}
+
+#[test]
+fn test_csc_cot_equals_one() {
+    let expr = parse("csc(x)^2 - cot(x)^2");
+    let (result, _) = simplifier.simplify(expr);
+    assert_eq!(display(result), "1");
+}
+```
+
+---
+
+#### Métricas de Implementación
+
+- **Tiempo de desarrollo**: 10+ horas
+- **Líneas de código**: ~750
+  - Pattern infrastructure: ~400
+  - Engine modifications: ~200
+  - Rules + tests: ~150
+- **Archivos nuevos**: 3 (`pattern_marks`, `pattern_scanner`, tests)
+- **Archivos modificados**: 7
+- **Performance overhead**: O(n) one-time scan, O(1) lookups
+- **Memory overhead**: ~8 bytes × número de expresiones protegidas
+
+---
+
+#### Lessons Learned - AST Normalization
+
+**CRÍTICO**: El descubrimiento más importante de esta implementación.
+
+1. **Subtraction is Sugar**:
+   ```
+   Parser input:     a - b
+   AST representation: Add(a, Neg(b))
+   ```
+
+2. **Pattern Matching Implications**:
+   ```rust
+   // ❌ NUNCA funciona
+   if let Expr::Sub(left, right) = ctx.get(expr) { ... }
+   
+   // ✅ SIEMPRE usar
+   if let Expr::Add(left, right) = ctx.get(expr) {
+       if let Expr::Neg(neg_inner) = ctx.get(right) { ... }
+   }
+   ```
+
+3. **Why This Matters**:
+   - Simplifica el motor: solo un variant para suma
+   - Canonical forms más fáciles
+   - Pero requiere understanding explícito de normalización
+
+4. **Other Normalizations** (to be documented):
+   - `a/b` podría ser `Div(a, b)` o `Mul(a, Pow(b, -1))` dependiendo de fase
+   - `sqrt(x)` normalizado a `Pow(x, Rational(1,2))`
+
+**Tiempo invertido en descubrir esto**: ~9 horas de las 10 horas totales.
+
+---
+
+#### Extensibilidad
+
+Para agregar nuevos patrones protegidos:
+
+1. **Añadir detección en `pattern_scanner.rs`**:
+   ```rust
+   fn scan_and_mark_patterns(...) {
+       match ctx.get(expr_id) {
+           // ... existing patterns ...
+           
+           // NEW pattern
+           Expr::YourPattern(...) => {
+               if matches_your_condition(...) {
+                   marks.mark_protected(base_expr);
+               }
+           }
+       }
+   }
+   ```
+
+2. **Añadir helper en `pattern_detection.rs`**:
+   ```rust
+   pub fn is_your_pattern(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+       // Detection logic
+   }
+   ```
+
+3. **Añadir regla directa opcional**:
+   ```rust
+   define_rule!(YourPatternRule, "Description", |ctx, expr| {
+       if matches_your_pattern(ctx, expr) {
+           return Some(Rewrite { ... });
+       }
+       None
+   });
+   ```
+
+4. **Añadir guard en rule existente**:
+   ```rust
+   if let Some(marks) = parent_ctx.pattern_marks() {
+       if marks.is_your_pattern_protected(expr) {
+           return None;
+       }
+   }
+   ```
 
 ---
 
@@ -886,12 +1439,16 @@ Timeline HTML     0ns         N/ (export only)
 
 - **Tamaño del AST**: ~500 líneas
 - **Parser**: ~200 líneas (PEG grammar)
-- **Engine**: ~2500 líneas (rules ~1800 + orchestrator ~300)
+- **Engine**: ~3250 líneas
+  - Rules: ~1800 líneas
+  - Orchestrator: ~300 líneas
+  - Pattern Detection ★: ~400 líneas (NEW 2025-12)
+  - Core simplification: ~750 líneas
 - **CLI**: ~1200 líneas
 - **Debug Tools**: ~560 líneas (Phase 2)
-- **Total proyecto**: ~5000 líneas
+- **Total proyecto**: ~5750 líneas (+750 from pattern detection)
 
-**Número de reglas**: ~70 reglas activas
+**Número de reglas**: ~75 reglas activas (incluyendo 2 nuevas Pythagorean directas)
 
 #### Gramática Soportada
 
@@ -925,11 +1482,20 @@ El componente más complejo del sistema. Implementa el sistema de reglas y la or
 
 ##### Trait `Rule`
 
+**ACTUALIZADO 2025-12**: Agregado parámetro `ParentContext` para pattern detection.
+
 ```rust
 pub trait Rule {
     fn name(&self) -> &str;
     fn target_types(&self) -> Option<Vec<&'static str>>;
-    fn apply(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite>;
+    
+    // NEW SIGNATURE: Added parent_ctx parameter
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &ParentContext  // ← NEW: Context from parent
+    ) -> Option<Rewrite>;
 }
 
 pub struct Rewrite {
@@ -937,6 +1503,13 @@ pub struct Rewrite {
     pub description: String,
 }
 ```
+
+**Cambio Critical**:
+- `parent_ctx` permite a las reglas acceder a:
+  - `pattern_marks`: Expresiones protegidas por pattern detection
+  - `ancestors`: Chain de expresiones padre (si se necesita)
+  
+**Backward Compatibility**: Reglas que no necesitan context pueden ignorar el parámetro.
 
 ##### Tipos de Reglas
 
@@ -948,7 +1521,7 @@ Las reglas se organizan por categorías:
 | **Canonicalización** | `canonicalization.rs` | `CanonicalizeAddRule`, `CanonicalizeMulRule` |
 | **Exponentes** | `exponents.rs` | `ProductPowerRule`, `EvaluatePowerRule` |
 | **Álgebra** | `algebra.rs` | `CombineLikeTermsRule`, `DistributeRule`, `FactorRule` |
-| **Trigonometría** | `trigonometry.rs` | `PythagoreanIdentityRule`, `DoubleAngleRule` |
+| **Trigonometría** | `trigonometry.rs` | `PythagoreanIdentityRule`, `SecTanPythagoreanRule` ★, `CscCotPythagoreanRule` ★, `DoubleAngleRule`, `TanToSinCosRule` (con guard) ★ |
 | **Logaritmos** | `logarithms.rs` | `LogProductRule`, `LogPowerRule` |
 | **Polinomios** | `polynomial.rs` | `ExpandRule`, `FactorRule` |
 | **Cálculo** | `calculus.rs` | `IntegrateRule`, `DiffRule` |
@@ -1540,7 +2113,7 @@ fn should_show_step(step: &Step, verbosity: Verbosity) -> bool {
 ┌─────────────┐
 │ Usuario CLI │
 └──────┬──────┘
-       │ "x^2 + 2x + 1"
+       │ "sec²(x) - tan²(x)"
        ▼
 ┌─────────────────┐
 │  cas_parser     │ ←Gramática PEG (pest)
@@ -1554,15 +2127,33 @@ fn should_show_step(step: &Step, verbosity: Verbosity) -> bool {
 └────────┬────────────────┘
          │
          ▼
-┌──────────────────────────────┐
-│  Orchestrator                │
-│  - Polynomial Strategy?      │
-│  - Apply global loop         │
-└────────┬─────────────────────┘
+┌──────────────────────────────────────────┐
+│  Orchestrator::simplify()                │
+│  ┌────────────────────────────────────┐  │
+│  │ 1. PRE-ANALYSIS ★ (NEW)            │  │
+│  │    PatternScanner::scan_and_mark() │  │
+│  │    → Creates PatternMarks          │  │
+│  │    → O(n) one-time scan            │  │
+│  └────────────────────────────────────┘  │
+│  ┌────────────────────────────────────┐  │
+│  │ 2. MULTI-PASS SIMPLIFICATION       │  │
+│  │    Simplifier::apply_rules_loop(   │  │
+│  │        expr, &pattern_marks)       │  │
+│  │    → Passes marks to transformer   │  │
+│  └────────────────────────────────────┘  │
+│  ┌────────────────────────────────────┐  │
+│  │ 3. POLYNOMIAL STRATEGY (optional)  │  │
+│  └────────────────────────────────────┘  │
+│  ┌────────────────────────────────────┐  │
+│  │ 4. FINAL COLLECTION               │  │
+│  └────────────────────────────────────┘  │
+└────────┬─────────────────────────────────┘
          │
          ▼
 ┌──────────────────────────────────────┐
 │  LocalSimplificationTransformer      │
+│  - initial_parent_ctx: ParentContext │
+│    (with pattern_marks)              │
 │  - Bottom-up recursion               │
 │  - Apply specific rules              │
 │  - Apply global rules                │
@@ -1801,13 +2392,15 @@ define_rule!(
 ### Áreas de Mejora Futura
 
 1. ~~**Multi-Pass Orchestration**~~: ✅ **COMPLETADO** - Implementado sistema de iteración hasta convergencia
-2. ~~**Fraction Simplification**~~: ✅ **COMPLETADO** - Detecta denominadores opuestos/iguales con bypass de complejidad
-3. **Paralelización**: Simplificar subexpresiones independientes en paralelo
-4. **Heurísticas Avanzadas**: ML para predecir mejor secuencia de reglas
-5. **Verificación Formal**: Probar corrección de reglas con SMT solvers
-6. **Rendimiento**: Compilación JIT de expresiones frecuentes
-7. **UI Gráfica**: Visualización de árbol de simplificación
-8. **Pruebas de Equivalencia**: Mejorar `equiv` command con más estrategias
+2. ~~**Fraction Simplification**~~: ✅ **COMPLETADO** - Detecta denominares opuestos/iguales con bypass de complejidad
+3. ~~**Pattern Detection & Context-Aware Rules**~~: ✅ **COMPLETADO (2025-12)** - Sistema completo de pre-analysis, PatternMarks, ParentContext threading, y reglas Pythagorean
+4. **Paralelización**: Simplificar subexpresiones independientes en paralelo
+5. **Heurísticas Avanzadas**: ML para predecir mejor secuencia de reglas
+6. **Verificación Formal**: Probar corrección de reglas con SMT solvers
+7. **Rendimiento**: Compilación JIT de expresiones frecuentes
+8. **UI Gráfica**: Visualización de árbol de simplificación
+9. **Pruebas de Equivalencia**: Mejorar `equiv` command con más estrategias
+10. **Extensión de Pattern Detection**: Más familias de identidades protegidas (ej: sum-to-product trig, logaritmos)
 
 ### Referencias Útiles
 
@@ -2084,6 +2677,11 @@ El Máximo Común Divisor es: 6
 - LCM educativo (`explain lcm(...)`)
 - Factorización educativa (`explain factors(...)`)
 - Bezout coefficients (`extended_gcd(...)`)
+
+---
+
+*Documento generado para ExpliCAS v0.1.0*  
+*Última actualización: 2025-12-08 - Agregado sistema Pattern Detection Infrastructure*
 
 ---
 
