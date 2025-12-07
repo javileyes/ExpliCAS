@@ -73,9 +73,19 @@ impl Simplifier {
         canonicalization::register(self);
         exponents::register(self);
         logarithms::register(self);
+
+        // CRITICAL ORDER: Compositions must resolve BEFORE conversions
+        // Otherwise tan(arctan(x)) becomes sin(arctan(x))/cos(arctan(x))
+        // before the composition rule can simplify it to x
         trigonometry::register(self);
-        inverse_trig::register(self); // Inverse trig identities
+        inverse_trig::register(self); // Inverse trig identities (BEFORE canonicalization!)
         reciprocal_trig::register(self); // Reciprocal trig functions
+
+        // Sophisticated context-aware canonicalization
+        // Only converts in beneficial patterns (Pythagorean, mixed fractions)
+        // Preserves compositions like tan(arctan(x))
+        trig_canonicalization::register(self);
+
         hyperbolic::register(self); // Hyperbolic functions
                                     // CRITICAL: matrix_ops MUST come before polynomial and grouping
                                     // so that MatrixAddRule and MatrixSubRule can handle matrix addition/subtraction
