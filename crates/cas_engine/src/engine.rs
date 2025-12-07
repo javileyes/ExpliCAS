@@ -74,22 +74,25 @@ impl Simplifier {
         exponents::register(self);
         logarithms::register(self);
 
-        // CRITICAL ORDER: Compositions must resolve BEFORE conversions
-        // Otherwise tan(arctan(x)) becomes sin(arctan(x))/cos(arctan(x))
-        // before the composition rule can simplify it to x
-        trigonometry::register(self);
-        inverse_trig::register(self); // Inverse trig identities (BEFORE canonicalization!)
-        reciprocal_trig::register(self); // Reciprocal trig functions
+        // CRITICAL ORDER: Compositions must resolve BEFORE conversions and expansions
+        // Otherwise tan(arctan(x)) would become sin(arctan(x))/cos(arctan(x))
+        trigonometry::register(self); // Base trig functions
+        inverse_trig::register(self); // Compositions like tan(arctan(x)) → x
+
+        // Expand trig(inverse_trig) to algebraic forms AFTER compositions
+        trig_inverse_expansion::register(self);
+
+        hyperbolic::register(self); // Hyperbolic functions
+        reciprocal_trig::register(self); // Reciprocal trig identities
 
         // Sophisticated context-aware canonicalization
         // Only converts in beneficial patterns (Pythagorean, mixed fractions)
         // Preserves compositions like tan(arctan(x))
         trig_canonicalization::register(self);
 
-        hyperbolic::register(self); // Hyperbolic functions
-                                    // CRITICAL: matrix_ops MUST come before polynomial and grouping
-                                    // so that MatrixAddRule and MatrixSubRule can handle matrix addition/subtraction
-                                    // before CombineLikeTermsRule tries to collect them
+        // CRITICAL: matrix_ops MUST come before polynomial and grouping
+        // so that MatrixAddRule and MatrixSubRule can handle matrix addition/subtraction
+        // before CombineLikeTermsRule tries to collect them
         matrix_ops::register(self);
         polynomial::register(self);
         algebra::register(self);
