@@ -299,9 +299,99 @@ define_rule!(
     }
 );
 
+// ==================== Phase 5: Inverse Function Relations ====================
+// Unify inverse trig functions by converting arcsec/arccsc/arccot to arccos/arcsin/arctan
+
+/// arcsec(x) → arccos(1/x)
+define_rule!(
+    ArcsecToArccosRule,
+    "arcsec(x) → arccos(1/x)",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if (name == "arcsec" || name == "asec") && args.len() == 1 {
+                let arg = args[0];
+
+                // Build 1/arg
+                let one = ctx.num(1);
+                let reciprocal = ctx.add(Expr::Div(one, arg));
+
+                // Build arccos(1/arg)
+                let result = ctx.add(Expr::Function("arccos".to_string(), vec![reciprocal]));
+
+                return Some(Rewrite {
+                    new_expr: result,
+                    description: "arcsec(x) → arccos(1/x)".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
+/// arccsc(x) → arcsin(1/x)
+define_rule!(
+    ArccscToArcsinRule,
+    "arccsc(x) → arcsin(1/x)",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if (name == "arccsc" || name == "acsc") && args.len() == 1 {
+                let arg = args[0];
+
+                // Build 1/arg
+                let one = ctx.num(1);
+                let reciprocal = ctx.add(Expr::Div(one, arg));
+
+                // Build arcsin(1/arg)
+                let result = ctx.add(Expr::Function("arcsin".to_string(), vec![reciprocal]));
+
+                return Some(Rewrite {
+                    new_expr: result,
+                    description: "arccsc(x) → arcsin(1/x)".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
+/// arccot(x) → arctan(1/x)
+/// Simplified version - works for all x ≠ 0 on principal branch
+define_rule!(
+    ArccotToArctanRule,
+    "arccot(x) → arctan(1/x)",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if (name == "arccot" || name == "acot") && args.len() == 1 {
+                let arg = args[0];
+
+                // Build 1/arg
+                let one = ctx.num(1);
+                let reciprocal = ctx.add(Expr::Div(one, arg));
+
+                // Build arctan(1/arg)
+                let result = ctx.add(Expr::Function("arctan".to_string(), vec![reciprocal]));
+
+                return Some(Rewrite {
+                    new_expr: result,
+                    description: "arccot(x) → arctan(1/x)".to_string(),
+                });
+            }
+        }
+        None
+    }
+);
+
+// ==================== Registration ====================
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(InverseTrigCompositionRule));
     simplifier.add_rule(Box::new(InverseTrigSumRule));
     simplifier.add_rule(Box::new(InverseTrigAtanRule));
     simplifier.add_rule(Box::new(InverseTrigNegativeRule));
+    simplifier.add_rule(Box::new(ArcsecToArccosRule));
+    simplifier.add_rule(Box::new(ArccscToArcsinRule));
+    simplifier.add_rule(Box::new(ArccotToArctanRule));
 }
