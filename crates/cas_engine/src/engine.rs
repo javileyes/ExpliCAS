@@ -140,6 +140,14 @@ impl Simplifier {
         expr_id: ExprId,
         pattern_marks: &crate::pattern_marks::PatternMarks,
     ) -> (ExprId, Vec<Step>) {
+        // Create initial ParentContext with pattern marks
+        let initial_parent_ctx =
+            crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
+        eprintln!(
+            "🔧 local_simplify: Created ParentContext, has_marks={}",
+            initial_parent_ctx.pattern_marks().is_some()
+        );
+
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
             rules: &self.rules,
@@ -151,6 +159,7 @@ impl Simplifier {
             current_path: Vec::new(),
             profiler: &mut self.profiler,
             pattern_marks: pattern_marks.clone(), // Clone the marks for use in rules
+            initial_parent_ctx,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -163,10 +172,22 @@ impl Simplifier {
         orchestrator.simplify(expr_id, self)
     }
 
-    pub fn apply_rules_loop(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
+    pub fn apply_rules_loop(
+        &mut self,
+        expr_id: ExprId,
+        pattern_marks: &crate::pattern_marks::PatternMarks,
+    ) -> (ExprId, Vec<Step>) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let collect_steps = self.collect_steps;
+
+        // Create initial ParentContext with pattern marks
+        let initial_parent_ctx =
+            crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
+        eprintln!(
+            "🔧 apply_rules_loop: Created ParentContext, has_marks={}",
+            initial_parent_ctx.pattern_marks().is_some()
+        );
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
@@ -178,7 +199,8 @@ impl Simplifier {
             cache: HashMap::new(),
             current_path: Vec::new(),
             profiler: &mut self.profiler,
-            pattern_marks: crate::pattern_marks::PatternMarks::new(), // Empty marks for apply_rules_loop
+            pattern_marks: pattern_marks.clone(),
+            initial_parent_ctx,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -283,7 +305,8 @@ struct LocalSimplificationTransformer<'a> {
     cache: HashMap<ExprId, ExprId>,
     current_path: Vec<crate::step::PathStep>,
     profiler: &'a mut RuleProfiler,
-    pattern_marks: crate::pattern_marks::PatternMarks, // NEW: For context-aware guards
+    pattern_marks: crate::pattern_marks::PatternMarks, // For context-aware guards
+    initial_parent_ctx: crate::parent_context::ParentContext, // Carries marks to rules
 }
 
 use cas_ast::visitor::Transformer;
@@ -474,6 +497,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
     }
 
     fn apply_rules(&mut self, mut expr_id: ExprId) -> ExprId {
+        eprintln!(
+            "⚙️  apply_rules: initial_parent_ctx.has_marks={}",
+            self.initial_parent_ctx.pattern_marks().is_some()
+        );
+
         loop {
             let mut changed = false;
             let variant = get_variant_name(self.context.get(expr_id));
@@ -484,11 +512,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     if self.disabled_rules.contains(rule.name()) {
                         continue;
                     }
-                    if let Some(rewrite) = rule.apply(
-                        self.context,
-                        expr_id,
-                        &crate::parent_context::ParentContext::root(),
-                    ) {
+                    // CRITICAL: Use initial_parent_ctx which contains pattern_marks
+                    if let Some(rewrite) =
+                        rule.apply(self.context, expr_id, &self.initial_parent_ctx)
+                    {
                         // Check semantic equality - skip if no real change
                         use crate::semantic_equality::SemanticEqualityChecker;
                         let checker = SemanticEqualityChecker::new(self.context);

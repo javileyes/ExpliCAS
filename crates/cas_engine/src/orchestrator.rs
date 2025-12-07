@@ -42,6 +42,7 @@ impl Orchestrator {
             expr,
             &mut self.pattern_marks,
         );
+        eprintln!("📊 Orchestrator: Scanned expression, marks created");
 
         let mut steps = Vec::new();
         let mut current = expr;
@@ -72,7 +73,7 @@ impl Orchestrator {
         // These rules create new opportunities that weren't visible before
 
         // First pass (always executed)
-        let (first_pass, first_steps) = simplifier.apply_rules_loop(current);
+        let (first_pass, first_steps) = simplifier.apply_rules_loop(current, &self.pattern_marks);
 
         // Fast path: No changes at all (common for already-simplified expressions)
         if first_pass == current {
