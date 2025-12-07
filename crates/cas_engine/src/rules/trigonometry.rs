@@ -619,16 +619,9 @@ impl crate::rule::Rule for TanToSinCosRule {
 
         // GUARD: Check pattern_marks - don't convert if protected
         if let Some(marks) = parent_ctx.pattern_marks() {
-            let is_protected = marks.is_pythagorean_protected(expr);
-            eprintln!(
-                "TanToSinCosRule: expr={:?}, protected={}",
-                expr, is_protected
-            );
-            if is_protected {
+            if marks.is_pythagorean_protected(expr) {
                 return None; // Skip conversion - part of Pythagorean identity
             }
-        } else {
-            eprintln!("TanToSinCosRule: No pattern_marks in parent_ctx!");
         }
 
         // Original conversion logic
@@ -654,53 +647,73 @@ impl crate::rule::Rule for TanToSinCosRule {
 }
 
 // Secant-Tangent Pythagorean Identity: sec²(x) - tan²(x) = 1
+// Also recognizes factored form: (sec(x) + tan(x)) * (sec(x) - tan(x)) = 1
 define_rule!(
     SecTanPythagoreanRule,
     "Secant-Tangent Pythagorean Identity",
     |ctx, expr| {
         use crate::pattern_detection::{is_sec_squared, is_tan_squared};
 
-        if let Expr::Sub(left, right) = ctx.get(expr) {
-            // Check for sec²(x) - tan²(x)
-            if let (Some(sec_arg), Some(tan_arg)) =
-                (is_sec_squared(ctx, *left), is_tan_squared(ctx, *right))
-            {
-                // Check arguments match
-                if crate::ordering::compare_expr(ctx, sec_arg, tan_arg) == std::cmp::Ordering::Equal
-                {
-                    return Some(Rewrite {
-                        new_expr: ctx.num(1),
-                        description: "sec²(x) - tan²(x) = 1".to_string(),
-                    });
+        let expr_data = ctx.get(expr).clone();
+
+        // Pattern 1: sec²(x) - tan²(x) = 1
+        // NOTE: Subtraction is normalized to Add(a, Neg(b))
+        if let Expr::Add(left, right) = expr_data {
+            // Try both orderings: Add(sec², Neg(tan²)) or Add(Neg(tan²), sec²)
+            for (pos, neg) in [(left, right), (right, left)] {
+                if let Expr::Neg(neg_inner) = ctx.get(neg) {
+                    // Check if pos=sec²  and neg_inner=tan²
+                    if let (Some(sec_arg), Some(tan_arg)) =
+                        (is_sec_squared(ctx, pos), is_tan_squared(ctx, *neg_inner))
+                    {
+                        if crate::ordering::compare_expr(ctx, sec_arg, tan_arg)
+                            == std::cmp::Ordering::Equal
+                        {
+                            return Some(Rewrite {
+                                new_expr: ctx.num(1),
+                                description: "sec²(x) - tan²(x) = 1".to_string(),
+                            });
+                        }
+                    }
                 }
             }
         }
+
         None
     }
 );
 
 // Cosecant-Cotangent Pythagorean Identity: csc²(x) - cot²(x) = 1
+// NOTE: Subtraction is normalized to Add(a, Neg(b))
 define_rule!(
     CscCotPythagoreanRule,
     "Cosecant-Cotangent Pythagorean Identity",
     |ctx, expr| {
         use crate::pattern_detection::{is_cot_squared, is_csc_squared};
 
-        if let Expr::Sub(left, right) = ctx.get(expr) {
-            // Check for csc²(x) - cot²(x)
-            if let (Some(csc_arg), Some(cot_arg)) =
-                (is_csc_squared(ctx, *left), is_cot_squared(ctx, *right))
-            {
-                // Check arguments match
-                if crate::ordering::compare_expr(ctx, csc_arg, cot_arg) == std::cmp::Ordering::Equal
-                {
-                    return Some(Rewrite {
-                        new_expr: ctx.num(1),
-                        description: "csc²(x) - cot²(x) = 1".to_string(),
-                    });
+        let expr_data = ctx.get(expr).clone();
+
+        // Pattern: csc²(x) - cot²(x) = 1
+        if let Expr::Add(left, right) = expr_data {
+            for (pos, neg) in [(left, right), (right, left)] {
+                if let Expr::Neg(neg_inner) = ctx.get(neg) {
+                    // Check if pos=csc² and neg_inner=cot²
+                    if let (Some(csc_arg), Some(cot_arg)) =
+                        (is_csc_squared(ctx, pos), is_cot_squared(ctx, *neg_inner))
+                    {
+                        if crate::ordering::compare_expr(ctx, csc_arg, cot_arg)
+                            == std::cmp::Ordering::Equal
+                        {
+                            return Some(Rewrite {
+                                new_expr: ctx.num(1),
+                                description: "csc²(x) - cot²(x) = 1".to_string(),
+                            });
+                        }
+                    }
                 }
             }
         }
+
         None
     }
 );

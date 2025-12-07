@@ -143,10 +143,6 @@ impl Simplifier {
         // Create initial ParentContext with pattern marks
         let initial_parent_ctx =
             crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
-        eprintln!(
-            "🔧 local_simplify: Created ParentContext, has_marks={}",
-            initial_parent_ctx.pattern_marks().is_some()
-        );
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
@@ -184,10 +180,6 @@ impl Simplifier {
         // Create initial ParentContext with pattern marks
         let initial_parent_ctx =
             crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
-        eprintln!(
-            "🔧 apply_rules_loop: Created ParentContext, has_marks={}",
-            initial_parent_ctx.pattern_marks().is_some()
-        );
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
@@ -497,11 +489,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
     }
 
     fn apply_rules(&mut self, mut expr_id: ExprId) -> ExprId {
-        eprintln!(
-            "⚙️  apply_rules: initial_parent_ctx.has_marks={}",
-            self.initial_parent_ctx.pattern_marks().is_some()
-        );
-
         loop {
             let mut changed = false;
             let variant = get_variant_name(self.context.get(expr_id));

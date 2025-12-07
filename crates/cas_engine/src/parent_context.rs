@@ -62,7 +62,7 @@ impl ParentContext {
 
     /// Get immediate parent, if exists
     pub fn immediate_parent(&self) -> Option<ExprId> {
-        self.ancestors.first().copied()
+        self.ancestors.last().copied() // Last element is most recent parent
     }
 
     /// Get all ancestors in order from immediate parent to root

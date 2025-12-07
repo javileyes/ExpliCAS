@@ -42,7 +42,6 @@ impl Orchestrator {
             expr,
             &mut self.pattern_marks,
         );
-        eprintln!("📊 Orchestrator: Scanned expression, marks created");
 
         let mut steps = Vec::new();
         let mut current = expr;
