@@ -12,7 +12,7 @@ use num_traits::One;
 
 // ==================== Helper Functions for Pattern Detection ====================
 
-/// Check if expression is a number equal to 1
+// Check if expression is a number equal to 1
 fn is_one(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => n.is_one(),
@@ -20,7 +20,7 @@ fn is_one(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if expression is a number equal to 2
+// Check if expression is a number equal to 2
 fn is_two(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => *n == num_rational::Ratio::from_integer(2.into()),
@@ -28,12 +28,12 @@ fn is_two(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if function name is a reciprocal trig function
+// Check if function name is a reciprocal trig function
 fn is_reciprocal_trig_name(name: &str) -> bool {
     matches!(name, "tan" | "cot" | "sec" | "csc")
 }
 
-/// Check if function name is an inverse trig function
+// Check if function name is an inverse trig function
 fn is_inverse_trig_name(name: &str) -> bool {
     matches!(
         name,
@@ -52,7 +52,7 @@ fn is_inverse_trig_name(name: &str) -> bool {
     )
 }
 
-/// Check if expression is a reciprocal trig function
+// Check if expression is a reciprocal trig function
 #[allow(dead_code)]
 fn is_reciprocal_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -61,7 +61,7 @@ fn is_reciprocal_trig(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if expression is f²(x) where f is a trig function
+// Check if expression is f²(x) where f is a trig function
 #[allow(dead_code)]
 fn is_squared_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -70,7 +70,7 @@ fn is_squared_trig(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if expression is a composition like tan(arctan(x))
+// Check if expression is a composition like tan(arctan(x))
 fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Function(outer_name, outer_args) if outer_args.len() == 1 => {
@@ -89,8 +89,8 @@ fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
 
 // ============================== Function Name Canonicalization ==============================
 
-/// Canonicalize trig function names: asin→arcsin, acos→arccos, atan→arctan
-/// This prevents bugs from mixed naming like "arccos(x) - acos(x)" not simplifying
+// Canonicalize trig function names: asin→arcsin, acos→arccos, atan→arctan
+// This prevents bugs from mixed naming like "arccos(x) - acos(x)" not simplifying
 define_rule!(
     TrigFunctionNameCanonicalizationRule,
     "Canonicalize Trig Function Names",
@@ -133,7 +133,7 @@ define_rule!(
 
 use std::collections::HashSet;
 
-/// Recursively collect all trig function names in an expression
+// Recursively collect all trig function names in an expression
 fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<String>) {
     match ctx.get(expr) {
         Expr::Function(name, args) => {
@@ -161,20 +161,20 @@ fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<Strin
     }
 }
 
-/// Collect all trig function names in expression
+// Collect all trig function names in expression
 fn collect_trig_functions(ctx: &Context, expr: ExprId) -> HashSet<String> {
     let mut funcs = HashSet::new();
     collect_trig_recursive(ctx, expr, &mut funcs);
     funcs
 }
 
-/// Check if has multiple different trig function types
+// Check if has multiple different trig function types
 fn has_multiple_trig_types(funcs: &HashSet<String>) -> bool {
     funcs.len() >= 2
 }
 
-/// Check if expression is f²(x) where f is any trig function
-/// Returns the argument of the trig function if it matches, otherwise None.
+// Check if expression is f²(x) where f is any trig function
+// Returns the argument of the trig function if it matches, otherwise None.
 fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
@@ -195,8 +195,8 @@ fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
-/// Check if expression is a Pythagorean-style pattern (f² ± g² or 1 ± f²)
-/// These should be handled by direct Pythagorean rules, not converted
+// Check if expression is a Pythagorean-style pattern (f² ± g² or 1 ± f²)
+// These should be handled by direct Pythagorean rules, not converted
 fn is_pythagorean_style(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Add(l, r) | Expr::Sub(l, r) => {
@@ -214,7 +214,7 @@ fn is_pythagorean_style(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if should trigger mixed fraction conversion
+// Check if should trigger mixed fraction conversion
 fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
     // Don't convert if numerator or denominator is a Pythagorean pattern
     // Those are handled better by direct Pythagorean identity rules
@@ -241,7 +241,7 @@ fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
     (num_has_mixed || den_has_mixed) && has_reciprocal
 }
 
-/// Recursively convert trig functions to sin/cos
+// Recursively convert trig functions to sin/cos
 fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
     match expr_data {
@@ -317,10 +317,10 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
 
 // ==================== Tier 1: Preserve Compositions (Negative Rule) ====================
 
-/// NEVER convert reciprocal trig if it's a composition with inverse trig
-/// This preserves tan(arctan(x)) → x simplifications
+// NEVER convert reciprocal trig if it's a composition with inverse trig
+// This preserves tan(arctan(x)) → x simplifications
 ///
-/// Priority: HIGHEST (register first)
+// Priority: HIGHEST (register first)
 define_rule!(
     PreserveCompositionRule,
     "Preserve trig-inverse compositions",
@@ -347,7 +347,7 @@ define_rule!(
 // - 1 + tan²(x) = sec²(x)
 // - 1 + cot²(x) = csc²(x)
 
-/// sec²(x) - tan²(x) → 1
+// sec²(x) - tan²(x) → 1
 define_rule!(
     SecTanPythagoreanRule,
     "sec²(x) - tan²(x) = 1",
@@ -374,7 +374,7 @@ define_rule!(
     }
 );
 
-/// csc²(x) - cot²(x) → 1
+// csc²(x) - cot²(x) → 1
 define_rule!(
     CscCotPythagoreanRule,
     "csc²(x) - cot²(x) = 1",
@@ -400,7 +400,7 @@ define_rule!(
     }
 );
 
-/// 1 + tan²(x) → sec²(x)
+// 1 + tan²(x) → sec²(x)
 define_rule!(
     TanToSecPythagoreanRule,
     "1 + tan²(x) = sec²(x)",
@@ -437,7 +437,7 @@ define_rule!(
     }
 );
 
-/// 1 + cot²(x) → csc²(x)
+// 1 + cot²(x) → csc²(x)
 define_rule!(
     CotToCscPythagoreanRule,
     "1 + cot²(x) = csc²(x)",
@@ -475,8 +475,8 @@ define_rule!(
 
 // ==================== Pythagorean Identity Variants with Constants ====================
 
-/// sec²(x) - tan²(x) - 1 → 0
-/// This handles the variant where we have the full identity minus 1
+// sec²(x) - tan²(x) - 1 → 0
+// This handles the variant where we have the full identity minus 1
 define_rule!(
     SecTanMinusOneIdentityRule,
     "sec²(x) - tan²(x) - 1 = 0",
@@ -513,7 +513,7 @@ define_rule!(
     }
 );
 
-/// csc²(x) - cot²(x) - 1 → 0  
+// csc²(x) - cot²(x) - 1 → 0  
 define_rule!(
     CscCotMinusOneIdentityRule,
     "csc²(x) - cot²(x) - 1 = 0",
@@ -546,8 +546,8 @@ define_rule!(
     }
 );
 
-/// Helper: Check if expr is f²(arg) for a specific function name
-/// Returns Some(arg) if match, None otherwise
+// Helper: Check if expr is f²(arg) for a specific function name
+// Returns Some(arg) if match, None otherwise
 fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
@@ -564,7 +564,7 @@ fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprI
     }
 }
 
-/// Convert reciprocal products like tan(x)*cot(x) → 1
+// Convert reciprocal products like tan(x)*cot(x) → 1
 define_rule!(
     ConvertReciprocalProductRule,
     "Simplify reciprocal trig products",
@@ -587,7 +587,7 @@ define_rule!(
     }
 );
 
-/// Check if two expressions are reciprocal trig functions with same argument
+// Check if two expressions are reciprocal trig functions with same argument
 fn check_reciprocal_pair(ctx: &Context, expr1: ExprId, expr2: ExprId) -> (bool, Option<ExprId>) {
     match (ctx.get(expr1), ctx.get(expr2)) {
         (Expr::Function(name1, args1), Expr::Function(name2, args2))
@@ -611,7 +611,7 @@ fn check_reciprocal_pair(ctx: &Context, expr1: ExprId, expr2: ExprId) -> (bool, 
 
 // ==================== Phase 4: Mixed Fraction Conversion ====================
 
-/// Convert mixed trig fractions to sin/cos for better algebraic simplification
+// Convert mixed trig fractions to sin/cos for better algebraic simplification
 define_rule!(
     ConvertForMixedFractionRule,
     "Convert Mixed Trig Fraction to sin/cos",
@@ -641,9 +641,9 @@ define_rule!(
 
 // ==================== Registration ====================
 
-/// Register ONLY direct Pythagorean identity rules
-/// CRITICAL: Must be called BEFORE any conversion rules to preserve patterns
-/// sec²-tan²-1 must match BEFORE tan² becomes sin²/cos²
+// Register ONLY direct Pythagorean identity rules
+// CRITICAL: Must be called BEFORE any conversion rules to preserve patterns
+// sec²-tan²-1 must match BEFORE tan² becomes sin²/cos²
 pub fn register_pythagorean_identities(simplifier: &mut crate::engine::Simplifier) {
     // These are the HIGHEST PRIORITY rules that must fire first
     simplifier.add_rule(Box::new(SecTanPythagoreanRule));
@@ -656,9 +656,9 @@ pub fn register_pythagorean_identities(simplifier: &mut crate::engine::Simplifie
     simplifier.add_rule(Box::new(CscCotMinusOneIdentityRule));
 }
 
-/// Register sophisticated canonicalization rules
-/// CRITICAL: These rules are applied AFTER compositions resolve
-/// so that tan(arctan(x)) → x happens before any conversion attempts
+// Register sophisticated canonicalization rules
+// CRITICAL: These rules are applied AFTER compositions resolve
+// so that tan(arctan(x)) → x happens before any conversion attempts
 pub fn register(simplifier: &mut crate::engine::Simplifier) {
     // Function name canonicalization - MUST run first
     simplifier.add_rule(Box::new(TrigFunctionNameCanonicalizationRule));

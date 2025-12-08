@@ -506,7 +506,7 @@ define_rule!(
 // ==================== Phase 5: Inverse Function Relations ====================
 // Unify inverse trig functions by converting arcsec/arccsc/arccot to arccos/arcsin/arctan
 
-/// arcsec(x) → arccos(1/x)
+// arcsec(x) → arccos(1/x)
 define_rule!(
     ArcsecToArccosRule,
     "arcsec(x) → arccos(1/x)",
@@ -533,7 +533,7 @@ define_rule!(
     }
 );
 
-/// arccsc(x) → arcsin(1/x)
+// arccsc(x) → arcsin(1/x)
 define_rule!(
     ArccscToArcsinRule,
     "arccsc(x) → arcsin(1/x)",
@@ -560,8 +560,8 @@ define_rule!(
     }
 );
 
-/// arccot(x) → arctan(1/x)
-/// Simplified version - works for all x ≠ 0 on principal branch
+// arccot(x) → arctan(1/x)
+// Simplified version - works for all x ≠ 0 on principal branch
 define_rule!(
     ArccotToArctanRule,
     "arccot(x) → arctan(1/x)",

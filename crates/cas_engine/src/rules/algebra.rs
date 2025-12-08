@@ -630,7 +630,7 @@ define_rule!(
 mod tests {
     use super::*;
     use crate::rule::Rule;
-    use cas_ast::{expression::count_nodes, Context, DisplayExpr};
+    use cas_ast::{Context, DisplayExpr};
     use cas_parser::parse;
 
     #[test]
@@ -2224,11 +2224,11 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
     None
 });
 
-/// Rule to combine N fractions with binomial product denominators.
-/// Generalizes the common LCD approach for fractions like:
-/// - 1/(a-b) + 1/(b-a) → 0
-/// - 1/((a-b)(a-c)) + 1/((b-c)(b-a)) + 1/((c-a)(c-b)) → 0
-/// Works with any number of fractions and any number of binomial factors per denominator.
+// Rule to combine N fractions with binomial product denominators.
+// Generalizes the common LCD approach for fractions like:
+// - 1/(a-b) + 1/(b-a) → 0
+// - 1/((a-b)(a-c)) + 1/((b-c)(b-a)) + 1/((c-a)(c-b)) → 0
+// Works with any number of fractions and any number of binomial factors per denominator.
 define_rule!(
     FactorBasedLCDRule,
     "Factor-Based LCD",

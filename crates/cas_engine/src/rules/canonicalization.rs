@@ -462,9 +462,9 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
     None
 });
 
-/// Normalize binomial order: (b-a) -> -(a-b) when a < b alphabetically
-/// This ensures consistent representation of binomials like (y-x) vs (x-y)
-/// so they can be recognized as opposites in fraction simplification.
+// Normalize binomial order: (b-a) -> -(a-b) when a < b alphabetically
+// This ensures consistent representation of binomials like (y-x) vs (x-y)
+// so they can be recognized as opposites in fraction simplification.
 define_rule!(
     NormalizeBinomialOrderRule,
     "Normalize Binomial Order",
