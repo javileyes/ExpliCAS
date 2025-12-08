@@ -58,7 +58,7 @@ impl Orchestrator {
         // Always use multi-pass iteration until fixed point
         // This ensures expressions like "atan(2) + atan(1/2) - pi/2" fully simplify
 
-        let max_passes = 10; // Increased from 5 for robustness
+        let max_passes = 10; // Stable value while debugging semantic cycle detection
         let mut pass_count = 0;
         let mut cycle_detector = CycleDetector::new(10);
 
@@ -73,12 +73,11 @@ impl Orchestrator {
                 break;
             }
 
-            // Cycle detection
-            if let Some(_cycle_len) = cycle_detector.check(current) {
-                #[cfg(debug_assertions)]
+            // Cycle detection (semantic, not just ExprId)
+            if let Some(_cycle_len) = cycle_detector.check(&simplifier.context, current) {
                 eprintln!(
-                    "WARNING: Simplification cycle detected (length {})",
-                    _cycle_len
+                    "⚠️  CYCLE DETECTED at pass {} (length {})",
+                    pass_count, _cycle_len
                 );
                 break;
             }
@@ -162,7 +161,7 @@ impl Orchestrator {
 /// Helper struct to detect cycles in simplification
 /// Tracks recent expressions to detect if we're looping
 struct CycleDetector {
-    history: VecDeque<ExprId>,
+    history: VecDeque<u64>, // Store hashes instead of ExprIds
     max_history: usize,
 }
 
@@ -174,19 +173,112 @@ impl CycleDetector {
         }
     }
 
-    /// Check if expr has appeared before (indicating a cycle)
+    /// Check if expr has appeared before (based on semantic content)
     /// Returns Some(cycle_length) if cycle detected
-    fn check(&mut self, expr: ExprId) -> Option<usize> {
-        if let Some(pos) = self.history.iter().position(|&e| e == expr) {
+    fn check(&mut self, ctx: &cas_ast::Context, expr: ExprId) -> Option<usize> {
+        // Compute semantic hash of expression
+        let hash = Self::semantic_hash(ctx, expr);
+
+        if let Some(pos) = self.history.iter().position(|&h| h == hash) {
             return Some(self.history.len() - pos);
         }
 
-        self.history.push_back(expr);
+        self.history.push_back(hash);
         if self.history.len() > self.max_history {
             self.history.pop_front();
         }
 
         None
+    }
+
+    /// Compute a hash based on the semantic structure of the expression
+    /// This allows us to detect when expressions are equivalent even with different ExprIds
+    fn semantic_hash(ctx: &cas_ast::Context, expr: ExprId) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        fn hash_expr(ctx: &cas_ast::Context, expr: ExprId, hasher: &mut DefaultHasher) {
+            match ctx.get(expr) {
+                cas_ast::Expr::Number(n) => {
+                    0u8.hash(hasher);
+                    n.to_string().hash(hasher); // Hash string representation for consistency
+                }
+                cas_ast::Expr::Constant(c) => {
+                    1u8.hash(hasher);
+                    format!("{:?}", c).hash(hasher);
+                }
+                cas_ast::Expr::Variable(v) => {
+                    2u8.hash(hasher);
+                    v.hash(hasher);
+                }
+                cas_ast::Expr::Add(l, r) => {
+                    3u8.hash(hasher);
+                    // Hash commutatively: sort the hashes to make a+b == b+a
+                    let hash_l = CycleDetector::semantic_hash(ctx, *l);
+                    let hash_r = CycleDetector::semantic_hash(ctx, *r);
+                    if hash_l <= hash_r {
+                        hash_l.hash(hasher);
+                        hash_r.hash(hasher);
+                    } else {
+                        hash_r.hash(hasher);
+                        hash_l.hash(hasher);
+                    }
+                }
+                cas_ast::Expr::Sub(l, r) => {
+                    4u8.hash(hasher);
+                    hash_expr(ctx, *l, hasher);
+                    hash_expr(ctx, *r, hasher);
+                }
+                cas_ast::Expr::Mul(l, r) => {
+                    5u8.hash(hasher);
+                    //  Hash commutatively: sort the hashes to make a*b == b*a
+                    let hash_l = CycleDetector::semantic_hash(ctx, *l);
+                    let hash_r = CycleDetector::semantic_hash(ctx, *r);
+                    if hash_l <= hash_r {
+                        hash_l.hash(hasher);
+                        hash_r.hash(hasher);
+                    } else {
+                        hash_r.hash(hasher);
+                        hash_l.hash(hasher);
+                    }
+                }
+                cas_ast::Expr::Div(l, r) => {
+                    6u8.hash(hasher);
+                    hash_expr(ctx, *l, hasher);
+                    hash_expr(ctx, *r, hasher);
+                }
+                cas_ast::Expr::Pow(b, e) => {
+                    7u8.hash(hasher);
+                    hash_expr(ctx, *b, hasher);
+                    hash_expr(ctx, *e, hasher);
+                }
+                cas_ast::Expr::Neg(e) => {
+                    8u8.hash(hasher);
+                    hash_expr(ctx, *e, hasher);
+                }
+                cas_ast::Expr::Function(name, args) => {
+                    9u8.hash(hasher);
+                    name.hash(hasher);
+                    args.len().hash(hasher);
+                    for arg in args {
+                        hash_expr(ctx, *arg, hasher);
+                    }
+                }
+                cas_ast::Expr::Matrix { rows, cols, data } => {
+                    10u8.hash(hasher);
+                    rows.hash(hasher);
+                    cols.hash(hasher);
+                    data.len().hash(hasher);
+                    for elem in data {
+                        hash_expr(ctx, *elem, hasher);
+                    }
+                }
+            }
+        }
+
+        let mut hasher = DefaultHasher::new();
+        hash_expr(ctx, expr, &mut hasher);
+        hasher.finish()
     }
 }
 

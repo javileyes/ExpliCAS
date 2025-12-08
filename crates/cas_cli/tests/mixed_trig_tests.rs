@@ -43,13 +43,12 @@ fn test_52_sec_tan_pythagorean() {
 
     println!("Test 52 result: {}", result);
 
-    // Pythagorean conversion works in CLI but causes overflow in test
-    // echo "sec(x)^2 - tan(x)^2 -1" | cargo run -> works!
-    // Test framework has different iteration behavior
+    // TODO: Semantic cycle detection needs more work
+    // Currently doesn't detect commutative reordering cycles
+    // Requires deeper investigation of hash algorithm
     assert!(result.len() > 0, "Should produce some result");
 
-    // TODO: Debug difference between CLI and test simplification limits
-    // assert_eq!(result, "0", "sec²(x) - tan²(x) - 1 should equal 0");
+    // Target: assert_eq!(result, "0", "sec²(x) - tan²(x) - 1 should equal 0");
 }
 
 // ==================== Test 53: Cot of Arcsin ====================
