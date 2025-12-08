@@ -15,16 +15,6 @@ fn is_one(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if expression equals -1
-fn is_negative_one(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        let neg_one = num_rational::BigRational::from_integer(num_bigint::BigInt::from(-1));
-        n == &neg_one
-    } else {
-        false
-    }
-}
-
 /// Check if two expressions are reciprocals: a = 1/b or b = 1/a
 fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
     // Get clones to avoid borrow issues
@@ -90,16 +80,6 @@ fn extract_numeric_value(ctx: &Context, expr: &Expr) -> Option<num_rational::Big
 /// Check if function name is atan/arctan
 fn is_atan(name: &str) -> bool {
     name == "atan" || name == "arctan"
-}
-
-/// Check if function name is asin/arcsin  
-fn is_asin(name: &str) -> bool {
-    name == "asin" || name == "arcsin"
-}
-
-/// Check if function name is acos/arccos
-fn is_acos(name: &str) -> bool {
-    name == "acos" || name == "arccos"
 }
 
 /// Build sum of all terms except indices i and j

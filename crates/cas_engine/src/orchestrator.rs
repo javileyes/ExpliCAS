@@ -1,7 +1,7 @@
 use crate::{Simplifier, Step};
 use cas_ast::ExprId;
 use num_traits::ToPrimitive;
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 
 pub struct Orchestrator {
     // Configuration for the pipeline
