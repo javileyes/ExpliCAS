@@ -49,8 +49,30 @@ impl Context {
     }
 
     pub fn add(&mut self, expr: Expr) -> ExprId {
+        // Canonicalize commutative operations BEFORE adding to context
+        // This ensures deterministic ordering: always left < right for Mul and Add
+        let canonical_expr = match expr {
+            Expr::Mul(l, r) => {
+                // Only canonicalize if operands are out of order
+                if crate::ordering::compare_expr(self, l, r) == std::cmp::Ordering::Greater {
+                    Expr::Mul(r, l) // Swap to canonical order
+                } else {
+                    Expr::Mul(l, r) // Already canonical
+                }
+            }
+            Expr::Add(l, r) => {
+                if crate::ordering::compare_expr(self, l, r) == std::cmp::Ordering::Greater {
+                    Expr::Add(r, l) // Swap to canonical order
+                } else {
+                    Expr::Add(l, r) // Already canonical
+                }
+            }
+            // Non-commutative operations and atoms: keep as-is
+            other => other,
+        };
+
         let id = ExprId(self.nodes.len() as u32);
-        self.nodes.push(expr);
+        self.nodes.push(canonical_expr);
         id
     }
 

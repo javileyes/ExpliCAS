@@ -2,6 +2,7 @@ pub mod domain;
 pub mod expression;
 pub mod latex;
 pub mod latex_no_roots;
+pub mod ordering; // NEW: Canonical ordering utilities
 pub mod visitor;
 
 pub use domain::{BoundType, Interval, SolutionSet};

@@ -1,17 +1,17 @@
-use crate::rule::Rewrite;
 use crate::define_rule;
-use cas_ast::Expr;
-use std::cmp::Ordering;
 use crate::ordering::compare_expr;
-use num_traits::Zero;
+use crate::rule::Rewrite;
+use cas_ast::Expr;
 use num_integer::Integer;
+use num_traits::Zero;
+use std::cmp::Ordering;
 
 define_rule!(
     CanonicalizeNegationRule,
     "Canonicalize Negation",
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
-        
+
         // 1. Subtraction: a - b -> a + (-b)
         if let Expr::Sub(lhs, rhs) = expr_data {
             let neg_rhs = ctx.add(Expr::Neg(rhs));
@@ -36,16 +36,16 @@ define_rule!(
                     new_expr,
                     description: format!("-({}) = {}", n, neg_n),
                 });
-            } 
-            
+            }
+
             // -(-x) -> x
             if let Expr::Neg(double_inner) = inner_data {
                 return Some(Rewrite {
                     new_expr: double_inner,
                     description: "-(-x) = x".to_string(),
                 });
-            } 
-            
+            }
+
             // -(a + b) -> -a + -b
             if let Expr::Add(lhs, rhs) = inner_data {
                 let neg_lhs = if let Expr::Number(n) = ctx.get(lhs) {
@@ -53,7 +53,7 @@ define_rule!(
                 } else {
                     ctx.add(Expr::Neg(lhs))
                 };
-                
+
                 let neg_rhs = if let Expr::Number(n) = ctx.get(rhs) {
                     ctx.add(Expr::Number(-n.clone()))
                 } else {
@@ -86,8 +86,9 @@ define_rule!(
                 }
             }
 
-            if false { // Dummy block to handle the 'else' structure from previous code if needed, but here we just fall through
-            
+            if false {
+                // Dummy block to handle the 'else' structure from previous code if needed, but here we just fall through
+
                 // -x -> -x (Keep as Neg)
                 // We do NOT want to convert to -1 * x because it's verbose.
                 return None;
@@ -97,7 +98,11 @@ define_rule!(
         // 3. Multiplication: a * (-b) -> -(a * b)
         if let Expr::Mul(lhs, rhs) = expr_data {
             // Check for (-a) * b
-            let lhs_is_neg = if let Expr::Neg(inner) = ctx.get(lhs) { Some(*inner) } else { None };
+            let lhs_is_neg = if let Expr::Neg(inner) = ctx.get(lhs) {
+                Some(*inner)
+            } else {
+                None
+            };
             if let Some(inner_l) = lhs_is_neg {
                 let new_mul = ctx.add(Expr::Mul(inner_l, rhs));
                 let new_expr = ctx.add(Expr::Neg(new_mul));
@@ -106,22 +111,30 @@ define_rule!(
                     description: "(-a) * b = -(a * b)".to_string(),
                 });
             }
-            
+
             // Check for a * (-b)
-            let rhs_is_neg = if let Expr::Neg(inner) = ctx.get(rhs) { Some(*inner) } else { None };
-            
+            let rhs_is_neg = if let Expr::Neg(inner) = ctx.get(rhs) {
+                Some(*inner)
+            } else {
+                None
+            };
+
             if let Some(inner_r) = rhs_is_neg {
                 // Special case: if a is a Number, we prefer (-a) * b
-                let n_opt = if let Expr::Number(n) = ctx.get(lhs) { Some(n.clone()) } else { None };
-                
+                let n_opt = if let Expr::Number(n) = ctx.get(lhs) {
+                    Some(n.clone())
+                } else {
+                    None
+                };
+
                 if let Some(n) = n_opt {
-                     let neg_n = -n.clone();
-                     let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
-                     let new_expr = ctx.add(Expr::Mul(neg_n_expr, inner_r));
-                     return Some(Rewrite {
-                         new_expr,
-                         description: format!("{} * (-x) = {} * x", n, neg_n),
-                     });
+                    let neg_n = -n.clone();
+                    let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
+                    let new_expr = ctx.add(Expr::Mul(neg_n_expr, inner_r));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: format!("{} * (-x) = {} * x", n, neg_n),
+                    });
                 }
 
                 let new_mul = ctx.add(Expr::Mul(lhs, inner_r));
@@ -132,142 +145,138 @@ define_rule!(
                 });
             }
         }
-        
+
         // 4. Division: (-a) / b -> -(a / b), a / (-b) -> -(a / b)
         if let Expr::Div(lhs, rhs) = expr_data {
-             let lhs_data = ctx.get(lhs);
-             let rhs_data = ctx.get(rhs);
-             
-             if let Expr::Neg(inner_l) = lhs_data {
-                 let new_div = ctx.add(Expr::Div(*inner_l, rhs));
-                 let new_expr = ctx.add(Expr::Neg(new_div));
-                 return Some(Rewrite {
-                     new_expr,
-                     description: "(-a) / b = -(a / b)".to_string(),
-                 });
-             }
-             
-             if let Expr::Neg(inner_r) = rhs_data {
-                 let new_div = ctx.add(Expr::Div(lhs, *inner_r));
-                 let new_expr = ctx.add(Expr::Neg(new_div));
-                 return Some(Rewrite {
-                     new_expr,
-                     description: "a / (-b) = -(a / b)".to_string(),
-                 });
-             }
+            let lhs_data = ctx.get(lhs);
+            let rhs_data = ctx.get(rhs);
+
+            if let Expr::Neg(inner_l) = lhs_data {
+                let new_div = ctx.add(Expr::Div(*inner_l, rhs));
+                let new_expr = ctx.add(Expr::Neg(new_div));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "(-a) / b = -(a / b)".to_string(),
+                });
+            }
+
+            if let Expr::Neg(inner_r) = rhs_data {
+                let new_div = ctx.add(Expr::Div(lhs, *inner_r));
+                let new_expr = ctx.add(Expr::Neg(new_div));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "a / (-b) = -(a / b)".to_string(),
+                });
+            }
         }
 
         None
     }
 );
 
-define_rule!(
-    CanonicalizeAddRule,
-    "Canonicalize Addition",
-    |ctx, expr| {
-        if let Expr::Add(_, _) = ctx.get(expr) {
-            // 1. Flatten
-            let mut terms = Vec::new();
-            let mut stack = vec![expr];
-            while let Some(id) = stack.pop() {
-                if let Expr::Add(lhs, rhs) = ctx.get(id) {
-                    stack.push(*rhs);
-                    stack.push(*lhs);
-                } else {
-                    terms.push(id);
-                }
+define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
+    if let Expr::Add(_, _) = ctx.get(expr) {
+        // 1. Flatten
+        let mut terms = Vec::new();
+        let mut stack = vec![expr];
+        while let Some(id) = stack.pop() {
+            if let Expr::Add(lhs, rhs) = ctx.get(id) {
+                stack.push(*rhs);
+                stack.push(*lhs);
+            } else {
+                terms.push(id);
             }
-            
-            // 2. Check if already sorted
-            let mut is_sorted = true;
-            for i in 0..terms.len() - 1 {
-                if compare_expr(ctx, terms[i], terms[i+1]) == Ordering::Greater {
-                    is_sorted = false;
-                    break;
-                }
-            }
+        }
 
-            // 3. Check if right-associative (if sorted)
-            // If sorted, we only need to rewrite if the structure is NOT right-associative.
-            // Right-associative means: t0 + (t1 + (t2 + ...))
-            // The flattened traversal above (push rhs, push lhs) produces [t0, t1, t2...] for a right-associative tree.
-            // It ALSO produces [t0, t1, t2...] for a left-associative tree ((t0+t1)+t2).
-            // So flattening loses structure information.
-            // We need to check the structure of `expr` directly?
-            // Or just rebuild and compare?
-            // Since Context doesn't dedupe, we can't compare IDs.
-            // But we can check if we *need* to do anything.
-            
-            // If it is NOT sorted, we MUST sort and rebuild.
-            if !is_sorted {
-                terms.sort_by(|a, b| compare_expr(ctx, *a, *b));
-                // Rebuild right-associative
+        // 2. Check if already sorted
+        let mut is_sorted = true;
+        for i in 0..terms.len() - 1 {
+            if compare_expr(ctx, terms[i], terms[i + 1]) == Ordering::Greater {
+                is_sorted = false;
+                break;
+            }
+        }
+
+        // 3. Check if right-associative (if sorted)
+        // If sorted, we only need to rewrite if the structure is NOT right-associative.
+        // Right-associative means: t0 + (t1 + (t2 + ...))
+        // The flattened traversal above (push rhs, push lhs) produces [t0, t1, t2...] for a right-associative tree.
+        // It ALSO produces [t0, t1, t2...] for a left-associative tree ((t0+t1)+t2).
+        // So flattening loses structure information.
+        // We need to check the structure of `expr` directly?
+        // Or just rebuild and compare?
+        // Since Context doesn't dedupe, we can't compare IDs.
+        // But we can check if we *need* to do anything.
+
+        // If it is NOT sorted, we MUST sort and rebuild.
+        if !is_sorted {
+            terms.sort_by(|a, b| compare_expr(ctx, *a, *b));
+            // Rebuild right-associative
+            let mut new_expr = *terms.last().unwrap();
+            for term in terms.iter().rev().skip(1) {
+                new_expr = ctx.add(Expr::Add(*term, new_expr));
+            }
+            return Some(Rewrite {
+                new_expr,
+                description: "Sort addition terms".to_string(),
+            });
+        }
+
+        // If it IS sorted, we might still need to fix associativity.
+        // e.g. (a+b)+c -> a+(b+c).
+        // We can check if the root has an Add as LHS.
+        // If LHS is Add, it's left-associative (at the top).
+        // We want right-associative, so LHS should NOT be Add (unless it's a parenthesized group, but here we flattened it).
+        // Wait, if we flatten, we treat nested Adds as part of the same sum.
+        // So if LHS is an Add, it means we have (a+b)+... which we want to convert to a+(b+...).
+        if let Expr::Add(lhs, _) = ctx.get(expr) {
+            if let Expr::Add(_, _) = ctx.get(*lhs) {
+                // Left-associative at root. Rewrite.
                 let mut new_expr = *terms.last().unwrap();
                 for term in terms.iter().rev().skip(1) {
                     new_expr = ctx.add(Expr::Add(*term, new_expr));
                 }
                 return Some(Rewrite {
                     new_expr,
-                    description: "Sort addition terms".to_string(),
+                    description: "Fix associativity (a+b)+c -> a+(b+c)".to_string(),
                 });
             }
+        }
 
-            // If it IS sorted, we might still need to fix associativity.
-            // e.g. (a+b)+c -> a+(b+c).
-            // We can check if the root has an Add as LHS.
-            // If LHS is Add, it's left-associative (at the top).
-            // We want right-associative, so LHS should NOT be Add (unless it's a parenthesized group, but here we flattened it).
-            // Wait, if we flatten, we treat nested Adds as part of the same sum.
-            // So if LHS is an Add, it means we have (a+b)+... which we want to convert to a+(b+...).
-            if let Expr::Add(lhs, _) = ctx.get(expr) {
-                if let Expr::Add(_, _) = ctx.get(*lhs) {
-                    // Left-associative at root. Rewrite.
-                     let mut new_expr = *terms.last().unwrap();
-                    for term in terms.iter().rev().skip(1) {
-                        new_expr = ctx.add(Expr::Add(*term, new_expr));
-                    }
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Fix associativity (a+b)+c -> a+(b+c)".to_string(),
-                    });
+        // Also check if any RHS is NOT an Add (except the last term).
+        // In a+(b+(c+d)), RHS of first Add is Add. RHS of second is Add. RHS of third is d (not Add).
+        // If we have a+(b+c), terms are [a,b,c].
+        // Root: Add(a, X). X should be Add(b, c).
+        // If X is NOT Add, but we have > 2 terms, then structure is wrong?
+        // No, if X is not Add, it means we only have 2 terms.
+        // If terms.len() > 2, then RHS MUST be Add.
+        if terms.len() > 2 {
+            if let Expr::Add(_, rhs) = ctx.get(expr) {
+                if !matches!(ctx.get(*rhs), Expr::Add(_, _)) {
+                    // This case is weird if LHS is not Add.
+                    // e.g. a + b. terms=[a,b]. len=2.
+                    // e.g. a + (b+c). terms=[a,b,c]. len=3. RHS is Add(b,c). OK.
+                    // e.g. (a+b) + c. terms=[a,b,c]. LHS is Add. Caught above.
+                    // Is there a case where LHS is not Add, but structure is wrong?
+                    // Maybe mixed? a + ((b+c) + d)?
+                    // Flatten: [a, b, c, d].
+                    // Root: Add(a, Y). Y = Add(Add(b,c), d).
+                    // Y's LHS is Add.
+                    // So recursively, Y would be fixed by this rule when visiting Y.
+                    // But we are at Root.
+                    // If we only fix Root, Y will be fixed later/before?
+                    // Bottom-up simplification means children are simplified first.
+                    // So Y is already canonicalized to b+(c+d).
+                    // So Root is a + (b+(c+d)).
+                    // This is correct.
+                    // So checking LHS is Add is sufficient?
+                    // Yes, if children are already canonical.
                 }
             }
-            
-            // Also check if any RHS is NOT an Add (except the last term).
-            // In a+(b+(c+d)), RHS of first Add is Add. RHS of second is Add. RHS of third is d (not Add).
-            // If we have a+(b+c), terms are [a,b,c].
-            // Root: Add(a, X). X should be Add(b, c).
-            // If X is NOT Add, but we have > 2 terms, then structure is wrong?
-            // No, if X is not Add, it means we only have 2 terms.
-            // If terms.len() > 2, then RHS MUST be Add.
-            if terms.len() > 2 {
-                 if let Expr::Add(_, rhs) = ctx.get(expr) {
-                     if !matches!(ctx.get(*rhs), Expr::Add(_, _)) {
-                         // This case is weird if LHS is not Add.
-                         // e.g. a + b. terms=[a,b]. len=2.
-                         // e.g. a + (b+c). terms=[a,b,c]. len=3. RHS is Add(b,c). OK.
-                         // e.g. (a+b) + c. terms=[a,b,c]. LHS is Add. Caught above.
-                         // Is there a case where LHS is not Add, but structure is wrong?
-                         // Maybe mixed? a + ((b+c) + d)?
-                         // Flatten: [a, b, c, d].
-                         // Root: Add(a, Y). Y = Add(Add(b,c), d).
-                         // Y's LHS is Add.
-                         // So recursively, Y would be fixed by this rule when visiting Y.
-                         // But we are at Root.
-                         // If we only fix Root, Y will be fixed later/before?
-                         // Bottom-up simplification means children are simplified first.
-                         // So Y is already canonicalized to b+(c+d).
-                         // So Root is a + (b+(c+d)).
-                         // This is correct.
-                         // So checking LHS is Add is sufficient?
-                         // Yes, if children are already canonical.
-                     }
-                 }
-            }
         }
-        None
     }
-);
+    None
+});
 
 define_rule!(
     CanonicalizeMulRule,
@@ -285,11 +294,11 @@ define_rule!(
                     terms.push(id);
                 }
             }
-            
+
             // 2. Check if already sorted
             let mut is_sorted = true;
             for i in 0..terms.len() - 1 {
-                if compare_expr(ctx, terms[i], terms[i+1]) == Ordering::Greater {
+                if compare_expr(ctx, terms[i], terms[i + 1]) == Ordering::Greater {
                     is_sorted = false;
                     break;
                 }
@@ -311,7 +320,7 @@ define_rule!(
             // 3. Check associativity
             if let Expr::Mul(lhs, _) = ctx.get(expr) {
                 if let Expr::Mul(_, _) = ctx.get(*lhs) {
-                     let mut new_expr = *terms.last().unwrap();
+                    let mut new_expr = *terms.last().unwrap();
                     for term in terms.iter().rev().skip(1) {
                         new_expr = ctx.add(Expr::Mul(*term, new_expr));
                     }
@@ -326,143 +335,131 @@ define_rule!(
     }
 );
 
-define_rule!(
-    CanonicalizeDivRule,
-    "Canonicalize Division",
-    |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Div(lhs, rhs) = expr_data {
-            // x / c -> (1/c) * x
-            let n_opt = if let Expr::Number(n) = ctx.get(rhs) {
-                Some(n.clone())
-            } else {
-                None
-            };
+define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
+    let expr_data = ctx.get(expr).clone();
+    if let Expr::Div(lhs, rhs) = expr_data {
+        // x / c -> (1/c) * x
+        let n_opt = if let Expr::Number(n) = ctx.get(rhs) {
+            Some(n.clone())
+        } else {
+            None
+        };
 
-            if let Some(n) = n_opt {
-                if !n.is_zero() {
-                    // n is Ratio<BigInt>.
-                    // We want 1/n.
-                    // Ratio::recip() exists.
-                    let inv = n.recip();
-                    let inv_expr = ctx.add(Expr::Number(inv.clone()));
-                    let new_expr = ctx.add(Expr::Mul(inv_expr, lhs));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: format!("x / {} = (1/{}) * x", n, n),
-                    });
-                }
-            }
-        }
-        None
-    }
-);
-
-define_rule!(
-    CanonicalizeRootRule,
-    "Canonicalize Roots",
-    |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(name, args) = expr_data {
-            if name == "sqrt" {
-                if args.len() == 1 {
-                    let arg = args[0];
-                    
-                    // Simplified: Just convert to power. 
-                    // Complex simplification (like sqrt(x^2+2x+1)) belongs in a separate simplification rule.
-                    
-                    // Check for simple sqrt(x^2) -> |x|
-                    if let Expr::Pow(b, e) = ctx.get(arg).clone() {
-                        if let Expr::Number(n) = ctx.get(e) {
-                             if n.is_integer() && n.to_integer().is_even() {
-                                 // sqrt(x^(2k)) -> |x|^k
-                                 let two = ctx.num(2);
-                                 let k = ctx.add(Expr::Div(e, two)); // This will simplify to integer
-                                 let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![b]));
-                                 let new_expr = ctx.add(Expr::Pow(abs_base, k));
-                                 return Some(Rewrite {
-                                     new_expr,
-                                     description: "sqrt(x^2k) -> |x|^k".to_string(),
-                                 });
-                             }
-                        }
-                    }
-
-                    // sqrt(x) -> x^(1/2)
-                    let half = ctx.rational(1, 2);
-                    let new_expr = ctx.add(Expr::Pow(args[0], half));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "sqrt(x) = x^(1/2)".to_string(),
-                    });
-                } else if args.len() == 2 {
-                    // sqrt(x, n) -> x^(1/n)
-                    let one = ctx.num(1);
-                    let exp = ctx.add(Expr::Div(one, args[1]));
-                    let new_expr = ctx.add(Expr::Pow(args[0], exp));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: format!("sqrt(x, n) = x^(1/n)"),
-                    });
-                }
-            } else if name == "root" && args.len() == 2 {
-                 // root(x, n) -> x^(1/n)
-                 let one = ctx.num(1);
-                 let exp = ctx.add(Expr::Div(one, args[1]));
-                 let new_expr = ctx.add(Expr::Pow(args[0], exp));
-                 return Some(Rewrite {
+        if let Some(n) = n_opt {
+            if !n.is_zero() {
+                // n is Ratio<BigInt>.
+                // We want 1/n.
+                // Ratio::recip() exists.
+                let inv = n.recip();
+                let inv_expr = ctx.add(Expr::Number(inv.clone()));
+                let new_expr = ctx.add(Expr::Mul(inv_expr, lhs));
+                return Some(Rewrite {
                     new_expr,
-                    description: format!("root(x, n) = x^(1/n)"),
+                    description: format!("x / {} = (1/{}) * x", n, n),
                 });
             }
         }
-        None
     }
-);
+    None
+});
 
-define_rule!(
-    NormalizeSignsRule,
-    "Normalize Signs",
-    |ctx, expr| {
-        // Pattern 1: -c + x -> x - c (if c is positive number)
-        if let Expr::Add(l, r) = ctx.get(expr) {
-            if let Expr::Neg(inner_neg) = ctx.get(*l) {
-                if let Expr::Number(n) = ctx.get(*inner_neg) {
-                    if *n > num_rational::BigRational::zero() {
-                        let n_clone = n.clone();
-                        let new_expr = ctx.add(Expr::Sub(*r, *inner_neg));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: format!("-{} + x -> x - {}", n_clone, n_clone),
-                        });
+define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
+    let expr_data = ctx.get(expr).clone();
+    if let Expr::Function(name, args) = expr_data {
+        if name == "sqrt" {
+            if args.len() == 1 {
+                let arg = args[0];
+
+                // Simplified: Just convert to power.
+                // Complex simplification (like sqrt(x^2+2x+1)) belongs in a separate simplification rule.
+
+                // Check for simple sqrt(x^2) -> |x|
+                if let Expr::Pow(b, e) = ctx.get(arg).clone() {
+                    if let Expr::Number(n) = ctx.get(e) {
+                        if n.is_integer() && n.to_integer().is_even() {
+                            // sqrt(x^(2k)) -> |x|^k
+                            let two = ctx.num(2);
+                            let k = ctx.add(Expr::Div(e, two)); // This will simplify to integer
+                            let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![b]));
+                            let new_expr = ctx.add(Expr::Pow(abs_base, k));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "sqrt(x^2k) -> |x|^k".to_string(),
+                            });
+                        }
                     }
                 }
+
+                // sqrt(x) -> x^(1/2)
+                let half = ctx.rational(1, 2);
+                let new_expr = ctx.add(Expr::Pow(args[0], half));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "sqrt(x) = x^(1/2)".to_string(),
+                });
+            } else if args.len() == 2 {
+                // sqrt(x, n) -> x^(1/n)
+                let one = ctx.num(1);
+                let exp = ctx.add(Expr::Div(one, args[1]));
+                let new_expr = ctx.add(Expr::Pow(args[0], exp));
+                return Some(Rewrite {
+                    new_expr,
+                    description: format!("sqrt(x, n) = x^(1/n)"),
+                });
             }
-            // Also check the opposite order: x + (-c) -> x - c
-            if let Expr::Neg(inner_neg) = ctx.get(*r) {
-                if let Expr::Number(n) = ctx.get(*inner_neg) {
-                    if *n > num_rational::BigRational::zero() {
-                        let n_clone = n.clone();
-                        let new_expr = ctx.add(Expr::Sub(*l, *inner_neg));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: format!("x + (-{}) -> x - {}", n_clone, n_clone),
-                        });
-                    }
+        } else if name == "root" && args.len() == 2 {
+            // root(x, n) -> x^(1/n)
+            let one = ctx.num(1);
+            let exp = ctx.add(Expr::Div(one, args[1]));
+            let new_expr = ctx.add(Expr::Pow(args[0], exp));
+            return Some(Rewrite {
+                new_expr,
+                description: format!("root(x, n) = x^(1/n)"),
+            });
+        }
+    }
+    None
+});
+
+define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
+    // Pattern 1: -c + x -> x - c (if c is positive number)
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        if let Expr::Neg(inner_neg) = ctx.get(*l) {
+            if let Expr::Number(n) = ctx.get(*inner_neg) {
+                if *n > num_rational::BigRational::zero() {
+                    let n_clone = n.clone();
+                    let new_expr = ctx.add(Expr::Sub(*r, *inner_neg));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: format!("-{} + x -> x - {}", n_clone, n_clone),
+                    });
                 }
             }
         }
-        
-        None
+        // Also check the opposite order: x + (-c) -> x - c
+        if let Expr::Neg(inner_neg) = ctx.get(*r) {
+            if let Expr::Number(n) = ctx.get(*inner_neg) {
+                if *n > num_rational::BigRational::zero() {
+                    let n_clone = n.clone();
+                    let new_expr = ctx.add(Expr::Sub(*l, *inner_neg));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: format!("x + (-{}) -> x - {}", n_clone, n_clone),
+                    });
+                }
+            }
+        }
     }
-);
+
+    None
+});
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rule::Rule;
+    use cas_ast::{Context, DisplayExpr};
     use cas_parser::parse;
-    use cas_ast::{DisplayExpr, Context};
 
     #[test]
     fn test_canonicalize_negation() {
@@ -470,7 +467,13 @@ mod tests {
         let rule = CanonicalizeNegationRule;
         // -5 -> -5 (Number)
         let expr = parse("-5", &mut ctx).unwrap(); // Neg(Number(5))
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         // The display might look the same "-5", but the structure is different.
         // Let's check if it's a Number.
         if let Expr::Number(n) = ctx.get(rewrite.new_expr) {
@@ -487,33 +490,81 @@ mod tests {
         // sqrt(x)
         let x = ctx.var("x");
         let expr = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         // Should be x^(1/2)
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "x^(1/2)");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "x^(1/2)"
+        );
     }
 
     #[test]
     fn test_canonicalize_nth_root() {
         let mut ctx = Context::new();
         let rule = CanonicalizeRootRule;
-        
+
         // sqrt(x, 3) -> x^(1/3)
         let x = ctx.var("x");
         let three = ctx.num(3);
         let expr = ctx.add(Expr::Function("sqrt".to_string(), vec![x, three]));
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite.new_expr }), "x^(1 / 3)");
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "x^(1 / 3)"
+        );
 
         // root(x, 4) -> x^(1/4)
         let four = ctx.num(4);
         let expr2 = ctx.add(Expr::Function("root".to_string(), vec![x, four]));
-        let rewrite2 = rule.apply(&mut ctx, expr2, &crate::parent_context::ParentContext::root()).unwrap();
-        assert_eq!(format!("{}", DisplayExpr { context: &ctx, id: rewrite2.new_expr }), "x^(1 / 4)");
+        let rewrite2 = rule
+            .apply(
+                &mut ctx,
+                expr2,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite2.new_expr
+                }
+            ),
+            "x^(1 / 4)"
+        );
     }
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
-    simplifier.add_rule(Box::new(CanonicalizeNegationRule));
+    // TEMPORARILY DISABLED: This rule causes non-deterministic Sub→Add(Neg) transformations
+    // that break idempotency when combined with canonical ordering
+    // simplifier.add_rule(Box::new(CanonicalizeNegationRule));
+
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeDivRule));

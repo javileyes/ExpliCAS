@@ -1,4 +1,5 @@
 pub mod canonical_forms;
+pub mod canonicalization;
 pub mod collect;
 pub mod engine;
 pub mod expand;

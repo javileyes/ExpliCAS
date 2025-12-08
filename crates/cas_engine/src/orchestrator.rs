@@ -54,11 +54,11 @@ impl Orchestrator {
             current = collected;
         }
 
-        // 2. Rule-based Simplification - UNCONDITIONAL Multi-Pass
-        // Always use multi-pass iteration until fixed point
-        // This ensures expressions like "atan(2) + atan(1/2) - pi/2" fully simplify
+        // 2. Rule-based Simplification
+        // Commutative operations are now AUTOMATICALLY canonicalized in Context::add()
+        // so we no longer need a post-process canonicalization pass.
 
-        let max_passes = 10; // Stable value while debugging semantic cycle detection
+        let max_passes = 20; // Increased safely thanks to automatic canonicalization
         let mut pass_count = 0;
         let mut cycle_detector = CycleDetector::new(10);
 
