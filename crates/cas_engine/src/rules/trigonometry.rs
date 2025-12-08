@@ -283,15 +283,24 @@ define_rule!(
             let mut terms = Vec::new();
             crate::helpers::flatten_add(ctx, expr, &mut terms);
 
-            // Helper to extract (coeff, func_name, arg) from a term
-            // Returns (coeff_expr_id, func_name, arg_expr_id)
+            // Helper to extract (coeff, func_name, arg, is_negated) from a term
+            // Returns (coeff_expr_id, func_name, arg_expr_id, is_negated)
+            // is_negated indicates if the entire term is wrapped in Neg
             let extract_trig_part = |ctx: &mut cas_ast::Context,
                                      term: ExprId|
-             -> Option<(ExprId, String, ExprId)> {
+             -> Option<(ExprId, String, ExprId, bool)> {
                 let term_data = ctx.get(term).clone();
 
+                // Check if term is negated: Neg(...)
+                let (inner_term, is_negated) = match term_data {
+                    Expr::Neg(inner) => (inner, true),
+                    _ => (term, false),
+                };
+
+                let inner_data = ctx.get(inner_term).clone();
+
                 // Check if term itself is sin^n or cos^n with n >= 2
-                if let Expr::Pow(base, exp) = term_data.clone() {
+                if let Expr::Pow(base, exp) = inner_data.clone() {
                     if let Expr::Number(n) = ctx.get(exp) {
                         if n.clone() >= num_rational::BigRational::from_integer(2.into())
                             && n.is_integer()
@@ -310,15 +319,15 @@ define_rule!(
                                 // If n > 2, coeff is sin^(n-2)
                                 let two = num_rational::BigRational::from_integer(2.into());
                                 if n.clone() == two {
-                                    return Some((ctx.num(1), name, arg));
+                                    return Some((ctx.num(1), name, arg, is_negated));
                                 } else {
                                     let rem_exp = n.clone() - two;
                                     if rem_exp.is_one() {
-                                        return Some((base, name, arg));
+                                        return Some((base, name, arg, is_negated));
                                     } else {
                                         let rem_exp_expr = ctx.add(Expr::Number(rem_exp));
                                         let rem_pow = ctx.add(Expr::Pow(base, rem_exp_expr));
-                                        return Some((rem_pow, name, arg));
+                                        return Some((rem_pow, name, arg, is_negated));
                                     }
                                 }
                             }
@@ -326,10 +335,10 @@ define_rule!(
                     }
                 }
 
-                // Check if term is Mul containing sin^n or cos^n
-                if let Expr::Mul(_, _) = term_data {
+                // Check if inner term is Mul containing sin^n or cos^n
+                if let Expr::Mul(_, _) = inner_data {
                     let mut factors = Vec::new();
-                    crate::helpers::flatten_mul(ctx, term, &mut factors);
+                    crate::helpers::flatten_mul(ctx, inner_term, &mut factors);
 
                     // Find the trig square factor (or higher power)
                     let mut trig_idx = None;
@@ -390,7 +399,7 @@ define_rule!(
                             }
                             c
                         };
-                        return Some((coeff, name, arg));
+                        return Some((coeff, name, arg, is_negated));
                     }
                 }
 
@@ -403,16 +412,18 @@ define_rule!(
                 coeff: ExprId,
                 func_name: String,
                 arg: ExprId,
+                is_negated: bool, // NEW: Track if term is negated
             }
 
             let mut trig_terms = Vec::new();
             for (i, &term) in terms.iter().enumerate() {
-                if let Some((coeff, name, arg)) = extract_trig_part(ctx, term) {
+                if let Some((coeff, name, arg, is_negated)) = extract_trig_part(ctx, term) {
                     trig_terms.push(TrigTerm {
                         index: i,
                         coeff,
                         func_name: name,
                         arg,
+                        is_negated,
                     });
                 }
             }
@@ -434,37 +445,51 @@ define_rule!(
                                 || crate::ordering::compare_expr(ctx, t1.coeff, t2.coeff)
                                     == std::cmp::Ordering::Equal
                             {
-                                // Found match!
-                                // Found match!
-                                // coeff * sin^2 + coeff * cos^2 = coeff
+                                // NEW: Check negation equality (both positive OR both negative)
+                                if t1.is_negated == t2.is_negated {
+                                    // Found match!
+                                    // Positive pair: coeff * sin^2 + coeff * cos^2 = coeff
+                                    // Negated pair: -coeff * sin^2 - coeff * cos^2 = -coeff
 
-                                // Construct new expression
-                                let mut new_terms = Vec::new();
-                                for k in 0..terms.len() {
-                                    if k != t1.index && k != t2.index {
-                                        new_terms.push(terms[k]);
+                                    // Construct new expression
+                                    let mut new_terms = Vec::new();
+                                    for k in 0..terms.len() {
+                                        if k != t1.index && k != t2.index {
+                                            new_terms.push(terms[k]);
+                                        }
                                     }
-                                }
 
-                                // Add 'coeff'
-                                new_terms.push(t1.coeff);
+                                    // Add coefficient (negated if pair was negated)
+                                    let result_coeff = if t1.is_negated {
+                                        ctx.add(Expr::Neg(t1.coeff))
+                                    } else {
+                                        t1.coeff
+                                    };
+                                    new_terms.push(result_coeff);
 
-                                if new_terms.is_empty() {
+                                    if new_terms.is_empty() {
+                                        return Some(Rewrite {
+                                            new_expr: ctx.num(0),
+                                            description: "Pythagorean Identity (empty)".to_string(),
+                                        });
+                                    }
+
+                                    let mut new_expr = new_terms[0];
+                                    for k in 1..new_terms.len() {
+                                        new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                                    }
+
+                                    let description = if t1.is_negated {
+                                        "Pythagorean Identity (negated)".to_string()
+                                    } else {
+                                        "Pythagorean Identity".to_string()
+                                    };
+
                                     return Some(Rewrite {
-                                        new_expr: ctx.num(0),
-                                        description: "Pythagorean Identity (empty)".to_string(),
+                                        new_expr,
+                                        description,
                                     });
                                 }
-
-                                let mut new_expr = new_terms[0];
-                                for k in 1..new_terms.len() {
-                                    new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
-                                }
-
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "a*sin^2 + a*cos^2 = a".to_string(),
-                                });
                             }
                         }
                     }
