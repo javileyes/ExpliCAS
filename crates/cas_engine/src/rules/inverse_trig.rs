@@ -161,6 +161,56 @@ fn combine_with_term(ctx: &mut Context, base: Option<ExprId>, new_term: ExprId) 
     }
 }
 
+/// Check if both expressions match a pattern, handling negation automatically
+///
+/// This is a generalized helper for pair rules. If the check_fn succeeds:
+/// - For positive pairs: returns result directly
+/// - For negated pairs: returns negated result
+///
+/// Pattern: If f(x) + g(x) = V, then -f(x) - g(x) = -V
+fn check_pair_with_negation<F>(
+    ctx: &mut Context,
+    term_i_data: Expr,
+    term_j_data: Expr,
+    terms: &[ExprId],
+    i: usize,
+    j: usize,
+    check_fn: F,
+) -> Option<Rewrite>
+where
+    F: Fn(&mut Context, &Expr, &Expr) -> Option<(ExprId, String)>,
+{
+    // Case 1: Try direct match (positive pair)
+    if let Some((result, desc)) = check_fn(ctx, &term_i_data, &term_j_data) {
+        let remaining = build_sum_without(ctx, terms, i, j);
+        let final_result = combine_with_term(ctx, remaining, result);
+        return Some(Rewrite {
+            new_expr: final_result,
+            description: desc,
+        });
+    }
+
+    // Case 2: Try negated match (-f(x) - g(x) = -result)
+    if let (Expr::Neg(inner_i), Expr::Neg(inner_j)) = (&term_i_data, &term_j_data) {
+        let inner_i_data = ctx.get(*inner_i).clone();
+        let inner_j_data = ctx.get(*inner_j).clone();
+
+        if let Some((result, desc)) = check_fn(ctx, &inner_i_data, &inner_j_data) {
+            // Negate the result
+            let neg_result = ctx.add(Expr::Neg(result));
+            let remaining = build_sum_without(ctx, terms, i, j);
+            let final_result = combine_with_term(ctx, remaining, neg_result);
+
+            return Some(Rewrite {
+                new_expr: final_result,
+                description: format!("-[{}]", desc),
+            });
+        }
+    }
+
+    None
+}
+
 /// Check if expression is sin(x)/cos(x) pattern (expanded tan)
 /// Returns Some(x) if pattern matches, None otherwise
 fn is_expanded_tan(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -330,65 +380,41 @@ define_rule!(
                 let term_i_data = ctx.get(terms[i]).clone();
                 let term_j_data = ctx.get(terms[j]).clone();
 
-                // Case 1: Positive pair - atan(x) + atan(1/x) = π/2
-                if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
-                    (&term_i_data, &term_j_data)
-                {
-                    if is_atan(name_i) && is_atan(name_j) && args_i.len() == 1 && args_j.len() == 1
-                    {
-                        // Check if arguments are reciprocals
-                        if are_reciprocals(ctx, args_i[0], args_j[0]) {
-                            // Found atan(x) + atan(1/x)! Replace with π/2
-                            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                            let two = ctx.num(2);
-                            let pi_half = ctx.add(Expr::Div(pi, two));
-
-                            // Build sum of remaining terms (excluding i and j)
-                            let remaining = build_sum_without(ctx, &terms, i, j);
-
-                            // Combine remaining terms with π/2
-                            let result = combine_with_term(ctx, remaining, pi_half);
-
-                            return Some(Rewrite {
-                                new_expr: result,
-                                description: "arctan(x) + arctan(1/x) = π/2".to_string(),
-                            });
-                        }
-                    }
-                }
-
-                // Case 2: Negated pair - Neg(atan(x)) + Neg(atan(1/x)) = -π/2
-                // In CAS, -atan(x) is represented as Neg(atan(x))
-                if let (Expr::Neg(inner_i), Expr::Neg(inner_j)) = (&term_i_data, &term_j_data) {
-                    // Extract the inner atan functions
-                    let inner_i_data = ctx.get(*inner_i);
-                    let inner_j_data = ctx.get(*inner_j);
-
-                    if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
-                        (inner_i_data, inner_j_data)
-                    {
-                        if is_atan(name_i)
-                            && is_atan(name_j)
-                            && args_i.len() == 1
-                            && args_j.len() == 1
+                // Use generalized helper to check both positive and negated pairs
+                if let Some(rewrite) = check_pair_with_negation(
+                    ctx,
+                    term_i_data,
+                    term_j_data,
+                    &terms,
+                    i,
+                    j,
+                    |ctx, expr_i, expr_j| {
+                        // Check if both are atan functions with reciprocal arguments
+                        if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
+                            (expr_i, expr_j)
                         {
-                            if are_reciprocals(ctx, args_i[0], args_j[0]) {
-                                // Found -atan(x) - atan(1/x)! Replace with -π/2
-                                let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                                let two = ctx.num(2);
-                                let pi_half = ctx.add(Expr::Div(pi, two));
-                                let neg_pi_half = ctx.add(Expr::Neg(pi_half));
+                            if is_atan(name_i)
+                                && is_atan(name_j)
+                                && args_i.len() == 1
+                                && args_j.len() == 1
+                            {
+                                if are_reciprocals(ctx, args_i[0], args_j[0]) {
+                                    // Found atan(x) + atan(1/x)! Build π/2
+                                    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                                    let two = ctx.num(2);
+                                    let pi_half = ctx.add(Expr::Div(pi, two));
 
-                                let remaining = build_sum_without(ctx, &terms, i, j);
-                                let result = combine_with_term(ctx, remaining, neg_pi_half);
-
-                                return Some(Rewrite {
-                                    new_expr: result,
-                                    description: "-arctan(x) - arctan(1/x) = -π/2".to_string(),
-                                });
+                                    return Some((
+                                        pi_half,
+                                        "arctan(x) + arctan(1/x) = π/2".to_string(),
+                                    ));
+                                }
                             }
                         }
-                    }
+                        None
+                    },
+                ) {
+                    return Some(rewrite);
                 }
             }
         }
