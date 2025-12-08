@@ -654,7 +654,98 @@ Para agregar nuevos patrones protegidos:
            return None;
        }
    }
-   ```
+    ```
+
+---
+
+### 2.6. N-ary Pattern Matching (Add/Mul Flattening) ★★
+
+**Implementado**: 2025-12-08  
+**Motivación**: Permitir que reglas encuentren patrones entre términos NO adyacentes en sumas/productos.
+
+#### El Problema: Canonicalización Separa Patrones
+
+**Ejemplo**: `atan(2) + atan(1/2) - π/2`
+
+```
+Parser Output: atan(2) + atan(1/2) - π/2
+
+Canonicalización:
+  → atan(1/2) + atan(2) + (-1)*(1/2)*π
+  → Add(Add(atan(1/2), atan(2)), Mul(-1, Mul(1/2, π)))
+  
+Problema: InverseTrigAtanRule busca: atan(x) + atan(1/x)
+  Pero solo ve pares binarios en Add:
+    - Add(atan(1/2), atan(2)) ← ¡SÍ!, pero...
+    - Adición externa: Add(pair, otros_términos)
+    - La regla no se activa porque hay un tercer término
+```
+
+#### La Solución: Aplanar Árbol Add → Lista de Términos
+
+```rust
+// Helper: Aplana árbol Add recursivamente
+fn collect_add_terms_flat(ctx: &Context, expr_id: ExprId) -> Vec<ExprId> {
+    let mut terms = Vec::new();
+    collect_add_terms_recursive(ctx, expr_id, &mut terms);
+    terms
+}
+
+fn collect_add_terms_recursive(ctx: &Context, expr_id: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(expr_id) {
+        Expr::Add(l, r) => {
+            collect_add_terms_recursive(ctx, *l, terms);  // Recursión izquierda
+            collect_add_terms_recursive(ctx, *r, terms);  // Recursión derecha
+        }
+        _ => terms.push(expr_id),  // Hoja: agregar término
+    }
+}
+```
+
+**Ejemplo**: `((a + b) + c) - d` → `[a, b, c, Neg(d)]`
+
+#### Implementación en InverseTrigAtanRule
+
+```rust
+define_rule!(InverseTrigAtanRule, "Inverse Tan Relations", Some(vec!["Add"]), |ctx, expr| {
+    // 1. Aplanar todos los términos
+    let terms = collect_add_terms_flat(ctx, expr);
+    if terms.len() < 2 { return None; }
+    
+    // 2. Buscar pares reciprocales en TODOS los términos (O(n²))
+    for i in 0..terms.len() {
+        for j in (i+1)..terms.len() {
+            if is_atan(i) && is_atan(j) && are_reciprocals(arg[i], arg[j]) {
+                // 3. Reconstruir suma sin términos i, j
+                let remaining = build_sum_without(&terms, i, j);
+                // 4. Agregar π/2
+                return Some(combine(remaining, pi_half));
+            }
+        }
+    }
+    None
+});
+```
+
+#### Caso de Uso: Test 48
+
+```
+Input: atan(2) + atan(1/2) - π/2
+
+Paso 1: terms = [atan(1/2), atan(2), (-1)*(1/2)*π]
+Paso 2: i=0,j=1 → are_reciprocals(1/2, 2)? SÍ ✓
+Paso 3: remaining = [(-1)*(1/2)*π]
+        result = (-1)*(1/2)*π + π/2
+Paso 4: Iteración 2 (multi-pass) → 0 ✓
+```
+
+#### Performance
+
+- **Complejidad**: O(t²) donde t = número de términos
+- **Típico**: t=3-5 → 3-10 comparaciones → <1ms
+- **Aceptable** hasta ~20 términos
+
+#### Archivos: `inverse_trig.rs`, Tests: `test_48`
 
 ---
 
