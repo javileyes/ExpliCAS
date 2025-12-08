@@ -468,7 +468,8 @@ mod tests {
                     id: e
                 }
             ),
-            "(1 + 2) * x"
+            // Canonical ordering: numbers before variables in multiplication
+            "x * (1 + 2)"
         );
     }
 
@@ -496,7 +497,8 @@ mod tests {
                     id: e2
                 }
             ),
-            "x^2 * y"
+            // Canonical ordering: y (Variable, rank=2) before x^2 (Pow, rank=5)
+            "y * x^2"
         );
     }
 

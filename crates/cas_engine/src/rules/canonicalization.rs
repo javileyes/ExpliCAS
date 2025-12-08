@@ -31,10 +31,18 @@ define_rule!(
                 // Actually parser produces Neg(Number(5)).
                 // If we have Neg(Number(5)), we want Number(-5).
                 let neg_n = -n.clone();
-                let new_expr = ctx.add(Expr::Number(neg_n.clone()));
+
+                // CRITICAL: Normalize -0 to 0
+                let normalized_n = if neg_n.is_zero() {
+                    num_rational::BigRational::from_integer(0.into())
+                } else {
+                    neg_n.clone()
+                };
+
+                let new_expr = ctx.add(Expr::Number(normalized_n.clone()));
                 return Some(Rewrite {
                     new_expr,
-                    description: format!("-({}) = {}", n, neg_n),
+                    description: format!("-({}) = {}", n, normalized_n),
                 });
             }
 
@@ -561,9 +569,9 @@ mod tests {
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
-    // TEMPORARILY DISABLED: This rule causes non-deterministic Sub→Add(Neg) transformations
-    // that break idempotency when combined with canonical ordering
-    // simplifier.add_rule(Box::new(CanonicalizeNegationRule));
+    // RE-ENABLED: Needed for -0 → 0 normalization
+    // The non-determinism issue with Sub→Add(Neg) is now handled by canonical ordering
+    simplifier.add_rule(Box::new(CanonicalizeNegationRule));
 
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));

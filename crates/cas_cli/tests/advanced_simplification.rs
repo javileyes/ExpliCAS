@@ -93,9 +93,8 @@ mod engine_tests {
         );
         println!("Triple Angle Result: {}", res);
 
-        // Note: canonical ordering changed the term order but the expression is still correct
-        // The result should be mathematically equivalent to 0, but may not fully simplify
-        // Update expectation to match canon-ordered output
-        assert_eq!(res, "-3 * sin(x) + 3 * sin(x)^3 + 3 * sin(x) * cos(x)^2");
+        // With CanonicalizeNegationRule enabled, this now fully simplifies to 0!
+        // sin(3x) = 3sin(x) - 4sin³(x) is a trig identity, so sin(3x) - (3sin(x) - 4sin^3(x)) = 0
+        assert_eq!(res, "0");
     }
 }
