@@ -1,4 +1,5 @@
 use crate::define_rule;
+use crate::helpers::{build_pi_over_n, is_pi_over_n};
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Zero};
@@ -23,44 +24,8 @@ fn is_one(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if expression equals π/n for a given denominator
-fn is_pi_over_n(ctx: &Context, expr: ExprId, denom: i32) -> bool {
-    // Handle Div form: pi/n
-    if let Expr::Div(num, den) = ctx.get(expr) {
-        if let Expr::Constant(c) = ctx.get(*num) {
-            if matches!(c, cas_ast::Constant::Pi) {
-                if let Expr::Number(n) = ctx.get(*den) {
-                    return *n == num_rational::Ratio::from_integer(denom.into());
-                }
-            }
-        }
-    }
-
-    // Handle Mul form: (1/n) * pi
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        let (num_part, const_part) = if let Expr::Constant(_) = ctx.get(*l) {
-            (*r, *l)
-        } else if let Expr::Constant(_) = ctx.get(*r) {
-            (*l, *r)
-        } else {
-            return false;
-        };
-
-        if let Expr::Constant(c) = ctx.get(const_part) {
-            if matches!(c, cas_ast::Constant::Pi) {
-                if let Expr::Number(n) = ctx.get(num_part) {
-                    return *n == num_rational::Ratio::new(1.into(), denom.into());
-                }
-            }
-        }
-    }
-
-    false
-}
-
 // ==================== Evaluation Table ====================
 
-/// (function, check_fn, result_builder, description)
 type EvalCheck = fn(&Context, ExprId) -> bool;
 type ResultBuilder = fn(&mut Context) -> ExprId;
 
@@ -71,14 +36,10 @@ fn build_one(ctx: &mut Context) -> ExprId {
     ctx.num(1)
 }
 fn build_pi_over_2(ctx: &mut Context) -> ExprId {
-    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-    let two = ctx.num(2);
-    ctx.add(Expr::Div(pi, two))
+    build_pi_over_n(ctx, 2)
 }
 fn build_pi_over_4(ctx: &mut Context) -> ExprId {
-    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-    let four = ctx.num(4);
-    ctx.add(Expr::Div(pi, four))
+    build_pi_over_n(ctx, 4)
 }
 
 const EVAL_RULES: &[(&str, EvalCheck, ResultBuilder, &str)] = &[
@@ -151,7 +112,6 @@ define_rule!(
 
 // ==================== Composition Pairs ====================
 
-/// (outer, inner) pairs where outer(inner(x)) = x
 const COMPOSITION_PAIRS: &[(&str, &str)] = &[
     ("cot", "arccot"),
     ("sec", "arcsec"),
@@ -172,7 +132,6 @@ define_rule!(
                 if let Expr::Function(inner_name, inner_args) = ctx.get(inner_expr) {
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
-
                         for (outer, inner) in COMPOSITION_PAIRS {
                             if outer_name == *outer && inner_name == *inner {
                                 return Some(Rewrite {
@@ -191,12 +150,11 @@ define_rule!(
 
 // ==================== Negative Argument Table ====================
 
-/// How to handle f(-x)
 #[derive(Clone, Copy)]
 enum NegBehavior {
-    Odd,     // f(-x) = -f(x)
-    Even,    // f(-x) = f(x)
-    PiMinus, // f(-x) = π - f(x)
+    Odd,
+    Even,
+    PiMinus,
 }
 
 const NEG_BEHAVIORS: &[(&str, NegBehavior)] = &[

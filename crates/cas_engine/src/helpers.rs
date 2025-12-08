@@ -1,5 +1,5 @@
-use cas_ast::{Expr, ExprId, Context};
-use num_traits::{ToPrimitive, Signed, One};
+use cas_ast::{Context, Expr, ExprId};
+use num_traits::{One, Signed, ToPrimitive};
 
 pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
     if let Expr::Pow(base, exp) = context.get(expr) {
@@ -30,9 +30,9 @@ pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
     // But context.get returns reference.
     // We can't hold reference to context while mutating it.
     // So we should extract necessary data first.
-    
+
     let expr_data = context.get(expr).clone();
-    
+
     match expr_data {
         Expr::Pow(b, e) => {
             if let Expr::Number(n) = context.get(e) {
@@ -42,7 +42,7 @@ pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
                         let two = num_bigint::BigInt::from(2);
                         let new_exp_val = (val / two).to_i64()?;
                         let new_exp = context.num(new_exp_val);
-                        
+
                         // If new_exp is 1, simplify to b
                         if let Expr::Number(ne) = context.get(new_exp) {
                             if ne.is_one() {
@@ -54,18 +54,18 @@ pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
                 }
             }
             None
-        },
+        }
         Expr::Number(n) => {
-             if n.is_integer() && !n.is_negative() {
-                 let val = n.to_integer();
-                 let sqrt = val.sqrt();
-                 if &sqrt * &sqrt == val {
-                     return Some(context.num(sqrt.to_i64()?));
-                 }
-             }
-             None
-        },
-        _ => None
+            if n.is_integer() && !n.is_negative() {
+                let val = n.to_integer();
+                let sqrt = val.sqrt();
+                if &sqrt * &sqrt == val {
+                    return Some(context.num(sqrt.to_i64()?));
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }
 
@@ -119,4 +119,62 @@ pub fn get_parts(context: &mut Context, e: ExprId) -> (num_rational::BigRational
         Expr::Number(n) => (n.clone(), context.num(1)), // Treat constant as c * 1
         _ => (num_rational::BigRational::one(), e),
     }
+}
+
+// ========== Pi Helpers ==========
+
+/// Check if expression equals π/n for a given denominator (handles both Div and Mul forms)
+pub fn is_pi_over_n(ctx: &Context, expr: ExprId, denom: i32) -> bool {
+    // Handle Div form: pi/n
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        if let Expr::Constant(c) = ctx.get(*num) {
+            if matches!(c, cas_ast::Constant::Pi) {
+                if let Expr::Number(n) = ctx.get(*den) {
+                    return *n == num_rational::BigRational::from_integer(denom.into());
+                }
+            }
+        }
+    }
+
+    // Handle Mul form: (1/n) * pi
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        let (num_part, const_part) = if let Expr::Constant(_) = ctx.get(*l) {
+            (*r, *l)
+        } else if let Expr::Constant(_) = ctx.get(*r) {
+            (*l, *r)
+        } else {
+            return false;
+        };
+
+        if let Expr::Constant(c) = ctx.get(const_part) {
+            if matches!(c, cas_ast::Constant::Pi) {
+                if let Expr::Number(n) = ctx.get(num_part) {
+                    return *n == num_rational::BigRational::new(1.into(), denom.into());
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// Check if expression is exactly π
+pub fn is_pi(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Constant(cas_ast::Constant::Pi))
+}
+
+/// Check if expression equals a specific numeric value
+pub fn is_numeric_value(ctx: &Context, expr: ExprId, numer: i32, denom: i32) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        *n == num_rational::BigRational::new(numer.into(), denom.into())
+    } else {
+        false
+    }
+}
+
+/// Build π/n expression
+pub fn build_pi_over_n(ctx: &mut Context, denom: i64) -> ExprId {
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let d = ctx.num(denom);
+    ctx.add(Expr::Div(pi, d))
 }
