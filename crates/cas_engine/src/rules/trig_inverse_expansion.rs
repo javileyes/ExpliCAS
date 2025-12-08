@@ -36,392 +36,198 @@ fn build_x_sq_minus_one(ctx: &mut Context, x: ExprId) -> ExprId {
     ctx.add(Expr::Sub(x_sq, one))
 }
 
-// ========== Priority 1: Core Expansion Rules ==========
+// ========== Transform Types ==========
 
-/// sin(arctan(x)) → x/sqrt(1+x²)
-define_rule!(
-    SinArctanExpansionRule,
-    "sin(arctan(x)) → x/√(1+x²)",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "sin" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arctan" || inner_name == "atan") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // x / sqrt(1 + x²)
-                        let denom = build_one_plus_x_sq(ctx, x);
-                        let sqrt_denom = build_sqrt(ctx, denom);
-                        let result = ctx.add(Expr::Div(x, sqrt_denom));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "sin(arctan(x)) → x/√(1+x²)".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-        None
+/// How to transform x for the result
+#[derive(Clone, Copy)]
+enum Transform {
+    /// x / √(base)
+    XOverSqrt(Base),
+    /// √(base) / x
+    SqrtOverX(Base),
+    /// 1 / √(base)
+    OneOverSqrt(Base),
+    /// 1 / x
+    OneOverX,
+    /// √(base)
+    JustSqrt(Base),
+}
+
+/// Which polynomial to use inside sqrt
+#[derive(Clone, Copy)]
+enum Base {
+    OneMinus, // 1 - x²
+    OnePlus,  // 1 + x²
+    XMinus,   // x² - 1
+}
+
+fn build_base(ctx: &mut Context, x: ExprId, base: Base) -> ExprId {
+    match base {
+        Base::OneMinus => build_one_minus_x_sq(ctx, x),
+        Base::OnePlus => build_one_plus_x_sq(ctx, x),
+        Base::XMinus => build_x_sq_minus_one(ctx, x),
     }
-);
+}
 
-/// cos(arctan(x)) → 1/sqrt(1+x²)
-define_rule!(
-    CosArctanExpansionRule,
-    "cos(arctan(x)) → 1/√(1+x²)",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "cos" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arctan" || inner_name == "atan") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // 1 / sqrt(1 + x²)
-                        let one = ctx.num(1);
-                        let denom = build_one_plus_x_sq(ctx, x);
-                        let sqrt_denom = build_sqrt(ctx, denom);
-                        let result = ctx.add(Expr::Div(one, sqrt_denom));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "cos(arctan(x)) → 1/√(1+x²)".to_string(),
-                        });
-                    }
-                }
-            }
+fn apply_transform(ctx: &mut Context, x: ExprId, transform: Transform) -> ExprId {
+    match transform {
+        Transform::XOverSqrt(base) => {
+            let b = build_base(ctx, x, base);
+            let sqrt_b = build_sqrt(ctx, b);
+            ctx.add(Expr::Div(x, sqrt_b))
         }
-        None
-    }
-);
-
-/// tan(arcsin(x)) → x/sqrt(1-x²)
-define_rule!(
-    TanArcsinExpansionRule,
-    "tan(arcsin(x)) → x/√(1-x²)",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "tan" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arcsin" || inner_name == "asin") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // x / sqrt(1 - x²)
-                        let denom = build_one_minus_x_sq(ctx, x);
-                        let sqrt_denom = build_sqrt(ctx, denom);
-                        let result = ctx.add(Expr::Div(x, sqrt_denom));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "tan(arcsin(x)) → x/√(1-x²)".to_string(),
-                        });
-                    }
-                }
-            }
+        Transform::SqrtOverX(base) => {
+            let b = build_base(ctx, x, base);
+            let sqrt_b = build_sqrt(ctx, b);
+            ctx.add(Expr::Div(sqrt_b, x))
         }
-        None
-    }
-);
-
-/// cot(arcsin(x)) → sqrt(1-x²)/x
-define_rule!(
-    CotArcsinExpansionRule,
-    "cot(arcsin(x)) → √(1-x²)/x",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "cot" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arcsin" || inner_name == "asin") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // sqrt(1 - x²) / x
-                        let numer = build_one_minus_x_sq(ctx, x);
-                        let sqrt_numer = build_sqrt(ctx, numer);
-                        let result = ctx.add(Expr::Div(sqrt_numer, x));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "cot(arcsin(x)) → √(1-x²)/x".to_string(),
-                        });
-                    }
-                }
-            }
+        Transform::OneOverSqrt(base) => {
+            let one = ctx.num(1);
+            let b = build_base(ctx, x, base);
+            let sqrt_b = build_sqrt(ctx, b);
+            ctx.add(Expr::Div(one, sqrt_b))
         }
-        None
-    }
-);
-
-/// cos(arcsin(x)) → sqrt(1-x²)
-define_rule!(
-    CosArcsinExpansionRule,
-    "cos(arcsin(x)) → √(1-x²)",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "cos" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arcsin" || inner_name == "asin") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // sqrt(1 - x²)
-                        let expr_inside = build_one_minus_x_sq(ctx, x);
-                        let result = build_sqrt(ctx, expr_inside);
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "cos(arcsin(x)) → √(1-x²)".to_string(),
-                        });
-                    }
-                }
-            }
+        Transform::OneOverX => {
+            let one = ctx.num(1);
+            ctx.add(Expr::Div(one, x))
         }
-        None
-    }
-);
-
-/// sin(arccos(x)) → sqrt(1-x²)
-define_rule!(
-    SinArccosExpansionRule,
-    "sin(arccos(x)) → √(1-x²)",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "sin" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arccos" || inner_name == "acos") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // sqrt(1 - x²)
-                        let expr_inside = build_one_minus_x_sq(ctx, x);
-                        let result = build_sqrt(ctx, expr_inside);
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "sin(arccos(x)) → √(1-x²)".to_string(),
-                        });
-                    }
-                }
-            }
+        Transform::JustSqrt(base) => {
+            let b = build_base(ctx, x, base);
+            build_sqrt(ctx, b)
         }
-        None
     }
-);
+}
 
-// ========== Priority 2: Secondary Expansion Rules ==========
+// ========== Expansion Table ==========
 
-/// sin(arcsec(x)) → sqrt(x²-1)/x
+/// Maps (outer_func, inner_func) -> (Transform, description)
+const EXPANSIONS: &[(&str, &[&str], Transform, &str)] = &[
+    // sin(arctan(x)) → x/√(1+x²)
+    (
+        "sin",
+        &["arctan", "atan"],
+        Transform::XOverSqrt(Base::OnePlus),
+        "sin(arctan(x)) → x/√(1+x²)",
+    ),
+    // cos(arctan(x)) → 1/√(1+x²)
+    (
+        "cos",
+        &["arctan", "atan"],
+        Transform::OneOverSqrt(Base::OnePlus),
+        "cos(arctan(x)) → 1/√(1+x²)",
+    ),
+    // tan(arcsin(x)) → x/√(1-x²)
+    (
+        "tan",
+        &["arcsin", "asin"],
+        Transform::XOverSqrt(Base::OneMinus),
+        "tan(arcsin(x)) → x/√(1-x²)",
+    ),
+    // cot(arcsin(x)) → √(1-x²)/x
+    (
+        "cot",
+        &["arcsin", "asin"],
+        Transform::SqrtOverX(Base::OneMinus),
+        "cot(arcsin(x)) → √(1-x²)/x",
+    ),
+    // cos(arcsin(x)) → √(1-x²)
+    (
+        "cos",
+        &["arcsin", "asin"],
+        Transform::JustSqrt(Base::OneMinus),
+        "cos(arcsin(x)) → √(1-x²)",
+    ),
+    // sin(arccos(x)) → √(1-x²)
+    (
+        "sin",
+        &["arccos", "acos"],
+        Transform::JustSqrt(Base::OneMinus),
+        "sin(arccos(x)) → √(1-x²)",
+    ),
+    // sin(arcsec(x)) → √(x²-1)/x
+    (
+        "sin",
+        &["arcsec", "asec"],
+        Transform::SqrtOverX(Base::XMinus),
+        "sin(arcsec(x)) → √(x²-1)/x",
+    ),
+    // cos(arcsec(x)) → 1/x
+    (
+        "cos",
+        &["arcsec", "asec"],
+        Transform::OneOverX,
+        "cos(arcsec(x)) → 1/x",
+    ),
+    // tan(arccos(x)) → √(1-x²)/x
+    (
+        "tan",
+        &["arccos", "acos"],
+        Transform::SqrtOverX(Base::OneMinus),
+        "tan(arccos(x)) → √(1-x²)/x",
+    ),
+    // cot(arccos(x)) → x/√(1-x²)
+    (
+        "cot",
+        &["arccos", "acos"],
+        Transform::XOverSqrt(Base::OneMinus),
+        "cot(arccos(x)) → x/√(1-x²)",
+    ),
+    // sec(arctan(x)) → √(1+x²)
+    (
+        "sec",
+        &["arctan", "atan"],
+        Transform::JustSqrt(Base::OnePlus),
+        "sec(arctan(x)) → √(1+x²)",
+    ),
+    // csc(arctan(x)) → √(1+x²)/x
+    (
+        "csc",
+        &["arctan", "atan"],
+        Transform::SqrtOverX(Base::OnePlus),
+        "csc(arctan(x)) → √(1+x²)/x",
+    ),
+    // sec(arcsin(x)) → 1/√(1-x²)
+    (
+        "sec",
+        &["arcsin", "asin"],
+        Transform::OneOverSqrt(Base::OneMinus),
+        "sec(arcsin(x)) → 1/√(1-x²)",
+    ),
+    // csc(arcsin(x)) → 1/x
+    (
+        "csc",
+        &["arcsin", "asin"],
+        Transform::OneOverX,
+        "csc(arcsin(x)) → 1/x",
+    ),
+];
+
+// ========== Unified Rule ==========
+
 define_rule!(
-    SinArcsecExpansionRule,
-    "sin(arcsec(x)) → √(x²-1)/x",
+    TrigInverseExpansionRule,
+    "Trig of Inverse Trig Expansion",
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "sin" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arcsec" || inner_name == "asec") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // sqrt(x² - 1) / x
-                        let numer = build_x_sq_minus_one(ctx, x);
-                        let sqrt_numer = build_sqrt(ctx, numer);
-                        let result = ctx.add(Expr::Div(sqrt_numer, x));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "sin(arcsec(x)) → √(x²-1)/x".to_string(),
-                        });
-                    }
-                }
+            if outer_args.len() != 1 {
+                return None;
             }
-        }
-        None
-    }
-);
+            let inner = outer_args[0];
 
-/// cos(arcsec(x)) → 1/x
-define_rule!(
-    CosArcsecExpansionRule,
-    "cos(arcsec(x)) → 1/x",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "cos" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arcsec" || inner_name == "asec") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // 1 / x
-                        let one = ctx.num(1);
-                        let result = ctx.add(Expr::Div(one, x));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "cos(arcsec(x)) → 1/x".to_string(),
-                        });
-                    }
+            if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
+                if inner_args.len() != 1 {
+                    return None;
                 }
-            }
-        }
-        None
-    }
-);
+                let x = inner_args[0];
 
-/// tan(arccos(x)) → sqrt(1-x²)/x
-define_rule!(
-    TanArccosExpansionRule,
-    "tan(arccos(x)) → √(1-x²)/x",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "tan" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arccos" || inner_name == "acos") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // sqrt(1 - x²) / x
-                        let numer = build_one_minus_x_sq(ctx, x);
-                        let sqrt_numer = build_sqrt(ctx, numer);
-                        let result = ctx.add(Expr::Div(sqrt_numer, x));
+                // Look up in expansion table
+                for (outer, inner_variants, transform, description) in EXPANSIONS {
+                    if outer_name == *outer && inner_variants.contains(&inner_name.as_str()) {
+                        let result = apply_transform(ctx, x, *transform);
                         return Some(Rewrite {
                             new_expr: result,
-                            description: "tan(arccos(x)) → √(1-x²)/x".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-        None
-    }
-);
-
-/// cot(arccos(x)) → x/sqrt(1-x²)
-define_rule!(
-    CotArccosExpansionRule,
-    "cot(arccos(x)) → x/√(1-x²)",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "cot" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arccos" || inner_name == "acos") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // x / sqrt(1 - x²)
-                        let denom = build_one_minus_x_sq(ctx, x);
-                        let sqrt_denom = build_sqrt(ctx, denom);
-                        let result = ctx.add(Expr::Div(x, sqrt_denom));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "cot(arccos(x)) → x/√(1-x²)".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-        None
-    }
-);
-
-// ========== Priority 3: Reciprocal Expansion Rules ==========
-
-/// sec(arctan(x)) → sqrt(1+x²)
-define_rule!(
-    SecArctanExpansionRule,
-    "sec(arctan(x)) → √(1+x²)",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "sec" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arctan" || inner_name == "atan") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // sqrt(1 + x²)
-                        let expr_inside = build_one_plus_x_sq(ctx, x);
-                        let result = build_sqrt(ctx, expr_inside);
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "sec(arctan(x)) → √(1+x²)".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-        None
-    }
-);
-
-/// csc(arctan(x)) → sqrt(1+x²)/x
-define_rule!(
-    CscArctanExpansionRule,
-    "csc(arctan(x)) → √(1+x²)/x",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "csc" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arctan" || inner_name == "atan") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // sqrt(1 + x²) / x
-                        let numer = build_one_plus_x_sq(ctx, x);
-                        let sqrt_numer = build_sqrt(ctx, numer);
-                        let result = ctx.add(Expr::Div(sqrt_numer, x));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "csc(arctan(x)) → √(1+x²)/x".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-        None
-    }
-);
-
-/// sec(arcsin(x)) → 1/sqrt(1-x²)
-define_rule!(
-    SecArcsinExpansionRule,
-    "sec(arcsin(x)) → 1/√(1-x²)",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "sec" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arcsin" || inner_name == "asin") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // 1 / sqrt(1 - x²)
-                        let one = ctx.num(1);
-                        let denom = build_one_minus_x_sq(ctx, x);
-                        let sqrt_denom = build_sqrt(ctx, denom);
-                        let result = ctx.add(Expr::Div(one, sqrt_denom));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "sec(arcsin(x)) → 1/√(1-x²)".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-        None
-    }
-);
-
-/// csc(arcsin(x)) → 1/x
-define_rule!(
-    CscArcsinExpansionRule,
-    "csc(arcsin(x)) → 1/x",
-    Some(vec!["Function"]),
-    |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
-            if outer_name == "csc" && outer_args.len() == 1 {
-                let inner = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
-                    if (inner_name == "arcsin" || inner_name == "asin") && inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        // 1 / x
-                        let one = ctx.num(1);
-                        let result = ctx.add(Expr::Div(one, x));
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "csc(arcsin(x)) → 1/x".to_string(),
+                            description: description.to_string(),
                         });
                     }
                 }
@@ -434,23 +240,5 @@ define_rule!(
 // ========== Registration ==========
 
 pub fn register(simplifier: &mut crate::engine::Simplifier) {
-    // Priority 1: Most common expansions
-    simplifier.add_rule(Box::new(SinArctanExpansionRule));
-    simplifier.add_rule(Box::new(CosArctanExpansionRule));
-    simplifier.add_rule(Box::new(TanArcsinExpansionRule));
-    simplifier.add_rule(Box::new(CotArcsinExpansionRule)); // NEW: For Test 50
-    simplifier.add_rule(Box::new(CosArcsinExpansionRule)); // NEW: For Test 50
-    simplifier.add_rule(Box::new(SinArccosExpansionRule));
-
-    // Priority 2: Secondary expansions
-    simplifier.add_rule(Box::new(SinArcsecExpansionRule));
-    simplifier.add_rule(Box::new(CosArcsecExpansionRule));
-    simplifier.add_rule(Box::new(TanArccosExpansionRule));
-    simplifier.add_rule(Box::new(CotArccosExpansionRule));
-
-    // Priority 3: Reciprocal expansions
-    simplifier.add_rule(Box::new(SecArctanExpansionRule));
-    simplifier.add_rule(Box::new(CscArctanExpansionRule));
-    simplifier.add_rule(Box::new(SecArcsinExpansionRule));
-    simplifier.add_rule(Box::new(CscArcsinExpansionRule));
+    simplifier.add_rule(Box::new(TrigInverseExpansionRule));
 }

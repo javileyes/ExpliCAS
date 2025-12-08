@@ -23,22 +23,21 @@ fn is_one(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if expression equals π/4
-fn is_pi_over_four(ctx: &Context, expr: ExprId) -> bool {
-    // Handle both forms: pi/4 and 1/4 * pi (canonicalized)
+/// Check if expression equals π/n for a given denominator
+fn is_pi_over_n(ctx: &Context, expr: ExprId, denom: i32) -> bool {
+    // Handle Div form: pi/n
     if let Expr::Div(num, den) = ctx.get(expr) {
         if let Expr::Constant(c) = ctx.get(*num) {
             if matches!(c, cas_ast::Constant::Pi) {
                 if let Expr::Number(n) = ctx.get(*den) {
-                    return *n == num_rational::Ratio::from_integer(4.into());
+                    return *n == num_rational::Ratio::from_integer(denom.into());
                 }
             }
         }
     }
 
-    // Also check for 1/4 * pi form (after simplification, becomes Number(1/4) * Pi)
+    // Handle Mul form: (1/n) * pi
     if let Expr::Mul(l, r) = ctx.get(expr) {
-        // Could be pi * 1/4 or 1/4 * pi
         let (num_part, const_part) = if let Expr::Constant(_) = ctx.get(*l) {
             (*r, *l)
         } else if let Expr::Constant(_) = ctx.get(*r) {
@@ -47,13 +46,10 @@ fn is_pi_over_four(ctx: &Context, expr: ExprId) -> bool {
             return false;
         };
 
-        // Check if const_part is Pi
         if let Expr::Constant(c) = ctx.get(const_part) {
             if matches!(c, cas_ast::Constant::Pi) {
-                // Check if num_part is 1/4 (as a Number)
                 if let Expr::Number(n) = ctx.get(num_part) {
-                    // Check if it's 1/4
-                    return *n == num_rational::Ratio::new(1.into(), 4.into());
+                    return *n == num_rational::Ratio::new(1.into(), denom.into());
                 }
             }
         }
@@ -62,48 +58,75 @@ fn is_pi_over_four(ctx: &Context, expr: ExprId) -> bool {
     false
 }
 
-/// Check if expression equals π/2
-fn is_pi_over_two(ctx: &Context, expr: ExprId) -> bool {
-    // Handle both forms: pi/2 and 1/2 * pi (canonicalized)
-    if let Expr::Div(num, den) = ctx.get(expr) {
-        if let Expr::Constant(c) = ctx.get(*num) {
-            if matches!(c, cas_ast::Constant::Pi) {
-                if let Expr::Number(n) = ctx.get(*den) {
-                    return *n == num_rational::Ratio::from_integer(2.into());
-                }
-            }
-        }
-    }
+// ==================== Evaluation Table ====================
 
-    // Also check for 1/2 * pi form (after simplification, becomes Number(1/2) * Pi)
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        // Could be pi * 1/2 or 1/2 * pi
-        let (num_part, const_part) = if let Expr::Constant(_) = ctx.get(*l) {
-            (*r, *l)
-        } else if let Expr::Constant(_) = ctx.get(*r) {
-            (*l, *r)
-        } else {
-            return false;
-        };
+/// (function, check_fn, result_builder, description)
+type EvalCheck = fn(&Context, ExprId) -> bool;
+type ResultBuilder = fn(&mut Context) -> ExprId;
 
-        // Check if const_part is Pi
-        if let Expr::Constant(c) = ctx.get(const_part) {
-            if matches!(c, cas_ast::Constant::Pi) {
-                // Check if num_part is 1/2 (as a Number)
-                if let Expr::Number(n) = ctx.get(num_part) {
-                    // Check if it's 1/2
-                    return *n == num_rational::Ratio::new(1.into(), 2.into());
-                }
-            }
-        }
-    }
-
-    false
+fn build_zero(ctx: &mut Context) -> ExprId {
+    ctx.num(0)
+}
+fn build_one(ctx: &mut Context) -> ExprId {
+    ctx.num(1)
+}
+fn build_pi_over_2(ctx: &mut Context) -> ExprId {
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let two = ctx.num(2);
+    ctx.add(Expr::Div(pi, two))
+}
+fn build_pi_over_4(ctx: &mut Context) -> ExprId {
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let four = ctx.num(4);
+    ctx.add(Expr::Div(pi, four))
 }
 
-// ==================== Reciprocal Trig Rules ====================
+const EVAL_RULES: &[(&str, EvalCheck, ResultBuilder, &str)] = &[
+    (
+        "cot",
+        |ctx, e| is_pi_over_n(ctx, e, 4),
+        build_one,
+        "cot(π/4) = 1",
+    ),
+    (
+        "cot",
+        |ctx, e| is_pi_over_n(ctx, e, 2),
+        build_zero,
+        "cot(π/2) = 0",
+    ),
+    ("sec", |ctx, e| is_zero(ctx, e), build_one, "sec(0) = 1"),
+    (
+        "csc",
+        |ctx, e| is_pi_over_n(ctx, e, 2),
+        build_one,
+        "csc(π/2) = 1",
+    ),
+    (
+        "arccot",
+        |ctx, e| is_one(ctx, e),
+        build_pi_over_4,
+        "arccot(1) = π/4",
+    ),
+    (
+        "arccot",
+        |ctx, e| is_zero(ctx, e),
+        build_pi_over_2,
+        "arccot(0) = π/2",
+    ),
+    (
+        "arcsec",
+        |ctx, e| is_one(ctx, e),
+        build_zero,
+        "arcsec(1) = 0",
+    ),
+    (
+        "arccsc",
+        |ctx, e| is_one(ctx, e),
+        build_pi_over_2,
+        "arccsc(1) = π/2",
+    ),
+];
 
-// Rule 1: Evaluate reciprocal trig functions at special values
 define_rule!(
     EvaluateReciprocalTrigRule,
     "Evaluate Reciprocal Trig Functions",
@@ -112,84 +135,13 @@ define_rule!(
         if let Expr::Function(name, args) = ctx.get(expr) {
             if args.len() == 1 {
                 let arg = args[0];
-                let name = name.clone();
-
-                match name.as_str() {
-                    // cot(π/4) = 1
-                    "cot" => {
-                        if is_pi_over_four(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(1),
-                                description: "cot(π/4) = 1".to_string(),
-                            });
-                        }
-                        // cot(π/2) = 0
-                        if is_pi_over_two(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "cot(π/2) = 0".to_string(),
-                            });
-                        }
+                for (func, check, build, desc) in EVAL_RULES {
+                    if name == *func && check(ctx, arg) {
+                        return Some(Rewrite {
+                            new_expr: build(ctx),
+                            description: desc.to_string(),
+                        });
                     }
-                    // sec(0) = 1
-                    "sec" => {
-                        if is_zero(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(1),
-                                description: "sec(0) = 1".to_string(),
-                            });
-                        }
-                    }
-                    // csc(π/2) = 1
-                    "csc" => {
-                        if is_pi_over_two(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(1),
-                                description: "csc(π/2) = 1".to_string(),
-                            });
-                        }
-                    }
-                    // arccot(1) = π/4
-                    "arccot" => {
-                        if is_one(ctx, arg) {
-                            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                            let four = ctx.num(4);
-                            return Some(Rewrite {
-                                new_expr: ctx.add(Expr::Div(pi, four)),
-                                description: "arccot(1) = π/4".to_string(),
-                            });
-                        }
-                        // arccot(0) = π/2
-                        if is_zero(ctx, arg) {
-                            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                            let two = ctx.num(2);
-                            return Some(Rewrite {
-                                new_expr: ctx.add(Expr::Div(pi, two)),
-                                description: "arccot(0) = π/2".to_string(),
-                            });
-                        }
-                    }
-                    // arcsec(1) = 0
-                    "arcsec" => {
-                        if is_one(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "arcsec(1) = 0".to_string(),
-                            });
-                        }
-                    }
-                    // arccsc(1) = π/2
-                    "arccsc" => {
-                        if is_one(ctx, arg) {
-                            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                            let two = ctx.num(2);
-                            return Some(Rewrite {
-                                new_expr: ctx.add(Expr::Div(pi, two)),
-                                description: "arccsc(1) = π/2".to_string(),
-                            });
-                        }
-                    }
-                    _ => {}
                 }
             }
         }
@@ -197,7 +149,18 @@ define_rule!(
     }
 );
 
-// Rule 2: Composition identities - cot(arccot(x)) = x, etc.
+// ==================== Composition Pairs ====================
+
+/// (outer, inner) pairs where outer(inner(x)) = x
+const COMPOSITION_PAIRS: &[(&str, &str)] = &[
+    ("cot", "arccot"),
+    ("sec", "arcsec"),
+    ("csc", "arccsc"),
+    ("arccot", "cot"),
+    ("arcsec", "sec"),
+    ("arccsc", "csc"),
+];
+
 define_rule!(
     ReciprocalTrigCompositionRule,
     "Reciprocal Trig Composition",
@@ -210,52 +173,13 @@ define_rule!(
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
 
-                        // cot(arccot(x)) = x
-                        if outer_name == "cot" && inner_name == "arccot" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "cot(arccot(x)) = x".to_string(),
-                            });
-                        }
-
-                        // sec(arcsec(x)) = x
-                        if outer_name == "sec" && inner_name == "arcsec" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "sec(arcsec(x)) = x".to_string(),
-                            });
-                        }
-
-                        // csc(arccsc(x)) = x
-                        if outer_name == "csc" && inner_name == "arccsc" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "csc(arccsc(x)) = x".to_string(),
-                            });
-                        }
-
-                        // arccot(cot(x)) = x
-                        if outer_name == "arccot" && inner_name == "cot" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "arccot(cot(x)) = x".to_string(),
-                            });
-                        }
-
-                        // arcsec(sec(x)) = x
-                        if outer_name == "arcsec" && inner_name == "sec" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "arcsec(sec(x)) = x".to_string(),
-                            });
-                        }
-
-                        // arccsc(csc(x)) = x
-                        if outer_name == "arccsc" && inner_name == "csc" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "arccsc(csc(x)) = x".to_string(),
-                            });
+                        for (outer, inner) in COMPOSITION_PAIRS {
+                            if outer_name == *outer && inner_name == *inner {
+                                return Some(Rewrite {
+                                    new_expr: x,
+                                    description: format!("{}({}(x)) = x", outer, inner),
+                                });
+                            }
                         }
                     }
                 }
@@ -265,7 +189,25 @@ define_rule!(
     }
 );
 
-// Rule 3: Negative argument identities
+// ==================== Negative Argument Table ====================
+
+/// How to handle f(-x)
+#[derive(Clone, Copy)]
+enum NegBehavior {
+    Odd,     // f(-x) = -f(x)
+    Even,    // f(-x) = f(x)
+    PiMinus, // f(-x) = π - f(x)
+}
+
+const NEG_BEHAVIORS: &[(&str, NegBehavior)] = &[
+    ("cot", NegBehavior::Odd),
+    ("sec", NegBehavior::Even),
+    ("csc", NegBehavior::Odd),
+    ("arccot", NegBehavior::Odd),
+    ("arcsec", NegBehavior::PiMinus),
+    ("arccsc", NegBehavior::Odd),
+];
+
 define_rule!(
     ReciprocalTrigNegativeRule,
     "Reciprocal Trig Negative Argument",
@@ -275,68 +217,33 @@ define_rule!(
             if args.len() == 1 {
                 let arg = args[0];
                 if let Expr::Neg(inner) = ctx.get(arg) {
-                    let name = name.clone();
-                    match name.as_str() {
-                        // cot(-x) = -cot(x) (odd function)
-                        "cot" => {
-                            let cot_inner =
-                                ctx.add(Expr::Function("cot".to_string(), vec![*inner]));
-                            let new_expr = ctx.add(Expr::Neg(cot_inner));
+                    let inner = *inner;
+                    let name_str = name.as_str();
+
+                    for (func, behavior) in NEG_BEHAVIORS {
+                        if name_str == *func {
+                            let f_inner = ctx.add(Expr::Function(func.to_string(), vec![inner]));
+                            let (new_expr, desc) = match behavior {
+                                NegBehavior::Odd => (
+                                    ctx.add(Expr::Neg(f_inner)),
+                                    format!("{}(-x) = -{}(x)", func, func),
+                                ),
+                                NegBehavior::Even => {
+                                    (f_inner, format!("{}(-x) = {}(x)", func, func))
+                                }
+                                NegBehavior::PiMinus => {
+                                    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                                    (
+                                        ctx.add(Expr::Sub(pi, f_inner)),
+                                        format!("{}(-x) = π - {}(x)", func, func),
+                                    )
+                                }
+                            };
                             return Some(Rewrite {
                                 new_expr,
-                                description: "cot(-x) = -cot(x)".to_string(),
+                                description: desc,
                             });
                         }
-                        // sec(-x) = sec(x) (even function)
-                        "sec" => {
-                            let new_expr = ctx.add(Expr::Function("sec".to_string(), vec![*inner]));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sec(-x) = sec(x)".to_string(),
-                            });
-                        }
-                        // csc(-x) = -csc(x) (odd function)
-                        "csc" => {
-                            let csc_inner =
-                                ctx.add(Expr::Function("csc".to_string(), vec![*inner]));
-                            let new_expr = ctx.add(Expr::Neg(csc_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "csc(-x) = -csc(x)".to_string(),
-                            });
-                        }
-                        // arccot(-x) = -arccot(x) (using odd function convention)
-                        "arccot" => {
-                            let arccot_inner =
-                                ctx.add(Expr::Function("arccot".to_string(), vec![*inner]));
-                            let new_expr = ctx.add(Expr::Neg(arccot_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "arccot(-x) = -arccot(x)".to_string(),
-                            });
-                        }
-                        // arcsec(-x) = π - arcsec(x)
-                        "arcsec" => {
-                            let arcsec_inner =
-                                ctx.add(Expr::Function("arcsec".to_string(), vec![*inner]));
-                            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                            let new_expr = ctx.add(Expr::Sub(pi, arcsec_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "arcsec(-x) = π - arcsec(x)".to_string(),
-                            });
-                        }
-                        // arccsc(-x) = -arccsc(x) (odd function)
-                        "arccsc" => {
-                            let arccsc_inner =
-                                ctx.add(Expr::Function("arccsc".to_string(), vec![*inner]));
-                            let new_expr = ctx.add(Expr::Neg(arccsc_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "arccsc(-x) = -arccsc(x)".to_string(),
-                            });
-                        }
-                        _ => {}
                     }
                 }
             }
@@ -345,7 +252,8 @@ define_rule!(
     }
 );
 
-/// Register all reciprocal trig function rules
+// ==================== Registration ====================
+
 pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateReciprocalTrigRule));
     simplifier.add_rule(Box::new(ReciprocalTrigCompositionRule));
