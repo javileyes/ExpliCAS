@@ -8,6 +8,113 @@ use std::rc::Rc;
 
 use tracing::debug;
 
+/// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
+/// Returns new ExprId if substitution occurred, otherwise returns original root.
+fn substitute_expr_by_id(
+    context: &mut Context,
+    root: ExprId,
+    target: ExprId,
+    replacement: ExprId,
+) -> ExprId {
+    if root == target {
+        return replacement;
+    }
+
+    let expr = context.get(root).clone();
+    match expr {
+        Expr::Add(l, r) => {
+            let new_l = substitute_expr_by_id(context, l, target, replacement);
+            let new_r = substitute_expr_by_id(context, r, target, replacement);
+            if new_l != l || new_r != r {
+                context.add(Expr::Add(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Sub(l, r) => {
+            let new_l = substitute_expr_by_id(context, l, target, replacement);
+            let new_r = substitute_expr_by_id(context, r, target, replacement);
+            if new_l != l || new_r != r {
+                context.add(Expr::Sub(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Mul(l, r) => {
+            let new_l = substitute_expr_by_id(context, l, target, replacement);
+            let new_r = substitute_expr_by_id(context, r, target, replacement);
+            if new_l != l || new_r != r {
+                context.add(Expr::Mul(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Div(l, r) => {
+            let new_l = substitute_expr_by_id(context, l, target, replacement);
+            let new_r = substitute_expr_by_id(context, r, target, replacement);
+            if new_l != l || new_r != r {
+                context.add(Expr::Div(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Pow(b, e) => {
+            let new_b = substitute_expr_by_id(context, b, target, replacement);
+            let new_e = substitute_expr_by_id(context, e, target, replacement);
+            if new_b != b || new_e != e {
+                context.add(Expr::Pow(new_b, new_e))
+            } else {
+                root
+            }
+        }
+        Expr::Neg(inner) => {
+            let new_inner = substitute_expr_by_id(context, inner, target, replacement);
+            if new_inner != inner {
+                context.add(Expr::Neg(new_inner))
+            } else {
+                root
+            }
+        }
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::new();
+            let mut changed = false;
+            for arg in args.iter() {
+                let new_arg = substitute_expr_by_id(context, *arg, target, replacement);
+                if new_arg != *arg {
+                    changed = true;
+                }
+                new_args.push(new_arg);
+            }
+            if changed {
+                context.add(Expr::Function(name, new_args))
+            } else {
+                root
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut new_data = Vec::new();
+            let mut changed = false;
+            for elem in data.iter() {
+                let new_elem = substitute_expr_by_id(context, *elem, target, replacement);
+                if new_elem != *elem {
+                    changed = true;
+                }
+                new_data.push(new_elem);
+            }
+            if changed {
+                context.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                root
+            }
+        }
+        _ => root,
+    }
+}
+
 pub struct Simplifier {
     pub context: Context,
     rules: HashMap<String, Vec<Rc<dyn Rule>>>,
@@ -156,10 +263,31 @@ impl Simplifier {
             profiler: &mut self.profiler,
             pattern_marks: pattern_marks.clone(), // Clone the marks for use in rules
             initial_parent_ctx,
+            root_expr: expr_id, // Track root for global_after computation
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
-        (new_expr, local_transformer.steps)
+
+        // Extract steps from transformer so we can use self.context for post-processing
+        let mut steps = std::mem::take(&mut local_transformer.steps);
+        drop(local_transformer); // Release borrow of self.context
+
+        // Post-process steps: compute accurate global_before and global_after
+        // by applying substitutions sequentially from the original expression
+        let mut current_global = expr_id;
+        for step in steps.iter_mut() {
+            // global_before is the current state before this transformation
+            step.global_before = Some(current_global);
+
+            // Apply substitution: replace step.before with step.after in current_global
+            current_global =
+                substitute_expr_by_id(&mut self.context, current_global, step.before, step.after);
+
+            // global_after is the new state after this transformation
+            step.global_after = Some(current_global);
+        }
+
+        (new_expr, steps)
     }
 
     pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
@@ -193,10 +321,31 @@ impl Simplifier {
             profiler: &mut self.profiler,
             pattern_marks: pattern_marks.clone(),
             initial_parent_ctx,
+            root_expr: expr_id, // Track root for global_after computation
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
-        (new_expr, local_transformer.steps)
+
+        // Extract steps from transformer so we can use self.context for post-processing
+        let mut steps = std::mem::take(&mut local_transformer.steps);
+        drop(local_transformer); // Release borrow of self.context
+
+        // Post-process steps: compute accurate global_before and global_after
+        // by applying substitutions sequentially from the original expression
+        let mut current_global = expr_id;
+        for step in steps.iter_mut() {
+            // global_before is the current state before this transformation
+            step.global_before = Some(current_global);
+
+            // Apply substitution: replace step.before with step.after in current_global
+            current_global =
+                substitute_expr_by_id(&mut self.context, current_global, step.before, step.after);
+
+            // global_after is the new state after this transformation
+            step.global_after = Some(current_global);
+        }
+
+        (new_expr, steps)
     }
 
     pub fn are_equivalent(&mut self, a: ExprId, b: ExprId) -> bool {
@@ -300,6 +449,8 @@ struct LocalSimplificationTransformer<'a> {
     #[allow(dead_code)]
     pattern_marks: crate::pattern_marks::PatternMarks, // For context-aware guards (used via initial_parent_ctx)
     initial_parent_ctx: crate::parent_context::ParentContext, // Carries marks to rules
+    /// The current root expression being simplified, used to compute global_after for steps
+    root_expr: ExprId,
 }
 
 use cas_ast::visitor::Transformer;
@@ -313,6 +464,105 @@ impl<'a> Transformer for LocalSimplificationTransformer<'a> {
 impl<'a> LocalSimplificationTransformer<'a> {
     fn indent(&self) -> String {
         "  ".repeat(self.current_path.len())
+    }
+
+    /// Reconstruct the global expression by substituting `replacement` at the given path
+    fn reconstruct_at_path(&mut self, replacement: ExprId) -> ExprId {
+        use crate::step::PathStep;
+
+        fn reconstruct_recursive(
+            context: &mut Context,
+            root: ExprId,
+            path: &[PathStep],
+            replacement: ExprId,
+        ) -> ExprId {
+            if path.is_empty() {
+                return replacement;
+            }
+
+            let current_step = &path[0];
+            let remaining_path = &path[1..];
+            let expr = context.get(root).clone();
+
+            match (expr, current_step) {
+                (Expr::Add(l, r), PathStep::Left) => {
+                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
+                    context.add(Expr::Add(new_l, r))
+                }
+                (Expr::Add(l, r), PathStep::Right) => {
+                    // Handle canonicalized Sub: Add(l, Neg(r))
+                    if let Expr::Neg(inner) = context.get(r).clone() {
+                        let new_inner =
+                            reconstruct_recursive(context, inner, remaining_path, replacement);
+                        let new_neg = context.add(Expr::Neg(new_inner));
+                        context.add(Expr::Add(l, new_neg))
+                    } else {
+                        let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
+                        context.add(Expr::Add(l, new_r))
+                    }
+                }
+                (Expr::Sub(l, r), PathStep::Left) => {
+                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
+                    context.add(Expr::Sub(new_l, r))
+                }
+                (Expr::Sub(l, r), PathStep::Right) => {
+                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
+                    context.add(Expr::Sub(l, new_r))
+                }
+                (Expr::Mul(l, r), PathStep::Left) => {
+                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
+                    context.add(Expr::Mul(new_l, r))
+                }
+                (Expr::Mul(l, r), PathStep::Right) => {
+                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
+                    context.add(Expr::Mul(l, new_r))
+                }
+                (Expr::Div(l, r), PathStep::Left) => {
+                    let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
+                    context.add(Expr::Div(new_l, r))
+                }
+                (Expr::Div(l, r), PathStep::Right) => {
+                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
+                    context.add(Expr::Div(l, new_r))
+                }
+                (Expr::Pow(b, e), PathStep::Base) => {
+                    let new_b = reconstruct_recursive(context, b, remaining_path, replacement);
+                    context.add(Expr::Pow(new_b, e))
+                }
+                (Expr::Pow(b, e), PathStep::Exponent) => {
+                    let new_e = reconstruct_recursive(context, e, remaining_path, replacement);
+                    context.add(Expr::Pow(b, new_e))
+                }
+                (Expr::Neg(e), PathStep::Inner) => {
+                    let new_e = reconstruct_recursive(context, e, remaining_path, replacement);
+                    context.add(Expr::Neg(new_e))
+                }
+                (Expr::Function(name, args), PathStep::Arg(idx)) => {
+                    let mut new_args = args.clone();
+                    if *idx < new_args.len() {
+                        new_args[*idx] = reconstruct_recursive(
+                            context,
+                            new_args[*idx],
+                            remaining_path,
+                            replacement,
+                        );
+                        context.add(Expr::Function(name, new_args))
+                    } else {
+                        root
+                    }
+                }
+                _ => root, // Path mismatch
+            }
+        }
+
+        let new_root = reconstruct_recursive(
+            self.context,
+            self.root_expr,
+            &self.current_path,
+            replacement,
+        );
+        self.root_expr = new_root; // Update root for next step
+        new_root
     }
 
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
@@ -533,13 +783,17 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             rewrite.new_expr
                         );
                         if self.collect_steps {
-                            self.steps.push(Step::new(
+                            let global_before = self.root_expr;
+                            let global_after = self.reconstruct_at_path(rewrite.new_expr);
+                            self.steps.push(Step::with_snapshots(
                                 &rewrite.description,
                                 rule.name(),
                                 expr_id,
                                 rewrite.new_expr,
                                 self.current_path.clone(),
                                 Some(self.context),
+                                global_before,
+                                global_after,
                             ));
                         }
                         expr_id = rewrite.new_expr;
@@ -576,13 +830,17 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         rewrite.new_expr
                     );
                     if self.collect_steps {
-                        self.steps.push(Step::new(
+                        let global_before = self.root_expr;
+                        let global_after = self.reconstruct_at_path(rewrite.new_expr);
+                        self.steps.push(Step::with_snapshots(
                             &rewrite.description,
                             rule.name(),
                             expr_id,
                             rewrite.new_expr,
                             self.current_path.clone(),
                             Some(self.context),
+                            global_before,
+                            global_after,
                         ));
                     }
                     expr_id = rewrite.new_expr;

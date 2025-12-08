@@ -875,9 +875,22 @@ impl<'a> TimelineHtml<'a> {
                 let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
                 self.context.add(Expr::Add(new_l, r))
             }
+            // Special case: Sub(a,b) may have been canonicalized to Add(a, Neg(b))
+            // When PathStep::Right expects to modify the original "b", we need to
+            // traverse into the Neg wrapper and reconstruct there.
             (Expr::Add(l, r), PathStep::Right) => {
-                let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
-                self.context.add(Expr::Add(l, new_r))
+                // Check if right side is Neg - if so, this might be a canonicalized Sub
+                if let Expr::Neg(inner) = self.context.get(r).clone() {
+                    // Traverse into the Neg and wrap result back in Neg
+                    let new_inner =
+                        self.reconstruct_global_expr(inner, remaining_path, replacement);
+                    let new_neg = self.context.add(Expr::Neg(new_inner));
+                    self.context.add(Expr::Add(l, new_neg))
+                } else {
+                    // Normal case - not a canonicalized Sub
+                    let new_r = self.reconstruct_global_expr(r, remaining_path, replacement);
+                    self.context.add(Expr::Add(l, new_r))
+                }
             }
             (Expr::Sub(l, r), PathStep::Left) => {
                 let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);

@@ -23,10 +23,18 @@ pub enum ImportanceLevel {
 pub struct Step {
     pub description: String,
     pub rule_name: String,
+    /// The local expression before transformation (the subexpression that was rewritten)
     pub before: ExprId,
+    /// The local expression after transformation
     pub after: ExprId,
+    /// Path from root to the transformed node (kept for debugging/reference)
     pub path: Vec<PathStep>,
+    /// String representation of after (for display)
     pub after_str: Option<String>,
+    /// Complete root expression BEFORE this step's transformation
+    pub global_before: Option<ExprId>,
+    /// Complete root expression AFTER this step's transformation
+    pub global_after: Option<ExprId>,
 }
 
 impl Step {
@@ -54,7 +62,26 @@ impl Step {
             after,
             path,
             after_str,
+            global_before: None,
+            global_after: None,
         }
+    }
+
+    /// Create a step with complete global snapshots before and after transformation
+    pub fn with_snapshots(
+        description: &str,
+        rule_name: &str,
+        before: ExprId,
+        after: ExprId,
+        path: Vec<PathStep>,
+        context: Option<&cas_ast::Context>,
+        global_before: ExprId,
+        global_after: ExprId,
+    ) -> Self {
+        let mut step = Self::new(description, rule_name, before, after, path, context);
+        step.global_before = Some(global_before);
+        step.global_after = Some(global_after);
+        step
     }
 
     /// Classify the importance/significance of this step

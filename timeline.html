@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: transpose(matmul([[a, b], [c, d]], [[x, y], [z, w]])) - matmul(transpose([[x, y], [z, w]]), transpose([[a, b], [c, d]]))</title>
+    <title>CAS Steps: det([[a, b], [c, d]])</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -167,153 +167,27 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[transpose(matmul([[a, b], [c, d]], [[x, y], [z, w]])) - matmul(transpose([[x, y], [z, w]]), transpose([[a, b], [c, d]]))\]
+            \[det([[a, b], [c, d]])\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Transpose of Product</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[{\color{red}{(\begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix} \times \begin{bmatrix}
-x & y \\
-z & w
-\end{bmatrix})^{T}}} - \begin{bmatrix}
-x & y \\
-z & w
-\end{bmatrix}^{T} \times \begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix}^{T}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{(AB)^T = B^T·A^T}\)</div>
-                        <div class="local-change">
-                            \[(\begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix} \times \begin{bmatrix}
-x & y \\
-z & w
-\end{bmatrix})^{T} \rightarrow \begin{bmatrix}
-x & y \\
-z & w
-\end{bmatrix}^{T} \times \begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix}^{T}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
                     <h3>Matrix Functions</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[{\color{red}{\begin{bmatrix}
-x & y \\
-z & w
-\end{bmatrix}^{T}}} \times \begin{bmatrix}
+                        \[{\color{red}{\text{det}(\begin{bmatrix}
 a & b \\
 c & d
-\end{bmatrix}^{T} - \begin{bmatrix}
-x & y \\
-z & w
-\end{bmatrix}^{T} \times \begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix}^{T}\]
+\end{bmatrix})}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{transpose(2×2) = 2×2}\)</div>
+                        <div class="rule-name">\(\text{det(2×2 matrix)}\)</div>
                         <div class="local-change">
-                            \[\begin{bmatrix}
-x & y \\
-z & w
-\end{bmatrix}^{T} \rightarrow \begin{bmatrix}
-x & z \\
-y & w
-\end{bmatrix}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Matrix Functions</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[\begin{bmatrix}
-x & z \\
-y & w
-\end{bmatrix} \times {\color{red}{\begin{bmatrix}
+                            \[\text{det}(\begin{bmatrix}
 a & b \\
 c & d
-\end{bmatrix}^{T}}} - \begin{bmatrix}
-x & y \\
-z & w
-\end{bmatrix}^{T} \times \begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix}^{T}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{transpose(2×2) = 2×2}\)</div>
-                        <div class="local-change">
-                            \[\begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix}^{T} \rightarrow \begin{bmatrix}
-a & c \\
-b & d
-\end{bmatrix}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Add Inverse</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Expression:}\)
-                        \[{\color{red}{\begin{bmatrix}
-x & z \\
-y & w
-\end{bmatrix} \times \begin{bmatrix}
-a & c \\
-b & d
-\end{bmatrix} - \begin{bmatrix}
-x & z \\
-y & w
-\end{bmatrix} \times \begin{bmatrix}
-a & c \\
-b & d
-\end{bmatrix}}}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
-                        <div class="local-change">
-                            \[\begin{bmatrix}
-x & z \\
-y & w
-\end{bmatrix} \times \begin{bmatrix}
-a & c \\
-b & d
-\end{bmatrix} - \begin{bmatrix}
-x & z \\
-y & w
-\end{bmatrix} \times \begin{bmatrix}
-a & c \\
-b & d
-\end{bmatrix} \rightarrow 0\]
+\end{bmatrix}) \rightarrow ad - (bc)\]
                         </div>
                     </div>
                 </div>
@@ -321,7 +195,7 @@ b & d
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[0\]
+            \[-(bc) + ad\]
         </div>
     </div>
     <footer>

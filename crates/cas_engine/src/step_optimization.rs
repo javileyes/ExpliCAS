@@ -1,19 +1,18 @@
 use crate::step::Step;
 
-
 pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
     let mut optimized = Vec::new();
     let mut i = 0;
 
     while i < steps.len() {
         let current = &steps[i];
-        
+
         // Check for consecutive "Canonicalize" steps of ANY type (Canonicalize, Sort, Collect)
         // provided they operate on the SAME path.
         if is_canonicalization_rule(&current.rule_name) {
             let mut j = i + 1;
             let mut last_same_path_idx = i;
-            
+
             while j < steps.len() {
                 let next = &steps[j];
                 // Merge if it's also a canonicalization rule AND path matches
@@ -24,9 +23,9 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     break;
                 }
             }
-            
+
             if last_same_path_idx > i {
-                // Coalesce: 
+                // Coalesce:
                 // Description: "Canonicalization"
                 // RuleName: "Canonicalize"
                 // Before: First step's before
@@ -39,6 +38,8 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     after: last.after,
                     path: current.path.clone(),
                     after_str: last.after_str.clone(),
+                    global_before: current.global_before, // First step's global_before
+                    global_after: last.global_after,      // Last step's global_after
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;
@@ -55,7 +56,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
         // Actually, the loop above handles consecutive steps.
         // If we have [Canonicalize, Collect], the loop sees Canonicalize, looks ahead to Collect, matches path, merges.
         // So we don't need the special case anymore.
-        
+
         optimized.push(current.clone());
         i += 1;
     }
@@ -66,5 +67,3 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
 fn is_canonicalization_rule(name: &str) -> bool {
     name.starts_with("Canonicalize") || name == "Collect" || name.starts_with("Sort")
 }
-
-

@@ -36,6 +36,116 @@ pub struct Repl {
     config: CasConfig,
 }
 
+/// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
+/// This is more robust than path-based reconstruction because it finds by identity, not position.
+fn substitute_expr_by_id(
+    context: &mut Context,
+    root: ExprId,
+    target: ExprId,
+    replacement: ExprId,
+) -> ExprId {
+    // If this node is the target, return replacement
+    if root == target {
+        return replacement;
+    }
+
+    let expr = context.get(root).clone();
+    match expr {
+        Expr::Add(l, r) => {
+            let new_l = substitute_expr_by_id(context, l, target, replacement);
+            let new_r = substitute_expr_by_id(context, r, target, replacement);
+            if new_l != l || new_r != r {
+                context.add(Expr::Add(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Sub(l, r) => {
+            let new_l = substitute_expr_by_id(context, l, target, replacement);
+            let new_r = substitute_expr_by_id(context, r, target, replacement);
+            if new_l != l || new_r != r {
+                context.add(Expr::Sub(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Mul(l, r) => {
+            let new_l = substitute_expr_by_id(context, l, target, replacement);
+            let new_r = substitute_expr_by_id(context, r, target, replacement);
+            if new_l != l || new_r != r {
+                context.add(Expr::Mul(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Div(l, r) => {
+            let new_l = substitute_expr_by_id(context, l, target, replacement);
+            let new_r = substitute_expr_by_id(context, r, target, replacement);
+            if new_l != l || new_r != r {
+                context.add(Expr::Div(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Pow(b, e) => {
+            let new_b = substitute_expr_by_id(context, b, target, replacement);
+            let new_e = substitute_expr_by_id(context, e, target, replacement);
+            if new_b != b || new_e != e {
+                context.add(Expr::Pow(new_b, new_e))
+            } else {
+                root
+            }
+        }
+        Expr::Neg(inner) => {
+            let new_inner = substitute_expr_by_id(context, inner, target, replacement);
+            if new_inner != inner {
+                context.add(Expr::Neg(new_inner))
+            } else {
+                root
+            }
+        }
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::new();
+            let mut changed = false;
+            for arg in args.iter() {
+                let new_arg = substitute_expr_by_id(context, *arg, target, replacement);
+                if new_arg != *arg {
+                    changed = true;
+                }
+                new_args.push(new_arg);
+            }
+            if changed {
+                context.add(Expr::Function(name, new_args))
+            } else {
+                root
+            }
+        }
+        // Matrix: substitute in data elements
+        Expr::Matrix { rows, cols, data } => {
+            let mut new_data = Vec::new();
+            let mut changed = false;
+            for elem in data.iter() {
+                let new_elem = substitute_expr_by_id(context, *elem, target, replacement);
+                if new_elem != *elem {
+                    changed = true;
+                }
+                new_data.push(new_elem);
+            }
+            if changed {
+                context.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                root
+            }
+        }
+        // Leaf nodes: no substitution possible
+        _ => root,
+    }
+}
+
 fn reconstruct_global_expr(
     context: &mut Context,
     root: ExprId,
@@ -55,9 +165,22 @@ fn reconstruct_global_expr(
             let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
             context.add(Expr::Add(new_l, r))
         }
+        // Special case: Sub(a,b) may have been canonicalized to Add(a, Neg(b))
+        // When PathStep::Right expects to modify the original "b", we need to
+        // traverse into the Neg wrapper and reconstruct there.
         (Expr::Add(l, r), PathStep::Right) => {
-            let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
-            context.add(Expr::Add(l, new_r))
+            // Check if right side is Neg - if so, this might be a canonicalized Sub
+            if let Expr::Neg(inner) = context.get(r).clone() {
+                // Traverse into the Neg and wrap result back in Neg
+                let new_inner =
+                    reconstruct_global_expr(context, inner, remaining_path, replacement);
+                let new_neg = context.add(Expr::Neg(new_inner));
+                context.add(Expr::Add(l, new_neg))
+            } else {
+                // Normal case - not a canonicalized Sub
+                let new_r = reconstruct_global_expr(context, r, remaining_path, replacement);
+                context.add(Expr::Add(l, new_r))
+            }
         }
         (Expr::Sub(l, r), PathStep::Left) => {
             let new_l = reconstruct_global_expr(context, l, remaining_path, replacement);
@@ -973,12 +1096,18 @@ impl Repl {
                                                 );
                                             }
 
-                                            current_root = reconstruct_global_expr(
-                                                &mut self.simplifier.context,
-                                                current_root,
-                                                &step.path,
-                                                step.after,
-                                            );
+                                            // Use precomputed global_after if available, fall back to ExprId-based substitution
+                                            if let Some(global_after) = step.global_after {
+                                                current_root = global_after;
+                                            } else {
+                                                // Use identity-based substitution instead of path-based reconstruction
+                                                current_root = substitute_expr_by_id(
+                                                    &mut self.simplifier.context,
+                                                    current_root,
+                                                    step.before,
+                                                    step.after,
+                                                );
+                                            }
                                             println!(
                                                 "   Global: {}",
                                                 DisplayExpr {
@@ -988,12 +1117,16 @@ impl Repl {
                                             );
                                         }
                                     } else {
-                                        current_root = reconstruct_global_expr(
-                                            &mut self.simplifier.context,
-                                            current_root,
-                                            &step.path,
-                                            step.after,
-                                        );
+                                        if let Some(global_after) = step.global_after {
+                                            current_root = global_after;
+                                        } else {
+                                            current_root = substitute_expr_by_id(
+                                                &mut self.simplifier.context,
+                                                current_root,
+                                                step.before,
+                                                step.after,
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -1629,12 +1762,17 @@ impl Repl {
                                         );
                                     }
 
-                                    current_root = reconstruct_global_expr(
-                                        &mut self.simplifier.context,
-                                        current_root,
-                                        &step.path,
-                                        step.after,
-                                    );
+                                    // Use precomputed global_after if available, fall back to reconstruction
+                                    if let Some(global_after) = step.global_after {
+                                        current_root = global_after;
+                                    } else {
+                                        current_root = reconstruct_global_expr(
+                                            &mut self.simplifier.context,
+                                            current_root,
+                                            &step.path,
+                                            step.after,
+                                        );
+                                    }
                                     println!(
                                         "   Global: {}",
                                         DisplayExpr {
@@ -1644,12 +1782,16 @@ impl Repl {
                                     );
                                 }
                             } else {
-                                current_root = reconstruct_global_expr(
-                                    &mut self.simplifier.context,
-                                    current_root,
-                                    &step.path,
-                                    step.after,
-                                );
+                                if let Some(global_after) = step.global_after {
+                                    current_root = global_after;
+                                } else {
+                                    current_root = reconstruct_global_expr(
+                                        &mut self.simplifier.context,
+                                        current_root,
+                                        &step.path,
+                                        step.after,
+                                    );
+                                }
                             }
                         }
                     }
