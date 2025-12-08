@@ -749,6 +749,176 @@ Paso 4: Iteración 2 (multi-pass) → 0 ✓
 
 ---
 
+### 2.7. Patrón de Negación Generalizada ★★★
+
+**Implementado**: 2025-12-08  
+**Motivación**: Reglas de pares (f+g=V) automáticamente manejan versiones negadas (-f-g=-V).
+
+#### El Patrón Matemático
+
+Si una regla detecta: `f(x) + g(x) = V`  
+Entonces también debe detectar: `-f(x) - g(x) = -V`
+
+**Ejemplo**:
+- `atan(x) + atan(1/x) = π/2` → Ya implementado ✓
+- `-atan(x) - atan(1/x) = -π/2` → ¿Duplicar código? ❌
+
+#### Problema: Duplicación de Código
+
+**Antes** (sin generalización):
+```rust
+define_rule!(InverseTrigAtanRule, ..., |ctx, expr| {
+    // Case 1: Positive pair
+    if is_atan(i) && is_atan(j) && are_reciprocals(arg[i], arg[j]) {
+        return Some(Rewrite { new_expr: pi_half, ... });  // ~15 líneas
+    }
+    
+    // Case 2: Negated pair (CÓDIGO DUPLICAD O!)
+    if let (Neg(inner_i), Neg(inner_j)) = (term_i, term_j) {
+        // Extraer inner atan...
+        if is_atan(i) && is_atan(j) && are_reciprocals(arg[i], arg[j]) {
+            return Some(Rewrite { new_expr: neg_pi_half, ... });  // ~15 líneas IDÉNTICAS
+        }
+    }
+});
+```
+
+**Problema**: Lógica duplicada, bugs duplicados, mantenimiento duplicado.
+
+#### Solución: Helper `check_pair_with_negation()`
+
+**Archivo**: `crates/cas_engine/src/rules/inverse_trig.rs`
+
+```rust
+/// Helper genérico para reglas de pares con negación automática
+/// 
+/// Patrón: Si f(x) + g(x) = V, entonces -f(x) - g(x) = -V
+fn check_pair_with_negation<F>(
+    ctx: &mut Context,
+    term_i_data: Expr,      // Primer término (owned para evitar borrow issues)
+    term_j_data: Expr,      // Segundo término
+    terms: &[ExprId],       // Todos los términos de la suma
+    i: usize, j: usize,     // Índices a eliminar
+    check_fn: F,            // Función de chequeo específica de la regla
+) -> Option<Rewrite>
+where
+    F: Fn(&mut Context, &Expr, &Expr) -> Option<(ExprId, String)>
+{
+    //  Case 1: Pares positivos
+    if let Some((result, desc)) = check_fn(ctx, &term_i_data, &term_j_data) {
+        let remaining = build_sum_without(ctx, terms, i, j);
+        let final_result = combine_with_term(ctx, remaining, result);
+        return Some(Rewrite { new_expr: final_result, description: desc });
+    }
+
+    // Case 2: Pares negados (AUTOMÁTICO!)
+    if let (Expr::Neg(inner_i), Expr::Neg(inner_j)) = (&term_i_data, &term_j_data) {
+        let inner_i_data = ctx.get(*inner_i).clone();
+        let inner_j_data = ctx.get(*inner_j).clone();
+
+        if let Some((result, desc)) = check_fn(ctx, &inner_i_data, &inner_j_data) {
+            // Negar el resultado
+            let neg_result = ctx.add(Expr::Neg(result));
+            let remaining = build_sum_without(ctx, terms, i, j);
+            let final_result = combine_with_term(ctx, remaining, neg_result);
+
+            return Some(Rewrite {
+                new_expr: final_result,
+                description: format!("-[{}]", desc),  // Descripción ajustada
+            });
+        }
+    }
+
+    None
+}
+```
+
+#### Uso: Reglas Refactorizadas
+
+**InverseTrigAtanRule** (atan reciprocal):
+```rust
+define_rule!(InverseTrigAtanRule, ..., |ctx, expr| {
+    let terms = collect_add_terms_flat(ctx, expr);
+    
+    for i in 0..terms.len() {
+        for j in (i + 1)..terms.len() {
+            // Usa el helper - maneja pos/neg automáticamente!
+            if let Some(rewrite) = check_pair_with_negation(
+                ctx, term_i, term_j, &terms, i, j,
+                |ctx, expr_i, expr_j| {
+                    // Solo escribe la lógica UNA vez para caso positivo
+                    if is_atan(i) && is_atan(j) && are_reciprocals(arg_i, arg_j) {
+                        return Some((pi_half, "arctan(x) + arctan(1/x) = π/2".to_string()));
+                    }
+                    None
+                }
+            ) {
+                return Some(rewrite);
+            }
+        }
+    }
+    None
+});
+```
+
+**InverseTrigSumRule** (asin + acos):
+```rust
+// Mismo patrón - reutilización del helper
+check_pair_with_negation(ctx, term_i, term_j, &terms, i, j, |ctx, i, j| {
+    if is_asin(i) && is_acos(j) && args_equal {
+        return Some((pi_half, "arcsin(x) + arccos(x) = π/2".to_string()));
+    }
+    None
+})
+```
+
+#### Beneficios
+
+| Aspecto | Antes | Después |
+|---------|-------|---------|
+| Líneas de código | ~80 por regla | ~35 por regla (-56%) |
+| Duplicación | 100% | 0% ✓ |
+| Bugs | 2× (pos + neg) | 1× (compartido) |
+| Mantenimiento | 2 lugares | 1 lugar |
+| Reglas usando patrón | 0 | 2 (atan, asin/acos) |
+
+#### Casos de Uso
+
+**Positivo** (ya funcionaba):
+```
+atan(2) + atan(1/2) → π/2
+asin(x) + acos(x) → π/2
+```
+
+**Negado** (NUEVO con helper):
+```
+-atan(2) - atan(1/2) → -π/2  ✓ NUEVO!
+-asin(x) - acos(x) → -π/2     ✓ NUEVO!
+```
+
+**Con variables**:
+```
+-atan(1/2) - atan(2) + x → x - π/2  ✓ ¡Beats Sympy!
+-asin(x) - acos(x) + y → y - π/2     ✓ NUEVO!
+```
+
+#### Extensibilidad
+
+**Listo para aplicar a**:
+- **Pythagorean**: `sin²(x) + cos²(x) = 1` → `-sin²(x) - cos²(x) = -1`
+- **Hyperbolic**: `cosh²(x) - sinh²(x) = 1` → ...
+- **Cualquier regla de pares futura**
+
+#### Tests
+
+- `negated_atan_pairs_tests.rs`: 5 tests
+- `generalized_negation_tests.rs`: 30 tests (atan)
+- `asin_acos_negation_tests.rs`: 13 tests (asin/acos)
+
+**Total**: 48 tests verificando el patrón de negación ✓
+
+---
+
 ### 2. `cas_parser` - Parser de Expresiones
 
 **Responsabilidad**: Convertir texto en AST.
