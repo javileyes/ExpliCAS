@@ -41,7 +41,114 @@ fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
         }
     }
 
+    // Case 3: Both are numeric (Number or Div of Numbers) and their product is 1
+    // This handles cases like:
+    //   - Number(2) and Div(Number(1), Number(2))
+    //   - Div(Number(1), Number(3)) and Number(3)
+    //   - Number(2) and Number(1/2) (though latter is rare)
+
+    // Try to extract numeric values
+    let num1_opt = extract_numeric_value(ctx, &data1);
+    let num2_opt = extract_numeric_value(ctx, &data2);
+
+    if let (Some(n1), Some(n2)) = (num1_opt, num2_opt) {
+        let product = n1 * n2;
+        if product.is_one() {
+            return true;
+        }
+    }
+
     false
+}
+
+/// Extract numeric value from an expression if it's a pure number or fraction of numbers
+fn extract_numeric_value(ctx: &Context, expr: &Expr) -> Option<num_rational::BigRational> {
+    match expr {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Div(num_id, den_id) => {
+            // Check if both numerator and denominator are numbers
+            if let (Expr::Number(num), Expr::Number(den)) = (ctx.get(*num_id), ctx.get(*den_id)) {
+                Some(num / den)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Check if function name is atan/arctan
+fn is_atan(name: &str) -> bool {
+    name == "atan" || name == "arctan"
+}
+
+/// Check if function name is asin/arcsin  
+fn is_asin(name: &str) -> bool {
+    name == "asin" || name == "arcsin"
+}
+
+/// Check if function name is acos/arccos
+fn is_acos(name: &str) -> bool {
+    name == "acos" || name == "arccos"
+}
+
+/// Build sum of all terms except indices i and j
+/// Returns None if no terms remain, Some(expr) otherwise
+fn build_sum_without(
+    ctx: &mut Context,
+    terms: &[ExprId],
+    skip_i: usize,
+    skip_j: usize,
+) -> Option<ExprId> {
+    let mut remaining: Vec<ExprId> = Vec::new();
+
+    for (idx, &term) in terms.iter().enumerate() {
+        if idx != skip_i && idx != skip_j {
+            remaining.push(term);
+        }
+    }
+
+    match remaining.len() {
+        0 => None,               // No remaining terms
+        1 => Some(remaining[0]), // Single term
+        _ => {
+            // Build Add tree from remaining terms
+            let mut result = remaining[0];
+            for &term in &remaining[1..] {
+                result = ctx.add(Expr::Add(result, term));
+            }
+            Some(result)
+        }
+    }
+}
+
+/// Collect all additive terms from an expression (flattens Add tree)
+/// For example: ((a + b) + c) → [a, b, c]
+fn collect_add_terms_flat(ctx: &Context, expr_id: ExprId) -> Vec<ExprId> {
+    let mut terms = Vec::new();
+    collect_add_terms_recursive(ctx, expr_id, &mut terms);
+    terms
+}
+
+/// Recursively collect additive terms
+fn collect_add_terms_recursive(ctx: &Context, expr_id: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(expr_id) {
+        Expr::Add(l, r) => {
+            collect_add_terms_recursive(ctx, *l, terms);
+            collect_add_terms_recursive(ctx, *r, terms);
+        }
+        _ => {
+            terms.push(expr_id);
+        }
+    }
+}
+
+/// Combine optional base with new term
+fn combine_with_term(ctx: &mut Context, base: Option<ExprId>, new_term: ExprId) -> ExprId {
+    match base {
+        None => new_term,
+        Some(b) => ctx.add(Expr::Add(b, new_term)),
+    }
 }
 
 /// Check if expression is sin(x)/cos(x) pattern (expanded tan)
@@ -193,37 +300,54 @@ define_rule!(
 );
 
 // Rule 3: arctan(x) + arctan(1/x) = π/2 (for x > 0)
+// Enhanced to search across all additive terms (n-ary matching)
 define_rule!(
     InverseTrigAtanRule,
     "Inverse Tan Relations",
     Some(vec!["Add"]),
     |ctx, expr| {
-        if let Expr::Add(l, r) = ctx.get(expr) {
-            let l_data = ctx.get(*l).clone();
-            let r_data = ctx.get(*r).clone();
+        // Collect all additive terms (flattens nested Add nodes)
+        let terms = collect_add_terms_flat(ctx, expr);
 
-            // arctan(x) + arctan(1/x) = π/2
-            if let (Expr::Function(l_name, l_args), Expr::Function(r_name, r_args)) =
-                (l_data, r_data)
-            {
-                if l_name == "arctan"
-                    && r_name == "arctan"
-                    && l_args.len() == 1
-                    && r_args.len() == 1
+        // Need at least 2 terms to find a pair
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Search for atan(x) + atan(1/x) among all pairs of terms
+        for i in 0..terms.len() {
+            for j in (i + 1)..terms.len() {
+                let term_i_data = ctx.get(terms[i]).clone();
+                let term_j_data = ctx.get(terms[j]).clone();
+
+                if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
+                    (&term_i_data, &term_j_data)
                 {
-                    // ✨ ENHANCED: Use are_reciprocals helper for better pattern matching
-                    if are_reciprocals(ctx, l_args[0], r_args[0]) {
-                        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                        let two = ctx.num(2);
-                        let new_expr = ctx.add(Expr::Div(pi, two));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "arctan(x) + arctan(1/x) = π/2".to_string(),
-                        });
+                    if is_atan(name_i) && is_atan(name_j) && args_i.len() == 1 && args_j.len() == 1
+                    {
+                        // Check if arguments are reciprocals
+                        if are_reciprocals(ctx, args_i[0], args_j[0]) {
+                            // Found atan(x) + atan(1/x)! Replace with π/2
+                            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                            let two = ctx.num(2);
+                            let pi_half = ctx.add(Expr::Div(pi, two));
+
+                            // Build sum of remaining terms (excluding i and j)
+                            let remaining = build_sum_without(ctx, &terms, i, j);
+
+                            // Combine remaining terms with π/2
+                            let result = combine_with_term(ctx, remaining, pi_half);
+
+                            return Some(Rewrite {
+                                new_expr: result,
+                                description: "arctan(x) + arctan(1/x) = π/2".to_string(),
+                            });
+                        }
                     }
                 }
             }
         }
+
         None
     }
 );

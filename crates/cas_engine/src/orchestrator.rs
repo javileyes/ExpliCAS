@@ -7,28 +7,15 @@ pub struct Orchestrator {
     // Configuration for the pipeline
     pub max_iterations: usize,
     pub enable_polynomial_strategy: bool,
-    /// Rules that trigger multi-pass simplification
-    /// These rules often create new opportunities for other rules
-    cascade_triggers: HashSet<&'static str>,
     /// Pre-scanned pattern marks for context-aware guards
     pub pattern_marks: crate::pattern_marks::PatternMarks,
 }
 
 impl Orchestrator {
     pub fn new() -> Self {
-        let mut cascade_triggers = HashSet::new();
-
-        // Rules that create new simplification opportunities
-        cascade_triggers.insert("Rationalize Denominator");
-        cascade_triggers.insert("Expand Polynomial");
-        cascade_triggers.insert("Factor");
-        cascade_triggers.insert("Distribute");
-        cascade_triggers.insert("Add fractions: a/b + c/d -> (ad+bc)/bd");
-
         Self {
             max_iterations: 10,
             enable_polynomial_strategy: true,
-            cascade_triggers,
             pattern_marks: crate::pattern_marks::PatternMarks::new(),
         }
     }
@@ -67,66 +54,47 @@ impl Orchestrator {
             current = collected;
         }
 
-        // 2. Rule-based Simplification - Conditional Multi-Pass
-        // OPTIMIZATION: Only use multi-pass when "cascade trigger" rules fire
-        // These rules create new opportunities that weren't visible before
+        // 2. Rule-based Simplification - UNCONDITIONAL Multi-Pass
+        // Always use multi-pass iteration until fixed point
+        // This ensures expressions like "atan(2) + atan(1/2) - pi/2" fully simplify
 
-        // First pass (always executed)
-        let (first_pass, first_steps) = simplifier.apply_rules_loop(current, &self.pattern_marks);
+        let max_passes = 10; // Increased from 5 for robustness
+        let mut pass_count = 0;
+        let mut cycle_detector = CycleDetector::new(10);
 
-        // Fast path: No changes at all (common for already-simplified expressions)
-        if first_pass == current {
-            current = first_pass;
-        } else {
-            // Check if any cascade trigger rule fired
-            let needs_multi_pass = first_steps
-                .iter()
-                .any(|step| self.cascade_triggers.contains(step.rule_name.as_str()));
+        loop {
+            // Apply one pass of simplification
+            let (simplified, pass_steps) =
+                simplifier.apply_rules_loop(current, &self.pattern_marks);
 
-            if !needs_multi_pass {
-                // FAST PATH: Single pass sufficient (95% of cases)
-                // No cascade triggers, so no new opportunities created
-                steps.extend(first_steps);
-                current = first_pass;
-            } else {
-                // SLOW PATH: Multi-pass needed (5% of cases)
-                // Cascade triggers fired, re-simplify to catch new opportunities
-                steps.extend(first_steps);
-                current = first_pass;
+            // OPTIMIZATION: Fast path with ExprId comparison (O(1))
+            if simplified == current {
+                // Fixed point reached - no more changes
+                break;
+            }
 
-                let max_passes = 5;
-                let mut pass_count = 1;
-                let mut cycle_detector = CycleDetector::new(5);
+            // Cycle detection
+            if let Some(_cycle_len) = cycle_detector.check(current) {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "WARNING: Simplification cycle detected (length {})",
+                    _cycle_len
+                );
+                break;
+            }
 
-                loop {
-                    // 2. Local Simplification (Rule-based transformation)
-                    let (simplified, local_steps) =
-                        simplifier.local_simplify(current, &self.pattern_marks);
+            steps.extend(pass_steps);
+            current = simplified;
+            pass_count += 1;
 
-                    // OPTIMIZATION: Fast path with ExprId comparison (O(1))
-                    if simplified == current {
-                        break; // No changes, done
-                    }
-
-                    // Cycle detection
-                    if let Some(_cycle_len) = cycle_detector.check(current) {
-                        #[cfg(debug_assertions)]
-                        eprintln!(
-                            "WARNING: Simplification cycle detected (length {})",
-                            _cycle_len
-                        );
-                        break;
-                    }
-
-                    steps.extend(local_steps);
-                    current = simplified;
-                    pass_count += 1;
-
-                    // Safety: prevent runaway loops
-                    if pass_count >= max_passes {
-                        break;
-                    }
-                }
+            // Safety: prevent runaway loops
+            if pass_count >= max_passes {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "WARNING: Reached max simplification passes ({})",
+                    max_passes
+                );
+                break;
             }
         }
 

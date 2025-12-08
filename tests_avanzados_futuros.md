@@ -8,13 +8,15 @@ Este documento describe los tests de trigonometría inversa avanzados que actual
 |------|--------|------------|----------|
 | **Test 46** | ⚠️ Pasa* | No | Evaluación numérica de funciones inversas |
 | **Test 47** | ✅ **PASA** | **Sí** | ✅ **Ya funciona** |
-| **Test 48** | ⚠️ Pasa* | No | Regla `atan(x) + atan(1/x)` con manejo de signo |
+| **Test 48** | ⚠️ **Parcial** | **Regla funciona en aislamiento** | Simplificador iterativo o top-down |
 | **Test 49** | ⚠️ Pasa* | No | Fórmula de adición de arctan |
 | **Test 50** | ✅ **PASA** | **Sí** | ✅ **Ya funciona** (2025-12-08) |
 
 \* "Pasa" = No crashea, pero las assertions están desactivadas porque no simplifica al resultado esperado
 
-**Actualización 2025-12-08**: Test 50 ahora completamente funcional gracias a la implementación de `CosArcsinExpansionRule` y `SinArccosExpansionRule` ✅
+**Actualización 2025-12-08**: 
+- Test 50 completamente funcional con `CosArcsinExpansionRule` y `SinArccosExpansionRule` ✅
+- Test 48 ahora detecta recíprocos numéricos (2 y 1/2), regla aplica pero limitación arquitectural impide simplificación completa ⚠️
 
 ---
 
