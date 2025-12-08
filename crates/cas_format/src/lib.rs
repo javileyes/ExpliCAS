@@ -1,4 +1,4 @@
-use cas_ast::{Expr, Visitor, Constant, Context, ExprId};
+use cas_ast::{Constant, Context, Expr, ExprId, Visitor};
 
 pub trait Format {
     fn to_latex(&self, ctx: &Context) -> String;
@@ -18,7 +18,9 @@ pub struct LatexVisitor {
 
 impl LatexVisitor {
     pub fn new() -> Self {
-        Self { output: String::new() }
+        Self {
+            output: String::new(),
+        }
     }
 }
 
@@ -27,7 +29,8 @@ impl Visitor for LatexVisitor {
         if n.is_integer() {
             self.output.push_str(&n.to_integer().to_string());
         } else {
-            self.output.push_str(&format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom()));
+            self.output
+                .push_str(&format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom()));
         }
     }
 
@@ -72,17 +75,25 @@ impl Visitor for LatexVisitor {
         // Parentheses if lower precedence
         let l_expr = ctx.get(l);
         let l_needs_parens = matches!(l_expr, Expr::Add(_, _) | Expr::Sub(_, _));
-        if l_needs_parens { self.output.push('('); }
+        if l_needs_parens {
+            self.output.push('(');
+        }
         self.visit_expr(ctx, l);
-        if l_needs_parens { self.output.push(')'); }
-        
+        if l_needs_parens {
+            self.output.push(')');
+        }
+
         self.output.push_str(" \\cdot ");
-        
+
         let r_expr = ctx.get(r);
         let r_needs_parens = matches!(r_expr, Expr::Add(_, _) | Expr::Sub(_, _));
-        if r_needs_parens { self.output.push('('); }
+        if r_needs_parens {
+            self.output.push('(');
+        }
         self.visit_expr(ctx, r);
-        if r_needs_parens { self.output.push(')'); }
+        if r_needs_parens {
+            self.output.push(')');
+        }
     }
 
     fn visit_div(&mut self, ctx: &Context, l: ExprId, r: ExprId) {
@@ -95,11 +106,18 @@ impl Visitor for LatexVisitor {
 
     fn visit_pow(&mut self, ctx: &Context, b: ExprId, e: ExprId) {
         let b_expr = ctx.get(b);
-        let b_needs_parens = !matches!(b_expr, Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_));
-        if b_needs_parens { self.output.push('('); }
+        let b_needs_parens = !matches!(
+            b_expr,
+            Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_)
+        );
+        if b_needs_parens {
+            self.output.push('(');
+        }
         self.visit_expr(ctx, b);
-        if b_needs_parens { self.output.push(')'); }
-        
+        if b_needs_parens {
+            self.output.push(')');
+        }
+
         self.output.push_str("^{");
         self.visit_expr(ctx, e);
         self.output.push_str("}");
@@ -109,9 +127,13 @@ impl Visitor for LatexVisitor {
         self.output.push('-');
         let e_expr = ctx.get(e);
         let needs_parens = matches!(e_expr, Expr::Add(_, _) | Expr::Sub(_, _));
-        if needs_parens { self.output.push('('); }
+        if needs_parens {
+            self.output.push('(');
+        }
         self.visit_expr(ctx, e);
-        if needs_parens { self.output.push(')'); }
+        if needs_parens {
+            self.output.push(')');
+        }
     }
 
     fn visit_function(&mut self, ctx: &Context, name: &str, args: &[ExprId]) {
@@ -119,22 +141,75 @@ impl Visitor for LatexVisitor {
             "sin" | "cos" | "tan" | "log" | "ln" => {
                 self.output.push_str(&format!("\\{}(", name));
                 for (i, arg) in args.iter().enumerate() {
-                    if i > 0 { self.output.push_str(", "); }
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
                     self.visit_expr(ctx, *arg);
                 }
                 self.output.push(')');
-            },
+            }
             "sqrt" => {
                 self.output.push_str("\\sqrt{");
                 if !args.is_empty() {
                     self.visit_expr(ctx, args[0]);
                 }
                 self.output.push('}');
-            },
+            }
+            // Matrix product: matmul(A, B) -> A \times B
+            "matmul" => {
+                if args.len() == 2 {
+                    // Left operand (may need parens if it's complex)
+                    self.visit_expr(ctx, args[0]);
+                    self.output.push_str(" \\times ");
+                    // Right operand
+                    self.visit_expr(ctx, args[1]);
+                } else {
+                    // Fallback for wrong arity
+                    self.output.push_str("\\operatorname{matmul}(");
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.visit_expr(ctx, *arg);
+                    }
+                    self.output.push(')');
+                }
+            }
+            // Matrix transpose: transpose(A) -> A^{T}
+            "transpose" | "T" => {
+                if args.len() == 1 {
+                    // Check if arg is simple (variable, number, matrix) or needs parens
+                    let arg_expr = ctx.get(args[0]);
+                    let needs_parens = matches!(
+                        arg_expr,
+                        Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
+                    );
+                    if needs_parens {
+                        self.output.push('(');
+                    }
+                    self.visit_expr(ctx, args[0]);
+                    if needs_parens {
+                        self.output.push(')');
+                    }
+                    self.output.push_str("^{T}");
+                } else {
+                    self.output.push_str("\\operatorname{transpose}(");
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.visit_expr(ctx, *arg);
+                    }
+                    self.output.push(')');
+                }
+            }
             _ => {
-                self.output.push_str(&format!("\\operatorname{{{}}}(", name));
+                self.output
+                    .push_str(&format!("\\operatorname{{{}}}(", name));
                 for (i, arg) in args.iter().enumerate() {
-                    if i > 0 { self.output.push_str(", "); }
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
                     self.visit_expr(ctx, *arg);
                 }
                 self.output.push(')');
@@ -146,7 +221,7 @@ impl Visitor for LatexVisitor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::{Expr, Context};
+    use cas_ast::{Context, Expr};
 
     #[test]
     fn test_latex_format() {
@@ -158,7 +233,7 @@ mod tests {
         let sin = ctx.add(Expr::Function("sin".to_string(), vec![x]));
         let div = ctx.add(Expr::Div(sin, two));
         let expr = ctx.add(Expr::Add(pow, div));
-        
+
         assert_eq!(expr.to_latex(&ctx), "x^{2} + \\frac{\\sin(x)}{2}");
     }
 }

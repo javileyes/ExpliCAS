@@ -626,6 +626,27 @@ impl<'a> TimelineHtml<'a> {
                     "abs" if highlighted_args.len() == 1 => {
                         format!("|{}|", highlighted_args[0])
                     }
+                    // Matrix product: matmul(A, B) → A \times B
+                    "matmul" if highlighted_args.len() == 2 => {
+                        format!("{} \\times {}", highlighted_args[0], highlighted_args[1])
+                    }
+                    // Matrix transpose: transpose(A) → A^T (with parens if needed)
+                    "transpose" | "T" if highlighted_args.len() == 1 => {
+                        // Check if arg needs parens (matmul, etc.)
+                        let needs_parens = matches!(
+                            self.context.get(args[0]),
+                            Expr::Add(_, _)
+                                | Expr::Sub(_, _)
+                                | Expr::Mul(_, _)
+                                | Expr::Div(_, _)
+                                | Expr::Function(_, _)
+                        );
+                        if needs_parens {
+                            format!("({})^{{T}}", highlighted_args[0])
+                        } else {
+                            format!("{}^{{T}}", highlighted_args[0])
+                        }
+                    }
                     _ => {
                         format!("\\text{{{}}}({})", name, highlighted_args.join(", "))
                     }

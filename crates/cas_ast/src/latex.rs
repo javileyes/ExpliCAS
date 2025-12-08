@@ -324,6 +324,30 @@ impl<'a> LaTeXExpr<'a> {
                     let arg = self.expr_to_latex(args[0], false);
                     format!("|{}|", arg)
                 }
+                // Matrix product: matmul(A, B) → A \times B
+                "matmul" if args.len() == 2 => {
+                    let left = self.expr_to_latex(args[0], false);
+                    let right = self.expr_to_latex(args[1], false);
+                    format!("{} \\times {}", left, right)
+                }
+                // Matrix transpose: transpose(A) → A^T
+                "transpose" | "T" if args.len() == 1 => {
+                    let arg_str = self.expr_to_latex(args[0], false);
+                    // Check if arg needs parens (including matmul which is a Function)
+                    let needs_parens = matches!(
+                        self.context.get(args[0]),
+                        Expr::Add(_, _)
+                            | Expr::Sub(_, _)
+                            | Expr::Mul(_, _)
+                            | Expr::Div(_, _)
+                            | Expr::Function(_, _)
+                    );
+                    if needs_parens {
+                        format!("({})^{{T}}", arg_str)
+                    } else {
+                        format!("{}^{{T}}", arg_str)
+                    }
+                }
                 _ => {
                     let args_str: Vec<String> = args
                         .iter()
