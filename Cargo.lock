@@ -78,6 +78,7 @@ version = "0.1.0"
 dependencies = [
  "cas_ast",
  "cas_engine",
+ "cas_format",
  "cas_parser",
  "num-traits",
  "rustyline",

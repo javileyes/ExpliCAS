@@ -869,9 +869,6 @@ define_rule!(
 
 // Helper function: Check if two expressions are structurally opposite (e.g., a-b vs b-a)
 fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
-    // Debug: print what we're comparing
-    // eprintln!("Comparing denominators: e1={:?} vs e2={:?}", ctx.get(e1), ctx.get(e2));
-
     match (ctx.get(e1), ctx.get(e2)) {
         // Case 1: (a - b) vs (b - a)
         (Expr::Sub(l1, r1), Expr::Sub(l2, r2)) => {
@@ -933,6 +930,48 @@ fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
                         return true;
                     }
                 }
+            }
+
+            // Pattern 4c: Add(a, Neg(b)) vs Add(b, Neg(a))
+            // This is the canonical form of (a - b) vs (b - a)
+            // e.g., a + (-b) vs b + (-a)
+            if let (Expr::Neg(neg_r1), Expr::Neg(neg_r2)) = (ctx.get(*r1), ctx.get(*r2)) {
+                // l1 == neg_r2 (a == a) and l2 == neg_r1 (b == b)
+                if compare_expr(ctx, *l1, *neg_r2) == Ordering::Equal
+                    && compare_expr(ctx, *l2, *neg_r1) == Ordering::Equal
+                {
+                    return true;
+                }
+            }
+            false
+        }
+        // Case 5: Mul(a, b) vs Mul(c, d) where one factor matches and one is opposite
+        // e.g., (a-b)*(a-c) vs (a-c)*(b-a) → one shared factor (a-c), one opposite (a-b) vs (b-a)
+        (Expr::Mul(m1_l, m1_r), Expr::Mul(m2_l, m2_r)) => {
+            // Helper to check if two factors are opposite (recursive call)
+            let factors_opposite =
+                |f1: ExprId, f2: ExprId| -> bool { are_denominators_opposite(ctx, f1, f2) };
+
+            // Check all 4 combinations:
+            // 1. m1_l == m2_l and m1_r opposite to m2_r
+            if compare_expr(ctx, *m1_l, *m2_l) == Ordering::Equal && factors_opposite(*m1_r, *m2_r)
+            {
+                return true;
+            }
+            // 2. m1_l == m2_r and m1_r opposite to m2_l
+            if compare_expr(ctx, *m1_l, *m2_r) == Ordering::Equal && factors_opposite(*m1_r, *m2_l)
+            {
+                return true;
+            }
+            // 3. m1_r == m2_l and m1_l opposite to m2_r
+            if compare_expr(ctx, *m1_r, *m2_l) == Ordering::Equal && factors_opposite(*m1_l, *m2_r)
+            {
+                return true;
+            }
+            // 4. m1_r == m2_r and m1_l opposite to m2_l
+            if compare_expr(ctx, *m1_r, *m2_r) == Ordering::Equal && factors_opposite(*m1_l, *m2_l)
+            {
+                return true;
             }
             false
         }

@@ -462,6 +462,41 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
     None
 });
 
+/// Normalize binomial order: (b-a) -> -(a-b) when a < b alphabetically
+/// This ensures consistent representation of binomials like (y-x) vs (x-y)
+/// so they can be recognized as opposites in fraction simplification.
+define_rule!(
+    NormalizeBinomialOrderRule,
+    "Normalize Binomial Order",
+    |ctx, expr| {
+        use crate::ordering::compare_expr;
+        use std::cmp::Ordering;
+
+        // Pattern: Add(y, Neg(x)) where x < y -> Neg(Add(x, Neg(y)))
+        // This converts (y - x) to -(x - y) when x should come first
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Add(l, r) = expr_data {
+            let r_data = ctx.get(r).clone();
+            // Check if r is Neg(x) - this is the pattern for (l - x)
+            if let Expr::Neg(inner) = r_data {
+                // We have: l + (-inner) which represents (l - inner)
+                // If inner < l, we should reorder to -(inner - l) = -(inner + (-l))
+                if compare_expr(ctx, inner, l) == Ordering::Less {
+                    // Create: Neg(inner + Neg(l)) = Neg(inner - l) = -(inner - l)
+                    let neg_l = ctx.add(Expr::Neg(l));
+                    let inner_minus_l = ctx.add(Expr::Add(inner, neg_l));
+                    let new_expr = ctx.add(Expr::Neg(inner_minus_l));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "(y-x) -> -(x-y) for canonical order".to_string(),
+                    });
+                }
+            }
+        }
+        None
+    }
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -578,4 +613,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CanonicalizeDivRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(NormalizeSignsRule));
+    // NormalizeBinomialOrderRule disabled - causes infinite loop with other rules
 }

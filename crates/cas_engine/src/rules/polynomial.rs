@@ -9,6 +9,15 @@ use num_traits::{One, Zero};
 use num_traits::{Signed, ToPrimitive};
 use std::cmp::Ordering;
 
+/// Check if an expression is a binomial (sum or difference of exactly 2 terms)
+/// Examples: (a + b), (a - b), (x + (-y))
+fn is_binomial(ctx: &Context, e: ExprId) -> bool {
+    match ctx.get(e) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => true,
+        _ => false,
+    }
+}
+
 define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
     // Don't distribute if expression is in canonical form (e.g., inside abs() or sqrt())
     // This protects patterns like abs((x-2)(x+2)) from expanding
@@ -41,6 +50,12 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
             // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
             // If we have (A+B)(A-B), do NOT distribute.
             if is_conjugate(ctx, l, r) {
+                return None;
+            }
+
+            // CRITICAL: Don't expand binomial*binomial products like (a-b)*(a-c)
+            // This preserves factored form for opposite denominator detection
+            if is_binomial(ctx, l) && is_binomial(ctx, r) {
                 return None;
             }
 

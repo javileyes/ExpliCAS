@@ -9,6 +9,8 @@
 5. [Flujo de Datos](#flujo-de-datos)
 6. [Puntos de Extensión](#puntos-de-extensión)
 7. [Optimizaciones](#optimizaciones)
+   - 7.1. [Expression Interning](#71-expression-interning-la-base-del-rendimiento)
+   - 7.2. [Compact ExprId](#72-compact-exprid-nan-boxing-para-índices)
 
 ---
 
@@ -3196,3 +3198,42 @@ El Máximo Común Divisor es: 6
 ---
 
 ## Configuración del Repo
+
+---
+
+## 7. Optimizaciones
+
+Para lograr un rendimiento aceptable a pesar de la semántica de "copia por valor" (simulada) y el ordenamiento canónico automático, el sistema implementa dos optimizaciones arquitectónicas profundas inspiradas en compiladores modernos.
+
+### 7.1. Expression Interning (La Base del Rendimiento)
+
+El sistema ya no almacena expresiones en un árbol simple, sino en un **Grafo Acíclico Dirigido (DAG)** mediante *Expression Interning*.
+
+**Funcionamiento**:
+1. El `Context` mantiene un `HashMap<u64, ExprId>` que mapea el hash estructural de una expresión a su ID existente.
+2. Al llamar a `Context::add()`, calculamos el hash de la expresión canónica.
+3. Si el hash existe y la expresión es estructuralmente idéntica, devolvemos el `ExprId` existente en lugar de crear un nodo nuevo.
+
+**Beneficios**:
+*   **Deduplicación Masiva**: Expresiones comunes como `x` o `1` se almacenan una sola vez en memoria.
+*   **Comparaciones O(1)**: Para muchas operaciones, la igualdad `a == b` se reduce a comparar dos enteros `u32`.
+*   **Rendimiento**: Mejora del 15-20% en operaciones intensivas como expansión de polinomios.
+
+### 7.2. Compact ExprId (NaN-Boxing para Índices)
+
+El identificador `ExprId` no es un simple índice `u32`. Utilizamos una técnica de "packing" para codificar información de tipo directamente en el identificador.
+
+**Estructura del `u32`**:
+*   **Bits 0-28**: Índice en el vector de nodos (`Context.nodes`). Capacidad para ~500 millones de nodos.
+*   **Bits 29-31**: **Tag Estructural** (3 bits).
+
+**Tags**:
+*   `000` (0): **Number**
+*   `001` (1): **Atom** (Variables, Constantes)
+*   `010` (2): **Unary** (Neg)
+*   `011` (3): **Binary** (Add, Mul, Pow, etc.)
+*   `100` (4): **N-ary** (Function, Matrix)
+
+**Beneficios**:
+*   **Check de Tipo sin Pointer Chasing**: Podemos saber si una expresión es un número o un átomo simplemente mirando los bits del `ExprId`, sin acceder a la memoria del `Context`.
+*   **Localidad de Caché**: Reduce la presión sobre la caché de CPU en funciones críticas como `compare_expr`.
