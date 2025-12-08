@@ -1,17 +1,5 @@
-use crate::{Constant, Context, DisplayExpr, Expr, ExprId};
+use crate::{Constant, Context, Expr, ExprId};
 use std::cmp::Ordering;
-
-thread_local! {
-    static DEBUG_COMPARE: std::cell::Cell<bool> = std::cell::Cell::new(false);
-}
-
-pub fn enable_compare_debug() {
-    DEBUG_COMPARE.with(|d| d.set(true));
-}
-
-pub fn disable_compare_debug() {
-    DEBUG_COMPARE.with(|d| d.set(false));
-}
 
 pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
     if a == b {
@@ -21,38 +9,17 @@ pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
     let expr_a = context.get(a);
     let expr_b = context.get(b);
 
-    let debug = DEBUG_COMPARE.with(|d| d.get());
-    if debug {
-        let display_a = DisplayExpr { context, id: a };
-        let display_b = DisplayExpr { context, id: b };
-        eprintln!(
-            "compare_expr({}, {}) [ExprId({:?}, {:?})]",
-            display_a, display_b, a.0, b.0
-        );
-    }
-
     use Expr::*;
 
     // 1. Hierarchy Check
     let rank_a = get_rank(expr_a);
     let rank_b = get_rank(expr_b);
     if rank_a != rank_b {
-        let result = rank_a.cmp(&rank_b);
-        if debug {
-            eprintln!(
-                "  → rank comparison: {} (rank {}) vs {} (rank {}) = {:?}",
-                DisplayExpr { context, id: a },
-                rank_a,
-                DisplayExpr { context, id: b },
-                rank_b,
-                result
-            );
-        }
-        return result;
+        return rank_a.cmp(&rank_b);
     }
 
     // 2. Same Type Comparison
-    let result = match (expr_a, expr_b) {
+    match (expr_a, expr_b) {
         (Number(n1), Number(n2)) => n1.cmp(n2),
         (Constant(c1), Constant(c2)) => compare_constant(c1, c2),
         (Variable(v1), Variable(v2)) => v1.cmp(v2),
@@ -70,13 +37,7 @@ pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
         (Mul(l1, r1), Mul(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
         (Div(l1, r1), Div(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
         _ => Ordering::Equal, // Should be unreachable if ranks are correct
-    };
-
-    if debug {
-        eprintln!("  → result: {:?}", result);
     }
-
-    result
 }
 
 fn get_rank(expr: &Expr) -> u8 {

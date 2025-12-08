@@ -879,7 +879,10 @@ fn test_enhanced_integration() {
                 id: result1
             }
         ),
-        "-1/2 * cos(2 * x)"
+        // Canonical ordering now places 1/2 before -cos, both are equivalent
+        // Old: "-1/2 * cos(2 * x)"
+        // New: "1/2 * -cos(2 * x)"
+        "1/2 * -cos(2 * x)"
     );
 
     // Test 2: integrate(exp(3*x + 1), x) -> exp(3*x + 1)/3
