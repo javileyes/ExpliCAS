@@ -15,6 +15,16 @@ fn is_one(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// Check if expression equals -1
+fn is_negative_one(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        let neg_one = num_rational::BigRational::from_integer(num_bigint::BigInt::from(-1));
+        n == &neg_one
+    } else {
+        false
+    }
+}
+
 /// Check if two expressions are reciprocals: a = 1/b or b = 1/a
 fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
     // Get clones to avoid borrow issues
@@ -320,6 +330,7 @@ define_rule!(
                 let term_i_data = ctx.get(terms[i]).clone();
                 let term_j_data = ctx.get(terms[j]).clone();
 
+                // Case 1: Positive pair - atan(x) + atan(1/x) = π/2
                 if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
                     (&term_i_data, &term_j_data)
                 {
@@ -342,6 +353,40 @@ define_rule!(
                                 new_expr: result,
                                 description: "arctan(x) + arctan(1/x) = π/2".to_string(),
                             });
+                        }
+                    }
+                }
+
+                // Case 2: Negated pair - Neg(atan(x)) + Neg(atan(1/x)) = -π/2
+                // In CAS, -atan(x) is represented as Neg(atan(x))
+                if let (Expr::Neg(inner_i), Expr::Neg(inner_j)) = (&term_i_data, &term_j_data) {
+                    // Extract the inner atan functions
+                    let inner_i_data = ctx.get(*inner_i);
+                    let inner_j_data = ctx.get(*inner_j);
+
+                    if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
+                        (inner_i_data, inner_j_data)
+                    {
+                        if is_atan(name_i)
+                            && is_atan(name_j)
+                            && args_i.len() == 1
+                            && args_j.len() == 1
+                        {
+                            if are_reciprocals(ctx, args_i[0], args_j[0]) {
+                                // Found -atan(x) - atan(1/x)! Replace with -π/2
+                                let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                                let two = ctx.num(2);
+                                let pi_half = ctx.add(Expr::Div(pi, two));
+                                let neg_pi_half = ctx.add(Expr::Neg(pi_half));
+
+                                let remaining = build_sum_without(ctx, &terms, i, j);
+                                let result = combine_with_term(ctx, remaining, neg_pi_half);
+
+                                return Some(Rewrite {
+                                    new_expr: result,
+                                    description: "-arctan(x) - arctan(1/x) = -π/2".to_string(),
+                                });
+                            }
                         }
                     }
                 }
