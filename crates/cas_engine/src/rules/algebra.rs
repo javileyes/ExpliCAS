@@ -2224,6 +2224,222 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
     None
 });
 
+/// Rule to handle sums of 3+ fractions with binomial product denominators.
+/// This is specifically designed for cyclic sums like:
+/// 1/((a-b)(a-c)) + 1/((b-c)(b-a)) + 1/((c-a)(c-b))
+define_rule!(
+    CyclicFractionsRule,
+    "Combine Cyclic Fractions",
+    Some(vec!["Add"]),
+    |ctx, expr| {
+        use crate::ordering::compare_expr;
+        use std::cmp::Ordering;
+
+        // Helper: Check if binomial is in canonical form (a-b where a < b alphabetically)
+        let is_canonical_binomial = |ctx: &Context, e: ExprId| -> bool {
+            match ctx.get(e) {
+                Expr::Add(l, r) => {
+                    if let Expr::Neg(inner) = ctx.get(*r) {
+                        // Form: l + (-r) = l - inner
+                        // Canonical if l < inner
+                        compare_expr(ctx, *l, *inner) == Ordering::Less
+                    } else {
+                        false
+                    }
+                }
+                Expr::Sub(l, r) => compare_expr(ctx, *l, *r) == Ordering::Less,
+                _ => false,
+            }
+        };
+
+        // Helper: Normalize a binomial to canonical form, returning (canonical_expr, sign_flip)
+        // where sign_flip is true if we negated the original
+        let normalize_binomial = |ctx: &mut Context, e: ExprId| -> (ExprId, bool) {
+            match ctx.get(e).clone() {
+                Expr::Add(l, r) => {
+                    if let Expr::Neg(inner) = ctx.get(r).clone() {
+                        // Form: l + (-inner) = l - inner
+                        if compare_expr(ctx, l, inner) == Ordering::Less {
+                            // Already canonical: (l - inner)
+                            (e, false)
+                        } else {
+                            // Not canonical: need (inner - l) and negate
+                            // -(l - inner) = inner - l = inner + (-l)
+                            let neg_l = ctx.add(Expr::Neg(l));
+                            let canonical = ctx.add(Expr::Add(inner, neg_l));
+                            (canonical, true)
+                        }
+                    } else {
+                        // Not a subtraction pattern
+                        (e, false)
+                    }
+                }
+                Expr::Sub(l, r) => {
+                    if compare_expr(ctx, l, r) == Ordering::Less {
+                        // Already canonical
+                        (e, false)
+                    } else {
+                        // Need (r - l) and negate
+                        let canonical = ctx.add(Expr::Sub(r, l));
+                        (canonical, true)
+                    }
+                }
+                _ => (e, false),
+            }
+        };
+
+        // Helper: Extract factors from a product expression
+        let get_factors = |ctx: &Context, e: ExprId| -> Vec<ExprId> {
+            let mut factors = Vec::new();
+            let mut stack = vec![e];
+            while let Some(curr) = stack.pop() {
+                match ctx.get(curr) {
+                    Expr::Mul(l, r) => {
+                        stack.push(*l);
+                        stack.push(*r);
+                    }
+                    _ => factors.push(curr),
+                }
+            }
+            factors
+        };
+
+        // Helper: Check if expression is a binomial (Add with Neg or Sub)
+        let is_binomial = |ctx: &Context, e: ExprId| -> bool {
+            match ctx.get(e) {
+                Expr::Add(_, r) => matches!(ctx.get(*r), Expr::Neg(_)),
+                Expr::Sub(_, _) => true,
+                _ => false,
+            }
+        };
+
+        // Collect all terms from the Add tree
+        let mut terms = Vec::new();
+        let mut stack = vec![expr];
+        while let Some(curr) = stack.pop() {
+            match ctx.get(curr) {
+                Expr::Add(l, r) => {
+                    stack.push(*l);
+                    stack.push(*r);
+                }
+                _ => terms.push(curr),
+            }
+        }
+
+        // Need at least 3 fractions
+        if terms.len() < 3 {
+            return None;
+        }
+
+        // Extract numerator and denominator from each fraction
+        let mut fractions: Vec<(ExprId, ExprId)> = Vec::new(); // (num, den)
+        for term in &terms {
+            match ctx.get(*term) {
+                Expr::Div(num, den) => {
+                    fractions.push((*num, *den));
+                }
+                _ => return None, // Not all terms are fractions
+            }
+        }
+
+        // Check that all denominators are products of exactly 2 binomials
+        let mut all_factor_sets: Vec<Vec<(ExprId, bool)>> = Vec::new(); // (canonical_factor, sign_flip)
+        for (_, den) in &fractions {
+            let factors = get_factors(ctx, *den);
+            if factors.len() != 2 {
+                return None; // Denominator is not a product of 2 factors
+            }
+
+            // Normalize each factor
+            let mut normalized_factors = Vec::new();
+            for f in factors {
+                if !is_binomial(ctx, f) {
+                    return None; // Factor is not a binomial
+                }
+                let (canonical, flipped) = normalize_binomial(ctx, f);
+                normalized_factors.push((canonical, flipped));
+            }
+            all_factor_sets.push(normalized_factors);
+        }
+
+        // Collect all unique canonical factors
+        let mut unique_factors: Vec<ExprId> = Vec::new();
+        for factor_set in &all_factor_sets {
+            for (canonical, _) in factor_set {
+                let already_exists = unique_factors
+                    .iter()
+                    .any(|existing| compare_expr(ctx, *existing, *canonical) == Ordering::Equal);
+                if !already_exists {
+                    unique_factors.push(*canonical);
+                }
+            }
+        }
+
+        // For cyclic sums of 3 fractions with 2 factors each, we expect 3 unique factors
+        if unique_factors.len() != 3 || fractions.len() != 3 {
+            return None;
+        }
+
+        // Build LCD as product of all unique factors
+        let mut lcd = unique_factors[0];
+        for i in 1..unique_factors.len() {
+            lcd = ctx.add(Expr::Mul(lcd, unique_factors[i]));
+        }
+
+        // For each fraction, determine the missing factor and sign
+        let mut numerator_terms: Vec<ExprId> = Vec::new();
+        for (i, (num, _den)) in fractions.iter().enumerate() {
+            let factor_set = &all_factor_sets[i];
+
+            // Count sign flips from normalization
+            let sign_flips: i32 = factor_set
+                .iter()
+                .map(|(_, flipped)| if *flipped { 1 } else { 0 })
+                .sum();
+            let overall_negative = sign_flips % 2 == 1;
+
+            // Find the missing factor (the one not in this denominator)
+            let mut missing_factor = None;
+            for uf in &unique_factors {
+                let found_in_den = factor_set
+                    .iter()
+                    .any(|(cf, _)| compare_expr(ctx, *cf, *uf) == Ordering::Equal);
+                if !found_in_den {
+                    missing_factor = Some(*uf);
+                    break;
+                }
+            }
+
+            if let Some(mf) = missing_factor {
+                // Numerator contribution: num * missing_factor (with sign)
+                let contribution = ctx.add(Expr::Mul(*num, mf));
+                let adjusted = if overall_negative {
+                    ctx.add(Expr::Neg(contribution))
+                } else {
+                    contribution
+                };
+                numerator_terms.push(adjusted);
+            } else {
+                return None; // Should have a missing factor
+            }
+        }
+
+        // Sum all numerator terms
+        let mut total_num = numerator_terms[0];
+        for i in 1..numerator_terms.len() {
+            total_num = ctx.add(Expr::Add(total_num, numerator_terms[i]));
+        }
+
+        // Create the new fraction
+        let new_expr = ctx.add(Expr::Div(total_num, lcd));
+
+        Some(Rewrite {
+            new_expr,
+            description: "Combine cyclic fractions with LCD".to_string(),
+        })
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
@@ -2236,6 +2452,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySquareRootRule));
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     simplifier.add_rule(Box::new(ExpandRule));
+    simplifier.add_rule(Box::new(CyclicFractionsRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
 

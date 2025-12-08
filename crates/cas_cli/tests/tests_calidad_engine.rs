@@ -30,7 +30,6 @@ fn simplify_expr(input: &str) -> String {
 /// - Sin Canonical Ordering: El denominador común será gigante (producto de 6 términos).
 /// - Con Canonical Ordering: El sistema verá que solo hay 3 términos únicos (con cambios de signo).
 #[test]
-#[ignore] // TODO: Requires LCD calculation for 3+ fractions with non-pairwise-opposite denominators
 fn test_cyclic_rational_sum_to_zero() {
     let result = simplify_expr("1/((a-b)*(a-c)) + 1/((b-c)*(b-a)) + 1/((c-a)*(c-b))");
     assert_eq!(
