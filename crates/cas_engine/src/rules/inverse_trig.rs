@@ -314,44 +314,69 @@ define_rule!(
 );
 
 // Rule 2: arcsin(x) + arccos(x) = π/2
+// Enhanced to search across all additive terms (n-ary matching)
+// and handle negated pairs: -arcsin(x) - arccos(x) = -π/2
 define_rule!(
     InverseTrigSumRule,
     "Inverse Trig Sum Identity",
     Some(vec!["Add"]),
     |ctx, expr| {
-        if let Expr::Add(l, r) = ctx.get(expr) {
-            let l_data = ctx.get(*l).clone();
-            let r_data = ctx.get(*r).clone();
+        // Flatten Add tree to get all terms
+        let terms = collect_add_terms_flat(ctx, expr);
 
-            // arcsin(x) + arccos(x) = π/2
-            if let (Expr::Function(l_name, l_args), Expr::Function(r_name, r_args)) =
-                (l_data, r_data)
-            {
-                if l_args.len() == 1 && r_args.len() == 1 {
-                    let l_arg = l_args[0];
-                    let r_arg = r_args[0];
+        // Search for asin/acos pairs among all terms
+        for i in 0..terms.len() {
+            for j in (i + 1)..terms.len() {
+                let term_i_data = ctx.get(terms[i]).clone();
+                let term_j_data = ctx.get(terms[j]).clone();
 
-                    // Check if arguments are equal
-                    let args_equal = l_arg == r_arg
-                        || crate::ordering::compare_expr(ctx, l_arg, r_arg) == Ordering::Equal;
-
-                    if args_equal {
-                        // Check for both "asin"/"arcsin" and "acos"/"arccos" variants
-                        let is_arcsin = |name: &str| name == "arcsin" || name == "asin";
-                        let is_arccos = |name: &str| name == "arccos" || name == "acos";
-
-                        if (is_arcsin(l_name.as_str()) && is_arccos(r_name.as_str()))
-                            || (is_arccos(l_name.as_str()) && is_arcsin(r_name.as_str()))
+                // Use generalized helper to check both positive and negated pairs
+                if let Some(rewrite) = check_pair_with_negation(
+                    ctx,
+                    term_i_data,
+                    term_j_data,
+                    &terms,
+                    i,
+                    j,
+                    |ctx, expr_i, expr_j| {
+                        // Check if both are asin/acos functions with equal arguments
+                        if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
+                            (expr_i, expr_j)
                         {
-                            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                            let two = ctx.num(2);
-                            let new_expr = ctx.add(Expr::Div(pi, two));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "arcsin(x) + arccos(x) = π/2".to_string(),
-                            });
+                            if args_i.len() == 1 && args_j.len() == 1 {
+                                let arg_i = args_i[0];
+                                let arg_j = args_j[0];
+
+                                // Check if arguments are equal
+                                let args_equal = arg_i == arg_j
+                                    || crate::ordering::compare_expr(ctx, arg_i, arg_j)
+                                        == std::cmp::Ordering::Equal;
+
+                                if args_equal {
+                                    // Check for both "asin"/"arcsin" and "acos"/"arccos" variants
+                                    let is_arcsin = |name: &str| name == "arcsin" || name == "asin";
+                                    let is_arccos = |name: &str| name == "arccos" || name == "acos";
+
+                                    if (is_arcsin(name_i) && is_arccos(name_j))
+                                        || (is_arccos(name_i) && is_arcsin(name_j))
+                                    {
+                                        // Found asin(x) + acos(x)! Build π/2
+                                        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                                        let two = ctx.num(2);
+                                        let pi_half = ctx.add(Expr::Div(pi, two));
+
+                                        return Some((
+                                            pi_half,
+                                            "arcsin(x) + arccos(x) = π/2".to_string(),
+                                        ));
+                                    }
+                                }
+                            }
                         }
-                    }
+                        None
+                    },
+                ) {
+                    return Some(rewrite);
                 }
             }
         }
