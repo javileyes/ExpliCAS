@@ -28,11 +28,8 @@ fn test_51_arctan_triangle() {
     // but let's see what we get
     println!("Test 51 result: {}", result);
 
-    // For now, just check it doesn't crash and produces something
-    assert!(result.len() > 0, "Should produce some result");
-
-    // TODO: Implement sin(arctan(x)) -> x/sqrt(1+x^2) rule
-    // assert_eq!(result, "0", "sin(arctan(x)) should equal x/sqrt(1+x^2)");
+    // sin(arctan(x)) rule is now implemented!
+    assert_eq!(result, "0", "sin(arctan(x)) should equal x/sqrt(1+x^2)");
 }
 
 // ==================== Test 52: Pythagorean Reciprocal Identity ====================
@@ -67,28 +64,23 @@ fn test_53_cot_arcsin() {
 
     println!("Test 53 result: {}", result);
 
-    assert!(result.len() > 0, "Should produce some result");
-
-    // TODO: Implement cot(arcsin(x)) composition rule
-    // assert_eq!(result, "0", "cot(arcsin(x)) should equal sqrt(1-x²)/x");
+    // cot(arcsin(x)) rule is now implemented!
+    assert_eq!(result, "0", "cot(arcsin(x)) should equal sqrt(1-x²)/x");
 }
 
 // ==================== Test 54: ArcSec Identity ====================
 
 #[test]
 fn test_54_arcsec_arccos_relation() {
-    // asec(x) - acos(1/x)
+    // asec(x) - arccos(1/x)
     // Definition: arcsec(x) = arccos(1/x)
     // Result should be 0
-    let result = simplify_str("asec(x) - acos(1/x)");
+    let result = simplify_str("asec(x) - arccos(1/x)");
 
     println!("Test 54 result: {}", result);
 
-    assert!(result.len() > 0, "Should produce some result");
-
-    // This requires implementing the arcsec <-> arccos conversion
-    // TODO: Implement arcsec(x) = arccos(1/x) rule
-    // assert_eq!(result, "0", "arcsec(x) should equal arccos(1/x)");
+    // arcsec -> arccos conversion is now implemented!
+    assert_eq!(result, "0", "arcsec(x) should equal arccos(1/x)");
 }
 
 // ==================== Test 55: Mixed Fraction Monster ====================
