@@ -302,6 +302,56 @@ mod tests {
     }
 }
 
+// TransposeProductRule: transpose(matmul(A, B)) → matmul(transpose(B), transpose(A))
+// This is the fundamental identity (AB)^T = B^T·A^T
+pub struct TransposeProductRule;
+
+impl SimpleRule for TransposeProductRule {
+    fn name(&self) -> &'static str {
+        "Transpose of Product"
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            let name = name.clone();
+            let args = args.clone();
+
+            if (name == "transpose" || name == "T") && args.len() == 1 {
+                // Check if arg is matmul(A, B)
+                if let Expr::Function(inner_name, inner_args) = ctx.get(args[0]) {
+                    let inner_name = inner_name.clone();
+                    let inner_args = inner_args.clone();
+
+                    if inner_name == "matmul" && inner_args.len() == 2 {
+                        let a = inner_args[0];
+                        let b = inner_args[1];
+
+                        // Build: matmul(transpose(B), transpose(A))
+                        let transposed_b =
+                            ctx.add(Expr::Function("transpose".to_string(), vec![b]));
+                        let transposed_a =
+                            ctx.add(Expr::Function("transpose".to_string(), vec![a]));
+                        let result = ctx.add(Expr::Function(
+                            "matmul".to_string(),
+                            vec![transposed_b, transposed_a],
+                        ));
+
+                        return Some(Rewrite {
+                            new_expr: result,
+                            description: "(AB)^T = B^T·A^T".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(MatrixAddRule));
     simplifier.add_rule(Box::new(MatrixSubRule));
@@ -310,4 +360,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(MatrixMultiplyRule));
     simplifier.add_rule(Box::new(ScalarMatrixRule));
     simplifier.add_rule(Box::new(MatrixFunctionRule));
+    // Algebraic identity: (AB)^T = B^T·A^T
+    simplifier.add_rule(Box::new(TransposeProductRule));
 }
