@@ -1,5 +1,5 @@
 use crate::define_rule;
-use crate::helpers::extract_double_angle_arg;
+use crate::helpers::{extract_double_angle_arg, is_pi, is_pi_over_n};
 use crate::rule::Rewrite;
 use cas_ast::{Expr, ExprId};
 use num_traits::{One, Zero};
@@ -99,9 +99,8 @@ define_rule!(
                     }
                 }
 
-                // Case 2: Known Values (pi)
-                let arg_data = ctx.get(arg).clone();
-                if let Expr::Constant(cas_ast::Constant::Pi) = arg_data {
+                // Case 2: Known Values (pi) - using shared helper
+                if is_pi(ctx, arg) {
                     match name.as_str() {
                         "sin" | "tan" => {
                             let zero = ctx.num(0);
@@ -121,94 +120,31 @@ define_rule!(
                     }
                 }
 
-                // Case 3: Known Values (pi/2) - Div format
-                let arg_data = ctx.get(arg).clone();
-                if let Expr::Div(lhs, rhs) = arg_data {
-                    let lhs_data = ctx.get(lhs);
-                    let rhs_data = ctx.get(rhs);
-                    if let (Expr::Constant(cas_ast::Constant::Pi), Expr::Number(n)) =
-                        (lhs_data, rhs_data)
-                    {
-                        if *n == num_rational::BigRational::from_integer(2.into()) {
-                            match name.as_str() {
-                                "sin" => {
-                                    let one = ctx.num(1);
-                                    return Some(Rewrite {
-                                        new_expr: one,
-                                        description: "sin(pi/2) = 1".to_string(),
-                                    });
-                                }
-                                "cos" => {
-                                    let zero = ctx.num(0);
-                                    return Some(Rewrite {
-                                        new_expr: zero,
-                                        description: "cos(pi/2) = 0".to_string(),
-                                    });
-                                }
-                                "tan" => {
-                                    let undefined =
-                                        ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                                    return Some(Rewrite {
-                                        new_expr: undefined,
-                                        description: "tan(pi/2) = undefined".to_string(),
-                                    });
-                                }
-                                _ => {}
-                            }
+                // Case 3: Known Values (pi/2) - using shared helper for both Div and Mul formats
+                if is_pi_over_n(ctx, arg, 2) {
+                    match name.as_str() {
+                        "sin" => {
+                            let one = ctx.num(1);
+                            return Some(Rewrite {
+                                new_expr: one,
+                                description: "sin(pi/2) = 1".to_string(),
+                            });
                         }
-                    }
-                }
-
-                // Case 4: Known Values (pi/2) - Mul format (1/2 * pi)
-                if let Expr::Mul(lhs, rhs) = arg_data {
-                    let lhs_data = ctx.get(lhs);
-                    let rhs_data = ctx.get(rhs);
-
-                    let coeff = if let Expr::Constant(cas_ast::Constant::Pi) = lhs_data {
-                        if let Expr::Number(n) = rhs_data {
-                            Some(n)
-                        } else {
-                            None
+                        "cos" => {
+                            let zero = ctx.num(0);
+                            return Some(Rewrite {
+                                new_expr: zero,
+                                description: "cos(pi/2) = 0".to_string(),
+                            });
                         }
-                    } else if let Expr::Constant(cas_ast::Constant::Pi) = rhs_data {
-                        if let Expr::Number(n) = lhs_data {
-                            Some(n)
-                        } else {
-                            None
+                        "tan" => {
+                            let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                            return Some(Rewrite {
+                                new_expr: undefined,
+                                description: "tan(pi/2) = undefined".to_string(),
+                            });
                         }
-                    } else {
-                        None
-                    };
-
-                    if let Some(n) = coeff {
-                        // Check for 1/2
-                        if *n == num_rational::BigRational::new(1.into(), 2.into()) {
-                            match name.as_str() {
-                                "sin" => {
-                                    let one = ctx.num(1);
-                                    return Some(Rewrite {
-                                        new_expr: one,
-                                        description: "sin(pi/2) = 1".to_string(),
-                                    });
-                                }
-                                "cos" => {
-                                    let zero = ctx.num(0);
-                                    return Some(Rewrite {
-                                        new_expr: zero,
-                                        description: "cos(pi/2) = 0".to_string(),
-                                    });
-                                }
-                                "tan" => {
-                                    let undefined =
-                                        ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                                    return Some(Rewrite {
-                                        new_expr: undefined,
-                                        description: "tan(pi/2) = undefined".to_string(),
-                                    });
-                                }
-                                _ => {}
-                            }
-                        }
+                        _ => {}
                     }
                 }
 
