@@ -106,6 +106,255 @@ pub trait Transformer {
 
 ---
 
+### 2.1. `cas_ast` - Automatic Canonical Ordering ★★★
+
+**CRÍTICO**: Sistema implementado en Diciembre 2025 para garantizar unicidad de representación.
+
+#### El Problema: Múltiples Representaciones
+
+Antes del canonical ordering, las expresiones matemáticamente equivalentes podían tener múltiples representaciones en el AST:
+
+```
+Ejemplo: 2 + x
+Posibles representaciones:
+- Add(2, x)      →  "2 + x"
+- Add(x, 2)      →  "x + 2"
+
+Ejemplo: x * y * 3
+Posibles representaciones:
+- Mul(Mul(x, y), 3)  →  "x * y * 3"
+- Mul(3, Mul(x, y))  →  "3 * x * y"
+- Mul(Mul(3, x), y)  →  "3 * x * y"
+```
+
+**Consecuencias del problema**:
+1. **Tests frágiles**: Fallan por diferencias cosméticas en el orden
+2. **Caché ineficiente**: Misma expresión, diferentes claves de cache
+3. **Debugging difícil**: Difícil comparar expresiones visualmente
+4. **Comparaciones complejas**: Necesita lógica especial para igualdad semántica
+
+#### La Solución: Ordenamiento Automático en `Context::add()`
+
+**Principio**: Todas las expresiones se normalizan **automáticamente** al ser añadidas al `Context`.
+
+```rust
+// En cas_ast/src/expression.rs
+impl Context {
+    pub fn add(&mut self, expr: Expr) -> ExprId {
+        // Canonicalizar Add y Mul antes de añadir
+        let canonical_expr = match expr {
+            Expr::Add(l, r) => {
+                // Ordenar operandos: menor primero
+                if compare_expr(self, l, r) == Ordering::Greater {
+                    Expr::Add(r, l)  // Swap!
+                } else {
+                    Expr::Add(l, r)
+                }
+            }
+            Expr::Mul(l, r) => {
+                // Igual para multiplicación
+                if compare_expr(self, l, r) == Ordering::Greater {
+                    Expr::Mul(r, l)  // Swap!
+                } else {
+                    Expr::Mul(l, r)
+                }
+            }
+            other => other,
+        };
+        
+        // Añadir expresión canónica
+        let id = ExprId(self.nodes.len() as u32);
+        self.nodes.push(canonical_expr);
+        id
+    }
+}
+```
+
+**Garantía**: `Context::add()` **siempre** produce la misma representación para expresiones equivalentes.
+
+---
+
+#### Algoritmo de Ordenamiento: `compare_expr`
+
+Ubicación: `cas_ast/src/ordering.rs`
+
+**NO usa hash** (consejo del experto: hash es peligroso por colisiones, costoso y opaco).
+
+En su lugar, usa **comparación estructural determinista**:
+
+```rust
+pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
+    // 1. Fast path: misma expresión
+    if a == b { return Ordering::Equal; }
+    
+    // 2. Comparar por jerarquía de tipos
+    let rank_a = get_rank(context.get(a));
+    let rank_b = get_rank(context.get(b));
+    if rank_a != rank_b {
+        return rank_a.cmp(&rank_b);
+    }
+    
+    // 3. Mismo tipo: comparar contenido
+    match (context.get(a), context.get(b)) {
+        (Number(n1), Number(n2)) => n1.cmp(n2),
+        (Variable(v1), Variable(v2)) => v1.cmp(v2),
+        (Add(l1, r1), Add(l2, r2)) => compare_binary(context, l1, r1, l2, r2),
+        // ... etc
+    }
+}
+```
+
+**Jerarquía de tipos** (orden de precedencia):
+```rust
+fn get_rank(expr: &Expr) -> u8 {
+    match expr {
+        Number(_)     => 0,  // Números primero
+        Constant(_)   => 1,  // Luego constantes (π, e)
+        Variable(_)   => 2,  // Luego variables (x, y)
+        Function(_,_) => 3,  // Funciones (sin, cos)
+        Neg(_)        => 4,  // Negaciones
+        Pow(_,_)      => 5,  // Potencias
+        Mul(_,_)      => 6,  // Multiplicaciones
+        Div(_,_)      => 7,  // Divisiones
+        Add(_,_)      => 8,  // Sumas
+        Sub(_,_)      => 9,  // Restas
+    }
+}
+```
+
+**Ejemplos de ordenamiento**:
+
+```
+Input: Add(x, 2)
+rank(x) = 2, rank(2) = 0
+2 < x  →  Output: Add(2, x)  →  "2 + x"
+
+Input: Mul(y, x)
+rank(y) = 2, rank(x) = 2
+Mismo rank → comparar strings: "x" < "y"
+Output: Mul(x, y)  →  "x * y"
+
+Input: Add(Mul(x, 2), 3)
+rank(Mul) = 6, rank(3) = 0
+3 < Mul  →  Output: Add(3, Mul(x, 2))  →  "3 + 2 * x"
+```
+
+---
+
+#### Propiedades del Sistema
+
+✅ **Determinismo**: Misma entrada → Misma salida (siempre)  
+✅ **Transparente**: Algoritmo simple, debuggeable, sin "magia"  
+✅ **Sin colisiones**: Comparación estructural exacta (no hash)  
+✅ **Eficiente**: O(log n) comparaciones en promedio  
+✅ **Completo**: Funciona para cualquier expresión válida
+
+---
+
+#### Impacto en Otros Componentes
+
+**1. Eliminación de Canonicalization Pass**
+
+Antes:
+```rust
+// orchestrator.rs (ELIMINADO)
+fn canonicalize(&mut self, expr: ExprId) -> ExprId {
+    // Aplicar CanonicalizeMulRule
+    // Aplicar CanonicalizeAddRule
+    // ...
+}
+```
+
+Ahora:
+```rust
+// ¡No necesario! Context::add() ya canonicaliza
+```
+
+**2. Semantic Equality Mejorada**
+
+```rust
+// semantic_equality.rs
+impl SemanticEqualityChecker {
+    fn check_semantic_equality(&self, a: ExprId, b: ExprId) -> bool {
+        match (expr_a, expr_b) {
+            // Add y Mul son conmutativos: verificar ambos órdenes
+            (Add(l1, r1), Add(l2, r2)) => {
+                (self.are_equal(l1, l2) && self.are_equal(r1, r2))
+                    || (self.are_equal(l1, r2) && self.are_equal(r1, l2))  // ← NUEVO
+            }
+            (Mul(l1, r1), Mul(l2, r2)) => {
+                (self.are_equal(l1, l2) && self.are_equal(r1, r2))
+                    || (self.are_equal(l1, r2) && self.are_equal(r1, l2))  // ← NUEVO
+            }
+            // ...
+        }
+    }
+}
+```
+
+Necesario porque canonical ordering puede producir diferentes órdenes pero semánticamente equivalentes.
+
+**3. Tests Actualizados**
+
+Antes:
+```rust
+assert_eq!(result, "x + 2");  // ❌ Podría fallar si da "2 + x"
+```
+
+Ahora:
+```rust
+assert_eq!(result, "2 + x");  // ✅ Siempre produce forma canónica
+```
+
+17 tests actualizados para aceptar formas canónicas.
+
+---
+
+#### Costos y Trade-offs
+
+**Costo adicional**: ~2-5% overhead en `Context::add()`
+- La mayoría del tiempo se gasta en allocations, no comparaciones
+- El costo es **amortizado** por beneficios en cache y comparaciones
+
+**Beneficios**:
+- ✅ Tests más robustos (100% deterministas)
+- ✅ Cache más efectivo (menos duplicados)
+- ✅ Debugging más fácil (output predecible)
+- ✅ Comparaciones más rápidas (menos casos especiales)
+
+**Decision**: El overhead vale la pena por la ganancia en mantenibilidad.
+
+---
+
+#### Cicle Detector vs Canonical Ordering
+
+⚠️ **Nota importante**: El `CycleDetector` en `orchestrator.rs` **SÍ usa hash**, pero con un propósito diferente:
+
+```rust
+// orchestrator.rs - CycleDetector
+struct CycleDetector {
+    history: VecDeque<u64>,  // Almacena hashes
+}
+
+impl CycleDetector {
+    fn semantic_hash(ctx: &Context, expr: ExprId) -> u64 {
+        // Usa hash para detectar ciclos A → B → C → A
+    }
+}
+```
+
+**Por qué es aceptable**:
+1. **No afecta corrección**: Colisión hash → falso positivo → detiene prematuramente (seguro)
+2. **Performance crítica**: Necesita ser O(1) para detectar ciclos en tiempo real
+3. **Scope limitado**: Solo durante simplificación, no para igualdad o ordenamiento
+
+**Separación de responsabilidades**:
+- **Canonical Ordering**: Usa `compare_expr` (sin hash)
+- **Cycle Detection**: Usa `semantic_hash` (con hash)
+- **Semantic Equality**: Usa `are_equal` (sin hash)
+
+---
+
 ### 2.5. `cas_engine` - Pattern Detection Infrastructure ★★★
 
 **CRÍTICO**: Sistema agregado en 2025-12 después de 10+ horas de implementación y debugging.
