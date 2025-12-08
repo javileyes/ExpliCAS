@@ -81,24 +81,24 @@ define_rule!(
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
 
-                        // sin(arcsin(x)) = x
-                        if outer_name == "sin" && inner_name == "arcsin" {
+                        // sin(arcsin(x)) = x (also handles asin variant)
+                        if outer_name == "sin" && (inner_name == "arcsin" || inner_name == "asin") {
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "sin(arcsin(x)) = x".to_string(),
                             });
                         }
 
-                        // cos(arccos(x)) = x
-                        if outer_name == "cos" && inner_name == "arccos" {
+                        // cos(arccos(x)) = x (also handles acos variant)
+                        if outer_name == "cos" && (inner_name == "arccos" || inner_name == "acos") {
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "cos(arccos(x)) = x".to_string(),
                             });
                         }
 
-                        // tan(arctan(x)) = x
-                        if outer_name == "tan" && inner_name == "arctan" {
+                        // tan(arctan(x)) = x (also handles atan variant)
+                        if outer_name == "tan" && (inner_name == "arctan" || inner_name == "atan") {
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "tan(arctan(x)) = x".to_string(),
@@ -169,8 +169,12 @@ define_rule!(
                         || crate::ordering::compare_expr(ctx, l_arg, r_arg) == Ordering::Equal;
 
                     if args_equal {
-                        if (l_name == "arcsin" && r_name == "arccos")
-                            || (l_name == "arccos" && r_name == "arcsin")
+                        // Check for both "asin"/"arcsin" and "acos"/"arccos" variants
+                        let is_arcsin = |name: &str| name == "arcsin" || name == "asin";
+                        let is_arccos = |name: &str| name == "arccos" || name == "acos";
+
+                        if (is_arcsin(l_name.as_str()) && is_arccos(r_name.as_str()))
+                            || (is_arccos(l_name.as_str()) && is_arcsin(r_name.as_str()))
                         {
                             let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                             let two = ctx.num(2);

@@ -151,6 +151,60 @@ define_rule!(
     }
 );
 
+/// cos(arcsin(x)) → sqrt(1-x²)
+define_rule!(
+    CosArcsinExpansionRule,
+    "cos(arcsin(x)) → √(1-x²)",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
+            if outer_name == "cos" && outer_args.len() == 1 {
+                let inner = outer_args[0];
+                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
+                    if (inner_name == "arcsin" || inner_name == "asin") && inner_args.len() == 1 {
+                        let x = inner_args[0];
+                        // sqrt(1 - x²)
+                        let expr_inside = build_one_minus_x_sq(ctx, x);
+                        let result = build_sqrt(ctx, expr_inside);
+                        return Some(Rewrite {
+                            new_expr: result,
+                            description: "cos(arcsin(x)) → √(1-x²)".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+/// sin(arccos(x)) → sqrt(1-x²)
+define_rule!(
+    SinArccosExpansionRule,
+    "sin(arccos(x)) → √(1-x²)",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
+            if outer_name == "sin" && outer_args.len() == 1 {
+                let inner = outer_args[0];
+                if let Expr::Function(inner_name, inner_args) = ctx.get(inner) {
+                    if (inner_name == "arccos" || inner_name == "acos") && inner_args.len() == 1 {
+                        let x = inner_args[0];
+                        // sqrt(1 - x²)
+                        let expr_inside = build_one_minus_x_sq(ctx, x);
+                        let result = build_sqrt(ctx, expr_inside);
+                        return Some(Rewrite {
+                            new_expr: result,
+                            description: "sin(arccos(x)) → √(1-x²)".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 // ========== Priority 2: Secondary Expansion Rules ==========
 
 /// sin(arcsec(x)) → sqrt(x²-1)/x
@@ -384,7 +438,9 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(SinArctanExpansionRule));
     simplifier.add_rule(Box::new(CosArctanExpansionRule));
     simplifier.add_rule(Box::new(TanArcsinExpansionRule));
-    simplifier.add_rule(Box::new(CotArcsinExpansionRule));
+    simplifier.add_rule(Box::new(CotArcsinExpansionRule)); // NEW: For Test 50
+    simplifier.add_rule(Box::new(CosArcsinExpansionRule)); // NEW: For Test 50
+    simplifier.add_rule(Box::new(SinArccosExpansionRule));
 
     // Priority 2: Secondary expansions
     simplifier.add_rule(Box::new(SinArcsecExpansionRule));
