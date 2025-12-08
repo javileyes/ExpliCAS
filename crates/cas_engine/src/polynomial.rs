@@ -572,8 +572,8 @@ mod tests {
                     id: q_expr
                 }
             ),
-            "x + 1"
-        ); // Display order is x + 1
+            "1 + x" // Canonical: numbers before variables
+        );
     }
 
     #[test]

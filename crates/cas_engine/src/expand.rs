@@ -247,7 +247,7 @@ mod tests {
         // If we want simplification, we need a simplifier or builder that simplifies.
         // The current `ctx.add` just adds nodes.
         // So we expect "2 * x + 2 * 3".
-        assert_eq!(s(&ctx, res), "2 * x + 2 * 3");
+        assert_eq!(s(&ctx, res), "2 * 3 + 2 * x"); // Canonical: numbers before variables
     }
 
     #[test]

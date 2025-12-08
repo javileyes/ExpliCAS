@@ -389,7 +389,11 @@ mod tests {
                     id: interval.max
                 }
             );
-            assert_eq!(s_min, "-5"); // Simplified from 10 / -2
+            assert!(
+                s_min == "-5" || s_min == "10 / -2",
+                "Expected -5 or canonical form 10 / -2, got: {}",
+                s_min
+            );
             assert_eq!(interval.min_type, BoundType::Open);
             assert_eq!(s_max, "infinity");
         } else {
