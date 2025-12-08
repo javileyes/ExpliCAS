@@ -25,8 +25,8 @@ fn simplify_str(input: &str) -> String {
 
 #[test]
 fn test_negated_atan_pair_basic() {
-    // -atan(x) - atan(1/x) = -π/2
-    let result = simplify_str("-atan(2) - atan(1/2)");
+    // -atan(x) - arctan(1/x) = -π/2
+    let result = simplify_str("-atan(2) - arctan(1/2)");
     assert!(
         result.contains("1/2 * pi") && result.contains("-"),
         "Should simplify to -π/2, got: {}",
@@ -37,9 +37,9 @@ fn test_negated_atan_pair_basic() {
 #[test]
 fn test_negated_atan_pair_with_variable() {
     // The case that Sympy can't do!
-    let result = simplify_str("-atan(1/2) - atan(2) + x");
+    let result = simplify_str("-atan(1/2) - arctan(2) + x");
     assert!(
-        result.contains("1/2 * pi") && result.contains("x") && !result.contains("atan"),
+        result.contains("1/2 * pi") && result.contains("x") && !result.contains("arctan"),
         "Should simplify to x - π/2, got: {}",
         result
     );
@@ -47,9 +47,9 @@ fn test_negated_atan_pair_with_variable() {
 
 #[test]
 fn test_negated_atan_pair_different_order() {
-    let result = simplify_str("-atan(3) + y - atan(1/3)");
+    let result = simplify_str("-atan(3) + y - arctan(1/3)");
     assert!(
-        result.contains("1/2 * pi") && !result.contains("atan"),
+        result.contains("1/2 * pi") && !result.contains("arctan"),
         "Should find negated pair, got: {}",
         result
     );
@@ -58,7 +58,7 @@ fn test_negated_atan_pair_different_order() {
 #[test]
 fn test_mixed_positive_and_negative_atan() {
     // Positive pair + separate negated terms
-    let result = simplify_str("atan(2) + atan(1/2) - atan(5) - atan(1/5)");
+    let result = simplify_str("arctan(2) + arctan(1/2) - arctan(5) - arctan(1/5)");
     // First pair: π/2, second (negated) pair: -π/2 → π/2 - π/2 = 0
     assert_eq!(result, "0", "Should simplify to 0, got: {}", result);
 }
@@ -66,9 +66,9 @@ fn test_mixed_positive_and_negative_atan() {
 #[test]
 fn test_partially_negated_no_match() {
     // Only one negated, other positive - should NOT match
-    let result = simplify_str("-atan(2) + atan(1/2)");
+    let result = simplify_str("-atan(2) + arctan(1/2)");
     assert!(
-        result.contains("atan(2)") && result.contains("atan(1/2)"),
+        result.contains("arctan(2)") && result.contains("arctan(1/2)"),
         "Should NOT match partial negation, got: {}",
         result
     );

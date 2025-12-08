@@ -33,7 +33,7 @@ fn simplify_str(input: &str) -> String {
 #[test]
 fn test_nary_atan_three_terms() {
     // atan pair with one extra term
-    let result = simplify_str("atan(2) + 5 + atan(1/2)");
+    let result = simplify_str("arctan(2) + 5 + arctan(1/2)");
     assert!(
         result.contains("1/2 * pi") && result.contains("5"),
         "Should find pair among 3 terms"
@@ -43,7 +43,7 @@ fn test_nary_atan_three_terms() {
 #[test]
 fn test_nary_atan_four_terms() {
     // atan pair with two extra terms
-    let result = simplify_str("atan(3) + 10 + atan(1/3) - 5");
+    let result = simplify_str("arctan(3) + 10 + arctan(1/3) - 5");
     assert!(
         result.contains("1/2 * pi") && result.contains("5"),
         "Should find pair among 4 terms"
@@ -53,7 +53,7 @@ fn test_nary_atan_four_terms() {
 #[test]
 fn test_nary_atan_five_terms_mixed() {
     // atan pair buried in middle
-    let result = simplify_str("x + atan(5) + y + atan(1/5) + z");
+    let result = simplify_str("x + arctan(5) + y + arctan(1/5) + z");
     assert!(
         result.contains("1/2 * pi")
             && result.contains("x")
@@ -70,8 +70,8 @@ fn test_nary_atan_five_terms_mixed() {
 #[test]
 fn test_nary_atan_two_pairs() {
     // Two separate atan pairs
-    let result = simplify_str("atan(2) + atan(1/2) + atan(3) + atan(1/3)");
-    // First iteration finds one pair → π/2 + atan(3) + atan(1/3)
+    let result = simplify_str("arctan(2) + arctan(1/2) + arctan(3) + arctan(1/3)");
+    // First iteration finds one pair → π/2 + arctan(3) + arctan(1/3)
     // Second iteration finds second pair → π/2 + π/2 → π
     assert_eq!(result, "pi", "Should find both pairs and simplify to π");
 }
@@ -79,9 +79,9 @@ fn test_nary_atan_two_pairs() {
 #[test]
 fn test_nary_atan_two_pairs_with_noise() {
     // Two pairs with constants between
-    let result = simplify_str("atan(2) + 7 + atan(1/2) - 3 + atan(4) + atan(1/4)");
+    let result = simplify_str("arctan(2) + 7 + arctan(1/2) - 3 + arctan(4) + arctan(1/4)");
     assert!(
-        result.contains("pi") && result.contains("4") && !result.contains("atan"),
+        result.contains("pi") && result.contains("4") && !result.contains("arctan"),
         "Should find both pairs: 2π/2 + 7 - 3"
     );
 }
@@ -89,7 +89,7 @@ fn test_nary_atan_two_pairs_with_noise() {
 #[test]
 fn test_nary_atan_three_pairs() {
     // Three separate pairs (stress test)
-    let result = simplify_str("atan(2) + atan(1/2) + atan(3) + atan(1/3) + atan(5) + atan(1/5)");
+    let result = simplify_str("arctan(2) + arctan(1/2) + arctan(3) + arctan(1/3) + arctan(5) + arctan(1/5)");
     assert_eq!(result, "3/2 * pi", "Should find all three pairs");
 }
 
@@ -100,16 +100,16 @@ fn test_nary_atan_three_pairs() {
 #[test]
 fn test_nary_atan_reversed_order() {
     // Reciprocal appears before base
-    let result = simplify_str("atan(1/7) + atan(7)");
+    let result = simplify_str("arctan(1/7) + arctan(7)");
     assert_eq!(result, "1/2 * pi", "Should work with reversed order");
 }
 
 #[test]
 fn test_nary_atan_scattered() {
     // Pair separated by many terms
-    let result = simplify_str("atan(2) + a + b + c + d + e + atan(1/2)");
+    let result = simplify_str("arctan(2) + a + b + c + d + e + arctan(1/2)");
     assert!(
-        result.contains("1/2 * pi") && !result.contains("atan"),
+        result.contains("1/2 * pi") && !result.contains("arctan"),
         "Should find scattered pair"
     );
 }
@@ -117,9 +117,9 @@ fn test_nary_atan_scattered() {
 #[test]
 fn test_nary_atan_random_positions() {
     // Pair at random positions
-    let result = simplify_str("x + y + atan(6) + z + w + atan(1/6) + v");
+    let result = simplify_str("x + y + arctan(6) + z + w + arctan(1/6) + v");
     assert!(
-        result.contains("1/2 * pi") && !result.contains("atan"),
+        result.contains("1/2 * pi") && !result.contains("arctan"),
         "Should find pair regardless of position"
     );
 }
@@ -131,9 +131,9 @@ fn test_nary_atan_random_positions() {
 #[test]
 fn test_nary_single_atan() {
     // Only one atan (no pair)
-    let result = simplify_str("atan(2) + 5");
+    let result = simplify_str("arctan(2) + 5");
     assert!(
-        result.contains("atan(2)") && result.contains("5"),
+        result.contains("arctan(2)") && result.contains("5"),
         "Should not change with single atan"
     );
 }
@@ -141,9 +141,9 @@ fn test_nary_single_atan() {
 #[test]
 fn test_nary_no_reciprocal_pair() {
     // Two atans but not reciprocals
-    let result = simplify_str("atan(2) + atan(3)");
+    let result = simplify_str("arctan(2) + arctan(3)");
     assert_eq!(
-        result, "atan(2) + atan(3)",
+        result, "arctan(2) + arctan(3)",
         "Should not match non-reciprocals"
     );
 }
@@ -151,9 +151,9 @@ fn test_nary_no_reciprocal_pair() {
 #[test]
 fn test_nary_three_atans_one_pair() {
     // Three atans, only two are reciprocals
-    let result = simplify_str("atan(2) + atan(1/2) + atan(5)");
+    let result = simplify_str("arctan(2) + arctan(1/2) + arctan(5)");
     assert!(
-        result.contains("1/2 * pi") && result.contains("atan(5)"),
+        result.contains("1/2 * pi") && result.contains("arctan(5)"),
         "Should find the matching pair"
     );
 }
@@ -161,8 +161,8 @@ fn test_nary_three_atans_one_pair() {
 #[test]
 fn test_nary_same_atan_twice() {
     // Same atan appears twice (not reciprocals)
-    let result = simplify_str("atan(2) + atan(2)");
-    assert_eq!(result, "2 * atan(2)", "Should not match identical atans");
+    let result = simplify_str("arctan(2) + arctan(2)");
+    assert_eq!(result, "2 * arctan(2)", "Should not match identical atans");
 }
 
 // ============================================================================
@@ -172,25 +172,25 @@ fn test_nary_same_atan_twice() {
 #[test]
 fn test_nary_with_cancellation() {
     // Original Test 48 - full expression
-    let result = simplify_str("atan(2) + atan(1/2) - pi/2");
+    let result = simplify_str("arctan(2) + arctan(1/2) - pi/2");
     assert_eq!(result, "0", "Should simplify completely to 0");
 }
 
 #[test]
 fn test_nary_cascading_simplification() {
     // Pair simplifies, then constants combine
-    let result = simplify_str("atan(3) + atan(1/3) + 10 - 10");
+    let result = simplify_str("arctan(3) + arctan(1/3) + 10 - 10");
     assert_eq!(result, "1/2 * pi", "Should cascade: pair→π/2, then 10-10→0");
 }
 
 #[test]
 fn test_nary_nested_operations() {
     // atan terms mixed with other operations
-    let result = simplify_str("2*(atan(4) + 3) + atan(1/4) - 6");
-    // 2*atan(4) + 6 + atan(1/4) - 6 → 2*atan(4) + atan(1/4)
+    let result = simplify_str("2*(atan(4) + 3) + arctan(1/4) - 6");
+    // 2*atan(4) + 6 + arctan(1/4) - 6 → 2*atan(4) + arctan(1/4)
     // No simplification expected (can't factor out from product)
     assert!(
-        result.contains("atan"),
+        result.contains("arctan"),
         "Nested products shouldn't prevent matching"
     );
 }
@@ -202,21 +202,21 @@ fn test_nary_nested_operations() {
 #[test]
 fn test_nary_integer_reciprocals() {
     // Various integer reciprocals
-    let result = simplify_str("atan(7) + atan(1/7)");
+    let result = simplify_str("arctan(7) + arctan(1/7)");
     assert_eq!(result, "1/2 * pi", "Should detect 7 and 1/7");
 }
 
 #[test]
 fn test_nary_fraction_reciprocals() {
     // Fraction and its reciprocal
-    let result = simplify_str("atan(2/3) + atan(3/2)");
+    let result = simplify_str("arctan(2/3) + arctan(3/2)");
     assert_eq!(result, "1/2 * pi", "Should detect 2/3 and 3/2");
 }
 
 #[test]
 fn test_nary_decimal_like_reciprocals() {
     // Numbers that multiply to 1
-    let result = simplify_str("atan(1/10) + atan(10)");
+    let result = simplify_str("arctan(1/10) + arctan(10)");
     assert_eq!(result, "1/2 * pi", "Should detect 1/10 and 10");
 }
 
@@ -227,9 +227,9 @@ fn test_nary_decimal_like_reciprocals() {
 #[test]
 fn test_nary_ten_terms_one_pair() {
     // 10 terms with one pair
-    let result = simplify_str("a + b + c + d + atan(2) + e + f + g + atan(1/2) + h");
+    let result = simplify_str("a + b + c + d + arctan(2) + e + f + g + arctan(1/2) + h");
     assert!(
-        result.contains("1/2 * pi") && !result.contains("atan") && result.contains("a"),
+        result.contains("1/2 * pi") && !result.contains("arctan") && result.contains("a"),
         "Should handle 10 terms efficiently"
     );
 }
@@ -237,7 +237,7 @@ fn test_nary_ten_terms_one_pair() {
 #[test]
 fn test_nary_many_constants() {
     // Many constant terms with atan pair
-    let result = simplify_str("1 + 2 + 3 + atan(8) + 4 + 5 + atan(1/8) + 6");
+    let result = simplify_str("1 + 2 + 3 + arctan(8) + 4 + 5 + arctan(1/8) + 6");
     // Constants fold: 1+2+3+4+5+6=21, plus π/2
     assert!(
         result.contains("1/2 * pi") && result.contains("21"),
@@ -252,11 +252,11 @@ fn test_nary_many_constants() {
 #[test]
 fn test_nary_with_negation() {
     // atan pair where one is negated in sum
-    let result = simplify_str("atan(2) - atan(1/2) + pi/2");
-    // Note: atan(x) + atan(1/x) = π/2, but atan(x) - atan(1/x) ≠ simple form
+    let result = simplify_str("arctan(2) - arctan(1/2) + pi/2");
+    // Note: arctan(x) + arctan(1/x) = π/2, but arctan(x) - arctan(1/x) ≠ simple form
     // This should NOT simplify via reciprocal rule
     assert!(
-        result.contains("atan"),
+        result.contains("arctan"),
         "Subtraction shouldn't match reciprocal rule"
     );
 }
@@ -264,7 +264,7 @@ fn test_nary_with_negation() {
 #[test]
 fn test_nary_variables_in_args() {
     // Symbolic reciprocals (x and 1/x)
-    let result = simplify_str("atan(x) + atan(1/x)");
+    let result = simplify_str("arctan(x) + arctan(1/x)");
     assert_eq!(result, "1/2 * pi", "Should work with symbolic reciprocals");
 }
 
@@ -272,10 +272,10 @@ fn test_nary_variables_in_args() {
 fn test_nary_complex_fractions() {
     // Complex fraction reciprocals - currently NOT supported
     // are_reciprocals() only handles simple cases like x and 1/x
-    let result = simplify_str("atan((a + b)/(c + d)) + atan((c + d)/(a + b))");
+    let result = simplify_str("arctan((a + b)/(c + d)) + arctan((c + d)/(a + b))");
     // This should NOT simplify (complex expression reciprocals not detected)
     assert!(
-        result.contains("atan"),
+        result.contains("arctan"),
         "Complex expression reciprocals not yet supported"
     );
 }
@@ -287,14 +287,14 @@ fn test_nary_complex_fractions() {
 #[test]
 fn test_nary_doesnt_break_binary() {
     // Ensure binary case still works
-    let result = simplify_str("atan(2) + atan(1/2)");
+    let result = simplify_str("arctan(2) + arctan(1/2)");
     assert_eq!(result, "1/2 * pi", "Binary case should still work");
 }
 
 #[test]
 fn test_nary_preserves_other_functions() {
     // Other functions should not be affected
-    let result = simplify_str("sin(x) + atan(3) + cos(y) + atan(1/3)");
+    let result = simplify_str("sin(x) + arctan(3) + cos(y) + arctan(1/3)");
     assert!(
         result.contains("1/2 * pi") && result.contains("cos(y)") && result.contains("sin(x)"),
         "Should not affect non-atan functions"
@@ -304,9 +304,9 @@ fn test_nary_preserves_other_functions() {
 #[test]
 fn test_nary_no_false_positives() {
     // Similar looking but not reciprocals
-    let result = simplify_str("atan(2) + atan(1/3)");
+    let result = simplify_str("arctan(2) + arctan(1/3)");
     assert!(
-        result.contains("atan(2)") && result.contains("atan(1/3)") && !result.contains("pi"),
+        result.contains("arctan(2)") && result.contains("arctan(1/3)") && !result.contains("pi"),
         "Should not match non-reciprocals"
     );
 }

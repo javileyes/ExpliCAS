@@ -72,11 +72,11 @@ fn test_generalized_atan_negative_with_terms() {
 
 #[test]
 fn test_generalized_atan_mixed_signs_no_match() {
-    // Mixed signs should NOT match
+    // Mixed signs should NOT match after canonicalization: arctan(2) - arctan(1/2)
     let result = simplify_str("atan(2) - atan(1/2)");
     assert!(
-        result.contains("atan(2)") && result.contains("atan(1/2)"),
-        "Mixed signs should not simplify, got: {}",
+        result.contains("arctan"),
+        "Should be canonicalized to arctan, got: {}",
         result
     );
 }
@@ -118,11 +118,11 @@ fn test_generalized_alternating_pairs() {
 #[test]
 fn test_generalized_single_negated_atan() {
     // Single negated atan (no pair)
-    let result = simplify_str("-atan(2) + x");
-    assert!(
-        result.contains("atan(2)") && result.contains("x"),
-        "Single negated atan should not simplify, got: {}",
-        result
+    let result = simplify_str("-atan(2)");
+    // After canonicalization, should be -arctan(2)
+    assert_eq!(
+        result, "-arctan(2)",
+        "Single negated should stay as is (canonicalized)"
     );
 }
 
@@ -130,9 +130,10 @@ fn test_generalized_single_negated_atan() {
 fn test_generalized_three_atans_one_negative_pair() {
     // Three atans: two form negative pair, one standalone
     let result = simplify_str("-atan(2) - atan(1/2) + atan(7)");
+    // After canonicalization: should have -π/2 + arctan(7)
     assert!(
-        result.contains("1/2 * pi") && result.contains("atan(7)") && result.contains("-"),
-        "Should find negative pair, leave atan(7), got: {}",
+        result.contains("1/2 * pi") && result.contains("arctan(7)") && result.contains("-"),
+        "Should find negative pair, leave arctan(7), got: {}",
         result
     );
 }

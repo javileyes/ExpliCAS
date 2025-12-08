@@ -98,11 +98,11 @@ fn test_asin_acos_negated_scattered() {
 
 #[test]
 fn test_asin_acos_mixed_signs_no_match() {
-    // Positive + negative should NOT match
+    // After canonicalization, should be arcsin - arccos (both canonicalized but still mixed signs)
     let result = simplify_str("asin(x) - acos(x)");
     assert!(
-        result.contains("asin") && result.contains("acos"),
-        "Mixed signs should not simplify, got: {}",
+        result.contains("arcsin") && result.contains("arccos"),
+        "Mixed signs should not simplify but should be canonicalized, got: {}",
         result
     );
 }

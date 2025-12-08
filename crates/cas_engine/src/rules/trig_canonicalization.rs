@@ -87,6 +87,48 @@ fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+// ============================== Function Name Canonicalization ==============================
+
+/// Canonicalize trig function names: asin→arcsin, acos→arccos, atan→arctan
+/// This prevents bugs from mixed naming like "arccos(x) - acos(x)" not simplifying
+define_rule!(
+    TrigFunctionNameCanonicalizationRule,
+    "Canonicalize Trig Function Names",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            // Clone name and args to avoid borrow issues
+            let name_clone = name.clone();
+            let args_clone = args.clone();
+
+            let canonical_name = match name_clone.as_str() {
+                // Short forms → Canonical long forms
+                "asin" => Some("arcsin"),
+                "acos" => Some("arccos"),
+                "atan" => Some("arctan"),
+                "asec" => Some("arcsec"),
+                "acsc" => Some("arccsc"),
+                "acot" => Some("arccot"),
+
+                // Already canonical - no change needed
+                "arcsin" | "arccos" | "arctan" | "arcsec" | "arccsc" | "arccot" => None,
+
+                // Not an inverse trig function - skip
+                _ => None,
+            };
+
+            if let Some(canonical) = canonical_name {
+                let new_fn = ctx.add(Expr::Function(canonical.to_string(), args_clone));
+                return Some(Rewrite {
+                    new_expr: new_fn,
+                    description: format!("{} → {}", name_clone, canonical),
+                });
+            }
+        }
+        None
+    }
+);
+
 // ==================== Phase 4: Mixed Fraction Helpers ====================
 
 use std::collections::HashSet;
@@ -618,6 +660,9 @@ pub fn register_pythagorean_identities(simplifier: &mut crate::engine::Simplifie
 /// CRITICAL: These rules are applied AFTER compositions resolve
 /// so that tan(arctan(x)) → x happens before any conversion attempts
 pub fn register(simplifier: &mut crate::engine::Simplifier) {
+    // Function name canonicalization - MUST run first
+    simplifier.add_rule(Box::new(TrigFunctionNameCanonicalizationRule));
+
     // Reciprocal product simplification
     simplifier.add_rule(Box::new(ConvertReciprocalProductRule));
 
