@@ -1,4 +1,5 @@
 use crate::define_rule;
+use crate::helpers::is_half;
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
@@ -282,15 +283,7 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
                 }
             };
 
-            let is_half = |e: ExprId| -> bool {
-                if let Expr::Number(n) = ctx.get(e) {
-                    *n.numer() == 1.into() && *n.denom() == 2.into()
-                } else {
-                    false
-                }
-            };
-
-            if is_even_int(inner_exp) && is_half(outer_exp) {
+            if is_even_int(inner_exp) && is_half(ctx, outer_exp) {
                 // (x^(2k))^(1/2) -> |x|^k
                 // If k=1, |x|.
                 // new_exp = inner_exp * outer_exp = 2k * 1/2 = k.
@@ -427,7 +420,13 @@ mod tests {
         let x3 = ctx.add(Expr::Pow(x, three));
         let expr = ctx.add(Expr::Mul(x2, x3));
 
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -441,7 +440,13 @@ mod tests {
 
         // x * x -> x^2
         let expr2 = ctx.add(Expr::Mul(x, x));
-        let rewrite2 = rule.apply(&mut ctx, expr2, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite2 = rule
+            .apply(
+                &mut ctx,
+                expr2,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -466,7 +471,13 @@ mod tests {
         let x2 = ctx.add(Expr::Pow(x, two));
         let expr = ctx.add(Expr::Pow(x2, three));
 
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -488,7 +499,13 @@ mod tests {
         let x = ctx.var("x");
         let zero = ctx.num(0);
         let expr = ctx.add(Expr::Pow(x, zero));
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         assert_eq!(
             format!(
                 "{}",
@@ -503,7 +520,13 @@ mod tests {
         // x^1 -> x
         let one = ctx.num(1);
         let expr2 = ctx.add(Expr::Pow(x, one));
-        let rewrite2 = rule.apply(&mut ctx, expr2, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite2 = rule
+            .apply(
+                &mut ctx,
+                expr2,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         assert_eq!(
             format!(
                 "{}",

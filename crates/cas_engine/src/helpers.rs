@@ -178,3 +178,12 @@ pub fn build_pi_over_n(ctx: &mut Context, denom: i64) -> ExprId {
     let d = ctx.num(denom);
     ctx.add(Expr::Div(pi, d))
 }
+
+/// Check if expression equals 1/2
+pub fn is_half(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        *n.numer() == 1.into() && *n.denom() == 2.into()
+    } else {
+        false
+    }
+}
