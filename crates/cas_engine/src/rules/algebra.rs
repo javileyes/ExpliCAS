@@ -640,7 +640,13 @@ mod tests {
 
         // (x^2 - 1) / (x + 1) -> x - 1
         let expr = parse("(x^2 - 1) / (x + 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         // Result might be -1 + x or x - 1 depending on polynomial to_expr order
         // Polynomial to_expr outputs lowest degree first?
         // My implementation: "1 + x" for x+1.
@@ -664,7 +670,13 @@ mod tests {
         let rule = SimplifyFractionRule;
         // (x^2 + 2*x + 1) / (x + 1) -> x + 1
         let expr = parse("(x^2 + 2*x + 1) / (x + 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         let s = format!(
             "{}",
             DisplayExpr {
@@ -686,7 +698,13 @@ mod tests {
         // Roots are 1, -1.
         // Factors: (x-1), (x+1).
         let expr = parse("factor(x^2 - 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         let res = format!(
             "{}",
             DisplayExpr {
@@ -704,7 +722,13 @@ mod tests {
         let rule = FactorRule;
         // factor(x^2 + 2x + 1) -> (x + 1)(x + 1)
         let expr = parse("factor(x^2 + 2*x + 1)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         let res = format!(
             "{}",
             DisplayExpr {
@@ -1705,7 +1729,7 @@ define_rule!(
 
                     let mut trig_idx = None;
                     let mut func_name = String::new();
-                    let mut arg = ExprId(0);
+                    let mut arg = None;
 
                     for (i, &f) in factors.iter().enumerate() {
                         if let Expr::Pow(b, exp) = ctx.get(f) {
@@ -1715,7 +1739,7 @@ define_rule!(
                                         if (name == "sin" || name == "cos") && args.len() == 1 {
                                             trig_idx = Some(i);
                                             func_name = name.clone();
-                                            arg = args[0];
+                                            arg = Some(args[0]);
                                             break;
                                         }
                                     }
@@ -1725,6 +1749,7 @@ define_rule!(
                     }
 
                     if let Some(idx) = trig_idx {
+                        let arg = arg.unwrap();
                         let mut coeff_factors = Vec::new();
                         if is_neg {
                             coeff_factors.push(ctx.num(-1));

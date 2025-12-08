@@ -1,10 +1,46 @@
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::Zero;
+use std::collections::HashMap;
 use std::fmt;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ExprId(pub u32);
+pub struct ExprId(u32);
+
+impl ExprId {
+    pub const INDEX_MASK: u32 = 0x1FFFFFFF;
+    pub const TAG_SHIFT: u32 = 29;
+
+    pub const TAG_NUMBER: u32 = 0;
+    pub const TAG_ATOM: u32 = 1; // Variable, Constant
+    pub const TAG_UNARY: u32 = 2; // Neg
+    pub const TAG_BINARY: u32 = 3; // Add, Sub, Mul, Div, Pow
+    pub const TAG_NARY: u32 = 4; // Function, Matrix
+
+    #[inline]
+    pub fn new(index: u32, tag: u32) -> Self {
+        debug_assert!(index <= Self::INDEX_MASK, "ExprId index overflow");
+        debug_assert!(tag <= 7, "ExprId tag overflow");
+        ExprId((tag << Self::TAG_SHIFT) | (index & Self::INDEX_MASK))
+    }
+
+    #[inline]
+    pub fn index(self) -> usize {
+        (self.0 & Self::INDEX_MASK) as usize
+    }
+
+    #[inline]
+    pub fn tag(self) -> u32 {
+        (self.0 >> Self::TAG_SHIFT)
+    }
+
+    #[inline]
+    pub fn is_atom(self) -> bool {
+        let t = self.tag();
+        t == Self::TAG_NUMBER || t == Self::TAG_ATOM
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Constant {
@@ -41,11 +77,15 @@ pub enum Expr {
 #[derive(Default, Clone)]
 pub struct Context {
     pub nodes: Vec<Expr>,
+    pub interner: HashMap<u64, ExprId>,
 }
 
 impl Context {
     pub fn new() -> Self {
-        Self { nodes: Vec::new() }
+        Self {
+            nodes: Vec::new(),
+            interner: HashMap::new(),
+        }
     }
 
     pub fn add(&mut self, expr: Expr) -> ExprId {
@@ -71,13 +111,45 @@ impl Context {
             other => other,
         };
 
-        let id = ExprId(self.nodes.len() as u32);
+        // Expression Interning: Deduplicate expressions
+        let mut hasher = DefaultHasher::new();
+        canonical_expr.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        if let Some(&id) = self.interner.get(&hash) {
+            // Verify equality to handle hash collisions
+            // We can safely panic on access out of bounds, but it shouldn't happen
+            if self.nodes[id.index()] == canonical_expr {
+                return id;
+            }
+            // Collision detected (same hash, different content)
+            // We fall through to add a new node, effectively overwriting the map entry for this hash
+            // This degrades deduplication for this bucket but maintains correctness
+        }
+
+        let index = self.nodes.len() as u32;
+
+        // Determine tag based on expression type
+        let tag = match &canonical_expr {
+            Expr::Number(_) => ExprId::TAG_NUMBER,
+            Expr::Variable(_) | Expr::Constant(_) => ExprId::TAG_ATOM,
+            Expr::Neg(_) => ExprId::TAG_UNARY,
+            Expr::Add(_, _)
+            | Expr::Sub(_, _)
+            | Expr::Mul(_, _)
+            | Expr::Div(_, _)
+            | Expr::Pow(_, _) => ExprId::TAG_BINARY,
+            Expr::Function(_, _) | Expr::Matrix { .. } => ExprId::TAG_NARY,
+        };
+
+        let id = ExprId::new(index, tag);
         self.nodes.push(canonical_expr);
+        self.interner.insert(hash, id);
         id
     }
 
     pub fn get(&self, id: ExprId) -> &Expr {
-        &self.nodes[id.0 as usize]
+        &self.nodes[id.index()]
     }
 
     // Helper constructors that add to context immediately
@@ -131,7 +203,7 @@ impl Context {
 
 impl fmt::Display for ExprId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Expr#{}", self.0)
+        write!(f, "Expr#{}", self.index())
     }
 }
 
