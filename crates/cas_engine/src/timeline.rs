@@ -1,5 +1,8 @@
 use crate::step::{PathStep, Step};
-use cas_ast::{Context, DisplayExpr, Expr, ExprId, LaTeXExpr};
+use cas_ast::{
+    Context, DisplayExpr, Expr, ExprId, HighlightColor, HighlightConfig, LaTeXExpr,
+    LaTeXExprHighlighted,
+};
 use num_traits::Signed;
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
@@ -53,6 +56,24 @@ impl<'a> TimelineHtml<'a> {
             title,
             verbosity_level: verbosity,
         }
+    }
+
+    /// Generate LaTeX for an expression with a single subexpression highlighted
+    /// Uses the new LaTeXExprHighlighted system for cleaner code.
+    fn latex_with_single_highlight(
+        &self,
+        root_expr: ExprId,
+        highlight_id: ExprId,
+        color: HighlightColor,
+    ) -> String {
+        let mut config = HighlightConfig::new();
+        config.add(highlight_id, color);
+        LaTeXExprHighlighted {
+            context: self.context,
+            id: root_expr,
+            highlights: &config,
+        }
+        .to_latex()
     }
 
     /// Generate LaTeX for an expression with a specific subexpression highlighted
@@ -1139,6 +1160,10 @@ impl<'a> TimelineHtml<'a> {
                 step.before,
             );
 
+            // Generate global AFTER with green highlight on the result
+            let global_after =
+                self.latex_with_single_highlight(current_global, step.after, HighlightColor::Green);
+
             let should_preserve_exponents = step.rule_name.contains("Multiply exponents")
                 || step.rule_name.contains("Power of a Power");
 
@@ -1206,7 +1231,7 @@ impl<'a> TimelineHtml<'a> {
                     <h3>{}</h3>
                     {}
                     <div class="math-expr before">
-                        \(\textbf{{Expression:}}\)
+                        \(\textbf{{Before:}}\)
                         \[{}\]
                     </div>
                     <div class="rule-description">
@@ -1214,6 +1239,10 @@ impl<'a> TimelineHtml<'a> {
                         <div class="local-change">
                             \[{}\]
                         </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{{After:}}\)
+                        \[{}\]
                     </div>
                 </div>
             </div>
@@ -1223,7 +1252,8 @@ impl<'a> TimelineHtml<'a> {
                 sub_steps_html,
                 global_before,
                 step.description,
-                local_change_latex
+                local_change_latex,
+                global_after
             ));
         }
 
