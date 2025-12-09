@@ -297,6 +297,14 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
                 }
             }
 
+            // Filter no-op steps (global_before == global_after means no visible change)
+            // This catches expand→factor cycles and other patterns that change nothing
+            if let (Some(before), Some(after)) = (step.global_before, step.global_after) {
+                if before == after {
+                    return false;
+                }
+            }
+
             true
         }
     }
