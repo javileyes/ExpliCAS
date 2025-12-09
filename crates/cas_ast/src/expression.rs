@@ -900,3 +900,101 @@ impl<'a> fmt::Display for RawDisplayExpr<'a> {
         }
     }
 }
+
+/// DisplayExpr with hints for preserving original notation (e.g., sqrt)
+pub struct DisplayExprWithHints<'a> {
+    pub context: &'a Context,
+    pub id: ExprId,
+    pub hints: &'a crate::display_context::DisplayContext,
+}
+
+impl<'a> DisplayExprWithHints<'a> {
+    fn fmt_internal(&self, f: &mut fmt::Formatter<'_>, id: ExprId) -> fmt::Result {
+        // Check for display hint first
+        if let Some(hint) = self.hints.get(id) {
+            match hint {
+                crate::display_context::DisplayHint::AsRoot { index } => {
+                    // Render as root notation
+                    if let Expr::Pow(base, _) = self.context.get(id) {
+                        if *index == 2 {
+                            write!(f, "√(")?;
+                        } else {
+                            write!(f, "{}√(", index)?;
+                        }
+                        self.fmt_internal(f, *base)?;
+                        return write!(f, ")");
+                    }
+                }
+            }
+        }
+
+        // Regular formatting (delegate to DisplayExpr logic)
+        let expr = self.context.get(id);
+        match expr {
+            Expr::Number(n) => write!(f, "{}", n),
+            Expr::Constant(c) => match c {
+                Constant::Pi => write!(f, "pi"),
+                Constant::E => write!(f, "e"),
+                Constant::Infinity => write!(f, "infinity"),
+                Constant::Undefined => write!(f, "undefined"),
+            },
+            Expr::Variable(s) => write!(f, "{}", s),
+            Expr::Add(l, r) => {
+                self.fmt_internal(f, *l)?;
+                write!(f, " + ")?;
+                self.fmt_internal(f, *r)
+            }
+            Expr::Sub(l, r) => {
+                self.fmt_internal(f, *l)?;
+                write!(f, " - ")?;
+                self.fmt_internal(f, *r)
+            }
+            Expr::Mul(l, r) => {
+                self.fmt_internal(f, *l)?;
+                write!(f, " * ")?;
+                self.fmt_internal(f, *r)
+            }
+            Expr::Div(l, r) => {
+                self.fmt_internal(f, *l)?;
+                write!(f, " / ")?;
+                self.fmt_internal(f, *r)
+            }
+            Expr::Pow(b, e) => {
+                self.fmt_internal(f, *b)?;
+                write!(f, "^(")?;
+                self.fmt_internal(f, *e)?;
+                write!(f, ")")
+            }
+            Expr::Neg(e) => {
+                write!(f, "-")?;
+                self.fmt_internal(f, *e)
+            }
+            Expr::Function(name, args) => {
+                write!(f, "{}(", name)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_internal(f, *arg)?;
+                }
+                write!(f, ")")
+            }
+            Expr::Matrix { rows, cols, data } => {
+                write!(f, "Matrix({}x{}, [", rows, cols)?;
+                for (i, elem) in data.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_internal(f, *elem)?;
+                }
+                write!(f, "])")
+            }
+        }
+    }
+}
+
+impl<'a> fmt::Display for DisplayExprWithHints<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_internal(f, self.id)
+    }
+}

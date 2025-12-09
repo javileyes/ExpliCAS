@@ -1,6 +1,7 @@
 pub mod canonical_forms;
 pub mod collect;
 pub mod didactic;
+pub mod display_context;
 pub mod engine;
 pub mod expand;
 pub mod factor;

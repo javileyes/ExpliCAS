@@ -6,7 +6,8 @@ use cas_engine::rules::exponents::{
 use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule};
 use cas_engine::Simplifier;
 
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Context, DisplayExpr, DisplayExprWithHints, Expr, ExprId};
+use cas_engine::display_context::build_display_context;
 use cas_engine::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
 use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
 use cas_engine::rules::grouping::CollectRule;
@@ -1856,6 +1857,13 @@ impl Repl {
                 );
                 let (simplified, steps) = self.simplifier.simplify(expr);
 
+                // Build display hints for preserving root notation (only when showing steps)
+                let display_hints = if self.verbosity != Verbosity::None {
+                    build_display_context(&self.simplifier.context, &steps)
+                } else {
+                    cas_ast::DisplayContext::new()
+                };
+
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
                         // Even with no engine steps, show didactic sub-steps if there are fraction sums
@@ -2034,9 +2042,10 @@ impl Repl {
                                         } else {
                                             format!(
                                                 "{}",
-                                                DisplayExpr {
+                                                DisplayExprWithHints {
                                                     context: &self.simplifier.context,
-                                                    id: step.after
+                                                    id: step.after,
+                                                    hints: &display_hints
                                                 }
                                             )
                                         };
@@ -2044,9 +2053,10 @@ impl Repl {
                                             "   Local: {} -> {}",
                                             clean_display_string(&format!(
                                                 "{}",
-                                                DisplayExpr {
+                                                DisplayExprWithHints {
                                                     context: &self.simplifier.context,
-                                                    id: step.before
+                                                    id: step.before,
+                                                    hints: &display_hints
                                                 }
                                             )),
                                             clean_display_string(&after_disp)
