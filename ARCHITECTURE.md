@@ -1547,6 +1547,214 @@ let (local_before, local_after) = if should_preserve_exponents {
 
 **Beneficio**: Claridad pedagógica sin sacrificar legibilidad.
 
+###### c) `DisplayContext` - Preservación de Notación de Raíces ★
+
+El sistema `DisplayContext` preserva la notación original de raíces (`√x`) cuando internamente se canonicalizan a potencias fraccionarias (`x^(1/2)`).
+
+**Arquitectura**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Engine Core (sin cambios)                │
+│  Rules → Rewrites → Steps                                   │
+└────────────────────────────┬────────────────────────────────┘
+                             │ steps
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Display Layer                            │
+│  build_display_context(ctx, expr, steps) → DisplayContext   │
+│  DisplayExprWithHints renders √x instead of x^(1/2)         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Tipos Base** (`cas_ast/display_context.rs`):
+
+```rust
+pub enum DisplayHint {
+    AsRoot { index: u32 },  // x^(1/n) → √x
+}
+
+pub struct DisplayContext {
+    hints: HashMap<ExprId, DisplayHint>,
+}
+```
+
+**Builder** (`cas_engine/display_context.rs`):
+
+```rust
+pub fn build_display_context(
+    ctx: &Context,
+    original_expr: ExprId,
+    steps: &[Step],
+) -> DisplayContext {
+    let mut display_ctx = DisplayContext::new();
+    
+    // 1. Escanear expresión original para sqrt() functions
+    scan_for_sqrt_hints(ctx, original_expr, &mut display_ctx);
+    
+    // 2. Capturar hints de steps "Canonicalize Roots"
+    for step in steps {
+        if step.rule_name.contains("Canonicalize Roots") {
+            // step.before = sqrt(x), step.after = x^(1/2)
+            display_ctx.insert(step.after, DisplayHint::AsRoot { index });
+        }
+    }
+    display_ctx
+}
+```
+
+**Rendering** (`DisplayExprWithHints`):
+
+```rust
+impl DisplayExprWithHints {
+    fn fmt_internal(&self, f: &mut fmt::Formatter, id: ExprId) -> fmt::Result {
+        // 1. Detectar sqrt() functions directamente → renderizar como √
+        if let Expr::Function("sqrt", args) = self.context.get(id) {
+            return write!(f, "√({})", args[0]);
+        }
+        
+        // 2. Consultar hints para Pow que vino de sqrt
+        if let Some(DisplayHint::AsRoot { index }) = self.hints.get(id) {
+            if let Expr::Pow(base, _) = self.context.get(id) {
+                return write!(f, "{}√({})", index, base);
+            }
+        }
+        
+        // 3. Formato regular...
+    }
+}
+```
+
+**Flujo Completo**:
+
+| Input | Interno | Display |
+|-------|---------|---------|
+| `sqrt(x)` function | `Expr::Function("sqrt", [x])` | `√(x)` - detección directa |
+| `x^(1/2)` de canonicalización | `Expr::Pow(x, 1/2)` | `√(x)` - vía hints |
+| `x^(17/24)` general | `Expr::Pow(x, 17/24)` | `x^(17/24)` - no es raíz |
+
+**Beneficios**:
+- ✅ **Zero overhead** cuando steps están desactivados
+- ✅ **Desacoplado** del engine - reglas no conocen DisplayContext
+- ✅ **Extensible** - añadir nuevos hints (ej. `x^(-1)` → `1/x`) es trivial
+
+##### 3b. Sistema de SubSteps Didácticos ★
+
+El sistema de **SubSteps** enriquece los pasos de simplificación con explicaciones detalladas de cálculos ocultos (ej. sumas de fracciones en exponentes).
+
+**Problema**:
+```
+Input: x^(1/3 + 1/6)
+Result: x^(1/2)
+
+Sin SubSteps: El usuario no ve cómo 1/3 + 1/6 = 1/2
+```
+
+**Solución** (`cas_engine/didactic.rs`):
+
+```rust
+pub struct SubStep {
+    pub description: String,    // "Find common denominator: 6"
+    pub before_latex: String,   // "1/3 + 1/6"
+    pub after_latex: String,    // "2/6 + 1/6"
+}
+
+pub struct EnrichedStep {
+    pub original: Step,
+    pub sub_steps: Vec<SubStep>,
+}
+
+pub fn enrich_steps(
+    ctx: &Context,
+    original_expr: ExprId,
+    steps: Vec<Step>,
+) -> Vec<EnrichedStep> {
+    // Buscar sumas de fracciones en exponentes
+    let fraction_sums = find_all_fraction_sums(ctx, original_expr);
+    
+    // Generar sub-steps con explicaciones detalladas
+    for sum in fraction_sums {
+        sub_steps.push(SubStep {
+            description: format!("Find common denominator: {}", lcm),
+            before_latex: format_fractions(&sum.fractions),
+            after_latex: format_fractions_with_common_denom(&sum),
+        });
+        sub_steps.push(SubStep {
+            description: "Sum the fractions",
+            before_latex: format_fractions_with_common_denom(&sum),
+            after_latex: format_result(&sum),
+        });
+    }
+    
+    // Adjuntar sub-steps a cada paso (CLI muestra solo una vez)
+    steps.map(|s| EnrichedStep { original: s, sub_steps: sub_steps.clone() })
+}
+```
+
+**Función para Expresiones Sin Pasos**:
+
+```rust
+// Para casos como x^(1/3 + 1/6) que se evalúan en parsing
+pub fn get_standalone_substeps(ctx: &Context, expr: ExprId) -> Vec<SubStep> {
+    find_all_fraction_sums(ctx, expr)
+        .into_iter()
+        .flat_map(generate_fraction_sum_substeps)
+        .collect()
+}
+```
+
+**Ejemplo de Output**:
+
+```
+> x^(1/3 + 1/6) * x^(1/4 + 1/12)
+Steps:
+1. Combine base and power  [Product of Powers]
+      → Find common denominator: 6
+        (1/3) + (1/6) → (2/6) + (1/6)
+      → Sum the fractions
+        (2/6) + (1/6) → (3/6) = (1/2)
+      → Find common denominator: 12
+        (1/4) + (1/12) → (3/12) + (1/12)
+      → Sum the fractions
+        (3/12) + (1/12) → (4/12) = (1/3)
+   Local: x^(1/2) * x^(1/3) -> x^(5/6)
+   Global: x^(5/6)
+Result: x^(5/6)
+```
+
+**Deduplicación Inteligente**:
+
+```rust
+// Evitar sub-steps duplicados o subconjuntos
+fn deduplicate_fraction_sums(sums: Vec<FractionInfo>) -> Vec<FractionInfo> {
+    // Mantener solo los más completos
+    // ej. si tenemos (1/2 + 1/3) y (1/2 + 1/3 + 1/4),
+    // solo mostrar (1/2 + 1/3 + 1/4)
+}
+```
+
+**Integración CLI**:
+
+```rust
+// repl.rs - Mostrar sub-steps solo una vez (primer paso visible)
+let mut sub_steps_shown = false;
+for step in steps {
+    if should_show_step(step, verbosity) && !sub_steps_shown {
+        for sub in enriched_step.sub_steps {
+            println!("      → {}", sub.description);
+            println!("        {} → {}", sub.before_latex, sub.after_latex);
+        }
+        sub_steps_shown = true;
+    }
+}
+```
+
+**Beneficios**:
+- ✅ **Didáctico**: Explica cálculos "ocultos" en parsing
+- ✅ **Contextual**: Solo aparece cuando hay operaciones relevantes
+- ✅ **Sin duplicados**: Lógica de deduplicación inteligente
+- ✅ **Modular**: Funciona con o sin pasos de engine
+
 ##### 4. **Generación HTML**
 
 ```rust
