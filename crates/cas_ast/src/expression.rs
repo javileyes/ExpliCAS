@@ -32,7 +32,7 @@ impl ExprId {
 
     #[inline]
     pub fn tag(self) -> u32 {
-        (self.0 >> Self::TAG_SHIFT)
+        self.0 >> Self::TAG_SHIFT
     }
 
     #[inline]

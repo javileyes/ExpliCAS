@@ -21,7 +21,7 @@
 //! ```
 
 use crate::step::Step;
-use cas_ast::{Context, Expr, ExprId, LaTeXExpr};
+use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};

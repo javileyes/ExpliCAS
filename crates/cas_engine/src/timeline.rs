@@ -1007,127 +1007,6 @@ impl<'a> TimelineHtml<'a> {
         }
     }
 
-    fn render_timeline_filtered(&mut self, filtered_steps: &[&Step]) -> String {
-        let mut html = String::from("        <div class=\"timeline\">\n");
-
-        let mut step_number = 0;
-        let mut current_global = self.original_expr;
-
-        // Track which steps to display (create a set of their indices)
-        let filtered_indices: std::collections::HashSet<_> = filtered_steps
-            .iter()
-            .map(|s| *s as *const Step) // Dereference `&Step` to `Step` before taking pointer
-            .collect();
-
-        // Iterate over ALL steps to correctly update the global state
-        for step in self.steps.iter() {
-            // Store global state BEFORE this step is applied
-            let global_state_before_this_step = current_global;
-
-            // Always update global state, regardless of whether it's filtered
-            current_global = self.reconstruct_global_expr(current_global, &step.path, step.after);
-
-            // Only render if this step is in filtered set
-            let step_ptr = step as *const Step;
-            if !filtered_indices.contains(&step_ptr) {
-                continue; // Skip rendering for non-filtered steps
-            }
-            step_number += 1;
-
-            // Global state BEFORE this step (this is the state *before* the current `step` was applied)
-            // Highlight the part that will change
-            let global_before = self.generate_latex_with_highlight(
-                global_state_before_this_step,
-                &step.path,
-                step.before,
-            );
-
-            // Global AFTER is the current_global (already updated)
-            let _global_after = LaTeXExpr {
-                context: self.context,
-                id: current_global,
-            }
-            .to_latex();
-
-            // Local change (before -> after)
-            // For certain rules, preserve exponent notation instead of converting to roots
-            let should_preserve_exponents = step.rule_name.contains("Multiply exponents")
-                || step.rule_name.contains("Power of a Power");
-
-            let local_change_latex = if should_preserve_exponents {
-                let local_before = cas_ast::LatexNoRoots {
-                    context: self.context,
-                    id: step.before,
-                }
-                .to_latex();
-                let local_after = cas_ast::LatexNoRoots {
-                    context: self.context,
-                    id: step.after,
-                }
-                .to_latex();
-                format!("{} \\rightarrow {}", local_before, local_after)
-            } else {
-                let local_before = LaTeXExpr {
-                    context: self.context,
-                    id: step.before,
-                }
-                .to_latex();
-                let local_after = LaTeXExpr {
-                    context: self.context,
-                    id: step.after,
-                }
-                .to_latex();
-                format!("{} \\rightarrow {}", local_before, local_after)
-            };
-
-            html.push_str(&format!(
-                r#"            <div class="step">
-                <div class="step-number">{}</div>
-                <div class="step-content">
-                    <h3>{}</h3>
-                    <div class="math-expr before">
-                        \(\textbf{{Expression:}}\)
-                        \[{}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{{{}}}\)</div>
-                        <div class="local-change">
-                            \[{}\]
-                        </div>
-                    </div>
-                </div>
-            </div>
-"#,
-                step_number,
-                html_escape(&step.rule_name),
-                global_before,
-                step.description,
-                local_change_latex
-            ));
-        }
-
-        // Add final result
-        let final_expr = LaTeXExpr {
-            context: self.context,
-            id: current_global,
-        }
-        .to_latex();
-        html.push_str(
-            r#"        </div>
-        <div class="final-result">
-            \(\textbf{Final Result:}\)
-            \["#,
-        );
-        html.push_str(&final_expr);
-        html.push_str(
-            r#"\]
-        </div>
-    </div>
-"#,
-        );
-        html
-    }
-
     /// Render timeline with enriched sub-steps (expandable details)
     fn render_timeline_filtered_enriched(
         &mut self,
@@ -1514,7 +1393,7 @@ impl<'a> SolveTimelineHtml<'a> {
     fn render_solve_timeline(&mut self) -> String {
         let mut html = String::from("        <div class=\"timeline\">\n");
 
-        let mut current_eq = self.original_eq.clone();
+        let mut _current_eq = self.original_eq.clone();
 
         for (i, step) in self.steps.iter().enumerate() {
             let step_number = i + 1;
@@ -1549,7 +1428,7 @@ impl<'a> SolveTimelineHtml<'a> {
                 eq_latex
             ));
 
-            current_eq = step.equation_after.clone();
+            _current_eq = step.equation_after.clone();
         }
 
         // Add final result showing the SOLUTION SET, not the last equation
