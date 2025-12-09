@@ -970,6 +970,39 @@ impl<'a> DisplayExprWithHints<'a> {
                 self.fmt_internal(f, *e)
             }
             Expr::Function(name, args) => {
+                // Special handling for sqrt/root functions - always render as √
+                if name == "sqrt" && args.len() >= 1 {
+                    let index = if args.len() == 2 {
+                        if let Expr::Number(n) = self.context.get(args[1]) {
+                            n.to_integer().try_into().unwrap_or(2u32)
+                        } else {
+                            2u32
+                        }
+                    } else {
+                        2u32
+                    };
+                    if index == 2 {
+                        write!(f, "√(")?;
+                    } else {
+                        write!(f, "{}√(", index)?;
+                    }
+                    self.fmt_internal(f, args[0])?;
+                    return write!(f, ")");
+                } else if name == "root" && args.len() == 2 {
+                    let index = if let Expr::Number(n) = self.context.get(args[1]) {
+                        n.to_integer().try_into().unwrap_or(2u32)
+                    } else {
+                        2u32
+                    };
+                    if index == 2 {
+                        write!(f, "√(")?;
+                    } else {
+                        write!(f, "{}√(", index)?;
+                    }
+                    self.fmt_internal(f, args[0])?;
+                    return write!(f, ")");
+                }
+                // Regular function format
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {

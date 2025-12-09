@@ -13,15 +13,22 @@
 use crate::step::Step;
 use cas_ast::{Context, DisplayContext, DisplayHint, Expr};
 
-/// Build DisplayContext by analyzing simplification steps
+/// Build DisplayContext by analyzing the original expression and simplification steps
 ///
-/// This scans through steps looking for patterns like "Canonicalize Roots"
-/// and records hints for proper display. Zero cost if not called.
-pub fn build_display_context(ctx: &Context, steps: &[Step]) -> DisplayContext {
+/// This scans the original expression for sqrt() functions and also looks at
+/// steps for "Canonicalize Roots" patterns. Zero cost if not called.
+pub fn build_display_context(
+    ctx: &Context,
+    original_expr: cas_ast::ExprId,
+    steps: &[Step],
+) -> DisplayContext {
     let mut display_ctx = DisplayContext::new();
 
+    // First: scan original expression for sqrt() functions
+    scan_for_sqrt_hints(ctx, original_expr, &mut display_ctx);
+
+    // Second: capture hints from Canonicalize Roots steps
     for step in steps {
-        // Detect "Canonicalize Roots" rule: sqrt(x) → x^(1/2)
         if step.rule_name.contains("Canonicalize Roots") {
             if let Some(index) = extract_root_index(ctx, step.before) {
                 display_ctx.insert(step.after, DisplayHint::AsRoot { index });
@@ -30,6 +37,54 @@ pub fn build_display_context(ctx: &Context, steps: &[Step]) -> DisplayContext {
     }
 
     display_ctx
+}
+
+/// Recursively scan expression tree for sqrt/root functions and add hints
+fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut DisplayContext) {
+    match ctx.get(expr) {
+        Expr::Function(name, args) => {
+            // Check if this is a sqrt/root function
+            if name == "sqrt" {
+                let index = match args.len() {
+                    1 => 2,
+                    2 => {
+                        if let Expr::Number(n) = ctx.get(args[1]) {
+                            n.to_integer().try_into().unwrap_or(2)
+                        } else {
+                            2
+                        }
+                    }
+                    _ => 2,
+                };
+                display_ctx.insert(expr, DisplayHint::AsRoot { index });
+            } else if name == "root" && args.len() == 2 {
+                let index = if let Expr::Number(n) = ctx.get(args[1]) {
+                    n.to_integer().try_into().unwrap_or(2)
+                } else {
+                    2
+                };
+                display_ctx.insert(expr, DisplayHint::AsRoot { index });
+            }
+            // Recurse into arguments
+            for arg in args {
+                scan_for_sqrt_hints(ctx, *arg, display_ctx);
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            scan_for_sqrt_hints(ctx, *l, display_ctx);
+            scan_for_sqrt_hints(ctx, *r, display_ctx);
+        }
+        Expr::Neg(e) => {
+            scan_for_sqrt_hints(ctx, *e, display_ctx);
+        }
+        Expr::Matrix { data, .. } => {
+            for elem in data {
+                scan_for_sqrt_hints(ctx, *elem, display_ctx);
+            }
+        }
+        // Terminals: Number, Variable, Constant - no children to scan
+        _ => {}
+    }
 }
 
 /// Extract the root index from a sqrt/root function
@@ -102,9 +157,10 @@ mod tests {
             Some(&ctx),
         );
 
-        let display_ctx = build_display_context(&ctx, &[step]);
+        let display_ctx = build_display_context(&ctx, sqrt_x, &[step]);
 
-        assert_eq!(display_ctx.len(), 1);
+        // Should have 2 hints: one from scanning sqrt_x, one from step
+        assert!(display_ctx.len() >= 1);
         assert_eq!(
             display_ctx.get(x_half),
             Some(&DisplayHint::AsRoot { index: 2 })

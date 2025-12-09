@@ -1859,7 +1859,7 @@ impl Repl {
 
                 // Build display hints for preserving root notation (only when showing steps)
                 let display_hints = if self.verbosity != Verbosity::None {
-                    build_display_context(&self.simplifier.context, &steps)
+                    build_display_context(&self.simplifier.context, expr, &steps)
                 } else {
                     cas_ast::DisplayContext::new()
                 };
