@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: det([[a, b], [c, d]])</title>
+    <title>CAS Steps: sqrt(x * (x * x^(1 / 4))^(1 / 3)) - x^(1 / 24 + 1 / 2 + 1 / 6)</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -167,27 +167,101 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[det([[a, b], [c, d]])\]
+            \[sqrt(x * (x * x^(1 / 4))^(1 / 3)) - x^(1 / 24 + 1 / 2 + 1 / 6)\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Matrix Functions</h3>
+                    <h3>Collect</h3>
                     <div class="math-expr before">
                         \(\textbf{Expression:}\)
-                        \[{\color{red}{\text{det}(\begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix})}}\]
+                        \[{\color{red}{\sqrt{x\sqrt[3]{x\sqrt[4]{x}}} - {x}^{\frac{1}{24} + \frac{1}{2} + \frac{1}{6}}}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{det(2×2 matrix)}\)</div>
+                        <div class="rule-name">\(\text{Initial Collection}\)</div>
                         <div class="local-change">
-                            \[\text{det}(\begin{bmatrix}
-a & b \\
-c & d
-\end{bmatrix}) \rightarrow ad - (bc)\]
+                            \[\sqrt{x\sqrt[3]{x\sqrt[4]{x}}} - {x}^{\frac{1}{24} + \frac{1}{2} + \frac{1}{6}} \rightarrow \sqrt{x\sqrt[3]{x\sqrt[4]{x}}} - {x}^{\frac{1}{24} + \frac{1}{2} + \frac{1}{6}}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[\sqrt{x{{\color{red}{x\sqrt[4]{x}}}}^{\frac{1}{3}}} - {x}^{\frac{1}{24} + \frac{1}{2} + \frac{1}{6}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine base and power}\)</div>
+                        <div class="local-change">
+                            \[x\sqrt[4]{x} \rightarrow \sqrt[4]{{x}^{5}}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Power of a Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[\sqrt{x{\color{red}{\sqrt[3]{\sqrt[4]{{x}^{5}}}}}} - {x}^{\frac{1}{24} + \frac{1}{2} + \frac{1}{6}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="local-change">
+                            \[{{x}^{\frac{5}{4}}}^{\frac{1}{3}} \rightarrow {x}^{\frac{5}{12}}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Product of Powers</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[\sqrt{{\color{red}{x\sqrt[12]{{x}^{5}}}}} - {x}^{\frac{1}{24} + \frac{1}{2} + \frac{1}{6}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine base and power}\)</div>
+                        <div class="local-change">
+                            \[x\sqrt[12]{{x}^{5}} \rightarrow \sqrt[12]{{x}^{17}}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Power of a Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[{\color{red}{\sqrt{\sqrt[12]{{x}^{17}}}}} + {\sqrt[12]{{x}^{17}}}^{\frac{1}{2}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="local-change">
+                            \[{{x}^{\frac{17}{12}}}^{\frac{1}{2}} \rightarrow {x}^{\frac{17}{24}}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <h3>Add Inverse</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Expression:}\)
+                        \[{\color{red}{-\sqrt[24]{{x}^{17}} + \sqrt[24]{{x}^{17}}}}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{(-a) + a = 0}\)</div>
+                        <div class="local-change">
+                            \[-\sqrt[24]{{x}^{17}} + \sqrt[24]{{x}^{17}} \rightarrow 0\]
                         </div>
                     </div>
                 </div>
@@ -195,7 +269,7 @@ c & d
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[-(bc) + ad\]
+            \[0\]
         </div>
     </div>
     <footer>

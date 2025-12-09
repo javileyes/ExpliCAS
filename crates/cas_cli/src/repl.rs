@@ -251,9 +251,24 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
 
             // Filter "Expand" steps that produce no visible change
             if name == "Expand" {
-                // Check if before == after (no actual change)
                 if step.before == step.after {
-                    return false; // No change, skip
+                    return false;
+                }
+            }
+
+            // Filter "Factor" no-op cycles (factor then immediately back to same)
+            if name == "Factor" {
+                if step.before == step.after {
+                    return false;
+                }
+            }
+
+            // Filter trivial power evaluations: x^1 -> x, x^0 -> 1
+            if name == "Evaluate Numeric Power" {
+                let desc = &step.description;
+                // Skip x^1 -> x and x^0 -> 1 as too trivial
+                if desc.contains("^1 ->") || desc.contains("^0 ->") {
+                    return false;
                 }
             }
 
@@ -266,6 +281,19 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
                     if parts.len() == 2 && parts[0].trim() == parts[1].trim() {
                         return false; // Trivial, no actual combination
                     }
+                }
+                // Also filter 1*1*x = x type steps
+                if desc.starts_with("1 * 1") || desc.starts_with("1*1") {
+                    return false;
+                }
+            }
+
+            // Filter verbose Negative Base Power that just shows (-x)^even -> x^even
+            if name == "Negative Base Power" {
+                let desc = &step.description;
+                if desc.contains("^even") || desc.contains("^2 ->") {
+                    // These are often internal canonicalization
+                    return false;
                 }
             }
 

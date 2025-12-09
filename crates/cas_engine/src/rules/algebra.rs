@@ -199,7 +199,7 @@ define_rule!(
         // eprintln!("NestedFractionRule rewriting: {:?} -> {:?}", expr, new_expr);
         return Some(Rewrite {
             new_expr,
-            description: format!("Multiply by common denominator {:?}", multiplier),
+            description: "Simplify nested fraction".to_string(),
         });
     }
 );
@@ -246,6 +246,26 @@ fn get_variant_name(expr: &Expr) -> &'static str {
     }
 }
 
+/// Check if expression is the number 1
+fn is_one(ctx: &Context, id: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(id) {
+        n.is_integer() && n.to_integer() == 1.into()
+    } else {
+        false
+    }
+}
+
+/// Create a Mul but avoid trivial 1*x or x*1
+fn smart_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    if is_one(ctx, a) {
+        return b;
+    }
+    if is_one(ctx, b) {
+        return a;
+    }
+    ctx.add(Expr::Mul(a, b))
+}
+
 fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
     let target_data = ctx.get(target).clone();
     match target_data {
@@ -276,7 +296,7 @@ fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
                 return distribute(ctx, l, dr);
             }
             // If neither has explicit denominators, just multiply
-            ctx.add(Expr::Mul(target, multiplier))
+            smart_mul(ctx, target, multiplier)
         }
         Expr::Div(l, r) => {
             // (l / r) * m.
@@ -284,14 +304,14 @@ fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
             if let Some(quotient) = get_quotient(ctx, multiplier, r) {
                 // m = q * r.
                 // (l / r) * (q * r) = l * q
-                return ctx.add(Expr::Mul(l, quotient));
+                return smart_mul(ctx, l, quotient);
             }
             // If not, we are stuck with (l/r)*m.
             // eprintln!("distribute failed to divide: {:?} / {:?} by {:?}", multiplier, r, multiplier);
             let div_expr = ctx.add(Expr::Div(l, r));
-            ctx.add(Expr::Mul(div_expr, multiplier))
+            smart_mul(ctx, div_expr, multiplier)
         }
-        _ => ctx.add(Expr::Mul(target, multiplier)),
+        _ => smart_mul(ctx, target, multiplier),
     }
 }
 
@@ -305,10 +325,10 @@ fn get_quotient(ctx: &mut Context, dividend: ExprId, divisor: ExprId) -> Option<
     match dividend_data {
         Expr::Mul(l, r) => {
             if let Some(q) = get_quotient(ctx, l, divisor) {
-                return Some(ctx.add(Expr::Mul(q, r)));
+                return Some(smart_mul(ctx, q, r));
             }
             if let Some(q) = get_quotient(ctx, r, divisor) {
-                return Some(ctx.add(Expr::Mul(l, q)));
+                return Some(smart_mul(ctx, l, q));
             }
             None
         }
