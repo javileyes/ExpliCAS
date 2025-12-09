@@ -1343,7 +1343,7 @@ impl<'a> SolveTimelineHtml<'a> {
             r#"        </div>
         <div class="final-result">
             \(\textbf{{Solution: }} {} = \)
-            \[{}\\]
+            \[{}\]
         </div>
     </div>
 "#,
