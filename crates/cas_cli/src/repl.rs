@@ -1858,7 +1858,58 @@ impl Repl {
 
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
-                        if self.verbosity != Verbosity::Succinct {
+                        // Even with no engine steps, show didactic sub-steps if there are fraction sums
+                        let standalone_substeps = cas_engine::didactic::get_standalone_substeps(
+                            &self.simplifier.context,
+                            expr,
+                        );
+
+                        if !standalone_substeps.is_empty() && self.verbosity != Verbosity::Succinct
+                        {
+                            println!("Computation:");
+                            // Helper function for LaTeX to plain text
+                            fn latex_to_text(s: &str) -> String {
+                                let mut result = s.to_string();
+                                while let Some(start) = result.find("\\frac{") {
+                                    let end_start = start + 6;
+                                    if let Some(first_close) = result[end_start..].find('}') {
+                                        let numer_end = end_start + first_close;
+                                        let numer = &result[end_start..numer_end];
+                                        if result.len() > numer_end + 1
+                                            && result.chars().nth(numer_end + 1) == Some('{')
+                                        {
+                                            if let Some(second_close) =
+                                                result[numer_end + 2..].find('}')
+                                            {
+                                                let denom_end = numer_end + 2 + second_close;
+                                                let denom = &result[numer_end + 2..denom_end];
+                                                let replacement = format!("({}/{})", numer, denom);
+                                                result = format!(
+                                                    "{}{}{}",
+                                                    &result[..start],
+                                                    replacement,
+                                                    &result[denom_end + 1..]
+                                                );
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                                result.replace("\\", "")
+                            }
+
+                            for sub in &standalone_substeps {
+                                println!("   → {}", sub.description);
+                                if !sub.before_latex.is_empty() {
+                                    println!(
+                                        "     {} → {}",
+                                        latex_to_text(&sub.before_latex),
+                                        latex_to_text(&sub.after_latex)
+                                    );
+                                }
+                            }
+                        } else if self.verbosity != Verbosity::Succinct {
                             println!("No simplification steps needed.");
                         }
                     } else {
@@ -1875,6 +1926,7 @@ impl Repl {
 
                         let mut current_root = expr;
                         let mut step_count = 0;
+                        let mut sub_steps_shown = false; // Track to show sub-steps only on first visible step
                         for (step_idx, step) in steps.iter().enumerate() {
                             if should_show_step(step, self.verbosity) {
                                 step_count += 1;
@@ -1906,66 +1958,72 @@ impl Repl {
                                     {
                                         // Didactic: Show sub-steps BEFORE Local transformation
                                         // Sub-steps explain hidden computations (e.g., fraction sums)
-                                        if let Some(enriched_step) = enriched_steps.get(step_idx) {
-                                            if !enriched_step.sub_steps.is_empty() {
-                                                for sub in &enriched_step.sub_steps {
-                                                    println!("      → {}", sub.description);
-                                                    if !sub.before_latex.is_empty() {
-                                                        // Convert LaTeX fractions to plain text
-                                                        fn latex_to_text(s: &str) -> String {
-                                                            let mut result = s.to_string();
-                                                            while let Some(start) =
-                                                                result.find("\\frac{")
+                                        // Only show on first visible step to avoid duplication
+                                        if !sub_steps_shown {
+                                            if let Some(enriched_step) =
+                                                enriched_steps.get(step_idx)
+                                            {
+                                                if !enriched_step.sub_steps.is_empty() {
+                                                    sub_steps_shown = true;
+                                                    // Helper function for LaTeX to plain text
+                                                    fn latex_to_text(s: &str) -> String {
+                                                        let mut result = s.to_string();
+                                                        while let Some(start) =
+                                                            result.find("\\frac{")
+                                                        {
+                                                            let end_start = start + 6;
+                                                            if let Some(first_close) =
+                                                                result[end_start..].find('}')
                                                             {
-                                                                let end_start = start + 6;
-                                                                if let Some(first_close) =
-                                                                    result[end_start..].find('}')
+                                                                let numer_end =
+                                                                    end_start + first_close;
+                                                                let numer =
+                                                                    &result[end_start..numer_end];
+                                                                if result.len() > numer_end + 1
+                                                                    && result
+                                                                        .chars()
+                                                                        .nth(numer_end + 1)
+                                                                        == Some('{')
                                                                 {
-                                                                    let numer_end =
-                                                                        end_start + first_close;
-                                                                    let numer = &result
-                                                                        [end_start..numer_end];
-                                                                    if result.len() > numer_end + 1
-                                                                        && result
-                                                                            .chars()
-                                                                            .nth(numer_end + 1)
-                                                                            == Some('{')
+                                                                    if let Some(second_close) =
+                                                                        result[numer_end + 2..]
+                                                                            .find('}')
                                                                     {
-                                                                        if let Some(second_close) =
-                                                                            result[numer_end + 2..]
-                                                                                .find('}')
-                                                                        {
-                                                                            let denom_end =
-                                                                                numer_end
-                                                                                    + 2
-                                                                                    + second_close;
-                                                                            let denom = &result
-                                                                                [numer_end + 2
-                                                                                    ..denom_end];
-                                                                            let replacement = format!(
-                                                                                "({}/{})",
-                                                                                numer, denom
-                                                                            );
-                                                                            result = format!(
-                                                                                "{}{}{}",
-                                                                                &result[..start],
-                                                                                replacement,
-                                                                                &result[denom_end
-                                                                                    + 1..]
-                                                                            );
-                                                                            continue;
-                                                                        }
+                                                                        let denom_end = numer_end
+                                                                            + 2
+                                                                            + second_close;
+                                                                        let denom = &result
+                                                                            [numer_end + 2
+                                                                                ..denom_end];
+                                                                        let replacement = format!(
+                                                                            "({}/{})",
+                                                                            numer, denom
+                                                                        );
+                                                                        result = format!(
+                                                                            "{}{}{}",
+                                                                            &result[..start],
+                                                                            replacement,
+                                                                            &result
+                                                                                [denom_end + 1..]
+                                                                        );
+                                                                        continue;
                                                                     }
                                                                 }
-                                                                break;
                                                             }
-                                                            result.replace("\\", "")
+                                                            break;
                                                         }
-                                                        println!(
-                                                            "        {} → {}",
-                                                            latex_to_text(&sub.before_latex),
-                                                            latex_to_text(&sub.after_latex)
-                                                        );
+                                                        result.replace("\\", "")
+                                                    }
+
+                                                    for sub in &enriched_step.sub_steps {
+                                                        println!("      → {}", sub.description);
+                                                        if !sub.before_latex.is_empty() {
+                                                            println!(
+                                                                "        {} → {}",
+                                                                latex_to_text(&sub.before_latex),
+                                                                latex_to_text(&sub.after_latex)
+                                                            );
+                                                        }
                                                     }
                                                 }
                                             }

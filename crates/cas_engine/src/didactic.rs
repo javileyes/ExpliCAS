@@ -78,19 +78,20 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
             .collect()
     };
 
-    for (i, step) in steps.iter().enumerate() {
+    for (step_idx, step) in steps.iter().enumerate() {
         let mut sub_steps = Vec::new();
 
-        // Show fraction sums on the step that uses the result (Add Inverse or similar)
-        // This is where x^(17/24) - x^(17/24) = 0, after the fraction sum is computed
-        if step.rule_name.contains("Inverse") && !unique_fraction_sums.is_empty() {
+        // Attach fraction sum sub-steps to EVERY step
+        // The CLI will track and show them only once on the first VISIBLE step
+        // This ensures sub-steps appear even if early steps are filtered out
+        if !unique_fraction_sums.is_empty() {
             for info in &unique_fraction_sums {
                 sub_steps.extend(generate_fraction_sum_substeps(info));
             }
         }
 
         // Also check for fraction sums in exponent (between steps)
-        if let Some(fraction_info) = detect_exponent_fraction_change(ctx, &steps, i) {
+        if let Some(fraction_info) = detect_exponent_fraction_change(ctx, &steps, step_idx) {
             // Avoid duplicates
             if !unique_fraction_sums
                 .iter()
@@ -107,6 +108,43 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
     }
 
     enriched
+}
+
+/// Get didactic sub-steps for an expression when there are no simplification steps
+///
+/// This is useful when fraction sums are computed during parsing/canonicalization
+/// and there are no engine steps to attach the explanation to.
+///
+/// Example: `x^(1/3 + 1/6)` becomes `x^(1/2)` without any steps,
+/// but we want to show how 1/3 + 1/6 = 1/2.
+pub fn get_standalone_substeps(ctx: &Context, original_expr: ExprId) -> Vec<SubStep> {
+    let all_fraction_sums = find_all_fraction_sums(ctx, original_expr);
+
+    if all_fraction_sums.is_empty() {
+        return Vec::new();
+    }
+
+    // Keep only the sum with the most fractions (ignore partial subsums)
+    let max_fractions = all_fraction_sums
+        .iter()
+        .map(|s| s.fractions.len())
+        .max()
+        .unwrap_or(0);
+    let mut seen = std::collections::HashSet::new();
+    let unique_fraction_sums: Vec<_> = all_fraction_sums
+        .into_iter()
+        .filter(|info| info.fractions.len() == max_fractions)
+        .filter(|info| {
+            let key = format!("{}", info.result);
+            seen.insert(key)
+        })
+        .collect();
+
+    let mut sub_steps = Vec::new();
+    for info in &unique_fraction_sums {
+        sub_steps.extend(generate_fraction_sum_substeps(info));
+    }
+    sub_steps
 }
 
 /// Find all fraction sums in an expression tree
