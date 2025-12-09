@@ -274,17 +274,24 @@ impl Simplifier {
 
         // Post-process steps: compute accurate global_before and global_after
         // by applying substitutions sequentially from the original expression
-        let mut current_global = expr_id;
-        for step in steps.iter_mut() {
-            // global_before is the current state before this transformation
-            step.global_before = Some(current_global);
+        // ONLY do this when collect_steps is enabled (not during benchmarks)
+        if self.collect_steps && !steps.is_empty() {
+            let mut current_global = expr_id;
+            for step in steps.iter_mut() {
+                // global_before is the current state before this transformation
+                step.global_before = Some(current_global);
 
-            // Apply substitution: replace step.before with step.after in current_global
-            current_global =
-                substitute_expr_by_id(&mut self.context, current_global, step.before, step.after);
+                // Apply substitution: replace step.before with step.after in current_global
+                current_global = substitute_expr_by_id(
+                    &mut self.context,
+                    current_global,
+                    step.before,
+                    step.after,
+                );
 
-            // global_after is the new state after this transformation
-            step.global_after = Some(current_global);
+                // global_after is the new state after this transformation
+                step.global_after = Some(current_global);
+            }
         }
 
         (new_expr, steps)
@@ -332,17 +339,24 @@ impl Simplifier {
 
         // Post-process steps: compute accurate global_before and global_after
         // by applying substitutions sequentially from the original expression
-        let mut current_global = expr_id;
-        for step in steps.iter_mut() {
-            // global_before is the current state before this transformation
-            step.global_before = Some(current_global);
+        // ONLY do this when collect_steps is enabled (not during benchmarks)
+        if collect_steps && !steps.is_empty() {
+            let mut current_global = expr_id;
+            for step in steps.iter_mut() {
+                // global_before is the current state before this transformation
+                step.global_before = Some(current_global);
 
-            // Apply substitution: replace step.before with step.after in current_global
-            current_global =
-                substitute_expr_by_id(&mut self.context, current_global, step.before, step.after);
+                // Apply substitution: replace step.before with step.after in current_global
+                current_global = substitute_expr_by_id(
+                    &mut self.context,
+                    current_global,
+                    step.before,
+                    step.after,
+                );
 
-            // global_after is the new state after this transformation
-            step.global_after = Some(current_global);
+                // global_after is the new state after this transformation
+                step.global_after = Some(current_global);
+            }
         }
 
         (new_expr, steps)
@@ -769,12 +783,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // Record rule application for profiling
                         self.profiler.record(rule.name());
 
-                        println!(
-                            "Rule '{}' applied: {:?} -> {:?}",
-                            rule.name(),
-                            expr_id,
-                            rewrite.new_expr
-                        );
+                        // println!(
+                        //     "Rule '{}' applied: {:?} -> {:?}",
+                        //     rule.name(),
+                        //     expr_id,
+                        //     rewrite.new_expr
+                        // );
                         debug!(
                             "{}[DEBUG] Rule '{}' applied: {:?} -> {:?}",
                             self.indent(),

@@ -176,23 +176,23 @@ pub fn should_preserve_trig_function(
         return false;
     }
 
-    println!(
-        "  [DEBUG] should_preserve checking {} with {} ancestors",
-        func_name,
-        ancestors.len()
-    );
+    // println!(
+    //     "  [DEBUG] should_preserve checking {} with {} ancestors",
+    //     func_name,
+    //     ancestors.len()
+    // );
 
     // Step 1: Find Pow(this_func, 2) in ancestors
     let mut squared_id: Option<ExprId> = None;
     for &ancestor in ancestors {
-        println!(
-            "    Checking ancestor {:?}: {:?}",
-            ancestor,
-            ctx.get(ancestor)
-        );
+        // println!(
+        //     "    Checking ancestor {:?}: {:?}",
+        //     ancestor,
+        //     ctx.get(ancestor)
+        // );
         if let Expr::Pow(base, exp) = ctx.get(ancestor) {
             if *base == func_expr && is_two(ctx, *exp) {
-                println!("    -> Found squared! {:?}", ancestor);
+                // println!("    -> Found squared! {:?}", ancestor);
                 squared_id = Some(ancestor);
                 break;
             }
@@ -202,27 +202,27 @@ pub fn should_preserve_trig_function(
     let squared_id = match squared_id {
         Some(id) => id,
         None => {
-            println!("    -> Not squared, allowing conversion");
+            // println!("    -> Not squared, allowing conversion");
             return false; // Not being squared
         }
     };
 
-    println!(
-        "    Squared ID: {:?}, now checking for Pythagorean pattern...",
-        squared_id
-    );
+    // println!(
+    //     "    Squared ID: {:?}, now checking for Pythagorean pattern...",
+    //     squared_id
+    // );
 
     // Step 2: Check if this squared term is in a Pythagorean pattern
     // Look through ALL ancestors to find Sub expressions that might contain our squared term
     for &ancestor in ancestors {
         match ctx.get(ancestor) {
             Expr::Sub(left, right) => {
-                println!(
-                    "      Found Sub ancestor: left={:?} right={:?}",
-                    left, right
-                );
-                println!("        left expr: {:?}", ctx.get(*left));
-                println!("        right expr: {:?}", ctx.get(*right));
+                // println!(
+                //     "      Found Sub ancestor: left={:?} right={:?}",
+                //     left, right
+                // );
+                // println!("        left expr: {:?}", ctx.get(*left));
+                // println!("        right expr: {:?}", ctx.get(*right));
 
                 // Check if this Sub is a Pythagorean pattern and contains our squared term
                 let left_id = *left;
@@ -230,9 +230,9 @@ pub fn should_preserve_trig_function(
 
                 // Pattern 1: sec² - tan²
                 if func_name == "tan" && right_id == squared_id {
-                    println!("        Checking if left is sec²...");
+                    // println!("        Checking if left is sec²...");
                     if is_sec_squared(ctx, left_id).is_some() {
-                        println!("        -> MATCH! Preserving tan");
+                        // println!("        -> MATCH! Preserving tan");
                         return true;
                     }
                 }
@@ -258,7 +258,7 @@ pub fn should_preserve_trig_function(
         }
     }
 
-    println!("    -> No Pythagorean pattern found");
+    // println!("    -> No Pythagorean pattern found");
     false
 }
 
