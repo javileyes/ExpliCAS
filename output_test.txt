@@ -1,6 +1,6 @@
 ==================================================
 CLI Tests Output - Modo NORMAL
-Fecha: Tue Dec  9 01:11:50 CET 2025
+Fecha: Tue Dec  9 01:49:28 CET 2025
 ==================================================
 
 warning: unnecessary parentheses around block return value
@@ -285,31 +285,10 @@ Parsed: (1 + x) * (2 + x)
 No simplification steps needed.
 Result: (1 + x) * (2 + x)
 Parsed: (1 + x)^2
-Steps (Aggressive Mode):
-1. Expand binomial power ^2  [Binomial Expansion]
-   Local: (1 + x)^2 -> 1 * x^2 + 1 * 1^2 + 2 * 1 * x
-   Global: 1 * x^2 + 1 * 1^2 + 2 * 1 * x
-2. Evaluate power: 1^2  [Evaluate Numeric Power]
-   Local: 1^2 -> 1
-   Global: x^2 + 1 * 1 + 2 * 1 * x
-3. Factor Polynomial  [Factor]
-   Local: 1 + x^2 + 2 * x -> (1 + x)^2
-   Global: (1 + x)^2
+No simplification steps needed.
 Result: (1 + x)^2
 Parsed: (1 + x)^3
-Steps (Aggressive Mode):
-1. Expand binomial power ^3  [Binomial Expansion]
-   Local: (1 + x)^3 -> 1 * x^3 + 3 * 1 * x^2 + 1 * 1^3 + 3 * x * 1^2
-   Global: 1 * x^3 + 3 * 1 * x^2 + 1 * 1^3 + 3 * x * 1^2
-2. Evaluate power: 1^3  [Evaluate Numeric Power]
-   Local: 1^3 -> 1
-   Global: x^3 + 3 * x^2 + 1 * 1 + 3 * x * 1^2
-3. Evaluate power: 1^2  [Evaluate Numeric Power]
-   Local: 1^2 -> 1
-   Global: x^3 + 3 * x^2 + 1 + 3 * 1 * x
-4. Factor Polynomial  [Factor]
-   Local: 1 + x^3 + 3 * x + 3 * x^2 -> (1 + x)^3
-   Global: (1 + x)^3
+No simplification steps needed.
 Result: (1 + x)^3
 Parsed: (x - 1)^2
 Steps (Aggressive Mode):
@@ -364,9 +343,6 @@ Steps (Aggressive Mode):
 Result: (-1 + x) * (1 + x) * (1 + x^2)
 Parsed: (x^2 - 1) / (x - 1)
 Steps (Aggressive Mode):
-1. Simplified fraction by GCD: -1 + x  [Simplify Nested Fraction]
-   Local: (-1 + x^2) / (-1 + x) -> 1 + x
-   Global: 1 + x
 Result: 1 + x
 Parsed: (x^2 - 4) / (2 + x)
 Steps (Aggressive Mode):
@@ -376,9 +352,6 @@ Steps (Aggressive Mode):
 Result: -2 + x
 Parsed: (x^3 - 1) / (x - 1)
 Steps (Aggressive Mode):
-1. Simplified fraction by GCD: -1 + x  [Simplify Nested Fraction]
-   Local: (-1 + x^3) / (-1 + x) -> 1 + x + x^2
-   Global: 1 + x + x^2
 Result: 1 + x + x^2
 Parsed: a * x + b * x
 No simplification steps needed.
@@ -1006,21 +979,21 @@ Steps (Aggressive Mode):
 Result: 720
 Parsed: 1 / x / (1 / y)
 Steps (Aggressive Mode):
-1. Multiply by common denominator ExprId(1610613177)  [Simplify Nested Fraction]
-   Local: 1 / x / (1 / y) -> 1 * 1 * y / (1 * 1 * x)
-   Global: 1 * 1 * y / (1 * 1 * x)
+1. Simplify nested fraction  [Simplify Nested Fraction]
+   Local: 1 / x / (1 / y) -> y / x
+   Global: y / x
 Result: y / x
 Parsed: x / y / (a / b)
 Steps (Aggressive Mode):
-1. Multiply by common denominator ExprId(1610613548)  [Simplify Nested Fraction]
-   Local: x / y / (a / b) -> x * 1 * b / (a * 1 * y)
-   Global: x * 1 * b / (a * 1 * y)
+1. Simplify nested fraction  [Simplify Nested Fraction]
+   Local: x / y / (a / b) -> b * x / (a * y)
+   Global: b * x / (a * y)
 Result: b * x / (a * y)
 Parsed: 1 / (1 / x)
 Steps (Aggressive Mode):
-1. Multiply by common denominator ExprId(536871070)  [Simplify Nested Fraction]
-   Local: 1 / (1 / x) -> 1 * x / (1 * 1)
-   Global: 1 * x / (1 * 1)
+1. Simplify nested fraction  [Simplify Nested Fraction]
+   Local: 1 / (1 / x) -> x / 1
+   Global: x / 1
 Result: x
 Parsed: (x + y) * (x - y)
 Steps (Aggressive Mode):
@@ -1030,21 +1003,9 @@ Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
    Local: (a - b)^2 -> 1 * -b^2 + 1 * a^2 + 2 * a * -b
    Global: -(1 * -b^2 + 1 * a^2 + 2 * a * -b) + (a + b)^2
-2. (-x)^even -> x^even  [Negative Base Power]
-   Local: -b^2 -> b^2
-   Global: -(1 * b^2 + 1 * a^2 + 2 * a * -b) + (a + b)^2
-3. Expand binomial power ^2  [Binomial Expansion]
+2. Expand binomial power ^2  [Binomial Expansion]
    Local: (a + b)^2 -> 1 * b^2 + 1 * a^2 + 2 * a * b
    Global: (a + b)^2 + 1 * b^2 + 1 * a^2 + 2 * a * b
-4. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * a * b + 2 * a * b -> 4 * a * b
-   Global: -(a^2) - b^2 + a^2 + b^2 + 4 * a * b
-5. Global Combine Like Terms  [Combine Like Terms]
-   Local: -(b^2) + a^2 + b^2 + 4 * a * b -> a^2 + 4 * a * b
-   Global: -(a^2) + a^2 + 4 * a * b
-6. Global Combine Like Terms  [Combine Like Terms]
-   Local: -(a^2) + a^2 + 4 * a * b -> 4 * a * b
-   Global: 4 * a * b
 Result: 4 * a * b
 Parsed: y^2 + x^2 + y * 2 * x
 Steps (Aggressive Mode):
@@ -1198,5 +1159,5 @@ Result: { 8 }
 Goodbye!
 
 ==================================================
-Tests completados: Tue Dec  9 01:11:50 CET 2025
+Tests completados: Tue Dec  9 01:49:28 CET 2025
 ==================================================

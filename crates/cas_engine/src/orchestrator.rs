@@ -147,9 +147,17 @@ impl Orchestrator {
             steps
         };
 
-        // 6. Optimize Steps
+        // 6. Optimize Steps with semantic cycle detection
         let optimized_steps = if simplifier.collect_steps {
-            crate::step_optimization::optimize_steps(filtered_steps)
+            match crate::step_optimization::optimize_steps_semantic(
+                filtered_steps,
+                &simplifier.context,
+                expr,    // original expression
+                current, // final expression
+            ) {
+                crate::step_optimization::StepOptimizationResult::Steps(steps) => steps,
+                crate::step_optimization::StepOptimizationResult::NoSimplificationNeeded => vec![],
+            }
         } else {
             filtered_steps
         };

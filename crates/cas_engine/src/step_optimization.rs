@@ -1,4 +1,33 @@
+use crate::semantic_equality::SemanticEqualityChecker;
 use crate::step::Step;
+use cas_ast::{Context, ExprId};
+
+/// Result of step optimization with semantic analysis
+#[derive(Debug)]
+pub enum StepOptimizationResult {
+    /// Steps were optimized normally
+    Steps(Vec<Step>),
+    /// No real simplification occurred (result semantically equals input)
+    NoSimplificationNeeded,
+}
+
+/// Optimize steps with semantic cycle detection
+/// Returns NoSimplificationNeeded if final result is semantically equal to original input
+pub fn optimize_steps_semantic(
+    steps: Vec<Step>,
+    ctx: &Context,
+    original_expr: ExprId,
+    final_expr: ExprId,
+) -> StepOptimizationResult {
+    // First check if the entire simplification was a no-op
+    let checker = SemanticEqualityChecker::new(ctx);
+    if checker.are_equal(original_expr, final_expr) {
+        return StepOptimizationResult::NoSimplificationNeeded;
+    }
+
+    // Otherwise, apply normal optimization
+    StepOptimizationResult::Steps(optimize_steps(steps))
+}
 
 pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
     let mut optimized = Vec::new();
