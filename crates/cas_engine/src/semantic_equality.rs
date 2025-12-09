@@ -299,6 +299,7 @@ pub fn apply_rule_with_semantic_check(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::DisplayExpr;
 
     #[test]
     fn test_div_vs_rational() {

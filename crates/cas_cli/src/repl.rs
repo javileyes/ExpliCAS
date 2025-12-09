@@ -1277,6 +1277,13 @@ impl Repl {
     fn handle_timeline(&mut self, line: &str) {
         let rest = line[9..].trim();
 
+        // Check if the user wants to use "solve" within timeline
+        // e.g., "timeline solve x + 2 = 5, x"
+        if rest.starts_with("solve ") {
+            self.handle_timeline_solve(&rest[6..]);
+            return;
+        }
+
         // Check if the user wants to use "simplify" within timeline
         // e.g., "timeline simplify(expr)" or "timeline simplify expr"
         let (expr_str, use_aggressive) = if rest.starts_with("simplify(") && rest.ends_with(')') {
@@ -1572,6 +1579,81 @@ impl Repl {
                 );
             }
             Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    fn handle_timeline_solve(&mut self, rest: &str) {
+        // Parse equation and variable: "x + 2 = 5, x" or "x + 2 = 5 x"
+        let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
+            (e.trim(), v.trim())
+        } else {
+            // No comma. Try to see if it looks like "eq var"
+            if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
+                let v_trim = v.trim();
+                if !v_trim.is_empty() && v_trim.chars().all(char::is_alphabetic) {
+                    (e.trim(), v_trim)
+                } else {
+                    (rest, "x")
+                }
+            } else {
+                (rest, "x")
+            }
+        };
+
+        match cas_parser::parse_statement(eq_str, &mut self.simplifier.context) {
+            Ok(cas_parser::Statement::Equation(eq)) => {
+                // Call solver with step collection enabled
+                self.simplifier.collect_steps = true;
+
+                match cas_engine::solver::solve(&eq, var, &mut self.simplifier) {
+                    Ok((solution_set, steps)) => {
+                        if steps.is_empty() {
+                            println!("No solving steps to visualize.");
+                            println!(
+                                "Result: {}",
+                                display_solution_set(&self.simplifier.context, &solution_set)
+                            );
+                            return;
+                        }
+
+                        // Generate HTML timeline for solve steps
+                        let mut timeline = cas_engine::timeline::SolveTimelineHtml::new(
+                            &mut self.simplifier.context,
+                            &steps,
+                            &eq,
+                            var,
+                        );
+                        let html = timeline.to_html();
+
+                        let filename = "timeline.html";
+                        match std::fs::write(filename, &html) {
+                            Ok(_) => {
+                                println!("Solve timeline exported to {}", filename);
+                                println!(
+                                    "Result: {}",
+                                    display_solution_set(&self.simplifier.context, &solution_set)
+                                );
+                                println!("Open in browser to view interactive visualization.");
+
+                                // Try to auto-open on macOS
+                                #[cfg(target_os = "macos")]
+                                {
+                                    let _ =
+                                        std::process::Command::new("open").arg(filename).spawn();
+                                }
+                            }
+                            Err(e) => println!("Error writing file: {}", e),
+                        }
+                    }
+                    Err(e) => println!("Error solving: {}", e),
+                }
+            }
+            Ok(cas_parser::Statement::Expression(_)) => {
+                println!("Error: Expected an equation for solve timeline, got an expression.");
+                println!("Usage: timeline solve <equation>, <variable>");
+                println!("Example: timeline solve x + 2 = 5, x");
+            }
+            Err(e) => println!("Error parsing equation: {}", e),
         }
     }
 

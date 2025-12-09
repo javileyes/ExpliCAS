@@ -74,9 +74,10 @@ fn test_pyth_negated_with_coeff() {
 #[test]
 fn test_pyth_negated_with_terms() {
     let result = simplify_str("-sin(x)^2 - cos(x)^2 + y");
+    // Accept either "-1 + y" or "y - 1" format (both are equivalent)
     assert!(
-        result.contains("y") && result.contains("-1"),
-        "Should have y and -1, got: {}",
+        result.contains("y") && (result.contains("-1") || result == "y - 1"),
+        "Should have y and -1 (or y - 1), got: {}",
         result
     );
 }

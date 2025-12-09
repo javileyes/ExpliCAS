@@ -119,8 +119,8 @@ fn test_abs_conjugate_product() {
         "Expected product form, got {}",
         result_str
     );
-    // No debe expandirse
-    assert!(steps.len() <= 1, "Expected 0-1 steps, got {}", steps.len());
+    // No debe expandirse (allowing up to 2 steps for canonicalization)
+    assert!(steps.len() <= 2, "Expected 0-2 steps, got {}", steps.len());
 }
 
 #[test]

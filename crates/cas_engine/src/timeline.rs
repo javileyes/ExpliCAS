@@ -1088,6 +1088,304 @@ fn latex_escape(s: &str) -> String {
     s.to_string()
 }
 
+// ============================================================================
+// SolveTimelineHtml - Timeline for equation solving steps
+// ============================================================================
+
+use crate::solver::SolveStep;
+use cas_ast::Equation;
+
+/// Timeline HTML generator for equation solving steps
+pub struct SolveTimelineHtml<'a> {
+    context: &'a mut Context,
+    steps: &'a [SolveStep],
+    original_eq: &'a Equation,
+    var: String,
+    title: String,
+}
+
+impl<'a> SolveTimelineHtml<'a> {
+    pub fn new(
+        context: &'a mut Context,
+        steps: &'a [SolveStep],
+        original_eq: &'a Equation,
+        var: &str,
+    ) -> Self {
+        let title = format!(
+            "{} {} {}",
+            DisplayExpr {
+                context,
+                id: original_eq.lhs
+            },
+            original_eq.op,
+            DisplayExpr {
+                context,
+                id: original_eq.rhs
+            }
+        );
+        Self {
+            context,
+            steps,
+            original_eq,
+            var: var.to_string(),
+            title,
+        }
+    }
+
+    /// Generate complete HTML document for solve steps
+    pub fn to_html(&mut self) -> String {
+        let mut html = self.html_header_solve();
+        html.push_str(&self.render_solve_timeline());
+        html.push_str(Self::html_footer_solve());
+        html
+    }
+
+    fn html_header_solve(&self) -> String {
+        let escaped_title = html_escape(&self.title);
+        let original_latex = format!(
+            "{} {} {}",
+            LaTeXExpr {
+                context: self.context,
+                id: self.original_eq.lhs
+            }
+            .to_latex(),
+            self.relop_to_latex(&self.original_eq.op),
+            LaTeXExpr {
+                context: self.context,
+                id: self.original_eq.rhs
+            }
+            .to_latex()
+        );
+
+        format!(
+            r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solve Steps: {}</title>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+    * {{
+        box-sizing: border-box;
+    }}
+    body {{
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 20px 15px;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        min-height: 100vh;
+        color: #e0e0e0;
+    }}
+    .container {{
+        background: rgba(30, 40, 60, 0.95);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }}
+    h1 {{
+        color: #64b5f6;
+        text-align: center;
+        margin-bottom: 10px;
+        font-size: 1.8em;
+    }}
+    .subtitle {{
+        text-align: center;
+        color: #90caf9;
+        margin-bottom: 25px;
+    }}
+    .original {{
+        background: linear-gradient(135deg, #1565c0, #0d47a1);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(21, 101, 192, 0.4);
+    }}
+    .timeline {{
+        position: relative;
+        padding-left: 30px;
+    }}
+    .timeline::before {{
+        content: '';
+        position: absolute;
+        left: 10px;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: linear-gradient(to bottom, #64b5f6, #4caf50);
+    }}
+    .step {{
+        background: rgba(40, 50, 70, 0.8);
+        border-radius: 10px;
+        padding: 15px 20px;
+        margin-bottom: 20px;
+        position: relative;
+        border-left: 4px solid #64b5f6;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }}
+    .step:hover {{
+        transform: translateX(5px);
+        box-shadow: 0 4px 20px rgba(100, 181, 246, 0.3);
+    }}
+    .step::before {{
+        content: '';
+        position: absolute;
+        left: -23px;
+        top: 20px;
+        width: 12px;
+        height: 12px;
+        background: #64b5f6;
+        border-radius: 50%;
+        border: 3px solid #1a1a2e;
+    }}
+    .step-number {{
+        color: #64b5f6;
+        font-weight: bold;
+        font-size: 0.9em;
+        margin-bottom: 5px;
+    }}
+    .description {{
+        color: #b0bec5;
+        font-size: 1em;
+        margin-bottom: 10px;
+        font-style: italic;
+    }}
+    .equation {{
+        background: rgba(30, 40, 55, 0.9);
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 1.2em;
+    }}
+    .final-result {{
+        background: linear-gradient(135deg, #2e7d32, #1b5e20);
+        padding: 20px;
+        text-align: center;
+        color: white;
+        border-radius: 10px;
+        margin-top: 30px;
+        font-size: 1.2em;
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }}
+    footer {{
+        text-align: center;
+        margin-top: 30px;
+        color: white;
+        font-size: 0.9em;
+    }}
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Equation Solving Steps</h1>
+    <p class="subtitle">Solving for <strong>{}</strong></p>
+    <div class="original">
+        \(\textbf{{Original Equation:}}\)
+        \[{}\]
+    </div>
+"#,
+            escaped_title,
+            html_escape(&self.var),
+            original_latex
+        )
+    }
+
+    fn render_solve_timeline(&mut self) -> String {
+        let mut html = String::from("        <div class=\"timeline\">\n");
+
+        let mut current_eq = self.original_eq.clone();
+
+        for (i, step) in self.steps.iter().enumerate() {
+            let step_number = i + 1;
+
+            // Generate LaTeX for the equation after this step
+            let eq_latex = format!(
+                "{} {} {}",
+                LaTeXExpr {
+                    context: self.context,
+                    id: step.equation_after.lhs
+                }
+                .to_latex(),
+                self.relop_to_latex(&step.equation_after.op),
+                LaTeXExpr {
+                    context: self.context,
+                    id: step.equation_after.rhs
+                }
+                .to_latex()
+            );
+
+            html.push_str(&format!(
+                r#"        <div class="step">
+            <div class="step-number">Step {}</div>
+            <div class="description">{}</div>
+            <div class="equation">
+                \[{}\]
+            </div>
+        </div>
+"#,
+                step_number,
+                html_escape(&step.description),
+                eq_latex
+            ));
+
+            current_eq = step.equation_after.clone();
+        }
+
+        // Add final result
+        let final_latex = format!(
+            "{} {} {}",
+            LaTeXExpr {
+                context: self.context,
+                id: current_eq.lhs
+            }
+            .to_latex(),
+            self.relop_to_latex(&current_eq.op),
+            LaTeXExpr {
+                context: self.context,
+                id: current_eq.rhs
+            }
+            .to_latex()
+        );
+
+        html.push_str(
+            r#"        </div>
+        <div class="final-result">
+            \(\textbf{Solution:}\)
+            \["#,
+        );
+        html.push_str(&final_latex);
+        html.push_str(
+            r#"\]
+        </div>
+    </div>
+"#,
+        );
+        html
+    }
+
+    fn relop_to_latex(&self, op: &cas_ast::RelOp) -> &'static str {
+        use cas_ast::RelOp;
+        match op {
+            RelOp::Eq => "=",
+            RelOp::Neq => "\\neq",
+            RelOp::Lt => "<",
+            RelOp::Gt => ">",
+            RelOp::Leq => "\\leq",
+            RelOp::Geq => "\\geq",
+        }
+    }
+
+    fn html_footer_solve() -> &'static str {
+        r#"    <footer>
+        Generated by Rust CAS Engine - Equation Solver
+    </footer>
+</body>
+</html>"#
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
