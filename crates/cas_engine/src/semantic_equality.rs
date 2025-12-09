@@ -1,5 +1,5 @@
 use crate::rule::{Rewrite, Rule};
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
 
 /// Semantic equality checker - determines if two expressions are mathematically equivalent
 /// even if they have different structural representations

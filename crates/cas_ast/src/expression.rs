@@ -230,7 +230,23 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(_, _) => {
                 // Flatten Add chain to handle mixed signs gracefully
-                let terms = collect_add_terms(self.context, self.id);
+                let mut terms = collect_add_terms(self.context, self.id);
+
+                // Reorder for display: put positive terms first
+                // This makes -√2 + √5 display as √5 - √2 which is cleaner
+                if terms.len() >= 2 {
+                    let (is_first_neg, _, _) = check_negative(self.context, terms[0]);
+                    if is_first_neg {
+                        // Find the first positive term and swap it to the front
+                        if let Some(first_positive_idx) = terms
+                            .iter()
+                            .position(|t| !check_negative(self.context, *t).0)
+                        {
+                            terms.swap(0, first_positive_idx);
+                        }
+                    }
+                }
+
                 for (i, term) in terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
 
