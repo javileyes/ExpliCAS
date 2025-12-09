@@ -20,8 +20,9 @@ pub fn optimize_steps_semantic(
     final_expr: ExprId,
 ) -> StepOptimizationResult {
     // First check if the entire simplification was a no-op
+    // Use the lax cycle check that considers Sub(a,b) equal to Add(-b,a)
     let checker = SemanticEqualityChecker::new(ctx);
-    if checker.are_equal(original_expr, final_expr) {
+    if checker.are_equal_for_cycle_check(original_expr, final_expr) {
         return StepOptimizationResult::NoSimplificationNeeded;
     }
 

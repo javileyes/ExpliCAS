@@ -49,6 +49,48 @@ impl<'a> SemanticEqualityChecker<'a> {
         }
     }
 
+    /// Check if expr_a is the negation of expr_b
+    /// Handles cases like: Neg(x) vs x, Mul(-1, x) vs x, -n vs n
+    fn is_negation_of(&self, a: ExprId, b: ExprId) -> bool {
+        let expr_a = self.context.get(a);
+
+        // Case 1: a = Neg(inner) and inner equals b
+        if let Expr::Neg(inner) = expr_a {
+            if self.are_equal(*inner, b) {
+                return true;
+            }
+        }
+
+        // Case 2: a = Mul(-1, inner) and inner equals b
+        if let Expr::Mul(l, r) = expr_a {
+            // Check if left is -1 and right equals b
+            if let Expr::Number(n) = self.context.get(*l) {
+                if *n == num_rational::BigRational::from_integer((-1).into()) {
+                    if self.are_equal(*r, b) {
+                        return true;
+                    }
+                }
+            }
+            // Check if right is -1 and left equals b
+            if let Expr::Number(n) = self.context.get(*r) {
+                if *n == num_rational::BigRational::from_integer((-1).into()) {
+                    if self.are_equal(*l, b) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Case 3: a is a negative number and b is its positive version
+        if let (Expr::Number(n_a), Expr::Number(n_b)) = (expr_a, self.context.get(b)) {
+            if n_a == &(-n_b.clone()) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Check if two expressions are semantically equal
     pub fn are_equal(&self, a: ExprId, b: ExprId) -> bool {
         // Fast path: same ExprId means definitely equal
@@ -58,6 +100,55 @@ impl<'a> SemanticEqualityChecker<'a> {
 
         // Check structural equality
         self.check_semantic_equality(a, b)
+    }
+
+    /// Check if two expressions are semantically equal for cycle detection purposes
+    /// This is a more permissive check that considers Sub(a,b) equal to Add(-b,a)
+    /// Used by optimize_steps_semantic to detect expand→factor cycles
+    pub fn are_equal_for_cycle_check(&self, a: ExprId, b: ExprId) -> bool {
+        // Fast path: same ExprId means definitely equal
+        if a == b {
+            return true;
+        }
+
+        // First try standard equality
+        if self.check_semantic_equality(a, b) {
+            return true;
+        }
+
+        // Then try lax comparison for Sub/Add equivalence
+        self.check_sub_add_equivalence(a, b)
+    }
+
+    /// Check if Sub(a, b) is equivalent to Add(-b, a) or Add(a, -b)
+    fn check_sub_add_equivalence(&self, a: ExprId, b: ExprId) -> bool {
+        let expr_a = self.context.get(a);
+        let expr_b = self.context.get(b);
+
+        match (expr_a, expr_b) {
+            (Expr::Sub(l1, r1), Expr::Add(l2, r2)) => {
+                // Sub(a, b) vs Add(..., ...)
+                // Check if either side of Add is Neg of r1, and the other equals l1
+                let neg_r1_matches_l2 = self.is_negation_of(*l2, *r1) && self.are_equal(*l1, *r2);
+                let neg_r1_matches_r2 = self.is_negation_of(*r2, *r1) && self.are_equal(*l1, *l2);
+                neg_r1_matches_l2 || neg_r1_matches_r2
+            }
+            (Expr::Add(l1, r1), Expr::Sub(l2, r2)) => {
+                // Symmetric case
+                let neg_r2_matches_l1 = self.is_negation_of(*l1, *r2) && self.are_equal(*r1, *l2);
+                let neg_r2_matches_r1 = self.is_negation_of(*r1, *r2) && self.are_equal(*l1, *l2);
+                neg_r2_matches_l1 || neg_r2_matches_r1
+            }
+            // Also check Pow with equivalent bases
+            (Expr::Pow(b1, e1), Expr::Pow(b2, e2)) => {
+                // Check if exponents are equal and bases are Sub/Add equivalent
+                if self.are_equal(*e1, *e2) {
+                    return self.check_sub_add_equivalence(*b1, *b2);
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     fn check_semantic_equality(&self, a: ExprId, b: ExprId) -> bool {
