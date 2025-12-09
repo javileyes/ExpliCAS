@@ -1949,9 +1949,10 @@ impl Repl {
                                     );
                                     println!(
                                         "-> {}",
-                                        DisplayExpr {
+                                        DisplayExprWithHints {
                                             context: &self.simplifier.context,
-                                            id: current_root
+                                            id: current_root,
+                                            hints: &display_hints
                                         }
                                     );
                                 } else {
@@ -2078,9 +2079,10 @@ impl Repl {
                                         "   Global: {}",
                                         clean_display_string(&format!(
                                             "{}",
-                                            DisplayExpr {
+                                            DisplayExprWithHints {
                                                 context: &self.simplifier.context,
-                                                id: current_root
+                                                id: current_root,
+                                                hints: &display_hints
                                             }
                                         ))
                                     );
