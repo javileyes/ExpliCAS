@@ -1093,13 +1093,14 @@ fn latex_escape(s: &str) -> String {
 // ============================================================================
 
 use crate::solver::SolveStep;
-use cas_ast::Equation;
+use cas_ast::{Equation, SolutionSet};
 
 /// Timeline HTML generator for equation solving steps
 pub struct SolveTimelineHtml<'a> {
     context: &'a mut Context,
     steps: &'a [SolveStep],
     original_eq: &'a Equation,
+    solution_set: &'a SolutionSet,
     var: String,
     title: String,
 }
@@ -1109,6 +1110,7 @@ impl<'a> SolveTimelineHtml<'a> {
         context: &'a mut Context,
         steps: &'a [SolveStep],
         original_eq: &'a Equation,
+        solution_set: &'a SolutionSet,
         var: &str,
     ) -> Self {
         let title = format!(
@@ -1127,6 +1129,7 @@ impl<'a> SolveTimelineHtml<'a> {
             context,
             steps,
             original_eq,
+            solution_set,
             var: var.to_string(),
             title,
         }
@@ -1333,36 +1336,75 @@ impl<'a> SolveTimelineHtml<'a> {
             current_eq = step.equation_after.clone();
         }
 
-        // Add final result
-        let final_latex = format!(
-            "{} {} {}",
-            LaTeXExpr {
-                context: self.context,
-                id: current_eq.lhs
-            }
-            .to_latex(),
-            self.relop_to_latex(&current_eq.op),
-            LaTeXExpr {
-                context: self.context,
-                id: current_eq.rhs
-            }
-            .to_latex()
-        );
+        // Add final result showing the SOLUTION SET, not the last equation
+        let solution_latex = self.solution_set_to_latex();
 
-        html.push_str(
+        html.push_str(&format!(
             r#"        </div>
         <div class="final-result">
-            \(\textbf{Solution:}\)
-            \["#,
-        );
-        html.push_str(&final_latex);
-        html.push_str(
-            r#"\]
+            \(\textbf{{Solution: }} {} = \)
+            \[{}\\]
         </div>
     </div>
 "#,
-        );
+            html_escape(&self.var),
+            solution_latex
+        ));
         html
+    }
+
+    /// Convert SolutionSet to LaTeX representation
+    fn solution_set_to_latex(&self) -> String {
+        use cas_ast::SolutionSet;
+        match self.solution_set {
+            SolutionSet::Empty => r"\emptyset".to_string(),
+            SolutionSet::AllReals => r"\mathbb{R}".to_string(),
+            SolutionSet::Discrete(exprs) => {
+                let elements: Vec<String> = exprs
+                    .iter()
+                    .map(|e| {
+                        LaTeXExpr {
+                            context: self.context,
+                            id: *e,
+                        }
+                        .to_latex()
+                    })
+                    .collect();
+                format!(r"\left\{{ {} \right\}}", elements.join(", "))
+            }
+            SolutionSet::Continuous(interval) => self.interval_to_latex(interval),
+            SolutionSet::Union(intervals) => {
+                let parts: Vec<String> = intervals
+                    .iter()
+                    .map(|i| self.interval_to_latex(i))
+                    .collect();
+                parts.join(r" \cup ")
+            }
+        }
+    }
+
+    /// Convert Interval to LaTeX representation
+    fn interval_to_latex(&self, interval: &cas_ast::Interval) -> String {
+        use cas_ast::BoundType;
+        let left = match interval.min_type {
+            BoundType::Open => "(",
+            BoundType::Closed => "[",
+        };
+        let right = match interval.max_type {
+            BoundType::Open => ")",
+            BoundType::Closed => "]",
+        };
+        let min_latex = LaTeXExpr {
+            context: self.context,
+            id: interval.min,
+        }
+        .to_latex();
+        let max_latex = LaTeXExpr {
+            context: self.context,
+            id: interval.max,
+        }
+        .to_latex();
+        format!(r"{}{}, {}{}", left, min_latex, max_latex, right)
     }
 
     fn relop_to_latex(&self, op: &cas_ast::RelOp) -> &'static str {

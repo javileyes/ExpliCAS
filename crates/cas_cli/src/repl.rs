@@ -1621,6 +1621,7 @@ impl Repl {
                             &mut self.simplifier.context,
                             &steps,
                             &eq,
+                            &solution_set,
                             var,
                         );
                         let html = timeline.to_html();
