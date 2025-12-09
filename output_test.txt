@@ -1,6 +1,6 @@
 ==================================================
 CLI Tests Output - Modo NORMAL
-Fecha: Tue Dec  9 01:49:28 CET 2025
+Fecha: Tue Dec  9 08:33:01 CET 2025
 ==================================================
 
 warning: unnecessary parentheses around block return value
@@ -17,6 +17,7 @@ help: remove these parentheses
    |
 
 warning: `cas_ast` (lib) generated 1 warning (run `cargo fix --lib -p cas_ast` to apply 1 suggestion)
+   Compiling cas_engine v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_engine)
 warning: unused doc comment
    --> crates/cas_engine/src/rules/trig_canonicalization.rs:322:1
     |
@@ -35,7 +36,8 @@ warning: unused import: `DisplayExpr`
   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
 warning: `cas_engine` (lib) generated 2 warnings (run `cargo fix --lib -p cas_engine` to apply 1 suggestion)
-    Finished `release` profile [optimized] target(s) in 0.02s
+   Compiling cas_cli v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_cli)
+    Finished `release` profile [optimized] target(s) in 1.93s
      Running `target/release/cas_cli`
 Rust CAS Step-by-Step Demo
 Step-by-step output enabled (Normal).
@@ -1159,5 +1161,5 @@ Result: { 8 }
 Goodbye!
 
 ==================================================
-Tests completados: Tue Dec  9 01:49:28 CET 2025
+Tests completados: Tue Dec  9 08:33:03 CET 2025
 ==================================================

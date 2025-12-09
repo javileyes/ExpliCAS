@@ -30,6 +30,90 @@ pub enum Verbosity {
     Verbose,
 }
 
+/// Clean verbose patterns from display strings for better didactic quality
+/// Removes patterns like "1 * x" -> "x" and "x * 1" -> "x"
+fn clean_display_string(s: &str) -> String {
+    let mut result = s.to_string();
+    let mut changed = true;
+
+    // Iterate until no more changes (handles nested patterns)
+    while changed {
+        let before = result.clone();
+
+        // Replace "1 * " at the very start
+        if result.starts_with("1 * ") {
+            result = result[4..].to_string();
+        }
+
+        // Replace " * 1" at the very end (but not " * 10" etc)
+        if result.ends_with(" * 1") && !result.ends_with("0 * 1") {
+            result = result[..result.len() - 4].to_string();
+        }
+
+        // Order matters: do more specific patterns first
+
+        // "(1 * " at start of parenthesized expression
+        result = result.replace("(1 * ", "(");
+
+        // " * 1)" at end of parenthesized expression
+        result = result.replace(" * 1)", ")");
+
+        // "1 * 1" -> "1" (common in fraction combination)
+        result = result.replace("1 * 1", "1");
+
+        // " + 1 * " -> " + " (after addition)
+        result = result.replace(" + 1 * ", " + ");
+
+        // " - 1 * " -> " - " (after subtraction)
+        result = result.replace(" - 1 * ", " - ");
+
+        // "/ (1 * " -> "/ ("
+        result = result.replace("/ (1 * ", "/ (");
+
+        // " * 1 +" -> " +"
+        result = result.replace(" * 1 +", " +");
+
+        // " * 1 -" -> " -"
+        result = result.replace(" * 1 -", " -");
+
+        // " * 1 /" -> " /"
+        result = result.replace(" * 1 /", " /");
+
+        // " * 1 *" -> " *" (chained multiplications)
+        result = result.replace(" * 1 *", " *");
+
+        // Handle edge case: "1 * -" at start (like "1 * -1^2")
+        if result.starts_with("1 * -") {
+            result = result[4..].to_string();
+        }
+
+        // "1 * " followed by digit at start (like "1 * 2")
+        if result.starts_with("1 * ") && result.len() > 4 {
+            let next_char = result.chars().nth(4);
+            if let Some(c) = next_char {
+                if c.is_ascii_digit() || c == '-' || c == 'x' || c == 'y' || c == '(' {
+                    result = result[4..].to_string();
+                }
+            }
+        }
+
+        // "/ (1 * x)" -> "/ x" for denominators
+        result = result.replace("/ (1 * x)", "/ x");
+        result = result.replace("/ (1 * y)", "/ y");
+
+        // Handle "2 * -1 * x" -> "-2 * x" is too complex, instead handle "* -1 * " later
+        result = result.replace(" * -1 * ", " * -");
+
+        // "x^2 + 1 * " -> "x^2 + " when followed by digit
+        // Need to handle "... + 1 * y" patterns more aggressively
+        // Already have " + 1 * " but it expects space after
+
+        changed = before != result;
+    }
+
+    result
+}
+
 pub struct Repl {
     simplifier: Simplifier,
     verbosity: Verbosity,
@@ -1124,11 +1208,14 @@ impl Repl {
                                                 };
                                                 println!(
                                                     "   Local: {} -> {}",
-                                                    DisplayExpr {
-                                                        context: &self.simplifier.context,
-                                                        id: step.before
-                                                    },
-                                                    after_disp
+                                                    clean_display_string(&format!(
+                                                        "{}",
+                                                        DisplayExpr {
+                                                            context: &self.simplifier.context,
+                                                            id: step.before
+                                                        }
+                                                    )),
+                                                    clean_display_string(&after_disp)
                                                 );
                                             }
 
@@ -1146,10 +1233,13 @@ impl Repl {
                                             }
                                             println!(
                                                 "   Global: {}",
-                                                DisplayExpr {
-                                                    context: &self.simplifier.context,
-                                                    id: current_root
-                                                }
+                                                clean_display_string(&format!(
+                                                    "{}",
+                                                    DisplayExpr {
+                                                        context: &self.simplifier.context,
+                                                        id: current_root
+                                                    }
+                                                ))
                                             );
                                         }
                                     } else {
@@ -1790,11 +1880,14 @@ impl Repl {
                                         };
                                         println!(
                                             "   Local: {} -> {}",
-                                            DisplayExpr {
-                                                context: &self.simplifier.context,
-                                                id: step.before
-                                            },
-                                            after_disp
+                                            clean_display_string(&format!(
+                                                "{}",
+                                                DisplayExpr {
+                                                    context: &self.simplifier.context,
+                                                    id: step.before
+                                                }
+                                            )),
+                                            clean_display_string(&after_disp)
                                         );
                                     }
 
@@ -1811,10 +1904,13 @@ impl Repl {
                                     }
                                     println!(
                                         "   Global: {}",
-                                        DisplayExpr {
-                                            context: &self.simplifier.context,
-                                            id: current_root
-                                        }
+                                        clean_display_string(&format!(
+                                            "{}",
+                                            DisplayExpr {
+                                                context: &self.simplifier.context,
+                                                id: current_root
+                                            }
+                                        ))
                                     );
                                 }
                             } else {
@@ -1940,11 +2036,14 @@ impl Repl {
                                         };
                                         println!(
                                             "   Local: {} -> {}",
-                                            DisplayExpr {
-                                                context: &temp_simplifier.context,
-                                                id: step.before
-                                            },
-                                            after_disp
+                                            clean_display_string(&format!(
+                                                "{}",
+                                                DisplayExpr {
+                                                    context: &temp_simplifier.context,
+                                                    id: step.before
+                                                }
+                                            )),
+                                            clean_display_string(&after_disp)
                                         );
                                     }
 
@@ -1956,10 +2055,13 @@ impl Repl {
                                     );
                                     println!(
                                         "   Global: {}",
-                                        DisplayExpr {
-                                            context: &temp_simplifier.context,
-                                            id: current_root
-                                        }
+                                        clean_display_string(&format!(
+                                            "{}",
+                                            DisplayExpr {
+                                                context: &temp_simplifier.context,
+                                                id: current_root
+                                            }
+                                        ))
                                     );
                                 }
                             } else {

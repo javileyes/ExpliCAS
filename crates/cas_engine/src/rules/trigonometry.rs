@@ -148,7 +148,124 @@ define_rule!(
                     }
                 }
 
-                // Case 2: Identities for negative arguments
+                // Case 4: Known Values (pi/3) - sin(π/3) = √3/2, cos(π/3) = 1/2, tan(π/3) = √3
+                if is_pi_over_n(ctx, arg, 3) {
+                    match name.as_str() {
+                        "sin" => {
+                            // sin(π/3) = √3/2
+                            let three = ctx.num(3);
+                            let one = ctx.num(1);
+                            let two = ctx.num(2);
+                            let half_exp = ctx.add(Expr::Div(one, two));
+                            let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
+                            let two2 = ctx.num(2);
+                            let new_expr = ctx.add(Expr::Div(sqrt3, two2));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "sin(π/3) = √3/2".to_string(),
+                            });
+                        }
+                        "cos" => {
+                            // cos(π/3) = 1/2
+                            let one = ctx.num(1);
+                            let two = ctx.num(2);
+                            let new_expr = ctx.add(Expr::Div(one, two));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "cos(π/3) = 1/2".to_string(),
+                            });
+                        }
+                        "tan" => {
+                            // tan(π/3) = √3
+                            let three = ctx.num(3);
+                            let one = ctx.num(1);
+                            let two = ctx.num(2);
+                            let half_exp = ctx.add(Expr::Div(one, two));
+                            let new_expr = ctx.add(Expr::Pow(three, half_exp));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "tan(π/3) = √3".to_string(),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Case 5: Known Values (pi/4) - sin(π/4) = cos(π/4) = √2/2, tan(π/4) = 1
+                if is_pi_over_n(ctx, arg, 4) {
+                    match name.as_str() {
+                        "sin" | "cos" => {
+                            // sin(π/4) = cos(π/4) = √2/2
+                            let two = ctx.num(2);
+                            let one = ctx.num(1);
+                            let two2 = ctx.num(2);
+                            let half_exp = ctx.add(Expr::Div(one, two2));
+                            let sqrt2 = ctx.add(Expr::Pow(two, half_exp));
+                            let two3 = ctx.num(2);
+                            let new_expr = ctx.add(Expr::Div(sqrt2, two3));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: format!("{}(π/4) = √2/2", name),
+                            });
+                        }
+                        "tan" => {
+                            // tan(π/4) = 1
+                            let one = ctx.num(1);
+                            return Some(Rewrite {
+                                new_expr: one,
+                                description: "tan(π/4) = 1".to_string(),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Case 6: Known Values (pi/6) - sin(π/6) = 1/2, cos(π/6) = √3/2, tan(π/6) = 1/√3
+                if is_pi_over_n(ctx, arg, 6) {
+                    match name.as_str() {
+                        "sin" => {
+                            // sin(π/6) = 1/2
+                            let one = ctx.num(1);
+                            let two = ctx.num(2);
+                            let new_expr = ctx.add(Expr::Div(one, two));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "sin(π/6) = 1/2".to_string(),
+                            });
+                        }
+                        "cos" => {
+                            // cos(π/6) = √3/2
+                            let three = ctx.num(3);
+                            let one = ctx.num(1);
+                            let two = ctx.num(2);
+                            let half_exp = ctx.add(Expr::Div(one, two));
+                            let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
+                            let two2 = ctx.num(2);
+                            let new_expr = ctx.add(Expr::Div(sqrt3, two2));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "cos(π/6) = √3/2".to_string(),
+                            });
+                        }
+                        "tan" => {
+                            // tan(π/6) = 1/√3
+                            let three = ctx.num(3);
+                            let one = ctx.num(1);
+                            let two = ctx.num(2);
+                            let half_exp = ctx.add(Expr::Div(one, two));
+                            let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
+                            let one2 = ctx.num(1);
+                            let new_expr = ctx.add(Expr::Div(one2, sqrt3));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "tan(π/6) = 1/√3".to_string(),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Case 7: Identities for negative arguments
                 // Check for Expr::Neg(inner) OR Expr::Mul(-1, inner)
                 let inner_opt = match ctx.get(arg) {
                     Expr::Neg(inner) => Some(*inner),
