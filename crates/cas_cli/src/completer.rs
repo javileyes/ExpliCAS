@@ -127,7 +127,7 @@ impl Completer for CasHelper {
 
             // Case: "steps <TAB>" or "steps no<TAB>"
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                let levels = vec!["normal", "low", "verbose", "none", "on", "off"];
+                let levels = vec!["normal", "succinct", "verbose", "none", "on", "off"];
                 for level in levels {
                     if level.starts_with(word) {
                         matches.push(Pair {

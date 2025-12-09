@@ -32,7 +32,20 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 -   **Substitution**: Replace variables with values or other expressions.
 -   **Interactive CLI**: Command-line interface with history support.
 -   **Configuration**: Enable/disable specific simplification rules (e.g., `root_denesting`, `trig_double_angle`) via the `config` command.
--   **Verbose Mode**: Toggle step-by-step output (`steps on/off`) for educational or performance purposes.
+-   **Step Verbosity Modes**: Control step-by-step output detail via `steps <mode>`:
+
+    | Mode | Filtering | Display |
+    |------|-----------|---------|
+    | `none` | No steps | Only final result |
+    | `succinct` | Medium+ | Compact (1 line/step: global expression only) |
+    | `normal` | Medium+ | Detailed (rule name + local → global) |
+    | `verbose` | All | Detailed including trivial steps |
+
+    **Step Importance Levels** (controlled by `step.importance()` in `step.rs`):
+    - **Trivial**: Identity operations (`x + 0 → x`, `x * 1 → x`, no-ops)
+    - **Low**: Internal reorganizations (`Collect`, `Canonicalize`, `Sort`, `Evaluate`)
+    - **Medium**: Standard algebraic transforms (`Product of Powers`, `Power of a Power`, etc.)
+    - **High**: Major transformations (`Factor`, `Expand`, `Integrate`, `Differentiate`)
 -   **Debug Tools** (Phase 2):
     -   **Rule Profiler**: Track rule application frequency for performance analysis (`profile enable/disable/clear`).
     -   **AST Visualizer**: Export expression trees to Graphviz DOT format (`visualize <expr>`).
@@ -55,8 +68,11 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 
 ### Prerequisites
 
--   [Rust ```bash
+-   Rust, cargo
+
 # Clonar el repositorio
+
+```bash
 git clone <repository-url>
 cd math
 

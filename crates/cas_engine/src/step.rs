@@ -85,8 +85,14 @@ impl Step {
     }
 
     /// Classify the importance/significance of this step
+    /// This is the SINGLE SOURCE OF TRUTH for step filtering in both CLI and timeline
     pub fn importance(&self) -> ImportanceLevel {
-        // Trivial steps - identity operations
+        // No-op steps are always trivial (before == after means no visible change)
+        if self.before == self.after {
+            return ImportanceLevel::Trivial;
+        }
+
+        // Trivial steps - identity operations that don't teach anything
         if self.rule_name.contains("Add Zero")
             || self.rule_name.contains("Mul By One")
             || self.rule_name.contains("Sub Zero")
@@ -95,28 +101,30 @@ impl Step {
             return ImportanceLevel::Trivial;
         }
 
-        // Low importance - simple evaluations and canonicalizations
+        // Low importance - internal reorganizations, not pedagogically valuable
         if self.rule_name.contains("Combine Constants")
             || self.rule_name.contains("Evaluate")
             || self.rule_name.contains("Canonicalize")
             || self.rule_name.contains("Sort")
             || self.rule_name.contains("Identity Power")
+            || self.rule_name.contains("Collect")  // Moved from High - internal grouping
+            || self.rule_name.starts_with("Identity")
+        // All identity rules
         {
             return ImportanceLevel::Low;
         }
 
-        // High importance - major transformations
+        // High importance - major transformations students should see
         if self.rule_name.contains("Factor")
             || self.rule_name.contains("Expand")
             || self.rule_name.contains("Integrate")
             || self.rule_name.contains("Differentiate")
             || self.rule_name.contains("Simplify Fraction")
-            || self.rule_name.contains("Collect")
         {
             return ImportanceLevel::High;
         }
 
-        // Default: Medium importance
+        // Default: Medium importance - most algebraic steps
         ImportanceLevel::Medium
     }
 }

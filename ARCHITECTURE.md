@@ -1407,26 +1407,54 @@ x^(√x)² → estados globales
 ```
 
 ###### b) Filtrado por Importancia
+
+**CLI Step Verbosity Modes** (comando `steps <mode>`):
+
+| Modo | Filtrado | Display |
+|------|----------|---------|
+| `none` | Sin pasos | Solo resultado final |
+| `succinct` | Medium+ | Compacto (1 línea/paso: expresión global) |
+| `normal` | Medium+ | Detallado (regla + local → global) |
+| `verbose` | Todos | Detallado incluyendo triviales |
+
+**Nota**: `succinct` y `normal` filtran los mismos pasos (Medium+), pero con diferente presentación.
+
+**Niveles de Importancia** (Single Source of Truth en `step.rs`):
+
 ```rust
-// En step.rs
+// En step.rs - Step::importance()
 pub enum ImportanceLevel {
-    Trivial,  // Add Zero, Mul One → Siempre oculto
-    Low,      // Canonicalize, Sort → Oculto en Normal
-    Medium,   // Algebraic transforms → Siempre mostrado
-    High,     // Factor, Expand, Integrate → Destacado
+    Trivial = 0,  // Add Zero, Mul One, no-ops (before == after)
+    Low = 1,      // Collect, Canonicalize, Sort, Evaluate, Identity
+    Medium = 2,   // Transformaciones algebraicas estándar
+    High = 3,     // Factor, Expand, Integrate, Differentiate
 }
 
 impl Step {
     pub fn importance(&self) -> ImportanceLevel {
-        if self.rule_name.contains("Canonicalize")
+        // No-ops siempre son triviales
+        if self.before == self.after {
+            return ImportanceLevel::Trivial;
+        }
+        
+        if self.rule_name.contains("Add Zero")
+            || self.rule_name.contains("Mul By One") { ... }
+            return ImportanceLevel::Trivial;
+        }
+        
+        if self.rule_name.contains("Collect")
+            || self.rule_name.contains("Canonicalize")
             || self.rule_name.contains("Sort") {
             return ImportanceLevel::Low;
         }
+        
         if self.rule_name.contains("Factor")
-            || self.rule_name.contains("Expand") {
+            || self.rule_name.contains("Expand")
+            || self.rule_name.contains("Integrate") {
             return ImportanceLevel::High;
         }
-        ImportanceLevel::Medium
+        
+        ImportanceLevel::Medium  // Default
     }
 }
 ```

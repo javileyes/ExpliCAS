@@ -50,15 +50,54 @@ pub struct SubStep {
 ///
 /// This is the main entry point for the didactic layer.
 /// It analyzes each step and adds explanatory sub-steps where helpful.
-pub fn enrich_steps(ctx: &Context, _original_expr: ExprId, steps: Vec<Step>) -> Vec<EnrichedStep> {
+pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> Vec<EnrichedStep> {
     let mut enriched = Vec::with_capacity(steps.len());
+
+    // Check original expression for fraction sums (before any simplification)
+    let all_fraction_sums = find_all_fraction_sums(ctx, original_expr);
+
+    // Keep only the sum with the most fractions (ignore partial subsums)
+    // AND deduplicate identical fraction sums
+    let unique_fraction_sums: Vec<_> = if all_fraction_sums.is_empty() {
+        Vec::new()
+    } else {
+        let max_fractions = all_fraction_sums
+            .iter()
+            .map(|s| s.fractions.len())
+            .max()
+            .unwrap_or(0);
+        let mut seen = std::collections::HashSet::new();
+        all_fraction_sums
+            .into_iter()
+            .filter(|info| info.fractions.len() == max_fractions)
+            .filter(|info| {
+                // Deduplicate by result value
+                let key = format!("{}", info.result);
+                seen.insert(key)
+            })
+            .collect()
+    };
 
     for (i, step) in steps.iter().enumerate() {
         let mut sub_steps = Vec::new();
 
-        // Check for fraction sum in exponent
+        // Show fraction sums on the step that uses the result (Add Inverse or similar)
+        // This is where x^(17/24) - x^(17/24) = 0, after the fraction sum is computed
+        if step.rule_name.contains("Inverse") && !unique_fraction_sums.is_empty() {
+            for info in &unique_fraction_sums {
+                sub_steps.extend(generate_fraction_sum_substeps(info));
+            }
+        }
+
+        // Also check for fraction sums in exponent (between steps)
         if let Some(fraction_info) = detect_exponent_fraction_change(ctx, &steps, i) {
-            sub_steps.extend(generate_fraction_sum_substeps(&fraction_info));
+            // Avoid duplicates
+            if !unique_fraction_sums
+                .iter()
+                .any(|o| o.fractions == fraction_info.fractions)
+            {
+                sub_steps.extend(generate_fraction_sum_substeps(&fraction_info));
+            }
         }
 
         enriched.push(EnrichedStep {
@@ -68,6 +107,43 @@ pub fn enrich_steps(ctx: &Context, _original_expr: ExprId, steps: Vec<Step>) -> 
     }
 
     enriched
+}
+
+/// Find all fraction sums in an expression tree
+fn find_all_fraction_sums(ctx: &Context, expr: ExprId) -> Vec<FractionSumInfo> {
+    let mut results = Vec::new();
+    find_all_fraction_sums_recursive(ctx, expr, &mut results);
+    results
+}
+
+fn find_all_fraction_sums_recursive(
+    ctx: &Context,
+    expr: ExprId,
+    results: &mut Vec<FractionSumInfo>,
+) {
+    // Check if this is an Add chain of fractions
+    if let Some(info) = find_fraction_sum_in_expr(ctx, expr) {
+        results.push(info);
+    }
+
+    // Recurse into children
+    match ctx.get(expr) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            find_all_fraction_sums_recursive(ctx, *l, results);
+            find_all_fraction_sums_recursive(ctx, *r, results);
+        }
+        Expr::Pow(b, e) => {
+            find_all_fraction_sums_recursive(ctx, *b, results);
+            find_all_fraction_sums_recursive(ctx, *e, results);
+        }
+        Expr::Neg(e) => find_all_fraction_sums_recursive(ctx, *e, results),
+        Expr::Function(_, args) => {
+            for arg in args {
+                find_all_fraction_sums_recursive(ctx, *arg, results);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Information about a fraction sum that was computed
@@ -86,28 +162,29 @@ fn detect_exponent_fraction_change(
     steps: &[Step],
     step_idx: usize,
 ) -> Option<FractionSumInfo> {
-    if step_idx == 0 {
-        return None;
-    }
-
     let current_step = &steps[step_idx];
-    let prev_step = &steps[step_idx - 1];
 
-    // Look for changes in exponent expressions
-    // Compare global_after of previous step with before of current step
-    let prev_global = prev_step.global_after.unwrap_or(prev_step.after);
-    let curr_before = current_step.before;
+    // We need to check if there's a fraction sum in the GLOBAL expression
+    // that will be simplified silently (not its own step)
 
-    // Check if this step involves a power rule and the exponent simplified
-    if current_step.rule_name.contains("Power") || current_step.rule_name.contains("Inverse") {
-        // Look for fraction sums in the expression
-        if let Some(info) = find_fraction_sum_in_expr(ctx, curr_before) {
+    // For "Add Inverse" rule - this is when x^(a) - x^(a) = 0, meaning
+    // the fractional exponent sum was already computed silently
+    if current_step.rule_name.contains("Inverse") || current_step.rule_name.contains("Power") {
+        // Check the global_after of previous step if available,
+        // or use global_after of current step
+        let global_expr = if step_idx > 0 {
+            steps[step_idx - 1]
+                .global_after
+                .unwrap_or(steps[step_idx - 1].after)
+        } else {
+            current_step.global_after.unwrap_or(current_step.before)
+        };
+
+        // Search recursively for fraction sums
+        if let Some(info) = find_fraction_sum_in_expr(ctx, global_expr) {
             return Some(info);
         }
     }
-
-    // Also check the after expression for contrast
-    let _curr_after = current_step.after;
 
     None
 }
@@ -115,18 +192,18 @@ fn detect_exponent_fraction_change(
 /// Search an expression tree for Add chains of fractions
 fn find_fraction_sum_in_expr(ctx: &Context, expr: ExprId) -> Option<FractionSumInfo> {
     match ctx.get(expr) {
-        Expr::Add(l, r) => {
+        Expr::Add(_, _) => {
             // Collect all terms in the Add chain
             let mut terms = Vec::new();
             collect_add_terms(ctx, expr, &mut terms);
 
-            // Check if all terms are numbers (fractions)
+            // Check if all terms are fractions (Number or Div(Number,Number))
             let mut fractions = Vec::new();
             for term in &terms {
-                if let Expr::Number(n) = ctx.get(*term) {
-                    fractions.push(n.clone());
+                if let Some(frac) = try_as_fraction(ctx, *term) {
+                    fractions.push(frac);
                 } else {
-                    return None; // Not all terms are numbers
+                    return None; // Not all terms are fractions
                 }
             }
 
@@ -149,6 +226,26 @@ fn find_fraction_sum_in_expr(ctx: &Context, expr: ExprId) -> Option<FractionSumI
             for arg in args {
                 if let Some(info) = find_fraction_sum_in_expr(ctx, *arg) {
                     return Some(info);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Try to interpret an expression as a fraction (BigRational)
+/// Handles both Number(n) and Div(Number, Number) patterns
+fn try_as_fraction(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Div(numer, denom) => {
+            // Check if both numerator and denominator are numbers
+            if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*numer), ctx.get(*denom)) {
+                // Convert to BigRational: n/d
+                if !d.is_zero() {
+                    // n and d are already BigRational, compute n/d
+                    return Some(n / d);
                 }
             }
             None

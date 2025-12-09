@@ -19,19 +19,16 @@ pub enum VerbosityLevel {
 }
 
 impl VerbosityLevel {
-    /// Returns minimum importance level to show for this verbosity
-    fn min_importance(&self) -> crate::step::ImportanceLevel {
-        use crate::step::ImportanceLevel;
-        match self {
-            VerbosityLevel::Low => ImportanceLevel::High,
-            VerbosityLevel::Normal => ImportanceLevel::Medium,
-            VerbosityLevel::Verbose => ImportanceLevel::Trivial, // Show all
-        }
-    }
-
     /// Check if a step should be shown at this verbosity level
+    /// Uses step.importance() as the single source of truth
     fn should_show_step(&self, step: &Step) -> bool {
-        step.importance() >= self.min_importance()
+        use crate::step::ImportanceLevel;
+
+        match self {
+            VerbosityLevel::Verbose => true,
+            VerbosityLevel::Low => step.importance() >= ImportanceLevel::High,
+            VerbosityLevel::Normal => step.importance() >= ImportanceLevel::Medium,
+        }
     }
 }
 
@@ -670,8 +667,12 @@ impl<'a> TimelineHtml<'a> {
             .filter(|step| self.verbosity_level.should_show_step(step))
             .collect();
 
+        // Enrich steps with didactic sub-steps
+        let enriched_steps =
+            crate::didactic::enrich_steps(self.context, self.original_expr, self.steps.to_vec());
+
         let mut html = Self::html_header(&self.title);
-        html.push_str(&self.render_timeline_filtered(&filtered_steps));
+        html.push_str(&self.render_timeline_filtered_enriched(&filtered_steps, &enriched_steps));
         html.push_str(Self::html_footer());
         html
     }
@@ -839,6 +840,49 @@ impl<'a> TimelineHtml<'a> {
             margin-top: 30px;
             color: white;
             font-size: 0.9em;
+        }}
+        /* Expandable details for didactic sub-steps */
+        .substeps-details {{
+            margin: 10px 0;
+            padding: 10px 15px;
+            background: #fff8e1;
+            border: 1px solid #ffcc80;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }}
+        .substeps-details summary {{
+            cursor: pointer;
+            font-weight: bold;
+            color: #ef6c00;
+            padding: 5px 0;
+        }}
+        .substeps-details summary:hover {{
+            color: #e65100;
+        }}
+        .substeps-content {{
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+        }}
+        .substep {{
+            padding: 8px 0;
+            border-bottom: 1px dashed #ffe0b2;
+        }}
+        .substep:last-child {{
+            border-bottom: none;
+        }}
+        .substep-desc {{
+            font-weight: 500;
+            color: #795548;
+            display: block;
+            margin-bottom: 5px;
+        }}
+        .substep-math {{
+            padding: 5px 10px;
+            background: #fafafa;
+            border-radius: 4px;
+            text-align: center;
         }}
     </style>
 </head>
@@ -1035,6 +1079,148 @@ impl<'a> TimelineHtml<'a> {
 "#,
                 step_number,
                 html_escape(&step.rule_name),
+                global_before,
+                step.description,
+                local_change_latex
+            ));
+        }
+
+        // Add final result
+        let final_expr = LaTeXExpr {
+            context: self.context,
+            id: current_global,
+        }
+        .to_latex();
+        html.push_str(
+            r#"        </div>
+        <div class="final-result">
+            \(\textbf{Final Result:}\)
+            \["#,
+        );
+        html.push_str(&final_expr);
+        html.push_str(
+            r#"\]
+        </div>
+    </div>
+"#,
+        );
+        html
+    }
+
+    /// Render timeline with enriched sub-steps (expandable details)
+    fn render_timeline_filtered_enriched(
+        &mut self,
+        filtered_steps: &[&Step],
+        enriched_steps: &[crate::didactic::EnrichedStep],
+    ) -> String {
+        let mut html = String::from("        <div class=\"timeline\">\n");
+
+        let mut step_number = 0;
+        let mut current_global = self.original_expr;
+
+        // Track which steps to display
+        let filtered_indices: std::collections::HashSet<_> =
+            filtered_steps.iter().map(|s| *s as *const Step).collect();
+
+        // Iterate over ALL steps to correctly update the global state
+        for (step_idx, step) in self.steps.iter().enumerate() {
+            let global_state_before_this_step = current_global;
+            current_global = self.reconstruct_global_expr(current_global, &step.path, step.after);
+
+            let step_ptr = step as *const Step;
+            if !filtered_indices.contains(&step_ptr) {
+                continue;
+            }
+            step_number += 1;
+
+            let global_before = self.generate_latex_with_highlight(
+                global_state_before_this_step,
+                &step.path,
+                step.before,
+            );
+
+            let should_preserve_exponents = step.rule_name.contains("Multiply exponents")
+                || step.rule_name.contains("Power of a Power");
+
+            let local_change_latex = if should_preserve_exponents {
+                let local_before = cas_ast::LatexNoRoots {
+                    context: self.context,
+                    id: step.before,
+                }
+                .to_latex();
+                let local_after = cas_ast::LatexNoRoots {
+                    context: self.context,
+                    id: step.after,
+                }
+                .to_latex();
+                format!("{} \\rightarrow {}", local_before, local_after)
+            } else {
+                let local_before = LaTeXExpr {
+                    context: self.context,
+                    id: step.before,
+                }
+                .to_latex();
+                let local_after = LaTeXExpr {
+                    context: self.context,
+                    id: step.after,
+                }
+                .to_latex();
+                format!("{} \\rightarrow {}", local_before, local_after)
+            };
+
+            // Get enriched sub-steps for this step
+            let sub_steps_html = if let Some(enriched) = enriched_steps.get(step_idx) {
+                if !enriched.sub_steps.is_empty() {
+                    let mut details_html = String::from(
+                        r#"<details class="substeps-details">
+                        <summary>Ver detalles</summary>
+                        <div class="substeps-content">"#,
+                    );
+                    for sub in &enriched.sub_steps {
+                        details_html.push_str(&format!(
+                            r#"<div class="substep">
+                                <span class="substep-desc">{}</span>"#,
+                            html_escape(&sub.description)
+                        ));
+                        if !sub.before_latex.is_empty() {
+                            details_html.push_str(&format!(
+                                r#"<div class="substep-math">\[{} \rightarrow {}\]</div>"#,
+                                sub.before_latex, sub.after_latex
+                            ));
+                        }
+                        details_html.push_str("</div>");
+                    }
+                    details_html.push_str("</div></details>");
+                    details_html
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            html.push_str(&format!(
+                r#"            <div class="step">
+                <div class="step-number">{}</div>
+                <div class="step-content">
+                    <h3>{}</h3>
+                    {}
+                    <div class="math-expr before">
+                        \(\textbf{{Expression:}}\)
+                        \[{}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{{{}}}\)</div>
+                        <div class="local-change">
+                            \[{}\]
+                        </div>
+                    </div>
+                </div>
+            </div>
+"#,
+                step_number,
+                html_escape(&step.rule_name),
+                sub_steps_html,
                 global_before,
                 step.description,
                 local_change_latex

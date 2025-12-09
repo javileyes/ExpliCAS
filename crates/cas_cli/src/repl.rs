@@ -25,7 +25,7 @@ use rustyline::config::Configurer;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
     None,
-    Low,
+    Succinct, // Compact: same filtering as Normal but 1 line per step
     Normal,
     Verbose,
 }
@@ -87,7 +87,7 @@ fn clean_display_string(s: &str) -> String {
             result = result[4..].to_string();
         }
 
-        // "1 * " followed by digit at start (like "1 * 2")
+        // "1 * " folsuccincted by digit at start (like "1 * 2")
         if result.starts_with("1 * ") && result.len() > 4 {
             let next_char = result.chars().nth(4);
             if let Some(c) = next_char {
@@ -104,7 +104,7 @@ fn clean_display_string(s: &str) -> String {
         // Handle "2 * -1 * x" -> "-2 * x" is too complex, instead handle "* -1 * " later
         result = result.replace(" * -1 * ", " * -");
 
-        // "x^2 + 1 * " -> "x^2 + " when followed by digit
+        // "x^2 + 1 * " -> "x^2 + " when folsuccincted by digit
         // Need to handle "... + 1 * y" patterns more aggressively
         // Already have " + 1 * " but it expects space after
 
@@ -317,72 +317,18 @@ fn reconstruct_global_expr(
 }
 
 fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool {
+    use cas_engine::step::ImportanceLevel;
+
     match verbosity {
         Verbosity::None => false,
         Verbosity::Verbose => true,
-        Verbosity::Low | Verbosity::Normal => {
-            // Filter out "noise" rules
-            let name = &step.rule_name;
-            if name.starts_with("Canonicalize")
-                || name.starts_with("Sort")
-                || name == "Collect"
-                || name.starts_with("Identity")
-                || name == "Add Zero"
-                || name == "Mul By One"
-            {
+        // Succinct and Normal both show Medium+ importance, just different display
+        Verbosity::Succinct | Verbosity::Normal => {
+            if step.importance() < ImportanceLevel::Medium {
                 return false;
             }
 
-            // Filter "Expand" steps that produce no visible change
-            if name == "Expand" {
-                if step.before == step.after {
-                    return false;
-                }
-            }
-
-            // Filter "Factor" no-op cycles (factor then immediately back to same)
-            if name == "Factor" {
-                if step.before == step.after {
-                    return false;
-                }
-            }
-
-            // Filter trivial power evaluations: x^1 -> x, x^0 -> 1
-            if name == "Evaluate Numeric Power" {
-                let desc = &step.description;
-                // Skip x^1 -> x and x^0 -> 1 as too trivial
-                if desc.contains("^1 ->") || desc.contains("^0 ->") {
-                    return false;
-                }
-            }
-
-            // Filter trivial "Combine Constants" (like 1/3 = 1/3)
-            if name == "Combine Constants" {
-                let desc = &step.description;
-                // Heuristic: if description shows "a/b = a/b" or similar, it's trivial
-                if desc.contains(" / ") && desc.contains(" = ") {
-                    let parts: Vec<&str> = desc.split(" = ").collect();
-                    if parts.len() == 2 && parts[0].trim() == parts[1].trim() {
-                        return false; // Trivial, no actual combination
-                    }
-                }
-                // Also filter 1*1*x = x type steps
-                if desc.starts_with("1 * 1") || desc.starts_with("1*1") {
-                    return false;
-                }
-            }
-
-            // Filter verbose Negative Base Power that just shows (-x)^even -> x^even
-            if name == "Negative Base Power" {
-                let desc = &step.description;
-                if desc.contains("^even") || desc.contains("^2 ->") {
-                    // These are often internal canonicalization
-                    return false;
-                }
-            }
-
-            // Filter no-op steps (global_before == global_after means no visible change)
-            // This catches expand→factor cycles and other patterns that change nothing
+            // Additional check: global no-ops (expansion then contraction cycles)
             if let (Some(before), Some(after)) = (step.global_before, step.global_after) {
                 if before == after {
                     return false;
@@ -651,15 +597,15 @@ impl Repl {
                         self.simplifier.collect_steps = true;
                         println!("Step-by-step output enabled (Verbose).");
                     }
-                    "low" => {
-                        self.verbosity = Verbosity::Low;
+                    "succinct" => {
+                        self.verbosity = Verbosity::Succinct;
                         self.simplifier.collect_steps = true;
-                        println!("Step-by-step output enabled (Low).");
+                        println!("Step-by-step output enabled (Succinct - compact display).");
                     }
-                    _ => println!("Usage: steps <on|off|normal|verbose|low|none>"),
+                    _ => println!("Usage: steps <on|off|normal|verbose|succinct|none>"),
                 }
             } else {
-                println!("Usage: steps <on|off|normal|verbose|low|none>");
+                println!("Usage: steps <on|off|normal|verbose|succinct|none>");
             }
             return;
         }
@@ -956,7 +902,7 @@ impl Repl {
                 println!("Description: Controls the verbosity of simplification steps.");
                 println!("Levels:");
                 println!("  normal (or on)   Show clarifying steps (Global state). Default.");
-                println!("  low              Minimal output (Global state sequence only).");
+                println!("  succinct              Compact: same steps as normal but 1 line each.");
                 println!("  verbose          Show all steps (Local + Global details).");
                 println!("  none (or off)    Disable step output.");
             }
@@ -1074,7 +1020,7 @@ impl Repl {
 
         println!("Analysis & Verification:");
         println!("  explain <function>      Show step-by-step explanation");
-        println!("  steps <level>           Set step verbosity (normal, low, verbose, none)");
+        println!("  steps <level>           Set step verbosity (normal, succinct, verbose, none)");
         println!();
 
         println!("Visualization & Output:");
@@ -1161,7 +1107,7 @@ impl Repl {
 
                             let (result, steps) = self.simplifier.simplify(subbed);
                             if self.verbosity != Verbosity::None {
-                                if self.verbosity != Verbosity::Low {
+                                if self.verbosity != Verbosity::Succinct {
                                     println!("Steps:");
                                 }
                                 let mut current_root = subbed;
@@ -1170,7 +1116,7 @@ impl Repl {
                                     if should_show_step(step, self.verbosity) {
                                         step_count += 1;
 
-                                        if self.verbosity == Verbosity::Low {
+                                        if self.verbosity == Verbosity::Succinct {
                                             // Low mode: just global state
                                             current_root = reconstruct_global_expr(
                                                 &mut self.simplifier.context,
@@ -1350,7 +1296,7 @@ impl Repl {
 
         // Convert CLI verbosity to timeline verbosity
         let timeline_verbosity = match self.verbosity {
-            Verbosity::None | Verbosity::Low => cas_engine::timeline::VerbosityLevel::Low,
+            Verbosity::None | Verbosity::Succinct => cas_engine::timeline::VerbosityLevel::Low,
             Verbosity::Normal => cas_engine::timeline::VerbosityLevel::Normal,
             Verbosity::Verbose => cas_engine::timeline::VerbosityLevel::Verbose,
         };
@@ -1692,12 +1638,12 @@ impl Repl {
                 if self.verbosity != Verbosity::None
                     && (!steps_lhs.is_empty() || !steps_rhs.is_empty())
                 {
-                    if self.verbosity != Verbosity::Low {
+                    if self.verbosity != Verbosity::Succinct {
                         println!("Simplification Steps:");
                     }
                     for (i, step) in steps_lhs.iter().enumerate() {
                         if should_show_step(step, self.verbosity) {
-                            if self.verbosity == Verbosity::Low {
+                            if self.verbosity == Verbosity::Succinct {
                                 // Low mode: just global state? No, for solve simplification we don't track global state easily here
                                 // because steps_lhs are local to lhs.
                                 // We can show the result of the step on LHS.
@@ -1740,7 +1686,7 @@ impl Repl {
                     }
                     for (i, step) in steps_rhs.iter().enumerate() {
                         if should_show_step(step, self.verbosity) {
-                            if self.verbosity != Verbosity::Low {
+                            if self.verbosity != Verbosity::Succinct {
                                 println!(
                                     "RHS {}. {}  [{}]",
                                     i + 1,
@@ -1769,7 +1715,7 @@ impl Repl {
                             }
                         }
                     }
-                    if self.verbosity != Verbosity::Low {
+                    if self.verbosity != Verbosity::Succinct {
                         println!(
                             "Solving simplified equation: {} {} {}",
                             DisplayExpr {
@@ -1833,7 +1779,7 @@ impl Repl {
                     match cas_engine::solver::solve(&eq, var, &mut self.simplifier) {
                         Ok((solution_set, steps)) => {
                             if self.verbosity != Verbosity::None {
-                                if self.verbosity != Verbosity::Low {
+                                if self.verbosity != Verbosity::Succinct {
                                     println!("Steps:");
                                 }
                                 for (i, step) in steps.iter().enumerate() {
@@ -1849,7 +1795,7 @@ impl Repl {
                                         let (sim_rhs, _) =
                                             self.simplifier.simplify(step.equation_after.rhs);
 
-                                        if self.verbosity == Verbosity::Low {
+                                        if self.verbosity == Verbosity::Succinct {
                                             println!(
                                                 "-> {} {} {}",
                                                 DisplayExpr {
@@ -1912,20 +1858,28 @@ impl Repl {
 
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
-                        if self.verbosity != Verbosity::Low {
+                        if self.verbosity != Verbosity::Succinct {
                             println!("No simplification steps needed.");
                         }
                     } else {
-                        if self.verbosity != Verbosity::Low {
+                        if self.verbosity != Verbosity::Succinct {
                             println!("Steps:");
                         }
+
+                        // Enrich steps ONCE before iterating
+                        let enriched_steps = cas_engine::didactic::enrich_steps(
+                            &self.simplifier.context,
+                            expr,
+                            steps.clone(),
+                        );
+
                         let mut current_root = expr;
                         let mut step_count = 0;
-                        for step in steps.iter() {
+                        for (step_idx, step) in steps.iter().enumerate() {
                             if should_show_step(step, self.verbosity) {
                                 step_count += 1;
 
-                                if self.verbosity == Verbosity::Low {
+                                if self.verbosity == Verbosity::Succinct {
                                     // Low mode: just global state
                                     current_root = reconstruct_global_expr(
                                         &mut self.simplifier.context,
@@ -1950,6 +1904,73 @@ impl Repl {
                                     if self.verbosity == Verbosity::Verbose
                                         || self.verbosity == Verbosity::Normal
                                     {
+                                        // Didactic: Show sub-steps BEFORE Local transformation
+                                        // Sub-steps explain hidden computations (e.g., fraction sums)
+                                        if let Some(enriched_step) = enriched_steps.get(step_idx) {
+                                            if !enriched_step.sub_steps.is_empty() {
+                                                for sub in &enriched_step.sub_steps {
+                                                    println!("      → {}", sub.description);
+                                                    if !sub.before_latex.is_empty() {
+                                                        // Convert LaTeX fractions to plain text
+                                                        fn latex_to_text(s: &str) -> String {
+                                                            let mut result = s.to_string();
+                                                            while let Some(start) =
+                                                                result.find("\\frac{")
+                                                            {
+                                                                let end_start = start + 6;
+                                                                if let Some(first_close) =
+                                                                    result[end_start..].find('}')
+                                                                {
+                                                                    let numer_end =
+                                                                        end_start + first_close;
+                                                                    let numer = &result
+                                                                        [end_start..numer_end];
+                                                                    if result.len() > numer_end + 1
+                                                                        && result
+                                                                            .chars()
+                                                                            .nth(numer_end + 1)
+                                                                            == Some('{')
+                                                                    {
+                                                                        if let Some(second_close) =
+                                                                            result[numer_end + 2..]
+                                                                                .find('}')
+                                                                        {
+                                                                            let denom_end =
+                                                                                numer_end
+                                                                                    + 2
+                                                                                    + second_close;
+                                                                            let denom = &result
+                                                                                [numer_end + 2
+                                                                                    ..denom_end];
+                                                                            let replacement = format!(
+                                                                                "({}/{})",
+                                                                                numer, denom
+                                                                            );
+                                                                            result = format!(
+                                                                                "{}{}{}",
+                                                                                &result[..start],
+                                                                                replacement,
+                                                                                &result[denom_end
+                                                                                    + 1..]
+                                                                            );
+                                                                            continue;
+                                                                        }
+                                                                    }
+                                                                }
+                                                                break;
+                                                            }
+                                                            result.replace("\\", "")
+                                                        }
+                                                        println!(
+                                                            "        {} → {}",
+                                                            latex_to_text(&sub.before_latex),
+                                                            latex_to_text(&sub.after_latex)
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+
                                         let after_disp = if let Some(s) = &step.after_str {
                                             s.clone()
                                         } else {
@@ -2068,11 +2089,11 @@ impl Repl {
 
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
-                        if self.verbosity != Verbosity::Low {
+                        if self.verbosity != Verbosity::Succinct {
                             println!("No simplification steps needed.");
                         }
                     } else {
-                        if self.verbosity != Verbosity::Low {
+                        if self.verbosity != Verbosity::Succinct {
                             println!("Steps (Aggressive Mode):");
                         }
                         let mut current_root = expr;
@@ -2081,7 +2102,7 @@ impl Repl {
                             if should_show_step(step, self.verbosity) {
                                 step_count += 1;
 
-                                if self.verbosity == Verbosity::Low {
+                                if self.verbosity == Verbosity::Succinct {
                                     // Low mode: just global state
                                     current_root = reconstruct_global_expr(
                                         &mut temp_simplifier.context,
