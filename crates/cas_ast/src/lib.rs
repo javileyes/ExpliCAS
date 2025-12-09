@@ -2,6 +2,7 @@ pub mod display_context;
 pub mod domain;
 pub mod expression;
 pub mod latex;
+pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod ordering; // NEW: Canonical ordering utilities
 pub mod visitor;
@@ -12,6 +13,7 @@ pub use expression::{
     Constant, Context, DisplayExpr, DisplayExprWithHints, Expr, ExprId, RawDisplayExpr,
 };
 pub use latex::LaTeXExpr;
+pub use latex_highlight::{HighlightColor, HighlightConfig, LaTeXExprHighlighted};
 pub use latex_no_roots::LatexNoRoots;
 pub use visitor::{Transformer, Visitor};
 // use std::rc::Rc; // Removed Rc usage
