@@ -22,6 +22,16 @@ pub fn build_display_context(
     original_expr: cas_ast::ExprId,
     steps: &[Step],
 ) -> DisplayContext {
+    build_display_context_with_result(ctx, original_expr, steps, None)
+}
+
+/// Build DisplayContext, optionally including the final simplified result
+pub fn build_display_context_with_result(
+    ctx: &Context,
+    original_expr: cas_ast::ExprId,
+    steps: &[Step],
+    simplified_result: Option<cas_ast::ExprId>,
+) -> DisplayContext {
     let mut display_ctx = DisplayContext::new();
 
     // Collect root patterns from original expression: (base ExprId or value, index)
@@ -62,6 +72,11 @@ pub fn build_display_context(
                 display_ctx.insert(step.after, DisplayHint::AsRoot { index });
             }
         }
+    }
+
+    // Fifth: propagate hints to the simplified result (handles cases with no steps)
+    if let Some(result) = simplified_result {
+        propagate_sqrt_hints_to_pow(ctx, result, &root_patterns, &mut display_ctx);
     }
 
     display_ctx

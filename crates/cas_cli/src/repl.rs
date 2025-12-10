@@ -7,7 +7,7 @@ use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule};
 use cas_engine::Simplifier;
 
 use cas_ast::{Context, DisplayExpr, DisplayExprWithHints, Expr, ExprId};
-use cas_engine::display_context::build_display_context;
+use cas_engine::display_context::build_display_context_with_result;
 use cas_engine::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
 use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
 use cas_engine::rules::grouping::CollectRule;
@@ -1891,7 +1891,12 @@ impl Repl {
 
                 // Build display hints for preserving root notation (only when showing steps)
                 let display_hints = if self.verbosity != Verbosity::None {
-                    build_display_context(&self.simplifier.context, expr, &steps)
+                    build_display_context_with_result(
+                        &self.simplifier.context,
+                        expr,
+                        &steps,
+                        Some(simplified),
+                    )
                 } else {
                     cas_ast::DisplayContext::new()
                 };
