@@ -280,18 +280,13 @@ impl<'a> LaTeXExprHighlighted<'a> {
     }
 
     fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
+        // Use \cdot by default, only omit for specific safe cases
         match (self.context.get(left), self.context.get(right)) {
-            (Expr::Number(_), Expr::Number(_)) => true,
-            (Expr::Number(_), Expr::Add(_, _)) => true,
-            (Expr::Number(_), Expr::Sub(_, _)) => true,
-            (Expr::Number(_), Expr::Div(_, _)) => true,
-            (Expr::Number(_), Expr::Pow(_, _)) => true,
-            (Expr::Number(_), Expr::Mul(_, _)) => true,
-            (Expr::Add(_, _), Expr::Number(_)) => true,
-            (Expr::Sub(_, _), Expr::Number(_)) => true,
-            (Expr::Pow(_, _), Expr::Number(_)) => true,
-            (Expr::Pow(_, _), Expr::Pow(_, _)) => true,
-            _ => false,
+            (Expr::Number(_), Expr::Variable(_)) => false,
+            (Expr::Number(_), Expr::Function(_, _)) => false,
+            (Expr::Variable(_), Expr::Function(_, _)) => false,
+            (Expr::Number(_), Expr::Constant(_)) => false,
+            _ => true,
         }
     }
 }
@@ -475,18 +470,13 @@ impl<'a> LaTeXExprHighlightedWithHints<'a> {
     }
 
     fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
+        // Use \cdot by default, only omit for specific safe cases
         match (self.context.get(left), self.context.get(right)) {
-            (Expr::Number(_), Expr::Number(_)) => true,
-            (Expr::Number(_), Expr::Add(_, _)) => true,
-            (Expr::Number(_), Expr::Sub(_, _)) => true,
-            (Expr::Number(_), Expr::Div(_, _)) => true,
-            (Expr::Number(_), Expr::Pow(_, _)) => true,
-            (Expr::Number(_), Expr::Mul(_, _)) => true,
-            (Expr::Add(_, _), Expr::Number(_)) => true,
-            (Expr::Sub(_, _), Expr::Number(_)) => true,
-            (Expr::Pow(_, _), Expr::Number(_)) => true,
-            (Expr::Pow(_, _), Expr::Pow(_, _)) => true,
-            _ => false,
+            (Expr::Number(_), Expr::Variable(_)) => false,
+            (Expr::Number(_), Expr::Function(_, _)) => false,
+            (Expr::Variable(_), Expr::Function(_, _)) => false,
+            (Expr::Number(_), Expr::Constant(_)) => false,
+            _ => true,
         }
     }
 }

@@ -297,26 +297,18 @@ impl<'a> LaTeXExpr<'a> {
     }
 
     fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
-        // Check if we need explicit \cdot
+        // Use \cdot by default, only omit for specific safe cases
         match (self.context.get(left), self.context.get(right)) {
-            // Number * Number ALWAYS needs \cdot (5*5 = 5\cdot 5, not 55)
-            (Expr::Number(_), Expr::Number(_)) => true,
-
-            // Number * (complex expr) needs \cdot to avoid ambiguity
-            (Expr::Number(_), Expr::Add(_, _)) => true,
-            (Expr::Number(_), Expr::Sub(_, _)) => true,
-            (Expr::Number(_), Expr::Div(_, _)) => true,
-            (Expr::Number(_), Expr::Pow(_, _)) => true, // 3 * 2^(1/2) -> 3 \cdot 2^{1/2}
-            (Expr::Number(_), Expr::Mul(_, _)) => true, // nested multiplication
-
-            // Anything * Number might need \cdot
-            (Expr::Add(_, _), Expr::Number(_)) => true,
-            (Expr::Sub(_, _), Expr::Number(_)) => true,
-            (Expr::Pow(_, _), Expr::Number(_)) => true, // x^2 * 3 -> x^2 \cdot 3
-            (Expr::Pow(_, _), Expr::Pow(_, _)) => true, // x^2 * y^3 -> x^2 \cdot y^3
-
-            // Everything else can be implicit (2x, xy, x*sin(x), etc.)
-            _ => false,
+            // Safe to omit: Number * Variable (2x)
+            (Expr::Number(_), Expr::Variable(_)) => false,
+            // Safe to omit: Number * Function (2sin(x))
+            (Expr::Number(_), Expr::Function(_, _)) => false,
+            // Safe to omit: Variable * Function (x sin(x))
+            (Expr::Variable(_), Expr::Function(_, _)) => false,
+            // Safe to omit: Number * Constant (2π)
+            (Expr::Number(_), Expr::Constant(_)) => false,
+            // Everything else needs explicit \cdot
+            _ => true,
         }
     }
 }
@@ -489,18 +481,18 @@ impl<'a> LaTeXExprWithHints<'a> {
     }
 
     fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
+        // Use \cdot by default, only omit for specific safe cases
         match (self.context.get(left), self.context.get(right)) {
-            (Expr::Number(_), Expr::Number(_)) => true,
-            (Expr::Number(_), Expr::Add(_, _)) => true,
-            (Expr::Number(_), Expr::Sub(_, _)) => true,
-            (Expr::Number(_), Expr::Div(_, _)) => true,
-            (Expr::Number(_), Expr::Pow(_, _)) => true, // 3 * 2^(1/2) -> 3 \cdot 2^{1/2}
-            (Expr::Number(_), Expr::Mul(_, _)) => true,
-            (Expr::Add(_, _), Expr::Number(_)) => true,
-            (Expr::Sub(_, _), Expr::Number(_)) => true,
-            (Expr::Pow(_, _), Expr::Number(_)) => true,
-            (Expr::Pow(_, _), Expr::Pow(_, _)) => true,
-            _ => false,
+            // Safe to omit: Number * Variable (2x)
+            (Expr::Number(_), Expr::Variable(_)) => false,
+            // Safe to omit: Number * Function (2sin(x))
+            (Expr::Number(_), Expr::Function(_, _)) => false,
+            // Safe to omit: Variable * Function (x sin(x))
+            (Expr::Variable(_), Expr::Function(_, _)) => false,
+            // Safe to omit: Number * Constant (2π)
+            (Expr::Number(_), Expr::Constant(_)) => false,
+            // Everything else needs explicit \cdot
+            _ => true,
         }
     }
 }
