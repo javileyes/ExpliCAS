@@ -1142,6 +1142,32 @@ impl Repl {
                                             if self.verbosity == Verbosity::Verbose
                                                 || self.verbosity == Verbosity::Normal
                                             {
+                                                // Show Before: global expression before this step
+                                                if let Some(global_before) = step.global_before {
+                                                    println!(
+                                                        "   Before: {}",
+                                                        clean_display_string(&format!(
+                                                            "{}",
+                                                            DisplayExpr {
+                                                                context: &self.simplifier.context,
+                                                                id: global_before,
+                                                            }
+                                                        ))
+                                                    );
+                                                } else {
+                                                    println!(
+                                                        "   Before: {}",
+                                                        clean_display_string(&format!(
+                                                            "{}",
+                                                            DisplayExpr {
+                                                                context: &self.simplifier.context,
+                                                                id: current_root,
+                                                            }
+                                                        ))
+                                                    );
+                                                }
+
+                                                // Show Rule: local transformation
                                                 let after_disp = if let Some(s) = &step.after_str {
                                                     s.clone()
                                                 } else {
@@ -1154,7 +1180,7 @@ impl Repl {
                                                     )
                                                 };
                                                 println!(
-                                                    "   Local: {} -> {}",
+                                                    "   Rule: {} -> {}",
                                                     clean_display_string(&format!(
                                                         "{}",
                                                         DisplayExpr {
@@ -1178,16 +1204,22 @@ impl Repl {
                                                     step.after,
                                                 );
                                             }
-                                            println!(
-                                                "   Global: {}",
-                                                clean_display_string(&format!(
-                                                    "{}",
-                                                    DisplayExpr {
-                                                        context: &self.simplifier.context,
-                                                        id: current_root
-                                                    }
-                                                ))
-                                            );
+
+                                            // Show After: global expression after this step
+                                            if self.verbosity == Verbosity::Verbose
+                                                || self.verbosity == Verbosity::Normal
+                                            {
+                                                println!(
+                                                    "   After: {}",
+                                                    clean_display_string(&format!(
+                                                        "{}",
+                                                        DisplayExpr {
+                                                            context: &self.simplifier.context,
+                                                            id: current_root,
+                                                        }
+                                                    ))
+                                                );
+                                            }
                                         }
                                     } else {
                                         if let Some(global_after) = step.global_after {
@@ -1675,7 +1707,7 @@ impl Repl {
                                     )
                                 };
                                 println!(
-                                    "   Local: {} -> {}",
+                                    "   Rule: {} -> {}",
                                     DisplayExpr {
                                         context: &self.simplifier.context,
                                         id: step.before
@@ -1706,7 +1738,7 @@ impl Repl {
                                     )
                                 };
                                 println!(
-                                    "   Local: {} -> {}",
+                                    "   Rule: {} -> {}",
                                     DisplayExpr {
                                         context: &self.simplifier.context,
                                         id: step.before
@@ -2038,6 +2070,34 @@ impl Repl {
                                             }
                                         }
 
+                                        // Show Before: global expression before this step
+                                        if let Some(global_before) = step.global_before {
+                                            println!(
+                                                "   Before: {}",
+                                                clean_display_string(&format!(
+                                                    "{}",
+                                                    DisplayExprWithHints {
+                                                        context: &self.simplifier.context,
+                                                        id: global_before,
+                                                        hints: &display_hints
+                                                    }
+                                                ))
+                                            );
+                                        } else {
+                                            println!(
+                                                "   Before: {}",
+                                                clean_display_string(&format!(
+                                                    "{}",
+                                                    DisplayExprWithHints {
+                                                        context: &self.simplifier.context,
+                                                        id: current_root,
+                                                        hints: &display_hints
+                                                    }
+                                                ))
+                                            );
+                                        }
+
+                                        // Show Rule: local transformation
                                         let after_disp = if let Some(s) = &step.after_str {
                                             s.clone()
                                         } else {
@@ -2051,7 +2111,7 @@ impl Repl {
                                             )
                                         };
                                         println!(
-                                            "   Local: {} -> {}",
+                                            "   Rule: {} -> {}",
                                             clean_display_string(&format!(
                                                 "{}",
                                                 DisplayExprWithHints {
@@ -2075,17 +2135,23 @@ impl Repl {
                                             step.after,
                                         );
                                     }
-                                    println!(
-                                        "   Global: {}",
-                                        clean_display_string(&format!(
-                                            "{}",
-                                            DisplayExprWithHints {
-                                                context: &self.simplifier.context,
-                                                id: current_root,
-                                                hints: &display_hints
-                                            }
-                                        ))
-                                    );
+
+                                    // Show After: global expression after this step
+                                    if self.verbosity == Verbosity::Normal
+                                        || self.verbosity == Verbosity::Verbose
+                                    {
+                                        println!(
+                                            "   After: {}",
+                                            clean_display_string(&format!(
+                                                "{}",
+                                                DisplayExprWithHints {
+                                                    context: &self.simplifier.context,
+                                                    id: current_root,
+                                                    hints: &display_hints
+                                                }
+                                            ))
+                                        );
+                                    }
                                 }
                             } else {
                                 if let Some(global_after) = step.global_after {
@@ -2209,7 +2275,7 @@ impl Repl {
                                             )
                                         };
                                         println!(
-                                            "   Local: {} -> {}",
+                                            "   Rule: {} -> {}",
                                             clean_display_string(&format!(
                                                 "{}",
                                                 DisplayExpr {
@@ -2228,7 +2294,7 @@ impl Repl {
                                         step.after,
                                     );
                                     println!(
-                                        "   Global: {}",
+                                        "   After: {}",
                                         clean_display_string(&format!(
                                             "{}",
                                             DisplayExpr {
