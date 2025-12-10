@@ -1089,8 +1089,8 @@ impl<'a> TimelineHtml<'a> {
         );
 
         let mut step_number = 0;
-        let mut current_global = self.original_expr;
-        // Track if substeps have been shown (show only once on first visible step)
+        let mut last_global_after = self.original_expr; // Track final result across all steps
+                                                        // Track if substeps have been shown (show only once on first visible step)
         let mut sub_steps_shown = false;
 
         // Track which steps to display
@@ -1099,8 +1099,23 @@ impl<'a> TimelineHtml<'a> {
 
         // Iterate over ALL steps to correctly update the global state
         for (step_idx, step) in self.steps.iter().enumerate() {
-            let global_state_before_this_step = current_global;
-            current_global = self.reconstruct_global_expr(current_global, &step.path, step.after);
+            // Use step.global_before/global_after if available (pre-computed with exponent simplification)
+            // Otherwise fall back to recalculated state
+            let global_before_expr = step.global_before.unwrap_or_else(|| {
+                if step_idx == 0 {
+                    self.original_expr
+                } else {
+                    // Reconstruct from previous step's global_after
+                    self.steps
+                        .get(step_idx - 1)
+                        .and_then(|prev| prev.global_after)
+                        .unwrap_or(self.original_expr)
+                }
+            });
+            let global_after_expr = step.global_after.unwrap_or_else(|| {
+                self.reconstruct_global_expr(global_before_expr, &step.path, step.after)
+            });
+            last_global_after = global_after_expr; // Always update for final result
 
             let step_ptr = step as *const Step;
             if !filtered_indices.contains(&step_ptr) {
@@ -1109,12 +1124,12 @@ impl<'a> TimelineHtml<'a> {
             step_number += 1;
 
             // Generate global BEFORE with red highlight on the input (using display hints)
-            let actual_target = self.find_expr_at_path(global_state_before_this_step, &step.path);
+            let actual_target = self.find_expr_at_path(global_before_expr, &step.path);
             let mut before_config = HighlightConfig::new();
             before_config.add(actual_target, HighlightColor::Red);
             let global_before = cas_ast::LaTeXExprHighlightedWithHints {
                 context: self.context,
-                id: global_state_before_this_step,
+                id: global_before_expr,
                 highlights: &before_config,
                 hints: &display_hints,
             }
@@ -1125,7 +1140,7 @@ impl<'a> TimelineHtml<'a> {
             after_config.add(step.after, HighlightColor::Green);
             let global_after = cas_ast::LaTeXExprHighlightedWithHints {
                 context: self.context,
-                id: current_global,
+                id: global_after_expr,
                 highlights: &after_config,
                 hints: &display_hints,
             }
@@ -1225,7 +1240,7 @@ impl<'a> TimelineHtml<'a> {
         // Add final result
         let final_expr = LaTeXExpr {
             context: self.context,
-            id: current_global,
+            id: last_global_after,
         }
         .to_latex();
         html.push_str(
