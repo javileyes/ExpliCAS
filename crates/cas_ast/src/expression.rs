@@ -1018,14 +1018,53 @@ impl<'a> DisplayExprWithHints<'a> {
                 self.fmt_internal(f, *r)
             }
             Expr::Mul(l, r) => {
-                self.fmt_internal(f, *l)?;
+                let lhs_prec = precedence(self.context, *l);
+                let rhs_prec = precedence(self.context, *r);
+                let op_prec = 2; // Mul precedence
+
+                if lhs_prec < op_prec {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *l)?;
+                    write!(f, ")")?;
+                } else {
+                    self.fmt_internal(f, *l)?;
+                }
+
                 write!(f, " * ")?;
-                self.fmt_internal(f, *r)
+
+                if rhs_prec < op_prec {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *r)?;
+                    write!(f, ")")?;
+                    Ok(())
+                } else {
+                    self.fmt_internal(f, *r)
+                }
             }
             Expr::Div(l, r) => {
-                self.fmt_internal(f, *l)?;
+                let lhs_prec = precedence(self.context, *l);
+                let rhs_prec = precedence(self.context, *r);
+                let op_prec = 2; // Div precedence (same as Mul)
+
+                if lhs_prec < op_prec {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *l)?;
+                    write!(f, ")")?;
+                } else {
+                    self.fmt_internal(f, *l)?;
+                }
+
                 write!(f, " / ")?;
-                self.fmt_internal(f, *r)
+
+                // RHS of div always needs parens if it's Mul/Div or lower to be unambiguous
+                if rhs_prec <= op_prec {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *r)?;
+                    write!(f, ")")?;
+                    Ok(())
+                } else {
+                    self.fmt_internal(f, *r)
+                }
             }
             Expr::Pow(b, e) => {
                 // Add parentheses around base if it's a binary operation
