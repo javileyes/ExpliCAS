@@ -1122,6 +1122,13 @@ impl<'a> TimelineHtml<'a> {
                 id: step.after,
             }
             .to_latex();
+
+            // Skip display no-op steps where before and after render identically
+            if local_before == local_after {
+                step_number -= 1; // Undo the increment since we're skipping
+                continue;
+            }
+
             let local_change_latex = format!("{} \\rightarrow {}", local_before, local_after);
 
             // Get enriched sub-steps for this step (only show once on first visible step)
