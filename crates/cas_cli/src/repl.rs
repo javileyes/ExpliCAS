@@ -2098,18 +2098,15 @@ impl Repl {
                                         }
 
                                         // Show Rule: local transformation
-                                        let after_disp = if let Some(s) = &step.after_str {
-                                            s.clone()
-                                        } else {
-                                            format!(
-                                                "{}",
-                                                DisplayExprWithHints {
-                                                    context: &self.simplifier.context,
-                                                    id: step.after,
-                                                    hints: &display_hints
-                                                }
-                                            )
-                                        };
+                                        // Always use DisplayExprWithHints to preserve root notation
+                                        let after_disp = format!(
+                                            "{}",
+                                            DisplayExprWithHints {
+                                                context: &self.simplifier.context,
+                                                id: step.after,
+                                                hints: &display_hints
+                                            }
+                                        );
                                         println!(
                                             "   Rule: {} -> {}",
                                             clean_display_string(&format!(

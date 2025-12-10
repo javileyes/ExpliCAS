@@ -27,7 +27,21 @@ pub fn build_display_context(
     // First: scan original expression for sqrt() functions
     scan_for_sqrt_hints(ctx, original_expr, &mut display_ctx);
 
-    // Second: capture hints from Canonicalize Roots steps
+    // Second: scan all step.before and step.after for sqrt() functions
+    // This catches expressions created during simplification that are also sqrt
+    for step in steps {
+        scan_for_sqrt_hints(ctx, step.before, &mut display_ctx);
+        scan_for_sqrt_hints(ctx, step.after, &mut display_ctx);
+    }
+
+    // Third: scan for power expressions that represent roots (x^(1/n))
+    scan_for_power_roots(ctx, original_expr, &mut display_ctx);
+    for step in steps {
+        scan_for_power_roots(ctx, step.before, &mut display_ctx);
+        scan_for_power_roots(ctx, step.after, &mut display_ctx);
+    }
+
+    // Fourth: capture hints from Canonicalize Roots steps
     for step in steps {
         if step.rule_name.contains("Canonicalize Roots") {
             if let Some(index) = extract_root_index(ctx, step.before) {
@@ -83,6 +97,44 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
             }
         }
         // Terminals: Number, Variable, Constant - no children to scan
+        _ => {}
+    }
+}
+
+/// Recursively scan expression tree for x^(1/n) patterns and add root hints
+fn scan_for_power_roots(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut DisplayContext) {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            // Check if exponent is a fraction of form 1/n
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n.numer() == 1.into() && n.denom() > &1.into() {
+                    // This is x^(1/n) - register as nth root
+                    if let Ok(index) = n.denom().try_into() {
+                        display_ctx.insert(expr, DisplayHint::AsRoot { index });
+                    }
+                }
+            }
+            // Recurse into base and exponent
+            scan_for_power_roots(ctx, *base, display_ctx);
+            scan_for_power_roots(ctx, *exp, display_ctx);
+        }
+        Expr::Function(_, args) => {
+            for arg in args {
+                scan_for_power_roots(ctx, *arg, display_ctx);
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            scan_for_power_roots(ctx, *l, display_ctx);
+            scan_for_power_roots(ctx, *r, display_ctx);
+        }
+        Expr::Neg(e) => {
+            scan_for_power_roots(ctx, *e, display_ctx);
+        }
+        Expr::Matrix { data, .. } => {
+            for elem in data {
+                scan_for_power_roots(ctx, *elem, display_ctx);
+            }
+        }
         _ => {}
     }
 }
