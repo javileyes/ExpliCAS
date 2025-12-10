@@ -319,4 +319,98 @@ mod tests {
         assert!(latex.contains("\\color{green}"));
         assert!(latex.contains("y"));
     }
+
+    #[test]
+    fn test_subtraction_with_highlight() {
+        // This tests the problematic pattern from timeline:
+        // x^(17/24) - x^(17/24) where the second term is highlighted green
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+
+        // Create x^(17/24)
+        let seventeen = ctx.num(17);
+        let twentyfour = ctx.num(24);
+        let exp = ctx.add(Expr::Div(seventeen, twentyfour));
+        let pow1 = ctx.add(Expr::Pow(x, exp));
+
+        // Create another x^(17/24) for subtraction
+        let x2 = ctx.var("x");
+        let seventeen2 = ctx.num(17);
+        let twentyfour2 = ctx.num(24);
+        let exp2 = ctx.add(Expr::Div(seventeen2, twentyfour2));
+        let pow2 = ctx.add(Expr::Pow(x2, exp2));
+
+        // Create pow1 - pow2 using Sub
+        let sub_expr = ctx.add(Expr::Sub(pow1, pow2));
+
+        // Highlight the second power (the result after transformation)
+        let mut config = HighlightConfig::new();
+        config.add(pow2, HighlightColor::Green);
+
+        let highlighted = LaTeXExprHighlighted {
+            context: &ctx,
+            id: sub_expr,
+            highlights: &config,
+        };
+
+        let latex = highlighted.to_latex();
+        println!("LaTeX with highlight: {}", latex);
+
+        // The LaTeX should still contain subtraction, not addition
+        assert!(latex.contains(" - "), "Expected subtraction in: {}", latex);
+        assert!(
+            latex.contains("\\color{green}"),
+            "Expected green highlight in: {}",
+            latex
+        );
+    }
+
+    #[test]
+    fn test_addition_of_neg_with_highlight() {
+        // Test Add(a, Neg(b)) which should render as a - b
+        // The bug might be that when Neg(b) is highlighted, it breaks the pattern
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let neg_y = ctx.add(Expr::Neg(y));
+
+        // a + (-b) should display as a - b
+        let add_expr = ctx.add(Expr::Add(x, neg_y));
+
+        // Test without highlight first
+        let config = HighlightConfig::new();
+        let highlighted = LaTeXExprHighlighted {
+            context: &ctx,
+            id: add_expr,
+            highlights: &config,
+        };
+        let latex_no_hl = highlighted.to_latex();
+        println!("No highlight: {}", latex_no_hl);
+        assert!(
+            latex_no_hl.contains(" - "),
+            "Expected subtraction without highlight: {}",
+            latex_no_hl
+        );
+
+        // Now test WITH highlight on the neg_y
+        let mut config_hl = HighlightConfig::new();
+        config_hl.add(neg_y, HighlightColor::Green);
+
+        let highlighted_hl = LaTeXExprHighlighted {
+            context: &ctx,
+            id: add_expr,
+            highlights: &config_hl,
+        };
+        let latex_hl = highlighted_hl.to_latex();
+        println!("With highlight on Neg(y): {}", latex_hl);
+
+        // BUG CHECK: Does highlighting break the subtraction detection?
+        // The current code checks self.context.get(*r) but if r is highlighted,
+        // it may not detect Neg correctly
+        assert!(
+            latex_hl.contains(" - ") || !latex_hl.contains(" + "),
+            "BUG: Subtraction became addition with highlight: {}",
+            latex_hl
+        );
+    }
 }

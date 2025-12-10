@@ -82,24 +82,19 @@ impl<'a> TimelineHtml<'a> {
     fn generate_latex_with_highlight(
         &self,
         root_expr: ExprId,
-        path: &[PathStep],
+        _path: &[PathStep],
         target_expr: ExprId,
     ) -> String {
-        // Strategy: If path is very deep (>3 levels) and goes into fraction denominator or
-        // exponent, highlight the whole fraction/power instead of the tiny part
-        let should_highlight_parent = self.should_use_parent_context(root_expr, path);
-
-        let latex = if should_highlight_parent {
-            // Find a good "stopping point" in the path (e.g., before entering fraction denominator)
-            let shortened_path = self.find_highlight_context_path(root_expr, path);
-            self.latex_with_highlight_recursive(root_expr, &shortened_path, 0, target_expr)
-        } else {
-            self.latex_with_highlight_recursive(root_expr, path, 0, target_expr)
-        };
-
-        // Phase 2: Clean up LaTeX patterns
-        // This fixes issues like "+ -" and "- -" that can occur with nested negative terms
-        Self::clean_latex_negatives(&latex)
+        // Use LaTeXExprHighlighted which correctly handles negation rendering
+        // This avoids the buggy duplicated LaTeX logic in latex_with_highlight_recursive
+        let mut config = HighlightConfig::new();
+        config.add(target_expr, HighlightColor::Red);
+        LaTeXExprHighlighted {
+            context: self.context,
+            id: root_expr,
+            highlights: &config,
+        }
+        .to_latex()
     }
 
     /// Post-process LaTeX to fix negative sign patterns
@@ -279,12 +274,25 @@ impl<'a> TimelineHtml<'a> {
                         (true, positive_str)
                     }
                     Expr::Neg(inner) => {
-                        // Always recursively generate to preserve highlighting
-                        // DO NOT increment path_index - path already points to the right level
+                        // Handle Add(l, Neg(inner)) rendered as l - inner
+                        // If path points Right, consume it before entering inner
+                        let adjusted_idx = if matches!(path.get(path_index), Some(PathStep::Right))
+                        {
+                            // Path points to the Neg wrapper, skip to inner
+                            // But also check for PathStep::Inner which would be next
+                            if matches!(path.get(path_index + 1), Some(PathStep::Inner)) {
+                                path_index + 2 // Consume both Right and Inner
+                            } else {
+                                path_index + 1 // Just consume Right
+                            }
+                        } else {
+                            path_index // Path doesn't point here
+                        };
+
                         let inner_str = self.latex_with_highlight_recursive(
                             *inner,
                             path,
-                            path_index,
+                            adjusted_idx,
                             target_expr,
                         );
                         (true, inner_str)
