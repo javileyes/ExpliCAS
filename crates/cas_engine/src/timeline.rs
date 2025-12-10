@@ -82,19 +82,67 @@ impl<'a> TimelineHtml<'a> {
     fn generate_latex_with_highlight(
         &self,
         root_expr: ExprId,
-        _path: &[PathStep],
-        target_expr: ExprId,
+        path: &[PathStep],
+        _target_expr: ExprId,
     ) -> String {
+        // Follow the path to find the actual expression to highlight in root_expr
+        // This is needed because step.before may have different ExprId than what's in root_expr
+        let actual_target = self.find_expr_at_path(root_expr, path);
+
         // Use LaTeXExprHighlighted which correctly handles negation rendering
-        // This avoids the buggy duplicated LaTeX logic in latex_with_highlight_recursive
         let mut config = HighlightConfig::new();
-        config.add(target_expr, HighlightColor::Red);
+        config.add(actual_target, HighlightColor::Red);
         LaTeXExprHighlighted {
             context: self.context,
             id: root_expr,
             highlights: &config,
         }
         .to_latex()
+    }
+
+    /// Follow a path to find the expression at that location
+    fn find_expr_at_path(&self, root: ExprId, path: &[PathStep]) -> ExprId {
+        let mut current = root;
+        for step in path.iter() {
+            let expr = self.context.get(current);
+            current = match (expr, step) {
+                (Expr::Add(l, r), PathStep::Left) => {
+                    // Handle case where left is Neg
+                    if let Expr::Neg(inner) = self.context.get(*l) {
+                        *inner
+                    } else {
+                        *l
+                    }
+                }
+                (Expr::Add(l, _), PathStep::Left) => *l,
+                (Expr::Add(_, r), PathStep::Right) => {
+                    // Handle case where right is Neg
+                    if let Expr::Neg(inner) = self.context.get(*r) {
+                        *inner
+                    } else {
+                        *r
+                    }
+                }
+                (Expr::Sub(l, _), PathStep::Left) => *l,
+                (Expr::Sub(_, r), PathStep::Right) => *r,
+                (Expr::Mul(l, _), PathStep::Left) => *l,
+                (Expr::Mul(_, r), PathStep::Right) => *r,
+                (Expr::Div(l, _), PathStep::Left) => *l,
+                (Expr::Div(_, r), PathStep::Right) => *r,
+                (Expr::Pow(b, _), PathStep::Base) => *b,
+                (Expr::Pow(_, e), PathStep::Exponent) => *e,
+                (Expr::Neg(e), PathStep::Inner) => *e,
+                (Expr::Function(_, args), PathStep::Arg(idx)) => {
+                    if *idx < args.len() {
+                        args[*idx]
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            };
+        }
+        current
     }
 
     /// Post-process LaTeX to fix negative sign patterns
@@ -945,8 +993,18 @@ impl<'a> TimelineHtml<'a> {
 
         match (expr, current_step) {
             (Expr::Add(l, r), PathStep::Left) => {
-                let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
-                self.context.add(Expr::Add(new_l, r))
+                // Check if left side is Neg - if so, preserve the Neg wrapper
+                if let Expr::Neg(inner) = self.context.get(l).clone() {
+                    // Traverse into the Neg and wrap result back in Neg
+                    let new_inner =
+                        self.reconstruct_global_expr(inner, remaining_path, replacement);
+                    let new_neg = self.context.add(Expr::Neg(new_inner));
+                    self.context.add(Expr::Add(new_neg, r))
+                } else {
+                    // Normal case
+                    let new_l = self.reconstruct_global_expr(l, remaining_path, replacement);
+                    self.context.add(Expr::Add(new_l, r))
+                }
             }
             // Special case: Sub(a,b) may have been canonicalized to Add(a, Neg(b))
             // When PathStep::Right expects to modify the original "b", we need to

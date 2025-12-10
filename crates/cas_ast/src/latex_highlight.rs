@@ -116,6 +116,14 @@ impl<'a> LaTeXExprHighlighted<'a> {
                 Constant::Undefined => "\\text{undefined}".to_string(),
             },
             Expr::Add(l, r) => {
+                // First check if left side is negative - canonicalization may swap operands
+                if let Expr::Neg(left_inner) = self.context.get(*l) {
+                    // Left side is negative: Add(Neg(a), b) = b - a (more natural order)
+                    let inner_latex = self.expr_to_latex_internal(*left_inner, true);
+                    let right_latex = self.expr_to_latex_internal(*r, false);
+                    return format!("{} - {}", right_latex, inner_latex);
+                }
+
                 let left = self.expr_to_latex_internal(*l, false);
 
                 // Check if right side is negative
