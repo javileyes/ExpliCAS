@@ -4,6 +4,7 @@ pub mod expression;
 pub mod latex;
 pub mod latex_highlight;
 pub mod latex_no_roots;
+pub mod latex_parser;
 pub mod ordering; // NEW: Canonical ordering utilities
 pub mod visitor;
 
@@ -15,7 +16,9 @@ pub use expression::{
 pub use latex::LaTeXExpr;
 pub use latex_highlight::{HighlightColor, HighlightConfig, LaTeXExprHighlighted};
 pub use latex_no_roots::LatexNoRoots;
+pub use latex_parser::parse_latex;
 pub use visitor::{Transformer, Visitor};
+
 // use std::rc::Rc; // Removed Rc usage
 
 #[derive(Debug, Clone, PartialEq)]
