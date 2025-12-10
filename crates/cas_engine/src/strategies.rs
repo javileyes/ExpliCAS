@@ -157,6 +157,37 @@ pub fn filter_non_productive_steps(
     let mut current_global = original;
 
     for step in steps {
+        // Filter local no-op steps: if step.before == step.after semantically, skip
+        {
+            let checker = crate::semantic_equality::SemanticEqualityChecker::new(ctx);
+            if checker.are_equal(step.before, step.after) {
+                // Local no-op - don't include this step
+                continue;
+            }
+        }
+
+        // Fallback: compare display strings - if they look identical to user, it's a no-op
+        {
+            let before_str = format!(
+                "{}",
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: step.before
+                }
+            );
+            let after_str = format!(
+                "{}",
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: step.after
+                }
+            );
+            if before_str == after_str {
+                // Display no-op - same string representation
+                continue;
+            }
+        }
+
         // Always keep Sum Exponents steps - they're didactically important
         // even though x^(1/2+1/3) and x^(5/6) are semantically equivalent
         if step.rule_name == "Sum Exponents" {

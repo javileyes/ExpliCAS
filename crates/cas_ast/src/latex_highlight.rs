@@ -78,12 +78,28 @@ impl<'a> LaTeXExprHighlighted<'a> {
     /// Post-process LaTeX to fix negative sign patterns
     fn clean_latex_negatives(latex: &str) -> String {
         let mut result = latex.to_string();
+        // Replace "+ -" patterns with "- " for cleaner display
         result = result.replace("+ -\\", "- \\");
         result = result.replace("+ -{", "- {");
         result = result.replace("+ -(", "- (");
+        // Handle numbers: "+ -1", "+ -2", etc.
+        for digit in '0'..='9' {
+            result = result.replace(&format!("+ -{}", digit), &format!("- {}", digit));
+        }
+        // Handle highlighted negatives: "+ {\color{...}{-" → "- {\color{...}{"
+        for color in &["red", "green", "blue"] {
+            // Pattern: + {\color{red}{- → - {\color{red}{
+            let from = format!("+ {{\\color{{{}}}{{-", color);
+            let to = format!("- {{\\color{{{}}}{{", color);
+            result = result.replace(&from, &to);
+        }
+        // Handle double negatives
         result = result.replace("- -\\", "+ \\");
         result = result.replace("- -{", "+ {");
         result = result.replace("- -(", "+ (");
+        for digit in '0'..='9' {
+            result = result.replace(&format!("- -{}", digit), &format!("+ {}", digit));
+        }
         result
     }
 
@@ -127,7 +143,7 @@ impl<'a> LaTeXExprHighlighted<'a> {
                 let left = self.expr_to_latex_internal(*l, false);
 
                 // Check if right side is negative
-                let (is_negative, right_str) = match self.context.get(*r) {
+                match self.context.get(*r) {
                     Expr::Number(n) if n.is_negative() => {
                         let positive = -n;
                         let positive_str = if positive.is_integer() {
@@ -135,16 +151,27 @@ impl<'a> LaTeXExprHighlighted<'a> {
                         } else {
                             format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
                         };
-                        (true, positive_str)
+                        format!("{} - {}", left, positive_str)
                     }
-                    Expr::Neg(inner) => (true, self.expr_to_latex_internal(*inner, true)),
-                    _ => (false, self.expr_to_latex_internal(*r, false)),
-                };
-
-                if is_negative {
-                    format!("{} - {}", left, right_str)
-                } else {
-                    format!("{} + {}", left, right_str)
+                    Expr::Neg(inner) => {
+                        // Check if the Neg has a highlight - if so, apply it to inner with subtraction
+                        if let Some(color) = self.highlights.get(*r) {
+                            let inner_latex = self.format_expr(*inner, true);
+                            format!(
+                                "{} - {{\\color{{{}}}{{{}}}}}",
+                                left,
+                                color.to_latex(),
+                                inner_latex
+                            )
+                        } else {
+                            let inner_latex = self.expr_to_latex_internal(*inner, true);
+                            format!("{} - {}", left, inner_latex)
+                        }
+                    }
+                    _ => {
+                        let right_str = self.expr_to_latex_internal(*r, false);
+                        format!("{} + {}", left, right_str)
+                    }
                 }
             }
             Expr::Sub(l, r) => {

@@ -1969,6 +1969,31 @@ impl Repl {
                         let mut sub_steps_shown = false; // Track to show sub-steps only on first visible step
                         for (step_idx, step) in steps.iter().enumerate() {
                             if should_show_step(step, self.verbosity) {
+                                // Early check for display no-op: skip step entirely if before/after display identical
+                                let before_disp = clean_display_string(&format!(
+                                    "{}",
+                                    DisplayExprWithHints {
+                                        context: &self.simplifier.context,
+                                        id: step.before,
+                                        hints: &display_hints
+                                    }
+                                ));
+                                let after_disp = clean_display_string(&format!(
+                                    "{}",
+                                    DisplayExprWithHints {
+                                        context: &self.simplifier.context,
+                                        id: step.after,
+                                        hints: &display_hints
+                                    }
+                                ));
+                                if before_disp == after_disp {
+                                    // Display no-op - still update state but skip step display
+                                    if let Some(global_after) = step.global_after {
+                                        current_root = global_after;
+                                    }
+                                    continue;
+                                }
+
                                 step_count += 1;
 
                                 if self.verbosity == Verbosity::Succinct {
@@ -2099,26 +2124,33 @@ impl Repl {
 
                                         // Show Rule: local transformation
                                         // Always use DisplayExprWithHints to preserve root notation
-                                        let after_disp = format!(
+                                        let before_disp = clean_display_string(&format!(
+                                            "{}",
+                                            DisplayExprWithHints {
+                                                context: &self.simplifier.context,
+                                                id: step.before,
+                                                hints: &display_hints
+                                            }
+                                        ));
+                                        let after_disp = clean_display_string(&format!(
                                             "{}",
                                             DisplayExprWithHints {
                                                 context: &self.simplifier.context,
                                                 id: step.after,
                                                 hints: &display_hints
                                             }
-                                        );
-                                        println!(
-                                            "   Rule: {} -> {}",
-                                            clean_display_string(&format!(
-                                                "{}",
-                                                DisplayExprWithHints {
-                                                    context: &self.simplifier.context,
-                                                    id: step.before,
-                                                    hints: &display_hints
-                                                }
-                                            )),
-                                            clean_display_string(&after_disp)
-                                        );
+                                        ));
+
+                                        // Skip display-only no-op steps (e.g., -1*(1-√2) → -(1-√2) both display as -1-√2)
+                                        if before_disp == after_disp {
+                                            // Still update current_root to maintain state
+                                            if let Some(global_after) = step.global_after {
+                                                current_root = global_after;
+                                            }
+                                            continue;
+                                        }
+
+                                        println!("   Rule: {} -> {}", before_disp, after_disp);
                                     }
 
                                     // Use precomputed global_after if available, fall back to reconstruction
