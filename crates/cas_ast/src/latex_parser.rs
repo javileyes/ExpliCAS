@@ -485,4 +485,88 @@ mod tests {
     fn test_parse_sqrt() {
         assert_eq!(test_parse("\\sqrt{x}"), "\\sqrt{x}");
     }
+
+    // Level 4: Constants and Functions
+    #[test]
+    fn test_parse_pi() {
+        assert_eq!(test_parse("\\pi"), "\\pi");
+    }
+
+    #[test]
+    fn test_parse_trig() {
+        assert_eq!(test_parse("\\sin(x)"), "\\sin(x)");
+        assert_eq!(test_parse("\\cos(x)"), "\\cos(x)");
+    }
+
+    #[test]
+    fn test_parse_implicit_mult() {
+        assert_eq!(test_parse("xy"), "xy");
+        assert_eq!(test_parse("2x"), "2x");
+    }
+
+    #[test]
+    fn test_parse_explicit_mult() {
+        assert_eq!(test_parse("2\\cdot 3"), "2\\cdot 3");
+    }
+
+    // Level 5: Complex Expressions
+    #[test]
+    fn test_parse_nested_power() {
+        assert_eq!(test_parse("{{x}^{2}}^{3}"), "{{x}^{2}}^{3}");
+    }
+
+    #[test]
+    fn test_parse_power_with_frac_exponent() {
+        assert_eq!(test_parse("{x}^{\\frac{1}{2}}"), "{x}^{\\frac{1}{2}}");
+    }
+
+    #[test]
+    fn test_parse_sqrt_of_power() {
+        assert_eq!(test_parse("\\sqrt{{x}^{2}}"), "\\sqrt{{x}^{2}}");
+    }
+
+    #[test]
+    fn test_parse_subtraction_complex() {
+        // This tests the problematic pattern from timeline
+        assert_eq!(
+            test_parse("{x}^{\\frac{17}{24}} - {x}^{\\frac{17}{24}}"),
+            "{x}^{\\frac{17}{24}} - {x}^{\\frac{17}{24}}"
+        );
+    }
+
+    #[test]
+    fn test_parse_sqrt_power_minus() {
+        // Simplified version of timeline step 5
+        assert_eq!(
+            test_parse("\\sqrt{{x}^{\\frac{17}{12}}} - {x}^{\\frac{17}{24}}"),
+            "\\sqrt{{x}^{\\frac{17}{12}}} - {x}^{\\frac{17}{24}}"
+        );
+    }
+
+    // Tokenizer tests
+    #[test]
+    fn test_tokenize_simple() {
+        let tokens = tokenize("x + y").unwrap();
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0], Token::Variable("x".to_string()));
+        assert_eq!(tokens[1], Token::Plus);
+        assert_eq!(tokens[2], Token::Variable("y".to_string()));
+    }
+
+    #[test]
+    fn test_tokenize_frac() {
+        let tokens = tokenize("\\frac{1}{2}").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Frac,
+                Token::LBrace,
+                Token::Number("1".to_string()),
+                Token::RBrace,
+                Token::LBrace,
+                Token::Number("2".to_string()),
+                Token::RBrace,
+            ]
+        );
+    }
 }
