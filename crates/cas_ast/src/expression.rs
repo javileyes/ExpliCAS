@@ -939,16 +939,63 @@ impl<'a> DisplayExprWithHints<'a> {
                 Constant::Undefined => write!(f, "undefined"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
-            Expr::Add(l, r) => {
-                self.fmt_internal(f, *l)?;
-                // Check if right side is a Neg, and if so, display as subtraction
-                if let Expr::Neg(inner) = self.context.get(*r) {
-                    write!(f, " - ")?;
-                    self.fmt_internal(f, *inner)
-                } else {
-                    write!(f, " + ")?;
-                    self.fmt_internal(f, *r)
+            Expr::Add(_, _) => {
+                // Flatten Add chain to handle mixed signs gracefully
+                let mut terms = collect_add_terms(self.context, id);
+
+                // Reorder for display: put positive terms first
+                // This makes -x + y display as y - x which is cleaner
+                if terms.len() >= 2 {
+                    let (is_first_neg, _, _) = check_negative(self.context, terms[0]);
+                    if is_first_neg {
+                        // Find the first positive term and swap it to the front
+                        if let Some(first_positive_idx) = terms
+                            .iter()
+                            .position(|t| !check_negative(self.context, *t).0)
+                        {
+                            terms.swap(0, first_positive_idx);
+                        }
+                    }
                 }
+
+                for (i, term) in terms.iter().enumerate() {
+                    let (is_neg, _, _) = check_negative(self.context, *term);
+
+                    if i == 0 {
+                        // First term: print as is
+                        self.fmt_internal(f, *term)?;
+                    } else {
+                        if is_neg {
+                            // Print " - " then absolute value
+                            write!(f, " - ")?;
+                            // Extract positive part
+                            match self.context.get(*term) {
+                                Expr::Neg(inner) => {
+                                    self.fmt_internal(f, *inner)?;
+                                }
+                                Expr::Number(n) => {
+                                    write!(f, "{}", -n)?;
+                                }
+                                Expr::Mul(a, b) => {
+                                    if let Expr::Number(n) = self.context.get(*a) {
+                                        let pos_n = -n;
+                                        write!(f, "{} * ", pos_n)?;
+                                        self.fmt_internal(f, *b)?;
+                                    } else {
+                                        self.fmt_internal(f, *term)?;
+                                    }
+                                }
+                                _ => {
+                                    self.fmt_internal(f, *term)?;
+                                }
+                            }
+                        } else {
+                            write!(f, " + ")?;
+                            self.fmt_internal(f, *term)?;
+                        }
+                    }
+                }
+                Ok(())
             }
             Expr::Sub(l, r) => {
                 self.fmt_internal(f, *l)?;
