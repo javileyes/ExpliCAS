@@ -1017,6 +1017,8 @@ impl<'a> TimelineHtml<'a> {
 
         let mut step_number = 0;
         let mut current_global = self.original_expr;
+        // Track if substeps have been shown (show only once on first visible step)
+        let mut sub_steps_shown = false;
 
         // Track which steps to display
         let filtered_indices: std::collections::HashSet<_> =
@@ -1072,30 +1074,35 @@ impl<'a> TimelineHtml<'a> {
                 format!("{} \\rightarrow {}", local_before, local_after)
             };
 
-            // Get enriched sub-steps for this step
-            let sub_steps_html = if let Some(enriched) = enriched_steps.get(step_idx) {
-                if !enriched.sub_steps.is_empty() {
-                    let mut details_html = String::from(
-                        r#"<details class="substeps-details">
-                        <summary>Ver detalles</summary>
-                        <div class="substeps-content">"#,
-                    );
-                    for sub in &enriched.sub_steps {
-                        details_html.push_str(&format!(
-                            r#"<div class="substep">
-                                <span class="substep-desc">{}</span>"#,
-                            html_escape(&sub.description)
-                        ));
-                        if !sub.before_latex.is_empty() {
+            // Get enriched sub-steps for this step (only show once on first visible step)
+            let sub_steps_html = if !sub_steps_shown {
+                if let Some(enriched) = enriched_steps.get(step_idx) {
+                    if !enriched.sub_steps.is_empty() {
+                        sub_steps_shown = true; // Mark as shown
+                        let mut details_html = String::from(
+                            r#"<details class="substeps-details">
+                            <summary>Ver detalles</summary>
+                            <div class="substeps-content">"#,
+                        );
+                        for sub in &enriched.sub_steps {
                             details_html.push_str(&format!(
-                                r#"<div class="substep-math">\[{} \rightarrow {}\]</div>"#,
-                                sub.before_latex, sub.after_latex
+                                r#"<div class="substep">
+                                    <span class="substep-desc">{}</span>"#,
+                                html_escape(&sub.description)
                             ));
+                            if !sub.before_latex.is_empty() {
+                                details_html.push_str(&format!(
+                                    r#"<div class="substep-math">\[{} \rightarrow {}\]</div>"#,
+                                    sub.before_latex, sub.after_latex
+                                ));
+                            }
+                            details_html.push_str("</div>");
                         }
-                        details_html.push_str("</div>");
+                        details_html.push_str("</div></details>");
+                        details_html
+                    } else {
+                        String::new()
                     }
-                    details_html.push_str("</div></details>");
-                    details_html
                 } else {
                     String::new()
                 }

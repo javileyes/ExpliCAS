@@ -157,6 +157,15 @@ pub fn filter_non_productive_steps(
     let mut current_global = original;
 
     for step in steps {
+        // Always keep Sum Exponents steps - they're didactically important
+        // even though x^(1/2+1/3) and x^(5/6) are semantically equivalent
+        if step.rule_name == "Sum Exponents" {
+            let global_after = reconstruct_global(ctx, current_global, &step.path, step.after);
+            filtered.push(step);
+            current_global = global_after;
+            continue;
+        }
+
         let global_after = reconstruct_global(ctx, current_global, &step.path, step.after);
         let checker = crate::semantic_equality::SemanticEqualityChecker::new(ctx);
         if !checker.are_equal(current_global, global_after) {

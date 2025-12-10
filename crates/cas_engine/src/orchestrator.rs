@@ -54,6 +54,31 @@ impl Orchestrator {
             current = collected;
         }
 
+        // 1b. Simplify numeric sums in exponents (e.g., x^(1/2+1/3) → x^(5/6))
+        // This happens early for didactic clarity - students see the fraction sum first
+        let simplified_exp =
+            crate::collect::simplify_numeric_exponents(&mut simplifier.context, current);
+        if simplified_exp != current {
+            if simplifier.collect_steps {
+                // Use with_snapshots to properly set global_before/global_after
+                // For this step, the entire expression is both the local and global context
+                let mut step = Step::with_snapshots(
+                    "Simplify fractional exponents",
+                    "Sum Exponents",
+                    current,
+                    simplified_exp,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                    current,        // global_before
+                    simplified_exp, // global_after
+                );
+                step.global_before = Some(current);
+                step.global_after = Some(simplified_exp);
+                steps.push(step);
+            }
+            current = simplified_exp;
+        }
+
         // 2. Rule-based Simplification
         // Commutative operations are now AUTOMATICALLY canonicalized in Context::add()
         // so we no longer need a post-process canonicalization pass.

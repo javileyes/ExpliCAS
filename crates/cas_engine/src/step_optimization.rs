@@ -19,10 +19,15 @@ pub fn optimize_steps_semantic(
     original_expr: ExprId,
     final_expr: ExprId,
 ) -> StepOptimizationResult {
+    // Check if there are didactically important steps that should always be shown
+    // Sum Exponents is didactically important even if x^(1/2+1/3) == x^(5/6) semantically
+    let has_didactic_steps = steps.iter().any(|s| s.rule_name == "Sum Exponents");
+
     // First check if the entire simplification was a no-op
     // Use the lax cycle check that considers Sub(a,b) equal to Add(-b,a)
+    // But only skip if there are no didactic steps to show
     let checker = SemanticEqualityChecker::new(ctx);
-    if checker.are_equal_for_cycle_check(original_expr, final_expr) {
+    if !has_didactic_steps && checker.are_equal_for_cycle_check(original_expr, final_expr) {
         return StepOptimizationResult::NoSimplificationNeeded;
     }
 

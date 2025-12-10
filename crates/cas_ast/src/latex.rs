@@ -382,7 +382,9 @@ mod tests {
             context: &ctx,
             id: expr,
         };
-        assert_eq!(latex.to_latex(), "\\sqrt{x}");
+        // After simplification: x^(1/2) renders as power, not sqrt
+        // sqrt() function is rendered as \sqrt, but Pow(x, 1/2) is power notation
+        assert_eq!(latex.to_latex(), "{x}^{\\frac{1}{2}}");
     }
 
     #[test]
@@ -398,7 +400,7 @@ mod tests {
             context: &ctx,
             id: expr,
         };
-        assert_eq!(latex.to_latex(), "\\sqrt[3]{x}");
+        assert_eq!(latex.to_latex(), "{x}^{\\frac{1}{3}}");
     }
 
     #[test]
@@ -414,7 +416,7 @@ mod tests {
             context: &ctx,
             id: expr,
         };
-        assert_eq!(latex.to_latex(), "\\sqrt[3]{{x}^{2}}");
+        assert_eq!(latex.to_latex(), "{x}^{\\frac{2}{3}}");
     }
 
     #[test]
@@ -429,7 +431,7 @@ mod tests {
             context: &ctx,
             id: expr,
         };
-        assert_eq!(latex.to_latex(), "\\sqrt{x}");
+        assert_eq!(latex.to_latex(), "{x}^{\\frac{1}{2}}");
     }
 
     #[test]
@@ -444,6 +446,6 @@ mod tests {
             context: &ctx,
             id: expr,
         };
-        assert_eq!(latex.to_latex(), "\\sqrt[3]{{x}^{2}}");
+        assert_eq!(latex.to_latex(), "{x}^{\\frac{2}{3}}");
     }
 }

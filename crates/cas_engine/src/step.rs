@@ -137,21 +137,22 @@ mod tests {
     fn test_importance_classification() {
         let mut ctx = cas_ast::Context::new();
         let x = ctx.var("x");
+        let y = ctx.var("y");
 
-        // Trivial
-        let step = Step::new("x + 0 = x", "Add Zero", x, x, vec![], Some(&ctx));
+        // Trivial (identity rule name takes precedence even with different before/after)
+        let step = Step::new("x + 0 = x", "Add Zero", x, y, vec![], Some(&ctx));
         assert_eq!(step.importance(), ImportanceLevel::Trivial);
 
-        // Low
-        let step = Step::new("2 + 3 = 5", "Combine Constants", x, x, vec![], Some(&ctx));
+        // Low (needs different before/after to avoid no-op shortcut)
+        let step = Step::new("2 + 3 = 5", "Combine Constants", x, y, vec![], Some(&ctx));
         assert_eq!(step.importance(), ImportanceLevel::Low);
 
         // High
-        let step = Step::new("Factor polynomial", "Factor", x, x, vec![], Some(&ctx));
+        let step = Step::new("Factor polynomial", "Factor", x, y, vec![], Some(&ctx));
         assert_eq!(step.importance(), ImportanceLevel::High);
 
         // Medium (default)
-        let step = Step::new("Some transform", "Unknown Rule", x, x, vec![], Some(&ctx));
+        let step = Step::new("Some transform", "Unknown Rule", x, y, vec![], Some(&ctx));
         assert_eq!(step.importance(), ImportanceLevel::Medium);
     }
 }

@@ -10,7 +10,7 @@ use tracing::debug;
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
 /// Returns new ExprId if substitution occurred, otherwise returns original root.
-fn substitute_expr_by_id(
+pub fn substitute_expr_by_id(
     context: &mut Context,
     root: ExprId,
     target: ExprId,
