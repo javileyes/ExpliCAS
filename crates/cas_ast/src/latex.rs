@@ -306,10 +306,14 @@ impl<'a> LaTeXExpr<'a> {
             (Expr::Number(_), Expr::Add(_, _)) => true,
             (Expr::Number(_), Expr::Sub(_, _)) => true,
             (Expr::Number(_), Expr::Div(_, _)) => true,
+            (Expr::Number(_), Expr::Pow(_, _)) => true, // 3 * 2^(1/2) -> 3 \cdot 2^{1/2}
+            (Expr::Number(_), Expr::Mul(_, _)) => true, // nested multiplication
 
-            // Anything * Number might need \cdot (e.g., x*2 is fine as x2, but (x+1)*2 needs parens already)
+            // Anything * Number might need \cdot
             (Expr::Add(_, _), Expr::Number(_)) => true,
             (Expr::Sub(_, _), Expr::Number(_)) => true,
+            (Expr::Pow(_, _), Expr::Number(_)) => true, // x^2 * 3 -> x^2 \cdot 3
+            (Expr::Pow(_, _), Expr::Pow(_, _)) => true, // x^2 * y^3 -> x^2 \cdot y^3
 
             // Everything else can be implicit (2x, xy, x*sin(x), etc.)
             _ => false,
@@ -490,8 +494,12 @@ impl<'a> LaTeXExprWithHints<'a> {
             (Expr::Number(_), Expr::Add(_, _)) => true,
             (Expr::Number(_), Expr::Sub(_, _)) => true,
             (Expr::Number(_), Expr::Div(_, _)) => true,
+            (Expr::Number(_), Expr::Pow(_, _)) => true, // 3 * 2^(1/2) -> 3 \cdot 2^{1/2}
+            (Expr::Number(_), Expr::Mul(_, _)) => true,
             (Expr::Add(_, _), Expr::Number(_)) => true,
             (Expr::Sub(_, _), Expr::Number(_)) => true,
+            (Expr::Pow(_, _), Expr::Number(_)) => true,
+            (Expr::Pow(_, _), Expr::Pow(_, _)) => true,
             _ => false,
         }
     }

@@ -284,8 +284,13 @@ impl<'a> LaTeXExprHighlighted<'a> {
             (Expr::Number(_), Expr::Number(_)) => true,
             (Expr::Number(_), Expr::Add(_, _)) => true,
             (Expr::Number(_), Expr::Sub(_, _)) => true,
+            (Expr::Number(_), Expr::Div(_, _)) => true,
+            (Expr::Number(_), Expr::Pow(_, _)) => true,
+            (Expr::Number(_), Expr::Mul(_, _)) => true,
             (Expr::Add(_, _), Expr::Number(_)) => true,
             (Expr::Sub(_, _), Expr::Number(_)) => true,
+            (Expr::Pow(_, _), Expr::Number(_)) => true,
+            (Expr::Pow(_, _), Expr::Pow(_, _)) => true,
             _ => false,
         }
     }
@@ -474,8 +479,13 @@ impl<'a> LaTeXExprHighlightedWithHints<'a> {
             (Expr::Number(_), Expr::Number(_)) => true,
             (Expr::Number(_), Expr::Add(_, _)) => true,
             (Expr::Number(_), Expr::Sub(_, _)) => true,
+            (Expr::Number(_), Expr::Div(_, _)) => true,
+            (Expr::Number(_), Expr::Pow(_, _)) => true,
+            (Expr::Number(_), Expr::Mul(_, _)) => true,
             (Expr::Add(_, _), Expr::Number(_)) => true,
             (Expr::Sub(_, _), Expr::Number(_)) => true,
+            (Expr::Pow(_, _), Expr::Number(_)) => true,
+            (Expr::Pow(_, _), Expr::Pow(_, _)) => true,
             _ => false,
         }
     }
