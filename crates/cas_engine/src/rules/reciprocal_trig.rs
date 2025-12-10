@@ -101,7 +101,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: build(ctx),
                             description: desc.to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }
@@ -137,7 +139,9 @@ define_rule!(
                                 return Some(Rewrite {
                                     new_expr: x,
                                     description: format!("{}({}(x)) = x", outer, inner),
-                                });
+                before_local: None,
+                after_local: None,
+            });
                             }
                         }
                     }
@@ -200,7 +204,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: desc,
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                 }

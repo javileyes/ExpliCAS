@@ -17,7 +17,9 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: abs_val,
                     description: format!("abs({}) = {}", n, n.abs()),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
 
             // Case 2: abs(-x) -> abs(x)
@@ -35,14 +37,18 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr: abs_val,
                         description: format!("abs(-{}) = {}", n, n),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
 
                 let abs_inner = ctx.add(Expr::Function("abs".to_string(), vec![*inner]));
                 return Some(Rewrite {
                     new_expr: abs_inner,
                     description: "abs(-x) = abs(x)".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
     }
@@ -72,7 +78,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("|x|^{} = x^{}", n, n),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                 }
@@ -121,7 +129,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: abs_base,
                             description: "sqrt(x^2) = |x|".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }

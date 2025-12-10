@@ -150,6 +150,8 @@ fn combine_with_term(ctx: &mut Context, base: Option<ExprId>, new_term: ExprId) 
 /// Pattern: If f(x) + g(x) = V, then -f(x) - g(x) = -V
 fn check_pair_with_negation<F>(
     ctx: &mut Context,
+    term_i: ExprId,
+    term_j: ExprId,
     term_i_data: Expr,
     term_j_data: Expr,
     terms: &[ExprId],
@@ -164,9 +166,15 @@ where
     if let Some((result, desc)) = check_fn(ctx, &term_i_data, &term_j_data) {
         let remaining = build_sum_without(ctx, terms, i, j);
         let final_result = combine_with_term(ctx, remaining, result);
+
+        // Build local before: Add(term_i, term_j) to show exactly what matched
+        let local_before = ctx.add(Expr::Add(term_i, term_j));
+
         return Some(Rewrite {
             new_expr: final_result,
             description: desc,
+            before_local: Some(local_before),
+            after_local: Some(result),
         });
     }
 
@@ -181,9 +189,14 @@ where
             let remaining = build_sum_without(ctx, terms, i, j);
             let final_result = combine_with_term(ctx, remaining, neg_result);
 
+            // Build local before: Add(term_i, term_j) to show exactly what matched
+            let local_before = ctx.add(Expr::Add(term_i, term_j));
+
             return Some(Rewrite {
                 new_expr: final_result,
                 description: format!("-[{}]", desc),
+                before_local: Some(local_before),
+                after_local: Some(neg_result),
             });
         }
     }
@@ -233,6 +246,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "sin(arcsin(x)) = x".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
 
@@ -241,6 +256,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "cos(arccos(x)) = x".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
 
@@ -249,6 +266,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "tan(arctan(x)) = x".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
 
@@ -257,6 +276,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "arcsin(sin(x)) = x".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
 
@@ -265,6 +286,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "arccos(cos(x)) = x".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
 
@@ -273,6 +296,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "arctan(tan(x)) = x".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
                     }
@@ -284,6 +309,8 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: arg,
                             description: "arctan(sin(x)/cos(x)) = arctan(tan(x)) = x".to_string(),
+                            before_local: None,
+                            after_local: None,
                         });
                     }
                 }
@@ -313,6 +340,8 @@ define_rule!(
                 // Use generalized helper to check both positive and negated pairs
                 if let Some(rewrite) = check_pair_with_negation(
                     ctx,
+                    terms[i],
+                    terms[j],
                     term_i_data,
                     term_j_data,
                     &terms,
@@ -388,6 +417,8 @@ define_rule!(
                 // Use generalized helper to check both positive and negated pairs
                 if let Some(rewrite) = check_pair_with_negation(
                     ctx,
+                    terms[i],
+                    terms[j],
                     term_i_data,
                     term_j_data,
                     &terms,
@@ -471,6 +502,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "arcsin(-x) = -arcsin(x)".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
                         "arctan" => {
@@ -481,6 +514,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "arctan(-x) = -arctan(x)".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
                         "arccos" => {
@@ -492,6 +527,8 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "arccos(-x) = π - arccos(x)".to_string(),
+                                before_local: None,
+                                after_local: None,
                             });
                         }
                         _ => {}
@@ -526,6 +563,8 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: result,
                     description: "arcsec(x) → arccos(1/x)".to_string(),
+                    before_local: None,
+                    after_local: None,
                 });
             }
         }
@@ -553,6 +592,8 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: result,
                     description: "arccsc(x) → arcsin(1/x)".to_string(),
+                    before_local: None,
+                    after_local: None,
                 });
             }
         }
@@ -581,6 +622,8 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: result,
                     description: "arccot(x) → arctan(1/x)".to_string(),
+                    before_local: None,
+                    after_local: None,
                 });
             }
         }

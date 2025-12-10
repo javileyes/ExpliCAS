@@ -65,6 +65,8 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
             return Some(Rewrite {
                 new_expr,
                 description: "Distribute".to_string(),
+                before_local: None,
+                after_local: None,
             });
         }
         // (b + c) * a -> b*a + c*a
@@ -97,6 +99,8 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
             return Some(Rewrite {
                 new_expr,
                 description: "Distribute".to_string(),
+                before_local: None,
+                after_local: None,
             });
         }
     }
@@ -217,7 +221,9 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Distribute division (simplifying)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -239,7 +245,9 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Distribute division (simplifying)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -352,6 +360,8 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
             return Some(Rewrite {
                 new_expr: zero,
                 description: "x - x = 0".to_string(),
+                before_local: None,
+                after_local: None,
             });
         }
     }
@@ -384,6 +394,8 @@ define_rule!(CombineLikeTermsRule, "Combine Like Terms", |ctx, expr| {
             return Some(Rewrite {
                 new_expr,
                 description: "Global Combine Like Terms".to_string(),
+                before_local: None,
+                after_local: None,
             });
         }
     }
@@ -470,7 +482,9 @@ define_rule!(BinomialExpansionRule, "Binomial Expansion", |ctx, expr| {
                         return Some(Rewrite {
                             new_expr: expanded,
                             description: format!("Expand binomial power ^{}", n_val),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }

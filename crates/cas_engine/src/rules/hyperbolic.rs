@@ -53,7 +53,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: ctx.num(0),
                                 description: format!("{}(0) = 0", name),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                     // cosh(0) = 1
@@ -62,7 +64,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: ctx.num(1),
                                 description: "cosh(0) = 1".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                     // asinh(0) = 0, atanh(0) = 0
@@ -71,7 +75,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: ctx.num(0),
                                 description: format!("{}(0) = 0", name),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                     // acosh(1) = 0
@@ -80,7 +86,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: ctx.num(0),
                                 description: "acosh(1) = 0".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                     _ => {}
@@ -109,7 +117,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "sinh(asinh(x)) = x".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
 
                         // cosh(acosh(x)) = x
@@ -117,7 +127,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "cosh(acosh(x)) = x".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
 
                         // tanh(atanh(x)) = x
@@ -125,7 +137,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "tanh(atanh(x)) = x".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
 
                         // asinh(sinh(x)) = x
@@ -133,7 +147,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "asinh(sinh(x)) = x".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
 
                         // acosh(cosh(x)) = x
@@ -141,7 +157,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "acosh(cosh(x)) = x".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
 
                         // atanh(tanh(x)) = x
@@ -149,7 +167,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: x,
                                 description: "atanh(tanh(x)) = x".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                 }
@@ -178,7 +198,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "sinh(-x) = -sinh(x)".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                         // cosh(-x) = cosh(x) (even function)
                         "cosh" => {
@@ -187,7 +209,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "cosh(-x) = cosh(x)".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                         // tanh(-x) = -tanh(x) (odd function)
                         "tanh" => {
@@ -197,7 +221,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "tanh(-x) = -tanh(x)".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                         // asinh(-x) = -asinh(x) (odd function)
                         "asinh" => {
@@ -207,7 +233,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "asinh(-x) = -asinh(x)".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                         // atanh(-x) = -atanh(x) (odd function)
                         "atanh" => {
@@ -217,7 +245,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "atanh(-x) = -atanh(x)".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                         _ => {}
                     }
@@ -258,7 +288,9 @@ define_rule!(
                                 return Some(Rewrite {
                                     new_expr: ctx.num(1),
                                     description: "cosh²(x) - sinh²(x) = 1".to_string(),
-                                });
+                before_local: None,
+                after_local: None,
+            });
                             }
                         }
 
@@ -275,7 +307,9 @@ define_rule!(
                                 return Some(Rewrite {
                                     new_expr: ctx.num(-1),
                                     description: "sinh²(x) - cosh²(x) = -1".to_string(),
-                                });
+                before_local: None,
+                after_local: None,
+            });
                             }
                         }
                     }

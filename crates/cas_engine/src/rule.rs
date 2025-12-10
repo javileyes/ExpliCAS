@@ -1,9 +1,45 @@
 use crate::parent_context::ParentContext;
 use cas_ast::{Context, ExprId};
 
+/// Result of a rule application containing the new expression and metadata
 pub struct Rewrite {
+    /// The transformed expression
     pub new_expr: ExprId,
+    /// Human-readable description of the transformation
     pub description: String,
+    /// Optional: The specific local expression before the rule (for n-ary rules)
+    /// If set, CLI uses this for "Rule: before -> after" instead of full expression
+    pub before_local: Option<ExprId>,
+    /// Optional: The specific local result after the rule (for n-ary rules)
+    pub after_local: Option<ExprId>,
+}
+
+impl Rewrite {
+    /// Create a simple rewrite (most common case - local transform = global transform)
+    pub fn simple(new_expr: ExprId, description: impl Into<String>) -> Self {
+        Rewrite {
+            new_expr,
+            description: description.into(),
+            before_local: None,
+            after_local: None,
+        }
+    }
+
+    /// Create a rewrite with explicit local before/after (for n-ary rules)
+    /// Use when the rule transforms a subpattern within a larger expression
+    pub fn with_local(
+        new_expr: ExprId,
+        description: impl Into<String>,
+        before_local: ExprId,
+        after_local: ExprId,
+    ) -> Self {
+        Rewrite {
+            new_expr,
+            description: description.into(),
+            before_local: Some(before_local),
+            after_local: Some(after_local),
+        }
+    }
 }
 
 /// Simplified Rule trait for backward compatibility

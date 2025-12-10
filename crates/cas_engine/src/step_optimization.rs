@@ -89,6 +89,8 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     after_str: last.after_str.clone(),
                     global_before: current.global_before,
                     global_after: last.global_after,
+                    before_local: None,
+                    after_local: None,
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;

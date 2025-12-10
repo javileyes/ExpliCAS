@@ -411,14 +411,18 @@ fn apply_rules_to_tree(
             if let Some(rw) =
                 crate::semantic_equality::apply_rule_with_semantic_check(ctx, rule, current_expr)
             {
-                steps.push(Step::new(
+                let mut step = Step::new(
                     &rw.description,
                     rule.name(),
                     current_expr,
                     rw.new_expr,
                     path.clone(),
                     Some(ctx),
-                ));
+                );
+                // Propagate local before/after from Rewrite for accurate Rule display
+                step.before_local = rw.before_local;
+                step.after_local = rw.after_local;
+                steps.push(step);
                 Some(rw.new_expr)
             } else {
                 None

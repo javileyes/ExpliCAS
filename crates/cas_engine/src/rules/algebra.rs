@@ -82,7 +82,9 @@ define_rule!(
                             id: gcd_expr
                         }
                     ),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
 
@@ -95,7 +97,9 @@ define_rule!(
                     id: gcd_expr
                 }
             ),
-        });
+                before_local: None,
+                after_local: None,
+            });
     }
 );
 
@@ -200,7 +204,9 @@ define_rule!(
         return Some(Rewrite {
             new_expr,
             description: "Simplify nested fraction".to_string(),
-        });
+                before_local: None,
+                after_local: None,
+            });
     }
 );
 
@@ -371,14 +377,18 @@ define_rule!(ExpandRule, "Expand Polynomial", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "expand()".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             } else {
                 // If expand didn't change anything, maybe we should just unwrap?
                 // "expand(x)" -> "x"
                 return Some(Rewrite {
                     new_expr: arg,
                     description: "expand(atom)".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
     }
@@ -398,12 +408,16 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "expand()".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 } else {
                     return Some(Rewrite {
                         new_expr: arg,
                         description: "expand(atom)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -423,7 +437,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "Conservative Expansion".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
         None
@@ -447,7 +463,9 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "Distribute (RHS)".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
         // Try to distribute r into l if l is an Add/Sub
@@ -457,7 +475,9 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "Distribute (LHS)".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
     }
@@ -474,7 +494,9 @@ define_rule!(FactorRule, "Factor Polynomial", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "Factorization".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
     }
@@ -562,7 +584,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: ctx.num(0),
                                 description: "Factor difference of squares (Empty)".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
 
                         let mut new_expr = new_terms[0];
@@ -573,7 +597,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr,
                             description: "Factor difference of squares (N-ary)".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }
@@ -610,7 +636,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "Automatic Factorization (Reduced Size)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -630,7 +658,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "Automatic Factorization (Diff Squares)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -828,7 +858,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "Simplify fraction (GCD)".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
 
             // Check for a * (b/c) or (b/c) * a
@@ -845,7 +877,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: num,
                         description: "Cancel division: (a/b)*b -> a".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
                 let new_num = ctx.add(Expr::Mul(num, r));
                 let new_expr = ctx.add(Expr::Div(new_num, den));
@@ -858,7 +892,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "Combine Mul and Div".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
 
             if let Some((num, den)) = gd_r {
@@ -867,7 +903,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: num,
                         description: "Cancel division: a*(b/a) -> b".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
 
                 // Avoid combining if l is a number or constant
@@ -880,7 +918,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "Combine Mul and Div".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
         None
@@ -1534,6 +1574,8 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
             return Some(Rewrite {
                 new_expr,
                 description: "Add fractions: a/b + c/d -> (ad+bc)/bd".to_string(),
+                before_local: None,
+                after_local: None,
             });
         }
     }
@@ -1687,7 +1729,9 @@ define_rule!(
         return Some(Rewrite {
             new_expr,
             description: "Rationalize denominator (diff squares)".to_string(),
-        });
+                before_local: None,
+                after_local: None,
+            });
     }
 );
 
@@ -2038,7 +2082,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: new_num,
                         description: "Cancel common factors (to scalar)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
 
@@ -2046,6 +2092,8 @@ define_rule!(
             return Some(Rewrite {
                 new_expr,
                 description: "Cancel common factors".to_string(),
+                before_local: None,
+                after_local: None,
             });
         }
         None
@@ -2226,7 +2274,9 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                             return Some(crate::rule::Rewrite {
                                 new_expr,
                                 description: "Denest square root".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                 }
@@ -2457,7 +2507,9 @@ define_rule!(
         Some(Rewrite {
             new_expr,
             description: "Combine fractions with factor-based LCD".to_string(),
-        })
+                before_local: None,
+                after_local: None,
+            })
     }
 );
 
@@ -2539,7 +2591,9 @@ define_rule!(
                                     return Some(Rewrite {
                                         new_expr: term1,
                                         description: "Simplify perfect square root".to_string(),
-                                    });
+                before_local: None,
+                after_local: None,
+            });
                                 } else {
                                     let sqrt_base =
                                         ctx.add(Expr::Function("sqrt".to_string(), vec![base]));
@@ -2547,7 +2601,9 @@ define_rule!(
                                     return Some(Rewrite {
                                         new_expr,
                                         description: "Simplify square root factors".to_string(),
-                                    });
+                before_local: None,
+                after_local: None,
+            });
                                 }
                             }
                         }
@@ -2583,7 +2639,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "Pull constant from numerator".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             } else if r_is_const {
                 // (x * c) / y -> c * (x / y)
                 let div = ctx.add(Expr::Div(l, d));
@@ -2591,7 +2649,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "Pull constant from numerator".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
         // Also handle Neg: (-x) / y -> -1 * (x / y)
@@ -2602,6 +2662,8 @@ define_rule!(
             return Some(Rewrite {
                 new_expr,
                 description: "Pull negation from numerator".to_string(),
+                before_local: None,
+                after_local: None,
             });
         }
         None

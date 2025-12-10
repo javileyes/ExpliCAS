@@ -246,6 +246,12 @@ fn find_fraction_sum_in_expr(ctx: &Context, expr: ExprId) -> Option<FractionSumI
             }
 
             if fractions.len() >= 2 {
+                // Only consider it a fraction sum if at least one fraction has denominator != 1
+                // This filters out integer sums like 1 + 4 which aren't really "fraction sums"
+                let has_actual_fraction = fractions.iter().any(|f| !f.denom().is_one());
+                if !has_actual_fraction {
+                    return None;
+                }
                 let result: BigRational = fractions.iter().cloned().sum();
                 return Some(FractionSumInfo { fractions, result });
             }

@@ -2133,12 +2133,19 @@ impl Repl {
                                         }
 
                                         // Show Rule: local transformation
-                                        // Always use DisplayExprWithHints to preserve root notation
+                                        // Use before_local/after_local if available (for n-ary rules),
+                                        // otherwise fall back to before/after
+                                        let (rule_before_id, rule_after_id) =
+                                            match (step.before_local, step.after_local) {
+                                                (Some(bl), Some(al)) => (bl, al),
+                                                _ => (step.before, step.after),
+                                            };
+
                                         let before_disp = clean_display_string(&format!(
                                             "{}",
                                             DisplayExprWithHints {
                                                 context: &self.simplifier.context,
-                                                id: step.before,
+                                                id: rule_before_id,
                                                 hints: &display_hints
                                             }
                                         ));
@@ -2146,7 +2153,7 @@ impl Repl {
                                             "{}",
                                             DisplayExprWithHints {
                                                 context: &self.simplifier.context,
-                                                id: step.after,
+                                                id: rule_after_id,
                                                 hints: &display_hints
                                             }
                                         ));
@@ -2160,6 +2167,7 @@ impl Repl {
                                             continue;
                                         }
 
+                                        // Always show Rule line - it now shows the accurate local transformation
                                         println!("   Rule: {} -> {}", before_disp, after_disp);
                                     }
 

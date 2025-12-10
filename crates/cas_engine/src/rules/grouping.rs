@@ -90,8 +90,10 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                 let zero = ctx.num(0);
                 return Some(Rewrite {
                     new_expr: zero,
-                    description: format!("collect({}, {})", target_expr, var_name), // Debug format
-                });
+                    description: format!("collect({}, {})", target_expr, var_name), // Debug format,
+                before_local: None,
+                after_local: None,
+            });
             }
 
             let mut result = new_terms[0];
@@ -102,6 +104,8 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
             return Some(Rewrite {
                 new_expr: result,
                 description: format!("collect({}, {})", target_expr, var_name),
+                before_local: None,
+                after_local: None,
             });
         }
     }
@@ -328,7 +332,9 @@ define_rule!(CollectLikeTermsRule, "Collect Like Terms", |ctx, expr| {
         Some(Rewrite {
             new_expr,
             description: "Collect like terms".to_string(),
-        })
+                before_local: None,
+                after_local: None,
+            })
     } else {
         None
     }

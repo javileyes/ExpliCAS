@@ -228,7 +228,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: result,
                             description: description.to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }

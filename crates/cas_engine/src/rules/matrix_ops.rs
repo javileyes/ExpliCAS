@@ -32,7 +32,9 @@ impl SimpleRule for MatrixAddRule {
                             "Matrix addition: {}×{} + {}×{}",
                             m1.rows, m1.cols, m2.rows, m2.cols
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -68,7 +70,9 @@ impl SimpleRule for MatrixSubRule {
                             "Matrix subtraction: {}×{} - {}×{}",
                             m1.rows, m1.cols, m2.rows, m2.cols
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -103,7 +107,9 @@ impl SimpleRule for ScalarMatrixRule {
                         "Scalar multiplication: scalar × {}×{} matrix",
                         matrix.rows, matrix.cols
                     ),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
 
             // Try matrix * scalar
@@ -116,7 +122,9 @@ impl SimpleRule for ScalarMatrixRule {
                         "Scalar multiplication: {}×{} matrix × scalar",
                         matrix.rows, matrix.cols
                     ),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
         None
@@ -155,7 +163,9 @@ impl SimpleRule for MatrixMultiplyRule {
                             "Matrix multiplication: {}×{} × {}×{} = {}×{}",
                             m1.rows, m1.cols, m2.rows, m2.cols, result.rows, result.cols
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -191,7 +201,9 @@ impl SimpleRule for MatrixFunctionRule {
                                         "det({}×{} matrix)",
                                         matrix.rows, matrix.cols
                                     ),
-                                });
+                before_local: None,
+                after_local: None,
+            });
                             }
                         }
                     }
@@ -206,7 +218,9 @@ impl SimpleRule for MatrixFunctionRule {
                                     "transpose({}×{}) = {}×{}",
                                     matrix.rows, matrix.cols, transposed.rows, transposed.cols
                                 ),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                 }
@@ -220,7 +234,9 @@ impl SimpleRule for MatrixFunctionRule {
                                         "trace({}×{} matrix)",
                                         matrix.rows, matrix.cols
                                     ),
-                                });
+                before_local: None,
+                after_local: None,
+            });
                             }
                         }
                     }
@@ -343,7 +359,9 @@ impl SimpleRule for TransposeProductRule {
                         return Some(Rewrite {
                             new_expr: result,
                             description: "(AB)^T = B^T·A^T".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }

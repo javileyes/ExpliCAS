@@ -35,6 +35,11 @@ pub struct Step {
     pub global_before: Option<ExprId>,
     /// Complete root expression AFTER this step's transformation
     pub global_after: Option<ExprId>,
+    /// Optional: The specific pattern matched (for n-ary rules like atan(x)+atan(1/x))
+    /// Use this for "Rule: X -> Y" display if set, otherwise use before/after
+    pub before_local: Option<ExprId>,
+    /// Optional: The specific result of the pattern (for n-ary rules)
+    pub after_local: Option<ExprId>,
 }
 
 impl Step {
@@ -64,6 +69,8 @@ impl Step {
             after_str,
             global_before: None,
             global_after: None,
+            before_local: None,
+            after_local: None,
         }
     }
 

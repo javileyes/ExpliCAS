@@ -23,7 +23,9 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                                 },
                                 var_name
                             ),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             } else if args.len() == 1 {
@@ -40,7 +42,9 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                                 id: integrand
                             }
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -67,7 +71,9 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
                                 },
                                 var_name
                             ),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }

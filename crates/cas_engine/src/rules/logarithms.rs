@@ -30,7 +30,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: zero,
                             description: "log(b, 1) = 0".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                     if n.is_zero() {
                         let inf = ctx.add(Expr::Constant(cas_ast::Constant::Infinity));
@@ -38,14 +40,18 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: neg_inf,
                             description: "log(b, 0) = -infinity".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                     if *n < num_rational::BigRational::zero() {
                          let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
                          return Some(Rewrite {
                             new_expr: undef,
                             description: "log(b, neg) = undefined".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                     
                     // Check if n is a power of base (if base is a number)
@@ -67,7 +73,9 @@ define_rule!(
                                     return Some(Rewrite {
                                         new_expr,
                                         description: format!("log({}, {}) = {}", b, n, power),
-                                    });
+                before_local: None,
+                after_local: None,
+            });
                                 }
                             }
                         }
@@ -80,7 +88,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: one,
                         description: "log(b, b) = 1".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
 
                 // 3. log(b, b^x) = x
@@ -89,7 +99,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: *p_exp,
                             description: "log(b, b^x) = x".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
 
@@ -102,7 +114,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "log(b, x^y) = y * log(b, x)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
 
                 // 5. Product: log(b, x*y) = log(b, x) + log(b, y)
@@ -113,7 +127,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
 
                 // 6. Quotient: log(b, x/y) = log(b, x) - log(b, y)
@@ -124,7 +140,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
                 // 7. log(b, |x|) -> log(b, x)
                 // We assume x is in the domain of log (x > 0) if this simplification is requested,
@@ -136,7 +154,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr,
                             description: "log(b, |x|) -> log(b, x)".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }
@@ -172,7 +192,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: log_arg,
                         description: "b^log(b, x) = x".to_string(),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
             
@@ -187,7 +209,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "b^(c*log(b, x)) = x^c".to_string(),
-                            });
+                before_local: None,
+                after_local: None,
+            });
                         }
                     }
                     None
@@ -223,7 +247,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr,
                             description: "e^(a+b) -> e^a * e^b (log cancellation)".to_string(),
-                        });
+                before_local: None,
+                after_local: None,
+            });
                     }
                 }
             }
@@ -439,7 +465,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "x^(c/log(b, x)) = b^c".to_string(),
-                });
+                before_local: None,
+                after_local: None,
+            });
             }
         }
         None

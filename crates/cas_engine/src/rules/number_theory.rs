@@ -37,7 +37,9 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -57,7 +59,9 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -77,7 +81,9 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -93,7 +99,9 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[0]
                             }
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -109,7 +117,9 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[0]
                             }
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -129,7 +139,9 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }
@@ -149,7 +161,9 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                    });
+                before_local: None,
+                after_local: None,
+            });
                 }
             }
         }

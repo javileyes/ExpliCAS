@@ -799,7 +799,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if self.collect_steps {
                             let global_before = self.root_expr;
                             let global_after = self.reconstruct_at_path(rewrite.new_expr);
-                            self.steps.push(Step::with_snapshots(
+                            let mut step = Step::with_snapshots(
                                 &rewrite.description,
                                 rule.name(),
                                 expr_id,
@@ -808,7 +808,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 Some(self.context),
                                 global_before,
                                 global_after,
-                            ));
+                            );
+                            // Propagate local before/after from Rewrite for accurate Rule display
+                            step.before_local = rewrite.before_local;
+                            step.after_local = rewrite.after_local;
+                            self.steps.push(step);
                         }
                         expr_id = rewrite.new_expr;
                         changed = true;
@@ -846,7 +850,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     if self.collect_steps {
                         let global_before = self.root_expr;
                         let global_after = self.reconstruct_at_path(rewrite.new_expr);
-                        self.steps.push(Step::with_snapshots(
+                        let mut step = Step::with_snapshots(
                             &rewrite.description,
                             rule.name(),
                             expr_id,
@@ -855,7 +859,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             Some(self.context),
                             global_before,
                             global_after,
-                        ));
+                        );
+                        // Propagate local before/after from Rewrite for accurate Rule display
+                        step.before_local = rewrite.before_local;
+                        step.after_local = rewrite.after_local;
+                        self.steps.push(step);
                     }
                     expr_id = rewrite.new_expr;
                     changed = true;
