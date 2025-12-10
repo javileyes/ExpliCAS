@@ -13,8 +13,10 @@ pub use domain::{BoundType, Interval, SolutionSet};
 pub use expression::{
     Constant, Context, DisplayExpr, DisplayExprWithHints, Expr, ExprId, RawDisplayExpr,
 };
-pub use latex::LaTeXExpr;
-pub use latex_highlight::{HighlightColor, HighlightConfig, LaTeXExprHighlighted};
+pub use latex::{LaTeXExpr, LaTeXExprWithHints};
+pub use latex_highlight::{
+    HighlightColor, HighlightConfig, LaTeXExprHighlighted, LaTeXExprHighlightedWithHints,
+};
 pub use latex_no_roots::LatexNoRoots;
 pub use latex_parser::parse_latex;
 pub use visitor::{Transformer, Visitor};

@@ -1081,6 +1081,13 @@ impl<'a> TimelineHtml<'a> {
     ) -> String {
         let mut html = String::from("        <div class=\"timeline\">\n");
 
+        // Build display hints for consistent sqrt notation
+        let display_hints = crate::display_context::build_display_context(
+            self.context,
+            self.original_expr,
+            self.steps,
+        );
+
         let mut step_number = 0;
         let mut current_global = self.original_expr;
         // Track if substeps have been shown (show only once on first visible step)
@@ -1101,25 +1108,40 @@ impl<'a> TimelineHtml<'a> {
             }
             step_number += 1;
 
-            let global_before = self.generate_latex_with_highlight(
-                global_state_before_this_step,
-                &step.path,
-                step.before,
-            );
-
-            // Generate global AFTER with green highlight on the result
-            let global_after =
-                self.latex_with_single_highlight(current_global, step.after, HighlightColor::Green);
-
-            // Always use LaTeXExpr which auto-converts x^(1/n) to √ notation
-            let local_before = LaTeXExpr {
+            // Generate global BEFORE with red highlight on the input (using display hints)
+            let actual_target = self.find_expr_at_path(global_state_before_this_step, &step.path);
+            let mut before_config = HighlightConfig::new();
+            before_config.add(actual_target, HighlightColor::Red);
+            let global_before = cas_ast::LaTeXExprHighlightedWithHints {
                 context: self.context,
-                id: step.before,
+                id: global_state_before_this_step,
+                highlights: &before_config,
+                hints: &display_hints,
             }
             .to_latex();
-            let local_after = LaTeXExpr {
+
+            // Generate global AFTER with green highlight on the result (using display hints)
+            let mut after_config = HighlightConfig::new();
+            after_config.add(step.after, HighlightColor::Green);
+            let global_after = cas_ast::LaTeXExprHighlightedWithHints {
+                context: self.context,
+                id: current_global,
+                highlights: &after_config,
+                hints: &display_hints,
+            }
+            .to_latex();
+
+            // Use LaTeXExprWithHints for proper LaTeX that respects sqrt() hints
+            let local_before = cas_ast::LaTeXExprWithHints {
+                context: self.context,
+                id: step.before,
+                hints: &display_hints,
+            }
+            .to_latex();
+            let local_after = cas_ast::LaTeXExprWithHints {
                 context: self.context,
                 id: step.after,
+                hints: &display_hints,
             }
             .to_latex();
 

@@ -317,6 +317,172 @@ impl<'a> LaTeXExpr<'a> {
     }
 }
 
+/// LaTeX expression renderer that respects display hints
+/// Similar to LaTeXExpr but checks DisplayContext for AsRoot hints to render roots appropriately
+pub struct LaTeXExprWithHints<'a> {
+    pub context: &'a Context,
+    pub id: ExprId,
+    pub hints: &'a crate::display_context::DisplayContext,
+}
+
+impl<'a> LaTeXExprWithHints<'a> {
+    pub fn to_latex(&self) -> String {
+        let latex = self.expr_to_latex(self.id, false);
+        LaTeXExpr::clean_latex_negatives(&latex)
+    }
+
+    fn expr_to_latex(&self, id: ExprId, parent_needs_parens: bool) -> String {
+        // Check for display hint first - if AsRoot, render as sqrt
+        if let Some(crate::display_context::DisplayHint::AsRoot { index }) = self.hints.get(id) {
+            if let Expr::Pow(base, _) = self.context.get(id) {
+                let base_str = self.expr_to_latex(*base, false);
+                if *index == 2 {
+                    return format!("\\sqrt{{{}}}", base_str);
+                } else {
+                    return format!("\\sqrt[{}]{{{}}}", index, base_str);
+                }
+            }
+        }
+
+        match self.context.get(id) {
+            Expr::Number(n) => {
+                if n.is_integer() {
+                    format!("{}", n.numer())
+                } else {
+                    format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom())
+                }
+            }
+            Expr::Variable(name) => name.clone(),
+            Expr::Constant(c) => match c {
+                Constant::Pi => "\\pi".to_string(),
+                Constant::E => "e".to_string(),
+                Constant::Infinity => "\\infty".to_string(),
+                Constant::Undefined => "\\text{undefined}".to_string(),
+            },
+            Expr::Add(l, r) => {
+                let left = self.expr_to_latex(*l, false);
+                // Check if right is negative for subtraction display
+                if let Expr::Neg(inner) = self.context.get(*r) {
+                    let right = self.expr_to_latex(*inner, false);
+                    format!("{} - {}", left, right)
+                } else {
+                    let right = self.expr_to_latex(*r, false);
+                    format!("{} + {}", left, right)
+                }
+            }
+            Expr::Sub(l, r) => {
+                let left = self.expr_to_latex(*l, false);
+                let right = self.expr_to_latex(*r, true);
+                format!("{} - {}", left, right)
+            }
+            Expr::Mul(l, r) => {
+                let left = self.expr_to_latex_mul(*l);
+                let right = self.expr_to_latex_mul(*r);
+                if self.needs_explicit_mult(*l, *r) {
+                    format!("{} \\cdot {}", left, right)
+                } else {
+                    format!("{}{}", left, right)
+                }
+            }
+            Expr::Div(l, r) => {
+                let numer = self.expr_to_latex(*l, false);
+                let denom = self.expr_to_latex(*r, false);
+                format!("\\frac{{{}}}{{{}}}", numer, denom)
+            }
+            Expr::Pow(base, exp) => {
+                let base_str = self.expr_to_latex_base(*base);
+                let exp_str = self.expr_to_latex(*exp, false);
+                format!("{{{}}}^{{{}}}", base_str, exp_str)
+            }
+            Expr::Neg(e) => {
+                let inner = self.expr_to_latex(*e, true);
+                format!("-{}", inner)
+            }
+            Expr::Function(name, args) => match name.as_str() {
+                "sqrt" if args.len() == 1 => {
+                    let arg = self.expr_to_latex(args[0], false);
+                    format!("\\sqrt{{{}}}", arg)
+                }
+                "sqrt" if args.len() == 2 => {
+                    let radicand = self.expr_to_latex(args[0], false);
+                    let index = self.expr_to_latex(args[1], false);
+                    format!("\\sqrt[{}]{{{}}}", index, radicand)
+                }
+                "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
+                    let arg = self.expr_to_latex(args[0], false);
+                    format!("\\{}({})", name, arg)
+                }
+                "ln" => {
+                    let arg = self.expr_to_latex(args[0], false);
+                    format!("\\ln({})", arg)
+                }
+                "log" if args.len() == 2 => {
+                    let arg = self.expr_to_latex(args[0], false);
+                    let base = self.expr_to_latex(args[1], false);
+                    format!("\\log_{{{}}}({})", base, arg)
+                }
+                _ => {
+                    let args_latex: Vec<String> =
+                        args.iter().map(|a| self.expr_to_latex(*a, false)).collect();
+                    format!("\\text{{{}}}({})", name, args_latex.join(", "))
+                }
+            },
+            Expr::Matrix { rows, cols, data } => {
+                // Render matrix as LaTeX bmatrix
+                let mut result = String::from("\\begin{bmatrix}\n");
+                for r in 0..*rows {
+                    for c in 0..*cols {
+                        if c > 0 {
+                            result.push_str(" & ");
+                        }
+                        let idx = r * cols + c;
+                        result.push_str(&self.expr_to_latex(data[idx], false));
+                    }
+                    if r < rows - 1 {
+                        result.push_str(" \\\\\n");
+                    }
+                }
+                result.push_str("\n\\end{bmatrix}");
+                result
+            }
+        }
+    }
+
+    fn expr_to_latex_mul(&self, id: ExprId) -> String {
+        match self.context.get(id) {
+            Expr::Add(_, _) | Expr::Sub(_, _) => {
+                format!("({})", self.expr_to_latex(id, false))
+            }
+            _ => self.expr_to_latex(id, false),
+        }
+    }
+
+    fn expr_to_latex_base(&self, id: ExprId) -> String {
+        match self.context.get(id) {
+            Expr::Add(_, _)
+            | Expr::Sub(_, _)
+            | Expr::Mul(_, _)
+            | Expr::Div(_, _)
+            | Expr::Neg(_) => {
+                format!("({})", self.expr_to_latex(id, false))
+            }
+            _ => self.expr_to_latex(id, false),
+        }
+    }
+
+    fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
+        match (self.context.get(left), self.context.get(right)) {
+            (Expr::Number(_), Expr::Number(_)) => true,
+            (Expr::Number(_), Expr::Add(_, _)) => true,
+            (Expr::Number(_), Expr::Sub(_, _)) => true,
+            (Expr::Number(_), Expr::Div(_, _)) => true,
+            (Expr::Add(_, _), Expr::Number(_)) => true,
+            (Expr::Sub(_, _), Expr::Number(_)) => true,
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
