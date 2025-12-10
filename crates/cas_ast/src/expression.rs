@@ -941,8 +941,14 @@ impl<'a> DisplayExprWithHints<'a> {
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(l, r) => {
                 self.fmt_internal(f, *l)?;
-                write!(f, " + ")?;
-                self.fmt_internal(f, *r)
+                // Check if right side is a Neg, and if so, display as subtraction
+                if let Expr::Neg(inner) = self.context.get(*r) {
+                    write!(f, " - ")?;
+                    self.fmt_internal(f, *inner)
+                } else {
+                    write!(f, " + ")?;
+                    self.fmt_internal(f, *r)
+                }
             }
             Expr::Sub(l, r) => {
                 self.fmt_internal(f, *l)?;
