@@ -2080,7 +2080,10 @@ impl Repl {
                                                         }
                                                         result.replace("\\", "")
                                                     }
-
+                                                    // Show title for substeps section
+                                                    println!(
+                                                        "   [Suma de fracciones en exponentes]"
+                                                    );
                                                     for sub in &enriched_step.sub_steps {
                                                         println!("      → {}", sub.description);
                                                         if !sub.before_latex.is_empty() {

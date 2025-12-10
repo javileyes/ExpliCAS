@@ -1175,7 +1175,7 @@ impl<'a> TimelineHtml<'a> {
                         sub_steps_shown = true; // Mark as shown
                         let mut details_html = String::from(
                             r#"<details class="substeps-details">
-                            <summary>Ver detalles</summary>
+                            <summary>Suma de fracciones en exponentes</summary>
                             <div class="substeps-content">"#,
                         );
                         for sub in &enriched.sub_steps {
