@@ -202,19 +202,7 @@ impl<'a> LaTeXExprHighlighted<'a> {
                 format!("\\frac{{{}}}{{{}}}", numer, denom)
             }
             Expr::Pow(base, exp) => {
-                // Check if exponent is 1/n - if so, render as root
-                if let Expr::Number(n) = self.context.get(*exp) {
-                    if *n.numer() == 1.into() && n.denom() > &1.into() {
-                        // This is x^(1/n) - render as nth root
-                        let base_str = self.expr_to_latex_internal(*base, false);
-                        if n.denom() == &2.into() {
-                            return format!("\\sqrt{{{}}}", base_str);
-                        } else {
-                            return format!("\\sqrt[{}]{{{}}}", n.denom(), base_str);
-                        }
-                    }
-                }
-                // Pure power notation for non-root exponents
+                // Render as power notation - sqrt() functions are handled separately
                 let base_str = self.expr_to_latex_base(*base);
                 let exp_str = self.expr_to_latex_internal(*exp, false);
                 format!("{{{}}}^{{{}}}", base_str, exp_str)

@@ -34,12 +34,9 @@ pub fn build_display_context(
         scan_for_sqrt_hints(ctx, step.after, &mut display_ctx);
     }
 
-    // Third: scan for power expressions that represent roots (x^(1/n))
-    scan_for_power_roots(ctx, original_expr, &mut display_ctx);
-    for step in steps {
-        scan_for_power_roots(ctx, step.before, &mut display_ctx);
-        scan_for_power_roots(ctx, step.after, &mut display_ctx);
-    }
+    // NOTE: We do NOT auto-convert x^(1/n) to roots here.
+    // If user wrote x^(1/4), show as x^(1/4). If user wrote sqrt(x), show as √.
+    // Only scan_for_sqrt_hints respects explicit sqrt() usage.
 
     // Fourth: capture hints from Canonicalize Roots steps
     for step in steps {
