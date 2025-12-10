@@ -266,11 +266,13 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
 });
 
 // a^n * b^n = (ab)^n - combines products of powers with same exponent
+// Only applies when at least one base is a number to avoid infinite loop with PowerProductRule
 define_rule!(
     ProductSameExponentRule,
     "Product Same Exponent",
     |ctx, expr| {
         // a^n * b^n -> (a*b)^n
+        // Guard: only apply when at least one base is a number (to avoid infinite loop)
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
             let lhs_data = ctx.get(lhs).clone();
@@ -279,6 +281,13 @@ define_rule!(
             // Case 1: Both are powers with same exponent: a^n * b^n
             if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
                 if compare_expr(ctx, *exp1, *exp2) == Ordering::Equal {
+                    // Guard: at least one base must be a number to avoid infinite loop
+                    let base1_is_num = matches!(ctx.get(*base1), Expr::Number(_));
+                    let base2_is_num = matches!(ctx.get(*base2), Expr::Number(_));
+                    if !base1_is_num && !base2_is_num {
+                        return None; // Skip if both are non-numeric (would loop with PowerProductRule)
+                    }
+
                     // Same exponent - combine bases
                     let new_base = ctx.add(Expr::Mul(*base1, *base2));
                     let new_expr = ctx.add(Expr::Pow(new_base, *exp1));
@@ -294,6 +303,13 @@ define_rule!(
                 if let Expr::Mul(rl, rr) = &rhs_data {
                     if let Expr::Pow(base2, exp2) = ctx.get(*rl) {
                         if compare_expr(ctx, *exp1, *exp2) == Ordering::Equal {
+                            // Guard: at least one base must be a number
+                            let base1_is_num = matches!(ctx.get(*base1), Expr::Number(_));
+                            let base2_is_num = matches!(ctx.get(*base2), Expr::Number(_));
+                            if !base1_is_num && !base2_is_num {
+                                return None;
+                            }
+
                             let new_base = ctx.add(Expr::Mul(*base1, *base2));
                             let combined_pow = ctx.add(Expr::Pow(new_base, *exp1));
                             let new_expr = ctx.add(Expr::Mul(combined_pow, *rr));
