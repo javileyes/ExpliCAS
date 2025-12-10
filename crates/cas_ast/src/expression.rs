@@ -915,13 +915,28 @@ impl<'a> DisplayExprWithHints<'a> {
             match hint {
                 crate::display_context::DisplayHint::AsRoot { index } => {
                     // Render as root notation
-                    if let Expr::Pow(base, _) = self.context.get(id) {
+                    if let Expr::Pow(base, exp) = self.context.get(id) {
+                        // Get the numerator of the exponent (for x^(k/n), k is the power inside the root)
+                        let inner_power = if let Expr::Number(n) = self.context.get(*exp) {
+                            let numer: i64 = n.numer().try_into().unwrap_or(1);
+                            numer
+                        } else {
+                            1
+                        };
+
                         if *index == 2 {
                             write!(f, "√(")?;
                         } else {
                             write!(f, "{}√(", index)?;
                         }
-                        self.fmt_internal(f, *base)?;
+
+                        // If numerator > 1, show base^k inside the root
+                        if inner_power != 1 {
+                            self.fmt_internal(f, *base)?;
+                            write!(f, "^{}", inner_power)?;
+                        } else {
+                            self.fmt_internal(f, *base)?;
+                        }
                         return write!(f, ")");
                     }
                 }

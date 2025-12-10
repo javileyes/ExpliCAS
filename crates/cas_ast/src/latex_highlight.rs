@@ -322,12 +322,26 @@ impl<'a> LaTeXExprHighlightedWithHints<'a> {
     fn format_expr(&self, id: ExprId, _parent_needs_parens: bool) -> String {
         // Check for display hint first - if AsRoot, render as sqrt
         if let Some(crate::display_context::DisplayHint::AsRoot { index }) = self.hints.get(id) {
-            if let Expr::Pow(base, _) = self.context.get(id) {
-                let base_str = self.expr_to_latex_internal(*base, false);
-                if *index == 2 {
-                    return format!("\\sqrt{{{}}}", base_str);
+            if let Expr::Pow(base, exp) = self.context.get(id) {
+                // Get the numerator of the exponent (for x^(k/n), k is the power inside the root)
+                let inner_power: i64 = if let Expr::Number(n) = self.context.get(*exp) {
+                    n.numer().try_into().unwrap_or(1)
                 } else {
-                    return format!("\\sqrt[{}]{{{}}}", index, base_str);
+                    1
+                };
+
+                let base_str = self.expr_to_latex_internal(*base, false);
+                // If numerator > 1, show base^k inside the root
+                let radicand = if inner_power != 1 {
+                    format!("{{{}}}^{{{}}}", base_str, inner_power)
+                } else {
+                    base_str
+                };
+
+                if *index == 2 {
+                    return format!("\\sqrt{{{}}}", radicand);
+                } else {
+                    return format!("\\sqrt[{}]{{{}}}", index, radicand);
                 }
             }
         }

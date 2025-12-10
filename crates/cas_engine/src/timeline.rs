@@ -1237,10 +1237,11 @@ impl<'a> TimelineHtml<'a> {
             ));
         }
 
-        // Add final result
-        let final_expr = LaTeXExpr {
+        // Add final result with display hints for consistent root notation
+        let final_expr = cas_ast::LaTeXExprWithHints {
             context: self.context,
             id: last_global_after,
+            hints: &display_hints,
         }
         .to_latex();
         html.push_str(

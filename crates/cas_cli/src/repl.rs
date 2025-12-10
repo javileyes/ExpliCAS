@@ -2202,9 +2202,10 @@ impl Repl {
                 }
                 println!(
                     "Result: {}",
-                    DisplayExpr {
+                    DisplayExprWithHints {
                         context: &self.simplifier.context,
-                        id: simplified
+                        id: simplified,
+                        hints: &display_hints
                     }
                 );
             }
