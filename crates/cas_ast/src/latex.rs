@@ -370,14 +370,88 @@ impl<'a> LaTeXExprWithHints<'a> {
                 Constant::Undefined => "\\text{undefined}".to_string(),
             },
             Expr::Add(l, r) => {
+                // First check if left side is negative - canonicalization may swap operands
+                if let Expr::Neg(left_inner) = self.context.get(*l) {
+                    // Left side is negative: Add(Neg(a), b) = b - a (more natural order)
+                    let inner_latex = self.expr_to_latex(*left_inner, true);
+                    let right_latex = self.expr_to_latex(*r, false);
+                    return format!("{} - {}", right_latex, inner_latex);
+                }
+
                 let left = self.expr_to_latex(*l, false);
-                // Check if right is negative for subtraction display
-                if let Expr::Neg(inner) = self.context.get(*r) {
-                    let right = self.expr_to_latex(*inner, false);
-                    format!("{} - {}", left, right)
+
+                // Check if right side is a negative number, negation, or multiplication by negative
+                // If so, render as subtraction instead of addition
+                let (is_negative, right_str) = match self.context.get(*r) {
+                    // Case 1: Negative number literal
+                    Expr::Number(n) if n.is_negative() => {
+                        let positive = -n;
+                        let positive_str = if positive.is_integer() {
+                            format!("{}", positive.numer())
+                        } else {
+                            format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+                        };
+                        (true, positive_str)
+                    }
+                    // Case 2: Neg(expr) - extract the inner expression
+                    Expr::Neg(inner) => (true, self.expr_to_latex(*inner, true)),
+                    // Case 3: Mul with negative leading coefficient (-1 * expr, -2 * expr, etc.)
+                    Expr::Mul(ml, mr) => {
+                        // Check if left factor is a negative number
+                        if let Expr::Number(coef) = self.context.get(*ml) {
+                            if coef.is_negative() {
+                                // Extract positive coefficient and rest
+                                let positive_coef = -coef;
+                                let rest_latex = self.expr_to_latex_mul(*mr);
+
+                                // Format as "positive_coef * rest" for subtraction
+                                if positive_coef.is_integer() && *positive_coef.numer() == 1.into()
+                                {
+                                    // -1 * expr -> just "expr"
+                                    (true, rest_latex)
+                                } else {
+                                    // -n * expr -> "n * expr" or "n expr"
+                                    let coef_str = if positive_coef.is_integer() {
+                                        format!("{}", positive_coef.numer())
+                                    } else {
+                                        format!(
+                                            "\\frac{{{}}}{{{}}}",
+                                            positive_coef.numer(),
+                                            positive_coef.denom()
+                                        )
+                                    };
+
+                                    // Check if we need explicit mult
+                                    let needs_cdot = matches!(
+                                        (self.context.get(*ml), self.context.get(*mr)),
+                                        (Expr::Number(_), Expr::Number(_))
+                                            | (Expr::Number(_), Expr::Add(_, _))
+                                            | (Expr::Number(_), Expr::Sub(_, _))
+                                    );
+
+                                    if needs_cdot {
+                                        (true, format!("{}\\cdot {}", coef_str, rest_latex))
+                                    } else {
+                                        (true, format!("{}{}", coef_str, rest_latex))
+                                    }
+                                }
+                            } else {
+                                // Positive coefficient, render normally
+                                (false, self.expr_to_latex(*r, false))
+                            }
+                        } else {
+                            // Left factor is not a number
+                            (false, self.expr_to_latex(*r, false))
+                        }
+                    }
+                    // Case 4: Regular positive expression
+                    _ => (false, self.expr_to_latex(*r, false)),
+                };
+
+                if is_negative {
+                    format!("{} - {}", left, right_str)
                 } else {
-                    let right = self.expr_to_latex(*r, false);
-                    format!("{} + {}", left, right)
+                    format!("{} + {}", left, right_str)
                 }
             }
             Expr::Sub(l, r) => {
