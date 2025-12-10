@@ -176,8 +176,19 @@ impl<'a> LaTeXExpr<'a> {
                 format!("\\frac{{{}}}{{{}}}", numer, denom)
             }
             Expr::Pow(base, exp) => {
-                // Pure power notation - no automatic sqrt conversion
-                // DisplayContext handles root notation when appropriate
+                // Check if exponent is 1/n - if so, render as root
+                if let Expr::Number(n) = self.context.get(*exp) {
+                    if *n.numer() == 1.into() && n.denom() > &1.into() {
+                        // This is x^(1/n) - render as nth root
+                        let base_str = self.expr_to_latex(*base, false);
+                        if n.denom() == &2.into() {
+                            return format!("\\sqrt{{{}}}", base_str);
+                        } else {
+                            return format!("\\sqrt[{}]{{{}}}", n.denom(), base_str);
+                        }
+                    }
+                }
+                // Pure power notation for non-root exponents
                 let base_str = self.expr_to_latex_base(*base);
                 let exp_str = self.expr_to_latex(*exp, false);
                 format!("{{{}}}^{{{}}}", base_str, exp_str)
@@ -430,6 +441,7 @@ mod tests {
     #[test]
     fn test_latex_rational_exponent() {
         // Test with actual rational number (post-simplification)
+        // Now auto-converts x^(1/2) to sqrt(x)
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let rational = ctx.rational(1, 2); // 1/2 as a rational number
@@ -439,7 +451,7 @@ mod tests {
             context: &ctx,
             id: expr,
         };
-        assert_eq!(latex.to_latex(), "{x}^{\\frac{1}{2}}");
+        assert_eq!(latex.to_latex(), "\\sqrt{x}");
     }
 
     #[test]
