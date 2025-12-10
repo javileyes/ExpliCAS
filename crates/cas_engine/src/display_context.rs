@@ -248,10 +248,11 @@ fn propagate_sqrt_hints_to_pow(
             if let Expr::Number(n) = ctx.get(*exp) {
                 let denom: i64 = n.denom().try_into().unwrap_or(1);
                 if denom > 1 {
-                    // This is x^(k/n) - check if base and index match any sqrt pattern
-                    let base_repr = expr_to_string(ctx, *base);
+                    // This is x^(k/n) - check if index matches any sqrt pattern
+                    // We match by index only (not base) because combined roots like
+                    // sqrt(3,4)*sqrt(4,4) = 12^(1/4) should still display as 4√(12)
                     for pattern in patterns {
-                        if pattern.index == denom as usize && pattern.base_repr == base_repr {
+                        if pattern.index == denom as usize {
                             display_ctx.insert(
                                 expr,
                                 DisplayHint::AsRoot {

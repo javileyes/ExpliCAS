@@ -1277,7 +1277,7 @@ impl Repl {
         };
 
         // Choose simplifier based on whether aggressive mode is requested
-        let (steps, expr_id) = if use_aggressive {
+        let (steps, expr_id, simplified) = if use_aggressive {
             // Create temporary simplifier with aggressive rules (like handle_full_simplify)
             let mut temp_simplifier = Simplifier::with_default_rules();
             temp_simplifier.collect_steps = true; // Always collect steps for timeline
@@ -1287,12 +1287,12 @@ impl Repl {
 
             match cas_parser::parse(expr_str.trim(), &mut temp_simplifier.context) {
                 Ok(expr) => {
-                    let (_, steps) = temp_simplifier.simplify(expr);
+                    let (simplified, steps) = temp_simplifier.simplify(expr);
 
                     // Swap context back
                     std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
 
-                    (steps, expr)
+                    (steps, expr, simplified)
                 }
                 Err(e) => {
                     // Swap context back even on error
@@ -1305,8 +1305,8 @@ impl Repl {
             // Use normal simplification
             match cas_parser::parse(expr_str.trim(), &mut self.simplifier.context) {
                 Ok(expr) => {
-                    let (_, steps) = self.simplifier.simplify(expr);
-                    (steps, expr)
+                    let (simplified, steps) = self.simplifier.simplify(expr);
+                    (steps, expr, simplified)
                 }
                 Err(e) => {
                     println!("Parse error: {}", e);
@@ -1321,10 +1321,11 @@ impl Repl {
         }
 
         // Filter out non-productive steps (where global state doesn't change)
+        // But pass ALL steps to timeline so it can correctly compute final result
         let filtered_steps = cas_engine::strategies::filter_non_productive_steps(
             &mut self.simplifier.context,
             expr_id,
-            steps,
+            steps.clone(),
         );
 
         // Convert CLI verbosity to timeline verbosity
@@ -1334,11 +1335,12 @@ impl Repl {
             Verbosity::Verbose => cas_engine::timeline::VerbosityLevel::Verbose,
         };
 
-        // Generate HTML timeline with filtered steps
-        let mut timeline = cas_engine::timeline::TimelineHtml::new(
+        // Generate HTML timeline with ALL steps and the known simplified result
+        let mut timeline = cas_engine::timeline::TimelineHtml::new_with_result(
             &mut self.simplifier.context,
-            &filtered_steps,
+            &steps,
             expr_id,
+            Some(simplified),
             timeline_verbosity,
         );
         let html = timeline.to_html();

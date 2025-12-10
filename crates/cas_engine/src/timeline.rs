@@ -10,6 +10,7 @@ pub struct TimelineHtml<'a> {
     context: &'a mut Context,
     steps: &'a [Step],
     original_expr: ExprId,
+    simplified_result: Option<ExprId>, // Optional: the final simplified result
     title: String,
     verbosity_level: VerbosityLevel,
 }
@@ -42,6 +43,17 @@ impl<'a> TimelineHtml<'a> {
         original_expr: ExprId,
         verbosity: VerbosityLevel,
     ) -> Self {
+        Self::new_with_result(context, steps, original_expr, None, verbosity)
+    }
+
+    /// Create a new TimelineHtml with a known simplified result
+    pub fn new_with_result(
+        context: &'a mut Context,
+        steps: &'a [Step],
+        original_expr: ExprId,
+        simplified_result: Option<ExprId>,
+        verbosity: VerbosityLevel,
+    ) -> Self {
         let title = format!(
             "{}",
             DisplayExpr {
@@ -53,6 +65,7 @@ impl<'a> TimelineHtml<'a> {
             context,
             steps,
             original_expr,
+            simplified_result,
             title,
             verbosity_level: verbosity,
         }
@@ -1081,11 +1094,12 @@ impl<'a> TimelineHtml<'a> {
     ) -> String {
         let mut html = String::from("        <div class=\"timeline\">\n");
 
-        // Build display hints for consistent sqrt notation
-        let display_hints = crate::display_context::build_display_context(
+        // Build display hints for consistent sqrt notation (including final result)
+        let display_hints = crate::display_context::build_display_context_with_result(
             self.context,
             self.original_expr,
             self.steps,
+            self.simplified_result,
         );
 
         let mut step_number = 0;
@@ -1238,9 +1252,11 @@ impl<'a> TimelineHtml<'a> {
         }
 
         // Add final result with display hints for consistent root notation
+        // Use simplified_result if available (passed from simplifier), otherwise use last_global_after
+        let final_result_expr = self.simplified_result.unwrap_or(last_global_after);
         let final_expr = cas_ast::LaTeXExprWithHints {
             context: self.context,
-            id: last_global_after,
+            id: final_result_expr,
             hints: &display_hints,
         }
         .to_latex();

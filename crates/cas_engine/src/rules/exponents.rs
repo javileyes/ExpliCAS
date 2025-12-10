@@ -265,6 +265,51 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
     None
 });
 
+// a^n * b^n = (ab)^n - combines products of powers with same exponent
+define_rule!(
+    ProductSameExponentRule,
+    "Product Same Exponent",
+    |ctx, expr| {
+        // a^n * b^n -> (a*b)^n
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Mul(lhs, rhs) = expr_data {
+            let lhs_data = ctx.get(lhs).clone();
+            let rhs_data = ctx.get(rhs).clone();
+
+            // Case 1: Both are powers with same exponent: a^n * b^n
+            if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
+                if compare_expr(ctx, *exp1, *exp2) == Ordering::Equal {
+                    // Same exponent - combine bases
+                    let new_base = ctx.add(Expr::Mul(*base1, *base2));
+                    let new_expr = ctx.add(Expr::Pow(new_base, *exp1));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Combine powers with same exponent".to_string(),
+                    });
+                }
+            }
+
+            // Case 2: Nested: a^n * (b^n * c) -> (a*b)^n * c
+            if let Expr::Pow(base1, exp1) = &lhs_data {
+                if let Expr::Mul(rl, rr) = &rhs_data {
+                    if let Expr::Pow(base2, exp2) = ctx.get(*rl) {
+                        if compare_expr(ctx, *exp1, *exp2) == Ordering::Equal {
+                            let new_base = ctx.add(Expr::Mul(*base1, *base2));
+                            let combined_pow = ctx.add(Expr::Pow(new_base, *exp1));
+                            let new_expr = ctx.add(Expr::Mul(combined_pow, *rr));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "Combine nested powers with same exponent".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
     // (x^a)^b -> x^(a*b)
     let expr_data = ctx.get(expr).clone();
@@ -620,6 +665,7 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
+    simplifier.add_rule(Box::new(ProductSameExponentRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
 
