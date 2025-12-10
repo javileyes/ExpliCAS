@@ -1028,7 +1028,19 @@ impl<'a> DisplayExprWithHints<'a> {
                 self.fmt_internal(f, *r)
             }
             Expr::Pow(b, e) => {
+                // Add parentheses around base if it's a binary operation
+                let base_expr = self.context.get(*b);
+                let needs_parens = matches!(
+                    base_expr,
+                    Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _) | Expr::Div(_, _)
+                );
+                if needs_parens {
+                    write!(f, "(")?;
+                }
                 self.fmt_internal(f, *b)?;
+                if needs_parens {
+                    write!(f, ")")?;
+                }
                 write!(f, "^(")?;
                 self.fmt_internal(f, *e)?;
                 write!(f, ")")
