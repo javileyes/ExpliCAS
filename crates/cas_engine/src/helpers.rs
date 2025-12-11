@@ -1,6 +1,28 @@
+//! # Helpers Module
+//!
+//! This module provides shared utility functions for expression manipulation
+//! and pattern matching. These functions are used across multiple rule files
+//! to avoid code duplication.
+//!
+//! ## Categories
+//!
+//! - **Expression Predicates**: `is_one`, `is_zero`, `is_negative`, `is_half`
+//! - **Value Extraction**: `get_integer`, `get_parts`, `get_variant_name`
+//! - **Flattening**: `flatten_add`, `flatten_add_sub_chain`, `flatten_mul`, `flatten_mul_chain`
+//! - **Trigonometry**: `is_trig_pow`, `get_trig_arg`, `extract_double_angle_arg`
+//! - **Pi Helpers**: `is_pi`, `is_pi_over_n`, `build_pi_over_n`
+//! - **Roots**: `get_square_root`
+
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Signed, ToPrimitive};
 
+/// Check if expression is a trigonometric function raised to a specific power.
+///
+/// # Example
+/// ```ignore
+/// // Matches sin(x)^2
+/// is_trig_pow(ctx, expr, "sin", 2)
+/// ```
 pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
     if let Expr::Pow(base, exp) = context.get(expr) {
         if let Expr::Number(n) = context.get(*exp) {
@@ -14,6 +36,9 @@ pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> b
     false
 }
 
+/// Extract the argument from a trigonometric power expression.
+///
+/// For an expression like `sin(x)^2`, returns `Some(x)`.
 pub fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Pow(base, _) = context.get(expr) {
         if let Expr::Function(_, args) = context.get(*base) {
@@ -85,6 +110,10 @@ pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprI
     None
 }
 
+/// Flatten an Add chain into a list of terms (simple version).
+///
+/// This only handles `Add` nodes. For handling `Sub` and `Neg`, use
+/// `flatten_add_sub_chain` instead.
 pub fn flatten_add(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
     match ctx.get(expr) {
         Expr::Add(l, r) => {
@@ -138,6 +167,10 @@ fn flatten_add_sub_recursive(
     }
 }
 
+/// Flatten a Mul chain into a list of factors (simple version).
+///
+/// This only handles `Mul` nodes. For handling `Neg` as `-1 * expr`,
+/// use `flatten_mul_chain` instead.
 pub fn flatten_mul(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
     match ctx.get(expr) {
         Expr::Mul(l, r) => {
@@ -318,5 +351,154 @@ pub fn get_variant_name(expr: &Expr) -> &'static str {
         Expr::Neg(_) => "Neg",
         Expr::Function(_, _) => "Function",
         Expr::Matrix { .. } => "Matrix",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_parser::parse;
+
+    #[test]
+    fn test_is_one() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let zero = ctx.num(0);
+        let x = ctx.var("x");
+
+        assert!(is_one(&ctx, one));
+        assert!(!is_one(&ctx, two));
+        assert!(!is_one(&ctx, zero));
+        assert!(!is_one(&ctx, x));
+    }
+
+    #[test]
+    fn test_is_zero() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+
+        assert!(is_zero(&ctx, zero));
+        assert!(!is_zero(&ctx, one));
+        assert!(!is_zero(&ctx, x));
+    }
+
+    #[test]
+    fn test_is_negative() {
+        let mut ctx = Context::new();
+        let neg_one = ctx.num(-1);
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let neg_x = ctx.add(Expr::Neg(x));
+
+        assert!(is_negative(&ctx, neg_one));
+        assert!(!is_negative(&ctx, one));
+        assert!(is_negative(&ctx, neg_x));
+        assert!(!is_negative(&ctx, x));
+    }
+
+    #[test]
+    fn test_get_integer() {
+        let mut ctx = Context::new();
+        let five = ctx.num(5);
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let x = ctx.var("x");
+
+        assert_eq!(get_integer(&ctx, five), Some(5));
+        assert_eq!(get_integer(&ctx, half), None); // Not an integer
+        assert_eq!(get_integer(&ctx, x), None);
+    }
+
+    #[test]
+    fn test_flatten_add() {
+        let mut ctx = Context::new();
+        let expr = parse("a + b + c", &mut ctx).unwrap();
+        let mut terms = Vec::new();
+        flatten_add(&ctx, expr, &mut terms);
+        assert_eq!(terms.len(), 3);
+    }
+
+    #[test]
+    fn test_flatten_add_sub_chain() {
+        let mut ctx = Context::new();
+        let expr = parse("a + b - c", &mut ctx).unwrap();
+        let terms = flatten_add_sub_chain(&mut ctx, expr);
+        // Should have 3 terms: a, b, Neg(c)
+        assert_eq!(terms.len(), 3);
+    }
+
+    #[test]
+    fn test_flatten_mul() {
+        let mut ctx = Context::new();
+        let expr = parse("a * b * c", &mut ctx).unwrap();
+        let mut factors = Vec::new();
+        flatten_mul(&ctx, expr, &mut factors);
+        assert_eq!(factors.len(), 3);
+    }
+
+    #[test]
+    fn test_flatten_mul_chain_with_neg() {
+        let mut ctx = Context::new();
+        let expr = parse("-a * b", &mut ctx).unwrap();
+        let factors = flatten_mul_chain(&mut ctx, expr);
+        // Should have factors including -1
+        assert!(factors.len() >= 2);
+    }
+
+    #[test]
+    fn test_get_variant_name() {
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+
+        // Test with actual expressions from context
+        assert_eq!(get_variant_name(ctx.get(a)), "Number");
+
+        let x = ctx.var("x");
+        assert_eq!(get_variant_name(ctx.get(x)), "Variable");
+
+        let sum = ctx.add(Expr::Add(a, b));
+        assert_eq!(get_variant_name(ctx.get(sum)), "Add");
+    }
+
+    #[test]
+    fn test_is_pi_over_n() {
+        let mut ctx = Context::new();
+        let pi_over_2 = build_pi_over_n(&mut ctx, 2);
+        let pi_over_4 = build_pi_over_n(&mut ctx, 4);
+
+        assert!(is_pi_over_n(&ctx, pi_over_2, 2));
+        assert!(!is_pi_over_n(&ctx, pi_over_2, 4));
+        assert!(is_pi_over_n(&ctx, pi_over_4, 4));
+    }
+
+    #[test]
+    fn test_is_half() {
+        let mut ctx = Context::new();
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let one = ctx.num(1);
+
+        assert!(is_half(&ctx, half));
+        assert!(!is_half(&ctx, one));
+    }
+
+    #[test]
+    fn test_is_pi() {
+        let mut ctx = Context::new();
+        let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+        let x = ctx.var("x");
+
+        assert!(is_pi(&ctx, pi));
+        assert!(!is_pi(&ctx, e));
+        assert!(!is_pi(&ctx, x));
     }
 }
