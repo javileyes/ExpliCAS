@@ -126,9 +126,12 @@ fn test_rationalized_simple() {
     assert!(
         result == "2 * x^(1/2) / (-1 + x)"
             || result == "2 * x^(1/2) / (x - 1)"
+            || result == "-2 * x^(1/2) / (1 - x)"
             || (result.contains("2")
                 && result.contains("x^(1/2)")
-                && (result.contains("x - 1") || result.contains("-1 + x"))),
+                && (result.contains("x - 1")
+                    || result.contains("-1 + x")
+                    || result.contains("1 - x"))),
         "Got: {}",
         result
     );

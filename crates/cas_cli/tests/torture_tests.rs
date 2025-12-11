@@ -1,5 +1,5 @@
 use cas_engine::rules::algebra::{
-    AddFractionsRule, ExpandRule, FactorDifferenceSquaresRule, FactorRule,
+    AddFractionsRule, ExpandRule, FactorBasedLCDRule, FactorDifferenceSquaresRule, FactorRule,
     PullConstantFromFractionRule, SimplifyFractionRule, SimplifyMulDivRule,
 };
 use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
@@ -80,6 +80,7 @@ fn create_full_simplifier() -> Simplifier {
     ));
     simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifySquareRootRule));
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
+    simplifier.add_rule(Box::new(FactorBasedLCDRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     simplifier.add_rule(Box::new(FactorDifferenceSquaresRule));

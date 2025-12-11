@@ -399,8 +399,15 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
         let (n2, d2, is_frac2) = get_num_den(r);
 
         if !is_frac1 && !is_frac2 {
+            // println!("  Not fractions: {:?} {:?}", is_frac1, is_frac2);
             return None;
         }
+        // println!(
+        //     "  Got fractions: l={:?} r={:?} (frac: {} {})",
+        //     l, r, is_frac1, is_frac2
+        // );
+        // println!("  n1={:?} d1={:?}", ctx.get(n1), ctx.get(d1));
+        // println!("  n2={:?} d2={:?}", ctx.get(n2), ctx.get(d2));
 
         // Check if d2 = -d1 or d2 == d1
         let (n2, d2, opposite_denom, same_denom) = {
@@ -456,7 +463,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
             });
         }
 
-        let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> bool {
+        let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> (bool, bool) {
             // Heuristics to see if new fraction simplifies
             // e.g. cancellation of factors
             // or algebraic simplification
@@ -470,7 +477,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
             // Check if num is 0
             if let Expr::Number(n) = ctx.get(num) {
                 if n.is_zero() {
-                    return true;
+                    return (true, true);
                 }
             }
 
@@ -488,24 +495,54 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
             };
 
             if is_negation(ctx, num, den) {
-                return true;
+                return (true, false);
             }
 
-            // Check if num contains den as factor?
-            // Not easy without factoring.
+            // Try Polynomial GCD Check
+            let vars = collect_variables(ctx, new_num);
+            if vars.len() == 1 {
+                if let Some(var) = vars.iter().next() {
+                    if let Ok(p_num) = Polynomial::from_expr(ctx, new_num, var) {
+                        if let Ok(p_den) = Polynomial::from_expr(ctx, common_den, var) {
+                            if !p_den.is_zero() {
+                                let gcd = p_num.gcd(&p_den);
+                                if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
+                                    // println!(
+                                    //     "  -> Simplifies via GCD! deg={} lc={}",
+                                    //     gcd.degree(),
+                                    //     gcd.leading_coeff()
+                                    // );
+                                    let is_proper = p_num.degree() < p_den.degree();
+                                    return (true, is_proper);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
-            // Fallback: check basic common factors using helpers
-            // Or check if variables cancelled out.
-            false
+            (false, false)
         };
 
-        let does_simplify = simplifies(ctx, new_num, common_den);
+        let (does_simplify, is_proper) = simplifies(ctx, new_num, common_den);
 
+        // println!(
+        //     "AddFractions check: old={} new={} simplify={} limit={}",
+        //     old_complexity,
+        //     new_complexity,
+        //     does_simplify,
+        //     (old_complexity * 3) / 2
+        // );
+
+        // Allow complexity growth if we found a simplification (GCD)
+        // BUT strict check against improper fractions to prevent loops with polynomial division
+        // (DividePolynomialsRule splits improper fractions, AddFractions combines them -> loop)
         if opposite_denom
             || same_denom
             || new_complexity <= old_complexity
-            || (does_simplify && new_complexity < (old_complexity * 3) / 2)
+            || (does_simplify && is_proper && new_complexity < (old_complexity * 2))
         {
+            // println!("AddFractions APPLIED: old={} new={} simplify={}", old_complexity, new_complexity, does_simplify);
             return Some(Rewrite {
                 new_expr,
                 description: "Add fractions: a/b + c/d -> (ad+bc)/bd".to_string(),
