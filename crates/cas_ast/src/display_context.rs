@@ -21,6 +21,8 @@ pub enum DisplayHint {
 #[derive(Debug, Default, Clone)]
 pub struct DisplayContext {
     hints: HashMap<ExprId, DisplayHint>,
+    /// Optional global root index for simple cases
+    root_index: Option<u32>,
 }
 
 impl DisplayContext {
@@ -28,6 +30,7 @@ impl DisplayContext {
     pub fn new() -> Self {
         Self {
             hints: HashMap::new(),
+            root_index: None,
         }
     }
 
@@ -49,5 +52,28 @@ impl DisplayContext {
     /// Number of hints stored
     pub fn len(&self) -> usize {
         self.hints.len()
+    }
+
+    /// Create a DisplayContext with a single root index hint
+    /// For testing and simple cases
+    pub fn with_root_index(index: u32) -> Self {
+        let mut ctx = Self::new();
+        // Store a marker - the index will be checked via root_indices()
+        ctx.root_index = Some(index);
+        ctx
+    }
+
+    /// Get all root indices that should render as roots
+    pub fn root_indices(&self) -> impl Iterator<Item = u32> + '_ {
+        self.hints
+            .values()
+            .filter_map(|hint| {
+                if let DisplayHint::AsRoot { index } = hint {
+                    Some(*index)
+                } else {
+                    None
+                }
+            })
+            .chain(self.root_index.iter().copied())
     }
 }
