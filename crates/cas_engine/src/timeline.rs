@@ -1297,7 +1297,7 @@ impl<'a> TimelineHtml<'a> {
 }
 
 /// Escape HTML special characters
-fn html_escape(s: &str) -> String {
+pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -1306,7 +1306,7 @@ fn html_escape(s: &str) -> String {
 }
 
 /// Prepare string for LaTeX rendering in MathJax
-fn latex_escape(s: &str) -> String {
+pub fn latex_escape(s: &str) -> String {
     // For MathJax, we mostly just need the string as-is
     // But escape backslashes that aren't part of LaTeX commands
     s.to_string()

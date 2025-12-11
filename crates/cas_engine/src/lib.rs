@@ -23,6 +23,7 @@ pub mod step_optimization;
 pub mod strategies;
 pub mod telescoping;
 pub mod timeline;
+pub mod timeline_templates;
 pub mod visualizer;
 
 pub mod error;
