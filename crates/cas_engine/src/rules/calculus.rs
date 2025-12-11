@@ -23,9 +23,9 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                                 },
                                 var_name
                             ),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
                 }
             } else if args.len() == 1 {
@@ -42,9 +42,9 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                                 id: integrand
                             }
                         ),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -71,9 +71,9 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
                                 },
                                 var_name
                             ),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
                 }
             }
@@ -678,7 +678,146 @@ mod tests {
     }
 }
 
+// =============================================================================
+// SUM RULE: Evaluate finite summations
+// =============================================================================
+// Syntax: sum(expr, var, start, end)
+// Example: sum(k, k, 1, 10) → 55
+// Example: sum(k^2, k, 1, 5) → 1 + 4 + 9 + 16 + 25 = 55
+
+define_rule!(SumRule, "Finite Summation", |ctx, expr| {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "sum" && args.len() == 4 {
+            let summand = args[0];
+            let var_expr = args[1];
+            let start_expr = args[2];
+            let end_expr = args[3];
+
+            // Extract variable name
+            let var_name = if let Expr::Variable(v) = ctx.get(var_expr) {
+                v.clone()
+            } else {
+                return None;
+            };
+
+            // Try to evaluate start and end as integers
+            let start = get_integer(ctx, start_expr)?;
+            let end = get_integer(ctx, end_expr)?;
+
+            // Safety limit for direct evaluation
+            if end - start > 1000 {
+                return None; // Too many terms, try closed form or return None
+            }
+
+            // Check for known closed-form formulas FIRST (for symbolic end)
+            // sum(k, k, 1, n) = n*(n+1)/2
+            // sum(k^2, k, 1, n) = n*(n+1)*(2n+1)/6
+
+            // Direct numeric evaluation
+            if start <= end {
+                let mut result = ctx.num(0);
+                for k in start..=end {
+                    let k_expr = ctx.num(k);
+                    let term = substitute_var(ctx, summand, &var_name, k_expr);
+                    result = ctx.add(Expr::Add(result, term));
+                }
+
+                // Simplify the result
+                let mut simplifier = crate::Simplifier::with_default_rules();
+                simplifier.context = ctx.clone();
+                let (simplified, _) = simplifier.simplify(result);
+                *ctx = simplifier.context;
+
+                return Some(Rewrite {
+                    new_expr: simplified,
+                    description: format!(
+                        "sum({}, {}, {}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: summand
+                        },
+                        var_name,
+                        start,
+                        end
+                    ),
+                    before_local: None,
+                    after_local: None,
+                });
+            }
+        }
+    }
+    None
+});
+
+/// Get integer value from expression
+fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
+    if let Expr::Number(n) = ctx.get(expr) {
+        if n.is_integer() {
+            return n.numer().try_into().ok();
+        }
+    }
+    None
+}
+
+/// Substitute variable with value in expression
+fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> ExprId {
+    let expr_data = ctx.get(expr).clone();
+
+    match expr_data {
+        Expr::Variable(v) if v == var => value,
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => expr,
+        Expr::Add(l, r) => {
+            let new_l = substitute_var(ctx, l, var, value);
+            let new_r = substitute_var(ctx, r, var, value);
+            ctx.add(Expr::Add(new_l, new_r))
+        }
+        Expr::Sub(l, r) => {
+            let new_l = substitute_var(ctx, l, var, value);
+            let new_r = substitute_var(ctx, r, var, value);
+            ctx.add(Expr::Sub(new_l, new_r))
+        }
+        Expr::Mul(l, r) => {
+            let new_l = substitute_var(ctx, l, var, value);
+            let new_r = substitute_var(ctx, r, var, value);
+            ctx.add(Expr::Mul(new_l, new_r))
+        }
+        Expr::Div(l, r) => {
+            let new_l = substitute_var(ctx, l, var, value);
+            let new_r = substitute_var(ctx, r, var, value);
+            ctx.add(Expr::Div(new_l, new_r))
+        }
+        Expr::Pow(l, r) => {
+            let new_l = substitute_var(ctx, l, var, value);
+            let new_r = substitute_var(ctx, r, var, value);
+            ctx.add(Expr::Pow(new_l, new_r))
+        }
+        Expr::Neg(e) => {
+            let new_e = substitute_var(ctx, e, var, value);
+            ctx.add(Expr::Neg(new_e))
+        }
+        Expr::Function(name, args) => {
+            let new_args: Vec<ExprId> = args
+                .iter()
+                .map(|a| substitute_var(ctx, *a, var, value))
+                .collect();
+            ctx.add(Expr::Function(name, new_args))
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let new_data: Vec<ExprId> = data
+                .iter()
+                .map(|a| substitute_var(ctx, *a, var, value))
+                .collect();
+            ctx.add(Expr::Matrix {
+                rows,
+                cols,
+                data: new_data,
+            })
+        }
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(IntegrateRule));
     simplifier.add_rule(Box::new(DiffRule));
+    simplifier.add_rule(Box::new(SumRule));
 }

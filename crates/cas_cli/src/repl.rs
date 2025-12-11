@@ -1007,6 +1007,7 @@ impl Repl {
 
         println!("Calculus:");
         println!("  diff <expr>, <var>      Compute symbolic derivative");
+        println!("  sum(e, v, a, b)         Finite summation: Σ(v=a to b) e");
         println!();
 
         println!("Number Theory:");

@@ -55,6 +55,7 @@ impl CasHelper {
                 "lcm".to_string(),
                 "mod".to_string(),
                 "prime_factors".to_string(),
+                "sum".to_string(),
             ],
         }
     }

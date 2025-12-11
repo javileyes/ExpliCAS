@@ -400,6 +400,19 @@ Step 1: Dirichlet Kernel Identity: 1 + 2Σcos(kx) = sin((n+½)x)/sin(x/2) for n=
 
 **Supported patterns:** `1 + 2*cos(x) + 2*cos(2x) + ... + 2*cos(nx) - sin((n+½)x)/sin(x/2)`
 
+#### 6. Finite Summation
+Compute finite sums with `sum(expr, var, start, end)`:
+```text
+> sum(k, k, 1, 10)
+Result: 55       (1+2+...+10)
+
+> sum(k^2, k, 1, 5)
+Result: 55       (1+4+9+16+25)
+
+> sum(2*k + 1, k, 1, 5)
+Result: 35       (3+5+7+9+11)
+```
+
 ### Configuration & Rule Toggling
  
 You can dynamically enable or disable specific simplification rules directly from the CLI. This is useful for educational purposes (showing intermediate steps without full simplification) or for debugging.
