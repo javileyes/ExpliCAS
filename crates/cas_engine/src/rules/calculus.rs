@@ -976,8 +976,179 @@ fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> 
     }
 }
 
+// =============================================================================
+// PRODUCT RULE: Evaluate finite products (productorio)
+// =============================================================================
+// Syntax: product(expr, var, start, end)
+// Example: product(k, k, 1, 5) → 120  (5!)
+// Example: product((k+1)/k, k, 1, n) → n+1  (telescoping)
+
+define_rule!(ProductRule, "Finite Product", |ctx, expr| {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "product" && args.len() == 4 {
+            let factor = args[0];
+            let var_expr = args[1];
+            let start_expr = args[2];
+            let end_expr = args[3];
+
+            // Extract variable name
+            let var_name = if let Expr::Variable(v) = ctx.get(var_expr) {
+                v.clone()
+            } else {
+                return None;
+            };
+
+            // =====================================================================
+            // TELESCOPING DETECTION: Check for rational products that telescope
+            // =====================================================================
+            // Pattern: (k+a)/k → product = (end+a)! / (start-1+a)! * (start-1)! / end!
+            // Simple case: (k+1)/k → product = (n+1)/1 = n+1
+
+            if let Some(result) =
+                try_telescoping_product(ctx, factor, &var_name, start_expr, end_expr)
+            {
+                return Some(Rewrite {
+                    new_expr: result,
+                    description: format!(
+                        "Telescoping product: Π({}, {}) from {} to {}",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: factor
+                        },
+                        var_name,
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: start_expr
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: end_expr
+                        }
+                    ),
+                    before_local: None,
+                    after_local: None,
+                });
+            }
+
+            // Try to evaluate start and end as integers for numeric evaluation
+            let start = get_integer(ctx, start_expr);
+            let end = get_integer(ctx, end_expr);
+
+            if let (Some(start), Some(end)) = (start, end) {
+                // Safety limit for direct evaluation
+                if end - start > 1000 {
+                    return None; // Too many terms
+                }
+
+                // Direct numeric evaluation
+                if start <= end {
+                    let mut result = ctx.num(1);
+                    for k in start..=end {
+                        let k_expr = ctx.num(k);
+                        let term = substitute_var(ctx, factor, &var_name, k_expr);
+                        result = ctx.add(Expr::Mul(result, term));
+                    }
+
+                    // Simplify the result
+                    let mut simplifier = crate::Simplifier::with_default_rules();
+                    simplifier.context = ctx.clone();
+                    let (simplified, _) = simplifier.simplify(result);
+                    *ctx = simplifier.context;
+
+                    return Some(Rewrite {
+                        new_expr: simplified,
+                        description: format!(
+                            "product({}, {}, {}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: factor
+                            },
+                            var_name,
+                            start,
+                            end
+                        ),
+                        before_local: None,
+                        after_local: None,
+                    });
+                }
+            }
+        }
+    }
+    None
+});
+
+/// Try to detect and evaluate telescoping products
+/// Pattern: (k+a)/(k+b) where a > b → product = (end+a)!/(start-1+a)! * (start-1+b)!/(end+b)!
+/// Simple case: (k+1)/k → (n+1)/start
+fn try_telescoping_product(
+    ctx: &mut Context,
+    factor: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    // Check if factor is (k+a)/(k+b) pattern
+    if let Expr::Div(num, den) = ctx.get(factor).clone() {
+        // Extract offsets from numerator and denominator
+        let num_offset = extract_linear_offset(ctx, num, var)?;
+        let den_offset = extract_linear_offset(ctx, den, var)?;
+
+        // For telescoping, we need num_offset > den_offset
+        // (k+1)/k means num_offset=1, den_offset=0
+        let shift = num_offset - den_offset;
+
+        if shift <= 0 {
+            return None; // Not a telescoping pattern
+        }
+
+        // For (k+a)/(k+b) with shift = a-b:
+        // Product telescopes to: (end+a) * (end+a-1) * ... * (end+b+1) / (start+b-1) * ... / (start+a-1)
+        //
+        // Simple case shift=1: (k+1)/k from 1 to n
+        // = (2/1) * (3/2) * ... * ((n+1)/n) = (n+1)/1 = n+1
+        //
+        // In general for shift=1:
+        // Result = (end + num_offset) / (start + den_offset - 1 + 1) = (end + num_offset) / start_shifted
+
+        if shift == 1 {
+            // Simple telescoping: result = (end + num_offset) / (start + den_offset)
+            // For (k+1)/k: result = (n+1) / 1 = n+1
+
+            let end_plus_offset = if num_offset == 0 {
+                end
+            } else {
+                let offset = ctx.num(num_offset);
+                ctx.add(Expr::Add(end, offset))
+            };
+
+            let start_plus_offset = if den_offset == 0 {
+                start
+            } else {
+                let offset = ctx.num(den_offset);
+                ctx.add(Expr::Add(start, offset))
+            };
+
+            let result = ctx.add(Expr::Div(end_plus_offset, start_plus_offset));
+
+            // Simplify the result
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            simplifier.context = ctx.clone();
+            let (simplified, _) = simplifier.simplify(result);
+            *ctx = simplifier.context;
+
+            return Some(simplified);
+        }
+
+        // For shift > 1, the pattern is more complex
+        // We can still handle it but leave for future enhancement
+    }
+
+    None
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(IntegrateRule));
     simplifier.add_rule(Box::new(DiffRule));
     simplifier.add_rule(Box::new(SumRule));
+    simplifier.add_rule(Box::new(ProductRule));
 }

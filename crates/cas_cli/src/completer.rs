@@ -56,6 +56,7 @@ impl CasHelper {
                 "mod".to_string(),
                 "prime_factors".to_string(),
                 "sum".to_string(),
+                "product".to_string(),
             ],
         }
     }

@@ -835,6 +835,19 @@ impl Repl {
                 println!("  sum(1/(k*(k+1)), k, 1, n)   -> 1 - 1/(1+n)");
                 println!("  sum(1/(k*(k+2)), k, 1, n)   -> 1/2 - 1/2/(1+n)");
             }
+            "product" => {
+                println!("Function: product(expr, var, start, end)");
+                println!("Description: Evaluates finite products Π(var=start to end) expr.");
+                println!("             Supports numeric evaluation and telescoping detection.");
+                println!("Features:");
+                println!("  - Numeric: product(k, k, 1, 5) -> 120 (5!)");
+                println!("  - Symbolic end: product((k+1)/k, k, 1, n) -> n+1");
+                println!("  - Telescoping: Detects (k+a)/(k+b) quotient patterns");
+                println!("Examples:");
+                println!("  product(k, k, 1, 5)         -> 120");
+                println!("  product((k+1)/k, k, 1, n)   -> 1 + n");
+                println!("  product((k+1)/k, k, 1, 10)  -> 11");
+            }
             "gcd" => {
                 println!("Function: gcd <a, b>");
                 println!("Description: Computes the Greatest Common Divisor of two integers.");
@@ -1021,6 +1034,7 @@ impl Repl {
         println!("Calculus:");
         println!("  diff <expr>, <var>      Compute symbolic derivative");
         println!("  sum(e, v, a, b)         Finite summation: Σ(v=a to b) e");
+        println!("  product(e, v, a, b)     Finite product: Π(v=a to b) e");
         println!();
 
         println!("Number Theory:");
