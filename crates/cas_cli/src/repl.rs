@@ -683,6 +683,12 @@ impl Repl {
             return;
         }
 
+        // Check for "telescope" command - for proving telescoping identities
+        if line.starts_with("telescope ") {
+            self.handle_telescope(&line);
+            return;
+        }
+
         // Check for "profile" commands
         if line.starts_with("profile") {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -1558,6 +1564,32 @@ impl Repl {
                         id: result
                     }
                 );
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    /// Handle the 'telescope' command for proving telescoping identities like Dirichlet kernel
+    fn handle_telescope(&mut self, line: &str) {
+        let rest = line[10..].trim(); // Remove "telescope "
+
+        if rest.is_empty() {
+            println!("Usage: telescope <expression>");
+            println!("Example: telescope 1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)");
+            return;
+        }
+
+        // Parse the expression
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                println!("Parsed: {}", rest);
+                println!();
+
+                // Apply telescoping strategy
+                let result = cas_engine::telescoping::telescope(&mut self.simplifier.context, expr);
+
+                // Print formatted output
+                println!("{}", result.format(&self.simplifier.context));
             }
             Err(e) => println!("Parse error: {}", e),
         }
