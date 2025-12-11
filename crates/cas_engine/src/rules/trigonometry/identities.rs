@@ -6,6 +6,8 @@ use num_traits::{One, Zero};
 
 use std::cmp::Ordering;
 
+// NOTE: EvaluateTrigRule is deprecated - use EvaluateTrigTableRule from evaluation.rs instead
+// This rule is kept for reference but should not be registered in the simplifier.
 define_rule!(
     EvaluateTrigRule,
     "Evaluate Trigonometric Functions",
@@ -1431,7 +1433,8 @@ define_rule!(
 );
 
 pub fn register(simplifier: &mut crate::Simplifier) {
-    simplifier.add_rule(Box::new(EvaluateTrigRule));
+    // Use the new data-driven EvaluateTrigTableRule instead of deprecated EvaluateTrigRule
+    simplifier.add_rule(Box::new(super::evaluation::EvaluateTrigTableRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(SecTanPythagoreanRule));
     simplifier.add_rule(Box::new(CscCotPythagoreanRule));
