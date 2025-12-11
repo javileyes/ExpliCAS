@@ -135,6 +135,7 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
 #[derive(Debug, Clone)]
 struct RootPattern {
     index: usize,
+    #[allow(dead_code)]
     base_repr: String,
 }
 
@@ -289,6 +290,7 @@ fn propagate_sqrt_hints_to_pow(
     }
 }
 
+#[allow(dead_code)]
 /// Recursively scan expression tree for x^(1/n) patterns and add root hints
 fn scan_for_power_roots(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut DisplayContext) {
     match ctx.get(expr) {

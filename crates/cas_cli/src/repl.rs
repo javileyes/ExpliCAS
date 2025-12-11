@@ -1357,7 +1357,7 @@ impl Repl {
 
         // Filter out non-productive steps (where global state doesn't change)
         // But pass ALL steps to timeline so it can correctly compute final result
-        let filtered_steps = cas_engine::strategies::filter_non_productive_steps(
+        let _filtered_steps = cas_engine::strategies::filter_non_productive_steps(
             &mut self.simplifier.context,
             expr_id,
             steps.clone(),

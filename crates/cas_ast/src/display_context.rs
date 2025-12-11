@@ -67,12 +67,9 @@ impl DisplayContext {
     pub fn root_indices(&self) -> impl Iterator<Item = u32> + '_ {
         self.hints
             .values()
-            .filter_map(|hint| {
-                if let DisplayHint::AsRoot { index } = hint {
-                    Some(*index)
-                } else {
-                    None
-                }
+            .map(|hint| {
+                let DisplayHint::AsRoot { index } = hint;
+                *index
             })
             .chain(self.root_index.iter().copied())
     }

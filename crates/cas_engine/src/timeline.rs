@@ -71,6 +71,14 @@ impl<'a> TimelineHtml<'a> {
         }
     }
 
+    // ========================================================================
+    // Legacy LaTeX generation methods - kept for potential future use
+    // The new trait-based LaTeXRenderer in cas_ast::latex_core provides the
+    // main rendering logic. These methods are preserved for alternative
+    // rendering strategies that may be needed.
+    // ========================================================================
+
+    #[allow(dead_code)]
     /// Generate LaTeX for an expression with a single subexpression highlighted
     /// Uses the new LaTeXExprHighlighted system for cleaner code.
     fn latex_with_single_highlight(
@@ -89,6 +97,7 @@ impl<'a> TimelineHtml<'a> {
         .to_latex()
     }
 
+    #[allow(dead_code)]
     /// Generate LaTeX for an expression with a specific subexpression highlighted
     /// by following the path to find the target subexpression.
     /// Uses smart context: if the target is deep in the tree, highlights a meaningful parent.
@@ -113,13 +122,14 @@ impl<'a> TimelineHtml<'a> {
         .to_latex()
     }
 
+    #[allow(dead_code)]
     /// Follow a path to find the expression at that location
     fn find_expr_at_path(&self, root: ExprId, path: &[PathStep]) -> ExprId {
         let mut current = root;
         for step in path.iter() {
             let expr = self.context.get(current);
             current = match (expr, step) {
-                (Expr::Add(l, r), PathStep::Left) => {
+                (Expr::Add(l, _), PathStep::Left) => {
                     // Handle case where left is Neg
                     if let Expr::Neg(inner) = self.context.get(*l) {
                         *inner
@@ -127,7 +137,6 @@ impl<'a> TimelineHtml<'a> {
                         *l
                     }
                 }
-                (Expr::Add(l, _), PathStep::Left) => *l,
                 (Expr::Add(_, r), PathStep::Right) => {
                     // Handle case where right is Neg
                     if let Expr::Neg(inner) = self.context.get(*r) {
@@ -158,6 +167,7 @@ impl<'a> TimelineHtml<'a> {
         current
     }
 
+    #[allow(dead_code)]
     /// Post-process LaTeX to fix negative sign patterns
     /// Handles cases like "+ -" → "-" and "- -" → "+"
     fn clean_latex_negatives(latex: &str) -> String {
@@ -188,6 +198,7 @@ impl<'a> TimelineHtml<'a> {
         result
     }
 
+    #[allow(dead_code)]
     /// Determine if we should highlight a parent context instead of the exact target.
     /// Only do this in truly confusing cases (deep nesting in exponents of complex expressions)
     fn should_use_parent_context(&self, root_expr: ExprId, path: &[PathStep]) -> bool {
@@ -239,6 +250,7 @@ impl<'a> TimelineHtml<'a> {
         false
     }
 
+    #[allow(dead_code)]
     /// Find a good "stopping point" for highlighting.
     /// This should only trigger in rare, truly confusing cases.
     fn find_highlight_context_path(
@@ -292,6 +304,7 @@ impl<'a> TimelineHtml<'a> {
         full_path.to_vec()
     }
 
+    #[allow(dead_code)]
     /// Recursive helper that generates LaTeX and highlights the target based on path
     fn latex_with_highlight_recursive(
         &self,
