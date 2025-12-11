@@ -30,6 +30,32 @@ impl Orchestrator {
             &mut self.pattern_marks,
         );
 
+        // ==========================================================================
+        // SPECIALIZED STRATEGIES: Check for known identity patterns before general rules
+        // ==========================================================================
+        // TrigSummationStrategy: Detect Dirichlet kernel pattern
+        // 1 + 2*cos(x) + 2*cos(2x) + ... + 2*cos(nx) - sin((n+½)x)/sin(x/2) = 0
+        if let Some(result) =
+            crate::telescoping::try_dirichlet_kernel_identity_pub(&simplifier.context, expr)
+        {
+            let zero = simplifier.context.num(0);
+            let mut steps = Vec::new();
+            if simplifier.collect_steps {
+                steps.push(Step::new(
+                    &format!(
+                        "Dirichlet Kernel Identity: 1 + 2Σcos(kx) = sin((n+½)x)/sin(x/2) for n={}",
+                        result.n
+                    ),
+                    "Trig Summation Identity",
+                    expr,
+                    zero,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                ));
+            }
+            return (zero, steps);
+        }
+
         let mut steps = Vec::new();
         let mut current = expr;
 

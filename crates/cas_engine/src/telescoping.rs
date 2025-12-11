@@ -233,6 +233,14 @@ pub struct DirichletKernelResult {
     pub base_var: ExprId, // The base variable x
 }
 
+/// Try to detect Dirichlet kernel identity pattern (public interface for orchestrator)
+pub fn try_dirichlet_kernel_identity_pub(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<DirichletKernelResult> {
+    try_dirichlet_kernel_identity(ctx, expr)
+}
+
 /// Try to detect Dirichlet kernel identity pattern
 fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<DirichletKernelResult> {
     // Flatten the sum to get all terms
