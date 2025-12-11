@@ -67,3 +67,22 @@ fn test_sum_with_trig() {
     // 0+1+2+3 = 6
     assert_eq!(_result, "6");
 }
+
+#[test]
+fn test_sum_telescoping_symbolic() {
+    // sum(1/(k*(k+1)), k, 1, n) = 1 - 1/(n+1) via partial fractions
+    let result = parse_and_simplify("sum(1/(k*(k+1)), k, 1, n)");
+    // Result should be 1 - 1/(1+n) which equals n/(n+1)
+    assert!(
+        result.contains("1 - 1 / (1 + n)") || result.contains("n / (1 + n)"),
+        "Expected telescoping result, got: {}",
+        result
+    );
+}
+
+#[test]
+fn test_sum_telescoping_numeric() {
+    // sum(1/(k*(k+1)), k, 1, 10) = 10/11
+    let result = parse_and_simplify("sum(1/(k*(k+1)), k, 1, 10)");
+    assert_eq!(result, "10/11");
+}

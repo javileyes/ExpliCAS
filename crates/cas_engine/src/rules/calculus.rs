@@ -700,54 +700,214 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                 return None;
             };
 
-            // Try to evaluate start and end as integers
-            let start = get_integer(ctx, start_expr)?;
-            let end = get_integer(ctx, end_expr)?;
+            // =====================================================================
+            // TELESCOPING DETECTION: Check for rational sums that telescope
+            // =====================================================================
+            // Pattern: 1/(k*(k+a)) = (1/a) * (1/k - 1/(k+a))
+            // Telescoping sum: sum from m to n = (1/a) * (1/m - 1/(n+a))
 
-            // Safety limit for direct evaluation
-            if end - start > 1000 {
-                return None; // Too many terms, try closed form or return None
-            }
-
-            // Check for known closed-form formulas FIRST (for symbolic end)
-            // sum(k, k, 1, n) = n*(n+1)/2
-            // sum(k^2, k, 1, n) = n*(n+1)*(2n+1)/6
-
-            // Direct numeric evaluation
-            if start <= end {
-                let mut result = ctx.num(0);
-                for k in start..=end {
-                    let k_expr = ctx.num(k);
-                    let term = substitute_var(ctx, summand, &var_name, k_expr);
-                    result = ctx.add(Expr::Add(result, term));
-                }
-
-                // Simplify the result
-                let mut simplifier = crate::Simplifier::with_default_rules();
-                simplifier.context = ctx.clone();
-                let (simplified, _) = simplifier.simplify(result);
-                *ctx = simplifier.context;
-
+            if let Some(result) =
+                try_telescoping_rational_sum(ctx, summand, &var_name, start_expr, end_expr)
+            {
                 return Some(Rewrite {
-                    new_expr: simplified,
+                    new_expr: result,
                     description: format!(
-                        "sum({}, {}, {}, {})",
+                        "Telescoping sum: Σ({}, {}) from {} to {}",
                         cas_ast::DisplayExpr {
                             context: ctx,
                             id: summand
                         },
                         var_name,
-                        start,
-                        end
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: start_expr
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: end_expr
+                        }
                     ),
                     before_local: None,
                     after_local: None,
                 });
             }
+
+            // Try to evaluate start and end as integers for numeric evaluation
+            let start = get_integer(ctx, start_expr);
+            let end = get_integer(ctx, end_expr);
+
+            if let (Some(start), Some(end)) = (start, end) {
+                // Safety limit for direct evaluation
+                if end - start > 1000 {
+                    return None; // Too many terms
+                }
+
+                // Direct numeric evaluation
+                if start <= end {
+                    let mut result = ctx.num(0);
+                    for k in start..=end {
+                        let k_expr = ctx.num(k);
+                        let term = substitute_var(ctx, summand, &var_name, k_expr);
+                        result = ctx.add(Expr::Add(result, term));
+                    }
+
+                    // Simplify the result
+                    let mut simplifier = crate::Simplifier::with_default_rules();
+                    simplifier.context = ctx.clone();
+                    let (simplified, _) = simplifier.simplify(result);
+                    *ctx = simplifier.context;
+
+                    return Some(Rewrite {
+                        new_expr: simplified,
+                        description: format!(
+                            "sum({}, {}, {}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: summand
+                            },
+                            var_name,
+                            start,
+                            end
+                        ),
+                        before_local: None,
+                        after_local: None,
+                    });
+                }
+            }
         }
     }
     None
 });
+
+/// Try to detect and evaluate telescoping rational sums
+/// Pattern: 1/(k*(k+a)) where a is an integer constant
+/// Result: (1/a) * (1/start - 1/(end+a))
+fn try_telescoping_rational_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    // Check if summand is 1/(k*(k+a)) or 1/((k+b)*(k+c))
+    if let Expr::Div(num, den) = ctx.get(summand).clone() {
+        // Numerator should be 1
+        if let Expr::Number(n) = ctx.get(num) {
+            if !n.is_one() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+
+        // Denominator should be k*(k+a)
+        if let Expr::Mul(left, right) = ctx.get(den).clone() {
+            // Try to extract (k+b) and (k+c) where c-b = integer
+            let factor1_offset = extract_linear_offset(ctx, left, var)?;
+            let factor2_offset = extract_linear_offset(ctx, right, var)?;
+
+            // Compute a = factor2_offset - factor1_offset
+            let a = factor2_offset - factor1_offset;
+
+            if a == 0 {
+                return None; // Same factors, not telescoping
+            }
+
+            // For 1/(k*(k+a)), the partial fraction is:
+            // 1/(k*(k+a)) = (1/a) * (1/k - 1/(k+a))
+            // Sum from m to n = (1/a) * (1/(m+factor1_offset) - 1/(n+1+factor2_offset-1))
+            //                 = (1/a) * (1/(m+b1) - 1/(n+b2+1)) where b1, b2 are offsets
+
+            // Build result: (1/|a|) * (1/start_shifted - 1/(end_shifted+1))
+            // where start_shifted = start + factor1_offset
+            // and end_shifted = end + factor2_offset
+
+            let a_expr = ctx.num(a.abs());
+
+            // First term: 1/(start + factor1_offset)
+            let offset1 = ctx.num(factor1_offset);
+            let start_shifted = if factor1_offset == 0 {
+                start
+            } else {
+                ctx.add(Expr::Add(start, offset1))
+            };
+            let one = ctx.num(1);
+            let first_term = ctx.add(Expr::Div(one, start_shifted));
+
+            // Second term: 1/(end + factor2_offset + 1) = 1/(end + factor2_offset + 1)
+            // Wait, for telescoping: F(m) - F(n+1) where F(k) = 1/(k+offset)
+            // So second term is 1/(end + 1 + factor1_offset)
+            let offset1_plus_1 = ctx.num(factor1_offset + 1);
+            let end_shifted = ctx.add(Expr::Add(end, offset1_plus_1));
+            let one2 = ctx.num(1);
+            let second_term = ctx.add(Expr::Div(one2, end_shifted));
+
+            // Result = (1/a) * (first - second)
+            let diff = ctx.add(Expr::Sub(first_term, second_term));
+
+            let result = if a.abs() == 1 {
+                if a > 0 {
+                    diff
+                } else {
+                    ctx.add(Expr::Neg(diff))
+                }
+            } else {
+                let unsigned_result = ctx.add(Expr::Div(diff, a_expr));
+                if a > 0 {
+                    unsigned_result
+                } else {
+                    ctx.add(Expr::Neg(unsigned_result))
+                }
+            };
+
+            // Simplify the result
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            simplifier.context = ctx.clone();
+            let (simplified, _) = simplifier.simplify(result);
+            *ctx = simplifier.context;
+
+            return Some(simplified);
+        }
+    }
+
+    None
+}
+
+/// Extract the constant offset from a linear expression: k+offset or k
+/// Returns Some(offset) if expr = var + offset, None otherwise
+fn extract_linear_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> {
+    match ctx.get(expr) {
+        // Just the variable: k+0
+        Expr::Variable(v) if v == var => Some(0),
+
+        // k + c
+        Expr::Add(l, r) => {
+            if let Expr::Variable(v) = ctx.get(*l) {
+                if v == var {
+                    return get_integer(ctx, *r);
+                }
+            }
+            if let Expr::Variable(v) = ctx.get(*r) {
+                if v == var {
+                    return get_integer(ctx, *l);
+                }
+            }
+            None
+        }
+
+        // k - c = k + (-c)
+        Expr::Sub(l, r) => {
+            if let Expr::Variable(v) = ctx.get(*l) {
+                if v == var {
+                    return get_integer(ctx, *r).map(|c| -c);
+                }
+            }
+            None
+        }
+
+        _ => None,
+    }
+}
 
 /// Get integer value from expression
 fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
