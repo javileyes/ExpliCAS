@@ -245,6 +245,22 @@ impl<'a> LaTeXExpr<'a> {
                         format!("{}^{{T}}", arg_str)
                     }
                 }
+                // Finite summation: sum(expr, var, start, end) → Σ_{var=start}^{end} expr
+                "sum" if args.len() == 4 => {
+                    let expr = self.expr_to_latex(args[0], false);
+                    let var = self.expr_to_latex(args[1], false);
+                    let start = self.expr_to_latex(args[2], false);
+                    let end = self.expr_to_latex(args[3], false);
+                    format!("\\sum_{{{}={}}}^{{{}}} {}", var, start, end, expr)
+                }
+                // Finite product: product(expr, var, start, end) → Π_{var=start}^{end} expr
+                "product" if args.len() == 4 => {
+                    let expr = self.expr_to_latex(args[0], false);
+                    let var = self.expr_to_latex(args[1], false);
+                    let start = self.expr_to_latex(args[2], false);
+                    let end = self.expr_to_latex(args[3], false);
+                    format!("\\prod_{{{}={}}}^{{{}}} {}", var, start, end, expr)
+                }
                 _ => {
                     let args_str: Vec<String> = args
                         .iter()
@@ -504,6 +520,22 @@ impl<'a> LaTeXExprWithHints<'a> {
                     let arg = self.expr_to_latex(args[0], false);
                     let base = self.expr_to_latex(args[1], false);
                     format!("\\log_{{{}}}({})", base, arg)
+                }
+                // Finite summation: sum(expr, var, start, end) → Σ_{var=start}^{end} expr
+                "sum" if args.len() == 4 => {
+                    let expr = self.expr_to_latex(args[0], false);
+                    let var = self.expr_to_latex(args[1], false);
+                    let start = self.expr_to_latex(args[2], false);
+                    let end = self.expr_to_latex(args[3], false);
+                    format!("\\sum_{{{}={}}}^{{{}}} {}", var, start, end, expr)
+                }
+                // Finite product: product(expr, var, start, end) → Π_{var=start}^{end} expr
+                "product" if args.len() == 4 => {
+                    let expr = self.expr_to_latex(args[0], false);
+                    let var = self.expr_to_latex(args[1], false);
+                    let start = self.expr_to_latex(args[2], false);
+                    let end = self.expr_to_latex(args[3], false);
+                    format!("\\prod_{{{}={}}}^{{{}}} {}", var, start, end, expr)
                 }
                 _ => {
                     let args_latex: Vec<String> =
