@@ -1,16 +1,19 @@
-use cas_engine::Simplifier;
-use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
+use cas_ast::{BoundType, DisplayExpr, Equation, RelOp, SolutionSet};
+use cas_engine::rules::algebra::SimplifyFractionRule;
+use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
+use cas_engine::rules::canonicalization::{
+    CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule, CanonicalizeRootRule,
+};
+use cas_engine::rules::exponents::{
+    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, ProductPowerRule,
+};
 use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule};
-use cas_parser::parse;
-use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
+use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
+use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::solver::solve;
-use num_traits::Zero;
+use cas_engine::Simplifier;
+use cas_parser::parse;
 
 fn create_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();
@@ -48,14 +51,23 @@ fn test_inequality_simple() {
     let lhs = parse(lhs_str, &mut simplifier.context).unwrap();
     let rhs = parse(rhs_str, &mut simplifier.context).unwrap();
     let eq = Equation { lhs, rhs, op };
-    
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     if let SolutionSet::Continuous(interval) = result {
         // x < 5 -> (-inf, 5)
         assert_eq!(interval.max_type, BoundType::Open);
         let (final_max, _) = simplifier.simplify(interval.max);
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: final_max }), "5");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: final_max
+                }
+            ),
+            "5"
+        );
     } else {
         panic!("Expected Continuous solution");
     }
@@ -72,14 +84,23 @@ fn test_inequality_flip_negative_coeff() {
     let lhs = parse(lhs_str, &mut simplifier.context).unwrap();
     let rhs = parse(rhs_str, &mut simplifier.context).unwrap();
     let eq = Equation { lhs, rhs, op };
-    
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     if let SolutionSet::Continuous(interval) = result {
         // x <= -3 -> (-inf, -3]
         assert_eq!(interval.max_type, BoundType::Closed);
         let (final_max, _) = simplifier.simplify(interval.max);
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: final_max }), "-3");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: final_max
+                }
+            ),
+            "-3"
+        );
     } else {
         panic!("Expected Continuous solution");
     }
@@ -91,7 +112,7 @@ fn test_abs_inequality_complex() {
     // Case 1: x - 1 < 2 -> x < 3
     // Case 2: x - 1 > -2 -> x > -1
     // Result: x < 3, x > -1
-    
+
     let mut simplifier = create_simplifier();
     let lhs_str = "|x - 1|";
     let rhs_str = "2";
@@ -102,15 +123,33 @@ fn test_abs_inequality_complex() {
     let lhs = parse(lhs_str, &mut simplifier.context).unwrap();
     let rhs = parse(rhs_str, &mut simplifier.context).unwrap();
     let eq = Equation { lhs, rhs, op };
-    
+
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
-    
+
     if let SolutionSet::Continuous(interval) = result {
         // (-1, 3)
         let (min, _) = simplifier.simplify(interval.min);
         let (max, _) = simplifier.simplify(interval.max);
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: min }), expected_min);
-        assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: max }), expected_max);
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: min
+                }
+            ),
+            expected_min
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: max
+                }
+            ),
+            expected_max
+        );
     } else {
         panic!("Expected Continuous solution, got {:?}", result);
     }

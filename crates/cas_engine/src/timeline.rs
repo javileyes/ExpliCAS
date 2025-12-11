@@ -54,13 +54,11 @@ impl<'a> TimelineHtml<'a> {
         simplified_result: Option<ExprId>,
         verbosity: VerbosityLevel,
     ) -> Self {
-        let title = format!(
-            "{}",
-            DisplayExpr {
-                context,
-                id: original_expr
-            }
-        );
+        let title = LaTeXExpr {
+            context,
+            id: original_expr,
+        }
+        .to_latex();
         Self {
             context,
             steps,

@@ -1,20 +1,7 @@
-use cas_ast::{BoundType, Context, DisplayExpr, Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_engine::rules::algebra::SimplifyFractionRule;
-use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
-use cas_engine::rules::canonicalization::{
-    CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule, CanonicalizeRootRule,
-};
-use cas_engine::rules::exponents::{
-    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, ProductPowerRule,
-};
-use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
+use cas_ast::{BoundType, DisplayExpr, Equation, RelOp, SolutionSet};
 use cas_engine::solver::solve;
 use cas_engine::Simplifier;
 use cas_parser::parse;
-use num_traits::Zero;
 
 fn create_full_simplifier() -> Simplifier {
     // Use with_default_rules to get the orchestrator and all standard rules
