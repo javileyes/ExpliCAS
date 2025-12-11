@@ -120,6 +120,10 @@ impl<'a> LaTeXExprHighlighted<'a> {
             Expr::Number(n) => {
                 if n.is_integer() {
                     format!("{}", n.numer())
+                } else if n.is_negative() {
+                    // Put negative sign outside fraction: -1/2 -> -\frac{1}{2}
+                    let positive = -n;
+                    format!("-\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
                 } else {
                     format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom())
                 }
@@ -197,9 +201,29 @@ impl<'a> LaTeXExprHighlighted<'a> {
                 }
             }
             Expr::Div(l, r) => {
-                let numer = self.expr_to_latex_internal(*l, false);
-                let denom = self.expr_to_latex_internal(*r, false);
-                format!("\\frac{{{}}}{{{}}}", numer, denom)
+                // Check if numerator is negative - put sign outside fraction
+                match self.context.get(*l) {
+                    Expr::Neg(inner) => {
+                        let numer = self.expr_to_latex_internal(*inner, false);
+                        let denom = self.expr_to_latex_internal(*r, false);
+                        format!("-\\frac{{{}}}{{{}}}", numer, denom)
+                    }
+                    Expr::Number(n) if n.is_negative() => {
+                        let positive = -n;
+                        let numer_str = if positive.is_integer() {
+                            format!("{}", positive.numer())
+                        } else {
+                            format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+                        };
+                        let denom = self.expr_to_latex_internal(*r, false);
+                        format!("-\\frac{{{}}}{{{}}}", numer_str, denom)
+                    }
+                    _ => {
+                        let numer = self.expr_to_latex_internal(*l, false);
+                        let denom = self.expr_to_latex_internal(*r, false);
+                        format!("\\frac{{{}}}{{{}}}", numer, denom)
+                    }
+                }
             }
             Expr::Pow(base, exp) => {
                 // Render as power notation - sqrt() functions are handled separately
@@ -295,15 +319,9 @@ impl<'a> LaTeXExprHighlighted<'a> {
         }
     }
 
-    fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
-        // Use \cdot by default, only omit for specific safe cases
-        match (self.context.get(left), self.context.get(right)) {
-            (Expr::Number(_), Expr::Variable(_)) => false,
-            (Expr::Number(_), Expr::Function(_, _)) => false,
-            (Expr::Variable(_), Expr::Function(_, _)) => false,
-            (Expr::Number(_), Expr::Constant(_)) => false,
-            _ => true,
-        }
+    fn needs_explicit_mult(&self, _left: ExprId, _right: ExprId) -> bool {
+        // Always use \cdot for consistent formatting
+        true
     }
 }
 
@@ -366,6 +384,10 @@ impl<'a> LaTeXExprHighlightedWithHints<'a> {
             Expr::Number(n) => {
                 if n.is_integer() {
                     format!("{}", n.numer())
+                } else if n.is_negative() {
+                    // Put negative sign outside fraction: -1/2 -> -\frac{1}{2}
+                    let positive = -n;
+                    format!("-\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
                 } else {
                     format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom())
                 }
@@ -411,9 +433,29 @@ impl<'a> LaTeXExprHighlightedWithHints<'a> {
                 }
             }
             Expr::Div(l, r) => {
-                let numer = self.expr_to_latex_internal(*l, false);
-                let denom = self.expr_to_latex_internal(*r, false);
-                format!("\\frac{{{}}}{{{}}}", numer, denom)
+                // Check if numerator is negative - put sign outside fraction
+                match self.context.get(*l) {
+                    Expr::Neg(inner) => {
+                        let numer = self.expr_to_latex_internal(*inner, false);
+                        let denom = self.expr_to_latex_internal(*r, false);
+                        format!("-\\frac{{{}}}{{{}}}", numer, denom)
+                    }
+                    Expr::Number(n) if n.is_negative() => {
+                        let positive = -n;
+                        let numer_str = if positive.is_integer() {
+                            format!("{}", positive.numer())
+                        } else {
+                            format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+                        };
+                        let denom = self.expr_to_latex_internal(*r, false);
+                        format!("-\\frac{{{}}}{{{}}}", numer_str, denom)
+                    }
+                    _ => {
+                        let numer = self.expr_to_latex_internal(*l, false);
+                        let denom = self.expr_to_latex_internal(*r, false);
+                        format!("\\frac{{{}}}{{{}}}", numer, denom)
+                    }
+                }
             }
             Expr::Pow(base, exp) => {
                 let base_str = self.expr_to_latex_base(*base);
@@ -509,15 +551,9 @@ impl<'a> LaTeXExprHighlightedWithHints<'a> {
         }
     }
 
-    fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
-        // Use \cdot by default, only omit for specific safe cases
-        match (self.context.get(left), self.context.get(right)) {
-            (Expr::Number(_), Expr::Variable(_)) => false,
-            (Expr::Number(_), Expr::Function(_, _)) => false,
-            (Expr::Variable(_), Expr::Function(_, _)) => false,
-            (Expr::Number(_), Expr::Constant(_)) => false,
-            _ => true,
-        }
+    fn needs_explicit_mult(&self, _left: ExprId, _right: ExprId) -> bool {
+        // Always use \cdot for consistent formatting
+        true
     }
 }
 

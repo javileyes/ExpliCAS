@@ -49,6 +49,10 @@ impl<'a> LaTeXExpr<'a> {
             Expr::Number(n) => {
                 if n.is_integer() {
                     format!("{}", n.numer())
+                } else if n.is_negative() {
+                    // Put negative sign outside fraction: -1/2 -> -\frac{1}{2}
+                    let positive = -n;
+                    format!("-\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
                 } else {
                     format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom())
                 }
@@ -112,19 +116,8 @@ impl<'a> LaTeXExpr<'a> {
                                         )
                                     };
 
-                                    // Check if we need explicit mult
-                                    let needs_cdot = matches!(
-                                        (self.context.get(*ml), self.context.get(*mr)),
-                                        (Expr::Number(_), Expr::Number(_))
-                                            | (Expr::Number(_), Expr::Add(_, _))
-                                            | (Expr::Number(_), Expr::Sub(_, _))
-                                    );
-
-                                    if needs_cdot {
-                                        (true, format!("{}\\cdot {}", coef_str, rest_latex))
-                                    } else {
-                                        (true, format!("{}{}", coef_str, rest_latex))
-                                    }
+                                    // Always use cdot for consistent formatting
+                                    (true, format!("{}\\cdot {}", coef_str, rest_latex))
                                 }
                             } else {
                                 // Positive coefficient, render normally
@@ -312,20 +305,9 @@ impl<'a> LaTeXExpr<'a> {
         }
     }
 
-    fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
-        // Use \cdot by default, only omit for specific safe cases
-        match (self.context.get(left), self.context.get(right)) {
-            // Safe to omit: Number * Variable (2x)
-            (Expr::Number(_), Expr::Variable(_)) => false,
-            // Safe to omit: Number * Function (2sin(x))
-            (Expr::Number(_), Expr::Function(_, _)) => false,
-            // Safe to omit: Variable * Function (x sin(x))
-            (Expr::Variable(_), Expr::Function(_, _)) => false,
-            // Safe to omit: Number * Constant (2π)
-            (Expr::Number(_), Expr::Constant(_)) => false,
-            // Everything else needs explicit \cdot
-            _ => true,
-        }
+    fn needs_explicit_mult(&self, _left: ExprId, _right: ExprId) -> bool {
+        // Always use \cdot for consistent formatting
+        true
     }
 }
 
@@ -374,6 +356,10 @@ impl<'a> LaTeXExprWithHints<'a> {
             Expr::Number(n) => {
                 if n.is_integer() {
                     format!("{}", n.numer())
+                } else if n.is_negative() {
+                    // Put negative sign outside fraction: -1/2 -> -\frac{1}{2}
+                    let positive = -n;
+                    format!("-\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
                 } else {
                     format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom())
                 }
@@ -437,19 +423,8 @@ impl<'a> LaTeXExprWithHints<'a> {
                                         )
                                     };
 
-                                    // Check if we need explicit mult
-                                    let needs_cdot = matches!(
-                                        (self.context.get(*ml), self.context.get(*mr)),
-                                        (Expr::Number(_), Expr::Number(_))
-                                            | (Expr::Number(_), Expr::Add(_, _))
-                                            | (Expr::Number(_), Expr::Sub(_, _))
-                                    );
-
-                                    if needs_cdot {
-                                        (true, format!("{}\\cdot {}", coef_str, rest_latex))
-                                    } else {
-                                        (true, format!("{}{}", coef_str, rest_latex))
-                                    }
+                                    // Always use cdot for consistent formatting
+                                    (true, format!("{}\\cdot {}", coef_str, rest_latex))
                                 }
                             } else {
                                 // Positive coefficient, render normally
@@ -586,20 +561,9 @@ impl<'a> LaTeXExprWithHints<'a> {
         }
     }
 
-    fn needs_explicit_mult(&self, left: ExprId, right: ExprId) -> bool {
-        // Use \cdot by default, only omit for specific safe cases
-        match (self.context.get(left), self.context.get(right)) {
-            // Safe to omit: Number * Variable (2x)
-            (Expr::Number(_), Expr::Variable(_)) => false,
-            // Safe to omit: Number * Function (2sin(x))
-            (Expr::Number(_), Expr::Function(_, _)) => false,
-            // Safe to omit: Variable * Function (x sin(x))
-            (Expr::Variable(_), Expr::Function(_, _)) => false,
-            // Safe to omit: Number * Constant (2π)
-            (Expr::Number(_), Expr::Constant(_)) => false,
-            // Everything else needs explicit \cdot
-            _ => true,
-        }
+    fn needs_explicit_mult(&self, _left: ExprId, _right: ExprId) -> bool {
+        // Always use \cdot for consistent formatting
+        true
     }
 }
 
