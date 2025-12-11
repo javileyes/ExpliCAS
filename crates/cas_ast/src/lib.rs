@@ -2,6 +2,7 @@ pub mod display_context;
 pub mod domain;
 pub mod expression;
 pub mod latex;
+pub mod latex_core;
 pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod latex_parser;

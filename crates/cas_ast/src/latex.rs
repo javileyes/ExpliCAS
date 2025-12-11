@@ -582,7 +582,7 @@ mod tests {
             context: &ctx,
             id: expr,
         };
-        assert_eq!(latex.to_latex(), "2x");
+        assert_eq!(latex.to_latex(), "2\\cdot x");
     }
 
     #[test]

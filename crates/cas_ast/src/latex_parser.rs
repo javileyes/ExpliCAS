@@ -500,8 +500,10 @@ mod tests {
 
     #[test]
     fn test_parse_implicit_mult() {
+        // Note: Variable * Variable is rendered as implicit multiplication (xy) for readability
+        // while Number * Variable uses explicit cdot (2\cdot x)
         assert_eq!(test_parse("xy"), "xy");
-        assert_eq!(test_parse("2x"), "2x");
+        assert_eq!(test_parse("2x"), "2\\cdot x");
     }
 
     #[test]
