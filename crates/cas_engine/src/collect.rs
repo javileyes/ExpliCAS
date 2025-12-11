@@ -1,3 +1,4 @@
+use crate::helpers::flatten_add_sub_chain;
 use cas_ast::{Context, Expr, ExprId};
 
 use num_rational::BigRational;
@@ -28,8 +29,8 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
     //     _ => return expr, // Nothing to collect at top level
     // }
 
-    // 2. Flatten terms
-    let terms = flatten_add_chain(ctx, expr);
+    // 2. Flatten terms (using shared helper from crate::helpers)
+    let terms = flatten_add_sub_chain(ctx, expr);
 
     // 3. Group terms by their "non-coefficient" part
     // We need a canonical representation of the term without its numerical coefficient.
@@ -114,32 +115,7 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
 
 // --- Helpers ---
 
-fn flatten_add_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
-    let mut terms = Vec::new();
-    flatten_recursive(ctx, expr, &mut terms, false);
-    terms
-}
-
-fn flatten_recursive(ctx: &mut Context, expr: ExprId, terms: &mut Vec<ExprId>, negate: bool) {
-    let expr_data = ctx.get(expr).clone();
-    match expr_data {
-        Expr::Add(l, r) => {
-            flatten_recursive(ctx, l, terms, negate);
-            flatten_recursive(ctx, r, terms, negate);
-        }
-        Expr::Sub(l, r) => {
-            flatten_recursive(ctx, l, terms, negate);
-            flatten_recursive(ctx, r, terms, !negate);
-        }
-        _ => {
-            if negate {
-                terms.push(ctx.add(Expr::Neg(expr)));
-            } else {
-                terms.push(expr);
-            }
-        }
-    }
-}
+// flatten_add_chain is now provided by crate::helpers::flatten_add_sub_chain
 
 fn extract_numerical_coeff(ctx: &mut Context, expr: ExprId) -> (BigRational, ExprId) {
     let expr_data = ctx.get(expr).clone();

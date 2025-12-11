@@ -1,4 +1,5 @@
 use crate::define_rule;
+use crate::helpers::is_one;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::One;
@@ -6,14 +7,7 @@ use std::cmp::Ordering;
 
 // ==================== Helper Functions for Pattern Matching ====================
 
-/// Check if expression equals 1
-fn is_one(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        n.is_one()
-    } else {
-        false
-    }
-}
+// is_one is now imported from crate::helpers
 
 /// Check if two expressions are reciprocals: a = 1/b or b = 1/a
 fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {

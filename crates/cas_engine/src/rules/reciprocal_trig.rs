@@ -1,28 +1,10 @@
 use crate::define_rule;
-use crate::helpers::{build_pi_over_n, is_pi_over_n};
+use crate::helpers::{build_pi_over_n, is_one, is_pi_over_n, is_zero};
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::{One, Zero};
 
 // ==================== Helper Functions ====================
-
-/// Check if expression equals 0
-fn is_zero(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        n.is_zero()
-    } else {
-        false
-    }
-}
-
-/// Check if expression equals 1
-fn is_one(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        n.is_one()
-    } else {
-        false
-    }
-}
+// is_zero and is_one are now imported from crate::helpers==================
 
 // ==================== Evaluation Table ====================
 
@@ -101,9 +83,9 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: build(ctx),
                             description: desc.to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
                 }
             }
@@ -139,9 +121,9 @@ define_rule!(
                                 return Some(Rewrite {
                                     new_expr: x,
                                     description: format!("{}({}(x)) = x", outer, inner),
-                before_local: None,
-                after_local: None,
-            });
+                                    before_local: None,
+                                    after_local: None,
+                                });
                             }
                         }
                     }
@@ -204,9 +186,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: desc,
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }

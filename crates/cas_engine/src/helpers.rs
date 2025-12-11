@@ -95,6 +95,49 @@ pub fn flatten_add(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
     }
 }
 
+/// Flatten an Add/Sub chain into a list of terms, converting subtractions to Neg.
+/// This is used by collect and grouping modules for like-term collection.
+///
+/// Unlike `flatten_add`, this handles:
+/// - `Add(a, b)` → [a, b]
+/// - `Sub(a, b)` → [a, Neg(b)]
+/// - `Neg(Neg(x))` → [x]
+pub fn flatten_add_sub_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+    let mut terms = Vec::new();
+    flatten_add_sub_recursive(ctx, expr, &mut terms, false);
+    terms
+}
+
+fn flatten_add_sub_recursive(
+    ctx: &mut Context,
+    expr: ExprId,
+    terms: &mut Vec<ExprId>,
+    negate: bool,
+) {
+    let expr_data = ctx.get(expr).clone();
+    match expr_data {
+        Expr::Add(l, r) => {
+            flatten_add_sub_recursive(ctx, l, terms, negate);
+            flatten_add_sub_recursive(ctx, r, terms, negate);
+        }
+        Expr::Sub(l, r) => {
+            flatten_add_sub_recursive(ctx, l, terms, negate);
+            flatten_add_sub_recursive(ctx, r, terms, !negate);
+        }
+        Expr::Neg(inner) => {
+            // Handle double negation: Neg(Neg(x)) -> x
+            flatten_add_sub_recursive(ctx, inner, terms, !negate);
+        }
+        _ => {
+            if negate {
+                terms.push(ctx.add(Expr::Neg(expr)));
+            } else {
+                terms.push(expr);
+            }
+        }
+    }
+}
+
 pub fn flatten_mul(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
     match ctx.get(expr) {
         Expr::Mul(l, r) => {
@@ -102,6 +145,33 @@ pub fn flatten_mul(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
             flatten_mul(ctx, *r, factors);
         }
         _ => factors.push(expr),
+    }
+}
+
+/// Flatten a Mul chain into a list of factors, handling Neg as -1 multiplication.
+/// Returns Vec<ExprId> where Neg(e) is converted to [num(-1), ...factors of e...]
+pub fn flatten_mul_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+    let mut factors = Vec::new();
+    flatten_mul_recursive(ctx, expr, &mut factors);
+    factors
+}
+
+fn flatten_mul_recursive(ctx: &mut Context, expr: ExprId, factors: &mut Vec<ExprId>) {
+    let expr_data = ctx.get(expr).clone();
+    match expr_data {
+        Expr::Mul(l, r) => {
+            flatten_mul_recursive(ctx, l, factors);
+            flatten_mul_recursive(ctx, r, factors);
+        }
+        Expr::Neg(e) => {
+            // Treat Neg(e) as -1 * e
+            let neg_one = ctx.num(-1);
+            factors.push(neg_one);
+            flatten_mul_recursive(ctx, e, factors);
+        }
+        _ => {
+            factors.push(expr);
+        }
     }
 }
 
@@ -185,5 +255,68 @@ pub fn is_half(ctx: &Context, expr: ExprId) -> bool {
         *n.numer() == 1.into() && *n.denom() == 2.into()
     } else {
         false
+    }
+}
+
+// ========== Common Expression Predicates ==========
+// These functions were previously duplicated across multiple files.
+// Now consolidated here for consistency and maintainability.
+
+/// Check if expression is the number 1
+pub fn is_one(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        n.is_one()
+    } else {
+        false
+    }
+}
+
+/// Check if expression is the number 0
+pub fn is_zero(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        num_traits::Zero::is_zero(n)
+    } else {
+        false
+    }
+}
+
+/// Check if expression is a negative number
+pub fn is_negative(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Number(n) = ctx.get(expr) {
+        n.is_negative()
+    } else if let Expr::Neg(_) = ctx.get(expr) {
+        true
+    } else {
+        false
+    }
+}
+
+/// Try to extract an integer value from an expression
+pub fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
+    if let Expr::Number(n) = ctx.get(expr) {
+        if n.is_integer() {
+            n.to_integer().to_i64()
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+/// Get the variant name of an expression (for debugging/display)
+pub fn get_variant_name(expr: &Expr) -> &'static str {
+    match expr {
+        Expr::Number(_) => "Number",
+        Expr::Variable(_) => "Variable",
+        Expr::Constant(_) => "Constant",
+        Expr::Add(_, _) => "Add",
+        Expr::Sub(_, _) => "Sub",
+        Expr::Mul(_, _) => "Mul",
+        Expr::Div(_, _) => "Div",
+        Expr::Pow(_, _) => "Pow",
+        Expr::Neg(_) => "Neg",
+        Expr::Function(_, _) => "Function",
+        Expr::Matrix { .. } => "Matrix",
     }
 }

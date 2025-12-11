@@ -1,7 +1,7 @@
 use crate::define_rule;
+use crate::helpers::{flatten_add_sub_chain, flatten_mul_chain, is_one, is_zero};
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::{One, Zero};
 use std::collections::HashMap;
 
 define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
@@ -17,8 +17,8 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                 return None;
             };
 
-            // 1. Flatten terms
-            let terms = flatten_add_chain(ctx, target_expr);
+            // 1. Flatten terms (using shared helper)
+            let terms = flatten_add_sub_chain(ctx, target_expr);
 
             // 2. Group by degree of var
             // Map: degree -> Vec<ExprId>
@@ -91,9 +91,9 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: zero,
                     description: format!("collect({}, {})", target_expr, var_name), // Debug format,
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             let mut result = new_terms[0];
@@ -112,55 +112,9 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
     None
 });
 
-// Helper to check if expr is effectively 1
-fn is_one(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        n.is_one()
-    } else {
-        false
-    }
-}
+// is_one and is_zero are now imported from crate::helpers
 
-fn is_zero(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        n.is_zero()
-    } else {
-        false
-    }
-}
-
-// Redefine with &mut Context
-fn flatten_add_chain_mut(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
-    let mut terms = Vec::new();
-    flatten_recursive_mut(ctx, expr, &mut terms, false);
-    terms
-}
-
-fn flatten_recursive_mut(ctx: &mut Context, expr: ExprId, terms: &mut Vec<ExprId>, negate: bool) {
-    let expr_data = ctx.get(expr).clone();
-    match expr_data {
-        Expr::Add(l, r) => {
-            flatten_recursive_mut(ctx, l, terms, negate);
-            flatten_recursive_mut(ctx, r, terms, negate);
-        }
-        Expr::Sub(l, r) => {
-            flatten_recursive_mut(ctx, l, terms, negate);
-            flatten_recursive_mut(ctx, r, terms, !negate);
-        }
-        _ => {
-            if negate {
-                terms.push(ctx.add(Expr::Neg(expr)));
-            } else {
-                terms.push(expr);
-            }
-        }
-    }
-}
-
-// Wrapper
-fn flatten_add_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
-    flatten_add_chain_mut(ctx, expr)
-}
+// flatten_add_chain and flatten_mul_chain are now imported from crate::helpers
 
 // Returns (coefficient, degree) for a term with respect to var
 fn extract_coeff_degree(ctx: &mut Context, term: ExprId, var: &str) -> (ExprId, i64) {
@@ -217,30 +171,7 @@ fn extract_coeff_degree(ctx: &mut Context, term: ExprId, var: &str) -> (ExprId, 
     (coeff, degree)
 }
 
-fn flatten_mul_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
-    let mut factors = Vec::new();
-    flatten_mul_recursive(ctx, expr, &mut factors);
-    factors
-}
-
-fn flatten_mul_recursive(ctx: &mut Context, expr: ExprId, factors: &mut Vec<ExprId>) {
-    let expr_data = ctx.get(expr).clone();
-    match expr_data {
-        Expr::Mul(l, r) => {
-            flatten_mul_recursive(ctx, l, factors);
-            flatten_mul_recursive(ctx, r, factors);
-        }
-        Expr::Neg(e) => {
-            // Treat Neg(e) as -1 * e
-            let neg_one = ctx.num(-1);
-            factors.push(neg_one);
-            flatten_mul_recursive(ctx, e, factors);
-        }
-        _ => {
-            factors.push(expr);
-        }
-    }
-}
+// Local flatten_mul_chain removed - using imported version from crate::helpers
 
 #[cfg(test)]
 mod tests {
@@ -255,7 +186,13 @@ mod tests {
         let rule = CollectRule;
         // collect(a*x + b*x, x) -> (a+b)*x
         let expr = parse("collect(a*x + b*x, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         // Result could be (a+b)*x or (b+a)*x
         let s = format!(
             "{}",
@@ -274,7 +211,13 @@ mod tests {
         let rule = CollectRule;
         // collect(a*x + 2*x + 5, x) -> (a+2)*x + 5
         let expr = parse("collect(a*x + 2*x + 5, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         let s = format!(
             "{}",
             DisplayExpr {
@@ -292,7 +235,13 @@ mod tests {
         let rule = CollectRule;
         // collect(3*x^2 + y*x^2 + x, x) -> (3+y)*x^2 + x
         let expr = parse("collect(3*x^2 + y*x^2 + x, x)", &mut ctx).unwrap();
-        let rewrite = rule.apply(&mut ctx, expr, &crate::parent_context::ParentContext::root()).unwrap();
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
         let s = format!(
             "{}",
             DisplayExpr {
@@ -332,9 +281,9 @@ define_rule!(CollectLikeTermsRule, "Collect Like Terms", |ctx, expr| {
         Some(Rewrite {
             new_expr,
             description: "Collect like terms".to_string(),
-                before_local: None,
-                after_local: None,
-            })
+            before_local: None,
+            after_local: None,
+        })
     } else {
         None
     }

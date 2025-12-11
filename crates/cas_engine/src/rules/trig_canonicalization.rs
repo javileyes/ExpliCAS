@@ -1,7 +1,7 @@
 use crate::define_rule;
+use crate::helpers::is_one;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::One;
 
 // ==================== Sophisticated Context-Aware Canonicalization ====================
 // STRATEGY: Only convert when it demonstrably helps simplification
@@ -12,13 +12,7 @@ use num_traits::One;
 
 // ==================== Helper Functions for Pattern Detection ====================
 
-// Check if expression is a number equal to 1
-fn is_one(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(n) => n.is_one(),
-        _ => false,
-    }
-}
+// is_one is now imported from crate::helpers
 
 // Check if expression is a number equal to 2
 fn is_two(ctx: &Context, expr: ExprId) -> bool {
