@@ -822,6 +822,19 @@ impl Repl {
                 println!("             Supports basic arithmetic, power rule, chain rule, and common functions.");
                 println!("Example: diff(sin(x^2), x) -> 2*x*cos(x^2)");
             }
+            "sum" => {
+                println!("Function: sum(expr, var, start, end)");
+                println!("Description: Evaluates finite summations Σ(var=start to end) expr.");
+                println!("             Supports numeric evaluation and telescoping detection.");
+                println!("Features:");
+                println!("  - Numeric: sum(k, k, 1, 10) -> 55");
+                println!("  - Symbolic end: sum(1/(k*(k+1)), k, 1, n) -> 1 - 1/(n+1)");
+                println!("  - Telescoping: Automatically detects 1/(k*(k+a)) patterns");
+                println!("Examples:");
+                println!("  sum(k^2, k, 1, 5)           -> 55");
+                println!("  sum(1/(k*(k+1)), k, 1, n)   -> 1 - 1/(1+n)");
+                println!("  sum(1/(k*(k+2)), k, 1, n)   -> 1/2 - 1/2/(1+n)");
+            }
             "gcd" => {
                 println!("Function: gcd <a, b>");
                 println!("Description: Computes the Greatest Common Divisor of two integers.");
