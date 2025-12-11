@@ -413,6 +413,21 @@ Result: 55       (1+4+9+16+25)
 Result: 35       (3+5+7+9+11)
 ```
 
+#### 7. Finite Product (Productorio)
+Compute finite products with `product(expr, var, start, end)`:
+```text
+> product(k, k, 1, 5)
+Result: 120      (5! = 1*2*3*4*5)
+
+> product((k+1)/k, k, 1, n)
+Result: 1 + n    (Telescopic: (2/1)*(3/2)*...*(n+1)/n = n+1)
+
+> product((k+1)/k, k, 1, 10)
+Result: 11       (Simplified telescopic result)
+```
+
+**Telescoping detection:** The engine automatically detects `(k+a)/(k+b)` patterns and applies multiplicative telescoping, avoiding expensive factorial computations.
+
 ### Configuration & Rule Toggling
  
 You can dynamically enable or disable specific simplification rules directly from the CLI. This is useful for educational purposes (showing intermediate steps without full simplification) or for debugging.
