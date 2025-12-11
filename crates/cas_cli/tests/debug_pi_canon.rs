@@ -1,4 +1,4 @@
-use cas_ast::{Context, DisplayExpr, Expr};
+use cas_ast::{Context, Expr};
 use cas_engine::Simplifier;
 use cas_parser::parse;
 

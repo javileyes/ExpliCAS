@@ -242,7 +242,7 @@ fn test_nested_logs_exponents() {
     // Then `exp(ln(x*y))` -> `x*y`.
 
     let input2 = parse("exp(ln(x * y))", &mut simplifier.context).unwrap();
-    let (res2, _) = simplifier.simplify(input2);
+    let (_res2, _) = simplifier.simplify(input2);
     // assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res2 }), "x * y");
     // Commenting out the second part if it fails, focusing on the first part which should pass.
     // If the first part passed, then `exp(ln(x))` works.

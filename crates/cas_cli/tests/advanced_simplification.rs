@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod engine_tests {
-    use cas_ast::{DisplayExpr, Expr};
+    use cas_ast::DisplayExpr;
     use cas_engine::Simplifier;
     use cas_parser::parse;
 

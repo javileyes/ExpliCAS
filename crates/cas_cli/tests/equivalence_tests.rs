@@ -1,16 +1,21 @@
-use cas_engine::Simplifier;
-use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, AnnihilationRule, DistributeRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule};
-use cas_engine::rules::canonicalization::{CanonicalizeRootRule, CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
+use cas_ast::{DisplayExpr, Expr, ExprId};
+use cas_engine::rules::algebra::{ExpandRule, SimplifyFractionRule};
+use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
+use cas_engine::rules::canonicalization::{
+    CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule, CanonicalizeRootRule,
+};
+use cas_engine::rules::exponents::{
+    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, ProductPowerRule,
+};
 use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule, AngleIdentityRule, TanToSinCosRule, DoubleAngleRule};
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, ExpandRule};
-use cas_ast::{Equation, RelOp, SolutionSet, BoundType, Expr, Context, ExprId, DisplayExpr};
-use cas_engine::solver::solve;
-use num_traits::Zero;
+use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
+use cas_engine::rules::trigonometry::{
+    AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule,
+};
+use cas_engine::Simplifier;
 use cas_parser::parse;
+use num_traits::Zero;
 
 fn create_full_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();
@@ -19,7 +24,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
-    
+
     // Evaluation
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
@@ -30,27 +35,27 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
-    
+
     // Exponents
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
-    
+
     // Polynomials
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
-    
+
     // Algebra
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(ExpandRule));
-    
+
     // Arithmetic
     simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(MulZeroRule));
-    
+
     simplifier
 }
 
@@ -83,37 +88,59 @@ fn test_not_equivalent() {
 fn test_complex_equivalence() {
     let mut simplifier = create_full_simplifier();
     // ((x+1)^2 + (x-1)^2) / (x^2 + 1) equiv 2
-    let e1 = parse("((x + 1)^2 + (x - 1)^2) / (x^2 + 1)", &mut simplifier.context).unwrap();
+    let e1 = parse(
+        "((x + 1)^2 + (x - 1)^2) / (x^2 + 1)",
+        &mut simplifier.context,
+    )
+    .unwrap();
     let e2 = parse("2", &mut simplifier.context).unwrap();
-    
+
     // Note: This relies on the same logic as stress tests.
     // If stress test passed, this should pass.
     assert!(simplifier.are_equivalent(e1, e2));
 }
 
+#[allow(dead_code)]
 fn assert_equivalent(s: &mut Simplifier, expr1: ExprId, expr2: ExprId) {
     let (sim1, _) = s.simplify(expr1);
     let (sim2, _) = s.simplify(expr2);
-    
+
     if s.are_equivalent(sim1, sim2) {
         return;
     }
-    
+
     let diff = s.context.add(Expr::Sub(sim1, sim2));
     let (sim_diff, _) = s.simplify(diff);
-    
+
     if let Expr::Number(n) = s.context.get(sim_diff) {
         if n.is_zero() {
             return;
         }
     }
-    
-    panic!("Expressions not equivalent.\nExpr1: {}\nSim1: {}\nExpr2: {}\nSim2: {}\nDiff: {}", 
-           DisplayExpr { context: &s.context, id: expr1 },
-           DisplayExpr { context: &s.context, id: sim1 },
-           DisplayExpr { context: &s.context, id: expr2 },
-           DisplayExpr { context: &s.context, id: sim2 },
-           DisplayExpr { context: &s.context, id: sim_diff });
+
+    panic!(
+        "Expressions not equivalent.\nExpr1: {}\nSim1: {}\nExpr2: {}\nSim2: {}\nDiff: {}",
+        DisplayExpr {
+            context: &s.context,
+            id: expr1
+        },
+        DisplayExpr {
+            context: &s.context,
+            id: sim1
+        },
+        DisplayExpr {
+            context: &s.context,
+            id: expr2
+        },
+        DisplayExpr {
+            context: &s.context,
+            id: sim2
+        },
+        DisplayExpr {
+            context: &s.context,
+            id: sim_diff
+        }
+    );
 }
 
 #[test]
@@ -123,7 +150,7 @@ fn test_commutativity_equivalence() {
     let e1 = parse("x + y", &mut simplifier.context).unwrap();
     let e2 = parse("y + x", &mut simplifier.context).unwrap();
     assert!(simplifier.are_equivalent(e1, e2));
-    
+
     // x * y equiv y * x
     let e1 = parse("x * y", &mut simplifier.context).unwrap();
     let e2 = parse("y * x", &mut simplifier.context).unwrap();

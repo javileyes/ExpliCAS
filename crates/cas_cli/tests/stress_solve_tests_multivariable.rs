@@ -1,7 +1,7 @@
 //! Advanced multivariable stress tests for the equation solver
 //! Tests solving for one variable while treating others as parameters
 
-use cas_ast::{Equation, RelOp, SolutionSet};
+use cas_ast::{Equation, RelOp};
 use cas_engine::engine::Simplifier;
 use cas_engine::solver::solve;
 

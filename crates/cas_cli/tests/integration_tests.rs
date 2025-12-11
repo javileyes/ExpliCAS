@@ -1,4 +1,4 @@
-use cas_ast::{BoundType, Context, DisplayExpr, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{DisplayExpr, Expr, ExprId};
 use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
 use cas_engine::Simplifier;
 use cas_parser::parse;

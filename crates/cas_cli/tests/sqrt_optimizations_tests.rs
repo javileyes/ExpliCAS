@@ -62,9 +62,9 @@ fn test_sqrt_binomial_addition_squared() {
     // sqrt((a+b)^2) -> |a+b| en 0-1 pasos
     let mut simplifier = create_simplifier();
     let expr = parse("sqrt((a+b)^2)", &mut simplifier.context).unwrap();
-    let (result, steps) = simplifier.simplify(expr);
+    let (result, _steps) = simplifier.simplify(expr);
 
-    let result_str = format!(
+    let _result_str = format!(
         "{}",
         DisplayExpr {
             context: &simplifier.context,
