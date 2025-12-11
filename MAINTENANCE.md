@@ -563,3 +563,140 @@ Benchmarks are located in `crates/cas_engine/benches/`.
 -   `polynomial/combine_like_terms_large`: ~170 µs
 -   `trigonometry/pythagorean_identity_nested`: ~10 ms
 
+## 6. Stress Testing & Rule Orchestration Analysis
+
+### Overview
+
+The project includes a **stress testing infrastructure** to identify performance bottlenecks and potential stack overflows in the simplification engine. This is particularly useful for:
+
+1. Finding rules that trigger excessive re-simplification loops
+2. Identifying expression patterns that cause exponential rule application
+3. Debugging stack overflow triggers in the recursive simplifier
+
+### Test Profiles
+
+Located in `crates/cas_engine/tests/strategies/mod.rs`:
+
+| Profile  | Depth | Size | Items | Use Case |
+|----------|-------|------|-------|----------|
+| **SAFE**    | 2  | 8   | 4  | CI/CD, never stack overflows |
+| **NORMAL**  | 3  | 15  | 6  | Development, balanced |
+| **STRESS**  | 4  | 20  | 10 | Original values, stresses engine |
+| **EXTREME** | 5  | 30  | 15 | Deep debugging of specific bottlenecks |
+
+**Parameters**:
+- `Depth`: Maximum recursion depth (2^DEPTH possible nesting levels)
+- `Size`: Maximum number of nodes in expression tree
+- `Items`: Maximum items per collection (affects function arguments)
+
+### Running Stress Tests
+
+Use the `STRESS_PROFILE` environment variable to select complexity profile:
+
+```bash
+# Run with SAFE profile (default, never stack overflows)
+cargo test --package cas_engine --test stress_test -- --nocapture
+
+# Run with STRESS profile (requires larger stack)
+STRESS_PROFILE=STRESS RUST_MIN_STACK=16777216 cargo test --package cas_engine --test stress_test -- --nocapture
+
+# Run batch test (100 cases) to find overflows
+cargo test --package cas_engine --test stress_test test_batch_overflow_finder -- --ignored --nocapture
+```
+
+**Valid STRESS_PROFILE values**: `SAFE` | `NORMAL` | `STRESS` | `EXTREME`
+
+### Test Summary Output
+
+After running stress tests, you'll see a comprehensive summary:
+
+```
+═══════════════════════════════════════════════════════════════════
+                    STRESS TEST SUMMARY
+═══════════════════════════════════════════════════════════════════
+Profile: STRESS (depth=4, size=20, items=10)
+
+📊 TEST RESULTS:
+   Passed:       20 / 20 (100.0%)
+   ⚠️  Overflows:    2              ← Only shown if there are overflows
+
+📈 RULE STATISTICS:
+   Total simplifications:     20
+   Total rule applications:   47
+   Average rules/expression:  2.4
+
+   Top 10 Rules:
+      Combine Constants                          15 ( 31.9%)
+      Canonicalize Addition                      12 ( 25.5%)
+      Pythagorean Identity                        8 ( 17.0%)
+      Evaluate Numeric Power                      5 ( 10.6%)
+      ...
+
+🔥 MOST EXPENSIVE EXPRESSION:
+   Steps: 23
+   Expr:  sin(x)^8 - cos(x)^8
+
+⚠️  STACK OVERFLOW EXPRESSIONS (2):      ← Only if overflows detected
+   These expressions caused stack overflow and need investigation:
+   1. (sin(x)^2 + cos(x)^2)^10 / ((tan(x) + cot(x))^5)
+   2. ln(exp(sin(cos(tan(x)^2)^3)^4))
+
+   💡 TIP: Copy these expressions to test_stress_single() for debugging.
+═══════════════════════════════════════════════════════════════════
+```
+
+### Debugging Overflow Expressions
+
+When the stress test finds expressions that cause stack overflow, follow this workflow:
+
+1. **Copy the problematic expression** from the summary
+2. **Edit `test_stress_single()`** in `stress_test.rs` to build that expression:
+
+```rust
+#[test]
+fn test_stress_single() {
+    let mut ctx = Context::new();
+    
+    // Build the problematic expression from the overflow report
+    let x = ctx.var("x");
+    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x]));
+    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![x]));
+    // ... reconstruct the expression
+    
+    // Run with profiler to see which rules are firing
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.context = ctx;
+    simplifier.profiler = RuleProfiler::new(true);
+    
+    let (result, steps) = simplifier.simplify(expr);
+    
+    // See step-by-step trace and profiler report
+    eprintln!("{}", simplifier.profiler.report());
+}
+```
+
+3. **Run the single test** with debug logging:
+```bash
+RUST_LOG=debug cargo test test_stress_single -- --nocapture
+```
+
+### Stack Overflow Prevention
+
+When running with higher profiles (STRESS, EXTREME), increase stack size:
+
+```bash
+# 8MB stack (minimum for STRESS)
+RUST_MIN_STACK=8388608 cargo test
+
+# 16MB stack (recommended for EXTREME)
+RUST_MIN_STACK=16777216 cargo test
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `strategies/mod.rs` | Test profiles (SAFE/NORMAL/STRESS/EXTREME) and expression generators |
+| `stress_test.rs` | Stress tests with overflow detection and profiler integration |
+| `property_tests.rs` | Property-based tests (idempotency, etc.) |
+

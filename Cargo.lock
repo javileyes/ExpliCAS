@@ -97,6 +97,7 @@ dependencies = [
  "cas_format",
  "cas_parser",
  "criterion",
+ "lazy_static",
  "num-bigint",
  "num-integer",
  "num-rational",

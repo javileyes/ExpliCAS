@@ -3149,6 +3149,87 @@ define_rule!(
 8. **UI Gráfica**: Visualización de árbol de simplificación
 9. **Pruebas de Equivalencia**: Mejorar `equiv` command con más estrategias
 10. **Extensión de Pattern Detection**: Más familias de identidades protegidas (ej: sum-to-product trig, logaritmos)
+11. **Refactorizar Simplificador a Iterativo**: Convertir la recursión a un stack explícito para eliminar stack overflows (ver sección Stress Testing)
+
+---
+
+## 8. Stress Testing Infrastructure ★ (Added 2025-12)
+
+### Propósito
+
+Sistema para identificar cuellos de botella en la orquestación de reglas y prevenir stack overflows.
+
+### Perfiles de Complejidad
+
+| Perfil   | Depth | Size | Items | Uso |
+|----------|-------|------|-------|-----|
+| SAFE     | 2     | 8    | 4     | CI/CD, nunca desborda |
+| NORMAL   | 3     | 15   | 6     | Desarrollo |
+| STRESS   | 4     | 20   | 10    | Detecta problemas |
+| EXTREME  | 5     | 30   | 15    | Debugging profundo |
+
+### Herramientas
+
+**Ubicación**: `crates/cas_engine/tests/`
+
+| Archivo | Propósito |
+|---------|-----------|
+| `strategies/mod.rs` | Perfiles (SAFE/NORMAL/STRESS/EXTREME) y generadores |
+| `stress_test.rs` | Tests con detección de overflow y profiler |
+| `property_tests.rs` | Tests de propiedades (idempotencia, etc.) |
+
+### Uso
+
+```bash
+# Ejecutar stress test
+STRESS_PROFILE=STRESS RUST_MIN_STACK=16777216 cargo test --package cas_engine --test stress_test -- --nocapture
+```
+
+### Resumen de Test
+
+Al terminar, se muestra un resumen completo:
+
+```
+═══════════════════════════════════════════════════════════════════
+                    STRESS TEST SUMMARY
+═══════════════════════════════════════════════════════════════════
+Profile: STRESS (depth=4, size=20, items=10)
+
+📊 TEST RESULTS:
+   Passed:       20 / 20 (100.0%)
+   ⚠️  Overflows:    2              ← Solo si hay overflows
+
+📈 RULE STATISTICS:
+   Total simplifications:     20
+   Total rule applications:   47
+   Average rules/expression:  2.4
+
+   Top 10 Rules:
+      Combine Constants                          15 ( 31.9%)
+      Canonicalize Addition                      12 ( 25.5%)
+      ...
+
+🔥 MOST EXPENSIVE EXPRESSION:
+   Steps: 23
+   Expr:  sin(x)^8 - cos(x)^8
+
+⚠️  STACK OVERFLOW EXPRESSIONS (2):    ← Solo si hay overflows
+   1. (sin(x)^2 + cos(x)^2)^10 / ((tan(x) + cot(x))^5)
+   💡 TIP: Copy to test_stress_single() for debugging.
+═══════════════════════════════════════════════════════════════════
+```
+
+### Workflow de Debugging
+
+1. Ejecutar stress test → identificar expresiones con overflow
+2. Copiar expresión problemática a `test_stress_single()`
+3. Ejecutar con `RUST_LOG=debug` para ver paso a paso
+
+```bash
+RUST_LOG=debug cargo test test_stress_single -- --nocapture
+```
+
+**Ver MAINTENANCE.md sección 6** para documentación completa y ejemplos de código.
 
 ### Referencias Útiles
 
