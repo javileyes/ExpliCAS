@@ -318,7 +318,7 @@ fn generate_fraction_sum_substeps(info: &FractionSumInfo) -> Vec<SubStep> {
     }
 
     // Step 1: Show the original sum
-    let original_sum: Vec<String> = info.fractions.iter().map(|f| format_fraction(f)).collect();
+    let original_sum: Vec<String> = info.fractions.iter().map(format_fraction).collect();
 
     // Step 2: Find common denominator
     let lcm = info

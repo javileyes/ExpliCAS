@@ -56,8 +56,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
 
         // Case 1: Both are powers with same base: x^a * x^b
         if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
-            if compare_expr(ctx, *base1, *base2) == Ordering::Equal {
-                if should_combine(ctx, *base1, *exp1, *exp2) {
+            if compare_expr(ctx, *base1, *base2) == Ordering::Equal
+                && should_combine(ctx, *base1, *exp1, *exp2) {
                     let sum_exp = add_exp(ctx, *exp1, *exp2);
                     let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
                     return Some(Rewrite {
@@ -67,7 +67,6 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                 after_local: None,
             });
                 }
-            }
         }
         // Case 2: One is power, one is base: x^a * x -> x^(a+1)
         // Left is power
@@ -835,7 +834,7 @@ fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
 
     // Handle sign
     if sign == -1 {
-        if k % 2 != 0 {
+        if !k.is_multiple_of(2) {
             outside = -outside;
         } else {
             inside = -inside;

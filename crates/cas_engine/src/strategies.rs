@@ -122,7 +122,9 @@ pub fn simplify_polynomial(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step
         }
     }
 
-    let final_steps = if chosen == factored {
+    
+
+    if chosen == factored {
         if factored != simplified_expanded {
             steps.push(Step::new(
                 "Factor Polynomial",
@@ -142,9 +144,7 @@ pub fn simplify_polynomial(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step
     } else {
         // Reverted to original
         (expr, Vec::new())
-    };
-
-    final_steps
+    }
 }
 
 /// Filter out steps that don't change the global expression state

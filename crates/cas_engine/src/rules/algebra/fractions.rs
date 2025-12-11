@@ -46,7 +46,7 @@ define_rule!(
 
         // 5. Combine
         // full_gcd = poly_gcd * numeric_gcd
-        let scalar = Polynomial::new(vec![numeric_gcd.clone()], var.to_string());
+        let scalar = Polynomial::new(vec![numeric_gcd], var.to_string());
         let full_gcd = poly_gcd.mul(&scalar);
 
         // 6. Check if GCD is non-trivial

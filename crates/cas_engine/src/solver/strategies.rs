@@ -366,8 +366,8 @@ fn analyze_term_mut(ctx: &mut Context, term: ExprId, var: &str) -> Option<(ExprI
         Expr::Variable(v) if v == var => Some((ctx.num(1), 1)),
         Expr::Pow(base, exp) => {
             if let Expr::Variable(v) = ctx.get(base) {
-                if v == var {
-                    if !contains_var(ctx, exp, var) {
+                if v == var
+                    && !contains_var(ctx, exp, var) {
                         let degree = if let Expr::Number(n) = ctx.get(exp) {
                             if n.is_integer() {
                                 Some(n.to_integer())
@@ -382,7 +382,6 @@ fn analyze_term_mut(ctx: &mut Context, term: ExprId, var: &str) -> Option<(ExprI
                             return Some((ctx.num(1), d.try_into().ok()?));
                         }
                     }
-                }
             }
             None
         }
@@ -582,18 +581,18 @@ impl SolverStrategy for QuadraticStrategy {
                 // Use numeric logic for better inequality support
                 // delta = b^2 - 4ac
                 let b2 = b_val.clone() * b_val.clone();
-                let four_ac = BigRational::from_integer(4.into()) * a_val.clone() * c_val.clone();
+                let four_ac = BigRational::from_integer(4.into()) * a_val.clone() * c_val;
                 let delta = b2 - four_ac;
 
                 // We need to return solutions in terms of Expr
                 // x = (-b +/- sqrt(delta)) / 2a
 
-                let neg_b = -b_val.clone();
+                let neg_b = -b_val;
                 let two_a = BigRational::from_integer(2.into()) * a_val.clone();
 
                 let delta_expr = simplifier.context.add(Expr::Number(delta.clone()));
                 let neg_b_expr = simplifier.context.add(Expr::Number(neg_b));
-                let two_a_expr = simplifier.context.add(Expr::Number(two_a.clone()));
+                let two_a_expr = simplifier.context.add(Expr::Number(two_a));
 
                 // sqrt(delta)
                 let one = simplifier.context.num(1);
@@ -1184,7 +1183,7 @@ impl SolverStrategy for UnwrapStrategy {
                                 op,
                             }
                         };
-                        Some((new_eq, format!("Take log base e of both sides")))
+                        Some((new_eq, "Take log base e of both sides".to_string()))
                     } else {
                         None
                     }
@@ -1307,9 +1306,9 @@ impl SolverStrategy for CollectTermsStrategy {
         match solve(&new_eq, var, simplifier) {
             Ok((set, mut solve_steps)) => {
                 steps.append(&mut solve_steps);
-                return Some(Ok((set, steps)));
+                Some(Ok((set, steps)))
             }
-            Err(e) => return Some(Err(e)),
+            Err(e) => Some(Err(e)),
         }
     }
 }

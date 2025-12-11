@@ -341,27 +341,24 @@ fn flatten_add_sub(ctx: &Context, expr: ExprId, terms: &mut Vec<(ExprId, bool)>,
 /// Extract (k, base_var) from 2*cos(k*x) pattern
 fn extract_cosine_multiple(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId)> {
     // Pattern: 2 * cos(k * x) or cos(...) * 2
-    match ctx.get(expr) {
-        Expr::Mul(l, r) => {
-            // Check if one side is 2
-            let (two_side, other_side) = if is_number(ctx, *l, 2) {
-                (Some(*l), *r)
-            } else if is_number(ctx, *r, 2) {
-                (Some(*r), *l)
-            } else {
-                return None;
-            };
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        // Check if one side is 2
+        let (two_side, other_side) = if is_number(ctx, *l, 2) {
+            (Some(*l), *r)
+        } else if is_number(ctx, *r, 2) {
+            (Some(*r), *l)
+        } else {
+            return None;
+        };
 
-            if two_side.is_some() {
-                // Other side should be cos(k*x)
-                if let Expr::Function(name, args) = ctx.get(other_side) {
-                    if name == "cos" && args.len() == 1 {
-                        return extract_multiple_of_var(ctx, args[0]);
-                    }
+        if two_side.is_some() {
+            // Other side should be cos(k*x)
+            if let Expr::Function(name, args) = ctx.get(other_side) {
+                if name == "cos" && args.len() == 1 {
+                    return extract_multiple_of_var(ctx, args[0]);
                 }
             }
         }
-        _ => {}
     }
     None
 }

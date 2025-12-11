@@ -11,6 +11,12 @@ pub struct Orchestrator {
     pub pattern_marks: crate::pattern_marks::PatternMarks,
 }
 
+impl Default for Orchestrator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Orchestrator {
     pub fn new() -> Self {
         Self {
@@ -65,8 +71,7 @@ impl Orchestrator {
             // Only add step if structurally different (collect regenerates IDs)
             if crate::ordering::compare_expr(&simplifier.context, collected, current)
                 != std::cmp::Ordering::Equal
-            {
-                if simplifier.collect_steps {
+                && simplifier.collect_steps {
                     steps.push(Step::new(
                         "Initial Collection",
                         "Collect",
@@ -76,7 +81,6 @@ impl Orchestrator {
                         Some(&simplifier.context),
                     ));
                 }
-            }
             current = collected;
         }
 
@@ -176,8 +180,7 @@ impl Orchestrator {
         if final_collected != current {
             if crate::ordering::compare_expr(&simplifier.context, final_collected, current)
                 != std::cmp::Ordering::Equal
-            {
-                if simplifier.collect_steps {
+                && simplifier.collect_steps {
                     steps.push(Step::new(
                         "Final Collection",
                         "Collect",
@@ -187,7 +190,6 @@ impl Orchestrator {
                         Some(&simplifier.context),
                     ));
                 }
-            }
             current = final_collected;
         }
 

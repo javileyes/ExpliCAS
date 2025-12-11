@@ -127,6 +127,12 @@ pub struct Simplifier {
     pub profiler: RuleProfiler,
 }
 
+impl Default for Simplifier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Simplifier {
     pub fn new() -> Self {
         Self {
@@ -367,7 +373,7 @@ impl Simplifier {
         let expand_str = "expand".to_string();
         let expanded_diff = self
             .context
-            .add(Expr::Function(expand_str.clone(), vec![diff]));
+            .add(Expr::Function(expand_str, vec![diff]));
         let (simplified_diff, _) = self.simplify(expanded_diff);
 
         let result_expr = {
@@ -430,13 +436,13 @@ fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Opti
                 args.iter().map(|a| eval_f64(ctx, *a, var_map)).collect();
             let arg_vals = arg_vals?;
             match name.as_str() {
-                "sin" => Some(arg_vals.get(0)?.sin()),
-                "cos" => Some(arg_vals.get(0)?.cos()),
-                "tan" => Some(arg_vals.get(0)?.tan()),
-                "exp" => Some(arg_vals.get(0)?.exp()),
-                "ln" => Some(arg_vals.get(0)?.ln()),
-                "sqrt" => Some(arg_vals.get(0)?.sqrt()),
-                "abs" => Some(arg_vals.get(0)?.abs()),
+                "sin" => Some(arg_vals.first()?.sin()),
+                "cos" => Some(arg_vals.first()?.cos()),
+                "tan" => Some(arg_vals.first()?.tan()),
+                "exp" => Some(arg_vals.first()?.exp()),
+                "ln" => Some(arg_vals.first()?.ln()),
+                "sqrt" => Some(arg_vals.first()?.sqrt()),
+                "abs" => Some(arg_vals.first()?.abs()),
                 _ => None,
             }
         }
@@ -552,7 +558,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     context.add(Expr::Neg(new_e))
                 }
                 (Expr::Function(name, args), PathStep::Arg(idx)) => {
-                    let mut new_args = args.clone();
+                    let mut new_args = args;
                     if *idx < new_args.len() {
                         new_args[*idx] = reconstruct_recursive(
                             context,

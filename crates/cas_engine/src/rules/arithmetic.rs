@@ -144,7 +144,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     let rl_data = ctx.get(rl).clone();
                     if let Expr::Number(n2) = rl_data {
                         let sum = &n1 + &n2;
-                        let sum_expr = ctx.add(Expr::Number(sum.clone()));
+                        let sum_expr = ctx.add(Expr::Number(sum));
                         let new_expr = ctx.add(Expr::Add(sum_expr, rr));
                         return Some(Rewrite {
                             new_expr,
@@ -175,7 +175,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     let rl_data = ctx.get(rl).clone();
                     if let Expr::Number(n2) = rl_data {
                         let prod = n1 * &n2;
-                        let prod_expr = ctx.add(Expr::Number(prod.clone()));
+                        let prod_expr = ctx.add(Expr::Number(prod));
                         let new_expr = ctx.add(Expr::Mul(prod_expr, rr));
                         return Some(Rewrite {
                             new_expr,

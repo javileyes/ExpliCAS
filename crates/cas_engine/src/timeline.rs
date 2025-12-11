@@ -1084,7 +1084,7 @@ impl<'a> TimelineHtml<'a> {
                 self.context.add(Expr::Neg(new_e))
             }
             (Expr::Function(name, args), PathStep::Arg(idx)) => {
-                let mut new_args = args.clone();
+                let mut new_args = args;
                 if *idx < new_args.len() {
                     new_args[*idx] =
                         self.reconstruct_global_expr(new_args[*idx], remaining_path, replacement);

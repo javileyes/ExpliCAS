@@ -427,8 +427,7 @@ define_rule!(
                                 && is_atan(name_j)
                                 && args_i.len() == 1
                                 && args_j.len() == 1
-                            {
-                                if are_reciprocals(ctx, args_i[0], args_j[0]) {
+                                && are_reciprocals(ctx, args_i[0], args_j[0]) {
                                     // Found atan(x) + atan(1/x)! Build π/2
                                     let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                     let two = ctx.num(2);
@@ -439,7 +438,6 @@ define_rule!(
                                         "arctan(x) + arctan(1/x) = π/2".to_string(),
                                     ));
                                 }
-                            }
                         }
                         None
                     },

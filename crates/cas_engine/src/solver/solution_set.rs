@@ -163,11 +163,10 @@ fn merge_intervals(ctx: &Context, mut intervals: Vec<Interval>) -> Vec<Interval>
             if cmp_maxs == Ordering::Less {
                 current.max = next.max;
                 current.max_type = next.max_type;
-            } else if cmp_maxs == Ordering::Equal {
-                 if next.max_type == BoundType::Closed {
+            } else if cmp_maxs == Ordering::Equal
+                 && next.max_type == BoundType::Closed {
                      current.max_type = BoundType::Closed;
                  }
-            }
         } else {
             merged.push(current);
             current = next;
@@ -216,10 +215,7 @@ pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) 
             for i1 in &u1 {
                 for i2 in &u2 {
                     let res = intersect_intervals(ctx, i1, i2);
-                    match res {
-                        SolutionSet::Continuous(new_i) => new_u.push(new_i),
-                        _ => {}
-                    }
+                    if let SolutionSet::Continuous(new_i) = res { new_u.push(new_i) }
                 }
             }
             if new_u.is_empty() {

@@ -5,6 +5,12 @@ pub struct VariableCollector {
     pub vars: HashSet<String>,
 }
 
+impl Default for VariableCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VariableCollector {
     pub fn new() -> Self {
         Self {
@@ -22,6 +28,12 @@ impl Visitor for VariableCollector {
 pub struct DepthVisitor {
     pub depth: usize,
     current_depth: usize,
+}
+
+impl Default for DepthVisitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DepthVisitor {

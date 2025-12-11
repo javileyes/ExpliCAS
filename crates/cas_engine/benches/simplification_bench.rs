@@ -134,6 +134,88 @@ fn benchmark_stress(c: &mut Criterion) {
     group.finish();
 }
 
+fn benchmark_individual_rules(c: &mut Criterion) {
+    let mut group = c.benchmark_group("rules");
+
+    // Fraction rules
+    group.bench_function("add_fractions_simple", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("1/x + 1/y");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.bench_function("add_fractions_same_denom", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("1/(x+1) + 2/(x+1) + 3/(x+1)");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    // Distribution rules
+    group.bench_function("distribute_simple", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("2*(x + y + z)");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.bench_function("distribute_nested", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("(a+b)*(c+d)*(e+f)");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    // Factoring rules
+    group.bench_function("factor_common", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("2*x + 4*y + 6*z");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    // Root simplification
+    group.bench_function("simplify_sqrt", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("sqrt(50) + sqrt(18)");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.bench_function("simplify_nth_root", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("sqrt(81, 4) * sqrt(16, 4)");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    // Trig evaluation (new data-driven rule)
+    group.bench_function("trig_eval_special_angles", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("sin(0) + cos(pi) + tan(pi/4)");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.bench_function("inverse_trig_eval", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("arcsin(0) + arccos(1) + arctan(1)");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    // Exponent rules
+    group.bench_function("power_of_power", |b| {
+        b.iter(|| {
+            let (mut simplifier, input) = setup_bench("(x^2)^3 * (y^3)^2");
+            black_box(simplifier.simplify(input));
+        })
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     benchmark_parser,
@@ -142,6 +224,7 @@ criterion_group!(
     benchmark_rational_simplification,
     benchmark_calculus_operations,
     benchmark_solver,
-    benchmark_stress
+    benchmark_stress,
+    benchmark_individual_rules
 );
 criterion_main!(benches);

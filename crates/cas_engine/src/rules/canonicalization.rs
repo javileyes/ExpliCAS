@@ -38,7 +38,7 @@ define_rule!(
                 let normalized_n = if neg_n.is_zero() {
                     num_rational::BigRational::from_integer(0.into())
                 } else {
-                    neg_n.clone()
+                    neg_n
                 };
 
                 let new_expr = ctx.add(Expr::Number(normalized_n.clone()));
@@ -387,7 +387,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
                 // We want 1/n.
                 // Ratio::recip() exists.
                 let inv = n.recip();
-                let inv_expr = ctx.add(Expr::Number(inv.clone()));
+                let inv_expr = ctx.add(Expr::Number(inv));
                 let new_expr = ctx.add(Expr::Mul(inv_expr, lhs));
                 return Some(Rewrite {
                     new_expr,
@@ -446,7 +446,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                 let new_expr = ctx.add(Expr::Pow(args[0], exp));
                 return Some(Rewrite {
                     new_expr,
-                    description: format!("sqrt(x, n) = x^(1/n)"),
+                    description: "sqrt(x, n) = x^(1/n)".to_string(),
                 before_local: None,
                 after_local: None,
             });
@@ -458,7 +458,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
             let new_expr = ctx.add(Expr::Pow(args[0], exp));
             return Some(Rewrite {
                 new_expr,
-                description: format!("root(x, n) = x^(1/n)"),
+                description: "root(x, n) = x^(1/n)".to_string(),
                 before_local: None,
                 after_local: None,
             });

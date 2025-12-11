@@ -28,9 +28,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
         None
     };
 
-    if inner.is_none() {
-        return None;
-    }
+    inner?;
     let inner = inner.unwrap();
     let inner_data = ctx.get(inner).clone();
     //println!("RootDenesting checking inner: {:?}", inner_data);
@@ -123,10 +121,10 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                 let val_c2 = val_c * val_c;
                 let val_beff = val_c2 * val_d;
                 let val_a2 = val_a * val_a;
-                let val_delta = val_a2 - val_beff.clone();
+                let val_delta = val_a2 - val_beff;
 
-                if val_delta >= num_rational::BigRational::zero() {
-                    if val_delta.is_integer() {
+                if val_delta >= num_rational::BigRational::zero()
+                    && val_delta.is_integer() {
                         let int_delta = val_delta.to_integer();
                         let sqrt_delta = int_delta.sqrt();
 
@@ -182,7 +180,6 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                             });
                         }
                     }
-                }
             }
         }
         None

@@ -215,46 +215,40 @@ pub fn should_preserve_trig_function(
     // Step 2: Check if this squared term is in a Pythagorean pattern
     // Look through ALL ancestors to find Sub expressions that might contain our squared term
     for &ancestor in ancestors {
-        match ctx.get(ancestor) {
-            Expr::Sub(left, right) => {
-                // println!(
-                //     "      Found Sub ancestor: left={:?} right={:?}",
-                //     left, right
-                // );
-                // println!("        left expr: {:?}", ctx.get(*left));
-                // println!("        right expr: {:?}", ctx.get(*right));
+        if let Expr::Sub(left, right) = ctx.get(ancestor) {
+            // println!(
+            //     "      Found Sub ancestor: left={:?} right={:?}",
+            //     left, right
+            // );
+            // println!("        left expr: {:?}", ctx.get(*left));
+            // println!("        right expr: {:?}", ctx.get(*right));
 
-                // Check if this Sub is a Pythagorean pattern and contains our squared term
-                let left_id = *left;
-                let right_id = *right;
+            // Check if this Sub is a Pythagorean pattern and contains our squared term
+            let left_id = *left;
+            let right_id = *right;
 
-                // Pattern 1: sec² - tan²
-                if func_name == "tan" && right_id == squared_id {
-                    // println!("        Checking if left is sec²...");
-                    if is_sec_squared(ctx, left_id).is_some() {
-                        // println!("        -> MATCH! Preserving tan");
-                        return true;
-                    }
-                }
-                if func_name == "sec" && left_id == squared_id {
-                    if is_tan_squared(ctx, right_id).is_some() {
-                        return true;
-                    }
-                }
-
-                // Pattern 2: csc² - cot²
-                if func_name == "cot" && right_id == squared_id {
-                    if is_csc_squared(ctx, left_id).is_some() {
-                        return true;
-                    }
-                }
-                if func_name == "csc" && left_id == squared_id {
-                    if is_cot_squared(ctx, right_id).is_some() {
-                        return true;
-                    }
+            // Pattern 1: sec² - tan²
+            if func_name == "tan" && right_id == squared_id {
+                // println!("        Checking if left is sec²...");
+                if is_sec_squared(ctx, left_id).is_some() {
+                    // println!("        -> MATCH! Preserving tan");
+                    return true;
                 }
             }
-            _ => {}
+            if func_name == "sec" && left_id == squared_id
+                && is_tan_squared(ctx, right_id).is_some() {
+                    return true;
+                }
+
+            // Pattern 2: csc² - cot²
+            if func_name == "cot" && right_id == squared_id
+                && is_csc_squared(ctx, left_id).is_some() {
+                    return true;
+                }
+            if func_name == "csc" && left_id == squared_id
+                && is_cot_squared(ctx, right_id).is_some() {
+                    return true;
+                }
         }
     }
 

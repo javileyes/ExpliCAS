@@ -54,8 +54,8 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
 
 define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {
-        if name == "diff" {
-            if args.len() == 2 {
+        if name == "diff"
+            && args.len() == 2 {
                 let target = args[0];
                 let var_expr = args[1];
                 if let Expr::Variable(var_name) = ctx.get(var_expr) {
@@ -77,7 +77,6 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
                     }
                 }
             }
-        }
     }
     None
 });

@@ -65,19 +65,17 @@ impl<'a> SemanticEqualityChecker<'a> {
         if let Expr::Mul(l, r) = expr_a {
             // Check if left is -1 and right equals b
             if let Expr::Number(n) = self.context.get(*l) {
-                if *n == num_rational::BigRational::from_integer((-1).into()) {
-                    if self.are_equal(*r, b) {
+                if *n == num_rational::BigRational::from_integer((-1).into())
+                    && self.are_equal(*r, b) {
                         return true;
                     }
-                }
             }
             // Check if right is -1 and left equals b
             if let Expr::Number(n) = self.context.get(*r) {
-                if *n == num_rational::BigRational::from_integer((-1).into()) {
-                    if self.are_equal(*l, b) {
+                if *n == num_rational::BigRational::from_integer((-1).into())
+                    && self.are_equal(*l, b) {
                         return true;
                     }
-                }
             }
         }
 

@@ -1403,7 +1403,7 @@ define_rule!(
                                 let base_term = ctx.add(Expr::Sub(one, sin_sq));
 
                                 let half_n =
-                                    n.clone() / num_rational::BigRational::from_integer(2.into());
+                                    n / num_rational::BigRational::from_integer(2.into());
 
                                 if half_n.is_one() {
                                     return Some(Rewrite {

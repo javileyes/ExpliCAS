@@ -99,12 +99,11 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
         }
 
         // === Filter trivial power evaluations like 1^2 → 1 ===
-        if current.rule_name == "Evaluate Numeric Power" {
-            if current.description.contains("1^") && current.description.contains("-> 1") {
+        if current.rule_name == "Evaluate Numeric Power"
+            && current.description.contains("1^") && current.description.contains("-> 1") {
                 i += 1;
                 continue;
             }
-        }
 
         optimized.push(current.clone());
         i += 1;

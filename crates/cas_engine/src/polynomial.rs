@@ -507,7 +507,7 @@ fn get_factors(n: &num_bigint::BigInt) -> Vec<num_bigint::BigInt> {
                 factors.push(div);
             }
         }
-        i = i + &one;
+        i += &one;
     }
     factors
 }

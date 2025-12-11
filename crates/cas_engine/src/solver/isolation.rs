@@ -87,7 +87,7 @@ pub fn isolate(
                                 id: r
                             }
                         ),
-                        equation_after: new_eq.clone(),
+                        equation_after: new_eq,
                     });
                 }
                 let results = isolate(l, sim_rhs, op, var, simplifier)?;
@@ -110,7 +110,7 @@ pub fn isolate(
                                 id: l
                             }
                         ),
-                        equation_after: new_eq.clone(),
+                        equation_after: new_eq,
                     });
                 }
                 let results = isolate(r, sim_rhs, op, var, simplifier)?;
@@ -137,7 +137,7 @@ pub fn isolate(
                                 id: r
                             }
                         ),
-                        equation_after: new_eq.clone(),
+                        equation_after: new_eq,
                     });
                 }
                 let results = isolate(l, sim_rhs, op, var, simplifier)?;
@@ -162,7 +162,7 @@ pub fn isolate(
                                 id: l
                             }
                         ),
-                        equation_after: new_eq.clone(),
+                        equation_after: new_eq,
                     });
                 }
                 let results = isolate(r, sim_rhs, new_op, var, simplifier)?;
@@ -312,7 +312,7 @@ pub fn isolate(
             if contains_var(&simplifier.context, l, var) {
                 // A = RHS / B
                 // Check if B is negative constant to flip inequality
-                let mut new_op = op.clone();
+                let mut new_op = op;
                 if is_negative(&simplifier.context, r) {
                     new_op = flip_inequality(new_op);
                 }
@@ -332,14 +332,14 @@ pub fn isolate(
                                 id: r
                             }
                         ),
-                        equation_after: new_eq.clone(),
+                        equation_after: new_eq,
                     });
                 }
                 let results = isolate(l, new_rhs, new_op, var, simplifier)?;
                 prepend_steps(results, steps)
             } else {
                 // B = RHS / A
-                let mut new_op = op.clone();
+                let mut new_op = op;
                 if is_negative(&simplifier.context, l) {
                     new_op = flip_inequality(new_op);
                 }
@@ -359,7 +359,7 @@ pub fn isolate(
                                 id: l
                             }
                         ),
-                        equation_after: new_eq.clone(),
+                        equation_after: new_eq,
                     });
                 }
                 let results = isolate(r, new_rhs, new_op, var, simplifier)?;
@@ -447,16 +447,16 @@ pub fn isolate(
                         equation_after: Equation {
                             lhs: l,
                             rhs: sim_rhs,
-                            op: op.clone(),
+                            op,
                         },
                     });
                     all_steps.extend(steps_neg);
 
-                    return Ok((final_set, all_steps));
+                    Ok((final_set, all_steps))
                 } else {
                     // A = RHS * B
                     // Check if B is negative constant to flip inequality
-                    let mut new_op = op.clone();
+                    let mut new_op = op;
                     if is_negative(&simplifier.context, r) {
                         new_op = flip_inequality(new_op);
                     }
@@ -476,7 +476,7 @@ pub fn isolate(
                                     id: r
                                 }
                             ),
-                            equation_after: new_eq.clone(),
+                            equation_after: new_eq,
                         });
                     }
                     let results = isolate(l, new_rhs, new_op, var, simplifier)?;
@@ -577,7 +577,7 @@ pub fn isolate(
                             equation_after: Equation {
                                 lhs: r,
                                 rhs: sim_rhs,
-                                op: op.clone(),
+                                op,
                             },
                         }); // Dummy eq
                         all_steps.extend(steps_neg);
@@ -595,7 +595,7 @@ pub fn isolate(
                                 id: r
                             }
                         ),
-                        equation_after: new_eq.clone(),
+                        equation_after: new_eq,
                     });
                 }
                 let results = isolate(r, sim_rhs, op, var, simplifier)?;
@@ -639,7 +639,7 @@ pub fn isolate(
                                 equation_after: Equation {
                                     lhs,
                                     rhs,
-                                    op: op.clone(),
+                                    op,
                                 }, // No change
                             });
                         }
@@ -670,7 +670,7 @@ pub fn isolate(
                                     id: e
                                 }
                             ),
-                            equation_after: new_eq.clone(),
+                            equation_after: new_eq,
                         });
                     }
 
@@ -697,12 +697,12 @@ pub fn isolate(
                                     id: e
                                 }
                             ),
-                            equation_after: new_eq.clone(),
+                            equation_after: new_eq,
                         });
                     }
 
                     // Check if exponent is negative to flip inequality
-                    let mut new_op = op.clone();
+                    let mut new_op = op;
                     if is_negative(&simplifier.context, e) {
                         new_op = flip_inequality(new_op);
                     }
@@ -729,7 +729,7 @@ pub fn isolate(
                                 id: b
                             }
                         ),
-                        equation_after: new_eq.clone(),
+                        equation_after: new_eq,
                     });
                 }
                 let results = isolate(e, new_rhs, op, var, simplifier)?;
@@ -747,7 +747,7 @@ pub fn isolate(
                 // Branch 1: Positive case (A op B)
                 let eq1 = Equation {
                     lhs: arg,
-                    rhs: rhs,
+                    rhs,
                     op: op.clone(),
                 };
                 let mut steps1 = steps.clone();
@@ -765,7 +765,7 @@ pub fn isolate(
                                 id: rhs
                             }
                         ),
-                        equation_after: eq1.clone(),
+                        equation_after: eq1,
                     });
                 }
                 let results1 = isolate(arg, rhs, op.clone(), var, simplifier)?;
@@ -806,7 +806,7 @@ pub fn isolate(
                                 id: neg_rhs
                             }
                         ),
-                        equation_after: eq2.clone(),
+                        equation_after: eq2,
                     });
                 }
                 let results2 = isolate(arg, neg_rhs, op2, var, simplifier)?;
@@ -850,7 +850,7 @@ pub fn isolate(
                                     id: base
                                 }
                             ),
-                            equation_after: new_eq.clone(),
+                            equation_after: new_eq,
                         });
                     }
                     let results = isolate(arg, new_rhs, op, var, simplifier)?;
@@ -869,7 +869,7 @@ pub fn isolate(
                     if simplifier.collect_steps {
                         steps.push(SolveStep {
                             description: "Isolate base of logarithm".to_string(),
-                            equation_after: new_eq.clone(),
+                            equation_after: new_eq,
                         });
                     }
                     let results = isolate(base, new_rhs, op, var, simplifier)?;
@@ -895,7 +895,7 @@ pub fn isolate(
                             if simplifier.collect_steps {
                                 steps.push(SolveStep {
                                     description: "Exponentiate both sides with base e".to_string(),
-                                    equation_after: new_eq.clone(),
+                                    equation_after: new_eq,
                                 });
                             }
                             let results = isolate(arg, new_rhs, op, var, simplifier)?;
@@ -913,7 +913,7 @@ pub fn isolate(
                             if simplifier.collect_steps {
                                 steps.push(SolveStep {
                                     description: "Take natural log of both sides".to_string(),
-                                    equation_after: new_eq.clone(),
+                                    equation_after: new_eq,
                                 });
                             }
                             let results = isolate(arg, new_rhs, op, var, simplifier)?;
@@ -930,7 +930,7 @@ pub fn isolate(
                             if simplifier.collect_steps {
                                 steps.push(SolveStep {
                                     description: "Square both sides".to_string(),
-                                    equation_after: new_eq.clone(),
+                                    equation_after: new_eq,
                                 });
                             }
                             let results = isolate(arg, new_rhs, op, var, simplifier)?;
@@ -949,7 +949,7 @@ pub fn isolate(
                             if simplifier.collect_steps {
                                 steps.push(SolveStep {
                                     description: "Take arcsin of both sides".to_string(),
-                                    equation_after: new_eq.clone(),
+                                    equation_after: new_eq,
                                 });
                             }
 
@@ -973,7 +973,7 @@ pub fn isolate(
                             if simplifier.collect_steps {
                                 steps.push(SolveStep {
                                     description: "Take arccos of both sides".to_string(),
-                                    equation_after: new_eq.clone(),
+                                    equation_after: new_eq,
                                 });
                             }
 
@@ -997,7 +997,7 @@ pub fn isolate(
                             if simplifier.collect_steps {
                                 steps.push(SolveStep {
                                     description: "Take arctan of both sides".to_string(),
-                                    equation_after: new_eq.clone(),
+                                    equation_after: new_eq,
                                 });
                             }
 
@@ -1039,7 +1039,7 @@ pub fn isolate(
             if simplifier.collect_steps {
                 steps.push(SolveStep {
                     description: "Multiply both sides by -1 (flips inequality)".to_string(),
-                    equation_after: new_eq.clone(),
+                    equation_after: new_eq,
                 });
             }
 
@@ -1084,7 +1084,7 @@ pub fn simplify_rhs(
             steps.push(SolveStep {
                 description: step.description,
                 equation_after: Equation {
-                    lhs: lhs,
+                    lhs,
                     rhs: step.after, // This is correct, each step produces a new RHS
                     op: op.clone(),
                 },

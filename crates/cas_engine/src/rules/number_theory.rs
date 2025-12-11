@@ -392,8 +392,8 @@ fn compute_factorial(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let mut res = BigInt::one();
     let mut i = BigInt::one();
     while i <= val {
-        res = res * &i;
-        i = i + 1;
+        res *= &i;
+        i += 1;
     }
 
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
@@ -416,7 +416,7 @@ fn compute_choose(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
     let k_eff = if &val_k * 2 > val_n {
         &val_n - &val_k
     } else {
-        val_k.clone()
+        val_k
     };
 
     // Compute: n * (n-1) * ... * (n-k+1) / k!
@@ -425,9 +425,9 @@ fn compute_choose(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
 
     let mut i = BigInt::zero();
     while i < k_eff {
-        num = num * (&val_n - &i);
-        den = den * (&i + 1);
-        i = i + 1;
+        num *= &val_n - &i;
+        den *= &i + 1;
+        i += 1;
     }
 
     let res = num / den;
@@ -450,8 +450,8 @@ fn compute_perm(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
     let mut res = BigInt::one();
     let mut i = BigInt::zero();
     while i < val_k {
-        res = res * (&val_n - &i);
-        i = i + 1;
+        res *= &val_n - &i;
+        i += 1;
     }
 
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))

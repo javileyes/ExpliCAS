@@ -140,7 +140,7 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
             if n.is_integer() && !n.is_negative() {
                 if let Some(n_val) = n.to_integer().to_u32() {
                     // Limit expansion
-                    if n_val >= 2 && n_val <= 10 {
+                    if (2..=10).contains(&n_val) {
                         // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
                         let mut terms = Vec::new();
                         for k in 0..=n_val {

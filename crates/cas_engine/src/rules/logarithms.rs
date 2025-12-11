@@ -65,7 +65,7 @@ define_rule!(
                                 let mut temp = b_int.clone();
                                 let mut power = 1;
                                 while temp < n_int {
-                                    temp = temp * &b_int;
+                                    temp *= &b_int;
                                     power += 1;
                                 }
                                 if temp == n_int {

@@ -80,16 +80,14 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
         let term = if is_one_term(ctx, term_part) {
             // Just the coefficient (constant term)
             ctx.add(Expr::Number(coeff))
+        } else if coeff.is_one() {
+            term_part
+        } else if coeff == BigRational::from_integer((-1).into()) {
+            // Use Neg(x) instead of Mul(-1, x) for conciseness
+            ctx.add(Expr::Neg(term_part))
         } else {
-            if coeff.is_one() {
-                term_part
-            } else if coeff == BigRational::from_integer((-1).into()) {
-                // Use Neg(x) instead of Mul(-1, x) for conciseness
-                ctx.add(Expr::Neg(term_part))
-            } else {
-                let coeff_expr = ctx.add(Expr::Number(coeff));
-                ctx.add(Expr::Mul(coeff_expr, term_part))
-            }
+            let coeff_expr = ctx.add(Expr::Number(coeff));
+            ctx.add(Expr::Mul(coeff_expr, term_part))
         };
         new_terms.push(term);
     }
