@@ -1027,6 +1027,7 @@ impl Repl {
 
         println!("Analysis & Verification:");
         println!("  explain <function>      Show step-by-step explanation");
+        println!("  telescope <expr>        Prove telescoping identities (Dirichlet kernel)");
         println!("  steps <level>           Set step verbosity (normal, succinct, verbose, none)");
         println!();
 

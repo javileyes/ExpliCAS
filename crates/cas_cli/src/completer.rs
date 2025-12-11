@@ -39,6 +39,7 @@ impl CasHelper {
                 "profile".to_string(),
                 "visualize".to_string(),
                 "timeline".to_string(),
+                "telescope".to_string(),
                 "quit".to_string(),
                 "exit".to_string(),
             ],

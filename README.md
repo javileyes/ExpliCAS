@@ -372,6 +372,34 @@ Handles polynomial division and simplification.
 ```
 **Output:** `x^2 + x + 1`
 
+#### 5. Trigonometric Summation (Dirichlet Kernel)
+Automatically proves telescoping identities using pattern detection:
+```text
+> 1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)
+Steps:
+1. Dirichlet Kernel Identity: 1 + 2Σcos(kx) = sin((n+½)x)/sin(x/2) for n=2
+   [Trig Summation Identity]
+Result: 0
+```
+
+For detailed step-by-step proof, use the `telescope` command:
+```text
+> telescope 1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)
+
+═══════════════════════════════════════════════════════════════
+                TELESCOPING PROOF
+═══════════════════════════════════════════════════════════════
+
+Step 1: Dirichlet Kernel Identity: 1 + 2Σcos(kx) = sin((n+½)x)/sin(x/2) for n=2
+  Before: 2·cos(2x) + 1 + 2·cos(x) - sin(5x/2)/sin(x/2)
+  After:  0
+
+✓ PROVED: Expression equals 0 by telescoping cancellation
+═══════════════════════════════════════════════════════════════
+```
+
+**Supported patterns:** `1 + 2*cos(x) + 2*cos(2x) + ... + 2*cos(nx) - sin((n+½)x)/sin(x/2)`
+
 ### Configuration & Rule Toggling
  
 You can dynamically enable or disable specific simplification rules directly from the CLI. This is useful for educational purposes (showing intermediate steps without full simplification) or for debugging.
