@@ -11,9 +11,9 @@ define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: lhs,
                     description: "x + 0 = x".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
         if let Expr::Number(n) = ctx.get(lhs) {
@@ -21,9 +21,9 @@ define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: rhs,
                     description: "0 + x = x".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
     }
@@ -41,9 +41,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: lhs,
                         description: "x * 1 = x".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
             if let Expr::Number(n) = ctx.get(lhs) {
@@ -51,9 +51,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: rhs,
                         description: "1 * x = x".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -73,9 +73,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: zero,
                         description: "x * 0 = 0".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
             if let Expr::Number(n) = ctx.get(lhs) {
@@ -84,9 +84,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: zero,
                         description: "0 * x = 0".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -112,9 +112,9 @@ define_rule!(DivZeroRule, "Zero Property of Division", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: zero,
                     description: "0 / x = 0".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
     }
@@ -134,9 +134,9 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: format!("{} + {} = {}", n1, n2, sum),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
             // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
             if let Expr::Number(n1) = lhs_data {
@@ -149,9 +149,9 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         return Some(Rewrite {
                             new_expr,
                             description: format!("Combine nested constants: {} + {}", n1, n2),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
                 }
             }
@@ -165,9 +165,9 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: format!("{} * {} = {}", n1, n2, prod),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
             // Handle nested: c1 * (c2 * x) -> (c1*c2) * x
             if let Expr::Number(ref n1) = lhs_data {
@@ -180,9 +180,9 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         return Some(Rewrite {
                             new_expr,
                             description: format!("Combine nested constants: {} * {}", n1, n2),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
                 }
             }
@@ -202,9 +202,9 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                     "{} * (x / {}) -> ({} / {}) * x",
                                     n1, n2, n1, n2
                                 ),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -219,9 +219,9 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: format!("{} - {} = {}", n1, n2, diff),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
         Expr::Div(lhs, rhs) => {
@@ -234,17 +234,17 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: format!("{} / {} = {}", n1, n2, quot),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 } else {
                     let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
                     return Some(Rewrite {
                         new_expr: undef,
                         description: "Division by zero".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
 
@@ -263,9 +263,9 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
 
                         // Case 2: (x * c) / d
@@ -276,9 +276,9 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -384,9 +384,9 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: ctx.num(0),
                     description: "a + (-a) = 0".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
         if let Expr::Neg(neg_inner) = ctx.get(*l) {
@@ -395,17 +395,17 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: ctx.num(0),
                     description: "(-a) + a = 0".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
     }
     None
 });
 
-/// Simplify sums of fractions in exponents: x^(1/2 + 1/3) → x^(5/6)
-/// This makes the fraction sum visible as a step in the timeline.
+// Simplify sums of fractions in exponents: x^(1/2 + 1/3) → x^(5/6)
+// This makes the fraction sum visible as a step in the timeline.
 define_rule!(
     SimplifyNumericExponentsRule,
     "Sum Exponents",
@@ -478,9 +478,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: new_pow,
                     description: format!("{} = {}", addend_strs.join(" + "), sum_str),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
         None

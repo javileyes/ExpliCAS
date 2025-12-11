@@ -122,9 +122,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: new_fn,
                     description: format!("{} → {}", name_clone, canonical),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
         None
@@ -321,7 +321,6 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
 
 // NEVER convert reciprocal trig if it's a composition with inverse trig
 // This preserves tan(arctan(x)) → x simplifications
-///
 // Priority: HIGHEST (register first)
 define_rule!(
     PreserveCompositionRule,
@@ -368,9 +367,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: ctx.num(1),
                         description: "sec²(x) - tan²(x) = 1".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -396,9 +395,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: ctx.num(1),
                         description: "csc²(x) - cot²(x) = 1".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -425,9 +424,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: sec_squared,
                         description: "1 + tan²(x) = sec²(x)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             } else if is_one(ctx, r_val) {
                 if let Some(tan_arg) = is_function_squared(ctx, l_val, "tan") {
@@ -437,9 +436,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: sec_squared,
                         description: "1 + tan²(x) = sec²(x)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -465,9 +464,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: csc_squared,
                         description: "1 + cot²(x) = csc²(x)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             } else if is_one(ctx, r_val) {
                 if let Some(cot_arg) = is_function_squared(ctx, l_val, "cot") {
@@ -477,9 +476,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr: csc_squared,
                         description: "1 + cot²(x) = csc²(x)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -517,9 +516,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: ctx.num(0),
                                 description: "sec²(x) - tan²(x) - 1 = 0".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -529,7 +528,7 @@ define_rule!(
     }
 );
 
-// csc²(x) - cot²(x) - 1 → 0  
+// csc²(x) - cot²(x) - 1 → 0
 define_rule!(
     CscCotMinusOneIdentityRule,
     "csc²(x) - cot²(x) - 1 = 0",
@@ -552,9 +551,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr: ctx.num(0),
                                 description: "csc²(x) - cot²(x) - 1 = 0".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -598,9 +597,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: ctx.num(1),
                     description: "Reciprocal trig product = 1".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
         None
@@ -652,9 +651,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: result,
                     description: "Convert mixed trig fraction to sin/cos".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
         None
