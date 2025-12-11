@@ -1,8 +1,6 @@
 
 #[test]
-fn test_canonicalized_conj
-
-ugate_add_add() {
+fn test_canonicalized_conjugate_add_add() {
     let mut ctx = Context::new();
     // After canonicalization, (x-1)*(x+1) becomes (-1+x)*(1+x)
     // This should still be detected as canonical
