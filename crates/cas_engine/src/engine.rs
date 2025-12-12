@@ -402,13 +402,56 @@ fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Opti
                 args.iter().map(|a| eval_f64(ctx, *a, var_map)).collect();
             let arg_vals = arg_vals?;
             match name.as_str() {
+                // Basic trig
                 "sin" => Some(arg_vals.first()?.sin()),
                 "cos" => Some(arg_vals.first()?.cos()),
                 "tan" => Some(arg_vals.first()?.tan()),
+
+                // Reciprocal trig
+                "sec" => Some(1.0 / arg_vals.first()?.cos()),
+                "csc" => Some(1.0 / arg_vals.first()?.sin()),
+                "cot" => Some(1.0 / arg_vals.first()?.tan()),
+
+                // Inverse trig
+                "asin" | "arcsin" => Some(arg_vals.first()?.asin()),
+                "acos" | "arccos" => Some(arg_vals.first()?.acos()),
+                "atan" | "arctan" => Some(arg_vals.first()?.atan()),
+
+                // Hyperbolic
+                "sinh" => Some(arg_vals.first()?.sinh()),
+                "cosh" => Some(arg_vals.first()?.cosh()),
+                "tanh" => Some(arg_vals.first()?.tanh()),
+
+                // Inverse hyperbolic
+                "asinh" | "arcsinh" => Some(arg_vals.first()?.asinh()),
+                "acosh" | "arccosh" => Some(arg_vals.first()?.acosh()),
+                "atanh" | "arctanh" => Some(arg_vals.first()?.atanh()),
+
+                // Exponential and logarithm
                 "exp" => Some(arg_vals.first()?.exp()),
                 "ln" => Some(arg_vals.first()?.ln()),
+                // log(base, arg) -> ln(arg) / ln(base)
+                "log" => {
+                    if arg_vals.len() == 2 {
+                        let base = arg_vals[0];
+                        let arg = arg_vals[1];
+                        Some(arg.ln() / base.ln())
+                    } else if arg_vals.len() == 1 {
+                        // log(x) = log base 10
+                        Some(arg_vals[0].log10())
+                    } else {
+                        None
+                    }
+                }
+
+                // Other
                 "sqrt" => Some(arg_vals.first()?.sqrt()),
                 "abs" => Some(arg_vals.first()?.abs()),
+                "floor" => Some(arg_vals.first()?.floor()),
+                "ceil" => Some(arg_vals.first()?.ceil()),
+                "round" => Some(arg_vals.first()?.round()),
+                "sign" | "sgn" => Some(arg_vals.first()?.signum()),
+
                 _ => None,
             }
         }
