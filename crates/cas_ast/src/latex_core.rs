@@ -203,6 +203,18 @@ pub trait LaTeXRenderer {
 
     /// Format multiplication with explicit cdot
     fn format_mul(&self, l: ExprId, r: ExprId, parent_needs_parens: bool) -> String {
+        // Skip multiplication by 1: 1 * x = x, x * 1 = x
+        if let Expr::Number(n) = self.context().get(l) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.expr_to_latex(r, parent_needs_parens);
+            }
+        }
+        if let Expr::Number(n) = self.context().get(r) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.expr_to_latex(l, parent_needs_parens);
+            }
+        }
+
         let left = self.expr_to_latex_mul(l);
         let right = self.expr_to_latex_mul(r);
 
