@@ -492,21 +492,8 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                     }
                     (e, one, false)
                 }
-                // Handle Number(n/d) as a fraction when denominator != 1
-                Expr::Number(n) => {
-                    if !n.denom().is_one() {
-                        // This is a rational like 1/2. Treat as fraction.
-                        let num_val = ctx.add(Expr::Number(
-                            num_rational::BigRational::from_integer(n.numer().clone()),
-                        ));
-                        let den_val = ctx.add(Expr::Number(
-                            num_rational::BigRational::from_integer(n.denom().clone()),
-                        ));
-                        (num_val, den_val, true)
-                    } else {
-                        (e, one, false)
-                    }
-                }
+                // NOTE: Handling Number(n/d) as fraction was causing stack overflow in solve tests
+                // because the new fractions would re-match the rule. Removed for now.
                 _ => (e, one, false),
             }
         };
