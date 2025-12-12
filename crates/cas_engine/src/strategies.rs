@@ -122,8 +122,6 @@ pub fn simplify_polynomial(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step
         }
     }
 
-    
-
     if chosen == factored {
         if factored != simplified_expanded {
             steps.push(Step::new(
@@ -157,6 +155,15 @@ pub fn filter_non_productive_steps(
     let mut current_global = original;
 
     for step in steps {
+        // FIRST: Check for didactically important steps that should always be kept
+        // These bypass ALL filtering because they're pedagogically valuable
+        if step.rule_name == "Sum Exponents" || step.rule_name == "Evaluate Numeric Power" {
+            let global_after = reconstruct_global(ctx, current_global, &step.path, step.after);
+            filtered.push(step);
+            current_global = global_after;
+            continue;
+        }
+
         // Filter local no-op steps: if step.before == step.after semantically, skip
         {
             let checker = crate::semantic_equality::SemanticEqualityChecker::new(ctx);
@@ -186,15 +193,6 @@ pub fn filter_non_productive_steps(
                 // Display no-op - same string representation
                 continue;
             }
-        }
-
-        // Always keep Sum Exponents steps - they're didactically important
-        // even though x^(1/2+1/3) and x^(5/6) are semantically equivalent
-        if step.rule_name == "Sum Exponents" {
-            let global_after = reconstruct_global(ctx, current_global, &step.path, step.after);
-            filtered.push(step);
-            current_global = global_after;
-            continue;
         }
 
         let global_after = reconstruct_global(ctx, current_global, &step.path, step.after);

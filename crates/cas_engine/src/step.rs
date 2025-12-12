@@ -108,6 +108,12 @@ impl Step {
             return ImportanceLevel::Trivial;
         }
 
+        // EXCEPTION: Evaluate Numeric Power is didactically important
+        // e.g., sqrt(12) → 2*√3 shows root simplification which students should see
+        if self.rule_name == "Evaluate Numeric Power" {
+            return ImportanceLevel::Medium;
+        }
+
         // Low importance - internal reorganizations, not pedagogically valuable
         if self.rule_name.contains("Combine Constants")
             || self.rule_name.contains("Evaluate")

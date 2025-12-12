@@ -371,9 +371,7 @@ impl Simplifier {
     pub fn are_equivalent(&mut self, a: ExprId, b: ExprId) -> bool {
         let diff = self.context.add(Expr::Sub(a, b));
         let expand_str = "expand".to_string();
-        let expanded_diff = self
-            .context
-            .add(Expr::Function(expand_str, vec![diff]));
+        let expanded_diff = self.context.add(Expr::Function(expand_str, vec![diff]));
         let (simplified_diff, _) = self.simplify(expanded_diff);
 
         let result_expr = {
@@ -775,15 +773,22 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         rule.apply(self.context, expr_id, &self.initial_parent_ctx)
                     {
                         // Check semantic equality - skip if no real change
-                        use crate::semantic_equality::SemanticEqualityChecker;
-                        let checker = SemanticEqualityChecker::new(self.context);
-                        if checker.are_equal(expr_id, rewrite.new_expr) {
-                            debug!(
-                                "{}[DEBUG] Rule '{}' produced semantically equal result, skipping",
-                                self.indent(),
-                                rule.name()
-                            );
-                            continue;
+                        // EXCEPTION: Didactic rules should always generate steps
+                        // even if result is semantically equivalent (e.g., sqrt(12) → 2*√3)
+                        let is_didactic_rule = rule.name() == "Evaluate Numeric Power"
+                            || rule.name() == "Sum Exponents";
+
+                        if !is_didactic_rule {
+                            use crate::semantic_equality::SemanticEqualityChecker;
+                            let checker = SemanticEqualityChecker::new(self.context);
+                            if checker.are_equal(expr_id, rewrite.new_expr) {
+                                debug!(
+                                    "{}[DEBUG] Rule '{}' produced semantically equal result, skipping",
+                                    self.indent(),
+                                    rule.name()
+                                );
+                                continue;
+                            }
                         }
 
                         // Record rule application for profiling

@@ -20,8 +20,11 @@ pub fn optimize_steps_semantic(
     final_expr: ExprId,
 ) -> StepOptimizationResult {
     // Check if there are didactically important steps that should always be shown
-    // Sum Exponents is didactically important even if x^(1/2+1/3) == x^(5/6) semantically
-    let has_didactic_steps = steps.iter().any(|s| s.rule_name == "Sum Exponents");
+    // - Sum Exponents is didactically important even if x^(1/2+1/3) == x^(5/6) semantically
+    // - Evaluate Numeric Power shows root simplification like sqrt(12) → 2*√3
+    let has_didactic_steps = steps
+        .iter()
+        .any(|s| s.rule_name == "Sum Exponents" || s.rule_name == "Evaluate Numeric Power");
 
     // First check if the entire simplification was a no-op
     // Use the lax cycle check that considers Sub(a,b) equal to Add(-b,a)
@@ -100,10 +103,12 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
 
         // === Filter trivial power evaluations like 1^2 → 1 ===
         if current.rule_name == "Evaluate Numeric Power"
-            && current.description.contains("1^") && current.description.contains("-> 1") {
-                i += 1;
-                continue;
-            }
+            && current.description.contains("1^")
+            && current.description.contains("-> 1")
+        {
+            i += 1;
+            continue;
+        }
 
         optimized.push(current.clone());
         i += 1;

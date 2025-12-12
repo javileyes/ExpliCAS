@@ -57,16 +57,17 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
         // Case 1: Both are powers with same base: x^a * x^b
         if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
             if compare_expr(ctx, *base1, *base2) == Ordering::Equal
-                && should_combine(ctx, *base1, *exp1, *exp2) {
-                    let sum_exp = add_exp(ctx, *exp1, *exp2);
-                    let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Combine powers with same base".to_string(),
-                before_local: None,
-                after_local: None,
-            });
-                }
+                && should_combine(ctx, *base1, *exp1, *exp2)
+            {
+                let sum_exp = add_exp(ctx, *exp1, *exp2);
+                let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Combine powers with same base".to_string(),
+                    before_local: None,
+                    after_local: None,
+                });
+            }
         }
         // Case 2: One is power, one is base: x^a * x -> x^(a+1)
         // Left is power
@@ -79,9 +80,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine power and base".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -95,9 +96,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine base and power".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -125,9 +126,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "Combine nested identical terms".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             // x^a * (x^b * y) -> x^(a+b) * y
@@ -150,9 +151,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine nested powers".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
 
@@ -166,9 +167,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine base and nested power".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
 
@@ -182,9 +183,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine power and nested base".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
 
@@ -215,9 +216,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                             return Some(Rewrite {
                                 new_expr,
                                 description: "Combine coeff-power and power".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
 
@@ -232,9 +233,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                             return Some(Rewrite {
                                 new_expr,
                                 description: "Combine coeff-power and base".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -260,9 +261,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                             return Some(Rewrite {
                                 new_expr,
                                 description: "Combine coeff-base and power".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -278,9 +279,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine nested base and power".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -317,9 +318,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine powers with same exponent".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
 
@@ -341,9 +342,9 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: "Combine nested powers with same exponent".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -382,9 +383,9 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "Power of power with even root: (x^2k)^(1/2) -> |x|^k".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
@@ -427,9 +428,9 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                         return Some(Rewrite {
                             new_expr: undef,
                             description: "Division by zero".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
 
                     // b^e_i32
@@ -439,9 +440,9 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: format!("Evaluate power: {}^{}", b, e),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
 
@@ -478,9 +479,9 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                             return Some(Rewrite {
                                 new_expr: coeff_expr,
                                 description: format!("Evaluate perfect root: {}^{}", b, e),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         } else {
                             // Partial root
                             let new_base = ctx.add(Expr::Number(new_base_val));
@@ -489,9 +490,9 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("Simplify root: {}^{}", b, e),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -649,18 +650,18 @@ define_rule!(IdentityPowerRule, "Identity Power", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: base,
                     description: "x^1 -> x".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
             if n.is_zero() {
                 // x^0 -> 1
                 return Some(Rewrite {
                     new_expr: ctx.num(1),
                     description: "x^0 -> 1".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
         // 1^x -> 1
@@ -669,9 +670,9 @@ define_rule!(IdentityPowerRule, "Identity Power", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: ctx.num(1),
                     description: "1^x -> 1".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
     }
@@ -755,9 +756,9 @@ define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
                         return Some(Rewrite {
                             new_expr,
                             description: "(-x)^even -> x^even".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     } else {
                         // (-x)^odd -> -(x^odd)
                         let pow = ctx.add(Expr::Pow(inner, exp));
@@ -765,9 +766,9 @@ define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
                         return Some(Rewrite {
                             new_expr,
                             description: "(-x)^odd -> -(x^odd)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
                 }
             }

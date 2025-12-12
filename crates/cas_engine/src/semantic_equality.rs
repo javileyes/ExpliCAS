@@ -66,16 +66,18 @@ impl<'a> SemanticEqualityChecker<'a> {
             // Check if left is -1 and right equals b
             if let Expr::Number(n) = self.context.get(*l) {
                 if *n == num_rational::BigRational::from_integer((-1).into())
-                    && self.are_equal(*r, b) {
-                        return true;
-                    }
+                    && self.are_equal(*r, b)
+                {
+                    return true;
+                }
             }
             // Check if right is -1 and left equals b
             if let Expr::Number(n) = self.context.get(*r) {
                 if *n == num_rational::BigRational::from_integer((-1).into())
-                    && self.are_equal(*l, b) {
-                        return true;
-                    }
+                    && self.are_equal(*l, b)
+                {
+                    return true;
+                }
             }
         }
 
@@ -278,12 +280,22 @@ impl<'a> SemanticEqualityChecker<'a> {
 
 /// Apply a rule with semantic equality checking
 /// Returns None if the rule produces a semantically equivalent result
+/// EXCEPTION: Didactic rules (like Evaluate Numeric Power) always return results
 pub fn apply_rule_with_semantic_check(
     ctx: &mut Context,
     rule: &dyn Rule,
     expr_id: ExprId,
 ) -> Option<Rewrite> {
     if let Some(rewrite) = rule.apply(ctx, expr_id, &crate::parent_context::ParentContext::root()) {
+        // Didactic rules should always generate steps, even if semantically equivalent
+        // e.g., sqrt(12) → 2*√3 is numerically equivalent but shows simplification
+        let is_didactic_rule =
+            rule.name() == "Evaluate Numeric Power" || rule.name() == "Sum Exponents";
+
+        if is_didactic_rule {
+            return Some(rewrite);
+        }
+
         // Check if the result is semantically different
         let checker = SemanticEqualityChecker::new(ctx);
         if !checker.are_equal(expr_id, rewrite.new_expr) {

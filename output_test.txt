@@ -1,33 +1,11 @@
 ==================================================
 CLI Tests Output - Modo NORMAL
-Fecha: Tue Dec  9 09:26:39 CET 2025
+Fecha: Fri Dec 12 11:30:17 CET 2025
 ==================================================
 
-warning: unnecessary parentheses around block return value
-  --> crates/cas_ast/src/expression.rs:35:9
-   |
-35 |         (self.0 >> Self::TAG_SHIFT)
-   |         ^                         ^
-   |
-   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
-help: remove these parentheses
-   |
-35 -         (self.0 >> Self::TAG_SHIFT)
-35 +         self.0 >> Self::TAG_SHIFT
-   |
-
-warning: `cas_ast` (lib) generated 1 warning (run `cargo fix --lib -p cas_ast` to apply 1 suggestion)
-warning: unused doc comment
-   --> crates/cas_engine/src/rules/trig_canonicalization.rs:322:1
-    |
-322 | ///
-    | ^^^ rustdoc does not generate documentation for macro invocations
-    |
-    = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
-    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
-
-warning: `cas_engine` (lib) generated 1 warning
-    Finished `release` profile [optimized] target(s) in 0.02s
+   Compiling cas_engine v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_engine)
+   Compiling cas_cli v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_cli)
+    Finished `release` profile [optimized] target(s) in 2.23s
      Running `target/release/cas_cli`
 Rust CAS Step-by-Step Demo
 Step-by-step output enabled (Normal).
@@ -36,224 +14,191 @@ Step-by-step output enabled (Normal).
 Parsed: sqrt(12)
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
-   Local: 12^(1/2) -> 2 * 3^(1/2)
-   Global: 2 * 3^(1/2)
+   Rule: 12^(1/2) -> 2 * 3^(1/2)
+   After: 2 * 3^(1/2)
 Result: 2 * 3^(1/2)
 Parsed: sqrt(72)
 Steps (Aggressive Mode):
 1. Simplify root: 72^1/2  [Evaluate Numeric Power]
-   Local: 72^(1/2) -> 6 * 2^(1/2)
-   Global: 6 * 2^(1/2)
+   Rule: 72^(1/2) -> 6 * 2^(1/2)
+   After: 6 * 2^(1/2)
 Result: 6 * 2^(1/2)
 Parsed: 16^(1 / 3)
 Steps (Aggressive Mode):
 1. Simplify root: 16^1/3  [Evaluate Numeric Power]
-   Local: 16^(1/3) -> 2 * 2^(1/3)
-   Global: 2 * 2^(1/3)
+   Rule: 16^(1/3) -> 2 * 2^(1/3)
+   After: 2 * 2^(1/3)
 Result: 2 * 2^(1/3)
 Parsed: 54^(1 / 3)
 Steps (Aggressive Mode):
 1. Simplify root: 54^1/3  [Evaluate Numeric Power]
-   Local: 54^(1/3) -> 3 * 2^(1/3)
-   Global: 3 * 2^(1/3)
+   Rule: 54^(1/3) -> 3 * 2^(1/3)
+   After: 3 * 2^(1/3)
 Result: 3 * 2^(1/3)
 Parsed: 32^(1 / 4)
 Steps (Aggressive Mode):
 1. Simplify root: 32^1/4  [Evaluate Numeric Power]
-   Local: 32^(1/4) -> 2 * 2^(1/4)
-   Global: 2 * 2^(1/4)
+   Rule: 32^(1/4) -> 2 * 2^(1/4)
+   After: 2 * 2^(1/4)
 Result: 2 * 2^(1/4)
 Parsed: 243^(1 / 4)
 Steps (Aggressive Mode):
 1. Simplify root: 243^1/4  [Evaluate Numeric Power]
-   Local: 243^(1/4) -> 3 * 3^(1/4)
-   Global: 3 * 3^(1/4)
+   Rule: 243^(1/4) -> 3 * 3^(1/4)
+   After: 3 * 3^(1/4)
 Result: 3 * 3^(1/4)
 Parsed: sqrt(8 / 9)
 Steps (Aggressive Mode):
-1. 1/9 * 8 = 8/9  [Combine Constants]
-   Local: 1/9 * 8 -> 8/9
-   Global: sqrt(8/9)
-2. Simplify root: 8/9^1/2  [Evaluate Numeric Power]
-   Local: 8/9^(1/2) -> 2/3 * 2^(1/2)
-   Global: 2/3 * 2^(1/2)
+1. Simplify root: 8/9^1/2  [Evaluate Numeric Power]
+   Rule: 8/9^(1/2) -> 2/3 * 2^(1/2)
+   After: 2/3 * 2^(1/2)
 Result: 2/3 * 2^(1/2)
 Parsed: sqrt(12 / 25)
 Steps (Aggressive Mode):
-1. 1/25 * 12 = 12/25  [Combine Constants]
-   Local: 1/25 * 12 -> 12/25
-   Global: sqrt(12/25)
-2. Simplify root: 12/25^1/2  [Evaluate Numeric Power]
-   Local: 12/25^(1/2) -> 2/5 * 3^(1/2)
-   Global: 2/5 * 3^(1/2)
+1. Simplify root: 12/25^1/2  [Evaluate Numeric Power]
+   Rule: 12/25^(1/2) -> 2/5 * 3^(1/2)
+   After: 2/5 * 3^(1/2)
 Result: 2/5 * 3^(1/2)
 Parsed: sqrt(12) + sqrt(27)
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
-   Local: 12^(1/2) -> 2 * 3^(1/2)
-   Global: 12^(1/2) + 2 * 3^(1/2)
+   Rule: 12^(1/2) -> 2 * 3^(1/2)
+   After: 12^(1/2) + 2 * 3^(1/2)
 2. Simplify root: 27^1/2  [Evaluate Numeric Power]
-   Local: 27^(1/2) -> 3 * 3^(1/2)
-   Global: 12^(1/2) + 3 * 3^(1/2)
+   Rule: 27^(1/2) -> 3 * 3^(1/2)
+   After: 12^(1/2) + 3 * 3^(1/2)
 3. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * 3^(1/2) + 3 * 3^(1/2) -> 5 * 3^(1/2)
-   Global: 5 * 3^(1/2)
+   Rule: 2 * 3^(1/2) + 3 * 3^(1/2) -> 5 * 3^(1/2)
+   After: 5 * 3^(1/2)
 Result: 5 * 3^(1/2)
 Parsed: sqrt(2) + sqrt(8)
 Steps (Aggressive Mode):
 1. Simplify root: 8^1/2  [Evaluate Numeric Power]
-   Local: 8^(1/2) -> 2 * 2^(1/2)
-   Global: sqrt(8) + 2 * 2^(1/2)
+   Rule: 8^(1/2) -> 2 * 2^(1/2)
+   After: sqrt(8) + 2 * 2^(1/2)
 2. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2^(1/2) + 2 * 2^(1/2) -> 3 * 2^(1/2)
-   Global: 3 * 2^(1/2)
+   Rule: 2^(1/2) + 2 * 2^(1/2) -> 3 * 2^(1/2)
+   After: 3 * 2^(1/2)
 Result: 3 * 2^(1/2)
 Parsed: 16^(1 / 3) + 54^(1 / 3)
 Steps (Aggressive Mode):
 1. Simplify root: 16^1/3  [Evaluate Numeric Power]
-   Local: 16^(1/3) -> 2 * 2^(1/3)
-   Global: 54^(1 / 3) + 2 * 2^(1/3)
+   Rule: 16^(1/3) -> 2 * 2^(1/3)
+   After: 54^(1 / 3) + 2 * 2^(1/3)
 2. Simplify root: 54^1/3  [Evaluate Numeric Power]
-   Local: 54^(1/3) -> 3 * 2^(1/3)
-   Global: 54^(1 / 3) + 3 * 2^(1/3)
+   Rule: 54^(1/3) -> 3 * 2^(1/3)
+   After: 54^(1 / 3) + 3 * 2^(1/3)
 3. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * 2^(1/3) + 3 * 2^(1/3) -> 5 * 2^(1/3)
-   Global: 5 * 2^(1/3)
+   Rule: 2 * 2^(1/3) + 3 * 2^(1/3) -> 5 * 2^(1/3)
+   After: 5 * 2^(1/3)
 Result: 5 * 2^(1/3)
 Parsed: sqrt(8) / 16^(1 / 3)
 Steps (Aggressive Mode):
 1. Simplify root: 8^1/2  [Evaluate Numeric Power]
-   Local: 8^(1/2) -> 2 * 2^(1/2)
-   Global: 2 * 2^(1/2) / 16^(1 / 3)
+   Rule: 8^(1/2) -> 2 * 2^(1/2)
+   After: 2 * 2^(1/2) / 16^(1 / 3)
 2. Simplify root: 16^1/3  [Evaluate Numeric Power]
-   Local: 16^(1/3) -> 2 * 2^(1/3)
-   Global: 2 * 2^(1/2) / (2 * 2^(1/3))
-3. Cancel common factors (to scalar)  [Cancel Common Factors]
-   Local: 2 * 2^(1/2) / (2 * 2^(1/3)) -> 2^(1/6)
-   Global: 2^(1/6)
+   Rule: 16^(1/3) -> 2 * 2^(1/3)
+   After: 2 * 2^(1/2) / (2 * 2^(1/3))
+3. Cancel common factors  [Cancel Common Factors]
+   Rule: 2 * 2^(1/2) / (2 * 2^(1/3)) -> 2^(1/6) / 1
+   After: 2^(1/6) / 1
 Result: 2^(1/6)
 Parsed: sqrt(32) / sqrt(2)
 Steps (Aggressive Mode):
 1. Simplify root: 32^1/2  [Evaluate Numeric Power]
-   Local: 32^(1/2) -> 4 * 2^(1/2)
-   Global: 4 * 2^(1/2) / sqrt(2)
-2. Cancel common factors (to scalar)  [Cancel Common Factors]
-   Local: 4 * 2^(1/2) / 2^(1/2) -> 4
-   Global: 4
+   Rule: 32^(1/2) -> 4 * 2^(1/2)
+   After: 4 * 2^(1/2) / sqrt(2)
+2. Cancel common factors  [Cancel Common Factors]
+   Rule: 4 * 2^(1/2) / 2^(1/2) -> 4 / 1
+   After: 4 / 1
 Result: 4
 Parsed: (sqrt(12) + sqrt(27)) / sqrt(3)
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
-   Local: 12^(1/2) -> 2 * 3^(1/2)
-   Global: (12^(1/2) + 2 * 3^(1/2)) / sqrt(3)
+   Rule: 12^(1/2) -> 2 * 3^(1/2)
+   After: (12^(1/2) + 2 * 3^(1/2)) / sqrt(3)
 2. Simplify root: 27^1/2  [Evaluate Numeric Power]
-   Local: 27^(1/2) -> 3 * 3^(1/2)
-   Global: (12^(1/2) + 3 * 3^(1/2)) / sqrt(3)
+   Rule: 27^(1/2) -> 3 * 3^(1/2)
+   After: (12^(1/2) + 3 * 3^(1/2)) / sqrt(3)
 3. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * 3^(1/2) + 3 * 3^(1/2) -> 5 * 3^(1/2)
-   Global: 5 * 3^(1/2) / sqrt(3)
-4. Cancel common factors (to scalar)  [Cancel Common Factors]
-   Local: 5 * 3^(1/2) / 3^(1/2) -> 5
-   Global: 5
+   Rule: 2 * 3^(1/2) + 3 * 3^(1/2) -> 5 * 3^(1/2)
+   After: 5 * 3^(1/2) / sqrt(3)
+4. Cancel common factors  [Cancel Common Factors]
+   Rule: 5 * 3^(1/2) / 3^(1/2) -> 5 / 1
+   After: 5 / 1
 Result: 5
 Parsed: sqrt(2) * 2^(1 / 3)
 Steps (Aggressive Mode):
 1. Combine powers with same base  [Product of Powers]
-   Local: 2^(1/3) * 2^(1/2) -> 2^(5/6)
-   Global: 2^(5/6)
+   Rule: 2^(1/3) * 2^(1/2) -> 2^(5/6)
+   After: 2^(5/6)
 Result: 2^(5/6)
 Parsed: sqrt(2) * sqrt(8)
 Steps (Aggressive Mode):
 1. Simplify root: 8^1/2  [Evaluate Numeric Power]
-   Local: 8^(1/2) -> 2 * 2^(1/2)
-   Global: sqrt(8) * 2 * 2^(1/2)
+   Rule: 8^(1/2) -> 2 * 2^(1/2)
+   After: sqrt(8) * 2 * 2^(1/2)
 2. Combine powers with same base  [Product of Powers]
-   Local: 2^(1/2) * 2^(1/2) -> 2^1
-   Global: 2 * 2^1
+   Rule: 2^(1/2) * 2^(1/2) -> 2^1
+   After: 2 * 2^1
 3. Evaluate power: 2^1  [Evaluate Numeric Power]
-   Local: 2^1 -> 2
-   Global: 2 * 2
-4. 2 * 2 = 4  [Combine Constants]
-   Local: 2 * 2 -> 4
-   Global: 4
+   Rule: 2^1 -> 2
+   After: 2 * 2
 Result: 4
 Parsed: sqrt(3200)
 Steps (Aggressive Mode):
 1. Simplify root: 3200^1/2  [Evaluate Numeric Power]
-   Local: 3200^(1/2) -> 40 * 2^(1/2)
-   Global: 40 * 2^(1/2)
+   Rule: 3200^(1/2) -> 40 * 2^(1/2)
+   After: 40 * 2^(1/2)
 Result: 40 * 2^(1/2)
 Parsed: 8000^(1 / 3)
 Steps (Aggressive Mode):
 1. Evaluate perfect root: 8000^1/3  [Evaluate Numeric Power]
-   Local: 8000^(1/3) -> 20
-   Global: 20
+   Rule: 8000^(1/3) -> 20
+   After: 20
 Result: 20
 Parsed: sqrt(8 * x^2)
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
-   Local: (8 * x^2)^(1/2) -> 8^(1/2) * x^2^(1/2)
-   Global: 8^(1/2) * x^2^(1/2)
+   Rule: (8 * x^2)^(1/2) -> 8^(1/2) * x^2^(1/2)
+   After: 8^(1/2) * x^2^(1/2)
 2. Simplify root: 8^1/2  [Evaluate Numeric Power]
-   Local: 8^(1/2) -> 2 * 2^(1/2)
-   Global: x^2^(1/2) * 2 * 2^(1/2)
+   Rule: 8^(1/2) -> 2 * 2^(1/2)
+   After: x^2^(1/2) * 2 * 2^(1/2)
 3. Power of power with even root: (x^2k)^(1/2) -> |x|^k  [Power of a Power]
-   Local: x^2^(1/2) -> |x|^1
-   Global: |x|^1 * x^2^(1/2)
+   Rule: x^2^(1/2) -> |x|^1
+   After: |x|^1 * x^2^(1/2)
 Result: 2 * |x| * 2^(1/2)
 Parsed: sqrt(12 * x^3)
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
-   Local: (12 * x^3)^(1/2) -> 12^(1/2) * x^3^(1/2)
-   Global: 12^(1/2) * x^3^(1/2)
+   Rule: (12 * x^3)^(1/2) -> 12^(1/2) * x^3^(1/2)
+   After: 12^(1/2) * x^3^(1/2)
 2. Simplify root: 12^1/2  [Evaluate Numeric Power]
-   Local: 12^(1/2) -> 2 * 3^(1/2)
-   Global: x^3^(1/2) * 2 * 3^(1/2)
+   Rule: 12^(1/2) -> 2 * 3^(1/2)
+   After: x^3^(1/2) * 2 * 3^(1/2)
 3. Multiply exponents  [Power of a Power]
-   Local: x^3^(1/2) -> x^(3/2)
-   Global: x^(3/2) * x^3^(1/2)
+   Rule: x^3^(1/2) -> x^(3/2)
+   After: x^(3/2) * x^3^(1/2)
 Result: 2 * 3^(1/2) * x^(3/2)
 Parsed: sqrt(3 + 2 * sqrt(2))
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
-   Local: (3 + 2 * 2^(1/2))^(1/2) -> sqrt((1 + 3) / 2) + sqrt((3 - 1) / 2)
-   Global: sqrt((1 + 3) / 2) + sqrt((3 - 1) / 2)
-2. 1 + 3 = 4  [Combine Constants]
-   Local: 1 + 3 -> 4
-   Global: sqrt(4 / 2) + sqrt((3 - 1) / 2)
-3. 4 / 2 = 2  [Combine Constants]
-   Local: 4 / 2 -> 2
-   Global: sqrt(2) + sqrt((3 - 1) / 2)
+   Rule: (3 + 2 * 2^(1/2))^(1/2) -> sqrt((1 + 3) / 2) + sqrt((3 - 1) / 2)
+   After: sqrt((1 + 3) / 2) + sqrt((3 - 1) / 2)
 Result: 1 + 2^(1/2)
 Parsed: sqrt(5 + 2 * sqrt(6))
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
-   Local: (5 + 2 * 6^(1/2))^(1/2) -> sqrt((1 + 5) / 2) + sqrt((5 - 1) / 2)
-   Global: sqrt((1 + 5) / 2) + sqrt((5 - 1) / 2)
-2. 1 + 5 = 6  [Combine Constants]
-   Local: 1 + 5 -> 6
-   Global: sqrt(6 / 2) + sqrt((5 - 1) / 2)
-3. 6 / 2 = 3  [Combine Constants]
-   Local: 6 / 2 -> 3
-   Global: sqrt(3) + sqrt((5 - 1) / 2)
+   Rule: (5 + 2 * 6^(1/2))^(1/2) -> sqrt((1 + 5) / 2) + sqrt((5 - 1) / 2)
+   After: sqrt((1 + 5) / 2) + sqrt((5 - 1) / 2)
 Result: 2^(1/2) + 3^(1/2)
 Parsed: sqrt(7 - 2 * sqrt(10))
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
-   Local: (7 - 2 * 10^(1/2))^(1/2) -> sqrt((3 + 7) / 2) - sqrt((7 - 3) / 2)
-   Global: sqrt((3 + 7) / 2) - sqrt((7 - 3) / 2)
-2. 3 + 7 = 10  [Combine Constants]
-   Local: 3 + 7 -> 10
-   Global: sqrt(10 / 2) - sqrt((7 - 3) / 2)
-3. 10 / 2 = 5  [Combine Constants]
-   Local: 10 / 2 -> 5
-   Global: sqrt(5) - sqrt((7 - 3) / 2)
-4. 7 - 3 = 4  [Combine Constants]
-   Local: 7 - 3 -> 4
-   Global: 5^(1/2) - sqrt(4 / 2)
-5. 4 / 2 = 2  [Combine Constants]
-   Local: 4 / 2 -> 2
-   Global: 5^(1/2) - sqrt(2)
+   Rule: (7 - 2 * 10^(1/2))^(1/2) -> sqrt((3 + 7) / 2) - sqrt((7 - 3) / 2)
+   After: sqrt((3 + 7) / 2) - sqrt((7 - 3) / 2)
 Result: 5^(1/2) - 2^(1/2)
 Parsed: 2 * x + 3 * x
 Steps (Aggressive Mode):
@@ -261,14 +206,14 @@ Result: 5 * x
 Parsed: x^2 + x^2 + 2 * x
 Steps (Aggressive Mode):
 1. Factor Polynomial  [Factor]
-   Local: 2 * x + 2 * x^2 -> x * (2 + 2 * x)
-   Global: x * (2 + 2 * x)
+   Rule: 2 * x + 2 * x^2 -> x * (2 + 2 * x)
+   After: x * (2 + 2 * x)
 Result: x * (2 + 2 * x)
 Parsed: 2 * (1 + x)
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
-   Local: 2 * (1 + x) -> 2 + 2 * x
-   Global: 2 + 2 * x
+   Rule: 2 * (1 + x) -> 2 + 2 * x
+   After: 2 + 2 * x
 Result: 2 + 2 * x
 Parsed: x * (2 + x)
 No simplification steps needed.
@@ -277,49 +222,82 @@ Parsed: (1 + x) * (2 + x)
 No simplification steps needed.
 Result: (1 + x) * (2 + x)
 Parsed: (1 + x)^2
-No simplification steps needed.
+Steps (Aggressive Mode):
+1. Expand binomial power ^2  [Binomial Expansion]
+   Rule: (1 + x)^2 -> x^2 + 1^2 + 2 * x
+   After: x^2 + 1^2 + 2 * x
+2. Evaluate power: 1^2  [Evaluate Numeric Power]
+   Rule: 1^2 -> 1
+   After: x^2 + 1 + 2 * x
+3. Factor Polynomial  [Factor]
+   Rule: 1 + x^2 + 2 * x -> (1 + x)^2
+   After: (1 + x)^2
 Result: (1 + x)^2
 Parsed: (1 + x)^3
-No simplification steps needed.
+Steps (Aggressive Mode):
+1. Expand binomial power ^3  [Binomial Expansion]
+   Rule: (1 + x)^3 -> x^3 + 3 * x^2 + 1^3 + 3 * x * 1^2
+   After: x^3 + 3 * x^2 + 1^3 + 3 * x * 1^2
+2. Evaluate power: 1^3  [Evaluate Numeric Power]
+   Rule: 1^3 -> 1
+   After: x^3 + 3 * x^2 + 1 + 3 * x * 1^2
+3. Evaluate power: 1^2  [Evaluate Numeric Power]
+   Rule: 1^2 -> 1
+   After: x^3 + 3 * x^2 + 1 + 3 * x
+4. Factor Polynomial  [Factor]
+   Rule: 1 + x^3 + 3 * x + 3 * x^2 -> (1 + x)^3
+   After: (1 + x)^3
 Result: (1 + x)^3
 Parsed: (x - 1)^2
-No simplification steps needed.
+Steps (Aggressive Mode):
+1. Expand binomial power ^2  [Binomial Expansion]
+   Rule: (x - 1)^2 -> x^2 + -1^2 + 2 * -x
+   After: x^2 + -1^2 + 2 * -x
+2. Evaluate power: -1^2  [Evaluate Numeric Power]
+   Rule: -1^2 -> 1
+   After: x^2 + 1 + 2 * -x
+3. Global Combine Like Terms  [Combine Like Terms]
+   Rule: -1 * x -> -x
+   After: x^2 + 1 + 2 * -x
+4. Factor Polynomial  [Factor]
+   Rule: 1 + x^2 - 2 * x -> (x - 1)^2
+   After: (x - 1)^2
 Result: (x - 1)^2
 Parsed: x^2 - 1
 Steps (Aggressive Mode):
 1. Factor Polynomial  [Factor]
-   Local: x^2 - 1 -> (x - 1) * (1 + x)
-   Global: (x - 1) * (1 + x)
+   Rule: x^2 - 1 -> (x - 1) * (1 + x)
+   After: (x - 1) * (1 + x)
 Result: (x - 1) * (1 + x)
 Parsed: x^2 - 4
 Steps (Aggressive Mode):
 1. Factor Polynomial  [Factor]
-   Local: x^2 - 4 -> (x - 2) * (2 + x)
-   Global: (x - 2) * (2 + x)
+   Rule: x^2 - 4 -> (x - 2) * (2 + x)
+   After: (x - 2) * (2 + x)
 Result: (x - 2) * (2 + x)
 Parsed: 1 + x^2 + 2 * x
 Steps (Aggressive Mode):
 1. Factor Polynomial  [Factor]
-   Local: 1 + x^2 + 2 * x -> (1 + x)^2
-   Global: (1 + x)^2
+   Rule: 1 + x^2 + 2 * x -> (1 + x)^2
+   After: (1 + x)^2
 Result: (1 + x)^2
 Parsed: x^3 - x
 Steps (Aggressive Mode):
 1. Factor Polynomial  [Factor]
-   Local: x^3 - x -> x * (x - 1) * (1 + x)
-   Global: x * (x - 1) * (1 + x)
+   Rule: x^3 - x -> x * (x - 1) * (1 + x)
+   After: x * (x - 1) * (1 + x)
 Result: x * (x - 1) * (1 + x)
 Parsed: x^3 - 8
 Steps (Aggressive Mode):
 1. Factor Polynomial  [Factor]
-   Local: x^3 - 8 -> (x - 2) * (4 + x^2 + 2 * x)
-   Global: (x - 2) * (4 + x^2 + 2 * x)
+   Rule: x^3 - 8 -> (x - 2) * (4 + x^2 + 2 * x)
+   After: (x - 2) * (4 + x^2 + 2 * x)
 Result: (x - 2) * (4 + x^2 + 2 * x)
 Parsed: x^4 - 1
 Steps (Aggressive Mode):
 1. Factor Polynomial  [Factor]
-   Local: x^4 - 1 -> (x - 1) * (1 + x) * (1 + x^2)
-   Global: (x - 1) * (1 + x) * (1 + x^2)
+   Rule: x^4 - 1 -> (x - 1) * (1 + x) * (1 + x^2)
+   After: (x - 1) * (1 + x) * (1 + x^2)
 Result: (x - 1) * (1 + x) * (1 + x^2)
 Parsed: (x^2 - 1) / (x - 1)
 Steps (Aggressive Mode):
@@ -327,8 +305,8 @@ Result: 1 + x
 Parsed: (x^2 - 4) / (2 + x)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: 2 + x  [Simplify Nested Fraction]
-   Local: (x^2 - 4) / (2 + x) -> x - 2
-   Global: x - 2
+   Rule: (x^2 - 4) / (2 + x) -> x - 2
+   After: x - 2
 Result: x - 2
 Parsed: (x^3 - 1) / (x - 1)
 Steps (Aggressive Mode):
@@ -339,14 +317,14 @@ Result: a * x + b * x
 Parsed: x * (a + b)
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
-   Local: x * (a + b) -> a * x + b * x
-   Global: a * x + b * x
+   Rule: x * (a + b) -> a * x + b * x
+   After: a * x + b * x
 Result: a * x + b * x
 Parsed: x * (a + b)
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
-   Local: x * (a + b) -> a * x + b * x
-   Global: a * x + b * x
+   Rule: x * (a + b) -> a * x + b * x
+   After: a * x + b * x
 Result: a * x + b * x
 Parsed: c + a * x + b * x
 No simplification steps needed.
@@ -357,14 +335,11 @@ Result: x * y + x * z
 Parsed: y * 2 * x + y * 3 * x
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * x * y + 3 * x * y -> 5 * x * y
-   Global: 5 * x * y
+   Rule: 2 * x * y + 3 * x * y -> 5 * x * y
+   After: 5 * x * y
 Result: 5 * x * y
 Parsed: 1 / 2 + 1 / 3
 Steps (Aggressive Mode):
-1. 1/3 + 1/2 = 5/6  [Combine Constants]
-   Local: 1/3 + 1/2 -> 5/6
-   Global: 5/6
 Result: 5/6
 Parsed: 1 / x + 1 / y
 No simplification steps needed.
@@ -372,98 +347,89 @@ Result: 1 / x + 1 / y
 Parsed: 1 / x + (1 + x) / x
 Steps (Aggressive Mode):
 1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
-   Local: 1 / x + (1 + x) / x -> (1 + (1 + x)) / (x)
-   Global: (1 + (1 + x)) / (x)
-2. Combine nested constants: 1 + 1  [Combine Constants]
-   Local: 1 + 1 + x -> 2 + x
-   Global: (2 + x) / (x)
-3. Expand Polynomial  [Expand]
-   Local: (2 + x) / x -> 2 / x + x / x
-   Global: 2 / x + x / x
-4. Simplified fraction by GCD: x  [Simplify Nested Fraction]
-   Local: x / x -> 1
-   Global: 1 + 2 / x
+   Rule: 1 / x + (1 + x) / x -> (1 + 1 + x) / x
+   After: (1 + 1 + x) / x
+2. Expand Polynomial  [Expand]
+   Rule: (2 + x) / x -> 2 / x + x / x
+   After: 2 / x + x / x
+3. Simplified fraction by GCD: x  [Simplify Nested Fraction]
+   Rule: x / x -> 1
+   After: 1 + 2 / x
 Result: 1 + 2 / x
 Parsed: 1 / (1 + x) + x / (1 + x)
 Steps (Aggressive Mode):
 1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
-   Local: 1 / (1 + x) + x / (1 + x) -> (1 + x) / ((1 + x))
-   Global: (1 + x) / ((1 + x))
+   Rule: 1 / (1 + x) + x / (1 + x) -> (1 + x) / (1 + x)
+   After: (1 + x) / (1 + x)
 2. Simplified fraction by GCD: 1 + x  [Simplify Nested Fraction]
-   Local: (1 + x) / (1 + x) -> 1
-   Global: 1
+   Rule: (1 + x) / (1 + x) -> 1
+   After: 1
 Result: 1
 Parsed: ((1 + x) * (x - 1))^2
 Steps (Aggressive Mode):
-1. Global Combine Like Terms  [Combine Like Terms]
-   Local: x - 1 -> x - 1
-   Global: ((x - 1) * (1 + x))^2
-2. Factor Polynomial  [Factor]
-   Local: ((x - 1) * (1 + x))^2 -> (x - 1)^2 * (1 + x)^2
-   Global: (x - 1)^2 * (1 + x)^2
+1. Factor Polynomial  [Factor]
+   Rule: ((x - 1) * (1 + x))^2 -> (x - 1)^2 * (1 + x)^2
+   After: (x - 1)^2 * (1 + x)^2
 Result: (x - 1)^2 * (1 + x)^2
 Parsed: (x^2 - 1)^2
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
-   Local: (x^2 - 1)^2 -> x^2^2 + -1^2 + 2 * -x^2
-   Global: x^2^2 + -1^2 + 2 * -x^2
+   Rule: (x^2 - 1)^2 -> x^2^2 + -1^2 + 2 * -x^2
+   After: x^2^2 + -1^2 + 2 * -x^2
 2. Multiply exponents  [Power of a Power]
-   Local: x^2^2 -> x^4
-   Global: x^4 + -1^2 + 2 * -x^2
+   Rule: x^2^2 -> x^4
+   After: x^4 + -1^2 + 2 * -x^2
 3. Evaluate power: -1^2  [Evaluate Numeric Power]
-   Local: -1^2 -> 1
-   Global: x^4 + 1 + 2 * -x^2
+   Rule: -1^2 -> 1
+   After: x^4 + 1 + 2 * -x^2
 4. Global Combine Like Terms  [Combine Like Terms]
-   Local: -1 * x^2 -> -(x^2)
-   Global: x^4 + 1 + 2 * -(x^2)
+   Rule: -1 * x^2 -> -(x^2)
+   After: x^4 + 1 + 2 * -(x^2)
 5. Factor Polynomial  [Factor]
-   Local: 1 + x^4 - 2 * x^2 -> (x - 1)^2 * (1 + x)^2
-   Global: (x - 1)^2 * (1 + x)^2
+   Rule: 1 + x^4 - 2 * x^2 -> (x - 1)^2 * (1 + x)^2
+   After: (x - 1)^2 * (1 + x)^2
 Result: (x - 1)^2 * (1 + x)^2
 Parsed: 2^3 * 2^4
 Steps (Aggressive Mode):
 1. Evaluate power: 2^3  [Evaluate Numeric Power]
-   Local: 2^3 -> 8
-   Global: 8 * 2^4
+   Rule: 2^3 -> 8
+   After: 8 * 2^4
 2. Evaluate power: 2^4  [Evaluate Numeric Power]
-   Local: 2^4 -> 16
-   Global: 8 * 16
-3. 8 * 16 = 128  [Combine Constants]
-   Local: 8 * 16 -> 128
-   Global: 128
+   Rule: 2^4 -> 16
+   After: 8 * 16
 Result: 128
 Parsed: 2^3^4
 Steps (Aggressive Mode):
 1. Evaluate power: 2^3  [Evaluate Numeric Power]
-   Local: 2^3 -> 8
-   Global: 8^4
+   Rule: 2^3 -> 8
+   After: 8^4
 2. Evaluate power: 8^4  [Evaluate Numeric Power]
-   Local: 8^4 -> 4096
-   Global: 4096
+   Rule: 8^4 -> 4096
+   After: 4096
 Result: 4096
 Parsed: x^2^3
 Steps (Aggressive Mode):
 1. Multiply exponents  [Power of a Power]
-   Local: x^2^3 -> x^6
-   Global: x^6
+   Rule: x^2^3 -> x^6
+   After: x^6
 Result: x^6
 Parsed: (x * y)^2
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
-   Local: (x * y)^2 -> x^2 * y^2
-   Global: x^2 * y^2
+   Rule: (x * y)^2 -> x^2 * y^2
+   After: x^2 * y^2
 Result: x^2 * y^2
 Parsed: (x / y)^2
 Steps (Aggressive Mode):
 1. Distribute power over quotient  [Power of a Quotient]
-   Local: (x / y)^2 -> x^2 / y^2
-   Global: x^2 / y^2
+   Rule: (x / y)^2 -> x^2 / y^2
+   After: x^2 / y^2
 Result: x^2 / y^2
 Parsed: 2^(-3)
 Steps (Aggressive Mode):
 1. Evaluate power: 2^-3  [Evaluate Numeric Power]
-   Local: 2^(-3) -> 1/8
-   Global: 1/8
+   Rule: 2^(-3) -> 1/8
+   After: 1/8
 Result: 1/8
 Parsed: x^(-2)
 No simplification steps needed.
@@ -477,80 +443,56 @@ Result: x
 Parsed: (2 * x)^3
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
-   Local: (2 * x)^3 -> 2^3 * x^3
-   Global: 2^3 * x^3
+   Rule: (2 * x)^3 -> 2^3 * x^3
+   After: 2^3 * x^3
 2. Evaluate power: 2^3  [Evaluate Numeric Power]
-   Local: 2^3 -> 8
-   Global: 8 * x^3
+   Rule: 2^3 -> 8
+   After: 8 * x^3
 Result: 8 * x^3
 Parsed: x^2 * x^3
 Steps (Aggressive Mode):
 1. Combine powers with same base  [Product of Powers]
-   Local: x^2 * x^3 -> x^5
-   Global: x^5
+   Rule: x^2 * x^3 -> x^5
+   After: x^5
 Result: x^5
 Parsed: x^a * x^b
 Steps (Aggressive Mode):
 1. Combine powers with same base  [Product of Powers]
-   Local: x^a * x^b -> x^(a + b)
-   Global: x^(a + b)
+   Rule: x^a * x^b -> x^(a + b)
+   After: x^(a + b)
 Result: x^(a + b)
 Parsed: (a * b)^n
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
-   Local: (a * b)^n -> a^n * b^n
-   Global: a^n * b^n
+   Rule: (a * b)^n -> a^n * b^n
+   After: a^n * b^n
 Result: a^n * b^n
 Parsed: (a / b)^n
 Steps (Aggressive Mode):
 1. Distribute power over quotient  [Power of a Quotient]
-   Local: (a / b)^n -> a^n / b^n
-   Global: a^n / b^n
+   Rule: (a / b)^n -> a^n / b^n
+   After: a^n / b^n
 Result: a^n / b^n
 Parsed: ln(x * y)
 Steps (Aggressive Mode):
-1. log(b, x*y) = log(b, x) + log(b, y)  [Evaluate Logarithms]
-   Local: ln(x * y) -> ln(x) + ln(y)
-   Global: ln(x) + ln(y)
 Result: ln(x) + ln(y)
 Parsed: ln(x / y)
 Steps (Aggressive Mode):
-1. log(b, x/y) = log(b, x) - log(b, y)  [Evaluate Logarithms]
-   Local: ln(x / y) -> ln(x) - ln(y)
-   Global: ln(x) - ln(y)
 Result: ln(x) - ln(y)
 Parsed: ln(x^2)
 Steps (Aggressive Mode):
-1. log(b, x^y) = y * log(b, x)  [Evaluate Logarithms]
-   Local: ln(x^2) -> 2 * ln(x)
-   Global: 2 * ln(x)
 Result: 2 * ln(x)
 Parsed: ln(x^n)
 Steps (Aggressive Mode):
-1. log(b, x^y) = y * log(b, x)  [Evaluate Logarithms]
-   Local: ln(x^n) -> n * ln(x)
-   Global: n * ln(x)
 Result: n * ln(x)
 Parsed: ln(y * x^2) - 2 * ln(x)
 Steps (Aggressive Mode):
-1. log(b, x*y) = log(b, x) + log(b, y)  [Evaluate Logarithms]
-   Local: ln(y * x^2) -> ln(y) + ln(x^2)
-   Global: ln(y) - 2 * ln(x) + ln(x^2)
-2. log(b, x^y) = y * log(b, x)  [Evaluate Logarithms]
-   Local: ln(x^2) -> 2 * ln(x)
-   Global: ln(y) - 2 * 2 * ln(x) + ln(x^2)
-3. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * ln(x) - 2 * ln(x) -> 0
-   Global: 0 + ln(y)
+1. Global Combine Like Terms  [Combine Like Terms]
+   Rule: 2 * ln(x) - 2 * ln(x) -> 0
+   After: ln(y) + 2 * ln(x) - 0
 Result: ln(y)
 Parsed: ln(z * x * y)
 Steps (Aggressive Mode):
-1. log(b, x*y) = log(b, x) + log(b, y)  [Evaluate Logarithms]
-   Local: ln(x * y * z) -> ln(x) + ln(y * z)
-   Global: ln(x) + ln(y * z)
-2. log(b, x*y) = log(b, x) + log(b, y)  [Evaluate Logarithms]
-   Local: ln(y * z) -> ln(y) + ln(z)
-   Global: ln(x) + ln(y) + ln(z)
 Result: ln(x) + ln(y) + ln(z)
 Parsed: ln(x) + ln(y)
 No simplification steps needed.
@@ -563,225 +505,159 @@ No simplification steps needed.
 Result: 2 * ln(x)
 Parsed: log(10, 100)
 Steps (Aggressive Mode):
-1. log(10, 100) = 2  [Evaluate Logarithms]
-   Local: log(10, 100) -> 2
-   Global: 2
 Result: 2
 Parsed: log(10, 1000)
 Steps (Aggressive Mode):
-1. log(10, 1000) = 3  [Evaluate Logarithms]
-   Local: log(10, 1000) -> 3
-   Global: 3
 Result: 3
 Parsed: log(2, 8)
 Steps (Aggressive Mode):
-1. log(2, 8) = 3  [Evaluate Logarithms]
-   Local: log(2, 8) -> 3
-   Global: 3
 Result: 3
 Parsed: ln(e)
 Steps (Aggressive Mode):
-1. log(b, b) = 1  [Evaluate Logarithms]
-   Local: ln(e) -> 1
-   Global: 1
 Result: 1
 Parsed: ln(1)
 Steps (Aggressive Mode):
-1. log(b, 1) = 0  [Evaluate Logarithms]
-   Local: ln(1) -> 0
-   Global: 0
 Result: 0
 Parsed: e^ln(x)
 Steps (Aggressive Mode):
 1. b^log(b, x) = x  [Exponential-Log Inverse]
-   Local: e^ln(x) -> x
-   Global: x
+   Rule: e^ln(x) -> x
+   After: x
 Result: x
 Parsed: ln(e^x)
 Steps (Aggressive Mode):
-1. log(b, b^x) = x  [Evaluate Logarithms]
-   Local: ln(e^x) -> x
-   Global: x
 Result: x
 Parsed: log(b, b^x)
 Steps (Aggressive Mode):
-1. log(b, b^x) = x  [Evaluate Logarithms]
-   Local: log(b, b^x) -> x
-   Global: x
 Result: x
 Parsed: b^log(b, x)
 Steps (Aggressive Mode):
 1. b^log(b, x) = x  [Exponential-Log Inverse]
-   Local: b^log(b, x) -> x
-   Global: x
+   Rule: b^log(b, x) -> x
+   After: x
 Result: x
 Parsed: sin(2 * x)
 Steps (Aggressive Mode):
 1. sin(2x) -> 2sin(x)cos(x)  [Double Angle Identity]
-   Local: sin(2 * x) -> 2 * cos(x) * sin(x)
-   Global: 2 * cos(x) * sin(x)
+   Rule: sin(2 * x) -> 2 * cos(x) * sin(x)
+   After: 2 * cos(x) * sin(x)
 Result: 2 * cos(x) * sin(x)
 Parsed: cos(2 * x)
 Steps (Aggressive Mode):
 1. cos(2x) -> cos^2(x) - sin^2(x)  [Double Angle Identity]
-   Local: cos(2 * x) -> cos(x)^2 - sin(x)^2
-   Global: cos(x)^2 - sin(x)^2
+   Rule: cos(2 * x) -> cos(x)^2 - sin(x)^2
+   After: cos(x)^2 - sin(x)^2
 2. Factor Polynomial  [Factor]
-   Local: cos(x)^2 - sin(x)^2 -> (cos(x) + sin(x)) * (cos(x) - sin(x))
-   Global: (cos(x) + sin(x)) * (cos(x) - sin(x))
+   Rule: cos(x)^2 - sin(x)^2 -> (cos(x) + sin(x)) * (cos(x) - sin(x))
+   After: (cos(x) + sin(x)) * (cos(x) - sin(x))
 Result: (cos(x) + sin(x)) * (cos(x) - sin(x))
 Parsed: cos(x)^2 + sin(x)^2
 Steps (Aggressive Mode):
 1. Pythagorean Identity  [Pythagorean Identity]
-   Local: cos(x)^2 + sin(x)^2 -> 1
-   Global: 1
+   Rule: cos(x)^2 + sin(x)^2 -> 1
+   After: 1
 Result: 1
 Parsed: 1 - sin(x)^2
 Steps (Aggressive Mode):
-1. Factor Polynomial  [Factor]
-   Local: 1 - sin(x)^2 -> (1 + sin(x)) * (1 - sin(x))
-   Global: (1 + sin(x)) * (1 - sin(x))
-Result: (1 + sin(x)) * (1 - sin(x))
+1. 1 - sin²(x) = cos²(x)  [Pythagorean Identity]
+   Rule: 1 - sin(x)^2 -> cos(x)^2
+   After: cos(x)^2
+Result: cos(x)^2
 Parsed: 1 - cos(x)^2
 Steps (Aggressive Mode):
-1. Factor Polynomial  [Factor]
-   Local: 1 - cos(x)^2 -> (1 + cos(x)) * (1 - cos(x))
-   Global: (1 + cos(x)) * (1 - cos(x))
-Result: (1 + cos(x)) * (1 - cos(x))
+1. 1 - cos²(x) = sin²(x)  [Pythagorean Identity]
+   Rule: 1 - cos(x)^2 -> sin(x)^2
+   After: sin(x)^2
+Result: sin(x)^2
 Parsed: tan(x)
 Steps (Aggressive Mode):
 1. tan(x) -> sin(x)/cos(x)  [Tan to Sin/Cos]
-   Local: tan(x) -> sin(x) / cos(x)
-   Global: sin(x) / cos(x)
+   Rule: tan(x) -> sin(x) / cos(x)
+   After: sin(x) / cos(x)
 Result: sin(x) / cos(x)
 Parsed: sin(x) / cos(x)
 No simplification steps needed.
 Result: sin(x) / cos(x)
 Parsed: sin(0)
 Steps (Aggressive Mode):
-1. sin(0) = 0  [Evaluate Trigonometric Functions]
-   Local: sin(0) -> 0
-   Global: 0
 Result: 0
 Parsed: cos(0)
 Steps (Aggressive Mode):
-1. cos(0) = 1  [Evaluate Trigonometric Functions]
-   Local: cos(0) -> 1
-   Global: 1
 Result: 1
 Parsed: sin(pi / 2)
 Steps (Aggressive Mode):
-1. sin(pi/2) = 1  [Evaluate Trigonometric Functions]
-   Local: sin(1/2 * pi) -> 1
-   Global: 1
 Result: 1
 Parsed: cos(pi / 2)
 Steps (Aggressive Mode):
-1. cos(pi/2) = 0  [Evaluate Trigonometric Functions]
-   Local: cos(1/2 * pi) -> 0
-   Global: 0
 Result: 0
 Parsed: sin(pi)
 Steps (Aggressive Mode):
-1. sin(pi) = 0  [Evaluate Trigonometric Functions]
-   Local: sin(pi) -> 0
-   Global: 0
 Result: 0
 Parsed: cos(pi)
 Steps (Aggressive Mode):
-1. cos(pi) = -1  [Evaluate Trigonometric Functions]
-   Local: cos(pi) -> -1
-   Global: -1
 Result: -1
 Parsed: sin(pi / 6)
 Steps (Aggressive Mode):
-1. sin(π/6) = 1/2  [Evaluate Trigonometric Functions]
-   Local: sin(1/6 * pi) -> 1 / 2
-   Global: 1 / 2
 Result: 1/2
 Parsed: cos(pi / 4)
 Steps (Aggressive Mode):
-1. cos(π/4) = √2/2  [Evaluate Trigonometric Functions]
-   Local: cos(1/4 * pi) -> 2^(1 / 2) / 2
-   Global: 2^(1 / 2) / 2
 Result: 1/2 * 2^(1/2)
 Parsed: sin(pi / 3)
 Steps (Aggressive Mode):
-1. sin(π/3) = √3/2  [Evaluate Trigonometric Functions]
-   Local: sin(1/3 * pi) -> 3^(1 / 2) / 2
-   Global: 3^(1 / 2) / 2
 Result: 1/2 * 3^(1/2)
 Parsed: tan(pi / 4)
 Steps (Aggressive Mode):
 1. tan(x) -> sin(x)/cos(x)  [Tan to Sin/Cos]
-   Local: tan(1/4 * pi) -> sin(1/4 * pi) / cos(1/4 * pi)
-   Global: sin(1/4 * pi) / cos(1/4 * pi)
-2. sin(π/4) = √2/2  [Evaluate Trigonometric Functions]
-   Local: sin(1/4 * pi) -> 2^(1 / 2) / 2
-   Global: 2^(1 / 2) / 2 / cos(1/4 * pi)
-3. cos(π/4) = √2/2  [Evaluate Trigonometric Functions]
-   Local: cos(1/4 * pi) -> 2^(1 / 2) / 2
-   Global: 1/2 * 2^(1/2) / (2^(1 / 2) / 2)
+   Rule: tan(1/4 * pi) -> sin(1/4 * pi) / cos(1/4 * pi)
+   After: sin(1/4 * pi) / cos(1/4 * pi)
 Result: 1
 Parsed: sin(x + y)
 Steps (Aggressive Mode):
 1. sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)  [Angle Sum/Diff Identity]
-   Local: sin(x + y) -> cos(x) * sin(y) + cos(y) * sin(x)
-   Global: cos(x) * sin(y) + cos(y) * sin(x)
+   Rule: sin(x + y) -> cos(x) * sin(y) + cos(y) * sin(x)
+   After: cos(x) * sin(y) + cos(y) * sin(x)
 Result: cos(x) * sin(y) + cos(y) * sin(x)
 Parsed: cos(x + y)
 Steps (Aggressive Mode):
 1. cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)  [Angle Sum/Diff Identity]
-   Local: cos(x + y) -> cos(x) * cos(y) - sin(x) * sin(y)
-   Global: cos(x) * cos(y) - sin(x) * sin(y)
+   Rule: cos(x + y) -> cos(x) * cos(y) - sin(x) * sin(y)
+   After: cos(x) * cos(y) - sin(x) * sin(y)
 Result: cos(x) * cos(y) - sin(x) * sin(y)
 Parsed: sin(x - y)
 Steps (Aggressive Mode):
 1. sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)  [Angle Sum/Diff Identity]
-   Local: sin(x - y) -> cos(x) * sin(-y) + cos(-y) * sin(x)
-   Global: cos(x) * sin(-y) + cos(-y) * sin(x)
-2. sin(-x) = -sin(x)  [Evaluate Trigonometric Functions]
-   Local: sin(-y) -> -sin(y)
-   Global: cos(x) * -sin(y) + cos(-y) * sin(x)
-3. cos(-x) = cos(x)  [Evaluate Trigonometric Functions]
-   Local: cos(-y) -> cos(y)
-   Global: cos(y) * sin(x) - cos(x) * sin(y)
+   Rule: sin(x - y) -> cos(x) * sin(-y) + cos(-y) * sin(x)
+   After: cos(x) * sin(-y) + cos(-y) * sin(x)
 Result: cos(y) * sin(x) - cos(x) * sin(y)
 Parsed: cos(x - y)
 Steps (Aggressive Mode):
 1. cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)  [Angle Sum/Diff Identity]
-   Local: cos(x - y) -> cos(x) * cos(-y) - sin(x) * sin(-y)
-   Global: cos(x) * cos(-y) - sin(x) * sin(-y)
-2. cos(-x) = cos(x)  [Evaluate Trigonometric Functions]
-   Local: cos(-y) -> cos(y)
-   Global: cos(x) * cos(y) - sin(x) * sin(-y)
-3. sin(-x) = -sin(x)  [Evaluate Trigonometric Functions]
-   Local: sin(-y) -> -sin(y)
-   Global: cos(x) * cos(y) - sin(x) * -sin(y)
+   Rule: cos(x - y) -> cos(x) * cos(-y) - sin(x) * sin(-y)
+   After: cos(x) * cos(-y) - sin(x) * sin(-y)
 Result: cos(x) * cos(y) + sin(x) * sin(y)
 Parsed: sin(3 * x)
 Steps (Aggressive Mode):
 1. sin(3x) expansion  [Recursive Trig Expansion]
-   Local: sin(3 * x) -> cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
-   Global: cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   Rule: sin(3 * x) -> cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   After: cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
 2. sin(2x) -> 2sin(x)cos(x)  [Double Angle Identity]
-   Local: sin(2 * x) -> 2 * cos(x) * sin(x)
-   Global: cos(x) * 2 * cos(x) * sin(x) + cos(2 * x) * sin(x)
+   Rule: sin(2 * x) -> 2 * cos(x) * sin(x)
+   After: cos(x) * 2 * cos(x) * sin(x) + cos(2 * x) * sin(x)
 3. Combine nested identical terms  [Product of Powers]
-   Local: cos(x) * cos(x) * sin(x) -> sin(x) * cos(x)^2
-   Global: 2 * sin(x) * cos(x)^2 + cos(2 * x) * sin(x)
+   Rule: cos(x) * cos(x) * sin(x) -> sin(x) * cos(x)^2
+   After: 2 * sin(x) * cos(x)^2 + cos(2 * x) * sin(x)
 4. cos(2x) -> cos^2(x) - sin^2(x)  [Double Angle Identity]
-   Local: cos(2 * x) -> cos(x)^2 - sin(x)^2
-   Global: 2 * sin(x) * cos(x)^2 + sin(x) * (cos(x)^2 - sin(x)^2)
+   Rule: cos(2 * x) -> cos(x)^2 - sin(x)^2
+   After: 2 * sin(x) * cos(x)^2 + sin(x) * (cos(x)^2 - sin(x)^2)
 5. Distribute  [Distributive Property]
-   Local: sin(x) * (cos(x)^2 - sin(x)^2) -> sin(x) * -(sin(x)^2) + sin(x) * cos(x)^2
-   Global: 2 * sin(x) * cos(x)^2 + sin(x) * -(sin(x)^2) + sin(x) * cos(x)^2
+   Rule: sin(x) * (cos(x)^2 - sin(x)^2) -> sin(x) * -(sin(x)^2) + sin(x) * cos(x)^2
+   After: 2 * sin(x) * cos(x)^2 + sin(x) * -(sin(x)^2) + sin(x) * cos(x)^2
 6. Combine base and power  [Product of Powers]
-   Local: sin(x) * sin(x)^2 -> sin(x)^3
-   Global: 2 * sin(x) * cos(x)^2 - sin(x)^3 + sin(x) * cos(x)^2
+   Rule: sin(x) * sin(x)^2 -> sin(x)^3
+   After: 2 * sin(x) * cos(x)^2 - sin(x)^3 + sin(x) * cos(x)^2
 7. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * sin(x) * cos(x)^2 + sin(x) * cos(x)^2 -> 3 * sin(x) * cos(x)^2
-   Global: 3 * sin(x) * cos(x)^2 - sin(x)^3
+   Rule: 2 * sin(x) * cos(x)^2 + sin(x) * cos(x)^2 -> 3 * sin(x) * cos(x)^2
+   After: 2 * sin(x) * cos(x)^2 + 3 * sin(x) * cos(x)^2
 Result: 3 * sin(x) * cos(x)^2 - sin(x)^3
 Parsed: cos(x) * sin(x)
 No simplification steps needed.
@@ -825,8 +701,8 @@ Result: x
 Parsed: 0 / x
 Steps (Aggressive Mode):
 1. 0 / x = 0  [Zero Property of Division]
-   Local: 0 / x -> 0
-   Global: 0
+   Rule: 0 / x -> 0
+   After: 0
 Result: 0
 Parsed: 2 + 3
 Steps (Aggressive Mode):
@@ -836,51 +712,21 @@ Steps (Aggressive Mode):
 Result: 3
 Parsed: 2 * 3
 Steps (Aggressive Mode):
-1. 2 * 3 = 6  [Combine Constants]
-   Local: 2 * 3 -> 6
-   Global: 6
 Result: 6
 Parsed: 6 / 2
 Steps (Aggressive Mode):
-1. 6 / 2 = 3  [Combine Constants]
-   Local: 6 / 2 -> 3
-   Global: 3
 Result: 3
 Parsed: 4 + 2 * 3
 Steps (Aggressive Mode):
-1. 2 * 3 = 6  [Combine Constants]
-   Local: 2 * 3 -> 6
-   Global: 4 + 6
-2. 4 + 6 = 10  [Combine Constants]
-   Local: 4 + 6 -> 10
-   Global: 10
 Result: 10
 Parsed: 2 + 3 * 4
 Steps (Aggressive Mode):
-1. 3 * 4 = 12  [Combine Constants]
-   Local: 3 * 4 -> 12
-   Global: 2 + 12
-2. 2 + 12 = 14  [Combine Constants]
-   Local: 2 + 12 -> 14
-   Global: 14
 Result: 14
 Parsed: 4 * (2 + 3)
 Steps (Aggressive Mode):
-1. 2 + 3 = 5  [Combine Constants]
-   Local: 2 + 3 -> 5
-   Global: 4 * 5
-2. 4 * 5 = 20  [Combine Constants]
-   Local: 4 * 5 -> 20
-   Global: 20
 Result: 20
 Parsed: 2 * (3 + 4)
 Steps (Aggressive Mode):
-1. 3 + 4 = 7  [Combine Constants]
-   Local: 3 + 4 -> 7
-   Global: 2 * 7
-2. 2 * 7 = 14  [Combine Constants]
-   Local: 2 * 7 -> 14
-   Global: 14
 Result: 14
 Parsed: -x
 No simplification steps needed.
@@ -897,116 +743,113 @@ Result: y - x
 Parsed: gcd(12, 18)
 Steps (Aggressive Mode):
 1. gcd(12, 18)  [Number Theory Operations]
-   Local: gcd(12, 18) -> 6
-   Global: 6
+   Rule: gcd(12, 18) -> 6
+   After: 6
 Result: 6
 Parsed: gcd(24, 36)
 Steps (Aggressive Mode):
 1. gcd(24, 36)  [Number Theory Operations]
-   Local: gcd(24, 36) -> 12
-   Global: 12
+   Rule: gcd(24, 36) -> 12
+   After: 12
 Result: 12
 Parsed: lcm(4, 6)
 Steps (Aggressive Mode):
 1. lcm(4, 6)  [Number Theory Operations]
-   Local: lcm(4, 6) -> 12
-   Global: 12
+   Rule: lcm(4, 6) -> 12
+   After: 12
 Result: 12
 Parsed: lcm(12, 18)
 Steps (Aggressive Mode):
 1. lcm(12, 18)  [Number Theory Operations]
-   Local: lcm(12, 18) -> 36
-   Global: 36
+   Rule: lcm(12, 18) -> 36
+   After: 36
 Result: 36
 Parsed: fact(5)
 Steps (Aggressive Mode):
 1. fact(5)  [Number Theory Operations]
-   Local: fact(5) -> 120
-   Global: 120
+   Rule: fact(5) -> 120
+   After: 120
 Result: 120
 Parsed: fact(6)
 Steps (Aggressive Mode):
 1. fact(6)  [Number Theory Operations]
-   Local: fact(6) -> 720
-   Global: 720
+   Rule: fact(6) -> 720
+   After: 720
 Result: 720
 Parsed: fact(5)
 Steps (Aggressive Mode):
 1. fact(5)  [Number Theory Operations]
-   Local: fact(5) -> 120
-   Global: 120
+   Rule: fact(5) -> 120
+   After: 120
 Result: 120
 Parsed: factors(12)
 Steps (Aggressive Mode):
 1. factors(12)  [Number Theory Operations]
-   Local: factors(12) -> 2^2 * 3
-   Global: 2^2 * 3
+   Rule: factors(12) -> 2^2 * 3
+   After: 2^2 * 3
 Result: 2^2 * 3
 Parsed: factors(24)
 Steps (Aggressive Mode):
 1. factors(24)  [Number Theory Operations]
-   Local: factors(24) -> 2^3 * 3
-   Global: 2^3 * 3
+   Rule: factors(24) -> 2^3 * 3
+   After: 2^3 * 3
 Result: 2^3 * 3
 Parsed: factors(100)
 Steps (Aggressive Mode):
 1. factors(100)  [Number Theory Operations]
-   Local: factors(100) -> 2^2 * 5^2
-   Global: 2^2 * 5^2
+   Rule: factors(100) -> 2^2 * 5^2
+   After: 2^2 * 5^2
 Result: 2^2 * 5^2
 Parsed: choose(5, 2)
 Steps (Aggressive Mode):
 1. choose(5, 2)  [Number Theory Operations]
-   Local: choose(5, 2) -> 10
-   Global: 10
+   Rule: choose(5, 2) -> 10
+   After: 10
 Result: 10
 Parsed: choose(10, 3)
 Steps (Aggressive Mode):
 1. choose(10, 3)  [Number Theory Operations]
-   Local: choose(10, 3) -> 120
-   Global: 120
+   Rule: choose(10, 3) -> 120
+   After: 120
 Result: 120
 Parsed: perm(5, 2)
 Steps (Aggressive Mode):
 1. perm(5, 2)  [Number Theory Operations]
-   Local: perm(5, 2) -> 20
-   Global: 20
+   Rule: perm(5, 2) -> 20
+   After: 20
 Result: 20
 Parsed: perm(10, 3)
 Steps (Aggressive Mode):
 1. perm(10, 3)  [Number Theory Operations]
-   Local: perm(10, 3) -> 720
-   Global: 720
+   Rule: perm(10, 3) -> 720
+   After: 720
 Result: 720
 Parsed: 1 / x / (1 / y)
 Steps (Aggressive Mode):
 1. Simplify nested fraction  [Simplify Nested Fraction]
-   Local: 1 / x / (1 / y) -> y / x
-   Global: y / x
+   Rule: 1 / x / (1 / y) -> y / x
+   After: y / x
 Result: y / x
 Parsed: x / y / (a / b)
 Steps (Aggressive Mode):
 1. Simplify nested fraction  [Simplify Nested Fraction]
-   Local: x / y / (a / b) -> b * x / (a * y)
-   Global: b * x / (a * y)
+   Rule: x / y / (a / b) -> b * x / (a * y)
+   After: b * x / (a * y)
 Result: b * x / (a * y)
 Parsed: 1 / (1 / x)
 Steps (Aggressive Mode):
 1. Simplify nested fraction  [Simplify Nested Fraction]
-   Local: 1 / (1 / x) -> x / 1
-   Global: x / 1
+   Rule: 1 / (1 / x) -> x / 1
+   After: x / 1
 Result: x
 Parsed: (x + y) * (x - y)
-Steps (Aggressive Mode):
+No simplification steps needed.
 Result: (x + y) * (x - y)
 Parsed: (a + b)^2 - (a - b)^2
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
-   Local: (a - b)^2 -> -b^2 + a^2 + 2 * a * -b
-   Global: (a + b)^2 - -b^2 + a^2 + 2 * a * -b
-2. Expand binomial power ^2  [Binomial Expansion]
-   Local: (a + b)^2 -> b^2 + a^2 + 2 * a * b
-   Global: (a + b)^2 + b^2 + a^2 + 2 * a * b
+   Rule: (a + b)^2 -> b^2 + a^2 + 2 * a * b
+   After: -(a^2) - (-(b^2) - 2 * a * b) - (b^2 + a^2 + 2 * a * b)
 Result: 4 * a * b
 Parsed: y^2 + x^2 + y * 2 * x
 Steps (Aggressive Mode):
@@ -1017,74 +860,65 @@ Result: x^2 + y^2 - 2 * x * y
 Parsed: x^(1 / ln(x))
 Steps (Aggressive Mode):
 1. x^(c/log(b, x)) = b^c  [Log Inverse Power]
-   Local: x^(1 / ln(x)) -> e^1
-   Global: e^1
+   Rule: x^(1 / ln(x)) -> e^1
+   After: e^1
 Result: e
 Parsed: ln(x^2) / ln(x)
 Steps (Aggressive Mode):
-1. log(b, x^y) = y * log(b, x)  [Evaluate Logarithms]
-   Local: ln(x^2) -> 2 * ln(x)
-   Global: 2 * ln(x) / ln(x)
-2. Cancel common factors (to scalar)  [Cancel Common Factors]
-   Local: 2 * ln(x) / ln(x) -> 2
-   Global: 2
+1. Cancel common factors  [Cancel Common Factors]
+   Rule: 2 * ln(x) / ln(x) -> 2 / 1
+   After: 2 / 1
 Result: 2
 Parsed: sin(2 * x) + cos(x) * 2 * sin(x)
 Steps (Aggressive Mode):
 1. sin(2x) -> 2sin(x)cos(x)  [Double Angle Identity]
-   Local: sin(2 * x) -> 2 * cos(x) * sin(x)
-   Global: 2 * cos(x) * sin(x) + cos(x) * 2 * sin(x)
+   Rule: sin(2 * x) -> 2 * cos(x) * sin(x)
+   After: 2 * cos(x) * sin(x) + cos(x) * 2 * sin(x)
 2. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * cos(x) * sin(x) + 2 * cos(x) * sin(x) -> 4 * cos(x) * sin(x)
-   Global: 4 * cos(x) * sin(x)
+   Rule: 2 * cos(x) * sin(x) + 2 * cos(x) * sin(x) -> 4 * cos(x) * sin(x)
+   After: 4 * cos(x) * sin(x)
 Result: 4 * cos(x) * sin(x)
 Parsed: sin(3 * x) - (3 * sin(x) - 4 * sin(x)^3)
 Steps (Aggressive Mode):
 1. sin(3x) expansion  [Recursive Trig Expansion]
-   Local: sin(3 * x) -> cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
-   Global: 4 * sin(x)^3 - 3 * sin(x) + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   Rule: sin(3 * x) -> cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   After: 4 * sin(x)^3 - 3 * sin(x) + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
 2. sin(2x) -> 2sin(x)cos(x)  [Double Angle Identity]
-   Local: sin(2 * x) -> 2 * cos(x) * sin(x)
-   Global: 4 * sin(x)^3 - 3 * 2 * cos(x) * sin(x) + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   Rule: sin(2 * x) -> 2 * cos(x) * sin(x)
+   After: 4 * sin(x)^3 - 3 * 2 * cos(x) * sin(x) + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
 3. Combine nested identical terms  [Product of Powers]
-   Local: cos(x) * cos(x) * sin(x) -> sin(x) * cos(x)^2
-   Global: 2 * sin(x) * cos(x)^2 + 4 * sin(x)^3 + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   Rule: cos(x) * cos(x) * sin(x) -> sin(x) * cos(x)^2
+   After: 2 * sin(x) * cos(x)^2 + 4 * sin(x)^3 + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
 4. cos(2x) -> cos^2(x) - sin^2(x)  [Double Angle Identity]
-   Local: cos(2 * x) -> cos(x)^2 - sin(x)^2
-   Global: 2 * sin(x) * cos(x)^2 + sin(x)^3 * (cos(x)^2 - sin(x)^2) + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   Rule: cos(2 * x) -> cos(x)^2 - sin(x)^2
+   After: 2 * sin(x) * cos(x)^2 + sin(x)^3 * (cos(x)^2 - sin(x)^2) + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
 5. Distribute  [Distributive Property]
-   Local: sin(x) * (cos(x)^2 - sin(x)^2) -> sin(x) * -(sin(x)^2) + sin(x) * cos(x)^2
-   Global: 2 * sin(x) * cos(x)^2 + sin(x) * -(sin(x)^2) + sin(x) * cos(x)^2 + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   Rule: sin(x) * (cos(x)^2 - sin(x)^2) -> sin(x) * -(sin(x)^2) + sin(x) * cos(x)^2
+   After: 2 * sin(x) * cos(x)^2 + sin(x) * -(sin(x)^2) + sin(x) * cos(x)^2 + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
 6. Combine base and power  [Product of Powers]
-   Local: sin(x) * sin(x)^2 -> sin(x)^3
-   Global: 2 * sin(x) * cos(x)^2 - sin(x)^3 + sin(x) * cos(x)^2 + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   Rule: sin(x) * sin(x)^2 -> sin(x)^3
+   After: 2 * sin(x) * cos(x)^2 - sin(x)^3 + sin(x) * cos(x)^2 + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
 7. Global Combine Like Terms  [Combine Like Terms]
-   Local: 2 * sin(x) * cos(x)^2 + sin(x) * cos(x)^2 -> 3 * sin(x) * cos(x)^2
-   Global: 3 * sin(x) * cos(x)^2 - sin(x)^3 + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
+   Rule: 2 * sin(x) * cos(x)^2 + sin(x) * cos(x)^2 -> 3 * sin(x) * cos(x)^2
+   After: 2 * sin(x) * cos(x)^2 + 3 * sin(x) * cos(x)^2 + cos(x) * sin(2 * x) + cos(2 * x) * sin(x)
 8. Global Combine Like Terms  [Combine Like Terms]
-   Local: 3 * sin(x) * cos(x)^2 - 3 * sin(x) - sin(x)^3 + 4 * sin(x)^3 -> 3 * sin(x)^3 - 3 * sin(x) + 3 * sin(x) * cos(x)^2
-   Global: 3 * sin(x)^3 - 3 * sin(x) + 3 * sin(x) * cos(x)^2
+   Rule: 3 * sin(x) * cos(x)^2 - 3 * sin(x) - sin(x)^3 + 4 * sin(x)^3 -> 3 * sin(x)^3 - 3 * sin(x) + 3 * sin(x) * cos(x)^2
+   After: 3 * sin(x)^3 - 3 * sin(x) + 3 * sin(x) * cos(x)^2
 9. Pythagorean Identity  [Pythagorean Identity]
-   Local: 3 * sin(x)^3 + 3 * sin(x) * cos(x)^2 -> 3 * sin(x)
-   Global: 3 * sin(x) - 3 * sin(x)
+   Rule: 3 * sin(x)^3 + 3 * sin(x) * cos(x)^2 -> 3 * sin(x)
+   After: 3 * sin(x) - 3 * sin(x)
 10. Global Combine Like Terms  [Combine Like Terms]
-   Local: 3 * sin(x) - 3 * sin(x) -> 0
-   Global: 0
+   Rule: 3 * sin(x) - 3 * sin(x) -> 0
+   After: 0
 Result: 0
 Parsed: e^0
 Steps (Aggressive Mode):
 Result: 1
 Parsed: ln(e^2)
 Steps (Aggressive Mode):
-1. log(b, b^x) = x  [Evaluate Logarithms]
-   Local: ln(e^2) -> 2
-   Global: 2
 Result: 2
 Parsed: log(10, 10)
 Steps (Aggressive Mode):
-1. log(10, 10) = 1  [Evaluate Logarithms]
-   Local: log(10, 10) -> 1
-   Global: 1
 Result: 1
 Parsed: 0 * pi
 Steps (Aggressive Mode):
@@ -1094,18 +928,12 @@ Steps (Aggressive Mode):
 Result: pi
 Parsed: |-5|
 Steps (Aggressive Mode):
-1. abs(-5) = 5  [Evaluate Absolute Value]
-   Local: |-5| -> 5
-   Global: 5
 Result: 5
 Parsed: |x^2|
 No simplification steps needed.
 Result: |x^2|
 Parsed: |-x|
 Steps (Aggressive Mode):
-1. abs(-x) = abs(x)  [Evaluate Absolute Value]
-   Local: |-x| -> |x|
-   Global: |x|
 Result: |x|
 Steps:
 1. Subtract 2 from both sides
@@ -1134,8 +962,8 @@ Steps:
    -> x = -2
 Result: { -2, 2 }
 Simplification Steps:
-LHS 2. Factor Polynomial  [Factor]
-   Local: x^2 - 4 -> (x - 2) * (2 + x)
+LHS 1. Factor Polynomial  [Factor]
+   Rule: x^2 - 4 -> (x - 2) * (2 + x)
 Solving simplified equation: (x - 2) * (2 + x) = 0
 Steps:
 1. Factorized equation: (x - 2) * (2 + x) = 0
@@ -1158,5 +986,5 @@ Result: { 8 }
 Goodbye!
 
 ==================================================
-Tests completados: Tue Dec  9 09:26:39 CET 2025
+Tests completados: Fri Dec 12 11:30:20 CET 2025
 ==================================================
