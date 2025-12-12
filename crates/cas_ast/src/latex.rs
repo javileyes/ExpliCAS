@@ -69,6 +69,13 @@ impl<'a> LaTeXRenderer for LaTeXExprWithHints<'a> {
     fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
         use crate::Expr;
 
+        // If exponent is 1, just return the base (no ^{1})
+        if let Expr::Number(n) = self.context().get(exp) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.expr_to_latex(base, false);
+            }
+        }
+
         // Check if this should be rendered as a root based on hints
         if let Some(hints) = self.get_display_hint(self.root_id()) {
             if let Expr::Number(n) = self.context().get(exp) {

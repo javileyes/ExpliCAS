@@ -245,6 +245,13 @@ pub trait LaTeXRenderer {
 
     /// Format power expression
     fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
+        // If exponent is 1, just return the base (no ^{1})
+        if let Expr::Number(n) = self.context().get(exp) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.expr_to_latex(base, false);
+            }
+        }
+
         let base_str = self.expr_to_latex_base(base);
         let exp_str = self.expr_to_latex(exp, false);
         format!("{{{}}}^{{{}}}", base_str, exp_str)
@@ -437,6 +444,13 @@ impl<'a> LaTeXRenderer for HintedLatexRenderer<'a> {
 
     /// Override pow formatting to check for root hints
     fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
+        // If exponent is 1, just return the base (no ^{1})
+        if let Expr::Number(n) = self.context().get(exp) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.expr_to_latex(base, false);
+            }
+        }
+
         // Check if this should be rendered as a root
         if let Some(_hints) = self.get_display_hint(self.root_id()) {
             if let Expr::Number(n) = self.context().get(exp) {
@@ -497,6 +511,13 @@ impl<'a> LaTeXRenderer for FullLatexRenderer<'a> {
 
     /// Override pow formatting to check for root hints
     fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
+        // If exponent is 1, just return the base (no ^{1})
+        if let Expr::Number(n) = self.context().get(exp) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.expr_to_latex(base, false);
+            }
+        }
+
         // Check if this should be rendered as a root
         if let Some(_hints) = self.get_display_hint(self.root_id()) {
             if let Expr::Number(n) = self.context().get(exp) {
