@@ -532,6 +532,23 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
         .to_latex()
     };
 
+    // Helper to collect additive terms from an expression
+    fn collect_add_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+        let mut terms = Vec::new();
+        collect_add_terms_recursive(ctx, expr, &mut terms);
+        terms
+    }
+
+    fn collect_add_terms_recursive(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+        match ctx.get(expr) {
+            Expr::Add(l, r) => {
+                collect_add_terms_recursive(ctx, *l, terms);
+                collect_add_terms_recursive(ctx, *r, terms);
+            }
+            _ => terms.push(expr),
+        }
+    }
+
     // Extract before/after expressions
     let before = step.before;
     let after = step.after;
@@ -543,29 +560,60 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
             let num_latex = to_latex(*num);
             let den_latex = to_latex(*den);
 
-            // Sub-step 1: Show the original fraction
-            sub_steps.push(SubStep {
-                description: "Fracción con denominador irracional".to_string(),
-                before_latex: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
-                after_latex: "\\text{Agrupar términos: } (a + b) + c".to_string(),
-            });
+            // Collect terms from denominator
+            let den_terms = collect_add_terms(ctx, *den);
 
-            // Sub-step 2: Identify conjugate
-            sub_steps.push(SubStep {
-                description: "Conjugado del grupo".to_string(),
-                before_latex: "(a + b) + c".to_string(),
-                after_latex: "(a + b) - c".to_string(),
-            });
+            if den_terms.len() >= 3 {
+                // Group first n-1 terms as "group", last term as "c"
+                let group_terms: Vec<String> = den_terms[..den_terms.len() - 1]
+                    .iter()
+                    .map(|t| to_latex(*t))
+                    .collect();
+                let last_term = to_latex(den_terms[den_terms.len() - 1]);
 
-            // Sub-step 3: Apply difference of squares
-            if let Expr::Div(_new_num, new_den) = ctx.get(after) {
-                let after_den_latex = to_latex(*new_den);
+                let group_str = group_terms.join(" + ");
+
+                // Sub-step 1: Show the original fraction and grouping
                 sub_steps.push(SubStep {
-                    description: "Diferencia de cuadrados: (a+b+c)(a+b-c) = (a+b)² - c²"
-                        .to_string(),
-                    before_latex: format!("((a+b) + c) \\cdot ((a+b) - c)"),
-                    after_latex: after_den_latex,
+                    description: "Agrupar términos del denominador".to_string(),
+                    before_latex: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
+                    after_latex: if group_terms.len() > 1 {
+                        format!("\\frac{{{}}}{{({}) + {}}}", num_latex, group_str, last_term)
+                    } else {
+                        format!("\\frac{{{}}}{{{} + {}}}", num_latex, group_str, last_term)
+                    },
                 });
+
+                // Sub-step 2: Identify conjugate with specific terms
+                let conjugate = if group_terms.len() > 1 {
+                    format!("({}) - {}", group_str, last_term)
+                } else {
+                    format!("{} - {}", group_str, last_term)
+                };
+
+                sub_steps.push(SubStep {
+                    description: "Multiplicar por el conjugado".to_string(),
+                    before_latex: if group_terms.len() > 1 {
+                        format!("({}) + {}", group_str, last_term)
+                    } else {
+                        format!("{} + {}", group_str, last_term)
+                    },
+                    after_latex: conjugate.clone(),
+                });
+
+                // Sub-step 3: Apply difference of squares with specific terms
+                if let Expr::Div(_new_num, new_den) = ctx.get(after) {
+                    let after_den_latex = to_latex(*new_den);
+                    sub_steps.push(SubStep {
+                        description: "Diferencia de cuadrados".to_string(),
+                        before_latex: if group_terms.len() > 1 {
+                            format!("({})^2 - ({})^2", group_str, last_term)
+                        } else {
+                            format!("{}^2 - {}^2", group_str, last_term)
+                        },
+                        after_latex: after_den_latex,
+                    });
+                }
             }
         }
     } else if step.description.contains("product") {
