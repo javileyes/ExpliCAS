@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{1 - \cos(x)}{\sin(x)} - \tan(\frac{x}{2})</title>
+    <title>CAS Steps: \sqrt{12}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -210,97 +210,34 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{1 - \cos(x)}{\sin(x)} - \tan(\frac{x}{2})\]
+            \[\sqrt{12}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Angle Consistency (Half-Angle)</h3>
+                    <h3>Evaluate Numeric Power</h3>
                     
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{1 - \cos(x)}{\sin(x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}}}\]
+                        \[{\color{red}{\sqrt{12}}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Half-Angle Expansion}\)</div>
+                        <div class="rule-name">\(\text{Simplify root: 12^1/2}\)</div>
                         <div class="local-change">
-                            \[\frac{1 - \cos(x)}{\sin(x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)} \rightarrow \frac{1 - 2\cdot {\cos(\frac{1}{2}\cdot x)}^{2} - 1}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
+                            \[\sqrt{12} \rightarrow 2\cdot \sqrt{3}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{1 - 2\cdot {\cos(\frac{1}{2}\cdot x)}^{2} - 1}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Pythagorean Identity</h3>
-                    
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{2 - 2\cdot {\cos(\frac{1}{2}\cdot x)}^{2}}}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{1 - cos²(x) = sin²(x)}\)</div>
-                        <div class="local-change">
-                            \[2 - 2\cdot {\cos(\frac{1}{2}\cdot x)}^{2} \rightarrow 2\cdot {\sin(\frac{1}{2}\cdot x)}^{2}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{{\color{green}{2\cdot {\sin(\frac{1}{2}\cdot x)}^{2}}}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Cancel Common Factors</h3>
-                    
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{2\cdot {\sin(\frac{1}{2}\cdot x)}^{2}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)}}} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel common factors}\)</div>
-                        <div class="local-change">
-                            \[\frac{2\cdot {\sin(\frac{1}{2}\cdot x)}^{2}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} \rightarrow \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}}} - {\color{green}{\frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Add Inverse</h3>
-                    
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}}}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{(-a) + a = 0}\)</div>
-                        <div class="local-change">
-                            \[\frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)} \rightarrow 0\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{0}}\]
+                        \[{\color{green}{2\cdot \sqrt{3}}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[0\]
+            \[2\cdot \sqrt{3}\]
         </div>
     </div>
     <footer>

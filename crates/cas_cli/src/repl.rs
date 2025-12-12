@@ -2332,6 +2332,18 @@ impl Repl {
                 );
                 let (simplified, steps) = temp_simplifier.simplify(expr);
 
+                // Build display hints for preserving root notation (only when showing steps)
+                let display_hints = if self.verbosity != Verbosity::None {
+                    build_display_context_with_result(
+                        &temp_simplifier.context,
+                        expr,
+                        &steps,
+                        Some(simplified),
+                    )
+                } else {
+                    cas_ast::DisplayContext::new()
+                };
+
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
                         if self.verbosity != Verbosity::Succinct {
@@ -2372,28 +2384,60 @@ impl Repl {
                                     if self.verbosity == Verbosity::Verbose
                                         || self.verbosity == Verbosity::Normal
                                     {
-                                        let after_disp = if let Some(s) = &step.after_str {
-                                            s.clone()
+                                        // Show Before: global expression before this step
+                                        if let Some(global_before) = step.global_before {
+                                            println!(
+                                                "   Before: {}",
+                                                clean_display_string(&format!(
+                                                    "{}",
+                                                    DisplayExprWithHints {
+                                                        context: &temp_simplifier.context,
+                                                        id: global_before,
+                                                        hints: &display_hints
+                                                    }
+                                                ))
+                                            );
                                         } else {
-                                            format!(
-                                                "{}",
-                                                DisplayExpr {
-                                                    context: &temp_simplifier.context,
-                                                    id: step.after
-                                                }
-                                            )
-                                        };
-                                        println!(
-                                            "   Rule: {} -> {}",
-                                            clean_display_string(&format!(
-                                                "{}",
-                                                DisplayExpr {
-                                                    context: &temp_simplifier.context,
-                                                    id: step.before
-                                                }
-                                            )),
-                                            clean_display_string(&after_disp)
-                                        );
+                                            println!(
+                                                "   Before: {}",
+                                                clean_display_string(&format!(
+                                                    "{}",
+                                                    DisplayExprWithHints {
+                                                        context: &temp_simplifier.context,
+                                                        id: current_root,
+                                                        hints: &display_hints
+                                                    }
+                                                ))
+                                            );
+                                        }
+
+                                        // Show Rule: local transformation
+                                        // Use before_local/after_local if available (for n-ary rules),
+                                        // otherwise fall back to before/after
+                                        let (rule_before_id, rule_after_id) =
+                                            match (step.before_local, step.after_local) {
+                                                (Some(bl), Some(al)) => (bl, al),
+                                                _ => (step.before, step.after),
+                                            };
+
+                                        let before_disp = clean_display_string(&format!(
+                                            "{}",
+                                            DisplayExprWithHints {
+                                                context: &temp_simplifier.context,
+                                                id: rule_before_id,
+                                                hints: &display_hints
+                                            }
+                                        ));
+                                        let after_disp = clean_display_string(&format!(
+                                            "{}",
+                                            DisplayExprWithHints {
+                                                context: &temp_simplifier.context,
+                                                id: rule_after_id,
+                                                hints: &display_hints
+                                            }
+                                        ));
+
+                                        println!("   Rule: {} -> {}", before_disp, after_disp);
                                     }
 
                                     current_root = reconstruct_global_expr(
@@ -2406,9 +2450,10 @@ impl Repl {
                                         "   After: {}",
                                         clean_display_string(&format!(
                                             "{}",
-                                            DisplayExpr {
+                                            DisplayExprWithHints {
                                                 context: &temp_simplifier.context,
-                                                id: current_root
+                                                id: current_root,
+                                                hints: &display_hints
                                             }
                                         ))
                                     );
@@ -2426,9 +2471,10 @@ impl Repl {
                 }
                 println!(
                     "Result: {}",
-                    DisplayExpr {
+                    DisplayExprWithHints {
                         context: &temp_simplifier.context,
-                        id: simplified
+                        id: simplified,
+                        hints: &display_hints
                     }
                 );
             }
