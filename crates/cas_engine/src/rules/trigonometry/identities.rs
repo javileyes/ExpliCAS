@@ -1402,8 +1402,7 @@ define_rule!(
                                 let sin_sq = ctx.add(Expr::Pow(sin_x, two));
                                 let base_term = ctx.add(Expr::Sub(one, sin_sq));
 
-                                let half_n =
-                                    n / num_rational::BigRational::from_integer(2.into());
+                                let half_n = n / num_rational::BigRational::from_integer(2.into());
 
                                 if half_n.is_one() {
                                     return Some(Rewrite {

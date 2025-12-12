@@ -268,14 +268,31 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                             // Re-check locally to extract positive part
                             match self.context.get(*term) {
                                 Expr::Neg(inner) => {
-                                    write!(
-                                        f,
-                                        "{}",
-                                        DisplayExpr {
-                                            context: self.context,
-                                            id: *inner
-                                        }
-                                    )?;
+                                    // If inner is Add/Sub, wrap in parentheses to preserve grouping
+                                    // e.g., -(a - b) should display as "-(a - b)" not "-a - b"
+                                    let inner_is_add_sub = matches!(
+                                        self.context.get(*inner),
+                                        Expr::Add(_, _) | Expr::Sub(_, _)
+                                    );
+                                    if inner_is_add_sub {
+                                        write!(
+                                            f,
+                                            "({})",
+                                            DisplayExpr {
+                                                context: self.context,
+                                                id: *inner
+                                            }
+                                        )?;
+                                    } else {
+                                        write!(
+                                            f,
+                                            "{}",
+                                            DisplayExpr {
+                                                context: self.context,
+                                                id: *inner
+                                            }
+                                        )?;
+                                    }
                                 }
                                 Expr::Number(n) => {
                                     write!(f, "{}", -n)?;
@@ -347,10 +364,15 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 1; // Sub precedence
 
-                // Check if RHS is Neg to wrap in parens: a - (-b)
+                // Check if RHS needs parens:
+                // 1. RHS is Neg: a - (-b) needs parens
+                // 2. RHS is Add/Sub: a - (b + c) or a - (b - c) needs parens to preserve associativity
+                // 3. RHS has lower/equal precedence
                 let rhs_is_neg = matches!(self.context.get(*r), Expr::Neg(_));
+                let rhs_is_add_sub =
+                    matches!(self.context.get(*r), Expr::Add(_, _) | Expr::Sub(_, _));
 
-                if rhs_prec <= op_prec || rhs_is_neg {
+                if rhs_prec <= op_prec || rhs_is_neg || rhs_is_add_sub {
                     write!(
                         f,
                         "{} - ({})",
