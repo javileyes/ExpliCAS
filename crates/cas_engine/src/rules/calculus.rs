@@ -54,29 +54,28 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
 
 define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {
-        if name == "diff"
-            && args.len() == 2 {
-                let target = args[0];
-                let var_expr = args[1];
-                if let Expr::Variable(var_name) = ctx.get(var_expr) {
-                    let var_name = var_name.clone();
-                    if let Some(result) = differentiate(ctx, target, &var_name) {
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: format!(
-                                "diff({}, {})",
-                                cas_ast::DisplayExpr {
-                                    context: ctx,
-                                    id: target
-                                },
-                                var_name
-                            ),
-                            before_local: None,
-                            after_local: None,
-                        });
-                    }
+        if name == "diff" && args.len() == 2 {
+            let target = args[0];
+            let var_expr = args[1];
+            if let Expr::Variable(var_name) = ctx.get(var_expr) {
+                let var_name = var_name.clone();
+                if let Some(result) = differentiate(ctx, target, &var_name) {
+                    return Some(Rewrite {
+                        new_expr: result,
+                        description: format!(
+                            "diff({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: target
+                            },
+                            var_name
+                        ),
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
+        }
     }
     None
 });
@@ -1029,6 +1028,38 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                 });
             }
 
+            // =====================================================================
+            // FACTORIZABLE PRODUCT: Handle patterns like 1 - 1/k²
+            // =====================================================================
+            // Pattern: 1 - 1/k² = (k²-1)/k² = (k-1)(k+1)/k² = [(k-1)/k]·[(k+1)/k]
+            // Each factor telescopes separately, then combine results
+
+            if let Some(result) =
+                try_factorizable_product(ctx, factor, &var_name, start_expr, end_expr)
+            {
+                return Some(Rewrite {
+                    new_expr: result,
+                    description: format!(
+                        "Factorized telescoping product: Π({}, {}) from {} to {}",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: factor
+                        },
+                        var_name,
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: start_expr
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: end_expr
+                        }
+                    ),
+                    before_local: None,
+                    after_local: None,
+                });
+            }
+
             // Try to evaluate start and end as integers for numeric evaluation
             let start = get_integer(ctx, start_expr);
             let end = get_integer(ctx, end_expr);
@@ -1140,6 +1171,154 @@ fn try_telescoping_product(
 
         // For shift > 1, the pattern is more complex
         // We can still handle it but leave for future enhancement
+    }
+
+    None
+}
+
+/// Try to factor and evaluate products of factorizable expressions
+/// Pattern: 1 - 1/k² = (k²-1)/k² = (k-1)(k+1)/k² = [(k-1)/k]·[(k+1)/k]
+///
+/// This handles:
+/// - 1 - 1/k² (difference with reciprocal square)
+/// - (k² - 1)/k² (already as fraction with factorable numerator)
+///
+/// Result for product from 2 to n:
+/// - ∏(k-1)/k = 1/n
+/// - ∏(k+1)/k = (n+1)/2
+/// - Total: (n+1)/(2n)
+fn try_factorizable_product(
+    ctx: &mut Context,
+    factor: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    // Pattern 1: 1 - 1/k² or 1 - k^(-2)
+    // This is the most common form
+    if let Some((base_var, power)) = detect_one_minus_reciprocal_power(ctx, factor, var) {
+        if power == 2 && base_var == var {
+            // This is 1 - 1/k²
+            // Factor as (k-1)(k+1)/k² = [(k-1)/k]·[(k+1)/k]
+
+            // Evaluate ∏(k-1)/k from start to end
+            // = (start-1)/start · start/(start+1) · ... · (end-1)/end
+            // = (start-1) / end (telescopes to first numerator / last denominator)
+            let one = ctx.num(1);
+            let start_minus_1 = ctx.add(Expr::Sub(start, one));
+            let product1 = ctx.add(Expr::Div(start_minus_1, end));
+
+            // Evaluate ∏(k+1)/k from start to end
+            // = (start+1)/start · (start+2)/(start+1) · ... · (end+1)/end
+            // = (end+1) / start (telescopes to last numerator / first denominator)
+            let one2 = ctx.num(1);
+            let end_plus_1 = ctx.add(Expr::Add(end, one2));
+            let product2 = ctx.add(Expr::Div(end_plus_1, start));
+
+            // Combine: product1 * product2
+            let result = ctx.add(Expr::Mul(product1, product2));
+
+            // Simplify the result
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            simplifier.context = ctx.clone();
+            let (simplified, _) = simplifier.simplify(result);
+            *ctx = simplifier.context;
+
+            return Some(simplified);
+        }
+    }
+
+    None
+}
+
+/// Detect pattern: 1 - 1/var^power or 1 - var^(-power)
+/// Returns (variable name, power) if matched
+fn detect_one_minus_reciprocal_power(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(String, i64)> {
+    // Pattern: 1 - 1/k² or k^(-2) - 1 (canonicalized)
+    // Also handles: 1 - k^(-2)
+
+    if let Expr::Sub(left, right) = ctx.get(expr) {
+        // Check if left is 1
+        if let Expr::Number(n) = ctx.get(*left) {
+            if n.is_one() {
+                // Right should be 1/k² or k^(-2)
+                return detect_reciprocal_power(ctx, *right, var);
+            }
+        }
+    }
+
+    // Also check Add with negative: 1 + (-1/k²) (canonical form: -1/k² + 1)
+    if let Expr::Add(left, right) = ctx.get(expr) {
+        // Check for -1/k² + 1 pattern
+        if let Expr::Number(n) = ctx.get(*right) {
+            if n.is_one() {
+                if let Expr::Neg(inner) = ctx.get(*left) {
+                    return detect_reciprocal_power(ctx, *inner, var);
+                }
+            }
+        }
+        // Check for 1 + (-1/k²) pattern
+        if let Expr::Number(n) = ctx.get(*left) {
+            if n.is_one() {
+                if let Expr::Neg(inner) = ctx.get(*right) {
+                    return detect_reciprocal_power(ctx, *inner, var);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Detect 1/var^power or var^(-power)
+fn detect_reciprocal_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(String, i64)> {
+    // Pattern 1: 1/k^n
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*num) {
+            if n.is_one() {
+                // den should be k^power
+                if let Expr::Pow(base, exp) = ctx.get(*den) {
+                    if let Expr::Variable(v) = ctx.get(*base) {
+                        if v == var {
+                            if let Some(power) = get_integer(ctx, *exp) {
+                                return Some((v.clone(), power));
+                            }
+                        }
+                    }
+                }
+                // Also check if den is just k (power = 1)
+                if let Expr::Variable(v) = ctx.get(*den) {
+                    if v == var {
+                        return Some((v.clone(), 1));
+                    }
+                }
+            }
+        }
+    }
+
+    // Pattern 2: k^(-n)
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if let Expr::Variable(v) = ctx.get(*base) {
+            if v == var {
+                if let Expr::Neg(inner_exp) = ctx.get(*exp) {
+                    if let Some(power) = get_integer(ctx, *inner_exp) {
+                        return Some((v.clone(), power));
+                    }
+                }
+                // Check for negative number exponent
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n < num_rational::BigRational::from_integer(0.into()) {
+                        if let Some(power) = get_integer(ctx, *exp) {
+                            return Some((v.clone(), -power));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     None
