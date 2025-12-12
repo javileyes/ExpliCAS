@@ -1456,6 +1456,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // See: debug_sec_tan.rs test and GitHub issue #X
     // simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule));
 
+    // Pythagorean Identity simplification: k - k*sin² → k*cos², k - k*cos² → k*sin²
+    // This rule was extracted from CancelCommonFactorsRule for pedagogical clarity
+    simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanSimplifyRule));
+
     simplifier.add_rule(Box::new(AngleConsistencyRule));
 }
 

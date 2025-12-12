@@ -237,16 +237,37 @@
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
+                    <h3>Pythagorean Identity</h3>
+                    
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{{\color{red}{2 - 2\cdot {\cos(\frac{1}{2}\cdot x)}^{2}}}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
+                    </div>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{1 - cos²(x) = sin²(x)}\)</div>
+                        <div class="local-change">
+                            \[2 - 2\cdot {\cos(\frac{1}{2}\cdot x)}^{2} \rightarrow 2\cdot {\sin(\frac{1}{2}\cdot x)}^{2}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{{\color{green}{2\cdot {\sin(\frac{1}{2}\cdot x)}^{2}}}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
                     <h3>Cancel Common Factors</h3>
                     
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{2 - 2\cdot {\cos(\frac{1}{2}\cdot x)}^{2}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)}}} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
+                        \[{\color{red}{\frac{2\cdot {\sin(\frac{1}{2}\cdot x)}^{2}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)}}} - \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
                     </div>
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Cancel common factors}\)</div>
                         <div class="local-change">
-                            \[\frac{2 - 2\cdot {\cos(\frac{1}{2}\cdot x)}^{2}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} \rightarrow \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
+                            \[\frac{2\cdot {\sin(\frac{1}{2}\cdot x)}^{2}}{2\cdot \cos(\frac{1}{2}\cdot x)\cdot \sin(\frac{1}{2}\cdot x)} \rightarrow \frac{\sin(\frac{1}{2}\cdot x)}{\cos(\frac{1}{2}\cdot x)}\]
                         </div>
                     </div>
                     <div class="math-expr after">
@@ -256,7 +277,7 @@
                 </div>
             </div>
             <div class="step">
-                <div class="step-number">3</div>
+                <div class="step-number">4</div>
                 <div class="step-content">
                     <h3>Add Inverse</h3>
                     
