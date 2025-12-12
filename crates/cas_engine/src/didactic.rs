@@ -106,6 +106,11 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
             sub_steps.extend(generate_gcd_factorization_substeps(ctx, step));
         }
 
+        // Add sub-steps for rationalization (generalized and product)
+        if step.description.contains("Rationalize") || step.rule_name.contains("Rationalize") {
+            sub_steps.extend(generate_rationalization_substeps(ctx, step));
+        }
+
         enriched.push(EnrichedStep {
             base_step: step.clone(),
             sub_steps,
@@ -504,6 +509,114 @@ impl IsOne for BigInt {
     fn is_one(&self) -> bool {
         *self == BigInt::from(1)
     }
+}
+
+/// Generate sub-steps explaining rationalization process
+/// For example: 1/(1+√2+√3) shows:
+///   1. Agrupar términos: (1 + √2) + √3
+///   2. Conjugado: (1 + √2) - √3
+///   3. Multiplicar por conjugado: frac × [(1+√2)-√3]/[(1+√2)-√3]
+///   4. Diferencia de cuadrados: (1+√2)² - 3
+fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    use cas_ast::DisplayExpr;
+
+    let mut sub_steps = Vec::new();
+
+    // Extract before/after expressions
+    let before = step.before;
+    let _after = step.after;
+
+    // Check if it's a generalized rationalization (3+ terms)
+    if step.description.contains("group") {
+        // Generalized rationalization: a/(x + y + z) -> a(x+y-z)/[(x+y)² - z²]
+        if let Expr::Div(num, den) = ctx.get(before) {
+            let num_str = format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: *num
+                }
+            );
+            let den_str = format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: *den
+                }
+            );
+
+            // Sub-step 1: Identify grouping
+            sub_steps.push(SubStep {
+                description: "Agrupar términos del denominador".to_string(),
+                before_latex: format!("\\frac{{{}}}{{{}}}", num_str, den_str),
+                after_latex: "Denominator: (a + b) + c".to_string(),
+            });
+
+            // Sub-step 2: Identify conjugate
+            sub_steps.push(SubStep {
+                description: "Identificar conjugado: (a + b) - c".to_string(),
+                before_latex: "(a + b) + c".to_string(),
+                after_latex: "(a + b) - c".to_string(),
+            });
+
+            // Sub-step 3: Apply difference of squares
+            sub_steps.push(SubStep {
+                description: "Aplicar diferencia de cuadrados: (a+b)² - c²".to_string(),
+                before_latex: "((a+b) + c)((a+b) - c)".to_string(),
+                after_latex: "(a+b)^2 - c^2".to_string(),
+            });
+        }
+    } else if step.description.contains("product") {
+        // Product rationalization: a/(b·√c) -> a·√c/(b·c)
+        if let Expr::Div(_num, den) = ctx.get(before) {
+            let den_str = format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: *den
+                }
+            );
+
+            // Sub-step 1: Identify the radical in denominator
+            sub_steps.push(SubStep {
+                description: "Identificar radical en denominador".to_string(),
+                before_latex: den_str.clone(),
+                after_latex: "k \\cdot \\sqrt{n}".to_string(),
+            });
+
+            // Sub-step 2: Multiply by √n/√n
+            sub_steps.push(SubStep {
+                description: "Multiplicar por √n/√n".to_string(),
+                before_latex: "\\frac{a}{k \\cdot \\sqrt{n}}".to_string(),
+                after_latex: "\\frac{a \\cdot \\sqrt{n}}{k \\cdot n}".to_string(),
+            });
+        }
+    } else {
+        // Binary rationalization (difference of squares with 2 terms)
+        if let Expr::Div(_num, den) = ctx.get(before) {
+            let den_str = format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: *den
+                }
+            );
+
+            sub_steps.push(SubStep {
+                description: "Identificar conjugado del denominador".to_string(),
+                before_latex: den_str.clone(),
+                after_latex: "Si a + b, conjugado es a - b".to_string(),
+            });
+
+            sub_steps.push(SubStep {
+                description: "Aplicar (a+b)(a-b) = a² - b²".to_string(),
+                before_latex: "(a + b)(a - b)".to_string(),
+                after_latex: "a^2 - b^2".to_string(),
+            });
+        }
+    }
+
+    sub_steps
 }
 
 #[cfg(test)]
