@@ -2440,12 +2440,19 @@ impl Repl {
                                         println!("   Rule: {} -> {}", before_disp, after_disp);
                                     }
 
-                                    current_root = reconstruct_global_expr(
-                                        &mut temp_simplifier.context,
-                                        current_root,
-                                        &step.path,
-                                        step.after,
-                                    );
+                                    // Use precomputed global_after if available, fall back to reconstruction
+                                    if let Some(global_after) = step.global_after {
+                                        current_root = global_after;
+                                    } else {
+                                        current_root = reconstruct_global_expr(
+                                            &mut temp_simplifier.context,
+                                            current_root,
+                                            &step.path,
+                                            step.after,
+                                        );
+                                    }
+
+                                    // Show After: global expression after this step
                                     println!(
                                         "   After: {}",
                                         clean_display_string(&format!(
@@ -2459,12 +2466,17 @@ impl Repl {
                                     );
                                 }
                             } else {
-                                current_root = reconstruct_global_expr(
-                                    &mut temp_simplifier.context,
-                                    current_root,
-                                    &step.path,
-                                    step.after,
-                                );
+                                // Step not shown, but still update current_root for subsequent steps
+                                if let Some(global_after) = step.global_after {
+                                    current_root = global_after;
+                                } else {
+                                    current_root = reconstruct_global_expr(
+                                        &mut temp_simplifier.context,
+                                        current_root,
+                                        &step.path,
+                                        step.after,
+                                    );
+                                }
                             }
                         }
                     }
