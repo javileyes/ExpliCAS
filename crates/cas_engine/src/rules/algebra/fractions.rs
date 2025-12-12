@@ -311,6 +311,92 @@ define_rule!(
     }
 );
 
+/// Check if one denominator divides the other
+/// Returns (new_n1, new_n2, common_den, is_divisible)
+///
+/// For example:
+/// - d1=2, d2=2n → d2 = n·d1, so multiply n1 by n: (n1·n, n2, 2n, true)
+/// - d1=2n, d2=2 → d1 = n·d2, so multiply n2 by n: (n1, n2·n, 2n, true)
+fn check_divisible_denominators(
+    ctx: &mut Context,
+    n1: ExprId,
+    n2: ExprId,
+    d1: ExprId,
+    d2: ExprId,
+) -> (ExprId, ExprId, ExprId, bool) {
+    // Try to find if d2 = k * d1 (d1 divides d2)
+    if let Some(k) = try_extract_factor(ctx, d2, d1) {
+        // d2 = k * d1, so use d2 as common denominator
+        // n1/d1 = n1*k/d2
+        let new_n1 = ctx.add(Expr::Mul(n1, k));
+        return (new_n1, n2, d2, true);
+    }
+
+    // Try to find if d1 = k * d2 (d2 divides d1)
+    if let Some(k) = try_extract_factor(ctx, d1, d2) {
+        // d1 = k * d2, so use d1 as common denominator
+        // n2/d2 = n2*k/d1
+        let new_n2 = ctx.add(Expr::Mul(n2, k));
+        return (n1, new_n2, d1, true);
+    }
+
+    // Not divisible
+    (n1, n2, d1, false)
+}
+
+/// Returns Some(k) if expr = k * factor, None otherwise
+fn try_extract_factor(ctx: &Context, expr: ExprId, factor: ExprId) -> Option<ExprId> {
+    // Direct equality check (same ExprId)
+    if expr == factor {
+        return None; // k would be 1, not useful
+    }
+
+    // Check if expr is a Mul containing factor
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        // Check l * r where one equals factor (using ExprId equality or structural)
+        if *l == factor || exprs_equal(ctx, *l, factor) {
+            return Some(*r); // expr = factor * r, so k = r
+        }
+        if *r == factor || exprs_equal(ctx, *r, factor) {
+            return Some(*l); // expr = l * factor, so k = l
+        }
+
+        // For nested Mul, we'd need a more sophisticated approach
+        // For now, only handle simple a*b case where one of them is the factor
+    }
+
+    None
+}
+
+/// Check if two expressions are structurally equal
+fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    if a == b {
+        return true;
+    }
+    match (ctx.get(a), ctx.get(b)) {
+        (Expr::Number(n1), Expr::Number(n2)) => n1 == n2,
+        (Expr::Variable(v1), Expr::Variable(v2)) => v1 == v2,
+        (Expr::Constant(c1), Expr::Constant(c2)) => c1 == c2,
+        (Expr::Add(l1, r1), Expr::Add(l2, r2)) => {
+            exprs_equal(ctx, *l1, *l2) && exprs_equal(ctx, *r1, *r2)
+        }
+        (Expr::Sub(l1, r1), Expr::Sub(l2, r2)) => {
+            exprs_equal(ctx, *l1, *l2) && exprs_equal(ctx, *r1, *r2)
+        }
+        (Expr::Mul(l1, r1), Expr::Mul(l2, r2)) => {
+            exprs_equal(ctx, *l1, *l2) && exprs_equal(ctx, *r1, *r2)
+        }
+        (Expr::Div(l1, r1), Expr::Div(l2, r2)) => {
+            exprs_equal(ctx, *l1, *l2) && exprs_equal(ctx, *r1, *r2)
+        }
+        (Expr::Pow(l1, r1), Expr::Pow(l2, r2)) => {
+            exprs_equal(ctx, *l1, *l2) && exprs_equal(ctx, *r1, *r2)
+        }
+        (Expr::Neg(e1), Expr::Neg(e2)) => exprs_equal(ctx, *e1, *e2),
+        _ => false,
+    }
+}
+
 define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Add(l, r) = expr_data {
@@ -406,6 +492,21 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                     }
                     (e, one, false)
                 }
+                // Handle Number(n/d) as a fraction when denominator != 1
+                Expr::Number(n) => {
+                    if !n.denom().is_one() {
+                        // This is a rational like 1/2. Treat as fraction.
+                        let num_val = ctx.add(Expr::Number(
+                            num_rational::BigRational::from_integer(n.numer().clone()),
+                        ));
+                        let den_val = ctx.add(Expr::Number(
+                            num_rational::BigRational::from_integer(n.denom().clone()),
+                        ));
+                        (num_val, den_val, true)
+                    } else {
+                        (e, one, false)
+                    }
+                }
                 _ => (e, one, false),
             }
         };
@@ -437,6 +538,12 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
             }
         };
 
+        // Check if one denominator divides the other (d2 = k * d1 or d1 = k * d2)
+        // This allows combining 1/2 + 1/(2n) = n/(2n) + 1/(2n) = (n+1)/(2n)
+        let (n1, n2, common_den, divisible_denom) =
+            check_divisible_denominators(ctx, n1, n2, d1, d2);
+        let same_denom = same_denom || divisible_denom;
+
         // Complexity heuristic
         let old_complexity = count_nodes(ctx, expr);
 
@@ -451,14 +558,14 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
         };
 
         let new_den = if opposite_denom || same_denom {
-            d1
+            common_den
         } else {
             ctx.add(Expr::Mul(d1, d2))
         };
 
         // Try to simplify common den
         let common_den = if same_denom || opposite_denom {
-            d1
+            common_den
         } else {
             new_den
         };

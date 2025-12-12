@@ -1204,27 +1204,30 @@ fn try_factorizable_product(
             // Evaluate ∏(k-1)/k from start to end
             // = (start-1)/start · start/(start+1) · ... · (end-1)/end
             // = (start-1) / end (telescopes to first numerator / last denominator)
-            let one = ctx.num(1);
-            let start_minus_1 = ctx.add(Expr::Sub(start, one));
-            let product1 = ctx.add(Expr::Div(start_minus_1, end));
+            let start_minus_1 = if let Some(n) = get_integer(ctx, start) {
+                ctx.num(n - 1)
+            } else {
+                let one = ctx.num(1);
+                ctx.add(Expr::Sub(start, one))
+            };
 
             // Evaluate ∏(k+1)/k from start to end
             // = (start+1)/start · (start+2)/(start+1) · ... · (end+1)/end
             // = (end+1) / start (telescopes to last numerator / first denominator)
-            let one2 = ctx.num(1);
-            let end_plus_1 = ctx.add(Expr::Add(end, one2));
-            let product2 = ctx.add(Expr::Div(end_plus_1, start));
+            let end_plus_1 = if let Some(n) = get_integer(ctx, end) {
+                ctx.num(n + 1)
+            } else {
+                let one = ctx.num(1);
+                ctx.add(Expr::Add(end, one))
+            };
 
-            // Combine: product1 * product2
-            let result = ctx.add(Expr::Mul(product1, product2));
+            // Combine: (start-1)/end * (end+1)/start = (start-1)*(end+1) / (start*end)
+            // Build as a single fraction for better simplification
+            let combined_num = ctx.add(Expr::Mul(start_minus_1, end_plus_1));
+            let combined_den = ctx.add(Expr::Mul(start, end));
+            let result = ctx.add(Expr::Div(combined_num, combined_den));
 
-            // Simplify the result
-            let mut simplifier = crate::Simplifier::with_default_rules();
-            simplifier.context = ctx.clone();
-            let (simplified, _) = simplifier.simplify(result);
-            *ctx = simplifier.context;
-
-            return Some(simplified);
+            return Some(result);
         }
     }
 
