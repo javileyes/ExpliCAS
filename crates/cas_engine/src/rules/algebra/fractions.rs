@@ -67,6 +67,20 @@ define_rule!(
         let new_den = new_den_poly.to_expr(ctx);
         let gcd_expr = full_gcd.to_expr(ctx);
 
+        // Build factored form for "Rule:" display: (new_num * gcd) / (new_den * gcd)
+        // This shows the factorization step more clearly
+        let factored_num = ctx.add(Expr::Mul(new_num, gcd_expr));
+        let factored_den = if let Expr::Number(n) = ctx.get(new_den) {
+            if n.is_one() {
+                gcd_expr // denominator is just the GCD
+            } else {
+                ctx.add(Expr::Mul(new_den, gcd_expr))
+            }
+        } else {
+            ctx.add(Expr::Mul(new_den, gcd_expr))
+        };
+        let factored_form = ctx.add(Expr::Div(factored_num, factored_den));
+
         // If denominator is 1, return numerator
         if let Expr::Number(n) = ctx.get(new_den) {
             if n.is_one() {
@@ -79,14 +93,15 @@ define_rule!(
                             id: gcd_expr
                         }
                     ),
-                    before_local: None,
-                    after_local: None,
+                    before_local: Some(factored_form),
+                    after_local: Some(new_num),
                 });
             }
         }
 
+        let result = ctx.add(Expr::Div(new_num, new_den));
         return Some(Rewrite {
-            new_expr: ctx.add(Expr::Div(new_num, new_den)),
+            new_expr: result,
             description: format!(
                 "Simplified fraction by GCD: {}",
                 DisplayExpr {
@@ -94,8 +109,8 @@ define_rule!(
                     id: gcd_expr
                 }
             ),
-            before_local: None,
-            after_local: None,
+            before_local: Some(factored_form),
+            after_local: Some(result),
         });
     }
 );

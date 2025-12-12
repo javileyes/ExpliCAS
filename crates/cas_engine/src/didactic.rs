@@ -101,6 +101,11 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
             }
         }
 
+        // Add factorization sub-steps for fraction GCD simplification
+        if step.description.starts_with("Simplified fraction by GCD") {
+            sub_steps.extend(generate_gcd_factorization_substeps(ctx, step));
+        }
+
         enriched.push(EnrichedStep {
             base_step: step.clone(),
             sub_steps,
@@ -358,6 +363,104 @@ fn generate_fraction_sum_substeps(info: &FractionSumInfo) -> Vec<SubStep> {
         },
         after_latex: format_fraction(&info.result),
     });
+
+    sub_steps
+}
+
+/// Generate sub-steps explaining polynomial factorization and GCD cancellation
+/// For example: (x² - 4) / (2 + x) shows:
+///   1. Factor numerator: x² - 4 → (x-2)(x+2)
+///   2. Cancel common factor: (x-2)(x+2) / (x+2) → x-2
+fn generate_gcd_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    use cas_ast::DisplayExpr;
+
+    let mut sub_steps = Vec::new();
+
+    // Extract GCD from description: "Simplified fraction by GCD: <gcd>"
+    let gcd_start = "Simplified fraction by GCD: ";
+    if !step.description.starts_with(gcd_start) {
+        return sub_steps;
+    }
+    let gcd_str = &step.description[gcd_start.len()..];
+
+    // Get the before expression (which should be a Div)
+    let before_expr = step.before;
+    if let Expr::Div(num, den) = ctx.get(before_expr) {
+        let num_str = format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: *num
+            }
+        );
+        let den_str = format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: *den
+            }
+        );
+        let after_str = format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: step.after
+            }
+        );
+
+        // Check if the step's "before_local" shows factored form in Rule display
+        // If available, use it to show the factorization step
+        if let Some(local_before) = step.before_local {
+            let local_before_str = format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: local_before
+                }
+            );
+
+            // Sub-step 1: Factor the expression
+            // If the rule display shows factored form like "(x - 2) * (2 + x) / (2 + x)"
+            // we can extract the factorization
+            if local_before_str.contains(&gcd_str) && local_before_str.contains('*') {
+                sub_steps.push(SubStep {
+                    description: format!("Factor: {} contains factor {}", num_str, gcd_str),
+                    before_latex: num_str.clone(),
+                    after_latex: local_before_str
+                        .split('/')
+                        .next()
+                        .unwrap_or(&local_before_str)
+                        .trim()
+                        .to_string(),
+                });
+            }
+        }
+
+        // Sub-step 2: Cancel common factor
+        // Wrap in parentheses if they contain operators
+        let needs_parens_num =
+            num_str.contains('+') || num_str.contains('-') || num_str.contains(' ');
+        let needs_parens_den =
+            den_str.contains('+') || den_str.contains('-') || den_str.contains(' ');
+        let before_formatted = format!(
+            "{} / {}",
+            if needs_parens_num {
+                format!("({})", num_str)
+            } else {
+                num_str.clone()
+            },
+            if needs_parens_den {
+                format!("({})", den_str)
+            } else {
+                den_str.clone()
+            }
+        );
+        sub_steps.push(SubStep {
+            description: format!("Cancel common factor: {}", gcd_str),
+            before_latex: before_formatted,
+            after_latex: after_str,
+        });
+    }
 
     sub_steps
 }

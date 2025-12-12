@@ -1198,10 +1198,30 @@ impl<'a> TimelineHtml<'a> {
                 if let Some(enriched) = enriched_steps.get(step_idx) {
                     if !enriched.sub_steps.is_empty() {
                         sub_steps_shown = true; // Mark as shown
-                        let mut details_html = String::from(
+
+                        // Detect type from sub-step descriptions (like CLI)
+                        let has_fraction_sum = enriched.sub_steps.iter().any(|s| {
+                            s.description.contains("common denominator")
+                                || s.description.contains("Sum the fractions")
+                        });
+                        let has_factorization = enriched.sub_steps.iter().any(|s| {
+                            s.description.contains("Cancel common factor")
+                                || s.description.contains("Factor")
+                        });
+
+                        let header = if has_fraction_sum {
+                            "Suma de fracciones"
+                        } else if has_factorization {
+                            "Factorización de polinomios"
+                        } else {
+                            "Pasos intermedios"
+                        };
+
+                        let mut details_html = format!(
                             r#"<details class="substeps-details">
-                            <summary>Suma de fracciones</summary>
+                            <summary>{}</summary>
                             <div class="substeps-content">"#,
+                            header
                         );
                         for sub in &enriched.sub_steps {
                             details_html.push_str(&format!(
@@ -1234,11 +1254,11 @@ impl<'a> TimelineHtml<'a> {
                 <div class="step-number">{}</div>
                 <div class="step-content">
                     <h3>{}</h3>
-                    {}
                     <div class="math-expr before">
                         \(\textbf{{Before:}}\)
                         \[{}\]
                     </div>
+                    {}
                     <div class="rule-description">
                         <div class="rule-name">\(\text{{{}}}\)</div>
                         <div class="local-change">
@@ -1254,8 +1274,8 @@ impl<'a> TimelineHtml<'a> {
 "#,
                 step_number,
                 html_escape(&step.rule_name),
-                sub_steps_html,
                 global_before,
+                sub_steps_html,
                 step.description,
                 local_change_latex,
                 global_after

@@ -2148,10 +2148,65 @@ impl Repl {
                                                         }
                                                         result.replace("\\", "")
                                                     }
-                                                    // Show title for substeps section
-                                                    println!(
-                                                        "   [Suma de fracciones en exponentes]"
-                                                    );
+
+                                                    // Show Before: global expression before this step
+                                                    if let Some(global_before) = step.global_before
+                                                    {
+                                                        println!(
+                                                            "   Before: {}",
+                                                            clean_display_string(&format!(
+                                                                "{}",
+                                                                DisplayExprWithHints {
+                                                                    context: &self
+                                                                        .simplifier
+                                                                        .context,
+                                                                    id: global_before,
+                                                                    hints: &display_hints
+                                                                }
+                                                            ))
+                                                        );
+                                                    } else {
+                                                        println!(
+                                                            "   Before: {}",
+                                                            clean_display_string(&format!(
+                                                                "{}",
+                                                                DisplayExprWithHints {
+                                                                    context: &self
+                                                                        .simplifier
+                                                                        .context,
+                                                                    id: current_root,
+                                                                    hints: &display_hints
+                                                                }
+                                                            ))
+                                                        );
+                                                    }
+
+                                                    // Show sub-steps AFTER Before: for better pedagogical flow
+                                                    // Show title for substeps section (detect type from description)
+                                                    let has_fraction_sum =
+                                                        enriched_step.sub_steps.iter().any(|s| {
+                                                            s.description
+                                                                .contains("common denominator")
+                                                                || s.description
+                                                                    .contains("Sum the fractions")
+                                                        });
+                                                    let has_factorization =
+                                                        enriched_step.sub_steps.iter().any(|s| {
+                                                            s.description
+                                                                .contains("Cancel common factor")
+                                                                || s.description.contains("Factor")
+                                                        });
+
+                                                    if has_fraction_sum {
+                                                        println!(
+                                                            "   [Suma de fracciones en exponentes]"
+                                                        );
+                                                    } else if has_factorization {
+                                                        println!(
+                                                            "   [Factorización de polinomios]"
+                                                        );
+                                                    }
+
                                                     for sub in &enriched_step.sub_steps {
                                                         println!("      → {}", sub.description);
                                                         if !sub.before_latex.is_empty() {
@@ -2164,33 +2219,6 @@ impl Repl {
                                                     }
                                                 }
                                             }
-                                        }
-
-                                        // Show Before: global expression before this step
-                                        if let Some(global_before) = step.global_before {
-                                            println!(
-                                                "   Before: {}",
-                                                clean_display_string(&format!(
-                                                    "{}",
-                                                    DisplayExprWithHints {
-                                                        context: &self.simplifier.context,
-                                                        id: global_before,
-                                                        hints: &display_hints
-                                                    }
-                                                ))
-                                            );
-                                        } else {
-                                            println!(
-                                                "   Before: {}",
-                                                clean_display_string(&format!(
-                                                    "{}",
-                                                    DisplayExprWithHints {
-                                                        context: &self.simplifier.context,
-                                                        id: current_root,
-                                                        hints: &display_hints
-                                                    }
-                                                ))
-                                            );
                                         }
 
                                         // Show Rule: local transformation
