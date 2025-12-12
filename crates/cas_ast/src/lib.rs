@@ -7,6 +7,7 @@ pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod latex_parser;
 pub mod ordering; // NEW: Canonical ordering utilities
+pub mod views; // NEW: Unified views for pattern matching
 pub mod visitor;
 
 pub use display_context::{DisplayContext, DisplayHint};
