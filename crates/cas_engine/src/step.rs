@@ -108,10 +108,30 @@ impl Step {
             return ImportanceLevel::Trivial;
         }
 
-        // EXCEPTION: Evaluate Numeric Power is didactically important
-        // e.g., sqrt(12) → 2*√3 shows root simplification which students should see
+        // EXCEPTION: Evaluate Numeric Power - distinguish trivial from non-trivial
+        // Non-trivial (show):
+        //   - "Simplify root: 12^1/2" → 2*√3 (root simplification)
+        //   - "Evaluate power: 1/3^3" → 1/27 (fraction bases are pedagogically valuable)
+        // Trivial (hide):
+        //   - "Evaluate power: 2^3" → 8 (simple integer power)
+        //   - "Evaluate perfect root: 8^1/3" → 2
         if self.rule_name == "Evaluate Numeric Power" {
-            return ImportanceLevel::Medium;
+            if self.description.starts_with("Simplify root:") {
+                return ImportanceLevel::Medium; // Show - root simplification
+            }
+            // Check for fraction base: "Evaluate power: X/Y^Z" or "Evaluate power: -X/Y^Z"
+            if self.description.starts_with("Evaluate power:") {
+                // Extract the part after "Evaluate power: " and before "^"
+                let after_prefix = &self.description["Evaluate power: ".len()..];
+                if let Some(caret_pos) = after_prefix.find('^') {
+                    let base_part = &after_prefix[..caret_pos];
+                    // If base contains "/" it's a fraction - show it
+                    if base_part.contains('/') {
+                        return ImportanceLevel::Medium;
+                    }
+                }
+            }
+            return ImportanceLevel::Low; // Hide trivial evaluations
         }
 
         // Low importance - internal reorganizations, not pedagogically valuable
