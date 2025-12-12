@@ -790,6 +790,127 @@ define_rule!(
     }
 );
 
+/// Collect all multiplicative factors from an expression
+fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut factors = Vec::new();
+    collect_factors_recursive(ctx, expr, &mut factors);
+    factors
+}
+
+fn collect_factors_recursive(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(l, r) => {
+            collect_factors_recursive(ctx, *l, factors);
+            collect_factors_recursive(ctx, *r, factors);
+        }
+        _ => {
+            factors.push(expr);
+        }
+    }
+}
+
+/// Extract root from expression: sqrt(n) or n^(1/k)
+/// Returns (radicand, index) where expr = radicand^(1/index)
+fn extract_root_base(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Function(name, args) if name == "sqrt" && args.len() >= 1 => {
+            // sqrt(n) = n^(1/2), return (n, 2)
+            let two = ctx.num(2);
+            Some((args[0], two))
+        }
+        Expr::Pow(base, exp) => {
+            if let Expr::Number(n) = ctx.get(exp).clone() {
+                if !n.is_integer() && n.numer().is_one() {
+                    // n^(1/k) - return (n, k)
+                    let k_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+                        n.denom().clone(),
+                    )));
+                    return Some((base, k_expr));
+                }
+            }
+            if let Expr::Div(num_exp, den_exp) = ctx.get(exp).clone() {
+                if let Expr::Number(n) = ctx.get(num_exp).clone() {
+                    if n.is_one() {
+                        return Some((base, den_exp));
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+define_rule!(
+    RationalizeProductDenominatorRule,
+    "Rationalize Product Denominator",
+    |ctx, expr| {
+        // Handle 1/(a * sqrt(b)) or num/(a * sqrt(b))
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            _ => return None,
+        };
+
+        let factors = collect_mul_factors(ctx, den);
+
+        // Find a root factor
+        let mut root_factor = None;
+        let mut non_root_factors = Vec::new();
+
+        for &factor in &factors {
+            if extract_root_base(ctx, factor).is_some() && root_factor.is_none() {
+                root_factor = Some(factor);
+            } else {
+                non_root_factors.push(factor);
+            }
+        }
+
+        let root = root_factor?;
+
+        // Don't apply if denominator is ONLY a root (handled elsewhere or simpler)
+        if non_root_factors.is_empty() {
+            // Just sqrt(n) in denominator - still rationalize
+            if let Some((radicand, _index)) = extract_root_base(ctx, root) {
+                // 1/sqrt(n) -> sqrt(n)/n
+                let new_num = ctx.add(Expr::Mul(num, root));
+                let new_den = radicand;
+                let new_expr = ctx.add(Expr::Div(new_num, new_den));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Rationalize: multiply by √n/√n".to_string(),
+                    before_local: None,
+                    after_local: None,
+                });
+            }
+            return None;
+        }
+
+        // We have: num / (other_factors * root)
+        // Multiply by root/root to get: (num * root) / (other_factors * root * root)
+        // = (num * root) / (other_factors * radicand)
+
+        if let Some((radicand, _index)) = extract_root_base(ctx, root) {
+            let new_num = ctx.add(Expr::Mul(num, root));
+
+            // Build new denominator: other_factors * radicand
+            let mut new_den = radicand;
+            for &factor in &non_root_factors {
+                new_den = ctx.add(Expr::Mul(new_den, factor));
+            }
+
+            let new_expr = ctx.add(Expr::Div(new_num, new_den));
+            return Some(Rewrite {
+                new_expr,
+                description: "Rationalize product denominator".to_string(),
+                before_local: None,
+                after_local: None,
+            });
+        }
+
+        None
+    }
+);
+
 define_rule!(
     CancelCommonFactorsRule,
     "Cancel Common Factors",
