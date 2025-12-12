@@ -83,40 +83,44 @@ define_rule!(
     }
 );
 
-define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
-    // Skip canonical (elegant) forms - even in aggressive mode
-    // e.g., (x+y)*(x-y) should stay factored, not be distributed
-    if crate::canonical_forms::is_canonical_form(ctx, expr) {
-        return None;
-    }
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        let l_id = *l;
-        let r_id = *r;
+define_rule!(
+    DistributeRule,
+    "Distributive Property (Simple)",
+    |ctx, expr| {
+        // Skip canonical (elegant) forms - even in aggressive mode
+        // e.g., (x+y)*(x-y) should stay factored, not be distributed
+        if crate::canonical_forms::is_canonical_form(ctx, expr) {
+            return None;
+        }
+        if let Expr::Mul(l, r) = ctx.get(expr) {
+            let l_id = *l;
+            let r_id = *r;
 
-        // Try to distribute l into r if r is an Add/Sub
-        if matches!(ctx.get(r_id), Expr::Add(_, _) | Expr::Sub(_, _)) {
-            let new_expr = distribute(ctx, r_id, l_id);
-            if new_expr != expr {
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Distribute (RHS)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                });
+            // Try to distribute l into r if r is an Add/Sub
+            if matches!(ctx.get(r_id), Expr::Add(_, _) | Expr::Sub(_, _)) {
+                let new_expr = distribute(ctx, r_id, l_id);
+                if new_expr != expr {
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Distribute (RHS)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                    });
+                }
+            }
+            // Try to distribute r into l if l is an Add/Sub
+            if matches!(ctx.get(l_id), Expr::Add(_, _) | Expr::Sub(_, _)) {
+                let new_expr = distribute(ctx, l_id, r_id);
+                if new_expr != expr {
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Distribute (LHS)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                    });
+                }
             }
         }
-        // Try to distribute r into l if l is an Add/Sub
-        if matches!(ctx.get(l_id), Expr::Add(_, _) | Expr::Sub(_, _)) {
-            let new_expr = distribute(ctx, l_id, r_id);
-            if new_expr != expr {
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Distribute (LHS)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                });
-            }
-        }
+        None
     }
-    None
-});
+);

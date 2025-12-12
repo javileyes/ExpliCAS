@@ -117,7 +117,7 @@ define_rule!(
 
 define_rule!(
     NestedFractionRule,
-    "Simplify Nested Fraction",
+    "Simplify Complex Fraction",
     |ctx, expr| {
         let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
             (*n, *d)

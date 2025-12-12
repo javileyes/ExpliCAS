@@ -15,7 +15,7 @@ use cas_ast::{Context, Expr, ExprId};
 
 define_rule!(
     TrigPythagoreanSimplifyRule,
-    "Pythagorean Identity",
+    "Pythagorean Factor Form",
     |ctx, expr| {
         // Only apply to Add expressions (Sub is represented as Add with Neg)
 
