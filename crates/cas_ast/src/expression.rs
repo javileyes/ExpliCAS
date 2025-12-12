@@ -513,6 +513,13 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     }
                 }
 
+                // If base is 1, just display "1" (1^n = 1)
+                if let Expr::Number(n) = self.context.get(*b) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                        return write!(f, "1");
+                    }
+                }
+
                 let base_prec = precedence(self.context, *b);
                 let op_prec = 3; // Pow precedence
 
@@ -1107,6 +1114,13 @@ impl<'a> DisplayExprWithHints<'a> {
                 if let Expr::Number(n) = self.context.get(*e) {
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
                         return self.fmt_internal(f, *b);
+                    }
+                }
+
+                // If base is 1, just display "1" (1^n = 1)
+                if let Expr::Number(n) = self.context.get(*b) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                        return write!(f, "1");
                     }
                 }
 

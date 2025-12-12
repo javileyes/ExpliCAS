@@ -76,6 +76,13 @@ impl<'a> LaTeXRenderer for LaTeXExprWithHints<'a> {
             }
         }
 
+        // If base is 1, just return "1" (1^n = 1)
+        if let Expr::Number(n) = self.context().get(base) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return "1".to_string();
+            }
+        }
+
         // Check if this should be rendered as a root based on hints
         if let Some(hints) = self.get_display_hint(self.root_id()) {
             if let Expr::Number(n) = self.context().get(exp) {

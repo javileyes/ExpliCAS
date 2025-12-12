@@ -264,6 +264,13 @@ pub trait LaTeXRenderer {
             }
         }
 
+        // If base is 1, just return "1" (1^n = 1)
+        if let Expr::Number(n) = self.context().get(base) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return "1".to_string();
+            }
+        }
+
         let base_str = self.expr_to_latex_base(base);
         let exp_str = self.expr_to_latex(exp, false);
         format!("{{{}}}^{{{}}}", base_str, exp_str)
@@ -463,6 +470,13 @@ impl<'a> LaTeXRenderer for HintedLatexRenderer<'a> {
             }
         }
 
+        // If base is 1, just return "1" (1^n = 1)
+        if let Expr::Number(n) = self.context().get(base) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return "1".to_string();
+            }
+        }
+
         // Check if this should be rendered as a root
         if let Some(_hints) = self.get_display_hint(self.root_id()) {
             if let Expr::Number(n) = self.context().get(exp) {
@@ -527,6 +541,13 @@ impl<'a> LaTeXRenderer for FullLatexRenderer<'a> {
         if let Expr::Number(n) = self.context().get(exp) {
             if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
                 return self.expr_to_latex(base, false);
+            }
+        }
+
+        // If base is 1, just return "1" (1^n = 1)
+        if let Expr::Number(n) = self.context().get(base) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return "1".to_string();
             }
         }
 
