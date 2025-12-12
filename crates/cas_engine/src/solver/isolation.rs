@@ -516,18 +516,19 @@ pub fn isolate(
 
                         let op_pos = flip_inequality(op.clone());
 
-                        // Add step for Case 1
+                        // Clone steps BEFORE adding Case 1 step
+                        let mut steps_case1 = steps.clone();
                         if simplifier.collect_steps {
-                            steps.push(SolveStep {
+                            steps_case1.push(SolveStep {
                                  description: format!("Case 1: Assume {} > 0. Multiply by {} (positive). Inequality direction preserved (flipped from isolation logic).",
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r },
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r }),
-                                 equation_after: Equation { lhs: r, rhs: sim_rhs, op: op_pos.clone() } // Showing the isolated form roughly
+                                 equation_after: Equation { lhs: r, rhs: sim_rhs, op: op_pos.clone() }
                              });
                         }
 
                         let results_pos = isolate(r, sim_rhs, op_pos, var, simplifier)?;
-                        let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
+                        let (set_pos, steps_pos) = prepend_steps(results_pos, steps_case1)?;
 
                         // Intersect with (0, inf)
                         let domain_pos = SolutionSet::Continuous(Interval {
@@ -543,9 +544,10 @@ pub fn isolate(
 
                         let op_neg = op.clone();
 
-                        // Add step for Case 2
+                        // Clone steps BEFORE adding Case 2 step (from original steps, not modified)
+                        let mut steps_case2 = steps.clone();
                         if simplifier.collect_steps {
-                            steps.push(SolveStep {
+                            steps_case2.push(SolveStep {
                                  description: format!("Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.",
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r },
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r }),
@@ -554,7 +556,7 @@ pub fn isolate(
                         }
 
                         let results_neg = isolate(r, sim_rhs, op_neg, var, simplifier)?;
-                        let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
+                        let (set_neg, steps_neg) = prepend_steps(results_neg, steps_case2)?;
 
                         // Intersect with (-inf, 0)
                         let domain_neg = SolutionSet::Continuous(Interval {
@@ -636,11 +638,7 @@ pub fn isolate(
                                         id: rhs
                                     }
                                 ),
-                                equation_after: Equation {
-                                    lhs,
-                                    rhs,
-                                    op,
-                                }, // No change
+                                equation_after: Equation { lhs, rhs, op }, // No change
                             });
                         }
                         return Ok((result, steps));

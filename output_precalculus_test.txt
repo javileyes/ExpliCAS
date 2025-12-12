@@ -2,12 +2,12 @@
 
 
 CLI Precalculus Tests - Valores Absolutos, Inecuaciones, Conjuntos
-Fecha: Fri Dec 12 10:49:49 CET 2025
+Fecha: Fri Dec 12 14:21:31 CET 2025
 ==================================================
 
    Compiling cas_engine v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_engine)
    Compiling cas_cli v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_cli)
-    Finished `release` profile [optimized] target(s) in 2.26s
+    Finished `release` profile [optimized] target(s) in 2.28s
      Running `target/release/cas_cli`
 Rust CAS Step-by-Step Demo
 Step-by-step output enabled (Normal).
@@ -24,40 +24,40 @@ Steps (Aggressive Mode):
 Result: 0
 Parsed: |-x|
 Steps (Aggressive Mode):
-Result: |x|
+Result: abs(x)
 Parsed: |x^2|
 No simplification steps needed.
-Result: |x^2|
+Result: abs(x^(2))
 Parsed: |x * -3|
 No simplification steps needed.
-Result: |-3 * x|
+Result: abs(-3 * x)
 Parsed: |x * y|
 No simplification steps needed.
-Result: |x * y|
+Result: abs(x * y)
 Parsed: |x / y|
 No simplification steps needed.
-Result: |x / y|
+Result: abs(x / y)
 Parsed: |y * x^2|
 No simplification steps needed.
-Result: |y * x^2|
+Result: abs(y * x^(2))
 Parsed: |-(x^2)|
 Steps (Aggressive Mode):
-Result: |x^2|
+Result: abs(x^(2))
 Parsed: |3 + x|
 No simplification steps needed.
-Result: |3 + x|
+Result: abs(3 + x)
 Parsed: |2 * x - 4|
 No simplification steps needed.
-Result: |2 * x - 4|
+Result: abs(2 * x - 4)
 Parsed: |x^2 - 1|
 No simplification steps needed.
-Result: |x^2 - 1|
+Result: abs(x^(2) - 1)
 Parsed: ||x||
 No simplification steps needed.
-Result: ||x||
+Result: abs(abs(x))
 Parsed: |-|x||
 Steps (Aggressive Mode):
-Result: ||x||
+Result: abs(abs(x))
 Steps:
 1. Split absolute value (Case 1): x = 5
    -> x = 5
@@ -618,28 +618,32 @@ Result: 1 + x
 Parsed: (x^2 - 4) / (2 + x)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: 2 + x  [Simplify Nested Fraction]
-   Rule: (x^2 - 4) / (2 + x) -> x - 2
+   Before: (x^(2) - 4) / (2 + x)
+   Rule: (x^(2) - 4) / (2 + x) -> x - 2
    After: x - 2
 Result: x - 2
 Parsed: (2 + x^2 + 3 * x) / (1 + x)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: 1 + x  [Simplify Nested Fraction]
-   Rule: (2 + x^2 + 3 * x) / (1 + x) -> 2 + x
+   Before: (2 + x^(2) + 3 * x) / (1 + x)
+   Rule: (2 + x^(2) + 3 * x) / (1 + x) -> 2 + x
    After: 2 + x
 Result: 2 + x
 Parsed: (x^3 - 1) / (x - 1)
 Steps (Aggressive Mode):
-Result: 1 + x + x^2
+Result: 1 + x + x^(2)
 Parsed: (6 + x^2 + 5 * x) / (2 + x)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: 2 + x  [Simplify Nested Fraction]
-   Rule: (6 + x^2 + 5 * x) / (2 + x) -> 3 + x
+   Before: (6 + x^(2) + 5 * x) / (2 + x)
+   Rule: (6 + x^(2) + 5 * x) / (2 + x) -> 3 + x
    After: 3 + x
 Result: 3 + x
 Parsed: (2 * x^2 - 8) / (x - 2)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: x - 2  [Simplify Nested Fraction]
-   Rule: (2 * x^2 - 8) / (x - 2) -> 4 + 2 * x
+   Before: (2 * x^(2) - 8) / (x - 2)
+   Rule: (2 * x^(2) - 8) / (x - 2) -> 4 + 2 * x
    After: 4 + 2 * x
 Result: 4 + 2 * x
 Parsed: 1 / x + 1 / (1 + x)
@@ -651,36 +655,38 @@ Result: 1 / (x - 1) - 1 / (1 + x)
 Parsed: 1 / (1 + x) + x / (1 + x)
 Steps (Aggressive Mode):
 1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
+   Before: 1 / (1 + x) + x / (1 + x)
    Rule: 1 / (1 + x) + x / (1 + x) -> (1 + x) / (1 + x)
    After: (1 + x) / (1 + x)
 2. Simplified fraction by GCD: 1 + x  [Simplify Nested Fraction]
+   Before: (1 + x) / (1 + x)
    Rule: (1 + x) / (1 + x) -> 1
    After: 1
 Result: 1
 Parsed: |x - 1|
 No simplification steps needed.
-Result: |x - 1|
+Result: abs(x - 1)
 Parsed: |x^2 - 4|
 No simplification steps needed.
-Result: |x^2 - 4|
+Result: abs(x^(2) - 4)
 Parsed: |(2 + x) * (x - 2)|
 No simplification steps needed.
-Result: |(x - 2) * (2 + x)|
+Result: abs((x - 2) * (2 + x))
 Parsed: sqrt(x^2)
 Steps (Aggressive Mode):
-Result: |x|
+Result: abs(x)
 Parsed: sqrt((x - 1)^2)
 Steps (Aggressive Mode):
-Result: |x - 1|
+Result: abs(x - 1)
 Parsed: sqrt(x)
 Steps (Aggressive Mode):
-Result: x^(1/2)
+Result: √(x)
 Parsed: sqrt(x - 2)
 Steps (Aggressive Mode):
-Result: (x - 2)^(1/2)
+Result: √(x - 2)
 Parsed: sqrt(4 - x^2)
 Steps (Aggressive Mode):
-Result: (4 - x^2)^(1/2)
+Result: √(4 - x^(2))
 Parsed: 1 / x
 No simplification steps needed.
 Result: 1 / x
@@ -689,51 +695,55 @@ No simplification steps needed.
 Result: 1 / (x - 3)
 Parsed: 1 / (x^2 - 4)
 No simplification steps needed.
-Result: 1 / (x^2 - 4)
+Result: 1 / (x^(2) - 4)
 Parsed: ln(x)
 No simplification steps needed.
-Result: ln(x)
+Result: log(e, x)
 Parsed: ln(x - 1)
 No simplification steps needed.
-Result: ln(x - 1)
+Result: log(e, x - 1)
 Parsed: ln(1 + x^2)
 No simplification steps needed.
-Result: ln(1 + x^2)
+Result: log(e, 1 + x^(2))
 Parsed: (x^2 - 1) / (x - 1)
 Steps (Aggressive Mode):
 Result: 1 + x
 Parsed: (x + x^2) / x
 Steps (Aggressive Mode):
 1. Distribute division (simplifying)  [Distributive Property]
-   Rule: (x + x^2) / x -> x / x + x^2 / x
-   After: x / x + x^2 / x
+   Before: (x + x^(2)) / x
+   Rule: (x + x^(2)) / x -> x / x + x^(2) / x
+   After: x / x + x^(2) / x
 2. Simplified fraction by GCD: x  [Simplify Nested Fraction]
+   Before: x / x + x^(2) / x
    Rule: x / x -> 1
-   After: 1 + x^2 / x
+   After: 1 + x^(2) / x
 3. Simplified fraction by GCD: x  [Simplify Nested Fraction]
-   Rule: x^2 / x -> x
+   Before: 1 + x^(2) / x
+   Rule: x^(2) / x -> x
    After: 1 + x
 Result: 1 + x
 Parsed: (x^3 - 8) / (x - 2)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: x - 2  [Simplify Nested Fraction]
-   Rule: (x^3 - 8) / (x - 2) -> 4 + x^2 + 2 * x
-   After: 4 + x^2 + 2 * x
-Result: 4 + x^2 + 2 * x
+   Before: (x^(3) - 8) / (x - 2)
+   Rule: (x^(3) - 8) / (x - 2) -> 4 + x^(2) + 2 * x
+   After: 4 + x^(2) + 2 * x
+Result: 4 + x^(2) + 2 * x
 Parsed: (sqrt(1 + x) - 1) / x
 Steps (Aggressive Mode):
-Result: ((1 + x)^(1/2) - 1) / x
+Result: (√(1 + x) - 1) / x
 Parsed: (x - 1) / (sqrt(x) - 1)
 Steps (Aggressive Mode):
-Result: (x - 1) * (-1 - x^(1/2)) / (1 - x)
+Result: (x - 1) * (-1 - √(x)) / (1 - x)
 Parsed: (x^2 - a^2) / (x - a)
 No simplification steps needed.
-Result: (x^2 - a^2) / (x - a)
+Result: (x^(2) - a^(2)) / (x - a)
 Parsed: (x^3 - a^3) / (x - a)
 No simplification steps needed.
-Result: (x^3 - a^3) / (x - a)
+Result: (x^(3) - a^(3)) / (x - a)
 Goodbye!
 
 ==================================================
-Tests de precálculo completados: Fri Dec 12 10:49:52 CET 2025
+Tests de precálculo completados: Fri Dec 12 14:21:33 CET 2025
 ==================================================
