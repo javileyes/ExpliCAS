@@ -2,12 +2,12 @@
 
 
 CLI Precalculus Tests - Valores Absolutos, Inecuaciones, Conjuntos
-Fecha: Fri Dec 12 14:21:31 CET 2025
+Fecha: Fri Dec 12 14:41:14 CET 2025
 ==================================================
 
    Compiling cas_engine v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_engine)
    Compiling cas_cli v0.1.0 (/Users/javiergimenezmoya/developer/math/crates/cas_cli)
-    Finished `release` profile [optimized] target(s) in 2.28s
+    Finished `release` profile [optimized] target(s) in 2.30s
      Running `target/release/cas_cli`
 Rust CAS Step-by-Step Demo
 Step-by-step output enabled (Normal).
@@ -549,9 +549,7 @@ Steps:
    -> x < infinity
 2. --- End of Case 1 ---
    -> x > infinity
-3. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
-   -> x < infinity
-4. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
+3. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
    -> x > infinity
 Result: (0, infinity)
 Steps:
@@ -559,9 +557,7 @@ Steps:
    -> x > infinity
 2. --- End of Case 1 ---
    -> x < infinity
-3. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
-   -> x > infinity
-4. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
+3. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
    -> x < infinity
 Result: (-infinity, 0)
 Steps:
@@ -569,9 +565,7 @@ Steps:
    -> x <= 1
 2. --- End of Case 1 ---
    -> x >= 1
-3. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
-   -> x <= 1
-4. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
+3. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
    -> x >= 1
 Result: (0, 1]
 Steps:
@@ -619,14 +613,14 @@ Parsed: (x^2 - 4) / (2 + x)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: 2 + x  [Simplify Nested Fraction]
    Before: (x^(2) - 4) / (2 + x)
-   Rule: (x^(2) - 4) / (2 + x) -> x - 2
+   Rule: (x - 2) * (2 + x) / (2 + x) -> x - 2
    After: x - 2
 Result: x - 2
 Parsed: (2 + x^2 + 3 * x) / (1 + x)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: 1 + x  [Simplify Nested Fraction]
    Before: (2 + x^(2) + 3 * x) / (1 + x)
-   Rule: (2 + x^(2) + 3 * x) / (1 + x) -> 2 + x
+   Rule: (1 + x) * (2 + x) / (1 + x) -> 2 + x
    After: 2 + x
 Result: 2 + x
 Parsed: (x^3 - 1) / (x - 1)
@@ -636,14 +630,14 @@ Parsed: (6 + x^2 + 5 * x) / (2 + x)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: 2 + x  [Simplify Nested Fraction]
    Before: (6 + x^(2) + 5 * x) / (2 + x)
-   Rule: (6 + x^(2) + 5 * x) / (2 + x) -> 3 + x
+   Rule: (2 + x) * (3 + x) / (2 + x) -> 3 + x
    After: 3 + x
 Result: 3 + x
 Parsed: (2 * x^2 - 8) / (x - 2)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: x - 2  [Simplify Nested Fraction]
    Before: (2 * x^(2) - 8) / (x - 2)
-   Rule: (2 * x^(2) - 8) / (x - 2) -> 4 + 2 * x
+   Rule: (x - 2) * (4 + 2 * x) / (x - 2) -> 4 + 2 * x
    After: 4 + 2 * x
 Result: 4 + 2 * x
 Parsed: 1 / x + 1 / (1 + x)
@@ -720,14 +714,14 @@ Steps (Aggressive Mode):
    After: 1 + x^(2) / x
 3. Simplified fraction by GCD: x  [Simplify Nested Fraction]
    Before: 1 + x^(2) / x
-   Rule: x^(2) / x -> x
+   Rule: x * x / x -> x
    After: 1 + x
 Result: 1 + x
 Parsed: (x^3 - 8) / (x - 2)
 Steps (Aggressive Mode):
 1. Simplified fraction by GCD: x - 2  [Simplify Nested Fraction]
    Before: (x^(3) - 8) / (x - 2)
-   Rule: (x^(3) - 8) / (x - 2) -> 4 + x^(2) + 2 * x
+   Rule: (x - 2) * (4 + x^(2) + 2 * x) / (x - 2) -> 4 + x^(2) + 2 * x
    After: 4 + x^(2) + 2 * x
 Result: 4 + x^(2) + 2 * x
 Parsed: (sqrt(1 + x) - 1) / x
@@ -745,5 +739,5 @@ Result: (x^(3) - a^(3)) / (x - a)
 Goodbye!
 
 ==================================================
-Tests de precálculo completados: Fri Dec 12 14:21:33 CET 2025
+Tests de precálculo completados: Fri Dec 12 14:41:17 CET 2025
 ==================================================

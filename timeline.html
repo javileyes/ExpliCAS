@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{\sqrt{8}}{\sqrt[3]{16}}</title>
+    <title>CAS Steps: \frac{{x}^{2} - 4}{2 + x}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -210,97 +210,34 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{\sqrt{8}}{\sqrt[3]{16}}\]
+            \[\frac{{x}^{2} - 4}{2 + x}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Evaluate Numeric Power</h3>
+                    <h3>Simplify Nested Fraction</h3>
                     
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{\sqrt{8}}}}{\sqrt[3]{16}}\]
+                        \[{\color{red}{\frac{-4 + {x}^{2}}{2 + x}}}\]
                     </div>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplify root: 8^1/2}\)</div>
+                        <div class="rule-name">\(\text{Simplified fraction by GCD: 2 + x}\)</div>
                         <div class="local-change">
-                            \[\sqrt{8} \rightarrow 2\cdot \sqrt{2}\]
+                            \[\frac{-4 + {x}^{2}}{2 + x} \rightarrow -2 + x\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{{\color{green}{2\cdot \sqrt{2}}}}{\sqrt[3]{16}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Evaluate Numeric Power</h3>
-                    
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{2\cdot \sqrt{2}}{{\color{red}{\sqrt[3]{16}}}}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplify root: 16^1/3}\)</div>
-                        <div class="local-change">
-                            \[\sqrt[3]{16} \rightarrow 2\cdot \sqrt[3]{2}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{2\cdot \sqrt{2}}{{\color{green}{2\cdot \sqrt[3]{2}}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Cancel Common Factors</h3>
-                    
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{2\cdot \sqrt{2}}{2\cdot \sqrt[3]{2}}}}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel common factors}\)</div>
-                        <div class="local-change">
-                            \[\frac{2\cdot \sqrt{2}}{2\cdot \sqrt[3]{2}} \rightarrow \frac{\sqrt{2}}{\sqrt[3]{2}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{\sqrt{2}}{\sqrt[3]{2}}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Quotient of Powers</h3>
-                    
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{\sqrt{2}}{\sqrt[3]{2}}}}\]
-                    </div>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{a^n / a^m = a^(n-m)}\)</div>
-                        <div class="local-change">
-                            \[\frac{\sqrt{2}}{\sqrt[3]{2}} \rightarrow {2}^{\frac{1}{6}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{{2}^{\frac{1}{6}}}}\]
+                        \[{\color{green}{-2 + x}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[{2}^{\frac{1}{6}}\]
+            \[-2 + x\]
         </div>
     </div>
     <footer>
