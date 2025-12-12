@@ -275,30 +275,14 @@ impl Simplifier {
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 
         // Extract steps from transformer so we can use self.context for post-processing
-        let mut steps = std::mem::take(&mut local_transformer.steps);
+        let steps = std::mem::take(&mut local_transformer.steps);
         drop(local_transformer); // Release borrow of self.context
 
-        // Post-process steps: compute accurate global_before and global_after
-        // by applying substitutions sequentially from the original expression
-        // ONLY do this when collect_steps is enabled (not during benchmarks)
-        if self.collect_steps && !steps.is_empty() {
-            let mut current_global = expr_id;
-            for step in steps.iter_mut() {
-                // global_before is the current state before this transformation
-                step.global_before = Some(current_global);
-
-                // Apply substitution: replace step.before with step.after in current_global
-                current_global = substitute_expr_by_id(
-                    &mut self.context,
-                    current_global,
-                    step.before,
-                    step.after,
-                );
-
-                // global_after is the new state after this transformation
-                step.global_after = Some(current_global);
-            }
-        }
+        // Note: global_before/global_after are already set correctly by LocalSimplificationTransformer
+        // using reconstruct_at_path (path-based reconstruction).
+        // Do NOT use substitute_expr_by_id here - it replaces by ExprId everywhere in the tree,
+        // which with interning can apply the step to ALL occurrences instead of just the one
+        // where the rewrite happened.
 
         (new_expr, steps)
     }
@@ -339,31 +323,15 @@ impl Simplifier {
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 
-        // Extract steps from transformer so we can use self.context for post-processing
-        let mut steps = std::mem::take(&mut local_transformer.steps);
+        // Extract steps from transformer
+        let steps = std::mem::take(&mut local_transformer.steps);
         drop(local_transformer); // Release borrow of self.context
 
-        // Post-process steps: compute accurate global_before and global_after
-        // by applying substitutions sequentially from the original expression
-        // ONLY do this when collect_steps is enabled (not during benchmarks)
-        if collect_steps && !steps.is_empty() {
-            let mut current_global = expr_id;
-            for step in steps.iter_mut() {
-                // global_before is the current state before this transformation
-                step.global_before = Some(current_global);
-
-                // Apply substitution: replace step.before with step.after in current_global
-                current_global = substitute_expr_by_id(
-                    &mut self.context,
-                    current_global,
-                    step.before,
-                    step.after,
-                );
-
-                // global_after is the new state after this transformation
-                step.global_after = Some(current_global);
-            }
-        }
+        // Note: global_before/global_after are already set correctly by LocalSimplificationTransformer
+        // using reconstruct_at_path (path-based reconstruction).
+        // Do NOT use substitute_expr_by_id here - it replaces by ExprId everywhere in the tree,
+        // which with interning can apply the step to ALL occurrences instead of just the one
+        // where the rewrite happened.
 
         (new_expr, steps)
     }
