@@ -24,6 +24,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
+    simplifier.add_rule(Box::new(QuotientOfPowersRule));
     simplifier.add_rule(Box::new(RootDenestingRule));
     simplifier.add_rule(Box::new(SimplifySquareRootRule));
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));

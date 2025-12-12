@@ -800,44 +800,50 @@ define_rule!(
                     }
                 }
 
-                // Case 3: nf = base^n, df = base^m.
+                // Case 3: nf = base^n, df = base^m (integer exponents only)
+                // Fractional exponents are handled atomically by QuotientOfPowersRule
                 if let Some((b_n, e_n)) = nf_pow {
                     if let Some((b_d, e_d)) = df_pow {
                         if crate::ordering::compare_expr(ctx, b_n, b_d) == std::cmp::Ordering::Equal
                         {
                             if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(e_n), ctx.get(e_d))
                             {
-                                if n > m {
-                                    let new_exp = n - m;
-                                    let new_term = if new_exp.is_one() {
-                                        b_n
-                                    } else {
-                                        let exp_node = ctx.add(Expr::Number(new_exp));
-                                        ctx.add(Expr::Pow(b_n, exp_node))
-                                    };
-                                    num_factors[i] = new_term;
-                                    den_factors.remove(j);
-                                    found = false;
-                                    changed = true;
-                                    break;
-                                } else if m > n {
-                                    let new_exp = m - n;
-                                    let new_term = if new_exp.is_one() {
-                                        b_d
-                                    } else {
-                                        let exp_node = ctx.add(Expr::Number(new_exp));
-                                        ctx.add(Expr::Pow(b_d, exp_node))
-                                    };
-                                    den_factors[j] = new_term;
-                                    found = true;
-                                    changed = true;
-                                    break;
+                                // Skip fractional exponents - QuotientOfPowersRule handles them
+                                if !n.is_integer() || !m.is_integer() {
+                                    // Continue to next factor, don't process this pair
                                 } else {
-                                    den_factors.remove(j);
-                                    found = true;
-                                    changed = true;
-                                    break;
-                                }
+                                    if n > m {
+                                        let new_exp = n - m;
+                                        let new_term = if new_exp.is_one() {
+                                            b_n
+                                        } else {
+                                            let exp_node = ctx.add(Expr::Number(new_exp));
+                                            ctx.add(Expr::Pow(b_n, exp_node))
+                                        };
+                                        num_factors[i] = new_term;
+                                        den_factors.remove(j);
+                                        found = false;
+                                        changed = true;
+                                        break;
+                                    } else if m > n {
+                                        let new_exp = m - n;
+                                        let new_term = if new_exp.is_one() {
+                                            b_d
+                                        } else {
+                                            let exp_node = ctx.add(Expr::Number(new_exp));
+                                            ctx.add(Expr::Pow(b_d, exp_node))
+                                        };
+                                        den_factors[j] = new_term;
+                                        found = true;
+                                        changed = true;
+                                        break;
+                                    } else {
+                                        den_factors.remove(j);
+                                        found = true;
+                                        changed = true;
+                                        break;
+                                    }
+                                } // end else for integer exponents
                             }
                         }
                     }
@@ -883,6 +889,108 @@ define_rule!(
         None
     }
 );
+
+// Atomized rule for quotient of powers: a^n / a^m = a^(n-m)
+// This is separated from CancelCommonFactorsRule for pedagogical clarity
+define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
+    let expr_data = ctx.get(expr).clone();
+
+    if let Expr::Div(num, den) = expr_data {
+        let num_data = ctx.get(num).clone();
+        let den_data = ctx.get(den).clone();
+
+        // Case 1: a^n / a^m where both are Pow
+        if let (Expr::Pow(b_n, e_n), Expr::Pow(b_d, e_d)) = (&num_data, &den_data) {
+            // Check same base
+            if crate::ordering::compare_expr(ctx, *b_n, *b_d) == std::cmp::Ordering::Equal {
+                // Check if exponents are numeric (so we can subtract)
+                if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(*e_n), ctx.get(*e_d)) {
+                    // Only handle fractional exponents here - integer case is in CancelCommonFactors
+                    if n.is_integer() && m.is_integer() {
+                        return None;
+                    }
+
+                    let diff = n - m;
+                    if diff.is_zero() {
+                        // a^n / a^n = 1
+                        return Some(Rewrite {
+                            new_expr: ctx.num(1),
+                            description: "a^n / a^n = 1".to_string(),
+                            before_local: None,
+                            after_local: None,
+                        });
+                    } else if diff.is_one() {
+                        // Result is just the base
+                        return Some(Rewrite {
+                            new_expr: *b_n,
+                            description: "a^n / a^m = a^(n-m)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                        });
+                    } else {
+                        let new_exp = ctx.add(Expr::Number(diff));
+                        let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "a^n / a^m = a^(n-m)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Case 2: a^n / a (denominator has implicit exponent 1)
+        if let Expr::Pow(b_n, e_n) = &num_data {
+            if crate::ordering::compare_expr(ctx, *b_n, den) == std::cmp::Ordering::Equal {
+                if let Expr::Number(n) = ctx.get(*e_n) {
+                    if !n.is_integer() {
+                        let new_exp_val = n - num_rational::BigRational::one();
+                        if new_exp_val.is_one() {
+                            return Some(Rewrite {
+                                new_expr: *b_n,
+                                description: "a^n / a = a^(n-1)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                            });
+                        } else {
+                            let new_exp = ctx.add(Expr::Number(new_exp_val));
+                            let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "a^n / a = a^(n-1)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Case 3: a / a^m (numerator has implicit exponent 1)
+        if let Expr::Pow(b_d, e_d) = &den_data {
+            if crate::ordering::compare_expr(ctx, num, *b_d) == std::cmp::Ordering::Equal {
+                if let Expr::Number(m) = ctx.get(*e_d) {
+                    if !m.is_integer() {
+                        let new_exp_val = num_rational::BigRational::one() - m;
+                        let new_exp = ctx.add(Expr::Number(new_exp_val));
+                        let new_expr = ctx.add(Expr::Pow(num, new_exp));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "a / a^m = a^(1-m)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    None
+});
 
 define_rule!(
     PullConstantFromFractionRule,
