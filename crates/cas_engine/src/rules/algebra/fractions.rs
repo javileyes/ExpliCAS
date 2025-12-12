@@ -683,6 +683,113 @@ define_rule!(
     }
 );
 
+/// Collect all additive terms from an expression
+/// For a + b + c, returns vec![a, b, c]
+fn collect_additive_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut terms = Vec::new();
+    collect_terms_recursive(ctx, expr, &mut terms);
+    terms
+}
+
+fn collect_terms_recursive(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            collect_terms_recursive(ctx, *l, terms);
+            collect_terms_recursive(ctx, *r, terms);
+        }
+        _ => {
+            // It's a leaf term (including Sub which we treat as single term)
+            terms.push(expr);
+        }
+    }
+}
+
+/// Check if an expression contains an irrational (root)
+fn contains_irrational(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(_, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                !n.is_integer() // Fractional exponent = root
+            } else {
+                false
+            }
+        }
+        Expr::Function(name, _) => name == "sqrt",
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            contains_irrational(ctx, *l) || contains_irrational(ctx, *r)
+        }
+        Expr::Neg(e) => contains_irrational(ctx, *e),
+        _ => false,
+    }
+}
+
+/// Build a sum from a list of terms
+fn build_sum(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
+    if terms.is_empty() {
+        return ctx.num(0);
+    }
+    let mut result = terms[0];
+    for &term in terms.iter().skip(1) {
+        result = ctx.add(Expr::Add(result, term));
+    }
+    result
+}
+
+define_rule!(
+    GeneralizedRationalizationRule,
+    "Generalized Rationalization",
+    |ctx, expr| {
+        // Only handle Div(num, den) where den has 3+ terms with roots
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            _ => return None,
+        };
+
+        let terms = collect_additive_terms(ctx, den);
+
+        // Only apply to 3+ terms (binary case handled by RationalizeDenominatorRule)
+        if terms.len() < 3 {
+            return None;
+        }
+
+        // Check if any term contains a root
+        let has_roots = terms.iter().any(|&t| contains_irrational(ctx, t));
+        if !has_roots {
+            return None;
+        }
+
+        // Strategy: Group as (first n-1 terms) + last_term
+        // Then apply conjugate: multiply by (group - last) / (group - last)
+        let last_term = terms[terms.len() - 1];
+        let group_terms = &terms[..terms.len() - 1];
+        let group = build_sum(ctx, group_terms);
+
+        // Conjugate: (group - last_term)
+        let conjugate = ctx.add(Expr::Sub(group, last_term));
+
+        // New numerator: num * conjugate
+        let new_num = ctx.add(Expr::Mul(num, conjugate));
+
+        // New denominator: group^2 - last_term^2 (difference of squares)
+        let two = ctx.num(2);
+        let group_sq = ctx.add(Expr::Pow(group, two));
+        let last_sq = ctx.add(Expr::Pow(last_term, two));
+        let new_den = ctx.add(Expr::Sub(group_sq, last_sq));
+
+        let new_expr = ctx.add(Expr::Div(new_num, new_den));
+
+        Some(Rewrite {
+            new_expr,
+            description: format!(
+                "Rationalize: group {} terms and multiply by conjugate",
+                terms.len()
+            ),
+            before_local: None,
+            after_local: None,
+        })
+    }
+);
+
 define_rule!(
     CancelCommonFactorsRule,
     "Cancel Common Factors",
