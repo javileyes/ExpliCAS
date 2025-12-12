@@ -476,16 +476,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     context.add(Expr::Add(new_l, r))
                 }
                 (Expr::Add(l, r), PathStep::Right) => {
-                    // Handle canonicalized Sub: Add(l, Neg(r))
-                    if let Expr::Neg(inner) = context.get(r).clone() {
-                        let new_inner =
-                            reconstruct_recursive(context, inner, remaining_path, replacement);
-                        let new_neg = context.add(Expr::Neg(new_inner));
-                        context.add(Expr::Add(l, new_neg))
-                    } else {
-                        let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                        context.add(Expr::Add(l, new_r))
-                    }
+                    // Follow AST literally - don't do magic Neg unwrapping.
+                    // If we need to modify inside a Neg, the path should include PathStep::Inner.
+                    let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
+                    context.add(Expr::Add(l, new_r))
                 }
                 (Expr::Sub(l, r), PathStep::Left) => {
                     let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
