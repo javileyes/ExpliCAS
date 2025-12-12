@@ -280,13 +280,40 @@ fn parse_factorial(input: &str) -> IResult<&str, ParseNode> {
     )(input)
 }
 
-// Power
+// Power - right associative: 2^3^4 = 2^(3^4), not (2^3)^4
+// Also allows negative exponents: x^-2, x^-(a+b)
 fn parse_power(input: &str) -> IResult<&str, ParseNode> {
-    let (input, init) = parse_factorial(input)?;
-    fold_many0(
-        pair(preceded(multispace0, tag("^")), parse_factorial),
-        move || init.clone(),
-        |acc, (_, val)| ParseNode::Pow(Box::new(acc), Box::new(val)),
+    let (input, base) = parse_factorial(input)?;
+
+    // Try to parse "^" followed by exponent
+    let try_caret = preceded::<_, _, _, nom::error::Error<&str>, _, _>(
+        multispace0::<_, nom::error::Error<&str>>,
+        tag::<_, _, nom::error::Error<&str>>("^"),
+    )(input);
+
+    if let Ok((input, _)) = try_caret {
+        // Parse exponent - allow unary minus/plus, then recurse for right-associativity
+        let (input, exp) = parse_power_exponent(input)?;
+        Ok((input, ParseNode::Pow(Box::new(base), Box::new(exp))))
+    } else {
+        Ok((input, base))
+    }
+}
+
+// Parser for exponents: allows sign prefix (-2, +3) then recurses for chained powers
+fn parse_power_exponent(input: &str) -> IResult<&str, ParseNode> {
+    preceded(
+        multispace0,
+        alt((
+            // Case: negative exponent -expr (e.g., x^-2, x^-(a+b))
+            map(pair(tag("-"), parse_power_exponent), |(_, expr)| {
+                ParseNode::Neg(Box::new(expr))
+            }),
+            // Case: positive sign +expr (rarely used, but valid)
+            map(pair(tag("+"), parse_power_exponent), |(_, expr)| expr),
+            // Case: normal power expression (recurse for 2^3^4)
+            parse_power,
+        )),
     )(input)
 }
 
@@ -564,6 +591,79 @@ mod tests {
             assert_eq!(data.len(), 3);
         } else {
             panic!("Expected Matrix variant");
+        }
+    }
+
+    #[test]
+    fn test_power_right_associativity() {
+        let mut ctx = Context::new();
+        // 2^3^4 should be 2^(3^4) = 2^81, NOT (2^3)^4 = 4096
+        let e = parse("2^3^4", &mut ctx).unwrap();
+        // Verify structure: should be Pow(2, Pow(3, 4))
+        if let Expr::Pow(base, exp) = ctx.get(e) {
+            // base should be 2
+            if let Expr::Number(n) = ctx.get(*base) {
+                assert!(n.is_integer());
+                assert_eq!(n.to_integer(), 2.into());
+            } else {
+                panic!("Expected base to be Number(2)");
+            }
+            // exp should be Pow(3, 4)
+            if let Expr::Pow(exp_base, exp_exp) = ctx.get(*exp) {
+                if let Expr::Number(n) = ctx.get(*exp_base) {
+                    assert_eq!(n.to_integer(), 3.into());
+                }
+                if let Expr::Number(n) = ctx.get(*exp_exp) {
+                    assert_eq!(n.to_integer(), 4.into());
+                }
+            } else {
+                panic!("Expected exponent to be Pow(3, 4)");
+            }
+        } else {
+            panic!("Expected Pow");
+        }
+    }
+
+    #[test]
+    fn test_negative_exponent() {
+        let mut ctx = Context::new();
+        // x^-2 should parse as Pow(x, Neg(2))
+        let e = parse("x^-2", &mut ctx).unwrap();
+        if let Expr::Pow(base, exp) = ctx.get(e) {
+            // base should be x
+            if let Expr::Variable(v) = ctx.get(*base) {
+                assert_eq!(v, "x");
+            } else {
+                panic!("Expected base to be Variable(x)");
+            }
+            // exp should be Neg(2)
+            if let Expr::Neg(inner) = ctx.get(*exp) {
+                if let Expr::Number(n) = ctx.get(*inner) {
+                    assert_eq!(n.to_integer(), 2.into());
+                } else {
+                    panic!("Expected Neg inner to be Number(2)");
+                }
+            } else {
+                panic!("Expected exponent to be Neg");
+            }
+        } else {
+            panic!("Expected Pow");
+        }
+    }
+
+    #[test]
+    fn test_negative_exponent_expression() {
+        let mut ctx = Context::new();
+        // x^-(a+b) should parse as Pow(x, Neg(Add(a, b)))
+        let e = parse("x^-(a+b)", &mut ctx).unwrap();
+        if let Expr::Pow(_, exp) = ctx.get(e) {
+            if let Expr::Neg(_) = ctx.get(*exp) {
+                // Successfully parsed as Neg
+            } else {
+                panic!("Expected exponent to be Neg");
+            }
+        } else {
+            panic!("Expected Pow");
         }
     }
 }
