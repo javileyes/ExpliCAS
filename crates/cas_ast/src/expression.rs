@@ -77,7 +77,10 @@ pub enum Expr {
 #[derive(Default, Clone)]
 pub struct Context {
     pub nodes: Vec<Expr>,
-    pub interner: HashMap<u64, ExprId>,
+    /// Interner: maps hash to bucket of ExprIds with that hash.
+    /// Using Vec<ExprId> instead of single ExprId to properly handle hash collisions
+    /// without losing deduplication for expressions that share the same hash.
+    pub interner: HashMap<u64, Vec<ExprId>>,
 }
 
 impl Context {
@@ -116,15 +119,16 @@ impl Context {
         canonical_expr.hash(&mut hasher);
         let hash = hasher.finish();
 
-        if let Some(&id) = self.interner.get(&hash) {
-            // Verify equality to handle hash collisions
-            // We can safely panic on access out of bounds, but it shouldn't happen
-            if self.nodes[id.index()] == canonical_expr {
-                return id;
+        // Check if we already have this expression in the bucket
+        if let Some(bucket) = self.interner.get(&hash) {
+            // Search all entries in the bucket for an exact match
+            for &id in bucket {
+                if self.nodes[id.index()] == canonical_expr {
+                    return id; // Found existing expression
+                }
             }
-            // Collision detected (same hash, different content)
-            // We fall through to add a new node, effectively overwriting the map entry for this hash
-            // This degrades deduplication for this bucket but maintains correctness
+            // Hash collision: same hash but different content
+            // We'll add to the bucket below
         }
 
         let index = self.nodes.len() as u32;
@@ -144,7 +148,9 @@ impl Context {
 
         let id = ExprId::new(index, tag);
         self.nodes.push(canonical_expr);
-        self.interner.insert(hash, id);
+
+        // Add to bucket (create new bucket if needed)
+        self.interner.entry(hash).or_default().push(id);
         id
     }
 
