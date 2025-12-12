@@ -5,13 +5,16 @@
 //! - `evaluation.rs`: Table-driven evaluation rule
 //! - `identities.rs`: Pythagorean, angle sum/diff, double-angle, and other identity rules
 //! - `pythagorean.rs`: Standalone Pythagorean identity simplification rule
+//! - `weierstrass.rs`: Weierstrass substitution (t = tan(x/2))
 
 pub mod evaluation;
 pub mod identities;
 pub mod pythagorean;
 pub mod values;
+pub mod weierstrass;
 
 pub use evaluation::EvaluateTrigTableRule;
 pub use identities::*;
 pub use pythagorean::TrigPythagoreanSimplifyRule;
 pub use values::{detect_special_angle, lookup_trig_value, SpecialAngle, TrigValue};
+pub use weierstrass::{ReverseWeierstrassRule, WeierstrassSubstitutionRule};

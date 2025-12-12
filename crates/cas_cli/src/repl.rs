@@ -689,6 +689,12 @@ impl Repl {
             return;
         }
 
+        // Check for "weierstrass" command - Weierstrass substitution (t = tan(x/2))
+        if line.starts_with("weierstrass ") {
+            self.handle_weierstrass(&line);
+            return;
+        }
+
         // Check for "profile" commands
         if line.starts_with("profile") {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -1621,6 +1627,164 @@ impl Repl {
                 println!("{}", result.format(&self.simplifier.context));
             }
             Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    /// Handle the 'weierstrass' command for applying Weierstrass substitution
+    /// Transforms sin(x), cos(x), tan(x) into rational expressions in t = tan(x/2)
+    fn handle_weierstrass(&mut self, line: &str) {
+        let rest = line[12..].trim(); // Remove "weierstrass "
+
+        if rest.is_empty() {
+            println!("Usage: weierstrass <expression>");
+            println!("Description: Apply Weierstrass substitution (t = tan(x/2))");
+            println!("Transforms:");
+            println!("  sin(x) → 2t/(1+t²)");
+            println!("  cos(x) → (1-t²)/(1+t²)");
+            println!("  tan(x) → 2t/(1-t²)");
+            println!("Example: weierstrass sin(x) + cos(x)");
+            return;
+        }
+
+        // Parse the expression
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                use cas_ast::DisplayExpr;
+                println!("Parsed: {}", rest);
+                println!();
+
+                // Apply Weierstrass substitution recursively
+                let result = self.apply_weierstrass_recursive(expr);
+
+                // Display result
+                let result_str = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: result
+                    }
+                );
+                println!("Weierstrass substitution (t = tan(x/2)):");
+                println!("  {} → {}", rest, result_str);
+
+                // Try to simplify the result
+                println!();
+                println!("Simplifying...");
+                let (simplified, _steps) = self.simplifier.simplify(result);
+                let simplified_str = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: simplified
+                    }
+                );
+                println!("Result: {}", simplified_str);
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    /// Apply Weierstrass substitution recursively to all trig functions
+    fn apply_weierstrass_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
+        use cas_ast::Expr;
+
+        match self.simplifier.context.get(expr).clone() {
+            Expr::Function(name, args)
+                if matches!(name.as_str(), "sin" | "cos" | "tan") && args.len() == 1 =>
+            {
+                let arg = args[0];
+
+                // Build t = tan(x/2) as sin(x/2)/cos(x/2)
+                let two_num = self.simplifier.context.num(2);
+                let half_arg = self.simplifier.context.add(Expr::Div(arg, two_num));
+                let sin_half = self
+                    .simplifier
+                    .context
+                    .add(Expr::Function("sin".to_string(), vec![half_arg]));
+                let cos_half = self
+                    .simplifier
+                    .context
+                    .add(Expr::Function("cos".to_string(), vec![half_arg]));
+                let t = self.simplifier.context.add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
+
+                // Apply appropriate transformation
+                match name.as_str() {
+                    "sin" => {
+                        // sin(x) → 2t/(1+t²)
+                        let two = self.simplifier.context.num(2);
+                        let one = self.simplifier.context.num(1);
+                        let t_squared = self.simplifier.context.add(Expr::Pow(t, two));
+                        let numerator = self.simplifier.context.add(Expr::Mul(two, t));
+                        let denominator = self.simplifier.context.add(Expr::Add(one, t_squared));
+                        self.simplifier
+                            .context
+                            .add(Expr::Div(numerator, denominator))
+                    }
+                    "cos" => {
+                        // cos(x) → (1-t²)/(1+t²)
+                        let one = self.simplifier.context.num(1);
+                        let two = self.simplifier.context.num(2);
+                        let t_squared = self.simplifier.context.add(Expr::Pow(t, two));
+                        let numerator = self.simplifier.context.add(Expr::Sub(one, t_squared));
+                        let denominator = self.simplifier.context.add(Expr::Add(one, t_squared));
+                        self.simplifier
+                            .context
+                            .add(Expr::Div(numerator, denominator))
+                    }
+                    "tan" => {
+                        // tan(x) → 2t/(1-t²)
+                        let two = self.simplifier.context.num(2);
+                        let one = self.simplifier.context.num(1);
+                        let t_squared = self.simplifier.context.add(Expr::Pow(t, two));
+                        let numerator = self.simplifier.context.add(Expr::Mul(two, t));
+                        let denominator = self.simplifier.context.add(Expr::Sub(one, t_squared));
+                        self.simplifier
+                            .context
+                            .add(Expr::Div(numerator, denominator))
+                    }
+                    _ => expr,
+                }
+            }
+            Expr::Add(l, r) => {
+                let new_l = self.apply_weierstrass_recursive(l);
+                let new_r = self.apply_weierstrass_recursive(r);
+                self.simplifier.context.add(Expr::Add(new_l, new_r))
+            }
+            Expr::Sub(l, r) => {
+                let new_l = self.apply_weierstrass_recursive(l);
+                let new_r = self.apply_weierstrass_recursive(r);
+                self.simplifier.context.add(Expr::Sub(new_l, new_r))
+            }
+            Expr::Mul(l, r) => {
+                let new_l = self.apply_weierstrass_recursive(l);
+                let new_r = self.apply_weierstrass_recursive(r);
+                self.simplifier.context.add(Expr::Mul(new_l, new_r))
+            }
+            Expr::Div(l, r) => {
+                let new_l = self.apply_weierstrass_recursive(l);
+                let new_r = self.apply_weierstrass_recursive(r);
+                self.simplifier.context.add(Expr::Div(new_l, new_r))
+            }
+            Expr::Pow(base, exp) => {
+                let new_base = self.apply_weierstrass_recursive(base);
+                let new_exp = self.apply_weierstrass_recursive(exp);
+                self.simplifier.context.add(Expr::Pow(new_base, new_exp))
+            }
+            Expr::Neg(e) => {
+                let new_e = self.apply_weierstrass_recursive(e);
+                self.simplifier.context.add(Expr::Neg(new_e))
+            }
+            Expr::Function(name, args) => {
+                // Recurse into function arguments
+                let new_args: Vec<_> = args
+                    .iter()
+                    .map(|&a| self.apply_weierstrass_recursive(a))
+                    .collect();
+                self.simplifier
+                    .context
+                    .add(Expr::Function(name.clone(), new_args))
+            }
+            _ => expr, // Number, Variable, Constant, Matrix - leave as is
         }
     }
 
