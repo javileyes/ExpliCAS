@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{{x}^{2} - 4}{2 + x}</title>
+    <title>CAS Steps: \frac{1}{\sqrt{3} + 1 + \sqrt{2}}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -210,38 +210,118 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{{x}^{2} - 4}{2 + x}\]
+            \[\frac{1}{\sqrt{3} + 1 + \sqrt{2}}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
+                    <h3>Generalized Rationalization</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{{x}^{2} - 4}{2 + x}}}\]
+                        \[{\color{red}{\frac{1}{1 + \sqrt{2} + \sqrt{3}}}}\]
                     </div>
-                    <details class="substeps-details">
-                            <summary>Factorización de polinomios</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Factor: x^2 - 4 contains factor 2 + x</span><div class="substep-math">\[x^2 - 4 \rightarrow (x - 2) * (2 + x)\]</div></div><div class="substep">
-                                    <span class="substep-desc">Cancel common factor: 2 + x</span><div class="substep-math">\[(x^2 - 4) / (2 + x) \rightarrow x - 2\]</div></div></div></details>
+                    
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplified fraction by GCD: 2 + x}\)</div>
+                        <div class="rule-name">\(\text{Rationalize: group 3 terms and multiply by conjugate}\)</div>
                         <div class="local-change">
-                            \[\frac{{x}^{2} - 4}{2 + x} \rightarrow x - 2\]
+                            \[\frac{1}{1 + \sqrt{2} + \sqrt{3}} \rightarrow \frac{1\cdot (1 + \sqrt{2} - \sqrt{3})}{{(1 + \sqrt{2})}^{2} - {\sqrt{3}}^{2}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{x - 2}}\]
+                        \[{\color{green}{\frac{1\cdot (1 + \sqrt{2} - \sqrt{3})}{{(1 + \sqrt{2})}^{2} - {\sqrt{3}}^{2}}}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Binomial Expansion</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{1 + \sqrt{2} - \sqrt{3}}{{\color{red}{{(1 + \sqrt{2})}^{2}}} - {\sqrt{3}}^{2}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Expand binomial power ^2}\)</div>
+                        <div class="local-change">
+                            \[{(1 + \sqrt{2})}^{2} \rightarrow 1\cdot {\sqrt{2}}^{2} + 1\cdot {1}^{2} + 2\cdot 1\cdot \sqrt{2}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{1 + \sqrt{2} - \sqrt{3}}{{\color{green}{1\cdot {\sqrt{2}}^{2} + 1\cdot {1}^{2} + 2\cdot 1\cdot \sqrt{2}}} - {\sqrt{3}}^{2}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Power of a Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{1 + \sqrt{2} - \sqrt{3}}{1\cdot {\color{red}{{\sqrt{2}}^{2}}} + 1\cdot {1}^{2} + 2\cdot 1\cdot \sqrt{2} - {\sqrt{3}}^{2}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="local-change">
+                            \[{\sqrt{2}}^{2} \rightarrow {2}^{1}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{1 + \sqrt{2} - \sqrt{3}}{1\cdot {\color{green}{{2}^{1}}} + 1\cdot {1}^{2} + 2\cdot 1\cdot \sqrt{2} - {\sqrt{3}}^{2}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Power of a Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{1 + \sqrt{2} - \sqrt{3}}{3 + 2\cdot \sqrt{2} - {\color{red}{{\sqrt{3}}^{2}}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="local-change">
+                            \[{\sqrt{3}}^{2} \rightarrow {3}^{1}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{1 + \sqrt{2} - \sqrt{3}}{3 + 2\cdot \sqrt{2} - {\color{green}{{3}^{1}}}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Rationalize Product Denominator</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{\frac{1 + \sqrt{2} - \sqrt{3}}{2\cdot \sqrt{2}}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Rationalize product denominator}\)</div>
+                        <div class="local-change">
+                            \[\frac{1 + \sqrt{2} - \sqrt{3}}{2\cdot \sqrt{2}} \rightarrow \frac{\sqrt{2}\cdot (1 + \sqrt{2} - \sqrt{3})}{2\cdot 2}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{\color{green}{\frac{\sqrt{2}\cdot (1 + \sqrt{2} - \sqrt{3})}{2\cdot 2}}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[x - 2\]
+            \[\frac{1}{4}\cdot \sqrt{2}\cdot (1 + \sqrt{2} - \sqrt{3})\]
         </div>
     </div>
     <footer>

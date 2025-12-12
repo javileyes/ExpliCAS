@@ -2254,7 +2254,34 @@ impl Repl {
                                     if self.verbosity == Verbosity::Verbose
                                         || self.verbosity == Verbosity::Normal
                                     {
-                                        // Didactic: Show sub-steps BEFORE Local transformation
+                                        // Show Before: global expression before this step (always)
+                                        if let Some(global_before) = step.global_before {
+                                            println!(
+                                                "   Before: {}",
+                                                clean_display_string(&format!(
+                                                    "{}",
+                                                    DisplayExprWithHints {
+                                                        context: &self.simplifier.context,
+                                                        id: global_before,
+                                                        hints: &display_hints
+                                                    }
+                                                ))
+                                            );
+                                        } else {
+                                            println!(
+                                                "   Before: {}",
+                                                clean_display_string(&format!(
+                                                    "{}",
+                                                    DisplayExprWithHints {
+                                                        context: &self.simplifier.context,
+                                                        id: current_root,
+                                                        hints: &display_hints
+                                                    }
+                                                ))
+                                            );
+                                        }
+
+                                        // Didactic: Show sub-steps AFTER Before: line
                                         // Sub-steps explain hidden computations (e.g., fraction sums)
                                         // Only show on first visible step to avoid duplication
                                         if !sub_steps_shown {
@@ -2313,39 +2340,7 @@ impl Repl {
                                                         result.replace("\\", "")
                                                     }
 
-                                                    // Show Before: global expression before this step
-                                                    if let Some(global_before) = step.global_before
-                                                    {
-                                                        println!(
-                                                            "   Before: {}",
-                                                            clean_display_string(&format!(
-                                                                "{}",
-                                                                DisplayExprWithHints {
-                                                                    context: &self
-                                                                        .simplifier
-                                                                        .context,
-                                                                    id: global_before,
-                                                                    hints: &display_hints
-                                                                }
-                                                            ))
-                                                        );
-                                                    } else {
-                                                        println!(
-                                                            "   Before: {}",
-                                                            clean_display_string(&format!(
-                                                                "{}",
-                                                                DisplayExprWithHints {
-                                                                    context: &self
-                                                                        .simplifier
-                                                                        .context,
-                                                                    id: current_root,
-                                                                    hints: &display_hints
-                                                                }
-                                                            ))
-                                                        );
-                                                    }
-
-                                                    // Show sub-steps AFTER Before: for better pedagogical flow
+                                                    // Show sub-steps (Before: already shown above for all steps)
                                                     // Show title for substeps section (detect type from description)
                                                     let has_fraction_sum =
                                                         enriched_step.sub_steps.iter().any(|s| {

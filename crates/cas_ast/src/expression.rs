@@ -499,6 +499,20 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 }
             }
             Expr::Pow(b, e) => {
+                // If exponent is 1, just display the base (no ^1)
+                if let Expr::Number(n) = self.context.get(*e) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                        return write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *b
+                            }
+                        );
+                    }
+                }
+
                 let base_prec = precedence(self.context, *b);
                 let op_prec = 3; // Pow precedence
 
@@ -1089,6 +1103,13 @@ impl<'a> DisplayExprWithHints<'a> {
                 }
             }
             Expr::Pow(b, e) => {
+                // If exponent is 1, just display the base (no ^1)
+                if let Expr::Number(n) = self.context.get(*e) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                        return self.fmt_internal(f, *b);
+                    }
+                }
+
                 // Add parentheses around base if it's a binary operation
                 let base_expr = self.context.get(*b);
                 let needs_parens = matches!(
