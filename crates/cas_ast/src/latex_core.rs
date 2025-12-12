@@ -121,10 +121,25 @@ pub trait LaTeXRenderer {
         let ctx = self.context();
 
         // Check if left side is negative - canonicalization may swap operands
+        // Handle Neg(expr) case
         if let Expr::Neg(left_inner) = ctx.get(l) {
             let inner_latex = self.expr_to_latex(*left_inner, true);
             let right_latex = self.expr_to_latex(r, false);
             return format!("{} - {}", right_latex, inner_latex);
+        }
+
+        // Handle negative number on left: -2 + x -> x - 2
+        if let Expr::Number(n) = ctx.get(l) {
+            if n.is_negative() {
+                let positive = -n;
+                let positive_str = if positive.is_integer() {
+                    format!("{}", positive.numer())
+                } else {
+                    format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+                };
+                let right_latex = self.expr_to_latex(r, false);
+                return format!("{} - {}", right_latex, positive_str);
+            }
         }
 
         let left = self.expr_to_latex(l, false);
