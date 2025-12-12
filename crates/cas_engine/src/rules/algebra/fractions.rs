@@ -965,6 +965,20 @@ define_rule!(
         if non_root_factors.is_empty() {
             // Just sqrt(n) in denominator - still rationalize
             if let Some((radicand, _index)) = extract_root_base(ctx, root) {
+                // Check if radicand is a binomial (Add or Sub) - these can cause infinite loops
+                // when both numerator and denominator have binomial radicals like sqrt(x+y)/sqrt(x-y)
+                let is_binomial_radical =
+                    matches!(ctx.get(radicand), Expr::Add(_, _) | Expr::Sub(_, _));
+                if is_binomial_radical && contains_irrational(ctx, num) {
+                    return None;
+                }
+
+                // Don't rationalize if radicand is a simple number - power rules handle these better
+                // e.g., sqrt(2) / 2^(1/3) should simplify via power combination to 2^(1/6)
+                if matches!(ctx.get(radicand), Expr::Number(_)) {
+                    return None;
+                }
+
                 // 1/sqrt(n) -> sqrt(n)/n
                 let new_num = ctx.add(Expr::Mul(num, root));
                 let new_den = radicand;
@@ -979,14 +993,56 @@ define_rule!(
             return None;
         }
 
-        // We have: num / (other_factors * root)
-        // Multiply by root/root to get: (num * root) / (other_factors * root * root)
-        // = (num * root) / (other_factors * radicand)
-
+        // Don't apply if radicand is a simple number - power rules can handle these better
+        // e.g., 2*sqrt(2) / (2*2^(1/3)) should simplify via power combination, not rationalization
         if let Some((radicand, _index)) = extract_root_base(ctx, root) {
-            let new_num = ctx.add(Expr::Mul(num, root));
+            if matches!(ctx.get(radicand), Expr::Number(_)) {
+                return None;
+            }
+        }
 
-            // Build new denominator: other_factors * radicand
+        // We have: num / (other_factors * root) where root = radicand^(1/index)
+        // To rationalize, we need to multiply by radicand^((index-1)/index) / radicand^((index-1)/index)
+        // This gives: root * radicand^((index-1)/index) = radicand^(1/index + (index-1)/index) = radicand^1 = radicand
+        //
+        // For sqrt (index=2): multiply by radicand^(1/2) to get radicand^(1/2 + 1/2) = radicand
+        // For cbrt (index=3): multiply by radicand^(2/3) to get radicand^(1/3 + 2/3) = radicand
+
+        if let Some((radicand, index)) = extract_root_base(ctx, root) {
+            // Compute the conjugate exponent: (index - 1) / index
+            // For square root (index=2): conjugate = 1/2, so conjugate_power = radicand^(1/2) = sqrt(radicand)
+            // For cube root (index=3): conjugate = 2/3, so conjugate_power = radicand^(2/3)
+
+            // Get index as integer if possible
+            let index_val = if let Expr::Number(n) = ctx.get(index) {
+                if n.is_integer() {
+                    Some(n.to_integer())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Only handle integer indices for now
+            let index_int = index_val?;
+            if index_int <= num_bigint::BigInt::from(1) {
+                return None; // Not a valid root index
+            }
+
+            // Build conjugate exponent (index - 1) / index
+            let one = num_bigint::BigInt::from(1);
+            let conjugate_num = &index_int - &one;
+            let conjugate_exp = num_rational::BigRational::new(conjugate_num, index_int);
+            let conjugate_exp_id = ctx.add(Expr::Number(conjugate_exp));
+
+            // conjugate_power = radicand^((index-1)/index)
+            let conjugate_power = ctx.add(Expr::Pow(radicand, conjugate_exp_id));
+
+            // New numerator: num * conjugate_power
+            let new_num = ctx.add(Expr::Mul(num, conjugate_power));
+
+            // Build new denominator: other_factors * radicand (since root * conjugate_power = radicand)
             let mut new_den = radicand;
             for &factor in &non_root_factors {
                 new_den = ctx.add(Expr::Mul(new_den, factor));
