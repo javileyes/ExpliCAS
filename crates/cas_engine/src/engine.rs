@@ -517,49 +517,49 @@ impl<'a> LocalSimplificationTransformer<'a> {
             match (expr, current_step) {
                 (Expr::Add(l, r), PathStep::Left) => {
                     let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add(Expr::Add(new_l, r))
+                    context.add_raw(Expr::Add(new_l, r)) // Use add_raw to preserve structure
                 }
                 (Expr::Add(l, r), PathStep::Right) => {
                     // Follow AST literally - don't do magic Neg unwrapping.
                     // If we need to modify inside a Neg, the path should include PathStep::Inner.
                     let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add(Expr::Add(l, new_r))
+                    context.add_raw(Expr::Add(l, new_r)) // Use add_raw to preserve structure
                 }
                 (Expr::Sub(l, r), PathStep::Left) => {
                     let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add(Expr::Sub(new_l, r))
+                    context.add_raw(Expr::Sub(new_l, r)) // Use add_raw to preserve structure
                 }
                 (Expr::Sub(l, r), PathStep::Right) => {
                     let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add(Expr::Sub(l, new_r))
+                    context.add_raw(Expr::Sub(l, new_r)) // Use add_raw to preserve structure
                 }
                 (Expr::Mul(l, r), PathStep::Left) => {
                     let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add(Expr::Mul(new_l, r))
+                    context.add_raw(Expr::Mul(new_l, r)) // Use add_raw to preserve structure
                 }
                 (Expr::Mul(l, r), PathStep::Right) => {
                     let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add(Expr::Mul(l, new_r))
+                    context.add_raw(Expr::Mul(l, new_r)) // Use add_raw to preserve structure
                 }
                 (Expr::Div(l, r), PathStep::Left) => {
                     let new_l = reconstruct_recursive(context, l, remaining_path, replacement);
-                    context.add(Expr::Div(new_l, r))
+                    context.add_raw(Expr::Div(new_l, r)) // Use add_raw to preserve structure
                 }
                 (Expr::Div(l, r), PathStep::Right) => {
                     let new_r = reconstruct_recursive(context, r, remaining_path, replacement);
-                    context.add(Expr::Div(l, new_r))
+                    context.add_raw(Expr::Div(l, new_r)) // Use add_raw to preserve structure
                 }
                 (Expr::Pow(b, e), PathStep::Base) => {
                     let new_b = reconstruct_recursive(context, b, remaining_path, replacement);
-                    context.add(Expr::Pow(new_b, e))
+                    context.add_raw(Expr::Pow(new_b, e)) // Use add_raw to preserve structure
                 }
                 (Expr::Pow(b, e), PathStep::Exponent) => {
                     let new_e = reconstruct_recursive(context, e, remaining_path, replacement);
-                    context.add(Expr::Pow(b, new_e))
+                    context.add_raw(Expr::Pow(b, new_e)) // Use add_raw to preserve structure
                 }
                 (Expr::Neg(e), PathStep::Inner) => {
                     let new_e = reconstruct_recursive(context, e, remaining_path, replacement);
-                    context.add(Expr::Neg(new_e))
+                    context.add_raw(Expr::Neg(new_e)) // Use add_raw to preserve structure
                 }
                 (Expr::Function(name, args), PathStep::Arg(idx)) => {
                     let mut new_args = args;
@@ -570,7 +570,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             remaining_path,
                             replacement,
                         );
-                        context.add(Expr::Function(name, new_args))
+                        context.add_raw(Expr::Function(name, new_args)) // Use add_raw to preserve structure
                     } else {
                         root
                     }
