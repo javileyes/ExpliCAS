@@ -282,15 +282,23 @@ impl<'a> SemanticEqualityChecker<'a> {
 /// Returns None if the rule produces a semantically equivalent result that doesn't improve canonicity.
 ///
 /// Policy:
-/// - If semantically DIFFERENT: always accept (it's a real simplification)
-/// - If semantically EQUAL: accept only if it improves normal form (reduces Div/Sub count)
+/// - If provably semantically EQUAL: accept only if it improves normal form (reduces Div/Sub count)
+/// - If NOT provably equal (unknown/different): always accept
 /// - Exception: Didactic rules always generate steps
+///
+/// NOTE: `checker.are_equal == true` means "provably equal".
+/// `false` means "cannot prove equality" - NOT necessarily "provably different".
 pub fn apply_rule_with_semantic_check(
     ctx: &mut Context,
     rule: &dyn Rule,
     expr_id: ExprId,
 ) -> Option<Rewrite> {
     if let Some(rewrite) = rule.apply(ctx, expr_id, &crate::parent_context::ParentContext::root()) {
+        // Fast path: if rewrite produces identical ExprId, skip entirely
+        if rewrite.new_expr == expr_id {
+            return None;
+        }
+
         // Didactic rules should always generate steps, even if semantically equivalent
         // e.g., sqrt(12) → 2*√3 is numerically equivalent but shows simplification
         let is_didactic_rule =
@@ -300,21 +308,23 @@ pub fn apply_rule_with_semantic_check(
             return Some(rewrite);
         }
 
-        // Check if the result is semantically different
+        // Check if provably semantically equal
+        // NOTE: are_equal returning false does NOT mean "provably different",
+        // just "cannot establish equality" - so we accept those rewrites.
         let checker = SemanticEqualityChecker::new(ctx);
         if !checker.are_equal(expr_id, rewrite.new_expr) {
-            // Semantically different - accept (real simplification)
+            // Not provably equal - accept (could be different or just unknown)
             return Some(rewrite);
         }
 
-        // Semantically equal - accept only if it improves normal form
+        // Provably semantically equal - accept only if it improves normal form
         // This allows canonicalizing rewrites like Div(1,2) -> Number(1/2)
         let before_score = crate::helpers::nf_score(ctx, expr_id);
         let after_score = crate::helpers::nf_score(ctx, rewrite.new_expr);
         if after_score < before_score {
             return Some(rewrite);
         }
-        // No improvement - skip this rewrite
+        // No improvement in normal form - skip this rewrite
     }
     None
 }
