@@ -2,6 +2,7 @@ use crate::define_rule;
 use crate::ordering::compare_expr;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Context, Expr, ExprId};
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -59,8 +60,8 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                 return None;
             }
 
-            let ab = ctx.add(Expr::Mul(l, b));
-            let ac = ctx.add(Expr::Mul(l, c));
+            let ab = smart_mul(ctx, l, b);
+            let ac = smart_mul(ctx, l, c);
             let new_expr = ctx.add(Expr::Add(ab, ac));
             return Some(Rewrite {
                 new_expr,
@@ -93,8 +94,8 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                 return None;
             }
 
-            let ba = ctx.add(Expr::Mul(b, r));
-            let ca = ctx.add(Expr::Mul(c, r));
+            let ba = smart_mul(ctx, b, r);
+            let ca = smart_mul(ctx, c, r);
             let new_expr = ctx.add(Expr::Add(ba, ca));
             return Some(Rewrite {
                 new_expr,
@@ -221,9 +222,9 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Distribute division (simplifying)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -245,9 +246,9 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: "Distribute division (simplifying)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -482,9 +483,9 @@ define_rule!(BinomialExpansionRule, "Binomial Expansion", |ctx, expr| {
                         return Some(Rewrite {
                             new_expr: expanded,
                             description: format!("Expand binomial power ^{}", n_val),
-                before_local: None,
-                after_local: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
                 }
             }
