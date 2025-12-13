@@ -3,6 +3,12 @@ use crate::helpers::is_one;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 // ==================== Sophisticated Context-Aware Canonicalization ====================
 // STRATEGY: Only convert when it demonstrably helps simplification
 // Three-tier approach:
@@ -271,7 +277,7 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
         Expr::Mul(l, r) => {
             let new_l = convert_trig_to_sincos(ctx, l);
             let new_r = convert_trig_to_sincos(ctx, r);
-            ctx.add(Expr::Mul(new_l, new_r))
+            mul2_raw(ctx, new_l, new_r)
         }
         Expr::Div(l, r) => {
             let new_l = convert_trig_to_sincos(ctx, l);

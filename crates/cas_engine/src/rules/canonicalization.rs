@@ -7,6 +7,12 @@ use num_integer::Integer;
 use num_traits::Zero;
 use std::cmp::Ordering;
 
+/// Helper: Build a 2-factor product (no normalization, right-assoc, safe for canonicalization).
+#[inline]
+fn mul2_raw(ctx: &mut cas_ast::Context, a: cas_ast::ExprId, b: cas_ast::ExprId) -> cas_ast::ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 define_rule!(
     CanonicalizeNegationRule,
     "Canonicalize Negation",
@@ -95,7 +101,7 @@ define_rule!(
                 if let Some(n) = n_opt {
                     let neg_n = -n.clone();
                     let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
-                    let new_expr = ctx.add(Expr::Mul(neg_n_expr, rhs));
+                    let new_expr = mul2_raw(ctx, neg_n_expr, rhs);
                     return Some(Rewrite {
                         new_expr,
                         description: format!("-({} * x) = {} * x", n, neg_n),
@@ -123,7 +129,7 @@ define_rule!(
                 None
             };
             if let Some(inner_l) = lhs_is_neg {
-                let new_mul = ctx.add(Expr::Mul(inner_l, rhs));
+                let new_mul = mul2_raw(ctx, inner_l, rhs);
                 let new_expr = ctx.add(Expr::Neg(new_mul));
                 return Some(Rewrite {
                     new_expr,
@@ -151,7 +157,7 @@ define_rule!(
                 if let Some(n) = n_opt {
                     let neg_n = -n.clone();
                     let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
-                    let new_expr = ctx.add(Expr::Mul(neg_n_expr, inner_r));
+                    let new_expr = mul2_raw(ctx, neg_n_expr, inner_r);
                     return Some(Rewrite {
                         new_expr,
                         description: format!("{} * (-x) = {} * x", n, neg_n),
@@ -160,7 +166,7 @@ define_rule!(
                     });
                 }
 
-                let new_mul = ctx.add(Expr::Mul(lhs, inner_r));
+                let new_mul = mul2_raw(ctx, lhs, inner_r);
                 let new_expr = ctx.add(Expr::Neg(new_mul));
                 return Some(Rewrite {
                     new_expr,
@@ -347,7 +353,7 @@ define_rule!(
                 // Rebuild right-associative: a*(b*(c*d))
                 let mut new_expr = *factors.last().unwrap();
                 for factor in factors.iter().rev().skip(1) {
-                    new_expr = ctx.add(Expr::Mul(*factor, new_expr));
+                    new_expr = mul2_raw(ctx, *factor, new_expr);
                 }
 
                 return Some(Rewrite {
@@ -363,7 +369,7 @@ define_rule!(
                 if let Expr::Mul(_, _) = ctx.get(*lhs) {
                     let mut new_expr = *factors.last().unwrap();
                     for factor in factors.iter().rev().skip(1) {
-                        new_expr = ctx.add(Expr::Mul(*factor, new_expr));
+                        new_expr = mul2_raw(ctx, *factor, new_expr);
                     }
                     return Some(Rewrite {
                         new_expr,
