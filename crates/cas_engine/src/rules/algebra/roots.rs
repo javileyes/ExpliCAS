@@ -1,5 +1,6 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Context, Expr};
 use num_traits::Zero;
 
@@ -123,63 +124,60 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                 let val_a2 = val_a * val_a;
                 let val_delta = val_a2 - val_beff;
 
-                if val_delta >= num_rational::BigRational::zero()
-                    && val_delta.is_integer() {
-                        let int_delta = val_delta.to_integer();
-                        let sqrt_delta = int_delta.sqrt();
+                if val_delta >= num_rational::BigRational::zero() && val_delta.is_integer() {
+                    let int_delta = val_delta.to_integer();
+                    let sqrt_delta = int_delta.sqrt();
 
-                        if sqrt_delta.clone() * sqrt_delta.clone() == int_delta {
-                            // Perfect square!
-                            let z_val = ctx.add(Expr::Number(
-                                num_rational::BigRational::from_integer(sqrt_delta),
-                            ));
+                    if sqrt_delta.clone() * sqrt_delta.clone() == int_delta {
+                        // Perfect square!
+                        let z_val = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+                            sqrt_delta,
+                        )));
 
-                            // Found Z!
-                            // Result = sqrt((A+Z)/2) +/- sqrt((A-Z)/2)
-                            let two = ctx.num(2);
+                        // Found Z!
+                        // Result = sqrt((A+Z)/2) +/- sqrt((A-Z)/2)
+                        let two = ctx.num(2);
 
-                            let term1_num = ctx.add(Expr::Add(term_a, z_val));
-                            let term1_frac = ctx.add(Expr::Div(term1_num, two));
-                            let term1 =
-                                ctx.add(Expr::Function("sqrt".to_string(), vec![term1_frac]));
+                        let term1_num = ctx.add(Expr::Add(term_a, z_val));
+                        let term1_frac = ctx.add(Expr::Div(term1_num, two));
+                        let term1 = ctx.add(Expr::Function("sqrt".to_string(), vec![term1_frac]));
 
-                            let term2_num = ctx.add(Expr::Sub(term_a, z_val));
-                            let term2_frac = ctx.add(Expr::Div(term2_num, two));
-                            let term2 =
-                                ctx.add(Expr::Function("sqrt".to_string(), vec![term2_frac]));
+                        let term2_num = ctx.add(Expr::Sub(term_a, z_val));
+                        let term2_frac = ctx.add(Expr::Div(term2_num, two));
+                        let term2 = ctx.add(Expr::Function("sqrt".to_string(), vec![term2_frac]));
 
-                            // Check sign of C
-                            let c_is_negative = if let Expr::Number(n) = ctx.get(c) {
-                                n < &num_rational::BigRational::zero()
-                            } else {
-                                false
-                            };
+                        // Check sign of C
+                        let c_is_negative = if let Expr::Number(n) = ctx.get(c) {
+                            n < &num_rational::BigRational::zero()
+                        } else {
+                            false
+                        };
 
-                            // If is_add is true, we have A + C*sqrt(D).
-                            // If C is negative, effective operation is subtraction.
-                            // If is_add is false, we have A - C*sqrt(D).
-                            // If C is negative, effective operation is addition.
+                        // If is_add is true, we have A + C*sqrt(D).
+                        // If C is negative, effective operation is subtraction.
+                        // If is_add is false, we have A - C*sqrt(D).
+                        // If C is negative, effective operation is addition.
 
-                            let effective_sub = if is_add {
-                                c_is_negative
-                            } else {
-                                !c_is_negative
-                            };
+                        let effective_sub = if is_add {
+                            c_is_negative
+                        } else {
+                            !c_is_negative
+                        };
 
-                            let new_expr = if effective_sub {
-                                ctx.add(Expr::Sub(term1, term2))
-                            } else {
-                                ctx.add(Expr::Add(term1, term2))
-                            };
+                        let new_expr = if effective_sub {
+                            ctx.add(Expr::Sub(term1, term2))
+                        } else {
+                            ctx.add(Expr::Add(term1, term2))
+                        };
 
-                            return Some(crate::rule::Rewrite {
-                                new_expr,
-                                description: "Denest square root".to_string(),
-                                before_local: None,
-                                after_local: None,
-                            });
-                        }
+                        return Some(crate::rule::Rewrite {
+                            new_expr,
+                            description: "Denest square root".to_string(),
+                            before_local: None,
+                            after_local: None,
+                        });
                     }
+                }
             }
         }
         None
@@ -262,7 +260,7 @@ define_rule!(
                                 } else {
                                     let sqrt_base =
                                         ctx.add(Expr::Function("sqrt".to_string(), vec![base]));
-                                    let new_expr = ctx.add(Expr::Mul(term1, sqrt_base));
+                                    let new_expr = smart_mul(ctx, term1, sqrt_base);
                                     return Some(Rewrite {
                                         new_expr,
                                         description: "Simplify square root factors".to_string(),

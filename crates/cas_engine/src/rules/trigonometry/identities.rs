@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::helpers::{extract_double_angle_arg, is_pi, is_pi_over_n};
 use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Expr, ExprId};
 use num_traits::{One, Zero};
 
@@ -498,7 +499,7 @@ define_rule!(
                         } else {
                             let mut c = coeff_factors[0];
                             for &f in coeff_factors.iter().skip(1) {
-                                c = ctx.add(Expr::Mul(c, f));
+                                c = smart_mul(ctx, c, f);
                             }
                             c
                         };
@@ -618,11 +619,11 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                         // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
                         let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
                         let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                        let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
+                        let term1 = smart_mul(ctx, sin_a, cos_b);
 
                         let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
                         let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                        let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
+                        let term2 = smart_mul(ctx, cos_a, sin_b);
 
                         let new_expr = ctx.add(Expr::Add(term1, term2));
                         return Some(Rewrite {
@@ -635,11 +636,11 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                         // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
                         let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
                         let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                        let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
+                        let term1 = smart_mul(ctx, sin_a, cos_b);
 
                         let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
                         let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                        let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
+                        let term2 = smart_mul(ctx, cos_a, sin_b);
 
                         let new_expr = ctx.add(Expr::Sub(term1, term2));
                         return Some(Rewrite {
@@ -657,11 +658,11 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
 
                             let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
                             let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
-                            let term1 = ctx.add(Expr::Mul(sin_a, cos_b));
+                            let term1 = smart_mul(ctx, sin_a, cos_b);
 
                             let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
                             let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
-                            let term2 = ctx.add(Expr::Mul(cos_a, sin_b));
+                            let term2 = smart_mul(ctx, cos_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Add(term1, term2));
                             return Some(Rewrite {
@@ -681,11 +682,11 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                         // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)
                         let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
                         let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                        let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
+                        let term1 = smart_mul(ctx, cos_a, cos_b);
 
                         let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
                         let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                        let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
+                        let term2 = smart_mul(ctx, sin_a, sin_b);
 
                         let new_expr = ctx.add(Expr::Sub(term1, term2));
                         return Some(Rewrite {
@@ -698,11 +699,11 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                         // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
                         let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
                         let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                        let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
+                        let term1 = smart_mul(ctx, cos_a, cos_b);
 
                         let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
                         let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                        let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
+                        let term2 = smart_mul(ctx, sin_a, sin_b);
 
                         let new_expr = ctx.add(Expr::Add(term1, term2));
                         return Some(Rewrite {
@@ -720,11 +721,11 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
 
                             let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
                             let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
-                            let term1 = ctx.add(Expr::Mul(cos_a, cos_b));
+                            let term1 = smart_mul(ctx, cos_a, cos_b);
 
                             let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
                             let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
-                            let term2 = ctx.add(Expr::Mul(sin_a, sin_b));
+                            let term2 = smart_mul(ctx, sin_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Sub(term1, term2));
                             return Some(Rewrite {
@@ -880,8 +881,8 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                         let two = ctx.num(2);
                         let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
                         let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
-                        let sin_cos = ctx.add(Expr::Mul(sin_x, cos_x));
-                        let new_expr = ctx.add(Expr::Mul(two, sin_cos));
+                        let sin_cos = smart_mul(ctx, sin_x, cos_x);
+                        let new_expr = smart_mul(ctx, two, sin_cos);
                         return Some(Rewrite {
                             new_expr,
                             description: "sin(2x) -> 2sin(x)cos(x)".to_string(),
@@ -1333,7 +1334,7 @@ define_rule!(
                     let n_minus_1_expr = ctx.add(Expr::Number(
                         num_rational::BigRational::from_integer(n_minus_1),
                     ));
-                    let term_nm1 = ctx.add(Expr::Mul(n_minus_1_expr, x_val));
+                    let term_nm1 = smart_mul(ctx, n_minus_1_expr, x_val);
 
                     // sin(nx) = sin((n-1)x)cos(x) + cos((n-1)x)sin(x)
                     // cos(nx) = cos((n-1)x)cos(x) - sin((n-1)x)sin(x)
@@ -1344,8 +1345,8 @@ define_rule!(
                     let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![x_val]));
 
                     if name == "sin" {
-                        let t1 = ctx.add(Expr::Mul(sin_nm1, cos_x));
-                        let t2 = ctx.add(Expr::Mul(cos_nm1, sin_x));
+                        let t1 = smart_mul(ctx, sin_nm1, cos_x);
+                        let t2 = smart_mul(ctx, cos_nm1, sin_x);
                         let new_expr = ctx.add(Expr::Add(t1, t2));
                         return Some(Rewrite {
                             new_expr,
@@ -1355,8 +1356,8 @@ define_rule!(
                         });
                     } else {
                         // cos
-                        let t1 = ctx.add(Expr::Mul(cos_nm1, cos_x));
-                        let t2 = ctx.add(Expr::Mul(sin_nm1, sin_x));
+                        let t1 = smart_mul(ctx, cos_nm1, cos_x);
+                        let t2 = smart_mul(ctx, sin_nm1, sin_x);
                         let new_expr = ctx.add(Expr::Sub(t1, t2));
                         return Some(Rewrite {
                             new_expr,
@@ -1614,8 +1615,8 @@ fn expand_trig_angle(
                     let two = ctx.num(2);
                     let sin_half = ctx.add(Expr::Function("sin".to_string(), vec![small_angle]));
                     let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![small_angle]));
-                    let term = ctx.add(Expr::Mul(sin_half, cos_half));
-                    return ctx.add(Expr::Mul(two, term));
+                    let term = smart_mul(ctx, sin_half, cos_half);
+                    return smart_mul(ctx, two, term);
                 }
                 "cos" => {
                     // cos(A) -> 2cos^2(A/2) - 1
@@ -1623,7 +1624,7 @@ fn expand_trig_angle(
                     let one = ctx.num(1);
                     let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![small_angle]));
                     let cos_sq = ctx.add(Expr::Pow(cos_half, two));
-                    let term = ctx.add(Expr::Mul(two, cos_sq));
+                    let term = smart_mul(ctx, two, cos_sq);
                     return ctx.add(Expr::Sub(term, one));
                 }
                 "tan" => {
@@ -1631,7 +1632,7 @@ fn expand_trig_angle(
                     let two = ctx.num(2);
                     let one = ctx.num(1);
                     let tan_half = ctx.add(Expr::Function("tan".to_string(), vec![small_angle]));
-                    let num = ctx.add(Expr::Mul(two, tan_half));
+                    let num = smart_mul(ctx, two, tan_half);
 
                     let tan_sq = ctx.add(Expr::Pow(tan_half, two));
                     let den = ctx.add(Expr::Sub(one, tan_sq));
@@ -1667,7 +1668,7 @@ fn expand_trig_angle(
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
             if nl != l || nr != r {
-                ctx.add(Expr::Mul(nl, nr))
+                smart_mul(ctx, nl, nr)
             } else {
                 expr
             }
@@ -1817,7 +1818,7 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
             } else {
                 let mut result = new_expr;
                 for factor in remaining {
-                    result = ctx.add(Expr::Mul(result, factor));
+                    result = smart_mul(ctx, result, factor);
                 }
                 result
             };
