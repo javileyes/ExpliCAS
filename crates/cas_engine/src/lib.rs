@@ -14,6 +14,7 @@ pub mod pattern_marks;
 pub mod pattern_scanner;
 pub mod polynomial;
 pub mod profiler;
+pub mod rationalize;
 pub mod rule;
 pub mod rules;
 pub mod semantic_equality;

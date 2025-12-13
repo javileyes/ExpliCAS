@@ -928,3 +928,333 @@ mod tests {
         assert_eq!(first, second, "MulBuilder should be idempotent");
     }
 }
+
+// ============================================================================
+// SurdSumView: Recognize sums of rational + surds for rationalization
+// ============================================================================
+
+use num_rational::BigRational;
+
+/// A surd term: coeff * √(radicand) where radicand is square-free.
+///
+/// Example: 3√2 → SurdAtom { radicand: 2, coeff: 3 }
+#[derive(Debug, Clone, PartialEq)]
+pub struct SurdAtom {
+    /// Square-free positive integer under the radical
+    pub radicand: i64,
+    /// Rational coefficient (can be negative)
+    pub coeff: BigRational,
+}
+
+/// Sum of surds: constant + Σ(coeff_i * √n_i)
+///
+/// Domain v1 (strict):
+/// - Only `Pow(Number(n), Number(1/2))` with n > 0 integer
+/// - Only rational coefficients (Number, Neg, Mul)
+/// - No variables, matrices, or functions
+///
+/// Example: `1 + 2√3 + √5` → SurdSumView { constant: 1, surds: [SurdAtom(3,2), SurdAtom(5,1)] }
+#[derive(Debug, Clone)]
+pub struct SurdSumView {
+    /// Rational constant part
+    pub constant: BigRational,
+    /// Surd terms, combined by radicand (normalized to square-free)
+    pub surds: Vec<SurdAtom>,
+}
+
+impl SurdSumView {
+    /// Try to interpret an expression as a sum of surds.
+    ///
+    /// Returns `None` if:
+    /// - Expression contains variables
+    /// - Expression contains matrices or functions
+    /// - Radicand is not a positive integer
+    /// - Any term is not recognizable as rational or surd
+    pub fn from(ctx: &Context, id: ExprId) -> Option<Self> {
+        let mut constant = BigRational::from_integer(0.into());
+        let mut surd_map: HashMap<i64, BigRational> = HashMap::new();
+
+        // Collect all additive terms
+        let mut worklist = vec![(id, BigRational::from_integer(1.into()))]; // (expr, sign_coeff)
+
+        while let Some((curr, outer_coeff)) = worklist.pop() {
+            match ctx.get(curr) {
+                // Reject immediately: matrices, variables, constants
+                Expr::Matrix { .. } => return None,
+                Expr::Variable(_) => return None,
+                Expr::Constant(_) => return None, // π, e not allowed in v1
+
+                // Addition: recurse into both sides
+                Expr::Add(l, r) => {
+                    worklist.push((*l, outer_coeff.clone()));
+                    worklist.push((*r, outer_coeff));
+                }
+
+                // Subtraction: right side gets negative coeff
+                Expr::Sub(l, r) => {
+                    worklist.push((*l, outer_coeff.clone()));
+                    worklist.push((*r, -outer_coeff));
+                }
+
+                // Negation: flip sign
+                Expr::Neg(inner) => {
+                    worklist.push((*inner, -outer_coeff));
+                }
+
+                // Pure number: add to constant
+                Expr::Number(n) => {
+                    constant = constant + n.clone() * outer_coeff;
+                }
+
+                // Potential surd: Pow(n, 1/2)
+                Expr::Pow(base, exp) => {
+                    if let Some(atom) = Self::as_surd(ctx, *base, *exp) {
+                        let scaled_coeff = atom.coeff * outer_coeff;
+                        *surd_map
+                            .entry(atom.radicand)
+                            .or_insert_with(|| BigRational::from_integer(0.into())) += scaled_coeff;
+                    } else {
+                        return None; // Not a recognized surd
+                    }
+                }
+
+                // Multiplication: could be coeff * surd
+                Expr::Mul(l, r) => {
+                    if let Some((inner_coeff, atom)) = Self::as_coeff_times_surd(ctx, *l, *r) {
+                        let scaled_coeff = atom.coeff * inner_coeff * outer_coeff;
+                        *surd_map
+                            .entry(atom.radicand)
+                            .or_insert_with(|| BigRational::from_integer(0.into())) += scaled_coeff;
+                    } else {
+                        return None; // Not a recognized pattern
+                    }
+                }
+
+                // Function: sqrt(n) is also a surd
+                Expr::Function(name, args) => {
+                    if name == "sqrt" && args.len() == 1 {
+                        if let Some(atom) = Self::as_sqrt_function(ctx, args[0]) {
+                            let scaled_coeff = atom.coeff * outer_coeff;
+                            *surd_map
+                                .entry(atom.radicand)
+                                .or_insert_with(|| BigRational::from_integer(0.into())) +=
+                                scaled_coeff;
+                        } else {
+                            return None; // sqrt of non-integer
+                        }
+                    } else {
+                        return None; // Other functions not supported
+                    }
+                }
+
+                // Division: not supported in v1
+                Expr::Div(_, _) => return None,
+            }
+        }
+
+        // Convert map to vec, removing zero coefficients
+        let surds: Vec<SurdAtom> = surd_map
+            .into_iter()
+            .filter(|(_, coeff)| *coeff != BigRational::from_integer(0.into()))
+            .map(|(radicand, coeff)| SurdAtom { radicand, coeff })
+            .collect();
+
+        Some(SurdSumView { constant, surds })
+    }
+
+    /// Check if expression is a pure surd: Pow(Number(n), Number(1/2)) with n > 0.
+    fn as_surd(ctx: &Context, base: ExprId, exp: ExprId) -> Option<SurdAtom> {
+        // Check exponent is 1/2
+        if let Expr::Number(e) = ctx.get(exp) {
+            if !e.is_integer() && *e.numer() == 1.into() && *e.denom() == 2.into() {
+                // Exponent is 1/2
+                if let Expr::Number(n) = ctx.get(base) {
+                    if n.is_integer() {
+                        let n_int = n.numer().to_i64()?;
+                        if n_int > 0 {
+                            // Apply square-free decomposition
+                            let (outer, inner) = square_free_decompose(n_int);
+                            return Some(SurdAtom {
+                                radicand: inner,
+                                coeff: BigRational::from_integer(outer.into()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Check if Mul(l, r) is coeff * surd or surd * coeff.
+    fn as_coeff_times_surd(ctx: &Context, l: ExprId, r: ExprId) -> Option<(BigRational, SurdAtom)> {
+        // Try l=coeff, r=surd (Pow form)
+        if let Expr::Number(coeff) = ctx.get(l) {
+            if let Expr::Pow(base, exp) = ctx.get(r) {
+                if let Some(atom) = Self::as_surd(ctx, *base, *exp) {
+                    return Some((coeff.clone(), atom));
+                }
+            }
+            // Try sqrt function form
+            if let Expr::Function(name, args) = ctx.get(r) {
+                if name == "sqrt" && args.len() == 1 {
+                    if let Some(atom) = Self::as_sqrt_function(ctx, args[0]) {
+                        return Some((coeff.clone(), atom));
+                    }
+                }
+            }
+        }
+        // Try l=surd, r=coeff (Pow form)
+        if let Expr::Number(coeff) = ctx.get(r) {
+            if let Expr::Pow(base, exp) = ctx.get(l) {
+                if let Some(atom) = Self::as_surd(ctx, *base, *exp) {
+                    return Some((coeff.clone(), atom));
+                }
+            }
+            // Try sqrt function form
+            if let Expr::Function(name, args) = ctx.get(l) {
+                if name == "sqrt" && args.len() == 1 {
+                    if let Some(atom) = Self::as_sqrt_function(ctx, args[0]) {
+                        return Some((coeff.clone(), atom));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Check if Function("sqrt", [n]) is a surd where n is a positive integer.
+    fn as_sqrt_function(ctx: &Context, arg: ExprId) -> Option<SurdAtom> {
+        if let Expr::Number(n) = ctx.get(arg) {
+            if n.is_integer() {
+                let n_int = n.numer().to_i64()?;
+                if n_int > 0 {
+                    let (outer, inner) = square_free_decompose(n_int);
+                    return Some(SurdAtom {
+                        radicand: inner,
+                        coeff: BigRational::from_integer(outer.into()),
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// Number of surd terms (non-zero)
+    pub fn surd_count(&self) -> usize {
+        self.surds.len()
+    }
+
+    /// Check if this is purely rational (no surds)
+    pub fn is_rational(&self) -> bool {
+        self.surds.is_empty()
+    }
+}
+
+/// Decompose n into (outer, inner) such that n = outer² * inner and inner is square-free.
+///
+/// Example: 12 = 4 * 3 = 2² * 3 → (2, 3)
+/// Example: 8 = 4 * 2 = 2² * 2 → (2, 2)
+/// Example: 18 = 9 * 2 = 3² * 2 → (3, 2)
+pub fn square_free_decompose(mut n: i64) -> (i64, i64) {
+    if n <= 0 {
+        return (1, n); // Invalid, but don't panic
+    }
+
+    let mut outer = 1i64;
+    let mut factor = 2i64;
+
+    while factor * factor <= n {
+        while n % (factor * factor) == 0 {
+            outer *= factor;
+            n /= factor * factor;
+        }
+        factor += 1;
+    }
+
+    (outer, n)
+}
+
+#[cfg(test)]
+mod surd_tests {
+    use super::*;
+
+    #[test]
+    fn test_square_free_decompose() {
+        assert_eq!(square_free_decompose(1), (1, 1));
+        assert_eq!(square_free_decompose(2), (1, 2));
+        assert_eq!(square_free_decompose(4), (2, 1));
+        assert_eq!(square_free_decompose(8), (2, 2));
+        assert_eq!(square_free_decompose(12), (2, 3));
+        assert_eq!(square_free_decompose(18), (3, 2));
+        assert_eq!(square_free_decompose(72), (6, 2)); // 72 = 36*2 = 6²*2
+    }
+
+    #[test]
+    fn test_surd_sum_view_basic() {
+        let mut ctx = Context::new();
+
+        // 1 + √2
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let sqrt2 = ctx.add(Expr::Pow(two, half));
+        let sum = ctx.add(Expr::Add(one, sqrt2));
+
+        let view = SurdSumView::from(&ctx, sum).expect("Should parse");
+        assert_eq!(view.constant, BigRational::from_integer(1.into()));
+        assert_eq!(view.surd_count(), 1);
+        assert_eq!(view.surds[0].radicand, 2);
+    }
+
+    #[test]
+    fn test_surd_sum_view_rejects_variable() {
+        let mut ctx = Context::new();
+
+        // 1 + √x (should reject)
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let half = ctx.rational(1, 2);
+        let sqrt_x = ctx.add(Expr::Pow(x, half));
+        let sum = ctx.add(Expr::Add(one, sqrt_x));
+
+        assert!(SurdSumView::from(&ctx, sum).is_none());
+    }
+
+    #[test]
+    fn test_surd_sum_view_square_free_normalization() {
+        let mut ctx = Context::new();
+
+        // √8 = 2√2
+        let eight = ctx.num(8);
+        let half = ctx.rational(1, 2);
+        let sqrt8 = ctx.add(Expr::Pow(eight, half));
+
+        let view = SurdSumView::from(&ctx, sqrt8).expect("Should parse");
+        assert_eq!(view.surd_count(), 1);
+        assert_eq!(view.surds[0].radicand, 2);
+        assert_eq!(view.surds[0].coeff, BigRational::from_integer(2.into()));
+    }
+
+    #[test]
+    fn test_surd_sum_view_sqrt_function() {
+        let mut ctx = Context::new();
+
+        // 1 + sqrt(2) + sqrt(3) using Function representation
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let sqrt2_fn = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
+        let sqrt3_fn = ctx.add(Expr::Function("sqrt".to_string(), vec![three]));
+        let sum1 = ctx.add(Expr::Add(one, sqrt2_fn));
+        let sum2 = ctx.add(Expr::Add(sum1, sqrt3_fn));
+
+        let view = SurdSumView::from(&ctx, sum2).expect("Should parse sqrt function form");
+        assert_eq!(view.constant, BigRational::from_integer(1.into()));
+        assert_eq!(view.surd_count(), 2);
+        // Check both surds present (order may vary due to HashMap)
+        let radicands: Vec<i64> = view.surds.iter().map(|s| s.radicand).collect();
+        assert!(radicands.contains(&2));
+        assert!(radicands.contains(&3));
+    }
+}

@@ -695,6 +695,12 @@ impl Repl {
             return;
         }
 
+        // Check for "rationalize" command - rationalize denominators with surds
+        if line.starts_with("rationalize ") {
+            self.handle_rationalize(&line);
+            return;
+        }
+
         // Check for "profile" commands
         if line.starts_with("profile") {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -2682,6 +2688,55 @@ impl Repl {
 
         // Swap context back
         std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+    }
+
+    /// Handle the 'rationalize' command for rationalizing denominators
+    /// Example: rationalize 1/(1 + sqrt(2) + sqrt(3))
+    fn handle_rationalize(&mut self, line: &str) {
+        use cas_engine::rationalize::{
+            rationalize_denominator, RationalizeConfig, RationalizeResult,
+        };
+
+        let rest = line.strip_prefix("rationalize").unwrap_or(line).trim();
+        if rest.is_empty() {
+            println!("Usage: rationalize <expr>");
+            println!("Example: rationalize 1/(1 + sqrt(2) + sqrt(3))");
+            return;
+        }
+
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                let disp = cas_ast::DisplayExpr {
+                    context: &self.simplifier.context,
+                    id: expr,
+                };
+                println!("Parsed: {}", disp);
+
+                let config = RationalizeConfig::default();
+                let result = rationalize_denominator(&mut self.simplifier.context, expr, &config);
+
+                match result {
+                    RationalizeResult::Success(rationalized) => {
+                        // Simplify the result
+                        let (simplified, _) = self.simplifier.simplify(rationalized);
+                        // Note: For full √ notation, use timeline command
+                        let result_disp = cas_ast::DisplayExpr {
+                            context: &self.simplifier.context,
+                            id: simplified,
+                        };
+                        println!("Rationalized: {}", result_disp);
+                    }
+                    RationalizeResult::NotApplicable => {
+                        println!("Cannot rationalize: denominator is not a sum of surds");
+                        println!("(Supported: 1/(a + b√n + c√m) where a,b,c are rational and n,m are positive integers)");
+                    }
+                    RationalizeResult::BudgetExceeded => {
+                        println!("Rationalization aborted: expression became too complex");
+                    }
+                }
+            }
+            Err(e) => println!("Parse error: {:?}", e),
+        }
     }
 }
 
