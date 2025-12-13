@@ -36,6 +36,33 @@ pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
         (Sub(l1, r1), Sub(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
         (Mul(l1, r1), Mul(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
         (Div(l1, r1), Div(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
+        // Matrix comparison: by dimensions first, then by ExprId of data elements
+        (
+            Matrix {
+                rows: r1,
+                cols: c1,
+                data: d1,
+            },
+            Matrix {
+                rows: r2,
+                cols: c2,
+                data: d2,
+            },
+        ) => {
+            match (r1, c1).cmp(&(r2, c2)) {
+                Ordering::Equal => {
+                    // Compare data elements by ExprId index (avoids deep recursion)
+                    for (e1, e2) in d1.iter().zip(d2.iter()) {
+                        match e1.index().cmp(&e2.index()) {
+                            Ordering::Equal => continue,
+                            ord => return ord,
+                        }
+                    }
+                    d1.len().cmp(&d2.len())
+                }
+                ord => ord,
+            }
+        }
         _ => Ordering::Equal, // Should be unreachable if ranks are correct
     }
 }

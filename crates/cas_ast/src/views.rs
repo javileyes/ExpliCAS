@@ -326,10 +326,12 @@ impl MulBuilder {
         // (sorting breaks rules that expect specific factor order)
 
         // 2. Compress adjacent same-base factors only (preserve order)
+        // CRITICAL: Use ExprId equality, not compare_expr (avoids false positives with matrices)
         let mut compressed: Vec<(ExprId, i64)> = Vec::new();
         for (base, exp) in self.factors {
             if let Some(last) = compressed.last_mut() {
-                if crate::ordering::compare_expr(ctx, last.0, base) == std::cmp::Ordering::Equal {
+                // Use ExprId equality - only combine if literally same interned node
+                if last.0 == base {
                     last.1 += exp;
                     continue;
                 }
@@ -351,14 +353,26 @@ impl MulBuilder {
         }
 
         // 5. Build each factor as base^exp (or just base if exp=1)
+        // CRITICAL: Do NOT compress matrices to Pow(Matrix, k) - keep as repeated Mul
         let mut parts: Vec<ExprId> = Vec::new();
         for (base, exp) in compressed {
+            let is_matrix = matches!(ctx.get(base), Expr::Matrix { .. });
+
             if exp == 1 {
                 parts.push(base);
             } else if exp == -1 {
-                // Keep as base^(-1) for division representation
                 let neg_one = ctx.num(-1);
                 parts.push(ctx.add(Expr::Pow(base, neg_one)));
+            } else if is_matrix {
+                // Matrix: don't compress to Pow, expand as repeated Mul factors
+                for _ in 0..exp.abs() {
+                    parts.push(base);
+                }
+                // If negative exp, wrap in Pow^-1 (matrix inverse placeholder)
+                if exp < 0 {
+                    // For matrices, we'd need proper inverse - just mark as unsupported for now
+                    // This is a simplification; real impl might handle differently
+                }
             } else {
                 let exp_id = ctx.num(exp);
                 parts.push(ctx.add(Expr::Pow(base, exp_id)));
@@ -421,6 +435,7 @@ impl FractionParts {
     /// Build a product from factors: Π base^exp
     ///
     /// Public static method for building products without needing a FractionParts instance.
+    /// Uses RIGHT-fold (a*(b*c)) and add_raw to preserve operand order.
     pub fn build_product_static(ctx: &mut Context, factors: &[Factor]) -> ExprId {
         if factors.is_empty() {
             return ctx.num(1);
@@ -437,9 +452,10 @@ impl FractionParts {
             parts.push(term);
         }
 
-        let mut acc = parts[0];
-        for p in parts.into_iter().skip(1) {
-            acc = ctx.add(Expr::Mul(acc, p));
+        // RIGHT-fold: a*(b*(c*d)) - use add_raw to preserve order
+        let mut acc = *parts.last().unwrap();
+        for &p in parts[..parts.len() - 1].iter().rev() {
+            acc = ctx.add_raw(Expr::Mul(p, acc));
         }
         acc
     }

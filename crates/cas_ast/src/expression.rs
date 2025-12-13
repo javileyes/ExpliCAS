@@ -96,9 +96,16 @@ impl Context {
         // This ensures deterministic ordering: always left < right for Mul and Add
         let canonical_expr = match expr {
             Expr::Mul(l, r) => {
-                // Only canonicalize if operands are out of order
-                if crate::ordering::compare_expr(self, l, r) == std::cmp::Ordering::Greater {
-                    Expr::Mul(r, l) // Swap to canonical order
+                // CRITICAL: Matrix multiplication is NOT commutative
+                // Check if both operands are matrices - if so, preserve order
+                let l_is_matrix = matches!(self.get(l), Expr::Matrix { .. });
+                let r_is_matrix = matches!(self.get(r), Expr::Matrix { .. });
+
+                if l_is_matrix && r_is_matrix {
+                    // Non-commutative: A*B ≠ B*A, preserve order
+                    Expr::Mul(l, r)
+                } else if crate::ordering::compare_expr(self, l, r) == std::cmp::Ordering::Greater {
+                    Expr::Mul(r, l) // Swap to canonical order (scalar or mixed)
                 } else {
                     Expr::Mul(l, r) // Already canonical
                 }

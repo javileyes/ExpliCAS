@@ -884,4 +884,54 @@ mod tests {
             panic!("Expected Mul expression");
         }
     }
+
+    /// Test that Matrix*Matrix multiplication preserves order (non-commutative)
+    #[test]
+    fn test_matrix_mul_preserves_order() {
+        let mut ctx = Context::new();
+
+        // Create two different matrices A and B
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let matrix_a = ctx.add(Expr::Matrix {
+            rows: 1,
+            cols: 1,
+            data: vec![one],
+        });
+        let matrix_b = ctx.add(Expr::Matrix {
+            rows: 1,
+            cols: 1,
+            data: vec![two],
+        });
+
+        // A*B should NOT be swapped even though ctx.add canonicalizes
+        let mul_ab = ctx.add(Expr::Mul(matrix_a, matrix_b));
+        if let Expr::Mul(l, r) = ctx.get(mul_ab) {
+            assert_eq!(
+                *l, matrix_a,
+                "Matrix A*B: A should stay first (non-commutative)"
+            );
+            assert_eq!(
+                *r, matrix_b,
+                "Matrix A*B: B should stay second (non-commutative)"
+            );
+        } else {
+            panic!("Expected Mul expression");
+        }
+
+        // B*A should also preserve its order
+        let mul_ba = ctx.add(Expr::Mul(matrix_b, matrix_a));
+        if let Expr::Mul(l, r) = ctx.get(mul_ba) {
+            assert_eq!(
+                *l, matrix_b,
+                "Matrix B*A: B should stay first (non-commutative)"
+            );
+            assert_eq!(
+                *r, matrix_a,
+                "Matrix B*A: A should stay second (non-commutative)"
+            );
+        } else {
+            panic!("Expected Mul expression");
+        }
+    }
 }
