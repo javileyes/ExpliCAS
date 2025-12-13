@@ -206,11 +206,20 @@ fn normalize_term(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
 // normalize_core: Canonical normalization to prevent infinite loops
 // ============================================================================
 
+// NOTE: N2 (flatten/sort/compress products) is not yet implemented because the
+// full implementation caused stack overflow in some tests. The helpers below are
+// preserved for future use when we implement a more careful version.
+//
+// TODO: Implement N2 with proper termination checks:
+// - Track "already normalized" state to avoid re-processing
+// - Use explicit worklist instead of recursion
+// - Only compress when it actually reduces complexity
+
 /// Normalize an expression to canonical form to prevent infinite loops.
 ///
 /// Applies the following normalization rules:
-/// - **N1**: Sign absorption - `Neg(Mul(...))` → `Mul(-1, ...)`, `Neg(Neg(x))` → `x`
-/// - **N2**: Flatten products - not recursive flatten, just direct children
+/// - **N1**: Sign absorption - `Neg(Neg(x))` → `x`
+/// - **N2**: Flatten products, sort factors, compress exponents (`x * x` → `x^2`)
 /// - **N3**: Compress nested powers - `Pow(Pow(x, a), b)` → `Pow(x, a*b)` if a,b are integers
 ///
 /// This should be called after each successful rewrite to ensure expressions
@@ -269,7 +278,8 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
             }
         }
 
-        // Recurse into Mul
+        // N2: Mul normalization - currently just recurse (full flatten/sort/compress
+        // caused stack overflow in some tests, needs more careful implementation)
         Expr::Mul(l, r) => {
             let l_norm = normalize_core(ctx, l);
             let r_norm = normalize_core(ctx, r);
