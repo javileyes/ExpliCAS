@@ -224,125 +224,171 @@ fn normalize_term(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
 ///
 /// This should be called after each successful rewrite to ensure expressions
 /// stay in a consistent form that rules can match reliably.
+///
+/// IMPLEMENTATION: Uses iterative worklist to avoid stack overflow on deep expressions.
 pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
     use num_traits::ToPrimitive;
+    use std::collections::HashMap;
 
-    let expr_data = ctx.get(expr).clone();
+    // Cache: maps original ExprId -> normalized ExprId
+    let mut cache: HashMap<ExprId, ExprId> = HashMap::new();
 
-    match expr_data {
-        // N1: Neg(Neg(x)) → x
-        Expr::Neg(inner) => {
-            let inner_norm = normalize_core(ctx, inner);
-            if let Expr::Neg(double_inner) = ctx.get(inner_norm).clone() {
-                // Neg(Neg(x)) → x
-                return normalize_core(ctx, double_inner);
-            }
-            // N1: Neg(Mul(a, b)) → Mul(-1, Mul(a, b)) — but only if helpful
-            // For now, just recurse
-            if inner_norm == inner {
-                expr
-            } else {
-                ctx.add(Expr::Neg(inner_norm))
-            }
+    // Worklist: (node, children_processed)
+    // When children_processed=false, push children first
+    // When children_processed=true, normalize the node itself
+    let mut stack: Vec<(ExprId, bool)> = vec![(expr, false)];
+
+    while let Some((id, children_done)) = stack.pop() {
+        // If already cached, skip
+        if cache.contains_key(&id) {
+            continue;
         }
 
-        // N3: Pow(Pow(x, a), b) → Pow(x, a*b) if both are integers
-        Expr::Pow(base, exp) => {
-            let base_norm = normalize_core(ctx, base);
-            let exp_norm = normalize_core(ctx, exp);
+        let node = ctx.get(id).clone();
 
-            // Check for Pow(Pow(x, a), b)
-            if let Expr::Pow(inner_base, inner_exp) = ctx.get(base_norm).clone() {
-                // Both exponents must be integers
-                if let (Expr::Number(a), Expr::Number(b)) = (ctx.get(inner_exp), ctx.get(exp_norm))
-                {
-                    if a.is_integer() && b.is_integer() {
-                        if let (Some(a_i), Some(b_i)) =
-                            (a.to_integer().to_i64(), b.to_integer().to_i64())
-                        {
-                            // Compute a * b
-                            let product = a_i * b_i;
-                            let new_exp = ctx.num(product);
-                            // Return Pow(inner_base, a*b)
-                            return ctx.add(Expr::Pow(inner_base, new_exp));
-                        }
+        if !children_done {
+            // First visit: push self back with children_done=true, then push children
+            stack.push((id, true));
+
+            match &node {
+                Expr::Neg(inner) => stack.push((*inner, false)),
+                Expr::Pow(base, exp) => {
+                    stack.push((*exp, false));
+                    stack.push((*base, false));
+                }
+                Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
+                    stack.push((*r, false));
+                    stack.push((*l, false));
+                }
+                Expr::Function(_, args) => {
+                    for arg in args.iter().rev() {
+                        stack.push((*arg, false));
                     }
                 }
+                // Atoms: no children
+                _ => {}
             }
+        } else {
+            // Second visit: children are cached, now normalize this node
+            let result = match &node {
+                // N1: Neg(Neg(x)) → x
+                Expr::Neg(inner) => {
+                    let inner_norm = *cache.get(inner).unwrap_or(inner);
+                    if let Expr::Neg(double_inner) = ctx.get(inner_norm).clone() {
+                        // Neg(Neg(x)) → x (recursively normalizes double_inner)
+                        // We need to look up double_inner in cache
+                        *cache.get(&double_inner).unwrap_or(&double_inner)
+                    } else if inner_norm == *inner {
+                        id
+                    } else {
+                        ctx.add(Expr::Neg(inner_norm))
+                    }
+                }
 
-            // Rebuild if children changed
-            if base_norm == base && exp_norm == exp {
-                expr
-            } else {
-                ctx.add(Expr::Pow(base_norm, exp_norm))
-            }
+                // N3: Pow(Pow(x, a), b) → Pow(x, a*b) if both are integers
+                Expr::Pow(base, exp) => {
+                    let base_norm = *cache.get(base).unwrap_or(base);
+                    let exp_norm = *cache.get(exp).unwrap_or(exp);
+
+                    // Check for Pow(Pow(x, a), b)
+                    let result =
+                        if let Expr::Pow(inner_base, inner_exp) = ctx.get(base_norm).clone() {
+                            if let (Expr::Number(a), Expr::Number(b)) =
+                                (ctx.get(inner_exp), ctx.get(exp_norm))
+                            {
+                                if a.is_integer() && b.is_integer() {
+                                    if let (Some(a_i), Some(b_i)) =
+                                        (a.to_integer().to_i64(), b.to_integer().to_i64())
+                                    {
+                                        let product = a_i * b_i;
+                                        let new_exp = ctx.num(product);
+                                        Some(ctx.add(Expr::Pow(inner_base, new_exp)))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                    result.unwrap_or_else(|| {
+                        if base_norm == *base && exp_norm == *exp {
+                            id
+                        } else {
+                            ctx.add(Expr::Pow(base_norm, exp_norm))
+                        }
+                    })
+                }
+
+                // N2: Mul normalization - currently just recurse
+                Expr::Mul(l, r) => {
+                    let l_norm = *cache.get(l).unwrap_or(l);
+                    let r_norm = *cache.get(r).unwrap_or(r);
+                    if l_norm == *l && r_norm == *r {
+                        id
+                    } else {
+                        ctx.add(Expr::Mul(l_norm, r_norm))
+                    }
+                }
+
+                Expr::Div(n, d) => {
+                    let n_norm = *cache.get(n).unwrap_or(n);
+                    let d_norm = *cache.get(d).unwrap_or(d);
+                    if n_norm == *n && d_norm == *d {
+                        id
+                    } else {
+                        ctx.add(Expr::Div(n_norm, d_norm))
+                    }
+                }
+
+                Expr::Add(l, r) => {
+                    let l_norm = *cache.get(l).unwrap_or(l);
+                    let r_norm = *cache.get(r).unwrap_or(r);
+                    if l_norm == *l && r_norm == *r {
+                        id
+                    } else {
+                        ctx.add(Expr::Add(l_norm, r_norm))
+                    }
+                }
+
+                Expr::Sub(l, r) => {
+                    let l_norm = *cache.get(l).unwrap_or(l);
+                    let r_norm = *cache.get(r).unwrap_or(r);
+                    if l_norm == *l && r_norm == *r {
+                        id
+                    } else {
+                        ctx.add(Expr::Sub(l_norm, r_norm))
+                    }
+                }
+
+                Expr::Function(name, args) => {
+                    let args_norm: Vec<_> =
+                        args.iter().map(|a| *cache.get(a).unwrap_or(a)).collect();
+                    if args_norm == *args {
+                        id
+                    } else {
+                        ctx.add(Expr::Function(name.clone(), args_norm))
+                    }
+                }
+
+                // Atoms: no normalization needed
+                Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => id,
+
+                // Other expressions: pass through
+                _ => id,
+            };
+
+            cache.insert(id, result);
         }
-
-        // N2: Mul normalization - currently just recurse (full flatten/sort/compress
-        // caused stack overflow in some tests, needs more careful implementation)
-        Expr::Mul(l, r) => {
-            let l_norm = normalize_core(ctx, l);
-            let r_norm = normalize_core(ctx, r);
-
-            if l_norm == l && r_norm == r {
-                expr
-            } else {
-                ctx.add(Expr::Mul(l_norm, r_norm))
-            }
-        }
-
-        // Recurse into Div
-        Expr::Div(n, d) => {
-            let n_norm = normalize_core(ctx, n);
-            let d_norm = normalize_core(ctx, d);
-
-            if n_norm == n && d_norm == d {
-                expr
-            } else {
-                ctx.add(Expr::Div(n_norm, d_norm))
-            }
-        }
-
-        // Recurse into Add
-        Expr::Add(l, r) => {
-            let l_norm = normalize_core(ctx, l);
-            let r_norm = normalize_core(ctx, r);
-
-            if l_norm == l && r_norm == r {
-                expr
-            } else {
-                ctx.add(Expr::Add(l_norm, r_norm))
-            }
-        }
-
-        // Recurse into Sub
-        Expr::Sub(l, r) => {
-            let l_norm = normalize_core(ctx, l);
-            let r_norm = normalize_core(ctx, r);
-
-            if l_norm == l && r_norm == r {
-                expr
-            } else {
-                ctx.add(Expr::Sub(l_norm, r_norm))
-            }
-        }
-
-        // Recurse into Function
-        Expr::Function(name, args) => {
-            let args_norm: Vec<_> = args.iter().map(|&a| normalize_core(ctx, a)).collect();
-            if args_norm == args {
-                expr
-            } else {
-                ctx.add(Expr::Function(name, args_norm))
-            }
-        }
-
-        // Atoms: no normalization needed
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => expr,
-
-        // Other expressions: pass through
-        _ => expr,
     }
+
+    // Return the normalized result for the root expression
+    *cache.get(&expr).unwrap_or(&expr)
 }
 
 #[cfg(test)]

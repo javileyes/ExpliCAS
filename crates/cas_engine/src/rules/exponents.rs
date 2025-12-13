@@ -401,61 +401,6 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
     None
 });
 
-/// Extract a rational constant from an expression, handling multiple representations.
-///
-/// Supports (all must be purely numeric):
-/// - `Number(n)` - direct rational
-/// - `Div(Number(a), Number(b))` - fraction
-/// - `Neg(Number(n))` - negated number
-/// - `Neg(Div(Number(a), Number(b)))` - negated fraction
-/// - `Mul(Number(a), Number(b))` - product of numbers
-///
-/// This makes rules more robust against different structural representations.
-#[allow(dead_code)]
-fn as_rational_const(ctx: &Context, expr: ExprId) -> Option<num_rational::BigRational> {
-    use num_traits::Zero;
-
-    match ctx.get(expr) {
-        Expr::Number(n) => Some(n.clone()),
-
-        Expr::Div(num, den) => {
-            // Recursively evaluate numerator and denominator
-            let n = as_rational_const(ctx, *num)?;
-            let d = as_rational_const(ctx, *den)?;
-            if !d.is_zero() {
-                Some(n / d)
-            } else {
-                None
-            }
-        }
-
-        Expr::Neg(inner) => {
-            let val = as_rational_const(ctx, *inner)?;
-            Some(-val)
-        }
-
-        Expr::Mul(l, r) => {
-            let lv = as_rational_const(ctx, *l)?;
-            let rv = as_rational_const(ctx, *r)?;
-            Some(lv * rv)
-        }
-
-        Expr::Add(l, r) => {
-            let lv = as_rational_const(ctx, *l)?;
-            let rv = as_rational_const(ctx, *r)?;
-            Some(lv + rv)
-        }
-
-        Expr::Sub(l, r) => {
-            let lv = as_rational_const(ctx, *l)?;
-            let rv = as_rational_const(ctx, *r)?;
-            Some(lv - rv)
-        }
-
-        _ => None,
-    }
-}
-
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {

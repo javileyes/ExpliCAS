@@ -421,6 +421,65 @@ pub fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize) {
     (divs_subs, total)
 }
 
+// ========== Numeric Evaluation ==========
+
+/// Extract a rational constant from an expression, handling multiple representations.
+///
+/// Supports (all must be purely numeric - returns None if any variable/function present):
+/// - `Number(n)` - direct rational
+/// - `Div(a, b)` - fraction (recursive)
+/// - `Neg(a)` - negation (recursive)
+/// - `Mul(a, b)` - product (recursive)
+/// - `Add(a, b)` - sum (recursive)
+/// - `Sub(a, b)` - difference (recursive)
+///
+/// This is the canonical helper for numeric evaluation. Used by:
+/// - `SemanticEqualityChecker::try_evaluate_numeric`
+/// - `EvaluatePowerRule` for exponent matching
+pub fn as_rational_const(ctx: &Context, expr: ExprId) -> Option<num_rational::BigRational> {
+    use num_traits::Zero;
+
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+
+        Expr::Div(num, den) => {
+            let n = as_rational_const(ctx, *num)?;
+            let d = as_rational_const(ctx, *den)?;
+            if !d.is_zero() {
+                Some(n / d)
+            } else {
+                None
+            }
+        }
+
+        Expr::Neg(inner) => {
+            let val = as_rational_const(ctx, *inner)?;
+            Some(-val)
+        }
+
+        Expr::Mul(l, r) => {
+            let lv = as_rational_const(ctx, *l)?;
+            let rv = as_rational_const(ctx, *r)?;
+            Some(lv * rv)
+        }
+
+        Expr::Add(l, r) => {
+            let lv = as_rational_const(ctx, *l)?;
+            let rv = as_rational_const(ctx, *r)?;
+            Some(lv + rv)
+        }
+
+        Expr::Sub(l, r) => {
+            let lv = as_rational_const(ctx, *l)?;
+            let rv = as_rational_const(ctx, *r)?;
+            Some(lv - rv)
+        }
+
+        // Variables, Constants, Functions, Pow, Matrix -> not purely numeric
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,5 +626,59 @@ mod tests {
         assert!(is_pi(&ctx, pi));
         assert!(!is_pi(&ctx, e));
         assert!(!is_pi(&ctx, x));
+    }
+
+    #[test]
+    fn test_as_rational_const_number() {
+        let mut ctx = Context::new();
+        let half = ctx.rational(1, 2);
+        let result = as_rational_const(&ctx, half);
+        assert_eq!(
+            result,
+            Some(num_rational::BigRational::new(1.into(), 2.into()))
+        );
+    }
+
+    #[test]
+    fn test_as_rational_const_div() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let div = ctx.add(Expr::Div(one, two));
+        let result = as_rational_const(&ctx, div);
+        assert_eq!(
+            result,
+            Some(num_rational::BigRational::new(1.into(), 2.into()))
+        );
+    }
+
+    #[test]
+    fn test_as_rational_const_neg_div() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let div = ctx.add(Expr::Div(one, two));
+        let neg = ctx.add(Expr::Neg(div));
+        let result = as_rational_const(&ctx, neg);
+        assert_eq!(
+            result,
+            Some(num_rational::BigRational::new((-1).into(), 2.into()))
+        );
+    }
+
+    #[test]
+    fn test_as_rational_const_variable_returns_none() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        assert!(as_rational_const(&ctx, x).is_none());
+    }
+
+    #[test]
+    fn test_as_rational_const_mul_with_variable_returns_none() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let x = ctx.var("x");
+        let mul = ctx.add(Expr::Mul(two, x));
+        assert!(as_rational_const(&ctx, mul).is_none());
     }
 }
