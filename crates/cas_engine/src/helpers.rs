@@ -411,14 +411,88 @@ where
 }
 
 /// Score expression for normal form quality (lower is better).
-/// Returns (divs_subs, total_nodes) for lexicographic comparison.
+/// Returns (divs_subs, total_nodes, mul_inversions) for lexicographic comparison.
 ///
 /// Expressions with fewer Div/Sub nodes are preferred (C2 canonical form).
 /// Ties are broken by total node count (simpler is better).
-pub fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize) {
+/// Final tie-breaker: fewer out-of-order adjacent pairs in Mul chains.
+pub fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize, usize) {
     let divs_subs = count_nodes_matching(ctx, id, |e| matches!(e, Expr::Div(..) | Expr::Sub(..)));
     let total = count_all_nodes(ctx, id);
-    (divs_subs, total)
+    let inversions = mul_unsorted_adjacent(ctx, id);
+    (divs_subs, total, inversions)
+}
+
+/// Count out-of-order adjacent pairs in Mul chains (right-associative).
+///
+/// For a chain `a * (b * (c * d))` with factors `[a, b, c, d]`:
+/// - Counts how many pairs (f[i], f[i+1]) have compare_expr(f[i], f[i+1]) == Greater
+///
+/// This metric allows canonicalizing rewrites that only reorder Mul factors.
+pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
+    use crate::ordering::compare_expr;
+    use std::cmp::Ordering;
+    use std::collections::HashSet;
+
+    // Collect all Mul nodes and identify which are right-children of other Muls
+    let mut mul_nodes: HashSet<ExprId> = HashSet::new();
+    let mut mul_right_children: HashSet<ExprId> = HashSet::new();
+
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Mul(l, r) => {
+                mul_nodes.insert(id);
+                if matches!(ctx.get(*r), Expr::Mul(..)) {
+                    mul_right_children.insert(*r);
+                }
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args),
+            _ => {}
+        }
+    }
+
+    // Heads are Mul nodes that are NOT the right child of another Mul
+    let heads: Vec<_> = mul_nodes.difference(&mul_right_children).copied().collect();
+
+    let mut inversions = 0;
+
+    for head in heads {
+        // Linearize factors by following right-assoc pattern: a*(b*(c*d)) -> [a,b,c,d]
+        let mut factors = Vec::new();
+        let mut current = head;
+
+        loop {
+            if let Expr::Mul(l, r) = ctx.get(current).clone() {
+                factors.push(l);
+                if matches!(ctx.get(r), Expr::Mul(..)) {
+                    current = r;
+                } else {
+                    factors.push(r);
+                    break;
+                }
+            } else {
+                factors.push(current);
+                break;
+            }
+        }
+
+        // Count adjacent inversions
+        for i in 0..factors.len().saturating_sub(1) {
+            if compare_expr(ctx, factors[i], factors[i + 1]) == Ordering::Greater {
+                inversions += 1;
+            }
+        }
+    }
+
+    inversions
 }
 
 // ========== Numeric Evaluation ==========
