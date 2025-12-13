@@ -10,6 +10,12 @@ use num_traits::{One, Zero};
 use num_traits::{Signed, ToPrimitive};
 use std::cmp::Ordering;
 
+/// Helper: Build a simple 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 /// Check if an expression is a binomial (sum or difference of exactly 2 terms)
 /// Examples: (a + b), (a - b), (x + (-y))
 fn is_binomial(ctx: &Context, e: ExprId) -> bool {
@@ -466,10 +472,10 @@ define_rule!(BinomialExpansionRule, "Binomial Expansion", |ctx, expr| {
                                 ctx.add(Expr::Pow(b, e))
                             };
 
-                            let mut term = ctx.add(Expr::Mul(term_a, term_b));
+                            let mut term = mul2_raw(ctx, term_a, term_b);
                             if coeff > 1 {
                                 let c = ctx.num(coeff as i64);
-                                term = ctx.add(Expr::Mul(c, term));
+                                term = mul2_raw(ctx, c, term);
                             }
                             terms.push(term);
                         }
