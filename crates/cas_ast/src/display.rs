@@ -14,54 +14,165 @@ use std::fmt;
 // But Expr DOES recurse via IDs. So we can't implement Display for Expr easily without Context.
 // We can implement a helper struct for display.
 
-/// Try to interpret expression as a simple fraction `num * den^(-1)`.
+/// Factor with exponent for display.
+#[derive(Debug, Clone, Copy)]
+pub struct DisplayFactor {
+    pub base: ExprId,
+    pub exp: i32, // Always positive for display purposes
+}
+
+/// Read-only view of an expression as a fraction for display.
 ///
-/// Detects the pattern `a * b^(-1)` and returns `Some((Some(a), b))`.
-/// For standalone `x^(-1)`, returns `Some((None, x))` meaning "1/x".
-/// Returns `None` for more complex cases or if it contains matrices.
-fn try_as_simple_fraction(ctx: &Context, id: ExprId) -> Option<(Option<ExprId>, ExprId)> {
-    // Only works on Mul(a, Pow(b, -1)) or Mul(Pow(a, -1), b)
-    if let Expr::Mul(l, r) = ctx.get(id) {
-        // Check if right side is Pow(base, -1)
-        if let Expr::Pow(base, exp) = ctx.get(*r) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n.is_integer() && n == &num_rational::BigRational::from_integer((-1).into()) {
-                    // Check for matrices
+/// Collects numerator/denominator factors WITHOUT building new AST nodes.
+/// Uses &Context (immutable) only.
+#[derive(Debug)]
+pub struct FractionDisplayView {
+    pub sign: i8,
+    pub num: Vec<DisplayFactor>, // Factors in numerator (exp > 0)
+    pub den: Vec<DisplayFactor>, // Factors in denominator (exp originally < 0)
+}
+
+impl FractionDisplayView {
+    /// Try to interpret expression as a fraction.
+    ///
+    /// Returns None if:
+    /// - Not a Mul or Pow expression
+    /// - Contains matrices (non-commutative)
+    /// - Has no denominator factors
+    pub fn from(ctx: &Context, id: ExprId) -> Option<Self> {
+        // Only process Mul or Pow
+        match ctx.get(id) {
+            Expr::Mul(_, _) | Expr::Pow(_, _) => {}
+            _ => return None,
+        }
+
+        let mut sign: i8 = 1;
+        let mut num = Vec::new();
+        let mut den = Vec::new();
+        let mut worklist = vec![id];
+
+        while let Some(curr) = worklist.pop() {
+            match ctx.get(curr) {
+                Expr::Matrix { .. } => return None, // Matrix blocks fraction display
+
+                Expr::Neg(inner) => {
+                    sign *= -1;
+                    worklist.push(*inner);
+                }
+
+                Expr::Mul(l, r) => {
+                    // Check for matrices in either operand
                     if matches!(ctx.get(*l), Expr::Matrix { .. })
-                        || matches!(ctx.get(*base), Expr::Matrix { .. })
+                        || matches!(ctx.get(*r), Expr::Matrix { .. })
                     {
                         return None;
                     }
-                    return Some((Some(*l), *base)); // num=l, den=base
+                    worklist.push(*l);
+                    worklist.push(*r);
                 }
-            }
-        }
-        // Check if left side is Pow(base, -1)
-        if let Expr::Pow(base, exp) = ctx.get(*l) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n.is_integer() && n == &num_rational::BigRational::from_integer((-1).into()) {
-                    if matches!(ctx.get(*r), Expr::Matrix { .. })
-                        || matches!(ctx.get(*base), Expr::Matrix { .. })
-                    {
+
+                Expr::Pow(base, exp_id) => {
+                    if matches!(ctx.get(*base), Expr::Matrix { .. }) {
                         return None;
                     }
-                    return Some((Some(*r), *base)); // num=r, den=base
+
+                    // Check if exponent is integer
+                    if let Some(exp) = Self::as_int(ctx, *exp_id) {
+                        if exp < 0 {
+                            den.push(DisplayFactor {
+                                base: *base,
+                                exp: -exp,
+                            });
+                        } else if exp > 0 {
+                            num.push(DisplayFactor { base: *base, exp });
+                        }
+                        // exp == 0 means factor is 1, skip
+                    } else {
+                        // Non-integer exponent: treat as single num factor
+                        num.push(DisplayFactor { base: curr, exp: 1 });
+                    }
+                }
+
+                Expr::Div(n, d) => {
+                    // Add numerator factors, denominator factors
+                    worklist.push(*n);
+                    // Denominator goes to den with exp=1
+                    if matches!(ctx.get(*d), Expr::Matrix { .. }) {
+                        return None;
+                    }
+                    den.push(DisplayFactor { base: *d, exp: 1 });
+                }
+
+                // Atoms: add as numerator factor
+                _ => {
+                    num.push(DisplayFactor { base: curr, exp: 1 });
                 }
             }
         }
+
+        // Only return if there's actually a denominator
+        if den.is_empty() {
+            return None;
+        }
+
+        Some(FractionDisplayView { sign, num, den })
     }
-    // Also handle standalone x^(-1) as 1/x
-    if let Expr::Pow(base, exp) = ctx.get(id) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if n.is_integer() && n == &num_rational::BigRational::from_integer((-1).into()) {
-                if matches!(ctx.get(*base), Expr::Matrix { .. }) {
-                    return None;
-                }
-                return Some((None, *base)); // None means numerator is "1"
+
+    /// Extract integer from an expression.
+    fn as_int(ctx: &Context, id: ExprId) -> Option<i32> {
+        if let Expr::Number(n) = ctx.get(id) {
+            if n.is_integer() {
+                return n.to_integer().to_i32();
             }
         }
+        None
     }
-    None
+}
+
+/// Format a list of factors as a product for display.
+fn format_factors(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    factors: &[DisplayFactor],
+) -> fmt::Result {
+    if factors.is_empty() {
+        return write!(f, "1");
+    }
+
+    for (i, factor) in factors.iter().enumerate() {
+        if i > 0 {
+            write!(f, " * ")?;
+        }
+
+        let base_prec = precedence(ctx, factor.base);
+        let needs_parens = base_prec < 2; // Mul precedence
+
+        if needs_parens {
+            write!(
+                f,
+                "({})",
+                DisplayExpr {
+                    context: ctx,
+                    id: factor.base
+                }
+            )?;
+        } else {
+            write!(
+                f,
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: factor.base
+                }
+            )?;
+        }
+
+        if factor.exp != 1 {
+            write!(f, "^{}", factor.exp)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub struct DisplayExpr<'a> {
@@ -254,77 +365,43 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 }
             }
             Expr::Mul(l, r) => {
-                // P3: Try to display as fraction x*y^(-1) → x/y
-                if let Some((num_opt, den)) = try_as_simple_fraction(self.context, self.id) {
-                    // Handle None (standalone x^(-1) → 1/x with proper parens)
-                    if num_opt.is_none() {
-                        let den_prec = precedence(self.context, den);
-                        write!(f, "1/")?;
-                        if den_prec <= 2 {
-                            return write!(
-                                f,
-                                "({})",
-                                DisplayExpr {
-                                    context: self.context,
-                                    id: den
-                                }
-                            );
-                        } else {
-                            return write!(
-                                f,
-                                "{}",
-                                DisplayExpr {
-                                    context: self.context,
-                                    id: den
-                                }
-                            );
-                        }
+                // P3: Try to display as fraction using FractionDisplayView
+                if let Some(frac) = FractionDisplayView::from(self.context, self.id) {
+                    // Handle sign
+                    if frac.sign < 0 {
+                        write!(f, "-")?;
                     }
-                    let num = num_opt.unwrap();
-                    // Normal case: num/den
-                    let num_prec = precedence(self.context, num);
-                    let den_prec = precedence(self.context, den);
-                    let div_prec = 2; // Same as Mul/Div
 
-                    // Parenthesize if needed
-                    if num_prec < div_prec {
-                        write!(
-                            f,
-                            "({})",
-                            DisplayExpr {
-                                context: self.context,
-                                id: num
-                            }
-                        )?;
+                    // Format numerator
+                    let needs_num_parens =
+                        frac.num.len() > 1 || frac.num.iter().any(|f| f.exp != 1);
+                    if frac.num.is_empty() {
+                        write!(f, "1")?;
+                    } else if needs_num_parens && frac.num.len() > 1 {
+                        write!(f, "(")?;
+                        format_factors(f, self.context, &frac.num)?;
+                        write!(f, ")")?;
                     } else {
-                        write!(
-                            f,
-                            "{}",
-                            DisplayExpr {
-                                context: self.context,
-                                id: num
-                            }
-                        )?;
+                        format_factors(f, self.context, &frac.num)?;
                     }
+
                     write!(f, "/")?;
-                    if den_prec <= div_prec {
-                        return write!(
-                            f,
-                            "({})",
-                            DisplayExpr {
-                                context: self.context,
-                                id: den
-                            }
-                        );
+
+                    // Format denominator (always needs parens if multiple factors)
+                    if frac.den.len() > 1 || frac.den.iter().any(|d| d.exp != 1) {
+                        write!(f, "(")?;
+                        format_factors(f, self.context, &frac.den)?;
+                        return write!(f, ")");
                     } else {
-                        return write!(
-                            f,
-                            "{}",
-                            DisplayExpr {
-                                context: self.context,
-                                id: den
-                            }
-                        );
+                        // Single factor - check if it needs parens based on precedence
+                        let den_base_prec = precedence(self.context, frac.den[0].base);
+                        if den_base_prec <= 2 {
+                            write!(f, "(")?;
+                            format_factors(f, self.context, &frac.den)?;
+                            return write!(f, ")");
+                        } else {
+                            return format_factors(f, self.context, &frac.den);
+                        }
                     }
                 }
 
@@ -988,38 +1065,60 @@ impl<'a> DisplayExprWithHints<'a> {
                 self.fmt_internal(f, *r)
             }
             Expr::Mul(l, r) => {
-                // P3: Try to display as fraction x*y^(-1) → x/y
-                if let Some((num_opt, den)) = try_as_simple_fraction(self.context, self.id) {
-                    if num_opt.is_none() {
-                        let den_prec = precedence(self.context, den);
-                        write!(f, "1/")?;
-                        if den_prec <= 2 {
-                            write!(f, "(")?;
-                            self.fmt_internal(f, den)?;
-                            return write!(f, ")");
-                        } else {
-                            return self.fmt_internal(f, den);
-                        }
+                // P3: Try to display as fraction using FractionDisplayView
+                if let Some(frac) = FractionDisplayView::from(self.context, self.id) {
+                    // Handle sign
+                    if frac.sign < 0 {
+                        write!(f, "-")?;
                     }
-                    let num = num_opt.unwrap();
-                    let num_prec = precedence(self.context, num);
-                    let den_prec = precedence(self.context, den);
-                    let div_prec = 2;
 
-                    if num_prec < div_prec {
+                    // Format numerator using fmt_internal for hints
+                    if frac.num.is_empty() {
+                        write!(f, "1")?;
+                    } else if frac.num.len() > 1 {
                         write!(f, "(")?;
-                        self.fmt_internal(f, num)?;
+                        for (i, factor) in frac.num.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, " * ")?;
+                            }
+                            self.fmt_internal(f, factor.base)?;
+                            if factor.exp != 1 {
+                                write!(f, "^{}", factor.exp)?;
+                            }
+                        }
                         write!(f, ")")?;
                     } else {
-                        self.fmt_internal(f, num)?;
+                        let factor = &frac.num[0];
+                        self.fmt_internal(f, factor.base)?;
+                        if factor.exp != 1 {
+                            write!(f, "^{}", factor.exp)?;
+                        }
                     }
+
                     write!(f, "/")?;
-                    if den_prec <= div_prec {
+
+                    // Format denominator
+                    if frac.den.len() > 1 || frac.den.iter().any(|d| d.exp != 1) {
                         write!(f, "(")?;
-                        self.fmt_internal(f, den)?;
+                        for (i, factor) in frac.den.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, " * ")?;
+                            }
+                            self.fmt_internal(f, factor.base)?;
+                            if factor.exp != 1 {
+                                write!(f, "^{}", factor.exp)?;
+                            }
+                        }
                         return write!(f, ")");
                     } else {
-                        return self.fmt_internal(f, den);
+                        let den_base_prec = precedence(self.context, frac.den[0].base);
+                        if den_base_prec <= 2 {
+                            write!(f, "(")?;
+                            self.fmt_internal(f, frac.den[0].base)?;
+                            return write!(f, ")");
+                        } else {
+                            return self.fmt_internal(f, frac.den[0].base);
+                        }
                     }
                 }
 

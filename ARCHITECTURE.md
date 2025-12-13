@@ -2,16 +2,52 @@
 
 ## Índice
 1. [Visión General](#visión-general)
+   - [Objetivos de Diseño](#objetivos-de-diseño)
+   - [Principios Arquitectónicos](#principios-arquitectónicos)
 2. [Componentes Principales](#componentes-principales)
-   - 2.5. [Pattern Detection Infrastructure ★](#25-cas_engine---pattern-detection-infrastructure-)
-3. [Arquitectura del Sistema de Reglas](#arquitectura-del-sistema-de-reglas)
-4. [Orquestación y Estrategias](#orquestación-y-estrategias)
-5. [Flujo de Datos](#flujo-de-datos)
-6. [Puntos de Extensión](#puntos-de-extensión)
-7. [Optimizaciones](#optimizaciones)
-   - 7.1. [Expression Interning](#71-expression-interning-la-base-del-rendimiento)
-   - 7.2. [Compact ExprId](#72-compact-exprid-nan-boxing-para-índices)
-
+   - [2.0. `cas_ast` - Abstract Syntax Tree](#20-cas_ast---abstract-syntax-tree)
+   - [2.1. `cas_ast` - Automatic Canonical Ordering (conmutativo-only) ★★★](#21-cas_ast---automatic-canonical-ordering-conmutativo-only-)
+   - [2.2. Normalización Canónica y Views (C2) ★★★](#22-normalización-canónica-y-views-c2-)
+   - [2.5. `cas_engine` - Pattern Detection Infrastructure ★★★](#25-cas_engine---pattern-detection-infrastructure-)
+   - [2.6. N-ary Pattern Matching (Add/Mul Flattening) ★★](#26-n-ary-pattern-matching-addmul-flattening-)
+   - [2.7. Patrón de Negación Generalizada ★★★](#27-patrón-de-negación-generalizada-)
+   - [2.8. `cas_engine` - Semantic Equality + nf_score (aceptación de rewrites) ★★★](#28-cas_engine---semantic-equality--nf_score-aceptación-de-rewrites-)
+   - [2. `cas_parser` - Parser de Expresiones](#2-cas_parser---parser-de-expresiones)
+3. [Optimizaciones (Phase 1 y Phase 2)](#optimizaciones-phase-1-y-phase-2)
+   - [Phase 1: Performance Optimization](#phase-1-performance-optimization)
+   - [Phase 2: Debug Tools](#phase-2-debug-tools)
+   - [Phase 3: Safety Nets (Correctness Hardening)](#phase-3-safety-nets-correctness-hardening)
+     - [1) CI Lint: prohibir `ctx.add(Expr::Mul...)` en `src/`](#1-ci-lint-prohibir-ctxaddexprmul-en-src)
+     - [2) Guard tests de canonicidad y trazas](#2-guard-tests-de-canonicidad-y-trazas)
+   - [CLI Commands](#cli-commands)
+   - [Performance Summary](#performance-summary)
+4. [Métricas de Complejidad](#métricas-de-complejidad)
+5. [Arquitectura del Sistema de Reglas](#arquitectura-del-sistema-de-reglas)
+   - [Categorización de Reglas](#categorización-de-reglas)
+   - [Diseño de Reglas Complejas](#diseño-de-reglas-complejas)
+6. [Orquestación y Estrategias](#orquestación-y-estrategias)
+   - [Problema: Explosión Combinatoria](#problema-explosión-combinatoria)
+   - [Solución: Orchestrator + Strategies](#solución-orchestrator--strategies)
+   - [Step Optimization](#step-optimization)
+7. [Flujo de Datos](#flujo-de-datos)
+   - [Diagrama de Flujo Completo](#diagrama-de-flujo-completo)
+   - [Ejemplo Concreto: `simplify 2x + 3x`](#ejemplo-concreto-simplify-2x--3x)
+8. [Puntos de Extensión](#puntos-de-extensión)
+   - [1. Añadir Nueva Regla](#1-añadir-nueva-regla)
+   - [2. Añadir Nueva Función Matemática](#2-añadir-nueva-función-matemática)
+   - [3. Añadir Estrategia de Simplificación](#3-añadir-estrategia-de-simplificación)
+   - [4. Añadir Comando CLI](#4-añadir-comando-cli)
+9. [Optimizaciones](#optimizaciones)
+   - [1. Expression Interning](#1-expression-interning)
+   - [2. Caché de Simplificación](#2-caché-de-simplificación)
+   - [3. Reglas Específicas por Tipo](#3-reglas-específicas-por-tipo)
+   - [4. Early Return en Reglas](#4-early-return-en-reglas)
+10. [Conclusión](#conclusión)
+11. [8. Stress Testing Infrastructure ★ (Added 2025-12)](#8-stress-testing-infrastructure--added-2025-12)
+12. [Matrix Operations](#matrix-operations)
+13. [Number Theory Implementation](#number-theory-implementation)
+14. [Configuración del Repo](#configuración-del-repo)
+15. [7. Optimizaciones](#7-optimizaciones)
 ---
 
 ## Visión General
@@ -108,255 +144,131 @@ pub trait Transformer {
 
 ---
 
-### 2.1. `cas_ast` - Automatic Canonical Ordering ★★★
+### 2.1. `cas_ast` - Automatic Canonical Ordering (conmutativo-only) ★★★
 
-**CRÍTICO**: Sistema implementado en Diciembre 2025 para garantizar unicidad de representación.
+**CRÍTICO**: garantiza una representación estructural **determinista** para operaciones conmutativas sin imponer una “normalización global” cara.
 
-#### El Problema: Múltiples Representaciones
+#### El Problema: Múltiples Representaciones Estructuralmente Distintas
 
-Antes del canonical ordering, las expresiones matemáticamente equivalentes podían tener múltiples representaciones en el AST:
+Sin un criterio canónico, expresiones matemáticamente equivalentes aparecen con múltiples ASTs:
 
-```
-Ejemplo: 2 + x
-Posibles representaciones:
-- Add(2, x)      →  "2 + x"
-- Add(x, 2)      →  "x + 2"
+- `2 + x` → `Add(2, x)` o `Add(x, 2)`
+- `x*y` → `Mul(x, y)` o `Mul(y, x)`
+- `a - b` → puede existir como `Sub(a,b)` o como azúcar sintáctico `Add(a, Neg(b))`
 
-Ejemplo: x * y * 3
-Posibles representaciones:
-- Mul(Mul(x, y), 3)  →  "x * y * 3"
-- Mul(3, Mul(x, y))  →  "3 * x * y"
-- Mul(Mul(3, x), y)  →  "3 * x * y"
-```
+Esto complica:
+- pattern matching (múltiples patrones para lo mismo)
+- control de ciclos / terminación
+- trazas (Before/After) inconsistentes
 
-**Consecuencias del problema**:
-1. **Tests frágiles**: Fallan por diferencias cosméticas en el orden
-2. **Caché ineficiente**: Misma expresión, diferentes claves de cache
-3. **Debugging difícil**: Difícil comparar expresiones visualmente
-4. **Comparaciones complejas**: Necesita lógica especial para igualdad semántica
+#### La Solución: Canonicalización local en `Context::add()`
 
-#### La Solución: Ordenamiento Automático en `Context::add()`
+`Context::add()` aplica **ordenación determinista** de operandos para `Add` y `Mul` (cuando es seguro), usando `compare_expr` (orden estructural determinista, sin hash).
 
-**Principio**: Todas las expresiones se normalizan **automáticamente** al ser añadidas al `Context`.
+**Importante**: la canonicalización en `add()` es **local** (swap), no flattening/ordenación de toda la cadena.
 
 ```rust
-// En cas_ast/src/expression.rs
-impl Context {
-    pub fn add(&mut self, expr: Expr) -> ExprId {
-        // Canonicalizar Add y Mul antes de añadir
-        let canonical_expr = match expr {
-            Expr::Add(l, r) => {
-                // Ordenar operandos: menor primero
-                if compare_expr(self, l, r) == Ordering::Greater {
-                    Expr::Add(r, l)  // Swap!
-                } else {
-                    Expr::Add(l, r)
-                }
-            }
-            Expr::Mul(l, r) => {
-                // Igual para multiplicación
-                if compare_expr(self, l, r) == Ordering::Greater {
-                    Expr::Mul(r, l)  // Swap!
-                } else {
-                    Expr::Mul(l, r)
-                }
-            }
-            other => other,
-        };
-        
-        // Añadir expresión canónica
-        let id = ExprId(self.nodes.len() as u32);
-        self.nodes.push(canonical_expr);
-        id
+// crates/cas_ast/src/expression.rs (resumen)
+match expr {
+    Expr::Add(l, r) => {
+        if compare_expr(self, l, r) == Ordering::Greater { Expr::Add(r, l) }
+        else { Expr::Add(l, r) }
     }
-}
-```
+    Expr::Mul(l, r) => {
+        // CRITICAL: Matrix multiplication is NOT commutative
+        let l_is_matrix = matches!(self.get(l), Expr::Matrix { .. });
+        let r_is_matrix = matches!(self.get(r), Expr::Matrix { .. });
 
-**Garantía**: `Context::add()` **siempre** produce la misma representación para expresiones equivalentes.
-
----
-
-#### Algoritmo de Ordenamiento: `compare_expr`
-
-Ubicación: `cas_ast/src/ordering.rs`
-
-**NO usa hash** (consejo del experto: hash es peligroso por colisiones, costoso y opaco).
-
-En su lugar, usa **comparación estructural determinista**:
-
-```rust
-pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
-    // 1. Fast path: misma expresión
-    if a == b { return Ordering::Equal; }
-    
-    // 2. Comparar por jerarquía de tipos
-    let rank_a = get_rank(context.get(a));
-    let rank_b = get_rank(context.get(b));
-    if rank_a != rank_b {
-        return rank_a.cmp(&rank_b);
-    }
-    
-    // 3. Mismo tipo: comparar contenido
-    match (context.get(a), context.get(b)) {
-        (Number(n1), Number(n2)) => n1.cmp(n2),
-        (Variable(v1), Variable(v2)) => v1.cmp(v2),
-        (Add(l1, r1), Add(l2, r2)) => compare_binary(context, l1, r1, l2, r2),
-        // ... etc
-    }
-}
-```
-
-**Jerarquía de tipos** (orden de precedencia):
-```rust
-fn get_rank(expr: &Expr) -> u8 {
-    match expr {
-        Number(_)     => 0,  // Números primero
-        Constant(_)   => 1,  // Luego constantes (π, e)
-        Variable(_)   => 2,  // Luego variables (x, y)
-        Function(_,_) => 3,  // Funciones (sin, cos)
-        Neg(_)        => 4,  // Negaciones
-        Pow(_,_)      => 5,  // Potencias
-        Mul(_,_)      => 6,  // Multiplicaciones
-        Div(_,_)      => 7,  // Divisiones
-        Add(_,_)      => 8,  // Sumas
-        Sub(_,_)      => 9,  // Restas
-    }
-}
-```
-
-**Ejemplos de ordenamiento**:
-
-```
-Input: Add(x, 2)
-rank(x) = 2, rank(2) = 0
-2 < x  →  Output: Add(2, x)  →  "2 + x"
-
-Input: Mul(y, x)
-rank(y) = 2, rank(x) = 2
-Mismo rank → comparar strings: "x" < "y"
-Output: Mul(x, y)  →  "x * y"
-
-Input: Add(Mul(x, 2), 3)
-rank(Mul) = 6, rank(3) = 0
-3 < Mul  →  Output: Add(3, Mul(x, 2))  →  "3 + 2 * x"
-```
-
----
-
-#### Propiedades del Sistema
-
-✅ **Determinismo**: Misma entrada → Misma salida (siempre)  
-✅ **Transparente**: Algoritmo simple, debuggeable, sin "magia"  
-✅ **Sin colisiones**: Comparación estructural exacta (no hash)  
-✅ **Eficiente**: O(log n) comparaciones en promedio  
-✅ **Completo**: Funciona para cualquier expresión válida
-
----
-
-#### Impacto en Otros Componentes
-
-**1. Eliminación de Canonicalization Pass**
-
-Antes:
-```rust
-// orchestrator.rs (ELIMINADO)
-fn canonicalize(&mut self, expr: ExprId) -> ExprId {
-    // Aplicar CanonicalizeMulRule
-    // Aplicar CanonicalizeAddRule
-    // ...
-}
-```
-
-Ahora:
-```rust
-// ¡No necesario! Context::add() ya canonicaliza
-```
-
-**2. Semantic Equality Mejorada**
-
-```rust
-// semantic_equality.rs
-impl SemanticEqualityChecker {
-    fn check_semantic_equality(&self, a: ExprId, b: ExprId) -> bool {
-        match (expr_a, expr_b) {
-            // Add y Mul son conmutativos: verificar ambos órdenes
-            (Add(l1, r1), Add(l2, r2)) => {
-                (self.are_equal(l1, l2) && self.are_equal(r1, r2))
-                    || (self.are_equal(l1, r2) && self.are_equal(r1, l2))  // ← NUEVO
-            }
-            (Mul(l1, r1), Mul(l2, r2)) => {
-                (self.are_equal(l1, l2) && self.are_equal(r1, r2))
-                    || (self.are_equal(l1, r2) && self.are_equal(r1, l2))  // ← NUEVO
-            }
-            // ...
+        if l_is_matrix && r_is_matrix {
+            Expr::Mul(l, r) // no swap: A*B ≠ B*A
+        } else if compare_expr(self, l, r) == Ordering::Greater {
+            Expr::Mul(r, l) // swap seguro (escalares / mixto)
+        } else {
+            Expr::Mul(l, r)
         }
     }
+    other => other,
 }
 ```
 
-Necesario porque canonical ordering puede producir diferentes órdenes pero semánticamente equivalentes.
+#### `Context::add_raw()` - Construcción sin canonicalizar (para snapshots/trace)
 
-**3. Tests Actualizados**
+Además de `add()`, existe `add_raw()` para **preservar estructura** sin swaps ni otras canonicalizaciones.
 
-Antes:
-```rust
-assert_eq!(result, "x + 2");  // ❌ Podría fallar si da "2 + x"
-```
+Usos principales:
+- **Tracer / steps**: reconstrucción de subárboles por “path” debe ser estable; usar `add()` podía reordenar y corromper `Before/After`.
+- **Pruebas y herramientas** que necesitan construir exactamente el árbol esperado.
 
-Ahora:
-```rust
-assert_eq!(result, "2 + x");  // ✅ Siempre produce forma canónica
-```
+> Regla práctica: el motor “normal” construye expresiones con builders (`mul2_raw`, `mul2_simpl`, `MulBuilder`), no con `ctx.add(Expr::Mul...)` directo.
 
-17 tests actualizados para aceptar formas canónicas.
+#### Separación de responsabilidades (muy importante)
 
----
-
-#### Costos y Trade-offs
-
-**Costo adicional**: ~2-5% overhead en `Context::add()`
-- La mayoría del tiempo se gasta en allocations, no comparaciones
-- El costo es **amortizado** por beneficios en cache y comparaciones
-
-**Beneficios**:
-- ✅ Tests más robustos (100% deterministas)
-- ✅ Cache más efectivo (menos duplicados)
-- ✅ Debugging más fácil (output predecible)
-- ✅ Comparaciones más rápidas (menos casos especiales)
-
-**Decision**: El overhead vale la pena por la ganancia en mantenibilidad.
+- **Canonical Ordering** (estructura canónica local): `compare_expr` (sin hash)
+- **Semantic Equality** (prueba de igualdad): `SemanticEqualityChecker::are_equal` (sin hash; “true” = probado, “false” = no probado)
+- **Cycle detection** (heurística rápida): `semantic_hash` (con hash, scope limitado)
 
 ---
+### 2.2. Normalización Canónica y Views (C2) ★★★
 
-#### Cicle Detector vs Canonical Ordering
+Esta parte recoge el cambio arquitectónico más importante de la conversación: pasar de “múltiples formas internas” (Sub/Div vs Add+Neg / Mul+Pow(-1)) a un enfoque **híbrido**:
 
-⚠️ **Nota importante**: El `CycleDetector` en `orchestrator.rs` **SÍ usa hash**, pero con un propósito diferente:
+- El AST interno puede contener azúcar (`Sub`, `Div`) por compatibilidad / parser / reglas existentes.
+- El *pattern matching* y la construcción de expresiones se hace sobre **views normalizadas** y **builders deterministas**.
+- El display (y LaTeX) puede “embellecer” representaciones canónicas (por ejemplo `a * b^(-1)` → `a/b`).
 
-```rust
-// orchestrator.rs - CycleDetector
-struct CycleDetector {
-    history: VecDeque<u64>,  // Almacena hashes
-}
+#### Problema original: representación interna inconsistente
 
-impl CycleDetector {
-    fn semantic_hash(ctx: &Context, expr: ExprId) -> u64 {
-        // Usa hash para detectar ciclos A → B → C → A
-    }
-}
-```
+Ejemplo típico:
+- división podía aparecer como `Div(n,d)` o como `Mul(n, Pow(d,-1))`
+- resta podía aparecer como `Sub(a,b)` o `Add(a, Neg(b))`
 
-**Por qué es aceptable**:
-1. **No afecta corrección**: Colisión hash → falso positivo → detiene prematuramente (seguro)
-2. **Performance crítica**: Necesita ser O(1) para detectar ciclos en tiempo real
-3. **Scope limitado**: Solo durante simplificación, no para igualdad o ordenamiento
+Esto obligaba a reglas a reconocer demasiados casos (`Div`, `Pow(-1)`, `Mul(..., Pow(...,-1))`, `Neg(Div(...))`, etc.).
 
-**Separación de responsabilidades**:
-- **Canonical Ordering**: Usa `compare_expr` (sin hash)
-- **Cycle Detection**: Usa `semantic_hash` (con hash)
-- **Semantic Equality**: Usa `are_equal` (sin hash)
+#### Decisión C2: “dos views + normalizador canónico”
+
+En lugar de una normalización interna total (refactor masivo), se adoptó una estrategia tipo *NormalizedView*:
+
+> **Idea**: exponer una “vista canónica” solo para matching / análisis, manteniendo el AST original para compatibilidad y display.
+
+En el código, esta idea se materializa con **views** en `crates/cas_ast/src/views.rs`:
+
+- **`MulView` / `MulChain`**: lineariza factores de `Mul` independientemente de asociatividad (y puede preservar orden).
+- **`MulParts`**: extrae signo + factores como `(base, exponente_entero)`; útil para productos conmutativos.
+- **`RationalFnView` / `FractionParts`**: descompone expresiones racionales en numerador/denominador (sin depender de `Div` como forma única).
+- **`MulBuilder`**: construye productos de forma determinista y segura (right-fold), con modos que controlan flattening.
+
+#### `MulBuilder` y terminación (lecciones aprendidas)
+
+`MulBuilder` incluye modos explícitos:
+
+- `new_simple()` (**para recursión**): no aplana, solo añade factores tal cual.
+- `FlattenMul`: aplana `Mul` anidados.
+- `MulPowInt`: además combina potencias con exponente entero (sin tocar `Div`).
+
+Reglas de seguridad:
+- **Nunca** usar `push_expr` agresivo dentro de funciones recursivas (expansión, distribución, etc.).
+- **Nunca** aplanar `Div` en un builder: para fracciones se usa `RationalFnView`.
+
+#### API de construcción unificada (cas_engine)
+
+Para eliminar `ctx.add(Expr::Mul(..))` dispersos y hacer el comportamiento explícito:
+
+- `mul2_raw(ctx,a,b)` / `mul_many_raw(ctx, &[...])`: construcción estable (sin simplificar)
+- `mul2_simpl(ctx,a,b)` / `mul_many_simpl(...)`: construcción + simplificación local (`1*x → x`, etc.)
+
+Además existe un lint de CI que impide reintroducir `ctx.add(Expr::Mul..)` en `src/`.
+
+#### Display separado del AST
+
+Con C2, el AST interno puede quedar en forma canónica (ej. `Mul(a, Pow(b,-1))`) y el display:
+- lo presenta como `a/b`
+- y presenta `Add(a, Neg(b))` como `a - b`
+
+Esto mantiene:
+- reglas más simples (una sola forma canónica “preferida”)
+- trazas legibles para el usuario
 
 ---
-
 ### 2.5. `cas_engine` - Pattern Detection Infrastructure ★★★
 
 **CRÍTICO**: Sistema agregado en 2025-12 después de 10+ horas de implementación y debugging.
@@ -1170,6 +1082,45 @@ asin(x) + acos(x) → π/2
 
 ---
 
+### 2.8. `cas_engine` - Semantic Equality + nf_score (aceptación de rewrites) ★★★
+
+Este bloque resolvió un bug crítico: algunas reglas de canonicalización quedaban “bloqueadas” cuando el wrapper descartaba rewrites semánticamente iguales (por ejemplo `Div(1,2)` vs `Number(1/2)`), rompiendo cadenas como `EvaluatePowerRule`.
+
+#### Semántica de `are_equal` (comentario clave)
+
+- `checker.are_equal(a,b) == true` significa **“igualdad demostrada”**
+- `false` significa **“no puedo probarlo”**, no “son distintos”
+
+Esto evita asumir “diferencia” cuando la comparación es incompleta.
+
+#### Wrapper: `apply_rule_with_semantic_check()`
+
+Política actual:
+
+1) Si `are_equal(before, after)` es **false** → aceptar rewrite (puede ser cambio real).
+2) Si es **true** → aceptar **solo** si mejora forma normal (`nf_score_after_is_better`).
+3) Excepción: reglas didácticas pueden forzar step aunque sea equivalente (para explicación).
+
+#### `nf_score v2`: calidad de forma normal (terminación sin perder canonicidad)
+
+La métrica prioriza:
+1) menos `Div` y `Sub` (objetivo C2)
+2) menos nodos totales
+3) *tie-breaker* opcional: menos “inversiones” en cadenas `Mul` (determinismo sin reordenar agresivo)
+
+Para evitar coste/overflow:
+- `nf_score_base` hace un **single-pass traversal**.
+- `mul_unsorted_adjacent` se calcula **solo si hay empate** (lazy).
+
+#### Numeric evaluation depth-limited (anti stack overflow)
+
+`SemanticEqualityChecker` usa evaluación numérica con profundidad limitada (p.ej. 50) para evitar overflow en expresiones profundas (proptest).
+
+---
+
+**Resultado**: se aceptan rewrites canónicos (ej. racionales constantes) sin abrir loops infinitos.
+
+---
 ### 2. `cas_parser` - Parser de Expresiones
 
 **Responsabilidad**: Convertir texto en AST.
@@ -1633,6 +1584,14 @@ impl DisplayExprWithHints {
 | `x^(1/2)` de canonicalización | `Expr::Pow(x, 1/2)` | `√(x)` - vía hints |
 | `x^(17/24)` general | `Expr::Pow(x, 17/24)` | `x^(17/24)` - no es raíz |
 
+**Display sugar (v6)**:
+
+El display ahora embellece representaciones canónicas sin tocar el AST:
+- `Add(a, Neg(b))` → `a - b` (y términos negativos se ordenan de forma legible)
+- `Mul(a, Pow(b, -1))` → `a/b` (con paréntesis conservadores)
+- `Pow(x, -1)` → `1/x`
+
+Esto permite preferir internamente C2 (`Add+Neg`, `Mul+Pow(-1)`) sin degradar la UX.
 **Beneficios**:
 - ✅ **Zero overhead** cuando steps están desactivados
 - ✅ **Desacoplado** del engine - reglas no conocen DisplayContext
@@ -2138,6 +2097,23 @@ pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {
 
 ---
 
+### Phase 3: Safety Nets (Correctness Hardening)
+
+Esta fase agrupa “redes de seguridad” que aseguran que los refactors de canonicalización/builders/views no reintroducen bugs sutiles.
+
+#### 1) CI Lint: prohibir `ctx.add(Expr::Mul...)` en `src/`
+
+Script: `scripts/lint_no_raw_mul.sh`
+
+- Busca usos directos de `ctx.add(Expr::Mul` en `crates/**/src`
+- Obliga a usar `mul2_raw/mul2_simpl` o `MulBuilder`
+- Evita reintroducción accidental de patrones frágiles
+
+#### 2) Guard tests de canonicidad y trazas
+
+- `4^(1/2) → 2` (tanto con exponente `Div(1,2)` como `Number(1/2)`)
+- tests de integridad del tracer: `step[i].after` debe ser equivalente a `step[i+1].before`
+- tests de matrices: `A*B` no se reordena por canonicalización
 ### CLI Commands
 
 | Command | Description | Phase |
@@ -2850,6 +2826,19 @@ fn should_show_step(step: &Step, verbosity: Verbosity) -> bool {
     }
 }
 ```
+#### Tracer / Steps: reconstrucción estable con `add_raw`
+
+Los steps no se construyen “re-canonicalizando” el AST, sino **reconstruyendo** el árbol en un `Context` usando un *path* al subárbol reescrito.
+
+Bug encontrado (v5→v6):
+- `reconstruct_at_path` usaba `context.add()` y, por tanto, podía **swapear** operandos en `Add/Mul`
+- esto corrompía el `After` (cambios de signo / orden) y hacía que el step siguiente no encajase con el anterior
+
+Fix:
+- el reconstructor (`reconstruct_recursive`) usa **`context.add_raw(...)`** en todas las reconstrucciones.
+- el motor puede canonicalizar internamente; la traza muestra la estructura exacta del rewrite aplicado.
+
+Esto desacopla “canonicidad interna” de “presentación de steps”.
 
 ---
 
