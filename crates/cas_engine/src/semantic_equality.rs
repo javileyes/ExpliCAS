@@ -13,52 +13,9 @@ impl<'a> SemanticEqualityChecker<'a> {
     }
 
     /// Try to evaluate an expression to a rational number if it's a simple numeric expression.
-    /// Uses depth-limited evaluation to avoid stack overflow on deep expressions.
+    /// Delegates to `helpers::as_rational_const_depth` - single source of truth.
     fn try_evaluate_numeric(&self, expr_id: ExprId) -> Option<num_rational::BigRational> {
-        self.try_evaluate_numeric_depth(expr_id, 50)
-    }
-
-    fn try_evaluate_numeric_depth(
-        &self,
-        expr_id: ExprId,
-        depth: usize,
-    ) -> Option<num_rational::BigRational> {
-        if depth == 0 {
-            return None; // Bail out on very deep expressions
-        }
-        use num_traits::Zero;
-
-        match self.context.get(expr_id) {
-            Expr::Number(n) => Some(n.clone()),
-            Expr::Mul(l, r) => {
-                let l_val = self.try_evaluate_numeric_depth(*l, depth - 1)?;
-                let r_val = self.try_evaluate_numeric_depth(*r, depth - 1)?;
-                Some(l_val * r_val)
-            }
-            Expr::Div(l, r) => {
-                let l_val = self.try_evaluate_numeric_depth(*l, depth - 1)?;
-                let r_val = self.try_evaluate_numeric_depth(*r, depth - 1)?;
-                if r_val.is_zero() {
-                    return None;
-                }
-                Some(l_val / r_val)
-            }
-            Expr::Add(l, r) => {
-                let l_val = self.try_evaluate_numeric_depth(*l, depth - 1)?;
-                let r_val = self.try_evaluate_numeric_depth(*r, depth - 1)?;
-                Some(l_val + r_val)
-            }
-            Expr::Sub(l, r) => {
-                let l_val = self.try_evaluate_numeric_depth(*l, depth - 1)?;
-                let r_val = self.try_evaluate_numeric_depth(*r, depth - 1)?;
-                Some(l_val - r_val)
-            }
-            Expr::Neg(inner) => {
-                let val = self.try_evaluate_numeric_depth(*inner, depth - 1)?;
-                Some(-val)
-            }
-            _ => None,
-        }
+        crate::helpers::as_rational_const(self.context, expr_id)
     }
 
     /// Check if expr_a is the negation of expr_b

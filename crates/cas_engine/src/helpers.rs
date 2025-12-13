@@ -555,7 +555,12 @@ pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
 
 // ========== Numeric Evaluation ==========
 
+/// Default depth limit for numeric evaluation.
+/// Prevents stack overflow on deeply nested expressions.
+pub const DEFAULT_NUMERIC_EVAL_DEPTH: usize = 50;
+
 /// Extract a rational constant from an expression, handling multiple representations.
+/// Uses default depth limit (50) to prevent stack overflow.
 ///
 /// Supports (all must be purely numeric - returns None if any variable/function present):
 /// - `Number(n)` - direct rational
@@ -569,14 +574,28 @@ pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
 /// - `SemanticEqualityChecker::try_evaluate_numeric`
 /// - `EvaluatePowerRule` for exponent matching
 pub fn as_rational_const(ctx: &Context, expr: ExprId) -> Option<num_rational::BigRational> {
+    as_rational_const_depth(ctx, expr, DEFAULT_NUMERIC_EVAL_DEPTH)
+}
+
+/// Extract a rational constant with explicit depth limit.
+/// Returns None if depth is exhausted (prevents stack overflow on deep expressions).
+pub fn as_rational_const_depth(
+    ctx: &Context,
+    expr: ExprId,
+    depth: usize,
+) -> Option<num_rational::BigRational> {
     use num_traits::Zero;
+
+    if depth == 0 {
+        return None; // Depth budget exhausted
+    }
 
     match ctx.get(expr) {
         Expr::Number(n) => Some(n.clone()),
 
         Expr::Div(num, den) => {
-            let n = as_rational_const(ctx, *num)?;
-            let d = as_rational_const(ctx, *den)?;
+            let n = as_rational_const_depth(ctx, *num, depth - 1)?;
+            let d = as_rational_const_depth(ctx, *den, depth - 1)?;
             if !d.is_zero() {
                 Some(n / d)
             } else {
@@ -585,25 +604,25 @@ pub fn as_rational_const(ctx: &Context, expr: ExprId) -> Option<num_rational::Bi
         }
 
         Expr::Neg(inner) => {
-            let val = as_rational_const(ctx, *inner)?;
+            let val = as_rational_const_depth(ctx, *inner, depth - 1)?;
             Some(-val)
         }
 
         Expr::Mul(l, r) => {
-            let lv = as_rational_const(ctx, *l)?;
-            let rv = as_rational_const(ctx, *r)?;
+            let lv = as_rational_const_depth(ctx, *l, depth - 1)?;
+            let rv = as_rational_const_depth(ctx, *r, depth - 1)?;
             Some(lv * rv)
         }
 
         Expr::Add(l, r) => {
-            let lv = as_rational_const(ctx, *l)?;
-            let rv = as_rational_const(ctx, *r)?;
+            let lv = as_rational_const_depth(ctx, *l, depth - 1)?;
+            let rv = as_rational_const_depth(ctx, *r, depth - 1)?;
             Some(lv + rv)
         }
 
         Expr::Sub(l, r) => {
-            let lv = as_rational_const(ctx, *l)?;
-            let rv = as_rational_const(ctx, *r)?;
+            let lv = as_rational_const_depth(ctx, *l, depth - 1)?;
+            let rv = as_rational_const_depth(ctx, *r, depth - 1)?;
             Some(lv - rv)
         }
 
@@ -812,5 +831,29 @@ mod tests {
         let x = ctx.var("x");
         let mul = ctx.add(Expr::Mul(two, x));
         assert!(as_rational_const(&ctx, mul).is_none());
+    }
+
+    #[test]
+    fn test_as_rational_const_depth_budget() {
+        // Build a deeply nested expression: Neg(Neg(Neg(...Neg(1)...)))
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+
+        // 100 levels deep - more than our default depth of 50
+        let mut expr = one;
+        for _ in 0..100 {
+            expr = ctx.add(Expr::Neg(expr));
+        }
+
+        // With depth=50, should return None (budget exhausted)
+        assert!(as_rational_const_depth(&ctx, expr, 50).is_none());
+
+        // With depth=200, should succeed (even parity of Neg gives 1)
+        let result = as_rational_const_depth(&ctx, expr, 200);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap(),
+            num_rational::BigRational::from_integer(1.into())
+        );
     }
 }
