@@ -271,6 +271,56 @@ impl fmt::Display for ExprId {
 // But Expr DOES recurse via IDs. So we can't implement Display for Expr easily without Context.
 // We can implement a helper struct for display.
 
+/// Try to interpret expression as a simple fraction `num * den^(-1)`.
+///
+/// Detects the pattern `a * b^(-1)` and returns `Some((a, b))`.
+/// Returns `None` for more complex cases or if it contains matrices.
+fn try_as_simple_fraction(ctx: &Context, id: ExprId) -> Option<(ExprId, ExprId)> {
+    // Only works on Mul(a, Pow(b, -1)) or Mul(Pow(a, -1), b)
+    if let Expr::Mul(l, r) = ctx.get(id) {
+        // Check if right side is Pow(base, -1)
+        if let Expr::Pow(base, exp) = ctx.get(*r) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() && n == &num_rational::BigRational::from_integer((-1).into()) {
+                    // Check for matrices
+                    if matches!(ctx.get(*l), Expr::Matrix { .. })
+                        || matches!(ctx.get(*base), Expr::Matrix { .. })
+                    {
+                        return None;
+                    }
+                    return Some((*l, *base)); // num=l, den=base
+                }
+            }
+        }
+        // Check if left side is Pow(base, -1)
+        if let Expr::Pow(base, exp) = ctx.get(*l) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() && n == &num_rational::BigRational::from_integer((-1).into()) {
+                    if matches!(ctx.get(*r), Expr::Matrix { .. })
+                        || matches!(ctx.get(*base), Expr::Matrix { .. })
+                    {
+                        return None;
+                    }
+                    return Some((*r, *base)); // num=r, den=base
+                }
+            }
+        }
+    }
+    // Also handle standalone x^(-1) as 1/x
+    if let Expr::Pow(base, exp) = ctx.get(id) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if n.is_integer() && n == &num_rational::BigRational::from_integer((-1).into()) {
+                if matches!(ctx.get(*base), Expr::Matrix { .. }) {
+                    return None;
+                }
+                // Return a dummy "numerator" - we'll handle specially
+                return Some((ExprId::new(0, 0), *base)); // Special: num is "1"
+            }
+        }
+    }
+    None
+}
+
 pub struct DisplayExpr<'a> {
     pub context: &'a Context,
     pub id: ExprId,
@@ -461,6 +511,66 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 }
             }
             Expr::Mul(l, r) => {
+                // P3: Try to display as fraction x*y^(-1) → x/y
+                if let Some((num, den)) = try_as_simple_fraction(self.context, self.id) {
+                    // Special case: num index 0 means "1" (standalone x^(-1) → 1/x)
+                    if num.index() == 0 {
+                        return write!(
+                            f,
+                            "1/{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: den
+                            }
+                        );
+                    }
+                    // Normal case: num/den
+                    let num_prec = precedence(self.context, num);
+                    let den_prec = precedence(self.context, den);
+                    let div_prec = 2; // Same as Mul/Div
+
+                    // Parenthesize if needed
+                    if num_prec < div_prec {
+                        write!(
+                            f,
+                            "({})",
+                            DisplayExpr {
+                                context: self.context,
+                                id: num
+                            }
+                        )?;
+                    } else {
+                        write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: num
+                            }
+                        )?;
+                    }
+                    write!(f, "/")?;
+                    if den_prec <= div_prec {
+                        return write!(
+                            f,
+                            "({})",
+                            DisplayExpr {
+                                context: self.context,
+                                id: den
+                            }
+                        );
+                    } else {
+                        return write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: den
+                            }
+                        );
+                    }
+                }
+
                 let lhs_prec = precedence(self.context, *l);
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 2; // Mul precedence
