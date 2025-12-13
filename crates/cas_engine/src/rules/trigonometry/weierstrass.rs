@@ -11,6 +11,7 @@
 //! - tan(x) → 2t/(1-t²)
 
 use crate::define_rule;
+use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{DisplayExpr, Expr, ExprId};
 use num_traits::One;
 
@@ -19,7 +20,7 @@ fn weierstrass_sin(ctx: &mut cas_ast::Context, t: ExprId) -> ExprId {
     let two = ctx.num(2);
     let one = ctx.num(1);
     let t_squared = ctx.add(Expr::Pow(t, two));
-    let numerator = ctx.add(Expr::Mul(two, t));
+    let numerator = smart_mul(ctx, two, t);
     let denominator = ctx.add(Expr::Add(one, t_squared));
     ctx.add(Expr::Div(numerator, denominator))
 }
@@ -39,7 +40,7 @@ fn weierstrass_tan(ctx: &mut cas_ast::Context, t: ExprId) -> ExprId {
     let two = ctx.num(2);
     let one = ctx.num(1);
     let t_squared = ctx.add(Expr::Pow(t, two));
-    let numerator = ctx.add(Expr::Mul(two, t));
+    let numerator = smart_mul(ctx, two, t);
     let denominator = ctx.add(Expr::Sub(one, t_squared));
     ctx.add(Expr::Div(numerator, denominator))
 }
@@ -64,7 +65,7 @@ define_rule!(
             1.into(),
             2.into(),
         )));
-        let half_arg = ctx.add(Expr::Mul(half, arg));
+        let half_arg = smart_mul(ctx, half, arg);
         let sin_half = ctx.add(Expr::Function("sin".to_string(), vec![half_arg]));
         let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![half_arg]));
         let t = ctx.add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)

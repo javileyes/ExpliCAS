@@ -1,5 +1,6 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::Expr;
 use num_traits::{One, Zero};
 
@@ -176,7 +177,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     if let Expr::Number(n2) = rl_data {
                         let prod = n1 * &n2;
                         let prod_expr = ctx.add(Expr::Number(prod));
-                        let new_expr = ctx.add(Expr::Mul(prod_expr, rr));
+                        let new_expr = smart_mul(ctx, prod_expr, rr);
                         return Some(Rewrite {
                             new_expr,
                             description: format!("Combine nested constants: {} * {}", n1, n2),
@@ -195,7 +196,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         if !n2.is_zero() {
                             let ratio = n1 / &n2;
                             let ratio_expr = ctx.add(Expr::Number(ratio));
-                            let new_expr = ctx.add(Expr::Mul(ratio_expr, num));
+                            let new_expr = smart_mul(ctx, ratio_expr, num);
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!(
@@ -259,7 +260,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         if let Expr::Number(c) = ml_data {
                             let ratio = &c / &d;
                             let ratio_expr = ctx.add(Expr::Number(ratio));
-                            let new_expr = ctx.add(Expr::Mul(ratio_expr, mr));
+                            let new_expr = smart_mul(ctx, ratio_expr, mr);
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d),
@@ -272,7 +273,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         if let Expr::Number(c) = mr_data {
                             let ratio = &c / &d;
                             let ratio_expr = ctx.add(Expr::Number(ratio));
-                            let new_expr = ctx.add(Expr::Mul(ratio_expr, ml));
+                            let new_expr = smart_mul(ctx, ratio_expr, ml);
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d),

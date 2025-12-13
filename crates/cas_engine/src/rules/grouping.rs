@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::helpers::{flatten_add_sub_chain, flatten_mul_chain, is_one, is_zero};
 use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Context, Expr, ExprId};
 use std::collections::HashMap;
 
@@ -80,7 +81,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                         // 0 * x^n = 0, skip
                         continue;
                     } else {
-                        ctx.add(Expr::Mul(combined_coeff, var_part))
+                        smart_mul(ctx, combined_coeff, var_part)
                     }
                 };
                 new_terms.push(term);
@@ -163,7 +164,7 @@ fn extract_coeff_degree(ctx: &mut Context, term: ExprId, var: &str) -> (ExprId, 
     } else {
         let mut c = coeff_factors[0];
         for f in coeff_factors.into_iter().skip(1) {
-            c = ctx.add(Expr::Mul(c, f));
+            c = smart_mul(ctx, c, f);
         }
         c
     };

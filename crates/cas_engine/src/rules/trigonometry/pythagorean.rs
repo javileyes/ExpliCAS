@@ -11,6 +11,7 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Context, Expr, ExprId};
 
 define_rule!(
@@ -119,7 +120,7 @@ fn check_pythagorean_pattern(
     } else {
         let mut c = coeff_factors[0];
         for &f in coeff_factors.iter().skip(1) {
-            c = ctx.add(Expr::Mul(c, f));
+            c = smart_mul(ctx, c, f);
         }
         c
     };
@@ -140,7 +141,7 @@ fn check_pythagorean_pattern(
         let func = ctx.add(Expr::Function(other_name.to_string(), vec![arg]));
         let two = ctx.num(2);
         let pow = ctx.add(Expr::Pow(func, two));
-        let result = ctx.add(Expr::Mul(c_term, pow));
+        let result = smart_mul(ctx, c_term, pow);
 
         let desc = format!("1 - {}²(x) = {}²(x)", func_name, other_name);
 
