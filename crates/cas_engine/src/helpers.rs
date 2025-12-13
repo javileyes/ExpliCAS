@@ -354,6 +354,73 @@ pub fn get_variant_name(expr: &Expr) -> &'static str {
     }
 }
 
+// ========== Normal Form Scoring ==========
+
+/// Count total nodes in an expression tree
+pub fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
+    let mut count = 0;
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        count += 1;
+        match ctx.get(id) {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(e) => stack.push(*e),
+            Expr::Function(_, args) => stack.extend(args),
+            Expr::Matrix { data, .. } => stack.extend(data),
+            _ => {}
+        }
+    }
+    count
+}
+
+/// Count nodes matching a predicate
+pub fn count_nodes_matching<F>(ctx: &Context, expr: ExprId, pred: F) -> usize
+where
+    F: Fn(&Expr) -> bool,
+{
+    let mut count = 0;
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        let node = ctx.get(id);
+        if pred(node) {
+            count += 1;
+        }
+        match node {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(e) => stack.push(*e),
+            Expr::Function(_, args) => stack.extend(args),
+            Expr::Matrix { data, .. } => stack.extend(data),
+            _ => {}
+        }
+    }
+    count
+}
+
+/// Score expression for normal form quality (lower is better).
+/// Returns (divs_subs, total_nodes) for lexicographic comparison.
+///
+/// Expressions with fewer Div/Sub nodes are preferred (C2 canonical form).
+/// Ties are broken by total node count (simpler is better).
+pub fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize) {
+    let divs_subs = count_nodes_matching(ctx, id, |e| matches!(e, Expr::Div(..) | Expr::Sub(..)));
+    let total = count_all_nodes(ctx, id);
+    (divs_subs, total)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

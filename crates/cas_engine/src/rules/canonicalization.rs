@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::Expr;
 use num_integer::Integer;
 use num_traits::Zero;
@@ -388,7 +389,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
                 // Ratio::recip() exists.
                 let inv = n.recip();
                 let inv_expr = ctx.add(Expr::Number(inv));
-                let new_expr = ctx.add(Expr::Mul(inv_expr, lhs));
+                let new_expr = smart_mul(ctx, inv_expr, lhs);
                 return Some(Rewrite {
                     new_expr,
                     description: format!("x / {} = (1/{}) * x", n, n),

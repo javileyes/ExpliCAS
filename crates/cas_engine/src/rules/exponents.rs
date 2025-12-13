@@ -401,6 +401,25 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
     None
 });
 
+/// Extract a rational constant from an expression, handling multiple representations.
+/// Supports: Number(n), Div(Number(a), Number(b))
+/// This makes rules more robust against different structural representations.
+#[allow(dead_code)]
+fn as_rational_const(ctx: &Context, expr: ExprId) -> Option<num_rational::BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Div(num, den) => {
+            if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*num), ctx.get(*den)) {
+                if !d.is_zero() {
+                    return Some(n / d);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {

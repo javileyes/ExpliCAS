@@ -279,8 +279,12 @@ impl<'a> SemanticEqualityChecker<'a> {
 }
 
 /// Apply a rule with semantic equality checking
-/// Returns None if the rule produces a semantically equivalent result
-/// EXCEPTION: Didactic rules (like Evaluate Numeric Power) always return results
+/// Returns None if the rule produces a semantically equivalent result that doesn't improve canonicity.
+///
+/// Policy:
+/// - If semantically DIFFERENT: always accept (it's a real simplification)
+/// - If semantically EQUAL: accept only if it improves normal form (reduces Div/Sub count)
+/// - Exception: Didactic rules always generate steps
 pub fn apply_rule_with_semantic_check(
     ctx: &mut Context,
     rule: &dyn Rule,
@@ -299,9 +303,18 @@ pub fn apply_rule_with_semantic_check(
         // Check if the result is semantically different
         let checker = SemanticEqualityChecker::new(ctx);
         if !checker.are_equal(expr_id, rewrite.new_expr) {
+            // Semantically different - accept (real simplification)
             return Some(rewrite);
         }
-        // Semantically equal - skip this rewrite
+
+        // Semantically equal - accept only if it improves normal form
+        // This allows canonicalizing rewrites like Div(1,2) -> Number(1/2)
+        let before_score = crate::helpers::nf_score(ctx, expr_id);
+        let after_score = crate::helpers::nf_score(ctx, rewrite.new_expr);
+        if after_score < before_score {
+            return Some(rewrite);
+        }
+        // No improvement - skip this rewrite
     }
     None
 }
