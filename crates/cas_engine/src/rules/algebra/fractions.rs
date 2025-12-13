@@ -11,13 +11,11 @@ define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
     |ctx, expr| {
-        // NOTE: Keep simple Div detection - this rule uses polynomial operations
-        // that require actual Div(num, den) structure
-        let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
-            (*n, *d)
-        } else {
-            return None;
-        };
+        use cas_ast::views::RationalFnView;
+
+        // Use RationalFnView to detect any fraction form while preserving structure
+        let view = RationalFnView::from(ctx, expr)?;
+        let (num, den) = (view.num, view.den);
 
         // 1. Identify variable
         let vars = collect_variables(ctx, expr);
@@ -120,12 +118,11 @@ define_rule!(
     NestedFractionRule,
     "Simplify Complex Fraction",
     |ctx, expr| {
-        // NOTE: Keep simple Div detection - expects actual Div structure
-        let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
-            (*n, *d)
-        } else {
-            return None;
-        };
+        use cas_ast::views::RationalFnView;
+
+        // Use RationalFnView to detect any fraction form
+        let view = RationalFnView::from(ctx, expr)?;
+        let (num, den) = (view.num, view.den);
 
         let num_denoms = collect_denominators(ctx, num);
         let den_denoms = collect_denominators(ctx, den);

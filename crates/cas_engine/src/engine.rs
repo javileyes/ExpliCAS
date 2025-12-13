@@ -1,3 +1,4 @@
+use crate::canonical_forms::normalize_core;
 use crate::profiler::RuleProfiler;
 use crate::rule::Rule;
 use crate::step::Step;
@@ -831,6 +832,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             self.steps.push(step);
                         }
                         expr_id = rewrite.new_expr;
+                        // Apply canonical normalization to prevent loops
+                        expr_id = normalize_core(self.context, expr_id);
                         changed = true;
                         break;
                     }
@@ -882,6 +885,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         self.steps.push(step);
                     }
                     expr_id = rewrite.new_expr;
+                    // Apply canonical normalization to prevent loops
+                    expr_id = normalize_core(self.context, expr_id);
                     changed = true;
                     break;
                 }
