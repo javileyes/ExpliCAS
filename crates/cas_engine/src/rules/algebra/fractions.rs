@@ -2,7 +2,7 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
-use cas_ast::expression::count_nodes;
+use cas_ast::count_nodes;
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Zero};
 

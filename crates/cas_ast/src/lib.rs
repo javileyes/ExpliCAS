@@ -1,3 +1,4 @@
+pub mod display; // NEW: Display formatting
 pub mod display_context;
 pub mod domain;
 pub mod expression;
@@ -6,15 +7,14 @@ pub mod latex_core;
 pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod latex_parser;
-pub mod ordering; // NEW: Canonical ordering utilities
-pub mod views; // NEW: Unified views for pattern matching
+pub mod ordering; // Canonical ordering utilities
+pub mod views; // Unified views for pattern matching
 pub mod visitor;
 
+pub use display::{count_nodes, DisplayExpr, DisplayExprWithHints, RawDisplayExpr};
 pub use display_context::{DisplayContext, DisplayHint};
 pub use domain::{BoundType, Interval, SolutionSet};
-pub use expression::{
-    Constant, Context, DisplayExpr, DisplayExprWithHints, Expr, ExprId, RawDisplayExpr,
-};
+pub use expression::{Constant, Context, Expr, ExprId};
 pub use latex::{LaTeXExpr, LaTeXExprWithHints};
 pub use latex_highlight::{
     HighlightColor, HighlightConfig, LaTeXExprHighlighted, LaTeXExprHighlightedWithHints,

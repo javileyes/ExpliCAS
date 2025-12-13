@@ -1,6 +1,6 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::expression::count_nodes;
+use cas_ast::count_nodes;
 use cas_ast::Expr;
 
 use super::helpers::*;

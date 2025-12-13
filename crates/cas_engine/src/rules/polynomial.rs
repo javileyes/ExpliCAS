@@ -117,7 +117,7 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
         // Helper to check if division simplifies (shares factors) and return factor size
         let get_simplification_reduction = |ctx: &Context, num: ExprId, den: ExprId| -> usize {
             if num == den {
-                return cas_ast::expression::count_nodes(ctx, num);
+                return cas_ast::count_nodes(ctx, num);
             }
 
             // Structural factor check
@@ -145,7 +145,7 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                     .any(|nf| compare_expr(ctx, *nf, df) == Ordering::Equal);
 
                 if found {
-                    let factor_size = cas_ast::expression::count_nodes(ctx, df);
+                    let factor_size = cas_ast::count_nodes(ctx, df);
                     // Factor removed from num and den -> 2 * size
                     let mut reduction = factor_size * 2;
                     // If factor is entire denominator, Div is removed -> +1
@@ -197,7 +197,7 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                         // If GCD cancels denominator (degree match), reduction is high
                         if gcd.degree() == p_den.degree() {
                             // Assume denominator is removed (size(den) + 1)
-                            return cas_ast::expression::count_nodes(ctx, den) + 1;
+                            return cas_ast::count_nodes(ctx, den) + 1;
                         }
                         // Otherwise, just return 1
                         return 1;
@@ -218,8 +218,8 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                 let new_expr = ctx.add(Expr::Add(ac, bc));
 
                 // Check complexity to prevent cycles with AddFractionsRule
-                let old_complexity = cas_ast::expression::count_nodes(ctx, expr);
-                let new_complexity = cas_ast::expression::count_nodes(ctx, new_expr);
+                let old_complexity = cas_ast::count_nodes(ctx, expr);
+                let new_complexity = cas_ast::count_nodes(ctx, new_expr);
 
                 // Allow if predicted complexity (after simplification) is not worse
                 if new_complexity <= old_complexity + red_a + red_b {
@@ -242,8 +242,8 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                 let new_expr = ctx.add(Expr::Sub(ac, bc));
 
                 // Check complexity to prevent cycles with AddFractionsRule
-                let old_complexity = cas_ast::expression::count_nodes(ctx, expr);
-                let new_complexity = cas_ast::expression::count_nodes(ctx, new_expr);
+                let old_complexity = cas_ast::count_nodes(ctx, expr);
+                let new_complexity = cas_ast::count_nodes(ctx, new_expr);
 
                 // Allow if predicted complexity (after simplification) is not worse
                 if new_complexity <= old_complexity + red_a + red_b {
