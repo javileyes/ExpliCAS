@@ -12,37 +12,49 @@ impl<'a> SemanticEqualityChecker<'a> {
         Self { context }
     }
 
-    /// Try to evaluate an expression to a rational number if it's a simple numeric expression
+    /// Try to evaluate an expression to a rational number if it's a simple numeric expression.
+    /// Uses depth-limited evaluation to avoid stack overflow on deep expressions.
     fn try_evaluate_numeric(&self, expr_id: ExprId) -> Option<num_rational::BigRational> {
+        self.try_evaluate_numeric_depth(expr_id, 50)
+    }
+
+    fn try_evaluate_numeric_depth(
+        &self,
+        expr_id: ExprId,
+        depth: usize,
+    ) -> Option<num_rational::BigRational> {
+        if depth == 0 {
+            return None; // Bail out on very deep expressions
+        }
         use num_traits::Zero;
 
         match self.context.get(expr_id) {
             Expr::Number(n) => Some(n.clone()),
             Expr::Mul(l, r) => {
-                let l_val = self.try_evaluate_numeric(*l)?;
-                let r_val = self.try_evaluate_numeric(*r)?;
+                let l_val = self.try_evaluate_numeric_depth(*l, depth - 1)?;
+                let r_val = self.try_evaluate_numeric_depth(*r, depth - 1)?;
                 Some(l_val * r_val)
             }
             Expr::Div(l, r) => {
-                let l_val = self.try_evaluate_numeric(*l)?;
-                let r_val = self.try_evaluate_numeric(*r)?;
+                let l_val = self.try_evaluate_numeric_depth(*l, depth - 1)?;
+                let r_val = self.try_evaluate_numeric_depth(*r, depth - 1)?;
                 if r_val.is_zero() {
                     return None;
                 }
                 Some(l_val / r_val)
             }
             Expr::Add(l, r) => {
-                let l_val = self.try_evaluate_numeric(*l)?;
-                let r_val = self.try_evaluate_numeric(*r)?;
+                let l_val = self.try_evaluate_numeric_depth(*l, depth - 1)?;
+                let r_val = self.try_evaluate_numeric_depth(*r, depth - 1)?;
                 Some(l_val + r_val)
             }
             Expr::Sub(l, r) => {
-                let l_val = self.try_evaluate_numeric(*l)?;
-                let r_val = self.try_evaluate_numeric(*r)?;
+                let l_val = self.try_evaluate_numeric_depth(*l, depth - 1)?;
+                let r_val = self.try_evaluate_numeric_depth(*r, depth - 1)?;
                 Some(l_val - r_val)
             }
             Expr::Neg(inner) => {
-                let val = self.try_evaluate_numeric(*inner)?;
+                let val = self.try_evaluate_numeric_depth(*inner, depth - 1)?;
                 Some(-val)
             }
             _ => None,
@@ -319,9 +331,8 @@ pub fn apply_rule_with_semantic_check(
 
         // Provably semantically equal - accept only if it improves normal form
         // This allows canonicalizing rewrites like Div(1,2) -> Number(1/2)
-        let before_score = crate::helpers::nf_score(ctx, expr_id);
-        let after_score = crate::helpers::nf_score(ctx, rewrite.new_expr);
-        if after_score < before_score {
+        // Uses lazy comparison: only calculates mul_inversions if first two components tie
+        if crate::helpers::nf_score_after_is_better(ctx, expr_id, rewrite.new_expr) {
             return Some(rewrite);
         }
         // No improvement in normal form - skip this rewrite

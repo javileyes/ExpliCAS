@@ -416,11 +416,41 @@ where
 /// Expressions with fewer Div/Sub nodes are preferred (C2 canonical form).
 /// Ties are broken by total node count (simpler is better).
 /// Final tie-breaker: fewer out-of-order adjacent pairs in Mul chains.
+///
+/// For performance-critical comparisons, use `compare_nf_score_lazy` instead.
 pub fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize, usize) {
     let divs_subs = count_nodes_matching(ctx, id, |e| matches!(e, Expr::Div(..) | Expr::Sub(..)));
     let total = count_all_nodes(ctx, id);
     let inversions = mul_unsorted_adjacent(ctx, id);
     (divs_subs, total, inversions)
+}
+
+/// First two components of nf_score: (divs_subs, total_nodes)
+/// Cheaper than full nf_score - use for initial comparison.
+fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {
+    let divs_subs = count_nodes_matching(ctx, id, |e| matches!(e, Expr::Div(..) | Expr::Sub(..)));
+    let total = count_all_nodes(ctx, id);
+    (divs_subs, total)
+}
+
+/// Compare nf_score lazily: only computes mul_unsorted_adjacent if first two components tie.
+/// Returns true if `after` is strictly better (lower) than `before`.
+pub fn nf_score_after_is_better(ctx: &Context, before: ExprId, after: ExprId) -> bool {
+    let before_base = nf_score_base(ctx, before);
+    let after_base = nf_score_base(ctx, after);
+
+    // Compare first two components
+    if after_base < before_base {
+        return true; // Clear improvement
+    }
+    if after_base > before_base {
+        return false; // Worse
+    }
+
+    // Tie on (divs_subs, total) - need to compare mul_inversions
+    let before_inv = mul_unsorted_adjacent(ctx, before);
+    let after_inv = mul_unsorted_adjacent(ctx, after);
+    after_inv < before_inv
 }
 
 /// Count out-of-order adjacent pairs in Mul chains (right-associative).
@@ -455,6 +485,7 @@ pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
             }
             Expr::Neg(inner) => stack.push(*inner),
             Expr::Function(_, args) => stack.extend(args),
+            Expr::Matrix { data, .. } => stack.extend(data),
             _ => {}
         }
     }

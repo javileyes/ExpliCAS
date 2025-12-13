@@ -265,6 +265,11 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
                         stack.push((*arg, false));
                     }
                 }
+                Expr::Matrix { data, .. } => {
+                    for elem in data.iter().rev() {
+                        stack.push((*elem, false));
+                    }
+                }
                 // Atoms: no children
                 _ => {}
             }
@@ -373,6 +378,20 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
                         id
                     } else {
                         ctx.add(Expr::Function(name.clone(), args_norm))
+                    }
+                }
+
+                Expr::Matrix { data, rows, cols } => {
+                    let data_norm: Vec<_> =
+                        data.iter().map(|e| *cache.get(e).unwrap_or(e)).collect();
+                    if data_norm == *data {
+                        id
+                    } else {
+                        ctx.add(Expr::Matrix {
+                            data: data_norm,
+                            rows: *rows,
+                            cols: *cols,
+                        })
                     }
                 }
 
