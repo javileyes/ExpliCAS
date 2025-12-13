@@ -273,9 +273,10 @@ impl fmt::Display for ExprId {
 
 /// Try to interpret expression as a simple fraction `num * den^(-1)`.
 ///
-/// Detects the pattern `a * b^(-1)` and returns `Some((a, b))`.
+/// Detects the pattern `a * b^(-1)` and returns `Some((Some(a), b))`.
+/// For standalone `x^(-1)`, returns `Some((None, x))` meaning "1/x".
 /// Returns `None` for more complex cases or if it contains matrices.
-fn try_as_simple_fraction(ctx: &Context, id: ExprId) -> Option<(ExprId, ExprId)> {
+fn try_as_simple_fraction(ctx: &Context, id: ExprId) -> Option<(Option<ExprId>, ExprId)> {
     // Only works on Mul(a, Pow(b, -1)) or Mul(Pow(a, -1), b)
     if let Expr::Mul(l, r) = ctx.get(id) {
         // Check if right side is Pow(base, -1)
@@ -288,7 +289,7 @@ fn try_as_simple_fraction(ctx: &Context, id: ExprId) -> Option<(ExprId, ExprId)>
                     {
                         return None;
                     }
-                    return Some((*l, *base)); // num=l, den=base
+                    return Some((Some(*l), *base)); // num=l, den=base
                 }
             }
         }
@@ -301,7 +302,7 @@ fn try_as_simple_fraction(ctx: &Context, id: ExprId) -> Option<(ExprId, ExprId)>
                     {
                         return None;
                     }
-                    return Some((*r, *base)); // num=r, den=base
+                    return Some((Some(*r), *base)); // num=r, den=base
                 }
             }
         }
@@ -313,8 +314,7 @@ fn try_as_simple_fraction(ctx: &Context, id: ExprId) -> Option<(ExprId, ExprId)>
                 if matches!(ctx.get(*base), Expr::Matrix { .. }) {
                     return None;
                 }
-                // Return a dummy "numerator" - we'll handle specially
-                return Some((ExprId::new(0, 0), *base)); // Special: num is "1"
+                return Some((None, *base)); // None means numerator is "1"
             }
         }
     }
@@ -512,18 +512,32 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             }
             Expr::Mul(l, r) => {
                 // P3: Try to display as fraction x*y^(-1) → x/y
-                if let Some((num, den)) = try_as_simple_fraction(self.context, self.id) {
-                    // Special case: num index 0 means "1" (standalone x^(-1) → 1/x)
-                    if num.index() == 0 {
-                        return write!(
-                            f,
-                            "1/{}",
-                            DisplayExpr {
-                                context: self.context,
-                                id: den
-                            }
-                        );
+                if let Some((num_opt, den)) = try_as_simple_fraction(self.context, self.id) {
+                    // Handle None (standalone x^(-1) → 1/x with proper parens)
+                    if num_opt.is_none() {
+                        let den_prec = precedence(self.context, den);
+                        write!(f, "1/")?;
+                        if den_prec <= 2 {
+                            return write!(
+                                f,
+                                "({})",
+                                DisplayExpr {
+                                    context: self.context,
+                                    id: den
+                                }
+                            );
+                        } else {
+                            return write!(
+                                f,
+                                "{}",
+                                DisplayExpr {
+                                    context: self.context,
+                                    id: den
+                                }
+                            );
+                        }
                     }
+                    let num = num_opt.unwrap();
                     // Normal case: num/den
                     let num_prec = precedence(self.context, num);
                     let den_prec = precedence(self.context, den);
