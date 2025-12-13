@@ -111,3 +111,59 @@ fn test_sqrt_4_parsed() {
 
     assert_eq!(display.to_string(), "2", "4^(1/2) should simplify to 2");
 }
+
+// ============================================================================
+// Guard tests for mul_unsorted_adjacent metric (nf_score v2)
+// ============================================================================
+
+/// Verify that x*2 simplifies to 2*x (canonical ordering)
+#[test]
+fn test_mul_ordering_x_times_2() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let two = ctx.num(2);
+
+    // x*2 should become 2*x (numbers before variables)
+    let mul_expr = ctx.add(Expr::Mul(x, two));
+
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.context = ctx;
+
+    let (result, _) = simplifier.simplify(mul_expr);
+
+    let display = DisplayExpr {
+        context: &simplifier.context,
+        id: result,
+    };
+
+    assert_eq!(display.to_string(), "2 * x", "x*2 should simplify to 2*x");
+}
+
+/// Verify that b*a*c simplifies to a*b*c (alphabetical ordering)
+#[test]
+fn test_mul_ordering_bac_to_abc() {
+    let mut ctx = Context::new();
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let c = ctx.var("c");
+
+    // b*a*c should become a*b*c
+    let ba = ctx.add(Expr::Mul(b, a));
+    let bac = ctx.add(Expr::Mul(ba, c));
+
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.context = ctx;
+
+    let (result, _) = simplifier.simplify(bac);
+
+    let display = DisplayExpr {
+        context: &simplifier.context,
+        id: result,
+    };
+
+    assert_eq!(
+        display.to_string(),
+        "a * b * c",
+        "b*a*c should simplify to a*b*c"
+    );
+}

@@ -315,35 +315,41 @@ define_rule!(
     CanonicalizeMulRule,
     "Canonicalize Multiplication",
     |ctx, expr| {
+        use crate::ordering::compare_expr;
+        use std::cmp::Ordering;
+
         if let Expr::Mul(_, _) = ctx.get(expr) {
-            // 1. Flatten
-            let mut terms = Vec::new();
+            // 1. Flatten the chain into factors
+            let mut factors = Vec::new();
             let mut stack = vec![expr];
             while let Some(id) = stack.pop() {
                 if let Expr::Mul(lhs, rhs) = ctx.get(id) {
                     stack.push(*rhs);
                     stack.push(*lhs);
                 } else {
-                    terms.push(id);
+                    factors.push(id);
                 }
             }
 
             // 2. Check if already sorted
             let mut is_sorted = true;
-            for i in 0..terms.len() - 1 {
-                if compare_expr(ctx, terms[i], terms[i + 1]) == Ordering::Greater {
+            for i in 0..factors.len().saturating_sub(1) {
+                if compare_expr(ctx, factors[i], factors[i + 1]) == Ordering::Greater {
                     is_sorted = false;
                     break;
                 }
             }
 
             if !is_sorted {
-                terms.sort_by(|a, b| compare_expr(ctx, *a, *b));
-                // Rebuild right-associative
-                let mut new_expr = *terms.last().unwrap();
-                for term in terms.iter().rev().skip(1) {
-                    new_expr = ctx.add(Expr::Mul(*term, new_expr));
+                // Sort factors canonically
+                factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+
+                // Rebuild right-associative: a*(b*(c*d))
+                let mut new_expr = *factors.last().unwrap();
+                for factor in factors.iter().rev().skip(1) {
+                    new_expr = ctx.add(Expr::Mul(*factor, new_expr));
                 }
+
                 return Some(Rewrite {
                     new_expr,
                     description: "Sort multiplication factors".to_string(),
@@ -352,12 +358,12 @@ define_rule!(
                 });
             }
 
-            // 3. Check associativity
+            // 3. Check associativity: (a*b)*c -> a*(b*c)
             if let Expr::Mul(lhs, _) = ctx.get(expr) {
                 if let Expr::Mul(_, _) = ctx.get(*lhs) {
-                    let mut new_expr = *terms.last().unwrap();
-                    for term in terms.iter().rev().skip(1) {
-                        new_expr = ctx.add(Expr::Mul(*term, new_expr));
+                    let mut new_expr = *factors.last().unwrap();
+                    for factor in factors.iter().rev().skip(1) {
+                        new_expr = ctx.add(Expr::Mul(*factor, new_expr));
                     }
                     return Some(Rewrite {
                         new_expr,
