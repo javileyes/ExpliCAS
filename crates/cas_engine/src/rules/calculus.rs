@@ -4,6 +4,12 @@ use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::One;
 
+/// Helper: Build a 2-factor product (no normalization, safe for recursive contexts).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {
         if name == "integrate" {
@@ -110,16 +116,16 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             // Product Rule: (uv)' = u'v + uv'
             let dl = differentiate(ctx, l, var)?;
             let dr = differentiate(ctx, r, var)?;
-            let term1 = ctx.add(Expr::Mul(dl, r));
-            let term2 = ctx.add(Expr::Mul(l, dr));
+            let term1 = mul2_raw(ctx, dl, r);
+            let term2 = mul2_raw(ctx, l, dr);
             Some(ctx.add(Expr::Add(term1, term2)))
         }
         Expr::Div(l, r) => {
             // Quotient Rule: (u/v)' = (u'v - uv') / v^2
             let dl = differentiate(ctx, l, var)?;
             let dr = differentiate(ctx, r, var)?;
-            let term1 = ctx.add(Expr::Mul(dl, r));
-            let term2 = ctx.add(Expr::Mul(l, dr));
+            let term1 = mul2_raw(ctx, dl, r);
+            let term2 = mul2_raw(ctx, l, dr);
             let num = ctx.add(Expr::Sub(term1, term2));
             let two = ctx.num(2);
             let den = ctx.add(Expr::Pow(r, two));
@@ -139,22 +145,22 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 let one = ctx.num(1);
                 let n_minus_one = ctx.add(Expr::Sub(exp, one));
                 let pow_term = ctx.add(Expr::Pow(base, n_minus_one));
-                let term = ctx.add(Expr::Mul(exp, pow_term));
-                Some(ctx.add(Expr::Mul(term, db)))
+                let term = mul2_raw(ctx, exp, pow_term);
+                Some(mul2_raw(ctx, term, db))
             } else if !contains_var(ctx, base, var) {
                 // a^u * ln(a) * u'
                 let ln_a = ctx.add(Expr::Function("ln".to_string(), vec![base]));
-                let term = ctx.add(Expr::Mul(expr, ln_a));
-                Some(ctx.add(Expr::Mul(term, de)))
+                let term = mul2_raw(ctx, expr, ln_a);
+                Some(mul2_raw(ctx, term, de))
             } else {
                 // Full rule: u^v * (v'*ln(u) + v*u'/u)
                 // = u^v * (de * ln(base) + exp * db / base)
                 let ln_base = ctx.add(Expr::Function("ln".to_string(), vec![base]));
-                let term1 = ctx.add(Expr::Mul(de, ln_base));
-                let term2_num = ctx.add(Expr::Mul(exp, db));
+                let term1 = mul2_raw(ctx, de, ln_base);
+                let term2_num = mul2_raw(ctx, exp, db);
                 let term2 = ctx.add(Expr::Div(term2_num, base));
                 let inner = ctx.add(Expr::Add(term1, term2));
-                Some(ctx.add(Expr::Mul(expr, inner)))
+                Some(mul2_raw(ctx, expr, inner))
             }
         }
         Expr::Function(name, args) => {
@@ -166,13 +172,13 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                     "sin" => {
                         // cos(u) * u'
                         let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
-                        Some(ctx.add(Expr::Mul(cos_u, da)))
+                        Some(mul2_raw(ctx, cos_u, da))
                     }
                     "cos" => {
                         // -sin(u) * u'
                         let sin_u = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
                         let neg_sin = ctx.add(Expr::Neg(sin_u));
-                        Some(ctx.add(Expr::Mul(neg_sin, da)))
+                        Some(mul2_raw(ctx, neg_sin, da))
                     }
                     "tan" => {
                         // sec^2(u) * u' = (1/cos^2(u)) * u'
@@ -181,11 +187,11 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                         let cos_sq = ctx.add(Expr::Pow(cos_u, two));
                         let one = ctx.num(1);
                         let sec_sq = ctx.add(Expr::Div(one, cos_sq));
-                        Some(ctx.add(Expr::Mul(sec_sq, da)))
+                        Some(mul2_raw(ctx, sec_sq, da))
                     }
                     "exp" => {
                         // exp(u) * u'
-                        Some(ctx.add(Expr::Mul(expr, da)))
+                        Some(mul2_raw(ctx, expr, da))
                     }
                     "ln" => {
                         // u'/u
@@ -195,7 +201,7 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                         // abs(u)/u * u' (sign(u) * u')
                         // or u/abs(u) * u'
                         let term = ctx.add(Expr::Div(arg, expr)); // u / abs(u)
-                        Some(ctx.add(Expr::Mul(term, da)))
+                        Some(mul2_raw(ctx, term, da))
                     }
                     _ => None, // Unknown function
                 }
@@ -229,12 +235,12 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     if let Expr::Mul(l, r) = expr_data {
         if !contains_var(ctx, l, var) {
             if let Some(int_r) = integrate(ctx, r, var) {
-                return Some(ctx.add(Expr::Mul(l, int_r)));
+                return Some(mul2_raw(ctx, l, int_r));
             }
         }
         if !contains_var(ctx, r, var) {
             if let Some(int_l) = integrate(ctx, l, var) {
-                return Some(ctx.add(Expr::Mul(r, int_l)));
+                return Some(mul2_raw(ctx, r, int_l));
             }
         }
     }
@@ -244,7 +250,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     // Constant: integrate(c) = c*x
     if !contains_var(ctx, expr, var) {
         let var_expr = ctx.var(var);
-        return Some(ctx.add(Expr::Mul(expr, var_expr)));
+        return Some(mul2_raw(ctx, expr, var_expr));
     }
 
     // Power Rule: integrate(u^n) * u' -> u^(n+1)/(n+1)
@@ -274,7 +280,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 let new_denom = if is_a_one {
                     new_exp
                 } else {
-                    ctx.add(Expr::Mul(a, new_exp))
+                    mul2_raw(ctx, a, new_exp)
                 };
 
                 let pow_expr = ctx.add(Expr::Pow(base, new_exp));
@@ -312,7 +318,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 let denom = if is_a_one {
                     ln_c
                 } else {
-                    ctx.add(Expr::Mul(a, ln_c))
+                    mul2_raw(ctx, a, ln_c)
                 };
                 return Some(ctx.add(Expr::Div(expr, denom)));
             }
@@ -937,7 +943,7 @@ fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> 
         Expr::Mul(l, r) => {
             let new_l = substitute_var(ctx, l, var, value);
             let new_r = substitute_var(ctx, r, var, value);
-            ctx.add(Expr::Mul(new_l, new_r))
+            mul2_raw(ctx, new_l, new_r)
         }
         Expr::Div(l, r) => {
             let new_l = substitute_var(ctx, l, var, value);
@@ -1076,7 +1082,7 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                     for k in start..=end {
                         let k_expr = ctx.num(k);
                         let term = substitute_var(ctx, factor, &var_name, k_expr);
-                        result = ctx.add(Expr::Mul(result, term));
+                        result = mul2_raw(ctx, result, term);
                     }
 
                     // Simplify the result
@@ -1223,8 +1229,8 @@ fn try_factorizable_product(
 
             // Combine: (start-1)/end * (end+1)/start = (start-1)*(end+1) / (start*end)
             // Build as a single fraction for better simplification
-            let combined_num = ctx.add(Expr::Mul(start_minus_1, end_plus_1));
-            let combined_den = ctx.add(Expr::Mul(start, end));
+            let combined_num = mul2_raw(ctx, start_minus_1, end_plus_1);
+            let combined_den = mul2_raw(ctx, start, end);
             let result = ctx.add(Expr::Div(combined_num, combined_den));
 
             return Some(result);
