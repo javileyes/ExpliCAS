@@ -6,6 +6,12 @@ use crate::polynomial::Polynomial;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 /// Factors an expression.
 /// This is the main entry point for factorization.
 pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -81,7 +87,7 @@ pub fn factor_polynomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 
         let mut res = terms[0];
         for t in terms.iter().skip(1) {
-            res = ctx.add(Expr::Mul(res, *t));
+            res = mul2_raw(ctx, res, *t);
         }
 
         // println!("factor_polynomial: {} -> {}", cas_ast::DisplayExpr { context: ctx, id: expr }, cas_ast::DisplayExpr { context: ctx, id: res });
@@ -135,7 +141,7 @@ pub fn factor_difference_squares(ctx: &mut Context, expr: ExprId) -> Option<Expr
         let new_expr = if is_pythagorean {
             term1
         } else {
-            ctx.add(Expr::Mul(term1, term2))
+            mul2_raw(ctx, term1, term2)
         };
 
         return Some(new_expr);
@@ -205,7 +211,7 @@ fn negate_term(ctx: &mut Context, expr: ExprId) -> ExprId {
                         return r;
                     }
                     let num_expr = ctx.num(new_n);
-                    return ctx.add(Expr::Mul(num_expr, r));
+                    return mul2_raw(ctx, num_expr, r);
                 }
             }
             ctx.add(Expr::Neg(expr))

@@ -11,6 +11,12 @@ use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 use std::cmp::Ordering;
 
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 // --- Helper Functions (Keep these as they are useful helpers) ---
 
 pub fn detect_substitution(ctx: &mut Context, eq: &Equation, var: &str) -> Option<ExprId> {
@@ -161,7 +167,7 @@ pub fn substitute_expr(
             let new_l = substitute_expr(ctx, l, target, replacement);
             let new_r = substitute_expr(ctx, r, target, replacement);
             if new_l != l || new_r != r {
-                return ctx.add(Expr::Mul(new_l, new_r));
+                return mul2_raw(ctx, new_l, new_r);
             }
         }
         Expr::Div(l, r) => {
@@ -366,22 +372,21 @@ fn analyze_term_mut(ctx: &mut Context, term: ExprId, var: &str) -> Option<(ExprI
         Expr::Variable(v) if v == var => Some((ctx.num(1), 1)),
         Expr::Pow(base, exp) => {
             if let Expr::Variable(v) = ctx.get(base) {
-                if v == var
-                    && !contains_var(ctx, exp, var) {
-                        let degree = if let Expr::Number(n) = ctx.get(exp) {
-                            if n.is_integer() {
-                                Some(n.to_integer())
-                            } else {
-                                None
-                            }
+                if v == var && !contains_var(ctx, exp, var) {
+                    let degree = if let Expr::Number(n) = ctx.get(exp) {
+                        if n.is_integer() {
+                            Some(n.to_integer())
                         } else {
                             None
-                        };
-
-                        if let Some(d) = degree {
-                            return Some((ctx.num(1), d.try_into().ok()?));
                         }
+                    } else {
+                        None
+                    };
+
+                    if let Some(d) = degree {
+                        return Some((ctx.num(1), d.try_into().ok()?));
                     }
+                }
             }
             None
         }
@@ -392,15 +397,15 @@ fn analyze_term_mut(ctx: &mut Context, term: ExprId, var: &str) -> Option<(ExprI
             if l_has && r_has {
                 let (c1, d1) = analyze_term_mut(ctx, l, var)?;
                 let (c2, d2) = analyze_term_mut(ctx, r, var)?;
-                let new_coeff = ctx.add(Expr::Mul(c1, c2));
+                let new_coeff = mul2_raw(ctx, c1, c2);
                 Some((new_coeff, d1 + d2))
             } else if l_has {
                 let (c, d) = analyze_term_mut(ctx, l, var)?;
-                let new_coeff = ctx.add(Expr::Mul(c, r));
+                let new_coeff = mul2_raw(ctx, c, r);
                 Some((new_coeff, d))
             } else if r_has {
                 let (c, d) = analyze_term_mut(ctx, r, var)?;
-                let new_coeff = ctx.add(Expr::Mul(l, c));
+                let new_coeff = mul2_raw(ctx, l, c);
                 Some((new_coeff, d))
             } else {
                 Some((term, 0))

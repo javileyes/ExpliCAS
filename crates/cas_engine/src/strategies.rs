@@ -8,7 +8,13 @@ use crate::rules::canonicalization::{CanonicalizeMulRule, CanonicalizeNegationRu
 use crate::rules::exponents::{EvaluatePowerRule, IdentityPowerRule, ProductPowerRule};
 use crate::rules::polynomial::CombineLikeTermsRule;
 use crate::step::{PathStep, Step};
-use cas_ast::{Context, DisplayExpr, ExprId};
+use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
 
 /// Strategy to simplify polynomials by trying expansion and factorization.
 /// Returns the simplest form found.
@@ -243,11 +249,11 @@ fn reconstruct_global(
         }
         (Expr::Mul(l, r), PathStep::Left) => {
             let new_l = reconstruct_global(ctx, l, remaining_path, replacement);
-            ctx.add(Expr::Mul(new_l, r))
+            mul2_raw(ctx, new_l, r)
         }
         (Expr::Mul(l, r), PathStep::Right) => {
             let new_r = reconstruct_global(ctx, r, remaining_path, replacement);
-            ctx.add(Expr::Mul(l, new_r))
+            mul2_raw(ctx, l, new_r)
         }
         (Expr::Div(l, r), PathStep::Left) => {
             let new_l = reconstruct_global(ctx, l, remaining_path, replacement);
@@ -333,7 +339,7 @@ fn apply_rules_to_tree(
             let nr = apply_rules_to_tree(ctx, r, steps, p_r);
 
             if nl != l || nr != r {
-                ctx.add(Expr::Mul(nl, nr))
+                mul2_raw(ctx, nl, nr)
             } else {
                 expr
             }

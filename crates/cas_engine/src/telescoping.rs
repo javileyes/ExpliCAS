@@ -12,6 +12,12 @@
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Zero};
 
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 /// Result of telescoping analysis
 pub struct TelescopingResult {
     pub success: bool,
@@ -105,7 +111,7 @@ pub fn telescope(ctx: &mut Context, expr: ExprId) -> TelescopingResult {
         };
 
         // Multiply entire expression by the denominator
-        let multiplied = ctx.add(Expr::Mul(expr, mult_expr));
+        let multiplied = mul2_raw(ctx, expr, mult_expr);
 
         steps.push(TelescopingStep {
             description: mult_description,

@@ -4,9 +4,15 @@ pub mod strategies;
 pub mod strategy;
 
 use crate::engine::Simplifier;
-use cas_ast::{Context, Equation, ExprId, SolutionSet};
+use cas_ast::{Context, Equation, Expr, ExprId, SolutionSet};
 
 pub use self::isolation::contains_var;
+
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
 
 #[derive(Debug, Clone)]
 pub struct SolveStep {
@@ -164,7 +170,7 @@ fn substitute(ctx: &mut Context, expr: ExprId, var: &str, val: ExprId) -> ExprId
             let nl = substitute(ctx, l, var, val);
             let nr = substitute(ctx, r, var, val);
             if nl != l || nr != r {
-                ctx.add(Expr::Mul(nl, nr))
+                mul2_raw(ctx, nl, nr)
             } else {
                 expr
             }

@@ -2,6 +2,12 @@ use cas_ast::{Context, Expr, ExprId};
 use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
 
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 /// Expands an expression.
 /// This is the main entry point for expansion.
 /// It recursively expands children and then applies specific expansion rules.
@@ -83,7 +89,7 @@ pub fn expand_mul(ctx: &mut Context, l: ExprId, r: ExprId) -> ExprId {
     }
 
     // If neither, just return Mul(l, r)
-    ctx.add(Expr::Mul(l, r))
+    mul2_raw(ctx, l, r)
 }
 
 fn distribute_single(ctx: &mut Context, multiplier: ExprId, target: ExprId) -> Option<ExprId> {
@@ -131,7 +137,7 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     if let Expr::Mul(a, b) = base_data {
         let ea = expand_pow(ctx, a, exp);
         let eb = expand_pow(ctx, b, exp);
-        return ctx.add(Expr::Mul(ea, eb));
+        return mul2_raw(ctx, ea, eb);
     }
 
     if let Expr::Add(a, b) = base_data {
@@ -165,10 +171,10 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
                                 ctx.add(Expr::Pow(b, e))
                             };
 
-                            let mut term = ctx.add(Expr::Mul(term_a, term_b));
+                            let mut term = mul2_raw(ctx, term_a, term_b);
                             if coeff > 1 {
                                 let c = ctx.num(coeff as i64);
-                                term = ctx.add(Expr::Mul(c, term));
+                                term = mul2_raw(ctx, c, term);
                             }
                             terms.push(term);
                         }

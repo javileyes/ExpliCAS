@@ -1,5 +1,11 @@
 use cas_ast::{Context, Expr, ExprId};
 
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 /// Matrix wrapper for operations
 #[derive(Debug, Clone)]
 pub struct Matrix {
@@ -81,7 +87,7 @@ impl Matrix {
     pub fn scalar_mul(&self, scalar: ExprId, ctx: &mut Context) -> Self {
         let mut result_data = Vec::with_capacity(self.data.len());
         for &elem in &self.data {
-            let product = ctx.add(Expr::Mul(scalar, elem));
+            let product = mul2_raw(ctx, scalar, elem);
             result_data.push(product);
         }
 
@@ -112,7 +118,7 @@ impl Matrix {
                 for k in 0..n {
                     let a_ik = self.data[i * self.cols + k];
                     let b_kj = other.data[k * other.cols + j];
-                    let product = ctx.add(Expr::Mul(a_ik, b_kj));
+                    let product = mul2_raw(ctx, a_ik, b_kj);
                     sum = ctx.add(Expr::Add(sum, product));
                 }
                 result_data.push(sum);
@@ -167,8 +173,8 @@ impl Matrix {
         let c = self.data[2];
         let d = self.data[3];
 
-        let ad = ctx.add(Expr::Mul(a, d));
-        let bc = ctx.add(Expr::Mul(b, c));
+        let ad = mul2_raw(ctx, a, d);
+        let bc = mul2_raw(ctx, b, c);
         ctx.add(Expr::Sub(ad, bc))
     }
 
@@ -191,24 +197,24 @@ impl Matrix {
         let a33 = get(2, 2);
 
         // Positive terms - split to avoid multiple mutable borrows
-        let a22_a33 = ctx.add(Expr::Mul(a22, a33));
-        let t1 = ctx.add(Expr::Mul(a11, a22_a33));
+        let a22_a33 = mul2_raw(ctx, a22, a33);
+        let t1 = mul2_raw(ctx, a11, a22_a33);
 
-        let a23_a31 = ctx.add(Expr::Mul(a23, a31));
-        let t2 = ctx.add(Expr::Mul(a12, a23_a31));
+        let a23_a31 = mul2_raw(ctx, a23, a31);
+        let t2 = mul2_raw(ctx, a12, a23_a31);
 
-        let a21_a32 = ctx.add(Expr::Mul(a21, a32));
-        let t3 = ctx.add(Expr::Mul(a13, a21_a32));
+        let a21_a32 = mul2_raw(ctx, a21, a32);
+        let t3 = mul2_raw(ctx, a13, a21_a32);
 
         // Negative terms
-        let a22_a31 = ctx.add(Expr::Mul(a22, a31));
-        let t4 = ctx.add(Expr::Mul(a13, a22_a31));
+        let a22_a31 = mul2_raw(ctx, a22, a31);
+        let t4 = mul2_raw(ctx, a13, a22_a31);
 
-        let a23_a32 = ctx.add(Expr::Mul(a23, a32));
-        let t5 = ctx.add(Expr::Mul(a11, a23_a32));
+        let a23_a32 = mul2_raw(ctx, a23, a32);
+        let t5 = mul2_raw(ctx, a11, a23_a32);
 
-        let a21_a33 = ctx.add(Expr::Mul(a21, a33));
-        let t6 = ctx.add(Expr::Mul(a12, a21_a33));
+        let a21_a33 = mul2_raw(ctx, a21, a33);
+        let t6 = mul2_raw(ctx, a12, a21_a33);
 
         // Sum positive
         let t2_t3 = ctx.add(Expr::Add(t2, t3));
@@ -262,8 +268,8 @@ impl Matrix {
                 let b = minor_data[1];
                 let c = minor_data[2];
                 let d = minor_data[3];
-                let ad = ctx.add(Expr::Mul(a, d));
-                let bc = ctx.add(Expr::Mul(b, c));
+                let ad = mul2_raw(ctx, a, d);
+                let bc = mul2_raw(ctx, b, c);
                 Some(ctx.add(Expr::Sub(ad, bc)))
             } else if n - 1 == 3 {
                 // 3×3 minor
@@ -286,23 +292,23 @@ impl Matrix {
                 let a32 = get(2, 1);
                 let a33 = get(2, 2);
 
-                let a22_a33 = ctx.add(Expr::Mul(a22, a33));
-                let t1 = ctx.add(Expr::Mul(a11, a22_a33));
+                let a22_a33 = mul2_raw(ctx, a22, a33);
+                let t1 = mul2_raw(ctx, a11, a22_a33);
 
-                let a23_a31 = ctx.add(Expr::Mul(a23, a31));
-                let t2 = ctx.add(Expr::Mul(a12, a23_a31));
+                let a23_a31 = mul2_raw(ctx, a23, a31);
+                let t2 = mul2_raw(ctx, a12, a23_a31);
 
-                let a21_a32 = ctx.add(Expr::Mul(a21, a32));
-                let t3 = ctx.add(Expr::Mul(a13, a21_a32));
+                let a21_a32 = mul2_raw(ctx, a21, a32);
+                let t3 = mul2_raw(ctx, a13, a21_a32);
 
-                let a22_a31 = ctx.add(Expr::Mul(a22, a31));
-                let t4 = ctx.add(Expr::Mul(a13, a22_a31));
+                let a22_a31 = mul2_raw(ctx, a22, a31);
+                let t4 = mul2_raw(ctx, a13, a22_a31);
 
-                let a23_a32 = ctx.add(Expr::Mul(a23, a32));
-                let t5 = ctx.add(Expr::Mul(a11, a23_a32));
+                let a23_a32 = mul2_raw(ctx, a23, a32);
+                let t5 = mul2_raw(ctx, a11, a23_a32);
 
-                let a21_a33 = ctx.add(Expr::Mul(a21, a33));
-                let t6 = ctx.add(Expr::Mul(a12, a21_a33));
+                let a21_a33 = mul2_raw(ctx, a21, a33);
+                let t6 = mul2_raw(ctx, a12, a21_a33);
 
                 let t2_t3 = ctx.add(Expr::Add(t2, t3));
                 let pos = ctx.add(Expr::Add(t1, t2_t3));
@@ -319,10 +325,10 @@ impl Matrix {
             // Cofactor = (-1)^(0+j) * element * det(minor)
             let cofactor = if j % 2 == 0 {
                 // Positive: element * minor_det
-                ctx.add(Expr::Mul(element, minor_det))
+                mul2_raw(ctx, element, minor_det)
             } else {
                 // Negative: -(element * minor_det)
-                let product = ctx.add(Expr::Mul(element, minor_det));
+                let product = mul2_raw(ctx, element, minor_det);
                 ctx.add(Expr::Neg(product))
             };
 

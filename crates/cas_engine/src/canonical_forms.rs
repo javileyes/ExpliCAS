@@ -2,6 +2,12 @@ use crate::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use tracing::debug;
 
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 /// Detects if an expression is in a canonical (elegant) form that should not be expanded.
 /// These forms are mathematically clean and expanding them would only create unnecessary complexity.
 pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {
@@ -337,7 +343,7 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
                     if l_norm == *l && r_norm == *r {
                         id
                     } else {
-                        ctx.add(Expr::Mul(l_norm, r_norm))
+                        mul2_raw(ctx, l_norm, r_norm)
                     }
                 }
 

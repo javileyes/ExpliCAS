@@ -4,6 +4,12 @@ use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 
+/// Helper: Build a 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 /// Collects like terms in an expression.
 /// e.g. 2*x + 3*x -> 5*x
 ///      x + x -> 2*x
@@ -87,7 +93,7 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
             ctx.add(Expr::Neg(term_part))
         } else {
             let coeff_expr = ctx.add(Expr::Number(coeff));
-            ctx.add(Expr::Mul(coeff_expr, term_part))
+            mul2_raw(ctx, coeff_expr, term_part)
         };
         new_terms.push(term);
     }
@@ -207,7 +213,7 @@ pub fn simplify_numeric_exponents(ctx: &mut Context, expr: ExprId) -> ExprId {
             let nl = simplify_numeric_exponents(ctx, l);
             let nr = simplify_numeric_exponents(ctx, r);
             if nl != l || nr != r {
-                ctx.add(Expr::Mul(nl, nr))
+                mul2_raw(ctx, nl, nr)
             } else {
                 expr
             }
