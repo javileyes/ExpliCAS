@@ -53,6 +53,24 @@ pub fn smart_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     ctx.add(Expr::Mul(a, b))
 }
 
+/// Create a canonical multiplication using MulBuilder in flatten mode.
+///
+/// Unlike smart_mul, this:
+/// - Flattens nested Mul (but NOT Div)
+/// - Compresses Pow with integer exponents
+/// - Uses right-fold association (matches current system)
+///
+/// **Do NOT use inside recursive functions** - use smart_mul instead.
+#[allow(dead_code)]
+pub fn canonical_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    use cas_ast::views::MulBuilder;
+
+    let mut builder = MulBuilder::new_flatten();
+    builder.push_expr(ctx, a);
+    builder.push_expr(ctx, b);
+    builder.build(ctx)
+}
+
 pub fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
     let target_data = ctx.get(target).clone();
     match target_data {

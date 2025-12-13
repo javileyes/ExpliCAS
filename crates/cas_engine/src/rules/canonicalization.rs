@@ -45,9 +45,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: format!("-({}) = {}", n, normalized_n),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             // -(-x) -> x
@@ -55,9 +55,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: double_inner,
                     description: "-(-x) = x".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             // -(a + b) -> -a + -b
@@ -78,9 +78,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "-(a + b) = -a - b".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             // -(c * x) -> (-c) * x
@@ -98,9 +98,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: format!("-({} * x) = {} * x", n, neg_n),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
 
@@ -127,9 +127,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "(-a) * b = -(a * b)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             // Check for a * (-b)
@@ -154,9 +154,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: format!("{} * (-x) = {} * x", n, neg_n),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
 
                 let new_mul = ctx.add(Expr::Mul(lhs, inner_r));
@@ -164,9 +164,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "a * (-b) = -(a * b)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
 
@@ -181,9 +181,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "(-a) / b = -(a / b)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             if let Expr::Neg(inner_r) = rhs_data {
@@ -192,9 +192,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "a / (-b) = -(a / b)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
 
@@ -269,9 +269,9 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "Fix associativity (a+b)+c -> a+(b+c)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
 
@@ -346,9 +346,9 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "Sort multiplication factors".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
 
             // 3. Check associativity
@@ -361,9 +361,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "Fix associativity (a*b)*c -> a*(b*c)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -392,9 +392,9 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: format!("x / {} = (1/{}) * x", n, n),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         }
     }
@@ -423,9 +423,9 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                             return Some(Rewrite {
                                 new_expr,
                                 description: "sqrt(x^2k) -> |x|^k".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                            });
                         }
                     }
                 }
@@ -436,9 +436,9 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "sqrt(x) = x^(1/2)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             } else if args.len() == 2 {
                 // sqrt(x, n) -> x^(1/n)
                 let one = ctx.num(1);
@@ -447,9 +447,9 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr,
                     description: "sqrt(x, n) = x^(1/n)".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                });
             }
         } else if name == "root" && args.len() == 2 {
             // root(x, n) -> x^(1/n)
@@ -478,9 +478,9 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: format!("-{} + x -> x - {}", n_clone, n_clone),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -493,9 +493,9 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr,
                         description: format!("x + (-{}) -> x - {}", n_clone, n_clone),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -531,9 +531,9 @@ define_rule!(
                     return Some(Rewrite {
                         new_expr,
                         description: "(y-x) -> -(x-y) for canonical order".to_string(),
-                before_local: None,
-                after_local: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }

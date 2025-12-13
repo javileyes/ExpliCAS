@@ -172,6 +172,220 @@ fn collect_mul(ctx: &Context, id: ExprId, mult: i32, out: &mut MulParts) {
     }
 }
 
+// ============================================================================
+// MulBuilder: Canonical product construction
+// ============================================================================
+
+/// Mode for MulBuilder - controls what gets flattened.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MulMode {
+    /// No flattening - just collect factors as atoms
+    Simple,
+    /// Flatten only Mul chains (safe for recursive functions)
+    FlattenMul,
+    /// Flatten Mul + combine Pow with integer exponents (NO Div)
+    MulPowInt,
+}
+
+/// Builder for creating canonical multiplication expressions.
+///
+/// Two usage patterns:
+///
+/// **Safe for recursive functions** (distribute, AddFractions, etc.):
+/// ```ignore
+/// let mut b = MulBuilder::new_simple();
+/// b.push(a);
+/// b.push(b_expr);
+/// let result = b.build(ctx);
+/// ```
+///
+/// **For normalization passes** (not inside recursion):
+/// ```ignore
+/// let mut b = MulBuilder::new_flatten();
+/// b.push_expr(ctx, complex_expr);  // Flattens Mul, combines Pow
+/// let result = b.build(ctx);
+/// ```
+pub struct MulBuilder {
+    mode: MulMode,
+    sign: i8,
+    factors: Vec<(ExprId, i64)>, // (base, exponent)
+}
+
+impl MulBuilder {
+    /// Create builder in Simple mode - no flattening.
+    /// **Use this inside recursive functions** (distribute, expand, etc.)
+    pub fn new_simple() -> Self {
+        MulBuilder {
+            mode: MulMode::Simple,
+            sign: 1,
+            factors: Vec::new(),
+        }
+    }
+
+    /// Create builder that flattens Mul and combines Pow(base, int).
+    /// **Do NOT use inside recursive functions** - use new_simple() instead.
+    pub fn new_flatten() -> Self {
+        MulBuilder {
+            mode: MulMode::MulPowInt,
+            sign: 1,
+            factors: Vec::new(),
+        }
+    }
+
+    /// Create a new empty builder (defaults to Simple mode for safety).
+    pub fn new() -> Self {
+        Self::new_simple()
+    }
+
+    /// Add a factor with exponent 1 (no flattening).
+    pub fn push(&mut self, base: ExprId) -> &mut Self {
+        self.factors.push((base, 1));
+        self
+    }
+
+    /// Add a factor with a specific exponent (no flattening).
+    pub fn push_pow(&mut self, base: ExprId, exp: i64) -> &mut Self {
+        if exp != 0 {
+            self.factors.push((base, exp));
+        }
+        self
+    }
+
+    /// Negate the product.
+    pub fn negate(&mut self) -> &mut Self {
+        self.sign *= -1;
+        self
+    }
+
+    /// Add factors from an expression, controlled by mode.
+    ///
+    /// - `Simple`: Just adds expr as a single factor (no flattening)
+    /// - `FlattenMul`: Flattens nested Mul
+    /// - `MulPowInt`: Flattens Mul + combines Pow with integer exponents
+    ///
+    /// **IMPORTANT**: Never flattens Div. Use RationalFnView for fractions.
+    pub fn push_expr(&mut self, ctx: &Context, expr: ExprId) -> &mut Self {
+        match self.mode {
+            MulMode::Simple => {
+                // No flattening - add as atom
+                self.factors.push((expr, 1));
+            }
+            MulMode::FlattenMul | MulMode::MulPowInt => {
+                // Iterative worklist to avoid deep recursion
+                let mut worklist: Vec<(ExprId, i64)> = vec![(expr, 1)];
+
+                while let Some((id, mult)) = worklist.pop() {
+                    match ctx.get(id) {
+                        Expr::Mul(l, r) => {
+                            worklist.push((*l, mult));
+                            worklist.push((*r, mult));
+                        }
+                        Expr::Pow(base, exp) if self.mode == MulMode::MulPowInt => {
+                            if let Some(e) = int_exp_i32(ctx, *exp) {
+                                worklist.push((*base, mult * e as i64));
+                            } else {
+                                // Non-integer exponent: treat whole expression as factor
+                                self.factors.push((id, mult));
+                            }
+                        }
+                        Expr::Neg(inner) => {
+                            self.sign *= -1;
+                            worklist.push((*inner, mult));
+                        }
+                        Expr::Number(n) => {
+                            use num_traits::One;
+                            if !n.is_one() || mult != 1 {
+                                self.factors.push((id, mult));
+                            }
+                            // Skip 1 with mult=1 (identity)
+                        }
+                        // IMPORTANT: Div is NOT flattened - treat as atom
+                        // This prevents explosive growth in recursive functions
+                        _ => {
+                            self.factors.push((id, mult));
+                        }
+                    }
+                }
+            }
+        }
+        self
+    }
+
+    /// Build the canonical product expression.
+    ///
+    /// Properties:
+    /// - Preserves original factor order (no sorting - matches current system)
+    /// - Compresses adjacent same-base factors (`x * x` → `x^2`)
+    /// - Uses **right-fold** association: `a*(b*(c*d))` (matches current system)
+    /// - Idempotent: calling twice produces identical tree
+    ///
+    /// Note: Sorting is disabled to preserve pattern matching compatibility.
+    /// When most rules use MulView for matching, we can enable sorting.
+    pub fn build(self, ctx: &mut Context) -> ExprId {
+        // 1. NO sorting - preserve order for pattern matching compatibility
+        // (sorting breaks rules that expect specific factor order)
+
+        // 2. Compress adjacent same-base factors only (preserve order)
+        let mut compressed: Vec<(ExprId, i64)> = Vec::new();
+        for (base, exp) in self.factors {
+            if let Some(last) = compressed.last_mut() {
+                if crate::ordering::compare_expr(ctx, last.0, base) == std::cmp::Ordering::Equal {
+                    last.1 += exp;
+                    continue;
+                }
+            }
+            compressed.push((base, exp));
+        }
+
+        // 3. Remove factors with exp=0
+        compressed.retain(|(_, exp)| *exp != 0);
+
+        // 4. Handle empty case
+        if compressed.is_empty() {
+            let one = ctx.num(1);
+            return if self.sign < 0 {
+                ctx.add(Expr::Neg(one))
+            } else {
+                one
+            };
+        }
+
+        // 5. Build each factor as base^exp (or just base if exp=1)
+        let mut parts: Vec<ExprId> = Vec::new();
+        for (base, exp) in compressed {
+            if exp == 1 {
+                parts.push(base);
+            } else if exp == -1 {
+                // Keep as base^(-1) for division representation
+                let neg_one = ctx.num(-1);
+                parts.push(ctx.add(Expr::Pow(base, neg_one)));
+            } else {
+                let exp_id = ctx.num(exp);
+                parts.push(ctx.add(Expr::Pow(base, exp_id)));
+            }
+        }
+
+        // 6. Build RIGHT-fold product: a*(b*(c*d))
+        // This matches the current system's expected form
+        let mut acc = *parts.last().unwrap();
+        for &f in parts[..parts.len() - 1].iter().rev() {
+            acc = ctx.add(Expr::Mul(f, acc));
+        }
+
+        // 7. Apply sign
+        if self.sign < 0 {
+            ctx.add(Expr::Neg(acc))
+        } else {
+            acc
+        }
+    }
+}
+
+impl Default for MulBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl FractionParts {
     /// Create FractionParts directly from an expression.
     pub fn from(ctx: &Context, id: ExprId) -> Self {
@@ -556,5 +770,69 @@ mod tests {
         let view = RationalFnView::from(&mut ctx, div).unwrap();
         // num should still be the Add expression
         assert!(matches!(ctx.get(view.num), Expr::Add(_, _)));
+    }
+
+    #[test]
+    fn test_mul_builder_basic() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+
+        let mut builder = MulBuilder::new();
+        builder.push(a);
+        builder.push(b);
+        let result = builder.build(&mut ctx);
+
+        // Should be Mul(a, b) in left-fold form
+        if let Expr::Mul(l, r) = ctx.get(result) {
+            assert_eq!(*l, a);
+            assert_eq!(*r, b);
+        } else {
+            panic!("Expected Mul");
+        }
+    }
+
+    #[test]
+    fn test_mul_builder_compresses_exponents() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+
+        // x * x should become x^2
+        let mut builder = MulBuilder::new();
+        builder.push(x);
+        builder.push(x);
+        let result = builder.build(&mut ctx);
+
+        // Should be Pow(x, 2)
+        if let Expr::Pow(base, exp) = ctx.get(result) {
+            assert_eq!(*base, x);
+            if let Expr::Number(n) = ctx.get(*exp) {
+                assert_eq!(*n, num_rational::BigRational::from_integer(2.into()));
+            } else {
+                panic!("Expected Number exponent");
+            }
+        } else {
+            panic!("Expected Pow, got {:?}", ctx.get(result));
+        }
+    }
+
+    #[test]
+    fn test_mul_builder_idempotent() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+
+        // Build once
+        let mut builder1 = MulBuilder::new();
+        builder1.push(a);
+        builder1.push(b);
+        let first = builder1.build(&mut ctx);
+
+        // Flatten and rebuild - should get same result
+        let mut builder2 = MulBuilder::new();
+        builder2.push_expr(&ctx, first);
+        let second = builder2.build(&mut ctx);
+
+        assert_eq!(first, second, "MulBuilder should be idempotent");
     }
 }
