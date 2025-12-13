@@ -1,6 +1,5 @@
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use num_traits::Zero;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -266,4 +265,3 @@ impl fmt::Display for ExprId {
         write!(f, "Expr#{}", self.index())
     }
 }
-

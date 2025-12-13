@@ -16,7 +16,7 @@ fn simplify_str(input: &str) -> String {
             let (result, _) = simplifier.simplify(expr);
             format!(
                 "{}",
-                cas_ast::expression::DisplayExpr {
+                cas_ast::DisplayExpr {
                     context: &simplifier.context,
                     id: result,
                 }
