@@ -1245,6 +1245,41 @@ impl<'a> DisplayExprWithHints<'a> {
                 self.fmt_internal(f, *r)
             }
             Expr::Mul(l, r) => {
+                // P3: Try to display as fraction x*y^(-1) → x/y
+                if let Some((num_opt, den)) = try_as_simple_fraction(self.context, self.id) {
+                    if num_opt.is_none() {
+                        let den_prec = precedence(self.context, den);
+                        write!(f, "1/")?;
+                        if den_prec <= 2 {
+                            write!(f, "(")?;
+                            self.fmt_internal(f, den)?;
+                            return write!(f, ")");
+                        } else {
+                            return self.fmt_internal(f, den);
+                        }
+                    }
+                    let num = num_opt.unwrap();
+                    let num_prec = precedence(self.context, num);
+                    let den_prec = precedence(self.context, den);
+                    let div_prec = 2;
+
+                    if num_prec < div_prec {
+                        write!(f, "(")?;
+                        self.fmt_internal(f, num)?;
+                        write!(f, ")")?;
+                    } else {
+                        self.fmt_internal(f, num)?;
+                    }
+                    write!(f, "/")?;
+                    if den_prec <= div_prec {
+                        write!(f, "(")?;
+                        self.fmt_internal(f, den)?;
+                        return write!(f, ")");
+                    } else {
+                        return self.fmt_internal(f, den);
+                    }
+                }
+
                 let lhs_prec = precedence(self.context, *l);
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 2; // Mul precedence
