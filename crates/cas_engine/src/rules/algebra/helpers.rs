@@ -42,7 +42,12 @@ pub fn count_nodes_of_type(ctx: &Context, expr: ExprId, variant: &str) -> usize 
     count
 }
 
-/// Create a Mul but avoid trivial 1*x or x*1
+/// Create a Mul but avoid trivial 1*x or x*1.
+///
+/// This is the "simplifying" builder - use for rule outputs where 1*x → x is desired.
+/// Uses `add_raw` internally to preserve operand order after simplification.
+///
+/// Alias: `mul2_simpl` (same behavior, clearer intent)
 pub fn smart_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     if is_one(ctx, a) {
         return b;
@@ -50,7 +55,20 @@ pub fn smart_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     if is_one(ctx, b) {
         return a;
     }
-    ctx.add(Expr::Mul(a, b))
+    ctx.add_raw(Expr::Mul(a, b))
+}
+
+/// Simplifying multiplication builder. Alias for `smart_mul`.
+///
+/// Use `mul2_simpl` when you want:
+/// - 1*x → x (identity elimination)
+/// - x*1 → x
+/// - No operand reordering
+///
+/// For raw construction without any simplification, use local `mul2_raw`.
+#[inline]
+pub fn mul2_simpl(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    smart_mul(ctx, a, b)
 }
 
 /// Create a canonical multiplication using MulBuilder in flatten mode.
