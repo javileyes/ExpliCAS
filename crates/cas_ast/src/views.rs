@@ -125,6 +125,82 @@ impl MulParts {
     pub fn has_denominator(&self) -> bool {
         self.factors.iter().any(|f| f.exp < 0)
     }
+
+    /// Create MulParts only if expression is purely commutative (no matrices).
+    ///
+    /// Returns `None` if any factor is a Matrix, since matrix multiplication
+    /// is not commutative and compress/reorder operations would be incorrect.
+    pub fn from_commutative(ctx: &Context, id: ExprId) -> Option<Self> {
+        let parts = Self::from(ctx, id);
+
+        // Check if any factor base is a Matrix
+        for f in &parts.factors {
+            if matches!(ctx.get(f.base), Expr::Matrix { .. }) {
+                return None;
+            }
+        }
+
+        Some(parts)
+    }
+}
+
+// ============================================================================
+// MulChainView: Order-preserving multiplication linearization
+// ============================================================================
+
+/// Simple linearization of multiplication chain, preserving order.
+///
+/// Unlike MulParts, this:
+/// - Does NOT parse Div or Pow
+/// - Does NOT compress same-base factors
+/// - PRESERVES factor order (works with matrices)
+///
+/// Use this when you need order-preserving iteration over Mul factors.
+#[derive(Debug, Clone)]
+pub struct MulChainView {
+    pub factors: Vec<ExprId>,
+}
+
+impl MulChainView {
+    /// Linearize a Mul chain preserving order.
+    ///
+    /// `a * (b * c)` → `[a, b, c]` (order preserved)
+    pub fn from(ctx: &Context, id: ExprId) -> Self {
+        let mut factors = Vec::new();
+        Self::collect_factors(ctx, id, &mut factors);
+        MulChainView { factors }
+    }
+
+    fn collect_factors(ctx: &Context, id: ExprId, out: &mut Vec<ExprId>) {
+        match ctx.get(id) {
+            Expr::Mul(l, r) => {
+                Self::collect_factors(ctx, *l, out);
+                Self::collect_factors(ctx, *r, out);
+            }
+            _ => {
+                out.push(id);
+            }
+        }
+    }
+
+    /// Check if any factor is a matrix.
+    pub fn contains_matrix(&self, ctx: &Context) -> bool {
+        self.factors
+            .iter()
+            .any(|&f| matches!(ctx.get(f), Expr::Matrix { .. }))
+    }
+
+    /// Rebuild as right-associative Mul chain using add_raw.
+    pub fn build_raw(self, ctx: &mut Context) -> ExprId {
+        if self.factors.is_empty() {
+            return ctx.num(1);
+        }
+        let mut acc = *self.factors.last().unwrap();
+        for &f in self.factors[..self.factors.len() - 1].iter().rev() {
+            acc = ctx.add_raw(Expr::Mul(f, acc));
+        }
+        acc
+    }
 }
 
 /// Recursively collect multiplicative factors.
