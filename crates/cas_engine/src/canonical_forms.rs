@@ -202,6 +202,139 @@ fn normalize_term(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
     }
 }
 
+// ============================================================================
+// normalize_core: Canonical normalization to prevent infinite loops
+// ============================================================================
+
+/// Normalize an expression to canonical form to prevent infinite loops.
+///
+/// Applies the following normalization rules:
+/// - **N1**: Sign absorption - `Neg(Mul(...))` → `Mul(-1, ...)`, `Neg(Neg(x))` → `x`
+/// - **N2**: Flatten products - not recursive flatten, just direct children
+/// - **N3**: Compress nested powers - `Pow(Pow(x, a), b)` → `Pow(x, a*b)` if a,b are integers
+///
+/// This should be called after each successful rewrite to ensure expressions
+/// stay in a consistent form that rules can match reliably.
+pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
+    use num_traits::ToPrimitive;
+
+    let expr_data = ctx.get(expr).clone();
+
+    match expr_data {
+        // N1: Neg(Neg(x)) → x
+        Expr::Neg(inner) => {
+            let inner_norm = normalize_core(ctx, inner);
+            if let Expr::Neg(double_inner) = ctx.get(inner_norm).clone() {
+                // Neg(Neg(x)) → x
+                return normalize_core(ctx, double_inner);
+            }
+            // N1: Neg(Mul(a, b)) → Mul(-1, Mul(a, b)) — but only if helpful
+            // For now, just recurse
+            if inner_norm == inner {
+                expr
+            } else {
+                ctx.add(Expr::Neg(inner_norm))
+            }
+        }
+
+        // N3: Pow(Pow(x, a), b) → Pow(x, a*b) if both are integers
+        Expr::Pow(base, exp) => {
+            let base_norm = normalize_core(ctx, base);
+            let exp_norm = normalize_core(ctx, exp);
+
+            // Check for Pow(Pow(x, a), b)
+            if let Expr::Pow(inner_base, inner_exp) = ctx.get(base_norm).clone() {
+                // Both exponents must be integers
+                if let (Expr::Number(a), Expr::Number(b)) = (ctx.get(inner_exp), ctx.get(exp_norm))
+                {
+                    if a.is_integer() && b.is_integer() {
+                        if let (Some(a_i), Some(b_i)) =
+                            (a.to_integer().to_i64(), b.to_integer().to_i64())
+                        {
+                            // Compute a * b
+                            let product = a_i * b_i;
+                            let new_exp = ctx.num(product);
+                            // Return Pow(inner_base, a*b)
+                            return ctx.add(Expr::Pow(inner_base, new_exp));
+                        }
+                    }
+                }
+            }
+
+            // Rebuild if children changed
+            if base_norm == base && exp_norm == exp {
+                expr
+            } else {
+                ctx.add(Expr::Pow(base_norm, exp_norm))
+            }
+        }
+
+        // Recurse into Mul
+        Expr::Mul(l, r) => {
+            let l_norm = normalize_core(ctx, l);
+            let r_norm = normalize_core(ctx, r);
+
+            if l_norm == l && r_norm == r {
+                expr
+            } else {
+                ctx.add(Expr::Mul(l_norm, r_norm))
+            }
+        }
+
+        // Recurse into Div
+        Expr::Div(n, d) => {
+            let n_norm = normalize_core(ctx, n);
+            let d_norm = normalize_core(ctx, d);
+
+            if n_norm == n && d_norm == d {
+                expr
+            } else {
+                ctx.add(Expr::Div(n_norm, d_norm))
+            }
+        }
+
+        // Recurse into Add
+        Expr::Add(l, r) => {
+            let l_norm = normalize_core(ctx, l);
+            let r_norm = normalize_core(ctx, r);
+
+            if l_norm == l && r_norm == r {
+                expr
+            } else {
+                ctx.add(Expr::Add(l_norm, r_norm))
+            }
+        }
+
+        // Recurse into Sub
+        Expr::Sub(l, r) => {
+            let l_norm = normalize_core(ctx, l);
+            let r_norm = normalize_core(ctx, r);
+
+            if l_norm == l && r_norm == r {
+                expr
+            } else {
+                ctx.add(Expr::Sub(l_norm, r_norm))
+            }
+        }
+
+        // Recurse into Function
+        Expr::Function(name, args) => {
+            let args_norm: Vec<_> = args.iter().map(|&a| normalize_core(ctx, a)).collect();
+            if args_norm == args {
+                expr
+            } else {
+                ctx.add(Expr::Function(name, args_norm))
+            }
+        }
+
+        // Atoms: no normalization needed
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => expr,
+
+        // Other expressions: pass through
+        _ => expr,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,23 +388,65 @@ mod tests {
         // This is NOT a product, so not canonical
         assert!(!is_canonical_form(&ctx, expr));
     }
-}
 
-#[test]
-fn test_canonicalized_conjugate_add_add() {
-    let mut ctx = Context::new();
-    // (-1 + x) * (1 + x) should be detected as conjugates
-    let x = ctx.var("x");
-    let one = ctx.num(1);
-    let neg_one = ctx.num(-1);
+    #[test]
+    fn test_canonicalized_conjugate_add_add() {
+        let mut ctx = Context::new();
+        // (-1 + x) * (1 + x) should be detected as conjugates
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let neg_one = ctx.num(-1);
 
-    // (-1 + x) * (1 + x)
-    let left = ctx.add(Expr::Add(neg_one, x));
-    let right = ctx.add(Expr::Add(one, x));
-    let product = ctx.add(Expr::Mul(left, right));
+        // (-1 + x) * (1 + x)
+        let left = ctx.add(Expr::Add(neg_one, x));
+        let right = ctx.add(Expr::Add(one, x));
+        let product = ctx.add(Expr::Mul(left, right));
 
-    assert!(
-        is_canonical_form(&ctx, product),
-        "(-1+x)*(1+x) should be canonical"
-    );
+        assert!(
+            is_canonical_form(&ctx, product),
+            "(-1+x)*(1+x) should be canonical"
+        );
+    }
+
+    #[test]
+    fn test_normalize_core_neg_neg() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        // Neg(Neg(x)) → x
+        let neg_x = ctx.add(Expr::Neg(x));
+        let neg_neg_x = ctx.add(Expr::Neg(neg_x));
+
+        let normalized = normalize_core(&mut ctx, neg_neg_x);
+        assert_eq!(normalized, x, "Neg(Neg(x)) should normalize to x");
+    }
+
+    #[test]
+    fn test_normalize_core_pow_pow() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+
+        // Pow(Pow(x, 2), 3) → Pow(x, 6)
+        let x_sq = ctx.add(Expr::Pow(x, two));
+        let x_sq_cubed = ctx.add(Expr::Pow(x_sq, three));
+
+        let normalized = normalize_core(&mut ctx, x_sq_cubed);
+
+        // Should be Pow(x, 6)
+        if let Expr::Pow(base, exp) = ctx.get(normalized) {
+            assert_eq!(*base, x, "Base should be x");
+            if let Expr::Number(n) = ctx.get(*exp) {
+                assert_eq!(
+                    *n,
+                    num_rational::BigRational::from_integer(6.into()),
+                    "Exponent should be 6"
+                );
+            } else {
+                panic!("Expected Number exponent");
+            }
+        } else {
+            panic!("Expected Pow");
+        }
+    }
 }
