@@ -9,6 +9,12 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
 
+/// Helper: Build a simple 2-factor product (no normalization).
+#[inline]
+fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    ctx.add(Expr::Mul(a, b))
+}
+
 /// Helper: Add two exponents, folding if both are constants
 /// This prevents ugly exponents like x^(1+2) and produces x^3 instead
 fn add_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
@@ -27,7 +33,7 @@ fn mul_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
         let prod = n1 * n2;
         ctx.add(Expr::Number(prod))
     } else {
-        ctx.add(Expr::Mul(e1, e2))
+        mul2_raw(ctx, e1, e2)
     }
 }
 
@@ -122,7 +128,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             if compare_expr(ctx, lhs, rl) == Ordering::Equal {
                 let two = ctx.num(2);
                 let x_squared = ctx.add(Expr::Pow(lhs, two));
-                let new_expr = ctx.add(Expr::Mul(x_squared, rr));
+                let new_expr = mul2_raw(ctx, x_squared, rr);
                 return Some(Rewrite {
                     new_expr,
                     description: "Combine nested identical terms".to_string(),
@@ -147,7 +153,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                 if compare_expr(ctx, base1, base2) == Ordering::Equal {
                     let sum_exp = add_exp(ctx, exp1, exp2);
                     let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
-                    let new_expr = ctx.add(Expr::Mul(new_pow, rr));
+                    let new_expr = mul2_raw(ctx, new_pow, rr);
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine nested powers".to_string(),
@@ -163,7 +169,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     let one = ctx.num(1);
                     let sum_exp = add_exp(ctx, exp2, one);
                     let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
-                    let new_expr = ctx.add(Expr::Mul(new_pow, rr));
+                    let new_expr = mul2_raw(ctx, new_pow, rr);
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine base and nested power".to_string(),
@@ -179,7 +185,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     let one = ctx.num(1);
                     let sum_exp = ctx.add(Expr::Add(exp1, one));
                     let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
-                    let new_expr = ctx.add(Expr::Mul(new_pow, rr));
+                    let new_expr = mul2_raw(ctx, new_pow, rr);
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine power and nested base".to_string(),
@@ -212,7 +218,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         if compare_expr(ctx, base1, base2) == Ordering::Equal {
                             let sum_exp = add_exp(ctx, exp1, exp2);
                             let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
-                            let new_expr = ctx.add(Expr::Mul(ll, new_pow));
+                            let new_expr = mul2_raw(ctx, ll, new_pow);
                             return Some(Rewrite {
                                 new_expr,
                                 description: "Combine coeff-power and power".to_string(),
@@ -229,7 +235,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                             let one = ctx.num(1);
                             let sum_exp = ctx.add(Expr::Add(exp1, one));
                             let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
-                            let new_expr = ctx.add(Expr::Mul(ll, new_pow));
+                            let new_expr = mul2_raw(ctx, ll, new_pow);
                             return Some(Rewrite {
                                 new_expr,
                                 description: "Combine coeff-power and base".to_string(),
@@ -257,7 +263,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                             let one = ctx.num(1);
                             let sum_exp = add_exp(ctx, exp2, one);
                             let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
-                            let new_expr = ctx.add(Expr::Mul(ll, new_pow));
+                            let new_expr = mul2_raw(ctx, ll, new_pow);
                             return Some(Rewrite {
                                 new_expr,
                                 description: "Combine coeff-base and power".to_string(),
@@ -275,7 +281,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     let one = ctx.num(1);
                     let sum_exp = ctx.add(Expr::Add(one, exp2));
                     let new_pow = ctx.add(Expr::Pow(base2, sum_exp));
-                    let new_expr = ctx.add(Expr::Mul(new_pow, rr));
+                    let new_expr = mul2_raw(ctx, new_pow, rr);
                     return Some(Rewrite {
                         new_expr,
                         description: "Combine nested base and power".to_string(),
@@ -313,7 +319,7 @@ define_rule!(
                     }
 
                     // Same exponent - combine bases
-                    let new_base = ctx.add(Expr::Mul(*base1, *base2));
+                    let new_base = mul2_raw(ctx, *base1, *base2);
                     let new_expr = ctx.add(Expr::Pow(new_base, *exp1));
                     return Some(Rewrite {
                         new_expr,
@@ -336,9 +342,9 @@ define_rule!(
                                 return None;
                             }
 
-                            let new_base = ctx.add(Expr::Mul(*base1, *base2));
+                            let new_base = mul2_raw(ctx, *base1, *base2);
                             let combined_pow = ctx.add(Expr::Pow(new_base, *exp1));
-                            let new_expr = ctx.add(Expr::Mul(combined_pow, *rr));
+                            let new_expr = mul2_raw(ctx, combined_pow, *rr);
                             return Some(Rewrite {
                                 new_expr,
                                 description: "Combine nested powers with same exponent".to_string(),
@@ -486,7 +492,7 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                             // Partial root
                             let new_base = ctx.add(Expr::Number(new_base_val));
                             let new_pow = ctx.add(Expr::Pow(new_base, exp)); // Keep original exponent for the remainder
-                            let new_expr = ctx.add(Expr::Mul(coeff_expr, new_pow));
+                            let new_expr = mul2_raw(ctx, coeff_expr, new_pow);
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("Simplify root: {}^{}", b, e),
@@ -695,7 +701,7 @@ define_rule!(PowerProductRule, "Power of a Product", |ctx, expr| {
             let b = *b;
             let a_pow = ctx.add(Expr::Pow(a, exp));
             let b_pow = ctx.add(Expr::Pow(b, exp));
-            let new_expr = ctx.add(Expr::Mul(a_pow, b_pow));
+            let new_expr = mul2_raw(ctx, a_pow, b_pow);
 
             return Some(Rewrite {
                 new_expr,
