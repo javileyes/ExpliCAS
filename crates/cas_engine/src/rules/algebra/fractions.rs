@@ -363,7 +363,7 @@ fn check_divisible_denominators(
     if let Some(k) = try_extract_factor(ctx, d2, d1) {
         // d2 = k * d1, so use d2 as common denominator
         // n1/d1 = n1*k/d2
-        let new_n1 = ctx.add(Expr::Mul(n1, k));
+        let new_n1 = mul2_raw(ctx, n1, k);
         return (new_n1, n2, d2, true);
     }
 
@@ -371,7 +371,7 @@ fn check_divisible_denominators(
     if let Some(k) = try_extract_factor(ctx, d1, d2) {
         // d1 = k * d2, so use d1 as common denominator
         // n2/d2 = n2*k/d1
-        let new_n2 = ctx.add(Expr::Mul(n2, k));
+        let new_n2 = mul2_raw(ctx, n2, k);
         return (n1, new_n2, d1, true);
     }
 
@@ -478,8 +478,8 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
         let old_complexity = count_nodes(ctx, expr);
 
         // a/b + c/d = (ad + bc) / bd
-        let ad = ctx.add(Expr::Mul(n1, d2));
-        let bc = ctx.add(Expr::Mul(n2, d1));
+        let ad = mul2_raw(ctx, n1, d2);
+        let bc = mul2_raw(ctx, n2, d1);
 
         let new_num = if opposite_denom || same_denom {
             ctx.add(Expr::Add(n1, n2))
@@ -490,7 +490,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
         let new_den = if opposite_denom || same_denom {
             common_den
         } else {
-            ctx.add(Expr::Mul(d1, d2))
+            mul2_raw(ctx, d1, d2)
         };
 
         // Try to simplify common den
@@ -657,7 +657,7 @@ define_rule!(
         };
 
         // Multiply num by conjugate
-        let new_num = ctx.add(Expr::Mul(num, conjugate));
+        let new_num = mul2_raw(ctx, num, conjugate);
 
         // Compute new den = l^2 - r^2
         let two = ctx.num(2);
@@ -764,7 +764,7 @@ define_rule!(
         let conjugate = ctx.add(Expr::Sub(group, last_term));
 
         // New numerator: num * conjugate
-        let new_num = ctx.add(Expr::Mul(num, conjugate));
+        let new_num = mul2_raw(ctx, num, conjugate);
 
         // New denominator: group^2 - last_term^2 (difference of squares)
         let two = ctx.num(2);
@@ -886,7 +886,7 @@ define_rule!(
                 }
 
                 // 1/sqrt(n) -> sqrt(n)/n
-                let new_num = ctx.add(Expr::Mul(num, root));
+                let new_num = mul2_raw(ctx, num, root);
                 let new_den = radicand;
                 let new_expr = ctx.add(Expr::Div(new_num, new_den));
                 return Some(Rewrite {
@@ -946,12 +946,12 @@ define_rule!(
             let conjugate_power = ctx.add(Expr::Pow(radicand, conjugate_exp_id));
 
             // New numerator: num * conjugate_power
-            let new_num = ctx.add(Expr::Mul(num, conjugate_power));
+            let new_num = mul2_raw(ctx, num, conjugate_power);
 
             // Build new denominator: other_factors * radicand (since root * conjugate_power = radicand)
             let mut new_den = radicand;
             for &factor in &non_root_factors {
-                new_den = ctx.add(Expr::Mul(new_den, factor));
+                new_den = mul2_raw(ctx, new_den, factor);
             }
 
             let new_expr = ctx.add(Expr::Div(new_num, new_den));
@@ -1162,7 +1162,7 @@ define_rule!(
             } else {
                 let mut n = num_factors[0];
                 for &f in num_factors.iter().skip(1) {
-                    n = ctx.add(Expr::Mul(n, f));
+                    n = mul2_raw(ctx, n, f);
                 }
                 n
             };
@@ -1171,7 +1171,7 @@ define_rule!(
             } else {
                 let mut d = den_factors[0];
                 for &f in den_factors.iter().skip(1) {
-                    d = ctx.add(Expr::Mul(d, f));
+                    d = mul2_raw(ctx, d, f);
                 }
                 d
             };
@@ -1316,7 +1316,7 @@ define_rule!(
             if l_is_const {
                 // (c * x) / y -> c * (x / y)
                 let div = ctx.add(Expr::Div(r, d));
-                let new_expr = ctx.add(Expr::Mul(l, div));
+                let new_expr = mul2_raw(ctx, l, div);
                 return Some(Rewrite {
                     new_expr,
                     description: "Pull constant from numerator".to_string(),
@@ -1326,7 +1326,7 @@ define_rule!(
             } else if r_is_const {
                 // (x * c) / y -> c * (x / y)
                 let div = ctx.add(Expr::Div(l, d));
-                let new_expr = ctx.add(Expr::Mul(r, div));
+                let new_expr = mul2_raw(ctx, r, div);
                 return Some(Rewrite {
                     new_expr,
                     description: "Pull constant from numerator".to_string(),
@@ -1339,7 +1339,7 @@ define_rule!(
         if let Expr::Neg(inner) = num_data {
             let minus_one = ctx.num(-1);
             let div = ctx.add(Expr::Div(inner, d));
-            let new_expr = ctx.add(Expr::Mul(minus_one, div));
+            let new_expr = mul2_raw(ctx, minus_one, div);
             return Some(Rewrite {
                 new_expr,
                 description: "Pull negation from numerator".to_string(),
@@ -1502,7 +1502,7 @@ define_rule!(
         } else {
             let mut product = unique_factors[0];
             for i in 1..unique_factors.len() {
-                product = ctx.add(Expr::Mul(product, unique_factors[i]));
+                product = mul2_raw(ctx, product, unique_factors[i]);
             }
             product
         };
@@ -1529,7 +1529,7 @@ define_rule!(
             // Multiply numerator by all missing factors
             let mut contribution = *num;
             for mf in missing {
-                contribution = ctx.add(Expr::Mul(contribution, mf));
+                contribution = mul2_raw(ctx, contribution, mf);
             }
 
             // Apply sign
