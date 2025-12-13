@@ -426,10 +426,37 @@ pub fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize, usize) {
 }
 
 /// First two components of nf_score: (divs_subs, total_nodes)
-/// Cheaper than full nf_score - use for initial comparison.
+/// Uses single traversal for efficiency (counts both in one pass).
 fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {
-    let divs_subs = count_nodes_matching(ctx, id, |e| matches!(e, Expr::Div(..) | Expr::Sub(..)));
-    let total = count_all_nodes(ctx, id);
+    let mut divs_subs = 0;
+    let mut total = 0;
+    let mut stack = vec![id];
+
+    while let Some(node_id) = stack.pop() {
+        total += 1;
+
+        match ctx.get(node_id) {
+            Expr::Div(..) | Expr::Sub(..) => divs_subs += 1,
+            _ => {}
+        }
+
+        // Push children
+        match ctx.get(node_id) {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args),
+            Expr::Matrix { data, .. } => stack.extend(data),
+            _ => {}
+        }
+    }
+
     (divs_subs, total)
 }
 

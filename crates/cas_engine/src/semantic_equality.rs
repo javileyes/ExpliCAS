@@ -177,40 +177,21 @@ impl<'a> SemanticEqualityChecker<'a> {
             // Constants must be the same
             (Expr::Constant(c1), Expr::Constant(c2)) => c1 == c2,
 
-            // Key insight: Div(a, b) where a,b are simple rational numbers is semantically equal to Number(a/b)
-            // BUT we only block the transformation if it's NON-SIMPLIFYING (i.e., both are already in simplest form)
-            // For example: Div(Rational(1/2), Number(1)) vs Number(1/2) → block (no simplification)
-            // But: Div(4, 2) vs Number(2) → allow (this IS a simplification)
+            // Div(a, b) vs Number(c): semantically equal if a/b == c
+            // Pure semantic check - no simplification logic here.
+            // Whether to accept the rewrite is decided by the wrapper using nf_score.
             (Expr::Div(num, den), Expr::Number(rational))
             | (Expr::Number(rational), Expr::Div(num, den)) => {
-                if let (Expr::Number(n), Expr::Number(d)) =
-                    (self.context.get(*num), self.context.get(*den))
-                {
-                    // Compute the result
-                    let result = n / d;
-
-                    // Only consider them semantically equal if:
-                    // 1. The division result matches the number
-                    // 2. AND the division is already in simplest form (i.e., the rational IS the division)
-                    if &result == rational {
-                        // Check if this is a non-simplifying transformation
-                        // If n and d are both simple rationals and their division equals rational,
-                        // and the rational is already simplified, then they're semantically same
-                        // Otherwise, this is a simplification and should proceed
-                        if !n.is_integer() || !d.is_integer() || !rational.is_integer() {
-                            // At least one is a fraction, check if it's the same
-                            return true;
+                if let Some(div_value) = self.try_evaluate_numeric(*num).and_then(|n| {
+                    self.try_evaluate_numeric(*den).and_then(|d| {
+                        if d != num_rational::BigRational::from_integer(0.into()) {
+                            Some(n / d)
+                        } else {
+                            None
                         }
-                        // Both are integers - check if division is exact
-                        // If the division is NOT exact (e.g., 5/2), this would create a fraction
-                        // If it IS exact (e.g., 4/2 = 2), this is a simplification, allow it
-                        let is_exact_division = (n / d) * d == *n;
-                        if is_exact_division {
-                            // This is a real simplification like 4/2 → 2, allow it
-                            return false;
-                        }
-                        return true;
-                    }
+                    })
+                }) {
+                    return &div_value == rational;
                 }
                 false
             }
