@@ -856,4 +856,32 @@ mod tests {
             num_rational::BigRational::from_integer(1.into())
         );
     }
+
+    /// Test that add_raw preserves operand order while add() canonicalizes
+    #[test]
+    fn test_add_raw_preserves_mul_order() {
+        let mut ctx = Context::new();
+        let z = ctx.var("z"); // 'z' > 'a' in ordering
+        let a = ctx.var("a");
+
+        // With add(): z * a → a * z (swapped because 'z' > 'a')
+        let mul_canonical = ctx.add(Expr::Mul(z, a));
+        if let Expr::Mul(l, r) = ctx.get(mul_canonical) {
+            // Should be swapped to canonical order: (a, z)
+            assert_eq!(*l, a, "add() should swap to put 'a' first");
+            assert_eq!(*r, z, "add() should swap to put 'z' second");
+        } else {
+            panic!("Expected Mul expression");
+        }
+
+        // With add_raw(): z * a → z * a (preserved order)
+        let mul_raw = ctx.add_raw(Expr::Mul(z, a));
+        if let Expr::Mul(l, r) = ctx.get(mul_raw) {
+            // Should preserve original order: (z, a)
+            assert_eq!(*l, z, "add_raw() should preserve 'z' first");
+            assert_eq!(*r, a, "add_raw() should preserve 'a' second");
+        } else {
+            panic!("Expected Mul expression");
+        }
+    }
 }

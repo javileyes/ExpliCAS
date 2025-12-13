@@ -154,6 +154,53 @@ impl Context {
         id
     }
 
+    /// Add expression WITHOUT canonicalization (preserves operand order).
+    ///
+    /// Use this for:
+    /// - Non-commutative operations (matrix multiplication)
+    /// - Raw construction where order matters
+    /// - Internal builders like `mul2_raw`
+    ///
+    /// Unlike `add()`, this does NOT swap Mul/Add operands.
+    pub fn add_raw(&mut self, expr: Expr) -> ExprId {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        // Expression Interning: Deduplicate expressions
+        let mut hasher = DefaultHasher::new();
+        expr.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        // Check if we already have this expression in the bucket
+        if let Some(bucket) = self.interner.get(&hash) {
+            for &id in bucket {
+                if self.nodes[id.index()] == expr {
+                    return id; // Found existing expression
+                }
+            }
+        }
+
+        let index = self.nodes.len() as u32;
+
+        let tag = match &expr {
+            Expr::Number(_) => ExprId::TAG_NUMBER,
+            Expr::Variable(_) | Expr::Constant(_) => ExprId::TAG_ATOM,
+            Expr::Neg(_) => ExprId::TAG_UNARY,
+            Expr::Add(_, _)
+            | Expr::Sub(_, _)
+            | Expr::Mul(_, _)
+            | Expr::Div(_, _)
+            | Expr::Pow(_, _) => ExprId::TAG_BINARY,
+            Expr::Function(_, _) | Expr::Matrix { .. } => ExprId::TAG_NARY,
+        };
+
+        let id = ExprId::new(index, tag);
+        self.nodes.push(expr);
+
+        self.interner.entry(hash).or_default().push(id);
+        id
+    }
+
     pub fn get(&self, id: ExprId) -> &Expr {
         &self.nodes[id.index()]
     }

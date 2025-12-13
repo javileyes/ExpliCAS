@@ -5,7 +5,7 @@ use num_traits::{Signed, ToPrimitive};
 /// Helper: Build a 2-factor product (no normalization).
 #[inline]
 fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add(Expr::Mul(a, b))
+    ctx.add_raw(Expr::Mul(a, b))
 }
 
 /// Expands an expression.

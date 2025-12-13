@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 /// Helper: Build a 2-factor product (no normalization, right-assoc, safe for canonicalization).
 #[inline]
 fn mul2_raw(ctx: &mut cas_ast::Context, a: cas_ast::ExprId, b: cas_ast::ExprId) -> cas_ast::ExprId {
-    ctx.add(Expr::Mul(a, b))
+    ctx.add_raw(Expr::Mul(a, b))
 }
 
 define_rule!(
@@ -335,6 +335,15 @@ define_rule!(
                 } else {
                     factors.push(id);
                 }
+            }
+
+            // CRITICAL: Skip canonicalization if any factor is a Matrix
+            // Matrix multiplication is non-commutative: A*B ≠ B*A
+            if factors
+                .iter()
+                .any(|f| matches!(ctx.get(*f), Expr::Matrix { .. }))
+            {
+                return None;
             }
 
             // 2. Check if already sorted

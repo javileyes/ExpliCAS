@@ -12,7 +12,7 @@ use std::cmp::Ordering;
 /// Helper: Build a simple 2-factor product (no normalization).
 #[inline]
 fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add(Expr::Mul(a, b))
+    ctx.add_raw(Expr::Mul(a, b))
 }
 
 /// Helper: Add two exponents, folding if both are constants

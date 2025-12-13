@@ -7,7 +7,7 @@ use num_traits::One;
 /// Helper: Build a 2-factor product (no normalization, safe for recursive contexts).
 #[inline]
 fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add(Expr::Mul(a, b))
+    ctx.add_raw(Expr::Mul(a, b))
 }
 
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
