@@ -2706,6 +2706,9 @@ impl Repl {
 
         match cas_parser::parse(rest, &mut self.simplifier.context) {
             Ok(expr) => {
+                // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
+                let user_style = cas_ast::detect_root_style(&self.simplifier.context, expr);
+
                 let disp = cas_ast::DisplayExpr {
                     context: &self.simplifier.context,
                     id: expr,
@@ -2719,11 +2722,13 @@ impl Repl {
                     RationalizeResult::Success(rationalized) => {
                         // Simplify the result
                         let (simplified, _) = self.simplifier.simplify(rationalized);
-                        // Note: For full √ notation, use timeline command
-                        let result_disp = cas_ast::DisplayExpr {
-                            context: &self.simplifier.context,
-                            id: simplified,
-                        };
+
+                        // Use StyledExpr with detected style for consistent output
+                        let result_disp = cas_ast::StyledExpr::new(
+                            &self.simplifier.context,
+                            simplified,
+                            user_style,
+                        );
                         println!("Rationalized: {}", result_disp);
                     }
                     RationalizeResult::NotApplicable => {

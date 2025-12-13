@@ -8,6 +8,7 @@ pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod latex_parser;
 pub mod ordering; // Canonical ordering utilities
+pub mod root_style; // Style Sniffing for root notation
 pub mod views; // Unified views for pattern matching
 pub mod visitor;
 
@@ -21,6 +22,7 @@ pub use latex_highlight::{
 };
 pub use latex_no_roots::LatexNoRoots;
 pub use latex_parser::parse_latex;
+pub use root_style::{detect_root_style, RootStyle, StyledExpr};
 pub use visitor::{Transformer, Visitor};
 
 // use std::rc::Rc; // Removed Rc usage
