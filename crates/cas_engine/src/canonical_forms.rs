@@ -397,9 +397,6 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
 
                 // Atoms: no normalization needed
                 Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => id,
-
-                // Other expressions: pass through
-                _ => id,
             };
 
             cache.insert(id, result);

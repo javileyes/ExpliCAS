@@ -8,47 +8,12 @@ use num_traits::{One, Zero};
 use super::helpers::*;
 
 // ========== Micro-API for safe Mul construction ==========
-// These helpers build products without using push_expr, preventing stack overflow.
-// Use these instead of ctx.add(Expr::Mul(...)) in this file.
+// Use this instead of ctx.add(Expr::Mul(...)) in this file.
 
 /// Build a simple 2-factor product (right-associative, no normalization).
-/// This is a "raw" builder - no flattening, no reordering, no 1*x simplification.
 #[inline]
 fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     ctx.add(Expr::Mul(a, b))
-}
-
-/// Build a multi-factor product chain (right-associative).
-/// mul_many_raw(ctx, [a, b, c, d]) -> a*(b*(c*d))
-/// Returns one if factors is empty, first factor if only one.
-fn mul_many_raw(ctx: &mut Context, factors: impl IntoIterator<Item = ExprId>) -> ExprId {
-    let mut factors: Vec<_> = factors.into_iter().collect();
-    if factors.is_empty() {
-        return ctx.num(1);
-    }
-    if factors.len() == 1 {
-        return factors.pop().unwrap();
-    }
-    // Build right-to-left: a*(b*(c*d))
-    let mut result = factors.pop().unwrap();
-    while let Some(f) = factors.pop() {
-        result = ctx.add(Expr::Mul(f, result));
-    }
-    result
-}
-
-/// Build reciprocal: x^(-1)
-#[inline]
-fn recip(ctx: &mut Context, x: ExprId) -> ExprId {
-    let neg_one = ctx.num(-1);
-    ctx.add(Expr::Pow(x, neg_one))
-}
-
-/// Build a/b as a * b^(-1) (multiplicative form, no Div).
-#[inline]
-fn mul_frac_raw(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
-    let den_recip = recip(ctx, den);
-    mul2_raw(ctx, num, den_recip)
 }
 
 define_rule!(

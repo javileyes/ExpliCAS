@@ -113,6 +113,7 @@ pub enum RecursiveExpr {
 }
 
 /// Create a recursive expression generator with the active profile (from env var)
+#[allow(dead_code)]
 pub fn arb_recursive_expr() -> impl Strategy<Value = RecursiveExpr> {
     arb_recursive_expr_with_profile(get_active_profile())
 }
