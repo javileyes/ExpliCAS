@@ -11,7 +11,6 @@ use super::helpers::*;
 // ========== Micro-API for safe Mul construction ==========
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.
 
-/// Build a simple 2-factor product (right-associative, no normalization).
 
 define_rule!(
     SimplifyFractionRule,

@@ -5,7 +5,6 @@ use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::One;
 
-/// Helper: Build a 2-factor product (no normalization, safe for recursive contexts).
 
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {

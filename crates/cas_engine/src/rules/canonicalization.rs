@@ -8,8 +8,6 @@ use num_integer::Integer;
 use num_traits::Zero;
 use std::cmp::Ordering;
 
-/// Helper: Build a 2-factor product (no normalization, right-assoc, safe for canonicalization).
-#[inline]
 
 define_rule!(
     CanonicalizeNegationRule,

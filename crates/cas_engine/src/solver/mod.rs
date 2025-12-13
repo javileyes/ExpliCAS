@@ -5,7 +5,7 @@ pub mod strategies;
 pub mod strategy;
 
 use crate::engine::Simplifier;
-use cas_ast::{Context, Equation, Expr, ExprId, SolutionSet};
+use cas_ast::{Context, Equation, ExprId, SolutionSet};
 
 pub use self::isolation::contains_var;
 

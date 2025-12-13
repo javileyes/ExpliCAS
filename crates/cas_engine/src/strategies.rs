@@ -9,7 +9,7 @@ use crate::rules::canonicalization::{CanonicalizeMulRule, CanonicalizeNegationRu
 use crate::rules::exponents::{EvaluatePowerRule, IdentityPowerRule, ProductPowerRule};
 use crate::rules::polynomial::CombineLikeTermsRule;
 use crate::step::{PathStep, Step};
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Context, DisplayExpr, ExprId};
 
 /// Helper: Build a 2-factor product (no normalization).
 #[inline]
