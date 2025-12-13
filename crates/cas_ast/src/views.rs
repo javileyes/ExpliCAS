@@ -188,8 +188,26 @@ impl FractionParts {
         self.num.len() <= 1 && self.den.len() <= 1
     }
 
+    /// Get simple (numerator, denominator, is_fraction) tuple.
+    ///
+    /// This is useful for rules that need to work with the num/den as single expressions.
+    /// Returns the built numerator and denominator expressions, applying the sign to numerator.
+    pub fn to_num_den(&self, ctx: &mut Context) -> (ExprId, ExprId, bool) {
+        let mut num_expr = Self::build_product_static(ctx, &self.num);
+        let den_expr = Self::build_product_static(ctx, &self.den);
+
+        // Apply sign to numerator
+        if self.sign < 0 {
+            num_expr = ctx.add(Expr::Neg(num_expr));
+        }
+
+        (num_expr, den_expr, self.is_fraction())
+    }
+
     /// Build a product from factors: Π base^exp
-    fn build_product(ctx: &mut Context, factors: &[Factor]) -> ExprId {
+    ///
+    /// Public static method for building products without needing a FractionParts instance.
+    pub fn build_product_static(ctx: &mut Context, factors: &[Factor]) -> ExprId {
         if factors.is_empty() {
             return ctx.num(1);
         }
@@ -216,8 +234,8 @@ impl FractionParts {
     ///
     /// Use this for pedagogical output that shows fractions as a/b.
     pub fn build_as_div(&self, ctx: &mut Context) -> ExprId {
-        let num_expr = Self::build_product(ctx, &self.num);
-        let den_expr = Self::build_product(ctx, &self.den);
+        let num_expr = Self::build_product_static(ctx, &self.num);
+        let den_expr = Self::build_product_static(ctx, &self.den);
 
         let mut result = if self.den.is_empty() {
             // No denominator, just return numerator
@@ -290,6 +308,141 @@ impl FractionParts {
     }
 }
 
+// ============================================================================
+// RationalFnView: Preserves num/den as complete expression trees
+// ============================================================================
+
+/// Rational function representation: num and den as complete expression trees.
+///
+/// Unlike `FractionParts` which decomposes into factors, this view preserves
+/// the original structure of numerator and denominator as complete expressions.
+/// Use this for rules that need to operate on num/den as polynomials.
+///
+/// ## When to use
+/// - SimplifyFractionRule (GCD, polynomial factorization)
+/// - NestedFractionRule (detecting fractions within fractions)
+/// - Any rule that needs structural operations on num/den
+///
+/// ## When to use FractionParts instead
+/// - Multiplicative cancellation
+/// - Quotient of powers
+/// - Rationalization
+#[derive(Debug, Clone)]
+pub struct RationalFnView {
+    pub sign: i8,    // +1 or -1
+    pub num: ExprId, // numerator as complete expression tree
+    pub den: ExprId, // denominator as complete expression tree
+}
+
+impl RationalFnView {
+    /// Create RationalFnView from an expression.
+    ///
+    /// Returns Some if the expression represents a fraction:
+    /// - `Div(n, d)` → num=n, den=d
+    /// - `Pow(x, -1)` → num=1, den=x
+    /// - `Mul` with denominator factors → reconstructed num/den
+    /// - `Neg(fraction)` → negated num
+    ///
+    /// Returns None if not a fraction-like expression.
+    pub fn from(ctx: &mut Context, id: ExprId) -> Option<Self> {
+        // First try direct Div pattern (most common)
+        if let Expr::Div(n, d) = ctx.get(id).clone() {
+            return Some(RationalFnView {
+                sign: 1,
+                num: n,
+                den: d,
+            });
+        }
+
+        // Handle Neg(fraction)
+        if let Expr::Neg(inner) = ctx.get(id).clone() {
+            if let Some(mut view) = Self::from(ctx, inner) {
+                view.sign *= -1;
+                return Some(view);
+            }
+            return None;
+        }
+
+        // Handle Pow(x, -1) = 1/x
+        if let Expr::Pow(b, e) = ctx.get(id).clone() {
+            if let Some(exp) = int_exp_i32(ctx, e) {
+                if exp == -1 {
+                    let one = ctx.num(1);
+                    return Some(RationalFnView {
+                        sign: 1,
+                        num: one,
+                        den: b,
+                    });
+                }
+            }
+            return None;
+        }
+
+        // Handle Mul with Pow(x,-1) factors: a * b^(-1) = a/b
+        // Use FractionParts to decompose, then reconstruct as ExprIds
+        let fp = FractionParts::from(&*ctx, id);
+        if fp.is_fraction() {
+            // Reconstruct num and den as products
+            let num_expr = FractionParts::build_product_static(ctx, &fp.num);
+            let den_expr = FractionParts::build_product_static(ctx, &fp.den);
+            return Some(RationalFnView {
+                sign: fp.sign,
+                num: num_expr,
+                den: den_expr,
+            });
+        }
+
+        None
+    }
+
+    /// Check if this is a "simple" fraction (both num and den are single terms)
+    pub fn is_simple(&self, ctx: &Context) -> bool {
+        !matches!(ctx.get(self.num), Expr::Add(_, _) | Expr::Sub(_, _))
+            && !matches!(ctx.get(self.den), Expr::Add(_, _) | Expr::Sub(_, _))
+    }
+
+    /// Check if denominator is 1
+    pub fn is_integer(&self, ctx: &Context) -> bool {
+        if let Expr::Number(n) = ctx.get(self.den) {
+            n.is_integer() && *n == num_rational::BigRational::from_integer(1.into())
+        } else {
+            false
+        }
+    }
+
+    /// Build as didactic division: `Div(num, den)` or just `num` if den=1.
+    pub fn build_as_div(&self, ctx: &mut Context) -> ExprId {
+        let mut result = if self.is_integer(ctx) {
+            self.num
+        } else {
+            ctx.add(Expr::Div(self.num, self.den))
+        };
+
+        if self.sign < 0 {
+            result = ctx.add(Expr::Neg(result));
+        }
+
+        result
+    }
+
+    /// Build as canonical form: `num * den^(-1)` (C2 form).
+    pub fn build_as_mulpow(&self, ctx: &mut Context) -> ExprId {
+        let result = if self.is_integer(ctx) {
+            self.num
+        } else {
+            let neg_one = ctx.num(-1);
+            let den_inv = ctx.add(Expr::Pow(self.den, neg_one));
+            ctx.add(Expr::Mul(self.num, den_inv))
+        };
+
+        if self.sign < 0 {
+            ctx.add(Expr::Neg(result))
+        } else {
+            result
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,5 +511,50 @@ mod tests {
         } else {
             panic!("Expected Div");
         }
+    }
+
+    #[test]
+    fn test_rational_fn_view_div() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let div = ctx.add(Expr::Div(a, b));
+
+        let view = RationalFnView::from(&mut ctx, div).unwrap();
+        assert_eq!(view.sign, 1);
+        assert_eq!(view.num, a);
+        assert_eq!(view.den, b);
+    }
+
+    #[test]
+    fn test_rational_fn_view_pow_neg1() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let neg_one = ctx.num(-1);
+        let recip = ctx.add(Expr::Pow(x, neg_one));
+
+        let view = RationalFnView::from(&mut ctx, recip).unwrap();
+        assert_eq!(view.sign, 1);
+        assert_eq!(view.den, x);
+        // num should be 1
+        if let Expr::Number(n) = ctx.get(view.num) {
+            assert!(n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()));
+        } else {
+            panic!("Expected Number(1)");
+        }
+    }
+
+    #[test]
+    fn test_rational_fn_view_preserves_structure() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        // (a + b) / b - the numerator is a sum, not just factors
+        let sum = ctx.add(Expr::Add(a, b));
+        let div = ctx.add(Expr::Div(sum, b));
+
+        let view = RationalFnView::from(&mut ctx, div).unwrap();
+        // num should still be the Add expression
+        assert!(matches!(ctx.get(view.num), Expr::Add(_, _)));
     }
 }

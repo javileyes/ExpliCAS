@@ -11,7 +11,8 @@ define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
     |ctx, expr| {
-        // eprintln!("SimplifyFractionRule visiting: {:?}", ctx.get(expr));
+        // NOTE: Keep simple Div detection - this rule uses polynomial operations
+        // that require actual Div(num, den) structure
         let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
             (*n, *d)
         } else {
@@ -119,6 +120,7 @@ define_rule!(
     NestedFractionRule,
     "Simplify Complex Fraction",
     |ctx, expr| {
+        // NOTE: Keep simple Div detection - expects actual Div structure
         let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
             (*n, *d)
         } else {
@@ -193,115 +195,107 @@ define_rule!(
     SimplifyMulDivRule,
     "Simplify Multiplication with Division",
     |ctx, expr| {
+        use cas_ast::views::FractionParts;
+
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(l, r) = expr_data {
-            let one = ctx.num(1); // Pre-calculate to avoid mutable borrow in closure
+            // Use FractionParts to detect any fraction-like structure
+            let fp_l = FractionParts::from(&*ctx, l);
+            let fp_r = FractionParts::from(&*ctx, r);
 
-            // Helper to check if expr is Div or Pow(..., -1) or Mul(..., Pow(..., -1))
-            let get_num_den = |e: ExprId| -> Option<(ExprId, ExprId)> {
-                match ctx.get(e) {
-                    Expr::Div(n, d) => Some((*n, *d)),
-                    Expr::Pow(b, exp) => {
-                        if let Expr::Number(n) = ctx.get(*exp) {
-                            if n.is_integer()
-                                && *n == num_rational::BigRational::from_integer((-1).into())
-                            {
-                                return Some((one, *b));
-                            }
-                        }
-                        None
-                    }
-                    Expr::Mul(ml, mr) => {
-                        // Check ml * mr^-1
-                        if let Expr::Pow(b, e) = ctx.get(*mr) {
-                            if let Expr::Number(n) = ctx.get(*e) {
-                                if n.is_integer()
-                                    && *n == num_rational::BigRational::from_integer((-1).into())
-                                {
-                                    return Some((*ml, *b));
-                                }
-                            }
-                        }
-                        // Check mr * ml^-1
-                        if let Expr::Pow(b, e) = ctx.get(*ml) {
-                            if let Expr::Number(n) = ctx.get(*e) {
-                                if n.is_integer()
-                                    && *n == num_rational::BigRational::from_integer((-1).into())
-                                {
-                                    return Some((*mr, *b));
-                                }
-                            }
-                        }
-                        None
-                    }
-                    _ => None,
-                }
-            };
-
-            // Check for (a/b) * (c/d)
-            let gd_l = get_num_den(l);
-            let gd_r = get_num_den(r);
-
-            if let (Some((n1, d1)), Some((n2, d2))) = (gd_l, gd_r) {
-                let new_num = ctx.add(Expr::Mul(n1, n2));
-                let new_den = ctx.add(Expr::Mul(d1, d2));
-                let new_expr = ctx.add(Expr::Div(new_num, new_den));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Simplify fraction (GCD)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                });
+            // If neither side has denominators, nothing to do
+            if !fp_l.is_fraction() && !fp_r.is_fraction() {
+                return None;
             }
 
-            // Check for a * (b/c) or (b/c) * a
-            if let Some((num, den)) = gd_l {
-                // (num / den) * r
-                if crate::ordering::compare_expr(ctx, den, r) == std::cmp::Ordering::Equal {
+            // Check for simple cancellation: (a/b) * b -> a
+            // Only for simple cases to avoid over-simplification
+            if fp_l.is_fraction() && fp_l.den.len() == 1 && fp_l.den[0].exp == 1 {
+                let den_base = fp_l.den[0].base;
+                // Check if r equals the denominator
+                if crate::ordering::compare_expr(ctx, den_base, r) == std::cmp::Ordering::Equal {
+                    // Cancel: (a/b) * b -> a
+                    let result = if fp_l.num.is_empty() {
+                        ctx.num(fp_l.sign as i64)
+                    } else {
+                        let num_prod = FractionParts::build_product_static(ctx, &fp_l.num);
+                        if fp_l.sign < 0 {
+                            ctx.add(Expr::Neg(num_prod))
+                        } else {
+                            num_prod
+                        }
+                    };
                     return Some(Rewrite {
-                        new_expr: num,
+                        new_expr: result,
                         description: "Cancel division: (a/b)*b -> a".to_string(),
                         before_local: None,
                         after_local: None,
                     });
                 }
-                let new_num = ctx.add(Expr::Mul(num, r));
-                let new_expr = ctx.add(Expr::Div(new_num, den));
-
-                // Avoid combining if r is a number or constant (prefer c * (a/b) for CombineLikeTerms)
-                if matches!(ctx.get(r), Expr::Number(_) | Expr::Constant(_)) {
-                    return None;
-                }
-
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Combine Mul and Div".to_string(),
-                    before_local: None,
-                    after_local: None,
-                });
             }
 
-            if let Some((num, den)) = gd_r {
-                // l * (num / den)
-                if crate::ordering::compare_expr(ctx, den, l) == std::cmp::Ordering::Equal {
+            // Check for simple cancellation: a * (b/a) -> b
+            if fp_r.is_fraction() && fp_r.den.len() == 1 && fp_r.den[0].exp == 1 {
+                let den_base = fp_r.den[0].base;
+                if crate::ordering::compare_expr(ctx, den_base, l) == std::cmp::Ordering::Equal {
+                    let result = if fp_r.num.is_empty() {
+                        ctx.num(fp_r.sign as i64)
+                    } else {
+                        let num_prod = FractionParts::build_product_static(ctx, &fp_r.num);
+                        if fp_r.sign < 0 {
+                            ctx.add(Expr::Neg(num_prod))
+                        } else {
+                            num_prod
+                        }
+                    };
                     return Some(Rewrite {
-                        new_expr: num,
+                        new_expr: result,
                         description: "Cancel division: a*(b/a) -> b".to_string(),
                         before_local: None,
                         after_local: None,
                     });
                 }
+            }
 
-                // Avoid combining if l is a number or constant
-                if matches!(ctx.get(l), Expr::Number(_) | Expr::Constant(_)) {
+            // Avoid combining if either side is just a constant (prefer k * (a/b) for CombineLikeTerms)
+            if matches!(ctx.get(l), Expr::Number(_) | Expr::Constant(_))
+                || matches!(ctx.get(r), Expr::Number(_) | Expr::Constant(_))
+            {
+                return None;
+            }
+
+            // Combine into single fraction: (n1/d1) * (n2/d2) -> (n1*n2)/(d1*d2)
+            // Only do this if at least one side is an actual fraction
+            if fp_l.is_fraction() || fp_r.is_fraction() {
+                // Build combined numerator: products of all num factors
+                let mut combined_num = Vec::new();
+                combined_num.extend(fp_l.num.iter().cloned());
+                combined_num.extend(fp_r.num.iter().cloned());
+
+                // Build combined denominator
+                let mut combined_den = Vec::new();
+                combined_den.extend(fp_l.den.iter().cloned());
+                combined_den.extend(fp_r.den.iter().cloned());
+
+                let combined_sign = (fp_l.sign as i16 * fp_r.sign as i16) as i8;
+
+                let result_fp = FractionParts {
+                    sign: combined_sign,
+                    num: combined_num,
+                    den: combined_den,
+                };
+
+                // Build as division for didactic output
+                let new_expr = result_fp.build_as_div(ctx);
+
+                // Avoid no-op rewrites
+                if new_expr == expr {
                     return None;
                 }
 
-                let new_num = ctx.add(Expr::Mul(l, num));
-                let new_expr = ctx.add(Expr::Div(new_num, den));
                 return Some(Rewrite {
                     new_expr,
-                    description: "Combine Mul and Div".to_string(),
+                    description: "Combine fractions in multiplication".to_string(),
                     before_local: None,
                     after_local: None,
                 });
@@ -398,108 +392,16 @@ fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
 }
 
 define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
+    use cas_ast::views::FractionParts;
+
     let expr_data = ctx.get(expr).clone();
     if let Expr::Add(l, r) = expr_data {
-        let one = ctx.num(1);
+        // Use FractionParts to detect fractions uniformly
+        let fp_l = FractionParts::from(&*ctx, l);
+        let fp_r = FractionParts::from(&*ctx, r);
 
-        // Helper to extract num/den
-        let mut get_num_den = |e: ExprId| -> (ExprId, ExprId, bool) {
-            let expr_data = ctx.get(e).clone();
-            match expr_data {
-                Expr::Div(n, d) => (n, d, true),
-                Expr::Neg(inner) => {
-                    match ctx.get(inner).clone() {
-                        Expr::Div(n, d) => (ctx.add(Expr::Neg(n)), d, true),
-                        Expr::Pow(b, e_inner) => {
-                            if let Expr::Number(n_inner) = ctx.get(e_inner) {
-                                if n_inner.is_integer()
-                                    && *n_inner
-                                        == num_rational::BigRational::from_integer((-1).into())
-                                {
-                                    (ctx.add(Expr::Neg(one)), b, true)
-                                } else {
-                                    (e, one, false)
-                                }
-                            } else {
-                                (e, one, false)
-                            }
-                        }
-                        Expr::Mul(ml, mr) => {
-                            // Check ml * mr^-1
-                            let mr_data = ctx.get(mr).clone();
-                            if let Expr::Pow(b, e_inner) = mr_data {
-                                if let Expr::Number(n_inner) = ctx.get(e_inner) {
-                                    if n_inner.is_integer()
-                                        && *n_inner
-                                            == num_rational::BigRational::from_integer((-1).into())
-                                    {
-                                        return (ctx.add(Expr::Neg(ml)), b, true);
-                                    }
-                                }
-                            }
-                            // Check mr * ml^-1
-                            let ml_data = ctx.get(ml).clone();
-                            if let Expr::Pow(b, e_inner) = ml_data {
-                                if let Expr::Number(n_inner) = ctx.get(e_inner) {
-                                    if n_inner.is_integer()
-                                        && *n_inner
-                                            == num_rational::BigRational::from_integer((-1).into())
-                                    {
-                                        return (ctx.add(Expr::Neg(mr)), b, true);
-                                    }
-                                }
-                            }
-                            (e, one, false)
-                        }
-                        _ => (e, one, false),
-                    }
-                }
-                Expr::Pow(b, exp) => {
-                    if let Expr::Number(n) = ctx.get(exp) {
-                        if n.is_integer()
-                            && *n == num_rational::BigRational::from_integer((-1).into())
-                        {
-                            (one, b, true)
-                        } else {
-                            (e, one, false)
-                        }
-                    } else {
-                        (e, one, false)
-                    }
-                }
-                Expr::Mul(ml, mr) => {
-                    // Check ml * mr^-1
-                    let mr_data = ctx.get(mr).clone();
-                    if let Expr::Pow(b, exp) = mr_data {
-                        if let Expr::Number(n) = ctx.get(exp) {
-                            if n.is_integer()
-                                && *n == num_rational::BigRational::from_integer((-1).into())
-                            {
-                                return (ml, b, true);
-                            }
-                        }
-                    }
-                    // Check mr * ml^-1
-                    let ml_data = ctx.get(ml).clone();
-                    if let Expr::Pow(b, exp) = ml_data {
-                        if let Expr::Number(n) = ctx.get(exp) {
-                            if n.is_integer()
-                                && *n == num_rational::BigRational::from_integer((-1).into())
-                            {
-                                return (mr, b, true);
-                            }
-                        }
-                    }
-                    (e, one, false)
-                }
-                // NOTE: Handling Number(n/d) as fraction was causing stack overflow in solve tests
-                // because the new fractions would re-match the rule. Removed for now.
-                _ => (e, one, false),
-            }
-        };
-
-        let (n1, d1, is_frac1) = get_num_den(l);
-        let (n2, d2, is_frac2) = get_num_den(r);
+        let (n1, d1, is_frac1) = fp_l.to_num_den(ctx);
+        let (n2, d2, is_frac2) = fp_r.to_num_den(ctx);
 
         if !is_frac1 && !is_frac2 {
             // println!("  Not fractions: {:?} {:?}", is_frac1, is_frac2);
@@ -667,60 +569,15 @@ define_rule!(
     RationalizeDenominatorRule,
     "Rationalize Denominator",
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
+        use cas_ast::views::FractionParts;
 
-        // Helper to extract num/den from Div, Pow(x, -1), or Mul(x, Pow(y, -1))
-        let (num, den) = match expr_data {
-            Expr::Div(n, d) => (n, d),
-            Expr::Pow(b, e) => {
-                if let Expr::Number(n) = ctx.get(e) {
-                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into())
-                    {
-                        (ctx.num(1), b)
-                    } else {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-            }
-            Expr::Mul(l, r) => {
-                // Check l * r^-1
-                if let Expr::Pow(b, e) = ctx.get(r) {
-                    if let Expr::Number(n) = ctx.get(*e) {
-                        if n.is_integer()
-                            && *n == num_rational::BigRational::from_integer((-1).into())
-                        {
-                            (l, *b)
-                        } else {
-                            // Check r * l^-1
-                            if let Expr::Pow(b_l, e_l) = ctx.get(l) {
-                                if let Expr::Number(n_l) = ctx.get(*e_l) {
-                                    if n_l.is_integer()
-                                        && *n_l
-                                            == num_rational::BigRational::from_integer((-1).into())
-                                    {
-                                        (r, *b_l)
-                                    } else {
-                                        return None;
-                                    }
-                                } else {
-                                    return None;
-                                }
-                            } else {
-                                return None;
-                            }
-                        }
-                    } else {
-                        // Similar logic... skip deep check for brevity, assume canonical form helps
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-            }
-            _ => return None,
-        };
+        // Use FractionParts to detect any fraction structure
+        let fp = FractionParts::from(&*ctx, expr);
+        if !fp.is_fraction() {
+            return None;
+        }
+
+        let (num, den, _) = fp.to_num_den(ctx);
 
         let den_data = ctx.get(den).clone();
         let (l, r, is_add) = match den_data {
@@ -833,11 +690,15 @@ define_rule!(
     GeneralizedRationalizationRule,
     "Generalized Rationalization",
     |ctx, expr| {
-        // Only handle Div(num, den) where den has 3+ terms with roots
-        let (num, den) = match ctx.get(expr) {
-            Expr::Div(n, d) => (*n, *d),
-            _ => return None,
-        };
+        use cas_ast::views::FractionParts;
+
+        // Use FractionParts to detect any fraction structure
+        let fp = FractionParts::from(&*ctx, expr);
+        if !fp.is_fraction() {
+            return None;
+        }
+
+        let (num, den, _) = fp.to_num_den(ctx);
 
         let terms = collect_additive_terms(ctx, den);
 
@@ -939,11 +800,15 @@ define_rule!(
     RationalizeProductDenominatorRule,
     "Rationalize Product Denominator",
     |ctx, expr| {
-        // Handle 1/(a * sqrt(b)) or num/(a * sqrt(b))
-        let (num, den) = match ctx.get(expr) {
-            Expr::Div(n, d) => (*n, *d),
-            _ => return None,
-        };
+        use cas_ast::views::FractionParts;
+
+        // Handle fractions with product denominators containing roots
+        let fp = FractionParts::from(&*ctx, expr);
+        if !fp.is_fraction() {
+            return None;
+        }
+
+        let (num, den, _) = fp.to_num_den(ctx);
 
         let factors = collect_mul_factors(ctx, den);
 
@@ -1286,46 +1151,78 @@ define_rule!(
 // Atomized rule for quotient of powers: a^n / a^m = a^(n-m)
 // This is separated from CancelCommonFactorsRule for pedagogical clarity
 define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
+    use cas_ast::views::FractionParts;
 
-    if let Expr::Div(num, den) = expr_data {
-        let num_data = ctx.get(num).clone();
-        let den_data = ctx.get(den).clone();
+    let fp = FractionParts::from(&*ctx, expr);
+    if !fp.is_fraction() {
+        return None;
+    }
 
-        // Case 1: a^n / a^m where both are Pow
-        if let (Expr::Pow(b_n, e_n), Expr::Pow(b_d, e_d)) = (&num_data, &den_data) {
-            // Check same base
-            if crate::ordering::compare_expr(ctx, *b_n, *b_d) == std::cmp::Ordering::Equal {
-                // Check if exponents are numeric (so we can subtract)
-                if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(*e_n), ctx.get(*e_d)) {
-                    // Only handle fractional exponents here - integer case is in CancelCommonFactors
-                    if n.is_integer() && m.is_integer() {
-                        return None;
-                    }
+    let (num, den, _) = fp.to_num_den(ctx);
+    let num_data = ctx.get(num).clone();
+    let den_data = ctx.get(den).clone();
 
-                    let diff = n - m;
-                    if diff.is_zero() {
-                        // a^n / a^n = 1
-                        return Some(Rewrite {
-                            new_expr: ctx.num(1),
-                            description: "a^n / a^n = 1".to_string(),
-                            before_local: None,
-                            after_local: None,
-                        });
-                    } else if diff.is_one() {
-                        // Result is just the base
+    // Case 1: a^n / a^m where both are Pow
+    if let (Expr::Pow(b_n, e_n), Expr::Pow(b_d, e_d)) = (&num_data, &den_data) {
+        // Check same base
+        if crate::ordering::compare_expr(ctx, *b_n, *b_d) == std::cmp::Ordering::Equal {
+            // Check if exponents are numeric (so we can subtract)
+            if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(*e_n), ctx.get(*e_d)) {
+                // Only handle fractional exponents here - integer case is in CancelCommonFactors
+                if n.is_integer() && m.is_integer() {
+                    return None;
+                }
+
+                let diff = n - m;
+                if diff.is_zero() {
+                    // a^n / a^n = 1
+                    return Some(Rewrite {
+                        new_expr: ctx.num(1),
+                        description: "a^n / a^n = 1".to_string(),
+                        before_local: None,
+                        after_local: None,
+                    });
+                } else if diff.is_one() {
+                    // Result is just the base
+                    return Some(Rewrite {
+                        new_expr: *b_n,
+                        description: "a^n / a^m = a^(n-m)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                    });
+                } else {
+                    let new_exp = ctx.add(Expr::Number(diff));
+                    let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "a^n / a^m = a^(n-m)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Case 2: a^n / a (denominator has implicit exponent 1)
+    if let Expr::Pow(b_n, e_n) = &num_data {
+        if crate::ordering::compare_expr(ctx, *b_n, den) == std::cmp::Ordering::Equal {
+            if let Expr::Number(n) = ctx.get(*e_n) {
+                if !n.is_integer() {
+                    let new_exp_val = n - num_rational::BigRational::one();
+                    if new_exp_val.is_one() {
                         return Some(Rewrite {
                             new_expr: *b_n,
-                            description: "a^n / a^m = a^(n-m)".to_string(),
+                            description: "a^n / a = a^(n-1)".to_string(),
                             before_local: None,
                             after_local: None,
                         });
                     } else {
-                        let new_exp = ctx.add(Expr::Number(diff));
+                        let new_exp = ctx.add(Expr::Number(new_exp_val));
                         let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
                         return Some(Rewrite {
                             new_expr,
-                            description: "a^n / a^m = a^(n-m)".to_string(),
+                            description: "a^n / a = a^(n-1)".to_string(),
                             before_local: None,
                             after_local: None,
                         });
@@ -1333,50 +1230,22 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                 }
             }
         }
+    }
 
-        // Case 2: a^n / a (denominator has implicit exponent 1)
-        if let Expr::Pow(b_n, e_n) = &num_data {
-            if crate::ordering::compare_expr(ctx, *b_n, den) == std::cmp::Ordering::Equal {
-                if let Expr::Number(n) = ctx.get(*e_n) {
-                    if !n.is_integer() {
-                        let new_exp_val = n - num_rational::BigRational::one();
-                        if new_exp_val.is_one() {
-                            return Some(Rewrite {
-                                new_expr: *b_n,
-                                description: "a^n / a = a^(n-1)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                            });
-                        } else {
-                            let new_exp = ctx.add(Expr::Number(new_exp_val));
-                            let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "a^n / a = a^(n-1)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        // Case 3: a / a^m (numerator has implicit exponent 1)
-        if let Expr::Pow(b_d, e_d) = &den_data {
-            if crate::ordering::compare_expr(ctx, num, *b_d) == std::cmp::Ordering::Equal {
-                if let Expr::Number(m) = ctx.get(*e_d) {
-                    if !m.is_integer() {
-                        let new_exp_val = num_rational::BigRational::one() - m;
-                        let new_exp = ctx.add(Expr::Number(new_exp_val));
-                        let new_expr = ctx.add(Expr::Pow(num, new_exp));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "a / a^m = a^(1-m)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                        });
-                    }
+    // Case 3: a / a^m (numerator has implicit exponent 1)
+    if let Expr::Pow(b_d, e_d) = &den_data {
+        if crate::ordering::compare_expr(ctx, num, *b_d) == std::cmp::Ordering::Equal {
+            if let Expr::Number(m) = ctx.get(*e_d) {
+                if !m.is_integer() {
+                    let new_exp_val = num_rational::BigRational::one() - m;
+                    let new_exp = ctx.add(Expr::Number(new_exp_val));
+                    let new_expr = ctx.add(Expr::Pow(num, new_exp));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "a / a^m = a^(1-m)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                    });
                 }
             }
         }
@@ -1389,6 +1258,8 @@ define_rule!(
     PullConstantFromFractionRule,
     "Pull Constant From Fraction",
     |ctx, expr| {
+        // NOTE: Keep simple Div detection to avoid infinite loop with Combine Like Terms
+        // when detecting Neg(Div(...)) as a fraction
         let (n, d) = if let Expr::Div(n, d) = ctx.get(expr) {
             (*n, *d)
         } else {

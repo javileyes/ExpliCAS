@@ -186,12 +186,15 @@ define_rule!(
     ReverseWeierstrassRule,
     "Reverse Weierstrass",
     |ctx, expr| {
+        use cas_ast::views::FractionParts;
+
         // Pattern: 2*tan(x/2) / (1 + tan(x/2)²) → sin(x)
-        // Extract data first to avoid borrow conflicts
-        let (num, den) = match ctx.get(expr) {
-            Expr::Div(n, d) => (*n, *d),
-            _ => return None,
-        };
+        let fp = FractionParts::from(&*ctx, expr);
+        if !fp.is_fraction() {
+            return None;
+        }
+
+        let (num, den, _) = fp.to_num_den(ctx);
 
         // Check numerator: 2*t
         let t_id = match ctx.get(num) {
