@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 use crate::collect::collect;
 use crate::expand::expand;
 use crate::factor::factor;
@@ -12,9 +13,6 @@ use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 
 /// Helper: Build a 2-factor product (no normalization).
 #[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 /// Strategy to simplify polynomials by trying expansion and factorization.
 /// Returns the simplest form found.

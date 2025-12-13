@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
@@ -9,9 +10,6 @@ use std::cmp::Ordering;
 
 /// Helper: Build a 2-factor product (no normalization, right-assoc, safe for canonicalization).
 #[inline]
-fn mul2_raw(ctx: &mut cas_ast::Context, a: cas_ast::ExprId, b: cas_ast::ExprId) -> cas_ast::ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 define_rule!(
     CanonicalizeNegationRule,

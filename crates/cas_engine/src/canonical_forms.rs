@@ -1,12 +1,10 @@
+use crate::build::mul2_raw;
 use crate::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use tracing::debug;
 
 /// Helper: Build a 2-factor product (no normalization).
 #[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 /// Detects if an expression is in a canonical (elegant) form that should not be expanded.
 /// These forms are mathematically clean and expanding them would only create unnecessary complexity.

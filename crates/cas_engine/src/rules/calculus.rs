@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
@@ -5,10 +6,6 @@ use num_rational::BigRational;
 use num_traits::One;
 
 /// Helper: Build a 2-factor product (no normalization, safe for recursive contexts).
-#[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {

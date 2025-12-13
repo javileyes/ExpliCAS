@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 // Telescoping Strategy for Dirichlet Kernel and similar identities
 //
 // This module implements a step-by-step proof strategy for telescoping sums
@@ -13,10 +14,6 @@ use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Zero};
 
 /// Helper: Build a 2-factor product (no normalization).
-#[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 /// Result of telescoping analysis
 pub struct TelescopingResult {

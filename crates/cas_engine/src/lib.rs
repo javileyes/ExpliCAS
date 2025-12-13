@@ -26,6 +26,7 @@ pub mod timeline;
 pub mod timeline_templates;
 pub mod visualizer;
 
+pub mod build;
 pub mod error;
 pub mod helpers;
 pub mod visitors;

@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 use crate::helpers::flatten_add_sub_chain;
 use cas_ast::{Context, Expr, ExprId};
 
@@ -6,9 +7,6 @@ use num_traits::{One, Zero};
 
 /// Helper: Build a 2-factor product (no normalization).
 #[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 /// Collects like terms in an expression.
 /// e.g. 2*x + 3*x -> 5*x

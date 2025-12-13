@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::ordering::compare_expr;
@@ -13,9 +14,6 @@ use std::cmp::Ordering;
 
 /// Helper: Build a 2-factor product (no normalization).
 #[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 // --- Helper Functions (Keep these as they are useful helpers) ---
 

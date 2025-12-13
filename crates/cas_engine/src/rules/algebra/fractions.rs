@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
@@ -11,10 +12,6 @@ use super::helpers::*;
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.
 
 /// Build a simple 2-factor product (right-associative, no normalization).
-#[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 define_rule!(
     SimplifyFractionRule,

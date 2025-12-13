@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::ordering::compare_expr;
 use crate::polynomial::Polynomial;
@@ -12,9 +13,6 @@ use std::cmp::Ordering;
 
 /// Helper: Build a simple 2-factor product (no normalization).
 #[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 /// Check if an expression is a binomial (sum or difference of exactly 2 terms)
 /// Examples: (a + b), (a - b), (x + (-y))

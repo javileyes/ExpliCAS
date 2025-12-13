@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 pub mod isolation;
 pub mod solution_set;
 pub mod strategies;
@@ -9,10 +10,6 @@ use cas_ast::{Context, Equation, Expr, ExprId, SolutionSet};
 pub use self::isolation::contains_var;
 
 /// Helper: Build a 2-factor product (no normalization).
-#[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 #[derive(Debug, Clone)]
 pub struct SolveStep {

@@ -1,3 +1,4 @@
+use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::helpers::is_half;
 use crate::ordering::compare_expr;
@@ -11,9 +12,6 @@ use std::cmp::Ordering;
 
 /// Helper: Build a simple 2-factor product (no normalization).
 #[inline]
-fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Mul(a, b))
-}
 
 /// Helper: Add two exponents, folding if both are constants
 /// This prevents ugly exponents like x^(1+2) and produces x^3 instead
