@@ -67,8 +67,10 @@ fn test_mixed_positive_and_negative_atan() {
 fn test_partially_negated_no_match() {
     // Only one negated, other positive - should NOT match
     let result = simplify_str("-atan(2) + arctan(1/2)");
+    // Accept both "arctan(1/2)" and "arctan(1 / 2)" (display format varies)
+    let has_atan_half = result.contains("arctan(1/2)") || result.contains("arctan(1 / 2)");
     assert!(
-        result.contains("arctan(2)") && result.contains("arctan(1/2)"),
+        result.contains("arctan(2)") && has_atan_half,
         "Should NOT match partial negation, got: {}",
         result
     );

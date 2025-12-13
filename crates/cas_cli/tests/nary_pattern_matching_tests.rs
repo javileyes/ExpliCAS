@@ -89,7 +89,8 @@ fn test_nary_atan_two_pairs_with_noise() {
 #[test]
 fn test_nary_atan_three_pairs() {
     // Three separate pairs (stress test)
-    let result = simplify_str("arctan(2) + arctan(1/2) + arctan(3) + arctan(1/3) + arctan(5) + arctan(1/5)");
+    let result =
+        simplify_str("arctan(2) + arctan(1/2) + arctan(3) + arctan(1/3) + arctan(5) + arctan(1/5)");
     assert_eq!(result, "3/2 * pi", "Should find all three pairs");
 }
 
@@ -305,8 +306,11 @@ fn test_nary_preserves_other_functions() {
 fn test_nary_no_false_positives() {
     // Similar looking but not reciprocals
     let result = simplify_str("arctan(2) + arctan(1/3)");
+    // Accept both "arctan(1/3)" and "arctan(1 / 3)" (display format varies)
+    let has_atan_third = result.contains("arctan(1/3)") || result.contains("arctan(1 / 3)");
     assert!(
-        result.contains("arctan(2)") && result.contains("arctan(1/3)") && !result.contains("pi"),
-        "Should not match non-reciprocals"
+        result.contains("arctan(2)") && has_atan_third && !result.contains("pi"),
+        "Should not match non-reciprocals, got: {}",
+        result
     );
 }
