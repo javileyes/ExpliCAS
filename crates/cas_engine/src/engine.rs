@@ -303,6 +303,16 @@ impl Simplifier {
         expr_id: ExprId,
         options: crate::phase::SimplifyOptions,
     ) -> (ExprId, Vec<Step>) {
+        let (result, steps, _stats) = self.simplify_with_stats(expr_id, options);
+        (result, steps)
+    }
+
+    /// Simplify with options and return pipeline statistics for diagnostics.
+    pub fn simplify_with_stats(
+        &mut self,
+        expr_id: ExprId,
+        options: crate::phase::SimplifyOptions,
+    ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         let mut orchestrator = crate::orchestrator::Orchestrator::new();
         orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
         orchestrator.options = options;

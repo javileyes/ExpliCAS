@@ -120,7 +120,7 @@ impl Orchestrator {
         &mut self,
         expr: ExprId,
         simplifier: &mut Simplifier,
-    ) -> (ExprId, Vec<Step>) {
+    ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         // PRE-ANALYSIS: Scan for patterns
         self.pattern_marks = crate::pattern_marks::PatternMarks::new();
         crate::pattern_scanner::scan_and_mark_patterns(
@@ -148,7 +148,7 @@ impl Orchestrator {
                     Some(&simplifier.context),
                 ));
             }
-            return (zero, steps);
+            return (zero, steps, crate::phase::PipelineStats::default());
         }
 
         let mut current = expr;
@@ -191,10 +191,31 @@ impl Orchestrator {
                 SimplifyPhase::Rationalize,
                 budgets.rationalize_iters,
             );
+
+            // Track rationalization outcome
+            pipeline_stats.rationalize_level = Some(auto_level);
+            if stats.changed {
+                pipeline_stats.rationalize_outcome =
+                    Some(crate::rationalize_policy::RationalizeOutcome::Applied);
+            } else {
+                // If enabled but didn't change, it was blocked for some reason
+                // We don't have detailed reason here; would need deeper integration
+                pipeline_stats.rationalize_outcome =
+                    Some(crate::rationalize_policy::RationalizeOutcome::NotApplied(
+                        crate::rationalize_policy::RationalizeReason::NoBinomialFound,
+                    ));
+            }
+
             current = next;
             all_steps.extend(steps);
             pipeline_stats.rationalize = stats;
             pipeline_stats.total_rewrites += pipeline_stats.rationalize.rewrites_used;
+        } else {
+            pipeline_stats.rationalize_level = Some(AutoRationalizeLevel::Off);
+            pipeline_stats.rationalize_outcome =
+                Some(crate::rationalize_policy::RationalizeOutcome::NotApplied(
+                    crate::rationalize_policy::RationalizeReason::PolicyDisabled,
+                ));
         }
 
         // Phase 4: PostCleanup - Final cleanup
@@ -260,7 +281,7 @@ impl Orchestrator {
             filtered_steps
         };
 
-        (current, optimized_steps)
+        (current, optimized_steps, pipeline_stats)
     }
 }
 

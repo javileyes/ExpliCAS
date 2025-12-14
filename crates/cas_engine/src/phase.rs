@@ -108,6 +108,10 @@ pub struct PipelineStats {
     pub rationalize: PhaseStats,
     pub post_cleanup: PhaseStats,
     pub total_rewrites: usize,
+    /// Outcome of rationalization attempt (if phase was run)
+    pub rationalize_outcome: Option<crate::rationalize_policy::RationalizeOutcome>,
+    /// The level that was attempted
+    pub rationalize_level: Option<crate::rationalize_policy::AutoRationalizeLevel>,
 }
 
 /// Iteration budgets for each phase of the pipeline.

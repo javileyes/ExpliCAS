@@ -122,6 +122,10 @@ pub struct Repl {
     config: CasConfig,
     /// Options controlling the simplification pipeline (phases, budgets)
     simplify_options: cas_engine::SimplifyOptions,
+    /// When true, show pipeline diagnostics after simplification
+    explain_mode: bool,
+    /// Last pipeline stats for diagnostics
+    last_stats: Option<cas_engine::PipelineStats>,
 }
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
@@ -448,6 +452,8 @@ impl Repl {
             verbosity: Verbosity::Normal,
             config,
             simplify_options: cas_engine::SimplifyOptions::default(),
+            explain_mode: false,
+            last_stats: None,
         };
         repl.sync_config_to_simplifier();
         repl
@@ -457,7 +463,53 @@ impl Repl {
     fn do_simplify(&mut self, expr: cas_ast::ExprId) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
         let mut opts = self.simplify_options.clone();
         opts.collect_steps = self.simplifier.collect_steps;
-        self.simplifier.simplify_with_options(expr, opts)
+        let (result, steps, stats) = self.simplifier.simplify_with_stats(expr, opts);
+
+        // Show explain output if enabled
+        if self.explain_mode {
+            self.print_pipeline_stats(&stats);
+        }
+
+        self.last_stats = Some(stats);
+        (result, steps)
+    }
+
+    /// Print pipeline statistics for diagnostics
+    fn print_pipeline_stats(&self, stats: &cas_engine::PipelineStats) {
+        println!();
+        println!("──── Pipeline Diagnostics ────");
+        println!(
+            "  Core:       {} iters, {} rewrites",
+            stats.core.iters_used, stats.core.rewrites_used
+        );
+        println!(
+            "  Transform:  {} iters, {} rewrites, changed={}",
+            stats.transform.iters_used, stats.transform.rewrites_used, stats.transform.changed
+        );
+        println!(
+            "  Rationalize: {:?}",
+            stats
+                .rationalize_level
+                .unwrap_or(cas_engine::AutoRationalizeLevel::Off)
+        );
+
+        if let Some(ref outcome) = stats.rationalize_outcome {
+            match outcome {
+                cas_engine::RationalizeOutcome::Applied => {
+                    println!("              → Applied ✓");
+                }
+                cas_engine::RationalizeOutcome::NotApplied(reason) => {
+                    println!("              → NotApplied: {:?}", reason);
+                }
+            }
+        }
+
+        println!(
+            "  PostCleanup: {} iters, {} rewrites",
+            stats.post_cleanup.iters_used, stats.post_cleanup.rewrites_used
+        );
+        println!("  Total rewrites: {}", stats.total_rewrites);
+        println!("───────────────────────────────");
     }
 
     fn sync_config_to_simplifier(&mut self) {
@@ -880,6 +932,17 @@ impl Repl {
                     println!("Usage: set max-rewrites <number>");
                 }
             }
+            "explain" => match parts[2] {
+                "on" | "true" | "1" => {
+                    self.explain_mode = true;
+                    println!("Explain mode ENABLED (pipeline diagnostics after each simplify)");
+                }
+                "off" | "false" | "0" => {
+                    self.explain_mode = false;
+                    println!("Explain mode DISABLED");
+                }
+                _ => println!("Usage: set explain <on|off>"),
+            },
             _ => self.print_set_help(),
         }
     }
@@ -889,6 +952,7 @@ impl Repl {
         println!("  set transform <on|off>         Enable/disable distribution & expansion");
         println!("  set rationalize <on|off|0|1|1.5>  Set rationalization level");
         println!("  set max-rewrites <N>           Set max total rewrites (safety limit)");
+        println!("  set explain <on|off>           Show pipeline diagnostics after simplify");
         println!();
         println!("Current settings:");
         println!(
@@ -906,6 +970,10 @@ impl Repl {
         println!(
             "  max-rewrites: {}",
             self.simplify_options.budgets.max_total_rewrites
+        );
+        println!(
+            "  explain: {}",
+            if self.explain_mode { "on" } else { "off" }
         );
     }
 
