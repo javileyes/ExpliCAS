@@ -138,6 +138,8 @@ pub struct StylePreferences {
     pub prefer_division: bool,
     /// Whether to prefer a-b over a+(-b)
     pub prefer_subtraction: bool,
+    /// Whether to order polynomial sums by degree (descending): x^2 + x + 1
+    pub polynomial_order: bool,
 }
 
 impl Default for StylePreferences {
@@ -146,6 +148,7 @@ impl Default for StylePreferences {
             root_style: RootStyle::Auto,
             prefer_division: true,    // Most users expect fractions
             prefer_subtraction: true, // Most users expect subtraction
+            polynomial_order: true,   // Educational CAS: order by degree
         }
     }
 }
@@ -206,6 +209,7 @@ impl StylePreferences {
     pub fn resolve(&self) -> Self {
         Self {
             root_style: self.root_style.resolve(),
+            polynomial_order: self.polynomial_order,
             ..*self
         }
     }

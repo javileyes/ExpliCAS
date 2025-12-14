@@ -797,6 +797,61 @@ fn check_negative(ctx: &Context, id: ExprId) -> (bool, Option<ExprId>, Option<Bi
     }
 }
 
+/// Compute the "polynomial degree" of a term for display ordering.
+///
+/// Returns the total degree of all power terms (sum of exponents).
+/// Constants and numbers have degree 0, variables have degree 1.
+/// Used to sort polynomial sums: x^3, x^2, x, 1
+fn polynomial_degree(ctx: &Context, id: ExprId) -> i32 {
+    match ctx.get(id) {
+        // Constants have degree 0
+        Expr::Number(_) | Expr::Constant(_) => 0,
+
+        // Variables have degree 1
+        Expr::Variable(_) => 1,
+
+        // Power: get degree from exponent
+        Expr::Pow(base, exp) => {
+            // Check if exponent is numeric
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if let Some(exp_int) = n.to_integer().to_i32() {
+                    // For x^n, if base is variable, degree = n
+                    // For expression^n, degree = base_degree * n
+                    let base_deg = polynomial_degree(ctx, *base);
+                    if base_deg > 0 {
+                        return base_deg * exp_int;
+                    }
+                    // If base is number/constant, this is just a constant
+                    return 0;
+                }
+            }
+            // Non-integer exponent: treat base as having its own degree
+            polynomial_degree(ctx, *base)
+        }
+
+        // Mul: sum the degrees (c * x^2 * y has degree 3 if y is variable)
+        Expr::Mul(l, r) => {
+            let ld = polynomial_degree(ctx, *l);
+            let rd = polynomial_degree(ctx, *r);
+            ld + rd
+        }
+
+        // Neg: same degree as inner
+        Expr::Neg(inner) => polynomial_degree(ctx, *inner),
+
+        // Div: numerator degree minus denominator degree
+        Expr::Div(num, den) => polynomial_degree(ctx, *num) - polynomial_degree(ctx, *den),
+
+        // Add/Sub: take max degree (shouldn't happen for terms, but just in case)
+        Expr::Add(l, r) | Expr::Sub(l, r) => {
+            std::cmp::max(polynomial_degree(ctx, *l), polynomial_degree(ctx, *r))
+        }
+
+        // Functions: treat as degree 0 for ordering purposes
+        Expr::Function(_, _) | Expr::Matrix { .. } => 0,
+    }
+}
+
 pub fn count_nodes(context: &Context, id: ExprId) -> usize {
     match context.get(id) {
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
@@ -1480,7 +1535,17 @@ impl<'a> DisplayExprStyled<'a> {
 
             Expr::Add(_, _) => {
                 // Collect terms and display with proper signs
-                let terms = collect_add_terms(self.context, id);
+                let mut terms = collect_add_terms(self.context, id);
+
+                // Polynomial ordering: sort by degree descending (x^3, x^2, x, constant)
+                if resolved_style.polynomial_order {
+                    terms.sort_by(|a, b| {
+                        let deg_a = polynomial_degree(self.context, *a);
+                        let deg_b = polynomial_degree(self.context, *b);
+                        deg_b.cmp(&deg_a) // Descending
+                    });
+                }
+
                 for (i, term) in terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
                     if i == 0 {
