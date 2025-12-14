@@ -64,6 +64,14 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                 return None;
             }
 
+            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
+            // Preserves clean form like 1/2*(√2-1) instead of √2/2 - 1/2
+            if let Expr::Number(n) = ctx.get(l) {
+                if !n.is_integer() && is_binomial(ctx, r) {
+                    return None;
+                }
+            }
+
             let ab = smart_mul(ctx, l, b);
             let ac = smart_mul(ctx, l, c);
             let new_expr = ctx.add(Expr::Add(ab, ac));
@@ -102,6 +110,14 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
             // This preserves factored form like (a+b)*(c+d)
             if is_binomial(ctx, l) && is_binomial(ctx, r) {
                 return None;
+            }
+
+            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
+            // Preserves clean form like (√2-1)/2 instead of √2/2 - 1/2
+            if let Expr::Number(n) = ctx.get(r) {
+                if !n.is_integer() && is_binomial(ctx, l) {
+                    return None;
+                }
             }
 
             let ba = smart_mul(ctx, b, r);
