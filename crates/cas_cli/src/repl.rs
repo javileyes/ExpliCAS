@@ -2516,6 +2516,9 @@ impl Repl {
 
         match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {
+                // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
+                let user_style = cas_ast::detect_root_style(&temp_simplifier.context, expr);
+
                 println!(
                     "Parsed: {}",
                     DisplayExpr {
@@ -2674,13 +2677,10 @@ impl Repl {
                         }
                     }
                 }
+                // Use StyledExpr with detected style for consistent output
                 println!(
                     "Result: {}",
-                    DisplayExprWithHints {
-                        context: &temp_simplifier.context,
-                        id: simplified,
-                        hints: &display_hints
-                    }
+                    cas_ast::StyledExpr::new(&temp_simplifier.context, simplified, user_style,)
                 );
             }
             Err(e) => println!("Error: {}", e),
