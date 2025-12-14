@@ -124,6 +124,20 @@ impl Context {
         // FLATTEN + CANONICALIZE: For Add and Mul, collect all terms, sort, rebuild
         // This ensures Add(Add(a,b),c) and Add(a,Add(b,c)) produce identical trees
         let canonical_expr = match expr {
+            // Neg canonicalization: prevent Neg(Number) and Neg(Neg(x))
+            Expr::Neg(inner) => {
+                match self.get(inner) {
+                    // Neg(Number(n)) → Number(-n)
+                    Expr::Number(n) => {
+                        return self.add(Expr::Number(-n.clone()));
+                    }
+                    // Neg(Neg(x)) → x
+                    Expr::Neg(double_inner) => {
+                        return *double_inner;
+                    }
+                    _ => Expr::Neg(inner),
+                }
+            }
             Expr::Add(l, r) => {
                 // Collect all additive terms (flatten nested Adds)
                 let mut terms = Vec::new();
