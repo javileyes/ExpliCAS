@@ -202,6 +202,17 @@ impl RuleProfiler {
         }
     }
 
+    /// Clear health metrics for a new run (keeps profiler enabled state)
+    pub fn clear_run(&mut self) {
+        for stats in self.stats.values() {
+            stats.applied.store(0, Ordering::Relaxed);
+            stats.rejected_semantic.store(0, Ordering::Relaxed);
+            stats.rejected_phase.store(0, Ordering::Relaxed);
+            stats.rejected_disabled.store(0, Ordering::Relaxed);
+            stats.total_delta_nodes.store(0, Ordering::Relaxed);
+        }
+    }
+
     /// Enable profiling
     pub fn enable(&mut self) {
         self.enabled = true;

@@ -463,11 +463,24 @@ impl Repl {
     fn do_simplify(&mut self, expr: cas_ast::ExprId) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
         let mut opts = self.simplify_options.clone();
         opts.collect_steps = self.simplifier.collect_steps;
+
+        // Enable health metrics and clear previous run if explain mode is on
+        if self.explain_mode {
+            self.simplifier.profiler.enable_health();
+            self.simplifier.profiler.clear_run();
+        }
+
         let (result, steps, stats) = self.simplifier.simplify_with_stats(expr, opts);
 
         // Show explain output if enabled
         if self.explain_mode {
             self.print_pipeline_stats(&stats);
+
+            // Show health report if significant activity (>= 5 rewrites or any growth)
+            if stats.total_rewrites >= 5 {
+                println!();
+                print!("{}", self.simplifier.profiler.health_report());
+            }
         }
 
         self.last_stats = Some(stats);
