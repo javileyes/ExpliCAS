@@ -488,6 +488,18 @@ impl Repl {
         if self.explain_mode {
             self.print_pipeline_stats(&stats);
 
+            // Policy A+ hint: when simplify makes minimal changes to a Mul expression
+            if stats.total_rewrites <= 1 {
+                if matches!(
+                    self.simplifier.context.get(result),
+                    cas_ast::Expr::Mul(_, _)
+                ) {
+                    println!(
+                        "Note: simplify preserves factored products. Use expand(...) to expand."
+                    );
+                }
+            }
+
             // Show health report if significant activity (>= 5 rewrites)
             if stats.total_rewrites >= 5 {
                 println!();

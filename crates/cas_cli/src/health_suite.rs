@@ -22,6 +22,7 @@ pub enum Category {
     Roots,
     Powers,
     Stress,
+    Policy,
 }
 
 impl Category {
@@ -37,6 +38,7 @@ impl Category {
             Category::Roots,
             Category::Powers,
             Category::Stress,
+            Category::Policy,
         ]
     }
 
@@ -52,6 +54,7 @@ impl Category {
             Category::Roots => "roots",
             Category::Powers => "powers",
             Category::Stress => "stress",
+            Category::Policy => "policy",
         }
     }
 }
@@ -76,6 +79,7 @@ impl FromStr for Category {
             "roots" | "root" => Ok(Category::Roots),
             "powers" | "pow" | "p" => Ok(Category::Powers),
             "stress" | "s" => Ok(Category::Stress),
+            "policy" | "pol" => Ok(Category::Policy),
             "all" | "*" => Err("Use None for all categories".to_string()),
             _ => Err(format!("Unknown category: '{}'. Valid: transform, expansion, fractions, rationalization, mixed, baseline, roots, powers, stress", s)),
         }
@@ -439,6 +443,51 @@ pub fn default_suite() -> Vec<HealthCase> {
                 max_total_rewrites: 260,
                 max_growth: 500,
                 max_transform_rewrites: 140,
+                forbid_cycles: true,
+            },
+        },
+        // ============ Policy A+: simplify vs expand behavior ============
+        HealthCase {
+            name: "policy_simplify_binomial_no_expand",
+            category: Category::Policy,
+            expr: "(x+1)*(x+2)",
+            limits: HealthLimits {
+                max_total_rewrites: 10, // Very low - should NOT expand
+                max_growth: 10,
+                max_transform_rewrites: 2, // Minimal transform activity
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "policy_simplify_conjugate_expands",
+            category: Category::Policy,
+            expr: "(x-1)*(x+1)",
+            limits: HealthLimits {
+                max_total_rewrites: 30, // DoS rule should fire
+                max_growth: 20,
+                max_transform_rewrites: 15,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "policy_expand_binomial_product",
+            category: Category::Policy,
+            expr: "expand((x+1)*(x+2))",
+            limits: HealthLimits {
+                max_total_rewrites: 50, // Expansion should work
+                max_growth: 40,
+                max_transform_rewrites: 30,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "policy_expand_binomial_power",
+            category: Category::Policy,
+            expr: "expand((x+1)^6)",
+            limits: HealthLimits {
+                max_total_rewrites: 200, // Binomial expansion is expensive
+                max_growth: 300,
+                max_transform_rewrites: 120,
                 forbid_cycles: true,
             },
         },
