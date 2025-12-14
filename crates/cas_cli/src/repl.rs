@@ -514,6 +514,14 @@ impl Repl {
                 "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
                 cycle.period, cycle.at_step
             );
+            let top = self
+                .simplifier
+                .profiler
+                .top_applied_for_phase(cas_engine::SimplifyPhase::Core, 2);
+            if !top.is_empty() {
+                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
+                println!("              Likely contributors: {}", hints.join(", "));
+            }
         }
         println!(
             "  Transform:  {} iters, {} rewrites, changed={}",
@@ -524,6 +532,14 @@ impl Repl {
                 "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
                 cycle.period, cycle.at_step
             );
+            let top = self
+                .simplifier
+                .profiler
+                .top_applied_for_phase(cas_engine::SimplifyPhase::Transform, 2);
+            if !top.is_empty() {
+                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
+                println!("              Likely contributors: {}", hints.join(", "));
+            }
         }
         println!(
             "  Rationalize: {:?}",
@@ -547,6 +563,14 @@ impl Repl {
                 "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
                 cycle.period, cycle.at_step
             );
+            let top = self
+                .simplifier
+                .profiler
+                .top_applied_for_phase(cas_engine::SimplifyPhase::Rationalize, 2);
+            if !top.is_empty() {
+                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
+                println!("              Likely contributors: {}", hints.join(", "));
+            }
         }
 
         println!(
@@ -558,6 +582,14 @@ impl Repl {
                 "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
                 cycle.period, cycle.at_step
             );
+            let top = self
+                .simplifier
+                .profiler
+                .top_applied_for_phase(cas_engine::SimplifyPhase::PostCleanup, 2);
+            if !top.is_empty() {
+                let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
+                println!("              Likely contributors: {}", hints.join(", "));
+            }
         }
         println!("  Total rewrites: {}", stats.total_rewrites);
         println!("───────────────────────────────");

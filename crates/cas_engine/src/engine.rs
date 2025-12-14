@@ -826,14 +826,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
             if let Some(specific_rules) = self.rules.get(variant) {
                 for rule in specific_rules {
                     if self.disabled_rules.contains(rule.name()) {
-                        self.profiler.record_rejected_disabled(rule.name());
+                        self.profiler
+                            .record_rejected_disabled(self.current_phase, rule.name());
                         continue;
                     }
                     // Phase control: only allow distribution in Transform phase
                     if !self.current_phase.allows_distribution()
                         && rule.name().starts_with("Distributive Property")
                     {
-                        self.profiler.record_rejected_phase(rule.name());
+                        self.profiler
+                            .record_rejected_phase(self.current_phase, rule.name());
                         continue;
                     }
                     // CRITICAL: Use initial_parent_ctx which contains pattern_marks
@@ -855,7 +857,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                     self.indent(),
                                     rule.name()
                                 );
-                                self.profiler.record_rejected_semantic(rule.name());
+                                self.profiler
+                                    .record_rejected_semantic(self.current_phase, rule.name());
                                 continue;
                             }
                         }
@@ -869,7 +872,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         } else {
                             0
                         };
-                        self.profiler.record_with_delta(rule.name(), delta);
+                        self.profiler
+                            .record_with_delta(self.current_phase, rule.name(), delta);
 
                         // println!(
                         //     "Rule '{}' applied: {:?} -> {:?}",
@@ -957,7 +961,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     expr_id,
                 ) {
                     // Record rule application for profiling
-                    self.profiler.record(rule.name());
+                    self.profiler.record(self.current_phase, rule.name());
 
                     debug!(
                         "{}[DEBUG] Global Rule '{}' applied: {:?} -> {:?}",
