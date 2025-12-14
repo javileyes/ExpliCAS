@@ -109,6 +109,13 @@ impl Completer for CasHelper {
                         "distribute_constants",
                         "expand_binomials",
                         "factor_difference_squares",
+                        "root_denesting",
+                        "trig_double_angle",
+                        "trig_angle_sum",
+                        "log_split_exponents",
+                        "rationalize_denominator",
+                        "canonicalize_trig_square",
+                        "auto_factor",
                     ];
 
                     for rule in rules {

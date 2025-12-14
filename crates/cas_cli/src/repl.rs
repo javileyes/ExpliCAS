@@ -475,8 +475,6 @@ impl Repl {
         toggle("Split Log Exponents", config.log_split_exponents);
         toggle("Rationalize Denominator", config.rationalize_denominator);
         toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
-        toggle("Rationalize Denominator", config.rationalize_denominator);
-        toggle("Canonicalize Trig Square", config.canonicalize_trig_square);
 
         // Auto Factor Logic:
         // If auto_factor is on, we enable AutomaticFactorRule AND ConservativeExpandRule.
