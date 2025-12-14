@@ -1065,6 +1065,18 @@ impl<'a> DisplayExprWithHints<'a> {
                 self.fmt_internal(f, *r)
             }
             Expr::Mul(l, r) => {
+                // Sign pull-out: if RHS is an Add with all negative terms,
+                // display as -(l * |RHS|) for cleaner output
+                // e.g., 1/11 * (-3 - 2√5) -> -(1/11 * (3 + 2√5)) -> -(3 + 2√5)/11
+                if crate::views::has_all_negative_terms(self.context, *r) {
+                    // Factor out the negative and display the positive version
+                    return self.fmt_mul_with_sign_pullout(f, *l, *r);
+                }
+                // Same for LHS (less common but possible)
+                if crate::views::has_all_negative_terms(self.context, *l) {
+                    return self.fmt_mul_with_sign_pullout(f, *r, *l);
+                }
+
                 // P3: Try to display as fraction using FractionDisplayView
                 if let Some(frac) = FractionDisplayView::from(self.context, self.id) {
                     // Handle sign
@@ -1259,6 +1271,124 @@ impl<'a> DisplayExprWithHints<'a> {
                 }
                 write!(f, "])")
             }
+        }
+    }
+
+    /// Format a Mul where one factor has all-negative Add terms.
+    /// Pulls out the negative sign: `r * (-a - b)` -> `-(r * (a + b))`
+    fn fmt_mul_with_sign_pullout(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        coeff: ExprId,
+        all_neg_add: ExprId,
+    ) -> fmt::Result {
+        use num_rational::BigRational;
+        let zero = BigRational::from_integer(0.into());
+
+        // Print leading minus
+        write!(f, "-")?;
+
+        // Check if coeff is a simple rational (for fraction display like -(a+b)/n)
+        if let Expr::Number(n) = self.context.get(coeff) {
+            if !n.is_integer() {
+                // It's a fraction like 1/11 -> display as -(add)/denom
+                let numer = n.numer();
+                let denom = n.denom();
+
+                // Format the positive Add
+                write!(f, "(")?;
+                self.fmt_positive_add(f, all_neg_add, &zero)?;
+                write!(f, ")/")?;
+
+                // If numerator is 1, just show denominator
+                if *numer == 1.into() {
+                    return write!(f, "{}", denom);
+                } else {
+                    return write!(f, "{}", denom);
+                }
+            }
+        }
+
+        // General case: -(coeff * (positive_add))
+        // Print coefficient
+        let coeff_prec = precedence(self.context, coeff);
+        if coeff_prec < 2 {
+            write!(f, "(")?;
+            self.fmt_internal(f, coeff)?;
+            write!(f, ")")?;
+        } else {
+            self.fmt_internal(f, coeff)?;
+        }
+
+        write!(f, " * (")?;
+        self.fmt_positive_add(f, all_neg_add, &zero)?;
+        write!(f, ")")
+    }
+
+    /// Format an Add where all terms are negative, by printing their absolute values.
+    /// `(-a) + (-b)` -> `a + b`
+    fn fmt_positive_add(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        id: ExprId,
+        zero: &num_rational::BigRational,
+    ) -> fmt::Result {
+        // Collect terms
+        let mut terms = Vec::new();
+        self.collect_add_terms_for_pullout(id, &mut terms);
+
+        for (i, term) in terms.iter().enumerate() {
+            if i > 0 {
+                write!(f, " + ")?;
+            }
+            // Print absolute value of term
+            self.fmt_term_absolute(f, *term, zero)?;
+        }
+        Ok(())
+    }
+
+    fn collect_add_terms_for_pullout(&self, id: ExprId, terms: &mut Vec<ExprId>) {
+        match self.context.get(id) {
+            Expr::Add(l, r) => {
+                self.collect_add_terms_for_pullout(*l, terms);
+                self.collect_add_terms_for_pullout(*r, terms);
+            }
+            _ => terms.push(id),
+        }
+    }
+
+    /// Format absolute value of a negative term.
+    fn fmt_term_absolute(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        id: ExprId,
+        zero: &num_rational::BigRational,
+    ) -> fmt::Result {
+        match self.context.get(id) {
+            // Neg(x) -> x
+            Expr::Neg(inner) => self.fmt_internal(f, *inner),
+
+            // Number(n < 0) -> |n|
+            Expr::Number(n) if n < zero => {
+                let abs_n = -n;
+                write!(f, "{}", abs_n)
+            }
+
+            // Mul(Number(n < 0), rest) -> |n| * rest
+            Expr::Mul(l, r) => {
+                if let Expr::Number(n) = self.context.get(*l) {
+                    if n < zero {
+                        let abs_n = -n;
+                        write!(f, "{} * ", abs_n)?;
+                        return self.fmt_internal(f, *r);
+                    }
+                }
+                // Not a negative-leading mul, print as-is
+                self.fmt_internal(f, id)
+            }
+
+            // Everything else as-is
+            _ => self.fmt_internal(f, id),
         }
     }
 }

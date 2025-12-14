@@ -154,6 +154,117 @@ pub fn is_surd_free(ctx: &Context, id: ExprId, budget: usize) -> bool {
     true // No surds found
 }
 
+/// Check if an Add chain has all negative terms (for display sign normalization).
+///
+/// Returns `true` if every term in the Add chain is:
+/// - `Neg(x)`
+/// - `Number(n)` where n < 0
+/// - `Mul(Number(n), _)` where n < 0
+///
+/// This is used to factor out a common `-1` for cleaner display:
+/// `(-3) + (-2*√5)` → `-(3 + 2*√5)`
+///
+/// Only applies to genuine Add chains (not single terms).
+pub fn has_all_negative_terms(ctx: &Context, id: ExprId) -> bool {
+    use num_rational::BigRational;
+    let zero = BigRational::from_integer(0.into());
+
+    // Collect all terms in the Add chain
+    let mut terms = Vec::new();
+    collect_add_terms(ctx, id, &mut terms);
+
+    // Need at least 2 terms for this to matter
+    if terms.len() < 2 {
+        return false;
+    }
+
+    // Check if ALL terms are negative
+    for term in terms {
+        if !is_negative_term(ctx, term, &zero) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Collect all terms in an Add chain (flattening nested Adds).
+fn collect_add_terms(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(id) {
+        Expr::Add(l, r) => {
+            collect_add_terms(ctx, *l, terms);
+            collect_add_terms(ctx, *r, terms);
+        }
+        _ => terms.push(id),
+    }
+}
+
+/// Check if a single term is "negative" (starts with - or negative coefficient).
+fn is_negative_term(ctx: &Context, id: ExprId, zero: &num_rational::BigRational) -> bool {
+    match ctx.get(id) {
+        // Explicit Neg
+        Expr::Neg(_) => true,
+
+        // Negative number
+        Expr::Number(n) => n < zero,
+
+        // Mul with negative leading factor
+        Expr::Mul(l, _) => {
+            if let Expr::Number(n) = ctx.get(*l) {
+                n < zero
+            } else if let Expr::Neg(_) = ctx.get(*l) {
+                true
+            } else {
+                false
+            }
+        }
+
+        _ => false,
+    }
+}
+
+/// Negate a term for display purposes (return the absolute value).
+///
+/// Given a negative term, returns its positive counterpart's ExprId.
+/// This is read-only (for display) - doesn't create new nodes.
+pub fn get_term_absolute_value(ctx: &Context, id: ExprId) -> Option<ExprId> {
+    match ctx.get(id) {
+        // Neg(x) -> x
+        Expr::Neg(inner) => Some(*inner),
+
+        // Number(n < 0) -> would need to create new node (not supported here)
+        Expr::Number(n) => {
+            if n < &num_rational::BigRational::from_integer(0.into()) {
+                None // Can't return absolute without creating new node
+            } else {
+                Some(id)
+            }
+        }
+
+        // Mul(Neg(x), y) -> return id of inner product without neg
+        // This case requires examining the structure
+        Expr::Mul(l, r) => {
+            if let Expr::Neg(inner) = ctx.get(*l) {
+                // -x * y -> the positive part would need reconstruction
+                // For now, we'll mark this as needing special handling
+                let _ = (inner, r);
+                None
+            } else if let Expr::Number(n) = ctx.get(*l) {
+                if n < &num_rational::BigRational::from_integer(0.into()) {
+                    // Negative coefficient - can't extract without new node
+                    None
+                } else {
+                    Some(id)
+                }
+            } else {
+                Some(id)
+            }
+        }
+
+        _ => Some(id),
+    }
+}
+
 impl MulParts {
     /// Create MulParts by collecting all multiplicative factors from an expression.
     ///
