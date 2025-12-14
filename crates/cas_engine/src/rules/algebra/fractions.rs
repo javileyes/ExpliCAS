@@ -1677,7 +1677,7 @@ define_rule!(
     RationalizeBinomialSurdRule,
     "Rationalize Binomial Denominator",
     |ctx, expr| {
-        use cas_ast::views::as_rational_const;
+        use cas_ast::views::{as_rational_const, count_distinct_numeric_surds, is_surd_free};
         use num_rational::BigRational;
         use num_traits::ToPrimitive;
 
@@ -1688,7 +1688,14 @@ define_rule!(
         };
 
         // Budget guard: denominator shouldn't be too complex
-        if count_nodes(ctx, den) > 25 {
+        if count_nodes(ctx, den) > 30 {
+            return None;
+        }
+
+        // Multi-surd guard: only rationalize if denominator has exactly 1 distinct surd
+        // Level 1.5 blocks multi-surd expressions (reserved for `rationalize` command)
+        let distinct_surds = count_distinct_numeric_surds(ctx, den, 50);
+        if distinct_surds != 1 {
             return None;
         }
 
@@ -1798,7 +1805,80 @@ define_rule!(
             }
         }
 
-        let surd = parse_binomial_surd(ctx, den)?;
+        // Helper to extract binomial factor from a Mul chain (Level 1.5)
+        // Returns (k_factors, binomial) where k_factors are surd-free factors
+        fn extract_binomial_from_product(
+            ctx: &Context,
+            den: ExprId,
+        ) -> Option<(Vec<ExprId>, BinomialSurd)> {
+            // First try direct binomial (Level 1)
+            if let Some(surd) = parse_binomial_surd(ctx, den) {
+                return Some((vec![], surd));
+            }
+
+            // Try Mul chain (Level 1.5)
+            match ctx.get(den) {
+                Expr::Mul(_, _) => {
+                    // Flatten the Mul chain preserving order
+                    fn collect_factors(ctx: &Context, id: ExprId, factors: &mut Vec<ExprId>) {
+                        match ctx.get(id) {
+                            Expr::Mul(l, r) => {
+                                collect_factors(ctx, *l, factors);
+                                collect_factors(ctx, *r, factors);
+                            }
+                            _ => factors.push(id),
+                        }
+                    }
+
+                    let mut factors = Vec::new();
+                    collect_factors(ctx, den, &mut factors);
+
+                    // Find exactly one binomial factor; others must be surd-free
+                    let mut binomial_idx = None;
+                    for (i, &factor) in factors.iter().enumerate() {
+                        if let Some(_) = parse_binomial_surd(ctx, factor) {
+                            if binomial_idx.is_some() {
+                                // Multiple binomials → not Level 1.5
+                                return None;
+                            }
+                            binomial_idx = Some(i);
+                        } else if !is_surd_free(ctx, factor, 20) {
+                            // Factor is neither binomial nor surd-free → skip
+                            return None;
+                        }
+                    }
+
+                    let binomial_idx = binomial_idx?;
+                    let binomial = parse_binomial_surd(ctx, factors[binomial_idx])?;
+
+                    // Collect K factors (those not the binomial)
+                    let k_factors: Vec<_> = factors
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(i, _)| *i != binomial_idx)
+                        .map(|(_, f)| f)
+                        .collect();
+
+                    Some((k_factors, binomial))
+                }
+                _ => None,
+            }
+        }
+
+        let (k_factors, surd) = extract_binomial_from_product(ctx, den)?;
+
+        // Build k_factor product (outside the helper to avoid borrow issues)
+        let k_factor: Option<ExprId> = if k_factors.is_empty() {
+            None
+        } else if k_factors.len() == 1 {
+            Some(k_factors[0])
+        } else {
+            let mut k = k_factors[0];
+            for &f in &k_factors[1..] {
+                k = ctx.add(Expr::Mul(k, f));
+            }
+            Some(k)
+        };
 
         // Compute conjugate: if A + B√n, conjugate is A - B√n (and vice versa)
         // New denominator = A² - B²·n (always the same)
@@ -1852,11 +1932,21 @@ define_rule!(
         // Build new denominator as Number (now always positive or handled)
         let new_den = ctx.add(Expr::Number(final_den_val.clone()));
 
-        // If denominator is 1, just return numerator
+        // If denominator is 1, just return numerator (possibly divided by K)
         let new_expr = if final_den_val == BigRational::from_integer(1.into()) {
-            new_num
+            // new_den = K (if present) or 1
+            match k_factor {
+                Some(k) => ctx.add(Expr::Div(new_num, k)),
+                None => new_num,
+            }
         } else {
-            ctx.add(Expr::Div(new_num, new_den))
+            // new_den = K * (A² - B²n) or just (A² - B²n)
+            let rationalized_den = ctx.add(Expr::Number(final_den_val.clone()));
+            let full_den = match k_factor {
+                Some(k) => mul2_raw(ctx, k, rationalized_den),
+                None => rationalized_den,
+            };
+            ctx.add(Expr::Div(new_num, full_den))
         };
 
         // Verify we actually made progress (denominator is now rational)

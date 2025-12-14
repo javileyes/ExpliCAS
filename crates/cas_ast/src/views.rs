@@ -154,6 +154,76 @@ pub fn is_surd_free(ctx: &Context, id: ExprId, budget: usize) -> bool {
     true // No surds found
 }
 
+/// Count distinct numeric surds in an expression.
+///
+/// Returns the number of distinct numeric radicands found as `Pow(Number(n), 1/2)` or `sqrt(Number(n))`.
+/// Used for multi-surd guard in Level 1/1.5 rationalization.
+///
+/// If budget is exceeded, returns a conservative high count (100) to block rationalization.
+pub fn count_distinct_numeric_surds(ctx: &Context, id: ExprId, budget: usize) -> usize {
+    use num_rational::BigRational;
+    use std::collections::HashSet;
+
+    let half = BigRational::new(1.into(), 2.into());
+    let mut worklist = vec![id];
+    let mut visited = 0;
+    let mut distinct_radicands: HashSet<i64> = HashSet::new();
+
+    while let Some(curr) = worklist.pop() {
+        visited += 1;
+        if visited > budget {
+            // Conservative: if we hit budget, return high count to block
+            return 100;
+        }
+
+        match ctx.get(curr) {
+            // Check for Pow(Number(n), 1/2)
+            Expr::Pow(base, exp) => {
+                if let Some(exp_val) = as_rational_const(ctx, *exp, 8) {
+                    if exp_val == half {
+                        if let Expr::Number(n) = ctx.get(*base) {
+                            if n.is_integer() {
+                                if let Some(radicand) = n.numer().try_into().ok() {
+                                    distinct_radicands.insert(radicand);
+                                }
+                            }
+                        }
+                    }
+                }
+                worklist.push(*base);
+                worklist.push(*exp);
+            }
+
+            // Check for sqrt(Number(n))
+            Expr::Function(name, args) => {
+                if name == "sqrt" && args.len() >= 1 {
+                    if let Expr::Number(n) = ctx.get(args[0]) {
+                        if n.is_integer() {
+                            if let Some(radicand) = n.numer().try_into().ok() {
+                                distinct_radicands.insert(radicand);
+                            }
+                        }
+                    }
+                }
+                worklist.extend(args.iter().copied());
+            }
+
+            // Recurse into other expression types
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                worklist.push(*l);
+                worklist.push(*r);
+            }
+            Expr::Neg(inner) => worklist.push(*inner),
+            Expr::Matrix { data, .. } => worklist.extend(data.iter().copied()),
+
+            // Atoms have no surds
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => {}
+        }
+    }
+
+    distinct_radicands.len()
+}
+
 /// Check if an Add chain has all negative terms (for display sign normalization).
 ///
 /// Returns `true` if every term in the Add chain is:
