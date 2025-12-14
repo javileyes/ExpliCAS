@@ -8,7 +8,6 @@ use num_integer::Integer;
 use num_traits::Zero;
 use std::cmp::Ordering;
 
-
 define_rule!(
     CanonicalizeNegationRule,
     "Canonicalize Negation",
@@ -559,6 +558,35 @@ define_rule!(
     }
 );
 
+// Rule: -(a - b) → (b - a) for cleaner display
+// This is the flip of negative binomials: when we have Neg(Add(a, Neg(b)))
+// which represents -(a - b), convert it to (b - a) = Add(b, Neg(a))
+// This produces cleaner output like "√2 - 1" instead of "-(1 - √2)"
+define_rule!(NegSubFlipRule, "Flip Negative Subtraction", |ctx, expr| {
+    // Pattern: Neg(Add(a, Neg(b))) → Add(b, Neg(a))
+    // This represents -(a - b) → (b - a)
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        let inner_id = *inner;
+        if let Expr::Add(a, neg_b_wrapped) = ctx.get(inner_id) {
+            if let Expr::Neg(b) = ctx.get(*neg_b_wrapped) {
+                // We have -(a + (-b)) = -(a - b)
+                // Convert to: b + (-a) = b - a
+                let a_id = *a;
+                let b_id = *b;
+                let neg_a = ctx.add(Expr::Neg(a_id));
+                let new_expr = ctx.add(Expr::Add(b_id, neg_a));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "-(a - b) → (b - a)".to_string(),
+                    before_local: None,
+                    after_local: None,
+                });
+            }
+        }
+    }
+    None
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -676,4 +704,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(NormalizeSignsRule));
     // NormalizeBinomialOrderRule disabled - causes infinite loop with other rules
+    simplifier.add_rule(Box::new(NegSubFlipRule)); // -(a-b) → (b-a) for cleaner display
 }
