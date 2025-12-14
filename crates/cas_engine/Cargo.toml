@@ -12,6 +12,7 @@ num-integer = "0.1"
 thiserror = "1.0"
 tracing = "0.1.43"
 regex = "1.12.2"
+bitflags = "2"
 
 [dev-dependencies]
 cas_parser = { path = "../cas_parser" }

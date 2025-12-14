@@ -8,6 +8,26 @@
 //!
 //! Key invariant: Transform never runs after Rationalize.
 
+use bitflags::bitflags;
+
+bitflags! {
+    /// Bitmask indicating which phases a rule is allowed to run in.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct PhaseMask: u8 {
+        /// Core phase: safe, non-growing simplifications
+        const CORE = 1 << 0;
+        /// Transform phase: distribution, expansion, collection
+        const TRANSFORM = 1 << 1;
+        /// Rationalize phase: rationalization rules
+        const RATIONALIZE = 1 << 2;
+        /// PostCleanup phase: final cleanup
+        const POST = 1 << 3;
+        /// All phases
+        const ALL = Self::CORE.bits() | Self::TRANSFORM.bits()
+                  | Self::RATIONALIZE.bits() | Self::POST.bits();
+    }
+}
+
 /// Phase of the simplification pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SimplifyPhase {
@@ -29,6 +49,16 @@ pub enum SimplifyPhase {
 }
 
 impl SimplifyPhase {
+    /// Convert phase to its corresponding mask bit.
+    pub fn mask(&self) -> PhaseMask {
+        match self {
+            Self::Core => PhaseMask::CORE,
+            Self::Transform => PhaseMask::TRANSFORM,
+            Self::Rationalize => PhaseMask::RATIONALIZE,
+            Self::PostCleanup => PhaseMask::POST,
+        }
+    }
+
     /// Returns true if this phase allows distribution/expansion rules.
     pub fn allows_distribution(&self) -> bool {
         matches!(self, Self::Transform)

@@ -1,5 +1,6 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
+use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
 use cas_ast::count_nodes;
@@ -569,6 +570,8 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
 define_rule!(
     RationalizeDenominatorRule,
     "Rationalize Denominator",
+    None,
+    PhaseMask::RATIONALIZE,
     |ctx, expr| {
         use cas_ast::views::FractionParts;
 
@@ -800,6 +803,8 @@ fn extract_root_base(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)
 define_rule!(
     RationalizeProductDenominatorRule,
     "Rationalize Product Denominator",
+    None,
+    PhaseMask::RATIONALIZE,
     |ctx, expr| {
         use cas_ast::views::FractionParts;
 
@@ -1532,7 +1537,9 @@ define_rule!(
 
 define_rule!(
     RationalizeSingleSurdRule,
-    "Rationalize Denominator",
+    "Rationalize Single Surd",
+    None,
+    PhaseMask::RATIONALIZE,
     |ctx, expr| {
         use cas_ast::views::as_rational_const;
         use num_rational::BigRational;
@@ -1676,6 +1683,8 @@ define_rule!(
 define_rule!(
     RationalizeBinomialSurdRule,
     "Rationalize Binomial Denominator",
+    None,
+    PhaseMask::RATIONALIZE,
     |ctx, expr| {
         use crate::rationalize_policy::RationalizeReason;
         use cas_ast::views::{as_rational_const, count_distinct_numeric_surds, is_surd_free};

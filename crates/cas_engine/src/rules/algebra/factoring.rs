@@ -1,7 +1,140 @@
 use crate::define_rule;
+use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::count_nodes;
 use cas_ast::Expr;
+use std::cmp::Ordering;
+
+/// Check if two expressions form a conjugate pair: (A+B) and (A-B) or vice versa
+/// Returns Some((a, b)) if they are conjugates, None otherwise
+fn is_conjugate_pair(
+    ctx: &cas_ast::Context,
+    l: cas_ast::ExprId,
+    r: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    use crate::ordering::compare_expr;
+
+    let l_expr = ctx.get(l);
+    let r_expr = ctx.get(r);
+
+    match (l_expr, r_expr) {
+        (Expr::Add(a1, a2), Expr::Sub(b1, b2)) | (Expr::Sub(b1, b2), Expr::Add(a1, a2)) => {
+            // Copy the ExprIds (they're Copy types from pattern match)
+            let (a1, a2, b1, b2) = (*a1, *a2, *b1, *b2);
+
+            // Direct match: (A+B) vs (A-B)
+            if compare_expr(ctx, a1, b1) == Ordering::Equal
+                && compare_expr(ctx, a2, b2) == Ordering::Equal
+            {
+                return Some((a1, a2));
+            }
+            // Commutative: (B+A) vs (A-B) → A=b1, B=a1
+            if compare_expr(ctx, a2, b1) == Ordering::Equal
+                && compare_expr(ctx, a1, b2) == Ordering::Equal
+            {
+                return Some((b1, b2));
+            }
+            None
+        }
+        // Handle canonicalized form: Sub(a, b) becomes Add(-b, a) or Add(a, -b)
+        (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
+            let (a1, a2, b1, b2) = (*a1, *a2, *b1, *b2);
+
+            // Case 1: (A+B) vs (A+(-B)) where b2 = -a2
+            if is_negation(ctx, a2, b2) && compare_expr(ctx, a1, b1) == Ordering::Equal {
+                return Some((a1, a2));
+            }
+            // Case 2: (A+B) vs ((-B)+A) where b1 = -a2
+            if is_negation(ctx, a2, b1) && compare_expr(ctx, a1, b2) == Ordering::Equal {
+                return Some((a1, a2));
+            }
+            // Case 3: (A+B) vs (B+(-A)) where b2 = -a1
+            if is_negation(ctx, a1, b2) && compare_expr(ctx, a2, b1) == Ordering::Equal {
+                return Some((a2, a1)); // b^2 - a^2
+            }
+            // Case 4: (A+B) vs ((-A)+B) where b1 = -a1
+            if is_negation(ctx, a1, b1) && compare_expr(ctx, a2, b2) == Ordering::Equal {
+                return Some((a2, a1));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Check if `b` is the negation of `a` (Neg(a) or Mul(-1, a) or Number(-n) vs Number(n))
+fn is_negation(ctx: &cas_ast::Context, a: cas_ast::ExprId, b: cas_ast::ExprId) -> bool {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+
+    // Check numeric negation: Number(n) vs Number(-n)
+    if let (Expr::Number(n_a), Expr::Number(n_b)) = (ctx.get(a), ctx.get(b)) {
+        if n_a == &(-n_b.clone()) {
+            return true;
+        }
+    }
+
+    match ctx.get(b) {
+        Expr::Neg(inner) if *inner == a => true,
+        Expr::Mul(l, r) => {
+            // Check for -1 * a or a * -1
+            let l_id = *l;
+            let r_id = *r;
+            (is_minus_one(ctx, l_id) && r_id == a) || (is_minus_one(ctx, r_id) && l_id == a)
+        }
+        _ => false,
+    }
+}
+
+/// Check if expression is -1
+fn is_minus_one(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+    if let Expr::Number(n) = ctx.get(e) {
+        n == &BigRational::from_integer(BigInt::from(-1))
+    } else if let Expr::Neg(inner) = ctx.get(e) {
+        if let Expr::Number(n) = ctx.get(*inner) {
+            n == &BigRational::from_integer(BigInt::from(1))
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// DifferenceOfSquaresRule: Expands conjugate products
+// (a - b) * (a + b) → a² - b²
+// Phase: CORE | POST (structural simplification, not expansion)
+define_rule!(
+    DifferenceOfSquaresRule,
+    "Difference of Squares (Product to Difference)",
+    None,
+    PhaseMask::CORE | PhaseMask::POST,
+    |ctx, expr| {
+        // Match Mul(l, r) where l and r are conjugate binomials
+        if let Expr::Mul(l, r) = ctx.get(expr) {
+            let l = *l;
+            let r = *r;
+
+            if let Some((a, b)) = is_conjugate_pair(ctx, l, r) {
+                // Create a² - b²
+                let two = ctx.num(2);
+                let a_squared = ctx.add(Expr::Pow(a, two));
+                let b_squared = ctx.add(Expr::Pow(b, two));
+                let new_expr = ctx.add(Expr::Sub(a_squared, b_squared));
+
+                return Some(Rewrite {
+                    new_expr,
+                    description: "(a-b)(a+b) = a² - b²".to_string(),
+                    before_local: None,
+                    after_local: None,
+                });
+            }
+        }
+        None
+    }
+);
 
 define_rule!(FactorRule, "Factor Polynomial", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {

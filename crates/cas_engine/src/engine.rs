@@ -214,6 +214,10 @@ impl Simplifier {
         functions::register(self);
         grouping::register(self);
         number_theory::register(self);
+
+        // P0: Validate no duplicate rule names (debug only)
+        #[cfg(debug_assertions)]
+        self.assert_unique_rule_names();
     }
 
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
@@ -247,6 +251,34 @@ impl Simplifier {
         let mut sorted_names: Vec<String> = names.into_iter().collect();
         sorted_names.sort();
         sorted_names
+    }
+
+    /// Panics if there are duplicate rule names (debug builds only).
+    /// This prevents accidental rule name collisions which can cause
+    /// confusing precedence behavior.
+    #[cfg(debug_assertions)]
+    pub fn assert_unique_rule_names(&self) {
+        let mut seen = HashSet::new();
+        for rule in &self.global_rules {
+            let name = rule.name();
+            if !seen.insert(name) {
+                panic!(
+                    "Duplicate rule name detected: '{}'. Each rule must have a unique name.",
+                    name
+                );
+            }
+        }
+        for rules in self.rules.values() {
+            for rule in rules {
+                let name = rule.name();
+                if !seen.insert(name) {
+                    panic!(
+                        "Duplicate rule name detected: '{}'. Each rule must have a unique name.",
+                        name
+                    );
+                }
+            }
+        }
     }
 
     pub fn local_simplify(
@@ -830,10 +862,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             .record_rejected_disabled(self.current_phase, rule.name());
                         continue;
                     }
-                    // Phase control: only allow distribution in Transform phase
-                    if !self.current_phase.allows_distribution()
-                        && rule.name().starts_with("Distributive Property")
-                    {
+                    // Phase ownership: only run rule if allowed in current phase
+                    let phase_mask = self.current_phase.mask();
+                    if !rule.allowed_phases().contains(phase_mask) {
                         self.profiler
                             .record_rejected_phase(self.current_phase, rule.name());
                         continue;
@@ -947,10 +978,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 if self.disabled_rules.contains(rule.name()) {
                     continue;
                 }
-                // Phase control: only allow distribution in Transform phase
-                if !self.current_phase.allows_distribution()
-                    && rule.name().starts_with("Distributive Property")
-                {
+                // Phase ownership: only run rule if allowed in current phase
+                let phase_mask = self.current_phase.mask();
+                if !rule.allowed_phases().contains(phase_mask) {
+                    self.profiler
+                        .record_rejected_phase(self.current_phase, rule.name());
                     continue;
                 }
 

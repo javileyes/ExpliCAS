@@ -1,4 +1,5 @@
 use crate::parent_context::ParentContext;
+use crate::phase::PhaseMask;
 use cas_ast::{Context, ExprId};
 
 /// Result of a rule application containing the new expression and metadata
@@ -50,6 +51,10 @@ pub trait SimpleRule {
     fn target_types(&self) -> Option<Vec<&str>> {
         None
     }
+    /// Phases this rule is allowed to run in (default: Core + PostCleanup)
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::CORE | PhaseMask::POST
+    }
 }
 
 /// Main Rule trait with parent-context awareness
@@ -71,6 +76,13 @@ pub trait Rule {
     fn target_types(&self) -> Option<Vec<&str>> {
         None
     }
+
+    /// Phases this rule is allowed to run in (default: Core + PostCleanup)
+    /// Override to TRANSFORM for expansion/distribution rules
+    /// Override to RATIONALIZE for rationalization rules
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::CORE | PhaseMask::POST
+    }
 }
 
 /// Auto-implement Rule for any SimpleRule
@@ -91,5 +103,9 @@ impl<T: SimpleRule> Rule for T {
 
     fn target_types(&self) -> Option<Vec<&str>> {
         SimpleRule::target_types(self)
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        SimpleRule::allowed_phases(self)
     }
 }

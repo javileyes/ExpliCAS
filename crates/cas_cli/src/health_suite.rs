@@ -322,7 +322,8 @@ pub fn default_suite() -> Vec<HealthCase> {
         HealthCase {
             name: "expand_product_chain",
             category: Category::Stress,
-            expr: "(x+1)*(x+2)*(x+3)",
+            // Use expand() to force Transform phase activity (bypasses binomial*binomial guard)
+            expr: "expand((x+1)*(x+2)*(x+3))",
             limits: HealthLimits {
                 max_total_rewrites: 200,
                 max_growth: 350,
