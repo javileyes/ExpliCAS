@@ -1503,6 +1503,64 @@ impl<'a> DisplayExprStyled<'a> {
             }
 
             Expr::Mul(l, r) => {
+                // PREFER_DIVISION: Convert 1/k * X → X/k (when enabled)
+                if self.style.resolve().prefer_division {
+                    // Check if left is Number(1/k) where k is integer > 1
+                    if let Expr::Number(n) = self.context.get(*l) {
+                        if !n.is_integer()
+                            && *n.numer() == 1.into()
+                            && n.denom() > &num_bigint::BigInt::from(1)
+                        {
+                            let denom = n.denom();
+                            // Format as: X/k (with parens around X if needed)
+                            let rhs_prec = precedence(self.context, *r);
+                            if rhs_prec < 2 {
+                                write!(f, "(")?;
+                                self.fmt_internal(f, *r)?;
+                                write!(f, ")")?;
+                            } else {
+                                self.fmt_internal(f, *r)?;
+                            }
+                            return write!(f, "/{}", denom);
+                        }
+                        // Also check for negative: -1/k * X → -X/k
+                        if !n.is_integer()
+                            && *n.numer() == (-1).into()
+                            && n.denom() > &num_bigint::BigInt::from(1)
+                        {
+                            let denom = n.denom();
+                            write!(f, "-")?;
+                            let rhs_prec = precedence(self.context, *r);
+                            if rhs_prec < 2 {
+                                write!(f, "(")?;
+                                self.fmt_internal(f, *r)?;
+                                write!(f, ")")?;
+                            } else {
+                                self.fmt_internal(f, *r)?;
+                            }
+                            return write!(f, "/{}", denom);
+                        }
+                    }
+                    // Check RHS for 1/k (in case of X * 1/k due to ordering)
+                    if let Expr::Number(n) = self.context.get(*r) {
+                        if !n.is_integer()
+                            && *n.numer() == 1.into()
+                            && n.denom() > &num_bigint::BigInt::from(1)
+                        {
+                            let denom = n.denom();
+                            let lhs_prec = precedence(self.context, *l);
+                            if lhs_prec < 2 {
+                                write!(f, "(")?;
+                                self.fmt_internal(f, *l)?;
+                                write!(f, ")")?;
+                            } else {
+                                self.fmt_internal(f, *l)?;
+                            }
+                            return write!(f, "/{}", denom);
+                        }
+                    }
+                }
+
                 // Sign pull-out for all-negative Adds
                 if crate::views::has_all_negative_terms(self.context, *r) {
                     write!(f, "-")?;
