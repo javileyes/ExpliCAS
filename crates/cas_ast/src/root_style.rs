@@ -309,11 +309,22 @@ impl<'a> StyledExpr<'a> {
             }
 
             Expr::Div(l, r) => {
-                write!(f, "(")?;
-                self.fmt_expr(f, *l)?;
-                write!(f, ") / (")?;
-                self.fmt_expr(f, *r)?;
-                write!(f, ")")
+                // Only parenthesize if not atomic
+                if self.is_atomic(*l) {
+                    self.fmt_expr(f, *l)?;
+                } else {
+                    write!(f, "(")?;
+                    self.fmt_expr(f, *l)?;
+                    write!(f, ")")?;
+                }
+                write!(f, " / ")?;
+                if self.is_atomic(*r) {
+                    self.fmt_expr(f, *r)
+                } else {
+                    write!(f, "(")?;
+                    self.fmt_expr(f, *r)?;
+                    write!(f, ")")
+                }
             }
 
             Expr::Neg(inner) => {
