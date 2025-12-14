@@ -39,43 +39,76 @@ impl Orchestrator {
 
     /// Run a single phase of the pipeline until fixed point or budget exhausted.
     ///
-    /// Returns the simplified expression and all steps collected during this phase.
+    /// Returns the simplified expression, steps, and phase statistics.
     fn run_phase(
         &mut self,
         simplifier: &mut Simplifier,
         start: ExprId,
         phase: SimplifyPhase,
         max_iters: usize,
-    ) -> (ExprId, Vec<Step>) {
+    ) -> (ExprId, Vec<Step>, crate::phase::PhaseStats) {
+        use crate::phase::PhaseStats;
+
         let mut current = start;
         let mut all_steps = Vec::new();
         let mut cycle_detector = CycleDetector::new(10);
+        let mut stats = PhaseStats::new(phase);
 
-        tracing::debug!(target: "simplify", ?phase, "phase_start");
+        tracing::debug!(
+            target: "simplify",
+            phase = %phase,
+            budget = max_iters,
+            "phase_start"
+        );
 
         for iter in 0..max_iters {
             let (next, steps) =
                 simplifier.apply_rules_loop_with_phase(current, &self.pattern_marks, phase);
 
+            stats.rewrites_used += steps.len();
             all_steps.extend(steps);
 
             // Fixed point check
             if next == current {
-                tracing::debug!(target: "simplify", ?phase, iter, "phase_fixed_point");
+                stats.iters_used = iter + 1;
+                tracing::debug!(
+                    target: "simplify",
+                    phase = %phase,
+                    iters = stats.iters_used,
+                    rewrites = stats.rewrites_used,
+                    "phase_fixed_point"
+                );
                 break;
             }
 
             // Cycle detection
             if cycle_detector.check(&simplifier.context, current).is_some() {
-                tracing::warn!(target: "simplify", ?phase, iter, "cycle_detected");
+                stats.iters_used = iter + 1;
+                tracing::warn!(
+                    target: "simplify",
+                    phase = %phase,
+                    iters = stats.iters_used,
+                    "cycle_detected"
+                );
                 break;
             }
 
             current = next;
+            stats.iters_used = iter + 1;
         }
 
-        tracing::debug!(target: "simplify", ?phase, steps = all_steps.len(), "phase_end");
-        (current, all_steps)
+        stats.changed = current != start;
+
+        tracing::debug!(
+            target: "simplify",
+            phase = %phase,
+            iters = stats.iters_used,
+            rewrites = stats.rewrites_used,
+            changed = stats.changed,
+            "phase_end"
+        );
+
+        (current, all_steps, stats)
     }
 
     /// Simplify using explicit phase pipeline.
@@ -120,6 +153,7 @@ impl Orchestrator {
 
         let mut current = expr;
         let mut all_steps = Vec::new();
+        let mut pipeline_stats = crate::phase::PipelineStats::default();
 
         // Copy values to avoid borrow conflicts with &mut self in run_phase
         let budgets = self.options.budgets;
@@ -128,14 +162,16 @@ impl Orchestrator {
         let collect_steps = self.options.collect_steps;
 
         // Phase 1: Core - Safe simplifications
-        let (next, steps) =
+        let (next, steps, stats) =
             self.run_phase(simplifier, current, SimplifyPhase::Core, budgets.core_iters);
         current = next;
         all_steps.extend(steps);
+        pipeline_stats.core = stats;
+        pipeline_stats.total_rewrites += pipeline_stats.core.rewrites_used;
 
         // Phase 2: Transform - Distribution, expansion (if enabled)
         if enable_transform {
-            let (next, steps) = self.run_phase(
+            let (next, steps, stats) = self.run_phase(
                 simplifier,
                 current,
                 SimplifyPhase::Transform,
@@ -143,11 +179,13 @@ impl Orchestrator {
             );
             current = next;
             all_steps.extend(steps);
+            pipeline_stats.transform = stats;
+            pipeline_stats.total_rewrites += pipeline_stats.transform.rewrites_used;
         }
 
         // Phase 3: Rationalize - Auto-rationalization per policy
         if auto_level != AutoRationalizeLevel::Off {
-            let (next, steps) = self.run_phase(
+            let (next, steps, stats) = self.run_phase(
                 simplifier,
                 current,
                 SimplifyPhase::Rationalize,
@@ -155,10 +193,12 @@ impl Orchestrator {
             );
             current = next;
             all_steps.extend(steps);
+            pipeline_stats.rationalize = stats;
+            pipeline_stats.total_rewrites += pipeline_stats.rationalize.rewrites_used;
         }
 
         // Phase 4: PostCleanup - Final cleanup
-        let (next, steps) = self.run_phase(
+        let (next, steps, stats) = self.run_phase(
             simplifier,
             current,
             SimplifyPhase::PostCleanup,
@@ -166,6 +206,19 @@ impl Orchestrator {
         );
         current = next;
         all_steps.extend(steps);
+        pipeline_stats.post_cleanup = stats;
+        pipeline_stats.total_rewrites += pipeline_stats.post_cleanup.rewrites_used;
+
+        // Log pipeline summary
+        tracing::info!(
+            target: "simplify",
+            core_iters = pipeline_stats.core.iters_used,
+            transform_iters = pipeline_stats.transform.iters_used,
+            rationalize_iters = pipeline_stats.rationalize.iters_used,
+            post_iters = pipeline_stats.post_cleanup.iters_used,
+            total_rewrites = pipeline_stats.total_rewrites,
+            "pipeline_complete"
+        );
 
         // Final collection for canonical form
         let final_collected = crate::collect::collect(&mut simplifier.context, current);

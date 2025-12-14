@@ -76,6 +76,40 @@ impl std::fmt::Display for SimplifyPhase {
     }
 }
 
+/// Statistics from a single phase execution.
+#[derive(Debug, Clone, Default)]
+pub struct PhaseStats {
+    /// Which phase was executed
+    pub phase: Option<SimplifyPhase>,
+    /// Number of iterations used (out of budget)
+    pub iters_used: usize,
+    /// Number of rewrites (steps) applied
+    pub rewrites_used: usize,
+    /// Whether the expression changed
+    pub changed: bool,
+}
+
+impl PhaseStats {
+    pub fn new(phase: SimplifyPhase) -> Self {
+        Self {
+            phase: Some(phase),
+            iters_used: 0,
+            rewrites_used: 0,
+            changed: false,
+        }
+    }
+}
+
+/// Statistics from the entire pipeline execution.
+#[derive(Debug, Clone, Default)]
+pub struct PipelineStats {
+    pub core: PhaseStats,
+    pub transform: PhaseStats,
+    pub rationalize: PhaseStats,
+    pub post_cleanup: PhaseStats,
+    pub total_rewrites: usize,
+}
+
 /// Iteration budgets for each phase of the pipeline.
 ///
 /// These control how many fixed-point iterations each phase can run

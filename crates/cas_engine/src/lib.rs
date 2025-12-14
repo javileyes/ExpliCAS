@@ -38,6 +38,7 @@ pub mod macros;
 
 pub use engine::Simplifier;
 pub use error::CasError;
+pub use phase::{PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions, SimplifyPhase};
 pub use rule::Rule;
 pub use step::Step;
 pub use visitors::{DepthVisitor, VariableCollector};
