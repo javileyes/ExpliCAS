@@ -98,6 +98,12 @@ define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
                 return None;
             }
 
+            // CRITICAL: Don't expand binomial*binomial products (Policy A+)
+            // This preserves factored form like (a+b)*(c+d)
+            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+                return None;
+            }
+
             let ba = smart_mul(ctx, b, r);
             let ca = smart_mul(ctx, c, r);
             let new_expr = ctx.add(Expr::Add(ba, ca));

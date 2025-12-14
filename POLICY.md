@@ -1,43 +1,44 @@
 # Distribution Policy A+
 
-## Summary
+## Contract Summary
 
-| Operation | `simplify()` | `expand()` |
-|-----------|--------------|------------|
-| `(x+1)(x+2)` | ❌ Keep factored | ✅ → `x² + 3x + 2` |
-| `(x-1)(x+1)` | ✅ → `x² - 1` (diff of squares) | ✅ → `x² - 1` |
-| `a(b+c)` | ⚠️ Only if reduces complexity | ✅ → `ab + ac` |
+| Function | Behavior |
+|----------|----------|
+| **simplify()** | Does NOT expand binomial×binomial. Only applies structural identity reductions (e.g., difference of squares). Avoids complexity explosion. |
+| **expand()** | Aggressively distributes and expands. Uses budgets to avoid explosion. Goal is expanded polynomial form. |
 
-## Rationale
+## Examples
 
-1. **Factored form is often preferred** - More compact, reveals structure
-2. **Expanding can explode complexity** - `(a+b)^10` → 11 terms
-3. **User controls expansion** - Explicit `expand()` when needed
+| Input | `simplify()` | `expand()` |
+|-------|--------------|------------|
+| `(x+1)*(x+2)` | `(x+1)*(x+2)` ❌ | `x² + 3x + 2` ✅ |
+| `(x-1)*(x+1)` | `x² - 1` ✅ | `x² - 1` ✅ |
+| `(x+y)*(x-y)` | `x² - y²` ✅ | `x² - y²` ✅ |
+| `(x+1)^3` | `(x+1)^3` ❌ | `x³ + 3x² + 3x + 1` ✅ |
+| `3*(x+2)` | `3x + 6` ✅ | `3x + 6` ✅ |
 
-## Rules
+Legend: ✅ = reduces/expands, ❌ = preserves structure
 
-### `simplify()` (default)
-- Does NOT expand `(a+b)(c+d)` products
-- DOES apply reducing patterns:
-  - Difference of squares: `(a-b)(a+b)` → `a² - b²`
-  - Perfect squares: `(a+b)²` → `a² + 2ab + b²` (educational, optional)
-- DOES simplify `0*x → 0`, `1*x → x`, etc.
+## Implementation Details
 
-### `expand()` (explicit)
-- Distributes all products: `a(b+c)` → `ab + ac`
-- Expands powers: `(a+b)^n` using binomial theorem
-- Always followed by `simplify()` for cleanup
+### Rules
 
-## Implementation
+- **DistributeRule** (polynomial.rs): Guards `is_binomial(l) && is_binomial(r)` to prevent binomial×binomial expansion
+- **DifferenceOfSquaresRule**: Detects `(a-b)(a+b)` conjugate pairs → `a² - b²` (structural reduction, applies in both)
+- **ExpandRule** / **BinomialExpansionRule**: Only triggered by `expand()` wrapper
 
-- `ConservativeExpandRule`: Only expands if complexity doesn't increase
-- `ExpandRule`: Responds to `expand()` function wrapper
-- `DifferenceOfSquaresRule`: Detects conjugate pairs, applies reduction
+### Phase Masks
+
+| Rule | Phase |
+|------|-------|
+| DistributeRule | TRANSFORM |
+| ExpandRule | TRANSFORM |
+| DifferenceOfSquaresRule | CORE |
 
 ## Tests
-```rust
-// These are verified in torture_tests.rs and integration tests
-simplify((x+1)(x+2))    → (x+1)(x+2)     // NOT expanded
-simplify((x-1)(x+1))    → x² - 1         // Diff of squares applied
-expand((x+1)(x+2))      → x² + 3x + 2    // Explicit expansion
-```
+
+See `crates/cas_cli/tests/policy_tests.rs` for specification tests:
+- `test_simplify_preserves_binomial_product`
+- `test_simplify_applies_difference_of_squares_*`
+- `test_expand_expands_*`
+- `test_*_idempotence`
