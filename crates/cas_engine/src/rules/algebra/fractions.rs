@@ -1839,21 +1839,10 @@ define_rule!(
         // But first, handle negative denominator by absorbing sign into conjugate
         let (final_conjugate, final_den_val) = if new_den_val < BigRational::from_integer(0.into())
         {
-            // Negative denominator: flip conjugate sign instead
-            // (A - B√n) with den=-k becomes -(A - B√n) = (-A + B√n) = (B√n - A) with den=k
-            let neg_a = -surd.a.clone();
-            let neg_a_expr = ctx.add(Expr::Number(neg_a));
-
-            // Build flipped conjugate: B√n - A (or -B√n + A if was_sub)
-            let flipped = if surd.is_sub {
-                // Original: A - B√n, conjugate was A + B√n, flip → -A - B√n
-                let neg_b_sqrt_n = ctx.add(Expr::Neg(b_sqrt_n));
-                ctx.add(Expr::Add(neg_a_expr, neg_b_sqrt_n))
-            } else {
-                // Original: A + B√n, conjugate was A - B√n, flip → -A + B√n = B√n - A
-                ctx.add(Expr::Sub(b_sqrt_n, a_expr))
-            };
-            (flipped, -new_den_val.clone())
+            // Negative denominator: negate the entire conjugate
+            // This produces -(A + B√n) instead of -A - B√n, which is cleaner for display
+            let negated_conjugate = ctx.add(Expr::Neg(conjugate));
+            (negated_conjugate, -new_den_val.clone())
         } else {
             (conjugate, new_den_val.clone())
         };
