@@ -41,7 +41,6 @@ fn test_cyclic_rational_sum_to_zero() {
 
 /// Variante del test cíclico con expansión explícita
 #[test]
-#[ignore] // TODO: Habilitar cuando el motor soporte esta simplificación
 fn test_cyclic_rational_sum_expanded() {
     // Esta variante usa la forma expandida donde los signos ya están más visibles
     let result = simplify_expr("1/((a-b)*(a-c)) - 1/((b-c)*(a-b)) + 1/((a-c)*(b-c))");

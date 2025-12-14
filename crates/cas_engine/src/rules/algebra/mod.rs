@@ -38,5 +38,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(FactorBasedLCDRule));
     // P2: DifferenceOfSquaresRule for (a-b)(a+b) → a² - b²
     simplifier.add_rule(Box::new(DifferenceOfSquaresRule));
+    // R1, R2: Fraction difference canonicalization for cyclic sums
+    simplifier.add_rule(Box::new(AbsorbNegationIntoDifferenceRule));
+    simplifier.add_rule(Box::new(CanonicalDifferenceProductRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }

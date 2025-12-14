@@ -5,7 +5,7 @@ use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
 use cas_ast::count_nodes;
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
-use num_traits::{One, Zero};
+use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 
 use super::helpers::*;
@@ -2132,6 +2132,215 @@ define_rule!(
                     id: new_den
                 }
             ),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        })
+    }
+);
+
+// ============================================================================
+// R1: Absorb Negation Into Difference Factor
+// ============================================================================
+// -1/((x-y)*...) → 1/((y-x)*...)
+// Absorbs the negative sign by flipping one difference in the denominator.
+// Differences can be Sub(x,y) or Add(x, Neg(y)) or Add(x, Mul(-1,y)).
+
+/// Check if expression is a difference (x - y) in any canonical form
+/// Returns Some((x, y)) if it's a difference
+fn extract_difference(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Sub(l, r) => Some((*l, *r)),
+        Expr::Add(l, r) => {
+            // Check if right is Neg(y)
+            if let Expr::Neg(inner) = ctx.get(*r) {
+                return Some((*l, *inner));
+            }
+            // Check if right is Mul(-1, y) or Mul(y, -1) with negative number
+            if let Expr::Mul(a, b) = ctx.get(*r) {
+                if let Expr::Number(n) = ctx.get(*a) {
+                    if n.is_negative() && *n == num_rational::BigRational::from_integer((-1).into())
+                    {
+                        return Some((*l, *b));
+                    }
+                }
+                if let Expr::Number(n) = ctx.get(*b) {
+                    if n.is_negative() && *n == num_rational::BigRational::from_integer((-1).into())
+                    {
+                        return Some((*l, *a));
+                    }
+                }
+            }
+            // Check if left is Neg(x)
+            if let Expr::Neg(inner) = ctx.get(*l) {
+                return Some((*r, *inner));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Build a difference expression: always use Sub form now that canonicalization
+/// works properly with our fixes
+fn build_difference(ctx: &mut Context, x: ExprId, y: ExprId) -> ExprId {
+    ctx.add(Expr::Sub(x, y))
+}
+
+define_rule!(
+    AbsorbNegationIntoDifferenceRule,
+    "Absorb Negation Into Difference",
+    |ctx, expr| {
+        // Check for Neg(Div(...)) or Div with negative numerator
+        let (is_neg_wrapped, div_num, div_den) = match ctx.get(expr) {
+            Expr::Neg(inner) => {
+                if let Expr::Div(n, d) = ctx.get(*inner) {
+                    (true, *n, *d)
+                } else {
+                    return None;
+                }
+            }
+            Expr::Div(n, d) => {
+                if let Expr::Number(num_val) = ctx.get(*n) {
+                    if num_val.is_negative() {
+                        (false, *n, *d)
+                    } else {
+                        return None;
+                    }
+                } else if let Expr::Neg(_) = ctx.get(*n) {
+                    (false, *n, *d)
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // Collect all factors from denominator
+        let mut factors: Vec<ExprId> = collect_mul_factors(ctx, div_den);
+
+        // Find a difference factor to flip
+        let mut flip_index: Option<usize> = None;
+        let mut diff_pair: Option<(ExprId, ExprId)> = None;
+        for (i, &f) in factors.iter().enumerate() {
+            if let Some((x, y)) = extract_difference(ctx, f) {
+                flip_index = Some(i);
+                diff_pair = Some((x, y));
+                break;
+            }
+        }
+
+        let idx = flip_index?;
+        let (x, y) = diff_pair?;
+
+        // Flip the difference: (x - y) → (y - x)
+        let flipped = build_difference(ctx, y, x);
+        factors[idx] = flipped;
+
+        // Rebuild denominator
+        let new_den = factors.iter().copied().fold(None, |acc, f| {
+            Some(match acc {
+                Some(a) => mul2_raw(ctx, a, f),
+                None => f,
+            })
+        })?;
+
+        // Handle numerator: remove the negation
+        let new_num = if is_neg_wrapped {
+            div_num
+        } else if let Expr::Number(n) = ctx.get(div_num) {
+            ctx.add(Expr::Number(-n.clone()))
+        } else if let Expr::Neg(inner) = ctx.get(div_num) {
+            *inner
+        } else {
+            return None;
+        };
+
+        let new_expr = ctx.add(Expr::Div(new_num, new_den));
+
+        Some(Rewrite {
+            new_expr,
+            description: "Absorb negation into difference factor".to_string(),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        })
+    }
+);
+
+// ============================================================================
+// R2: Canonicalize Products of Same-Tail Differences
+// ============================================================================
+// 1/((p-t)*(q-t)) → 1/((t-p)*(t-q))
+// When two difference factors share the same "tail" (right operand),
+// flip both to have that common element first.
+// Double-flip preserves the overall sign.
+
+define_rule!(
+    CanonicalDifferenceProductRule,
+    "Canonicalize Difference Product",
+    |ctx, expr| {
+        let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
+            (*n, *d)
+        } else {
+            return None;
+        };
+
+        // Check if denominator is Mul of exactly two Sub expressions
+        let (factor1, factor2) = if let Expr::Mul(l, r) = ctx.get(den) {
+            (*l, *r)
+        } else {
+            return None;
+        };
+
+        // Both factors must be Sub
+        let (p, t1) = if let Expr::Sub(a, b) = ctx.get(factor1) {
+            (*a, *b)
+        } else {
+            return None;
+        };
+        let (q, t2) = if let Expr::Sub(a, b) = ctx.get(factor2) {
+            (*a, *b)
+        } else {
+            return None;
+        };
+
+        // Check if they share the same tail
+        if crate::ordering::compare_expr(ctx, t1, t2) != Ordering::Equal {
+            return None;
+        }
+
+        let t = t1;
+
+        // Only flip if the current form is NOT canonical
+        // Canonical: (t - p) * (t - q) where t comes first in both
+        // Current is (p - t) * (q - t) - needs flipping
+        // Guard: if t already comes first in both, don't flip (avoid loops)
+        let t_already_first_1 = if let Expr::Sub(a, _) = ctx.get(factor1) {
+            crate::ordering::compare_expr(ctx, *a, t) == Ordering::Equal
+        } else {
+            false
+        };
+        let t_already_first_2 = if let Expr::Sub(a, _) = ctx.get(factor2) {
+            crate::ordering::compare_expr(ctx, *a, t) == Ordering::Equal
+        } else {
+            false
+        };
+
+        if t_already_first_1 && t_already_first_2 {
+            return None; // Already canonical
+        }
+
+        // Flip both: (p-t) → (t-p), (q-t) → (t-q)
+        let new_factor1 = ctx.add(Expr::Sub(t, p));
+        let new_factor2 = ctx.add(Expr::Sub(t, q));
+        let new_den = mul2_raw(ctx, new_factor1, new_factor2);
+
+        let new_expr = ctx.add(Expr::Div(num, new_den));
+
+        Some(Rewrite {
+            new_expr,
+            description: "Canonicalize same-tail difference product".to_string(),
             before_local: None,
             after_local: None,
             domain_assumption: None,
