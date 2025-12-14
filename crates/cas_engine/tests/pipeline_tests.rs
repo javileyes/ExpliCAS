@@ -17,7 +17,7 @@ fn simplify_with_pipeline(input: &str) -> String {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
 
     let mut orchestrator = Orchestrator::new();
-    let (simplified, _) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+    let (simplified, _, _) = orchestrator.simplify_pipeline(expr, &mut simplifier);
 
     let style = StylePreferences::from_expression_with_signals(
         &simplifier.context,
@@ -36,7 +36,7 @@ fn simplify_for_expand(input: &str) -> String {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
 
     let mut orchestrator = Orchestrator::for_expand();
-    let (simplified, _) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+    let (simplified, _, _) = orchestrator.simplify_pipeline(expr, &mut simplifier);
 
     format!(
         "{}",
@@ -120,11 +120,11 @@ fn test_pipeline_idempotent() {
     let expr = cas_parser::parse("x/(1+sqrt(2))", &mut simplifier.context).expect("parse failed");
 
     let mut orchestrator = Orchestrator::new();
-    let (first, _) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+    let (first, _, _) = orchestrator.simplify_pipeline(expr, &mut simplifier);
 
     // Run pipeline again on the result
     let mut orchestrator2 = Orchestrator::new();
-    let (second, _) = orchestrator2.simplify_pipeline(first, &mut simplifier);
+    let (second, _, _) = orchestrator2.simplify_pipeline(first, &mut simplifier);
 
     // The ExprIds should be equal (fixed point)
     assert_eq!(first, second, "Pipeline should be idempotent");

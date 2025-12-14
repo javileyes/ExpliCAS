@@ -814,12 +814,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
             if let Some(specific_rules) = self.rules.get(variant) {
                 for rule in specific_rules {
                     if self.disabled_rules.contains(rule.name()) {
+                        self.profiler.record_rejected_disabled(rule.name());
                         continue;
                     }
                     // Phase control: only allow distribution in Transform phase
                     if !self.current_phase.allows_distribution()
                         && rule.name().starts_with("Distributive Property")
                     {
+                        self.profiler.record_rejected_phase(rule.name());
                         continue;
                     }
                     // CRITICAL: Use initial_parent_ctx which contains pattern_marks
@@ -841,12 +843,21 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                     self.indent(),
                                     rule.name()
                                 );
+                                self.profiler.record_rejected_semantic(rule.name());
                                 continue;
                             }
                         }
 
-                        // Record rule application for profiling
-                        self.profiler.record(rule.name());
+                        // Record rule application with delta_nodes for health metrics
+                        let delta = if self.profiler.is_health_enabled() {
+                            let before = crate::helpers::count_all_nodes(self.context, expr_id);
+                            let after =
+                                crate::helpers::count_all_nodes(self.context, rewrite.new_expr);
+                            after as i64 - before as i64
+                        } else {
+                            0
+                        };
+                        self.profiler.record_with_delta(rule.name(), delta);
 
                         // println!(
                         //     "Rule '{}' applied: {:?} -> {:?}",
