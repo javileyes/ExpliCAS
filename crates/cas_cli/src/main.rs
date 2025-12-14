@@ -1,6 +1,7 @@
-pub mod repl;
 mod completer;
 mod config;
+mod health_suite;
+pub mod repl;
 
 use repl::Repl;
 

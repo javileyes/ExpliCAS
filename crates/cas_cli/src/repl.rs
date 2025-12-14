@@ -927,12 +927,28 @@ impl Repl {
                         self.last_health_report = None;
                         println!("Health statistics cleared.");
                     }
+                    "status" => {
+                        // Run the health status suite
+                        println!("Running health status suite...\n");
+                        let results = crate::health_suite::run_suite(&mut self.simplifier);
+                        let report = crate::health_suite::format_report(&results);
+                        println!("{}", report);
+
+                        let (_passed, failed) = crate::health_suite::count_results(&results);
+                        if failed > 0 {
+                            println!(
+                                "\n⚠ {} tests failed. Check Transform rules for churn.",
+                                failed
+                            );
+                        }
+                    }
                     _ => {
-                        println!("Usage: health [on|off|reset]");
+                        println!("Usage: health [on|off|reset|status]");
                         println!("       health           Show last health report");
                         println!("       health on        Enable health tracking");
                         println!("       health off       Disable health tracking");
                         println!("       health reset     Clear health statistics");
+                        println!("       health status    Run diagnostic test suite");
                     }
                 }
             }
@@ -1407,7 +1423,7 @@ impl Repl {
         );
         println!("  config <subcmd>         Manage configuration (list, enable, disable...)");
         println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
-        println!("  health [cmd]            Health tracking (on/off/reset) - shows top rules");
+        println!("  health [cmd]            Health tracking (on/off/reset/status)");
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
         println!();

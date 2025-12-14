@@ -192,7 +192,7 @@ impl Completer for CasHelper {
             let ends_with_space = line[..pos].ends_with(' ');
 
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                let subcommands = vec!["on", "off", "reset"];
+                let subcommands = vec!["on", "off", "reset", "status"];
                 for sub in subcommands {
                     if sub.starts_with(word) {
                         matches.push(Pair {
