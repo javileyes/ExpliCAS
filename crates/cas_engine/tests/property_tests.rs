@@ -327,4 +327,171 @@ proptest! {
         let d = cas_ast::DisplayExpr { context: &simplifier.context, id: simplified };
         prop_assert!(check_reduced_rationals(&simplifier.context, simplified), "Found non-reduced rational after simplify: {}", d);
     }
+
+    /// No nested Add(Add(..), ..) after normalize_core (flattening invariant)
+    #[test]
+    fn test_normalize_core_no_nested_add(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let normalized = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
+
+        fn check_no_nested_add(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Add(l, r) => {
+                    // Left child should NOT be Add (flattening invariant)
+                    if matches!(ctx.get(*l), Expr::Add(_, _)) {
+                        return false;
+                    }
+                    check_no_nested_add(ctx, *l) && check_no_nested_add(ctx, *r)
+                }
+                Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                    check_no_nested_add(ctx, *l) && check_no_nested_add(ctx, *r)
+                }
+                Expr::Neg(e) => check_no_nested_add(ctx, *e),
+                Expr::Function(_, args) => args.iter().all(|a| check_no_nested_add(ctx, *a)),
+                _ => true,
+            }
+        }
+
+        let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
+        prop_assert!(check_no_nested_add(&ctx, normalized), "Found Add(Add(..), ..) after normalize_core: {}", d);
+    }
+
+    /// No nested Mul(Mul(..), ..) after normalize_core (flattening invariant)
+    #[test]
+    fn test_normalize_core_no_nested_mul(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let normalized = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
+
+        fn check_no_nested_mul(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Mul(l, r) => {
+                    // Left child should NOT be Mul (flattening invariant)
+                    if matches!(ctx.get(*l), Expr::Mul(_, _)) {
+                        return false;
+                    }
+                    check_no_nested_mul(ctx, *l) && check_no_nested_mul(ctx, *r)
+                }
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                    check_no_nested_mul(ctx, *l) && check_no_nested_mul(ctx, *r)
+                }
+                Expr::Neg(e) => check_no_nested_mul(ctx, *e),
+                Expr::Function(_, args) => args.iter().all(|a| check_no_nested_mul(ctx, *a)),
+                _ => true,
+            }
+        }
+
+        let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
+        prop_assert!(check_no_nested_mul(&ctx, normalized), "Found Mul(Mul(..), ..) after normalize_core: {}", d);
+    }
+
+    /// N3: No Pow(Pow(x,a),b) after normalize_core - should be Pow(x, a*b)
+    #[test]
+    fn test_normalize_core_no_nested_pow(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let normalized = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
+
+        fn check_no_nested_pow(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Pow(base, _) => {
+                    // Base should NOT be Pow (N3 should flatten)
+                    if matches!(ctx.get(*base), Expr::Pow(_, _)) {
+                        return false;
+                    }
+                    check_no_nested_pow(ctx, *base)
+                }
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                    check_no_nested_pow(ctx, *l) && check_no_nested_pow(ctx, *r)
+                }
+                Expr::Neg(e) => check_no_nested_pow(ctx, *e),
+                Expr::Function(_, args) => args.iter().all(|a| check_no_nested_pow(ctx, *a)),
+                _ => true,
+            }
+        }
+
+        let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
+        prop_assert!(check_no_nested_pow(&ctx, normalized), "Found Pow(Pow(x,a),b) after normalize_core: {}", d);
+    }
+
+    /// Ordering consistency: same expression should always produce same normalized form
+    #[test]
+    fn test_normalize_core_order_deterministic(re in strategies::arb_recursive_expr()) {
+        let (mut ctx1, expr1) = strategies::to_context(re.clone());
+        let (mut ctx2, expr2) = strategies::to_context(re);
+
+        let n1 = cas_engine::canonical_forms::normalize_core(&mut ctx1, expr1);
+        let n2 = cas_engine::canonical_forms::normalize_core(&mut ctx2, expr2);
+
+        let d1 = cas_ast::DisplayExpr { context: &ctx1, id: n1 };
+        let d2 = cas_ast::DisplayExpr { context: &ctx2, id: n2 };
+        prop_assert_eq!(d1.to_string(), d2.to_string(), "normalize_core is not deterministic");
+    }
+}
+
+// ============================================================================
+// METAMORPHIC PROPERTY TESTS
+// These verify algebraic identities are preserved
+// ============================================================================
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(25))]
+
+    /// Metamorphic: normalize_core(e + 0) displays same as normalize_core(e)
+    #[test]
+    fn test_metamorphic_add_zero(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+
+        let zero = ctx.num(0);
+        let expr_plus_zero = ctx.add(Expr::Add(expr, zero));
+
+        let n1 = cas_engine::canonical_forms::normalize_core(&mut ctx, expr_plus_zero);
+        let n2 = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
+
+        // After normalize_core, e+0 should be structurally simplified
+        // Note: normalize_core may not remove +0, but simplify should
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+        let (s1, _) = simplifier.simplify(n1);
+        let (s2, _) = simplifier.simplify(n2);
+
+        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        prop_assert_eq!(d1.to_string(), d2.to_string(), "e+0 != e");
+    }
+
+    /// Metamorphic: normalize_core(e * 1) displays same as normalize_core(e)
+    #[test]
+    fn test_metamorphic_mul_one(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+
+        let one = ctx.num(1);
+        let expr_times_one = ctx.add(Expr::Mul(expr, one));
+
+        let n1 = cas_engine::canonical_forms::normalize_core(&mut ctx, expr_times_one);
+        let n2 = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
+
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+        let (s1, _) = simplifier.simplify(n1);
+        let (s2, _) = simplifier.simplify(n2);
+
+        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        prop_assert_eq!(d1.to_string(), d2.to_string(), "e*1 != e");
+    }
+
+    /// Metamorphic: e * 0 == 0
+    #[test]
+    fn test_metamorphic_mul_zero(re in strategies::arb_recursive_expr()) {
+        let (ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+
+        let zero = simplifier.context.num(0);
+        let expr_times_zero = simplifier.context.add(Expr::Mul(expr, zero));
+
+        let (result, _) = simplifier.simplify(expr_times_zero);
+
+        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: result };
+        prop_assert_eq!(d.to_string(), "0", "e*0 != 0, got {}", d);
+    }
 }
