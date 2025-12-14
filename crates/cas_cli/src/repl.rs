@@ -508,10 +508,22 @@ impl Repl {
             "  Core:       {} iters, {} rewrites",
             stats.core.iters_used, stats.core.rewrites_used
         );
+        if let Some(ref cycle) = stats.core.cycle {
+            println!(
+                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
+                cycle.period, cycle.at_step
+            );
+        }
         println!(
             "  Transform:  {} iters, {} rewrites, changed={}",
             stats.transform.iters_used, stats.transform.rewrites_used, stats.transform.changed
         );
+        if let Some(ref cycle) = stats.transform.cycle {
+            println!(
+                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
+                cycle.period, cycle.at_step
+            );
+        }
         println!(
             "  Rationalize: {:?}",
             stats
@@ -529,11 +541,23 @@ impl Repl {
                 }
             }
         }
+        if let Some(ref cycle) = stats.rationalize.cycle {
+            println!(
+                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
+                cycle.period, cycle.at_step
+            );
+        }
 
         println!(
             "  PostCleanup: {} iters, {} rewrites",
             stats.post_cleanup.iters_used, stats.post_cleanup.rewrites_used
         );
+        if let Some(ref cycle) = stats.post_cleanup.cycle {
+            println!(
+                "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
+                cycle.period, cycle.at_step
+            );
+        }
         println!("  Total rewrites: {}", stats.total_rewrites);
         println!("───────────────────────────────");
     }
@@ -825,6 +849,29 @@ impl Repl {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() == 1 {
                 // Just "health" - show last report
+                // First show any cycles detected
+                if let Some(ref stats) = self.last_stats {
+                    let cycles: Vec<_> = [
+                        (&stats.core.cycle, "Core"),
+                        (&stats.transform.cycle, "Transform"),
+                        (&stats.rationalize.cycle, "Rationalize"),
+                        (&stats.post_cleanup.cycle, "PostCleanup"),
+                    ]
+                    .iter()
+                    .filter_map(|(c, name)| c.as_ref().map(|info| (*name, info)))
+                    .collect();
+
+                    for (phase_name, cycle) in &cycles {
+                        println!(
+                            "⚠ Cycle detected in {}: period={} at rewrite={} (stopped early)",
+                            phase_name, cycle.period, cycle.at_step
+                        );
+                    }
+                    if !cycles.is_empty() {
+                        println!();
+                    }
+                }
+
                 if let Some(ref report) = self.last_health_report {
                     println!("{}", report);
                 } else {
