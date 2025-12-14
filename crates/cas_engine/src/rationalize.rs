@@ -27,23 +27,6 @@ impl Default for RationalizeConfig {
     }
 }
 
-/// Score for rationalization progress: (surd_count, node_count)
-/// Lower is better.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct RationalizeScore {
-    surd_count: usize,
-    node_count: usize,
-}
-
-impl RationalizeScore {
-    fn from_view(view: &SurdSumView, node_count: usize) -> Self {
-        Self {
-            surd_count: view.surd_count(),
-            node_count,
-        }
-    }
-}
-
 /// Result of rationalization attempt
 #[derive(Debug)]
 pub enum RationalizeResult {
@@ -62,7 +45,7 @@ pub enum RationalizeResult {
 pub fn rationalize_denominator(
     ctx: &mut Context,
     expr: ExprId,
-    config: &RationalizeConfig,
+    _config: &RationalizeConfig,
 ) -> RationalizeResult {
     // Extract numerator and denominator
     let (num, den) = match extract_fraction(ctx, expr) {
@@ -188,41 +171,6 @@ fn extract_fraction(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)>
     }
 }
 
-/// Split SurdSumView into (A, B) where B is the "largest" surd term.
-///
-/// Returns expressions for A and B where den = A + B.
-fn split_for_conjugate(ctx: &mut Context, view: &SurdSumView) -> (ExprId, ExprId) {
-    // B = last (or largest) surd term
-    // A = constant + all other surds
-
-    if view.surds.is_empty() {
-        // Pure rational - shouldn't happen but handle gracefully
-        let a = build_rational(ctx, &view.constant);
-        let b = ctx.num(0);
-        return (a, b);
-    }
-
-    // Choose the last surd as B (could optimize to pick largest radicand)
-    let b_atom = &view.surds[view.surds.len() - 1];
-    let b_expr = build_surd(ctx, b_atom);
-
-    // Build A = constant + other surds
-    let mut a_expr = build_rational(ctx, &view.constant);
-    for (i, atom) in view.surds.iter().enumerate() {
-        if i < view.surds.len() - 1 {
-            let surd_expr = build_surd(ctx, atom);
-            a_expr = ctx.add(Expr::Add(a_expr, surd_expr));
-        }
-    }
-
-    (a_expr, b_expr)
-}
-
-/// Build a surd expression: coeff * √(radicand)
-fn build_surd(ctx: &mut Context, atom: &cas_ast::views::SurdAtom) -> ExprId {
-    build_sqrt_term(ctx, &atom.coeff, atom.radicand)
-}
-
 /// Build a single surd term: coeff * √(radicand)
 fn build_sqrt_term(ctx: &mut Context, coeff: &BigRational, radicand: i64) -> ExprId {
     let radicand_expr = ctx.num(radicand);
@@ -271,20 +219,6 @@ fn build_fraction(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
         }
     }
     ctx.add(Expr::Div(num, den))
-}
-
-/// Count nodes in expression (for budget checking)
-fn count_nodes(ctx: &Context, id: ExprId) -> usize {
-    cas_ast::count_nodes(ctx, id)
-}
-
-/// Simplify a surd expression (expand squares, combine like terms)
-///
-/// This is a simplified version - in production would use the full simplifier
-fn simplify_surd_expr(_ctx: &mut Context, expr: ExprId) -> ExprId {
-    // For v1, just return as-is
-    // TODO: Call actual simplifier for better results
-    expr
 }
 
 #[cfg(test)]
