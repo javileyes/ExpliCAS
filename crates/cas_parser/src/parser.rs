@@ -2,7 +2,7 @@ use cas_ast::{Constant, Context, Equation, Expr, ExprId, RelOp};
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alpha1, digit1, multispace0},
+    character::complete::{digit1, multispace0},
     combinator::{map, map_res},
     multi::{fold_many0, separated_list0},
     sequence::{delimited, pair, preceded},
@@ -106,9 +106,38 @@ fn parse_constant(input: &str) -> IResult<&str, ParseNode> {
     ))(input)
 }
 
+// Parser for identifiers (variable/function names)
+// Identifiers start with letter or underscore, then allow letters, digits, underscores
+// Examples: x, x1, theta3, _tmp, x_1
+fn parse_identifier(input: &str) -> IResult<&str, &str> {
+    // Check first char is valid start (letter or underscore)
+    let mut chars = input.chars();
+    let first = chars.next();
+    if !matches!(first, Some(c) if c.is_ascii_alphabetic() || c == '_') {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Alpha,
+        )));
+    }
+
+    // Count valid continuation chars (alphanumeric or underscore)
+    let mut len = first.unwrap().len_utf8();
+    for c in chars {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            len += c.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    Ok((&input[len..], &input[..len]))
+}
+
 // Parser for variables
 fn parse_variable(input: &str) -> IResult<&str, ParseNode> {
-    map(alpha1, |s: &str| ParseNode::Variable(s.to_string()))(input)
+    map(parse_identifier, |s: &str| {
+        ParseNode::Variable(s.to_string())
+    })(input)
 }
 
 // Parser for parentheses
@@ -122,7 +151,7 @@ fn parse_parens(input: &str) -> IResult<&str, ParseNode> {
 
 // Parser for function calls
 fn parse_function(input: &str) -> IResult<&str, ParseNode> {
-    let (input, name) = alpha1(input)?;
+    let (input, name) = parse_identifier(input)?;
     let (input, _) = preceded(multispace0, tag("("))(input)?;
     let (input, args) = separated_list0(preceded(multispace0, tag(",")), parse_expr)(input)?;
     let (input, _) = preceded(multispace0, tag(")"))(input)?;
@@ -664,6 +693,91 @@ mod tests {
             }
         } else {
             panic!("Expected Pow");
+        }
+    }
+
+    #[test]
+    fn test_parse_alphanumeric_variables() {
+        let mut ctx = Context::new();
+
+        // x1 + x2 should parse as Add(Variable("x1"), Variable("x2"))
+        let e = parse("x1 + x2", &mut ctx).unwrap();
+        if let Expr::Add(l, r) = ctx.get(e) {
+            if let Expr::Variable(v) = ctx.get(*l) {
+                assert_eq!(v, "x1");
+            } else {
+                panic!("Expected Variable(x1)");
+            }
+            if let Expr::Variable(v) = ctx.get(*r) {
+                assert_eq!(v, "x2");
+            } else {
+                panic!("Expected Variable(x2)");
+            }
+        } else {
+            panic!("Expected Add");
+        }
+    }
+
+    #[test]
+    fn test_parse_variable_with_power() {
+        let mut ctx = Context::new();
+
+        // x1^2 should be Pow(Variable("x1"), 2), NOT x * 1^2
+        let e = parse("x1^2", &mut ctx).unwrap();
+        if let Expr::Pow(base, exp) = ctx.get(e) {
+            if let Expr::Variable(v) = ctx.get(*base) {
+                assert_eq!(v, "x1");
+            } else {
+                panic!("Expected base to be Variable(x1)");
+            }
+            if let Expr::Number(n) = ctx.get(*exp) {
+                assert_eq!(n.to_integer(), 2.into());
+            } else {
+                panic!("Expected exponent to be Number(2)");
+            }
+        } else {
+            panic!("Expected Pow");
+        }
+    }
+
+    #[test]
+    fn test_parse_underscore_variables() {
+        let mut ctx = Context::new();
+
+        // _tmp and x_1 should be valid identifiers
+        let e = parse("_tmp + x_1", &mut ctx).unwrap();
+        if let Expr::Add(l, r) = ctx.get(e) {
+            if let Expr::Variable(v) = ctx.get(*l) {
+                assert!(v == "_tmp" || v == "x_1");
+            }
+            if let Expr::Variable(v) = ctx.get(*r) {
+                assert!(v == "_tmp" || v == "x_1");
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_longer_alphanumeric() {
+        let mut ctx = Context::new();
+
+        // theta3 and phi123 should work
+        let e = parse("theta3 * phi123", &mut ctx).unwrap();
+        if let Expr::Mul(l, r) = ctx.get(e) {
+            // One should be theta3, other phi123
+            let l_var = if let Expr::Variable(v) = ctx.get(*l) {
+                v.clone()
+            } else {
+                panic!("Expected Variable")
+            };
+            let r_var = if let Expr::Variable(v) = ctx.get(*r) {
+                v.clone()
+            } else {
+                panic!("Expected Variable")
+            };
+            assert!(l_var == "theta3" || l_var == "phi123");
+            assert!(r_var == "theta3" || r_var == "phi123");
+        } else {
+            panic!("Expected Mul");
         }
     }
 }
