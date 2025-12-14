@@ -71,16 +71,17 @@ impl Orchestrator {
             // Only add step if structurally different (collect regenerates IDs)
             if crate::ordering::compare_expr(&simplifier.context, collected, current)
                 != std::cmp::Ordering::Equal
-                && simplifier.collect_steps {
-                    steps.push(Step::new(
-                        "Initial Collection",
-                        "Collect",
-                        current,
-                        collected,
-                        Vec::new(),
-                        Some(&simplifier.context),
-                    ));
-                }
+                && simplifier.collect_steps
+            {
+                steps.push(Step::new(
+                    "Initial Collection",
+                    "Collect",
+                    current,
+                    collected,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                ));
+            }
             current = collected;
         }
 
@@ -155,7 +156,8 @@ impl Orchestrator {
         // 3. High-Level Strategies (Heuristics)
         // Try polynomial simplification (expand -> simplify -> factor)
         // This handles cases like (x-1)(x+1)... which need full expansion to simplify.
-        if self.enable_polynomial_strategy {
+        // SKIP if rationalization happened - we don't want to expand the compact form
+        if self.enable_polynomial_strategy && !simplifier.did_rationalize {
             let skip_poly = should_skip_polynomial_strategy(&simplifier.context, current, 6, 4);
 
             if !skip_poly {
@@ -180,16 +182,17 @@ impl Orchestrator {
         if final_collected != current {
             if crate::ordering::compare_expr(&simplifier.context, final_collected, current)
                 != std::cmp::Ordering::Equal
-                && simplifier.collect_steps {
-                    steps.push(Step::new(
-                        "Final Collection",
-                        "Collect",
-                        current,
-                        final_collected,
-                        Vec::new(),
-                        Some(&simplifier.context),
-                    ));
-                }
+                && simplifier.collect_steps
+            {
+                steps.push(Step::new(
+                    "Final Collection",
+                    "Collect",
+                    current,
+                    final_collected,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                ));
+            }
             current = final_collected;
         }
 
