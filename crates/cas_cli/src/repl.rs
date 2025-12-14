@@ -478,8 +478,9 @@ impl Repl {
 
         let (result, steps, stats) = self.simplifier.simplify_with_stats(expr, opts);
 
-        // Store health report for the `health` command (if >= 5 rewrites)
-        if (self.explain_mode || self.health_enabled) && stats.total_rewrites >= 5 {
+        // Store health report for the `health` command
+        // Always store if health_enabled; for explain-only use threshold
+        if self.health_enabled || (self.explain_mode && stats.total_rewrites >= 5) {
             self.last_health_report = Some(self.simplifier.profiler.health_report());
         }
 
