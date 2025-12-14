@@ -188,3 +188,143 @@ proptest! {
         prop_assert!(check_right_associative(&simplifier.context, simplified), "Associativity flattening failed: {}", d);
     }
 }
+
+// ============================================================================
+// NORMALIZE_CORE STRUCTURAL INVARIANTS (Property Tests)
+// These test the N0/N1/N2/N3 canonicalization guarantees
+// ============================================================================
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    /// N0: normalize_core is idempotent
+    #[test]
+    fn test_normalize_core_idempotent(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+
+        let n1 = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
+        let n2 = cas_engine::canonical_forms::normalize_core(&mut ctx, n1);
+
+        let d1 = cas_ast::DisplayExpr { context: &ctx, id: n1 };
+        let d2 = cas_ast::DisplayExpr { context: &ctx, id: n2 };
+        prop_assert_eq!(d1.to_string(), d2.to_string(), "normalize_core not idempotent");
+    }
+
+    /// N0: No Neg(Number) after normalize_core
+    #[test]
+    fn test_normalize_core_no_neg_number(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let normalized = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
+
+        fn check_no_neg_number(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Neg(inner) => {
+                    if matches!(ctx.get(*inner), Expr::Number(_)) {
+                        return false; // Found Neg(Number) - violation!
+                    }
+                    check_no_neg_number(ctx, *inner)
+                }
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                    check_no_neg_number(ctx, *l) && check_no_neg_number(ctx, *r)
+                }
+                Expr::Function(_, args) => args.iter().all(|a| check_no_neg_number(ctx, *a)),
+                _ => true,
+            }
+        }
+
+        let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
+        prop_assert!(check_no_neg_number(&ctx, normalized), "Found Neg(Number) after normalize_core: {}", d);
+    }
+
+    /// N1: No Neg(Neg(x)) after normalize_core
+    #[test]
+    fn test_normalize_core_no_double_neg(re in strategies::arb_recursive_expr()) {
+        let (mut ctx, expr) = strategies::to_context(re);
+        let normalized = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
+
+        fn check_no_double_neg(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Neg(inner) => {
+                    if matches!(ctx.get(*inner), Expr::Neg(_)) {
+                        return false; // Found Neg(Neg(x)) - violation!
+                    }
+                    check_no_double_neg(ctx, *inner)
+                }
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                    check_no_double_neg(ctx, *l) && check_no_double_neg(ctx, *r)
+                }
+                Expr::Function(_, args) => args.iter().all(|a| check_no_double_neg(ctx, *a)),
+                _ => true,
+            }
+        }
+
+        let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
+        prop_assert!(check_no_double_neg(&ctx, normalized), "Found Neg(Neg(x)) after normalize_core: {}", d);
+    }
+
+    /// After simplify, no Pow(x, 1) should exist
+    #[test]
+    fn test_simplify_no_pow_one(re in strategies::arb_recursive_expr()) {
+        let (ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+
+        let (simplified, _) = simplifier.simplify(expr);
+
+        fn check_no_pow_one(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Pow(_, exp) => {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        if n == &num_rational::BigRational::from_integer(1.into()) {
+                            return false; // Found Pow(x, 1)
+                        }
+                    }
+                    true // Don't recurse into Pow base to avoid false positives
+                }
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                    check_no_pow_one(ctx, *l) && check_no_pow_one(ctx, *r)
+                }
+                Expr::Neg(e) => check_no_pow_one(ctx, *e),
+                Expr::Function(_, args) => args.iter().all(|a| check_no_pow_one(ctx, *a)),
+                _ => true,
+            }
+        }
+
+        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: simplified };
+        prop_assert!(check_no_pow_one(&simplifier.context, simplified), "Found Pow(x, 1) after simplify: {}", d);
+    }
+
+    /// Fractions should be in reduced form (gcd = 1)
+    #[test]
+    fn test_numbers_reduced_form(re in strategies::arb_recursive_expr()) {
+        use num_integer::Integer;
+        use num_traits::Signed;
+
+        let (ctx, expr) = strategies::to_context(re);
+        let mut simplifier = Simplifier::with_default_rules();
+        simplifier.context = ctx;
+
+        let (simplified, _) = simplifier.simplify(expr);
+
+        fn check_reduced_rationals(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Number(n) => {
+                    let numer = n.numer().abs();
+                    let denom = n.denom().abs();
+                    let g = numer.gcd(&denom);
+                    // GCD should be 1 (reduced form)
+                    g == num_bigint::BigInt::from(1) && n.denom() > &num_bigint::BigInt::from(0)
+                }
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+                    check_reduced_rationals(ctx, *l) && check_reduced_rationals(ctx, *r)
+                }
+                Expr::Neg(e) => check_reduced_rationals(ctx, *e),
+                Expr::Function(_, args) => args.iter().all(|a| check_reduced_rationals(ctx, *a)),
+                _ => true,
+            }
+        }
+
+        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: simplified };
+        prop_assert!(check_reduced_rationals(&simplifier.context, simplified), "Found non-reduced rational after simplify: {}", d);
+    }
+}
