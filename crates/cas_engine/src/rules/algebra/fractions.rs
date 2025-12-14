@@ -1677,6 +1677,7 @@ define_rule!(
     RationalizeBinomialSurdRule,
     "Rationalize Binomial Denominator",
     |ctx, expr| {
+        use crate::rationalize_policy::RationalizeReason;
         use cas_ast::views::{as_rational_const, count_distinct_numeric_surds, is_surd_free};
         use num_rational::BigRational;
         use num_traits::ToPrimitive;
@@ -1684,18 +1685,30 @@ define_rule!(
         // Only match Div expressions
         let (num, den) = match ctx.get(expr).clone() {
             Expr::Div(n, d) => (n, d),
-            _ => return None,
+            _ => {
+                tracing::trace!(target: "rationalize", "skipped: not a division");
+                return None;
+            }
         };
 
         // Budget guard: denominator shouldn't be too complex
-        if count_nodes(ctx, den) > 30 {
+        let den_nodes = count_nodes(ctx, den);
+        if den_nodes > 30 {
+            tracing::debug!(target: "rationalize", reason = ?RationalizeReason::BudgetExceeded, 
+                            nodes = den_nodes, max = 30, "auto rationalize rejected");
             return None;
         }
 
         // Multi-surd guard: only rationalize if denominator has exactly 1 distinct surd
         // Level 1.5 blocks multi-surd expressions (reserved for `rationalize` command)
         let distinct_surds = count_distinct_numeric_surds(ctx, den, 50);
-        if distinct_surds != 1 {
+        if distinct_surds == 0 {
+            tracing::trace!(target: "rationalize", "skipped: no surds found");
+            return None;
+        }
+        if distinct_surds > 1 {
+            tracing::debug!(target: "rationalize", reason = ?RationalizeReason::MultiSurdBlocked,
+                            surds = distinct_surds, "auto rationalize rejected");
             return None;
         }
 
