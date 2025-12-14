@@ -9,7 +9,6 @@ use cas_engine::Simplifier;
 use cas_ast::{
     Context, DisplayExpr, DisplayExprStyled, Expr, ExprId, ParseStyleSignals, StylePreferences,
 };
-use cas_engine::display_context::build_display_context_with_result;
 use cas_engine::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
 use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
 use cas_engine::rules::grouping::CollectRule;
@@ -2134,20 +2133,6 @@ impl Repl {
                     Some(&style_signals),
                 );
 
-                // DEPRECATED: Keep old hints for comparison during migration
-                // TODO: Remove after verifying DisplayExprStyled works correctly
-                let display_hints = if self.verbosity != Verbosity::None {
-                    build_display_context_with_result(
-                        &self.simplifier.context,
-                        expr,
-                        &steps,
-                        Some(simplified),
-                    )
-                } else {
-                    cas_ast::DisplayContext::new()
-                };
-                let _ = &display_hints; // Suppress unused warning during migration
-
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
                         // Even with no engine steps, show didactic sub-steps if there are fraction sums
@@ -2542,19 +2527,6 @@ impl Repl {
                     }
                 );
                 let (simplified, steps) = temp_simplifier.simplify(expr);
-
-                // DEPRECATED: Keep display_hints for compatibility
-                let display_hints = if self.verbosity != Verbosity::None {
-                    build_display_context_with_result(
-                        &temp_simplifier.context,
-                        expr,
-                        &steps,
-                        Some(simplified),
-                    )
-                } else {
-                    cas_ast::DisplayContext::new()
-                };
-                let _ = &display_hints;
 
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
