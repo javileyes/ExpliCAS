@@ -76,6 +76,100 @@ impl std::fmt::Display for SimplifyPhase {
     }
 }
 
+/// Iteration budgets for each phase of the pipeline.
+///
+/// These control how many fixed-point iterations each phase can run
+/// before moving to the next phase.
+#[derive(Debug, Clone, Copy)]
+pub struct PhaseBudgets {
+    /// Max iterations for Core phase (default: 8)
+    pub core_iters: usize,
+    /// Max iterations for Transform phase (default: 6)
+    pub transform_iters: usize,
+    /// Max iterations for Rationalize phase (default: 3)
+    pub rationalize_iters: usize,
+    /// Max iterations for PostCleanup phase (default: 4)
+    pub post_iters: usize,
+    /// Global safety limit on total rewrites (default: 200)
+    pub max_total_rewrites: usize,
+}
+
+impl Default for PhaseBudgets {
+    fn default() -> Self {
+        Self {
+            core_iters: 8,
+            transform_iters: 6,
+            rationalize_iters: 3,
+            post_iters: 4,
+            max_total_rewrites: 200,
+        }
+    }
+}
+
+impl PhaseBudgets {
+    /// Get the iteration budget for a specific phase.
+    pub fn for_phase(&self, phase: SimplifyPhase) -> usize {
+        match phase {
+            SimplifyPhase::Core => self.core_iters,
+            SimplifyPhase::Transform => self.transform_iters,
+            SimplifyPhase::Rationalize => self.rationalize_iters,
+            SimplifyPhase::PostCleanup => self.post_iters,
+        }
+    }
+}
+
+/// Options controlling the simplification pipeline.
+#[derive(Debug, Clone)]
+pub struct SimplifyOptions {
+    /// Whether to run the Transform phase (distribution, expansion).
+    /// Set to false for `simplify --no-transform`.
+    pub enable_transform: bool,
+
+    /// Rationalization policy (includes auto_level and budgets).
+    /// Set auto_level to Off for `simplify --no-rationalize`.
+    pub rationalize: crate::rationalize_policy::RationalizePolicy,
+
+    /// Per-phase iteration budgets.
+    pub budgets: PhaseBudgets,
+
+    /// Whether to collect steps for timeline display.
+    pub collect_steps: bool,
+}
+
+impl Default for SimplifyOptions {
+    fn default() -> Self {
+        Self {
+            enable_transform: true,
+            rationalize: crate::rationalize_policy::RationalizePolicy::default(),
+            budgets: PhaseBudgets::default(),
+            collect_steps: true,
+        }
+    }
+}
+
+impl SimplifyOptions {
+    /// Options for `expand()` command: Core → Transform → PostCleanup (no Rationalize)
+    pub fn for_expand() -> Self {
+        let mut opt = Self::default();
+        opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
+        opt
+    }
+
+    /// Options for `simplify --no-transform`
+    pub fn no_transform() -> Self {
+        let mut opt = Self::default();
+        opt.enable_transform = false;
+        opt
+    }
+
+    /// Options for `simplify --no-rationalize`
+    pub fn no_rationalize() -> Self {
+        let mut opt = Self::default();
+        opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
+        opt
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

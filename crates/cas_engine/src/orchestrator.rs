@@ -1,3 +1,5 @@
+use crate::phase::{SimplifyOptions, SimplifyPhase};
+use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::{Simplifier, Step};
 use cas_ast::ExprId;
 use num_traits::ToPrimitive;
@@ -9,6 +11,8 @@ pub struct Orchestrator {
     pub enable_polynomial_strategy: bool,
     /// Pre-scanned pattern marks for context-aware guards
     pub pattern_marks: crate::pattern_marks::PatternMarks,
+    /// Pipeline options (budgets, transform/rationalize control)
+    pub options: SimplifyOptions,
 }
 
 impl Default for Orchestrator {
@@ -23,7 +27,15 @@ impl Orchestrator {
             max_iterations: 10,
             enable_polynomial_strategy: true,
             pattern_marks: crate::pattern_marks::PatternMarks::new(),
+            options: SimplifyOptions::default(),
         }
+    }
+
+    /// Create orchestrator for expand() command (no rationalization)
+    pub fn for_expand() -> Self {
+        let mut o = Self::new();
+        o.options = SimplifyOptions::for_expand();
+        o
     }
 
     pub fn simplify(&mut self, expr: ExprId, simplifier: &mut Simplifier) -> (ExprId, Vec<Step>) {
@@ -211,6 +223,179 @@ impl Orchestrator {
                 &simplifier.context,
                 expr,    // original expression
                 current, // final expression
+            ) {
+                crate::step_optimization::StepOptimizationResult::Steps(steps) => steps,
+                crate::step_optimization::StepOptimizationResult::NoSimplificationNeeded => vec![],
+            }
+        } else {
+            filtered_steps
+        };
+
+        (current, optimized_steps)
+    }
+
+    /// Run a single phase of the pipeline until fixed point or budget exhausted.
+    ///
+    /// Returns the simplified expression and all steps collected during this phase.
+    fn run_phase(
+        &mut self,
+        simplifier: &mut Simplifier,
+        start: ExprId,
+        phase: SimplifyPhase,
+        max_iters: usize,
+    ) -> (ExprId, Vec<Step>) {
+        let mut current = start;
+        let mut all_steps = Vec::new();
+        let mut cycle_detector = CycleDetector::new(10);
+
+        tracing::debug!(target: "simplify", ?phase, "phase_start");
+
+        for iter in 0..max_iters {
+            let (next, steps) =
+                simplifier.apply_rules_loop_with_phase(current, &self.pattern_marks, phase);
+
+            all_steps.extend(steps);
+
+            // Fixed point check
+            if next == current {
+                tracing::debug!(target: "simplify", ?phase, iter, "phase_fixed_point");
+                break;
+            }
+
+            // Cycle detection
+            if cycle_detector.check(&simplifier.context, current).is_some() {
+                tracing::warn!(target: "simplify", ?phase, iter, "cycle_detected");
+                break;
+            }
+
+            current = next;
+        }
+
+        tracing::debug!(target: "simplify", ?phase, steps = all_steps.len(), "phase_end");
+        (current, all_steps)
+    }
+
+    /// Simplify using explicit phase pipeline.
+    ///
+    /// Pipeline order: Core → Transform → Rationalize → PostCleanup
+    ///
+    /// Key invariant: Transform never runs after Rationalize.
+    pub fn simplify_pipeline(
+        &mut self,
+        expr: ExprId,
+        simplifier: &mut Simplifier,
+    ) -> (ExprId, Vec<Step>) {
+        // PRE-ANALYSIS: Scan for patterns
+        self.pattern_marks = crate::pattern_marks::PatternMarks::new();
+        crate::pattern_scanner::scan_and_mark_patterns(
+            &simplifier.context,
+            expr,
+            &mut self.pattern_marks,
+        );
+
+        // Check for specialized strategies first
+        if let Some(result) =
+            crate::telescoping::try_dirichlet_kernel_identity_pub(&simplifier.context, expr)
+        {
+            let zero = simplifier.context.num(0);
+            let mut steps = Vec::new();
+            if self.options.collect_steps {
+                steps.push(Step::new(
+                    &format!(
+                        "Dirichlet Kernel Identity: 1 + 2Σcos(kx) = sin((n+½)x)/sin(x/2) for n={}",
+                        result.n
+                    ),
+                    "Trig Summation Identity",
+                    expr,
+                    zero,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                ));
+            }
+            return (zero, steps);
+        }
+
+        let mut current = expr;
+        let mut all_steps = Vec::new();
+
+        // Copy values to avoid borrow conflicts with &mut self in run_phase
+        let budgets = self.options.budgets;
+        let enable_transform = self.options.enable_transform;
+        let auto_level = self.options.rationalize.auto_level;
+        let collect_steps = self.options.collect_steps;
+
+        // Phase 1: Core - Safe simplifications
+        let (next, steps) =
+            self.run_phase(simplifier, current, SimplifyPhase::Core, budgets.core_iters);
+        current = next;
+        all_steps.extend(steps);
+
+        // Phase 2: Transform - Distribution, expansion (if enabled)
+        if enable_transform {
+            let (next, steps) = self.run_phase(
+                simplifier,
+                current,
+                SimplifyPhase::Transform,
+                budgets.transform_iters,
+            );
+            current = next;
+            all_steps.extend(steps);
+        }
+
+        // Phase 3: Rationalize - Auto-rationalization per policy
+        if auto_level != AutoRationalizeLevel::Off {
+            let (next, steps) = self.run_phase(
+                simplifier,
+                current,
+                SimplifyPhase::Rationalize,
+                budgets.rationalize_iters,
+            );
+            current = next;
+            all_steps.extend(steps);
+        }
+
+        // Phase 4: PostCleanup - Final cleanup
+        let (next, steps) = self.run_phase(
+            simplifier,
+            current,
+            SimplifyPhase::PostCleanup,
+            budgets.post_iters,
+        );
+        current = next;
+        all_steps.extend(steps);
+
+        // Final collection for canonical form
+        let final_collected = crate::collect::collect(&mut simplifier.context, current);
+        if final_collected != current {
+            if crate::ordering::compare_expr(&simplifier.context, final_collected, current)
+                != std::cmp::Ordering::Equal
+                && collect_steps
+            {
+                all_steps.push(Step::new(
+                    "Final Collection",
+                    "Collect",
+                    current,
+                    final_collected,
+                    Vec::new(),
+                    Some(&simplifier.context),
+                ));
+            }
+            current = final_collected;
+        }
+
+        // Filter and optimize steps
+        let filtered_steps = if collect_steps {
+            crate::strategies::filter_non_productive_steps(&mut simplifier.context, expr, all_steps)
+        } else {
+            all_steps
+        };
+
+        let optimized_steps = if collect_steps {
+            match crate::step_optimization::optimize_steps_semantic(
+                filtered_steps,
+                &simplifier.context,
+                expr,
+                current,
             ) {
                 crate::step_optimization::StepOptimizationResult::Steps(steps) => steps,
                 crate::step_optimization::StepOptimizationResult::NoSimplificationNeeded => vec![],
