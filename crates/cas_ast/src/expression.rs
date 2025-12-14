@@ -90,6 +90,36 @@ impl Context {
         }
     }
 
+    /// Check if a term is "negative" for Add ordering purposes
+    /// Returns true for: Neg(x), Mul(-n, x), Number(-n)
+    fn is_negative_term(&self, id: ExprId) -> bool {
+        use num_traits::Signed;
+        match self.get(id) {
+            Expr::Neg(_) => true,
+            Expr::Mul(a, _) => {
+                // If left factor is a negative number, the term is negative
+                if let Expr::Number(n) = self.get(*a) {
+                    return n.is_negative();
+                }
+                false
+            }
+            Expr::Number(n) => n.is_negative(),
+            _ => false,
+        }
+    }
+
+    /// Compare Add terms with positive-first ordering
+    /// Positive terms come before negative terms for prettier display (x² - y² not -y² + x²)
+    fn compare_add_terms(&self, a: ExprId, b: ExprId) -> std::cmp::Ordering {
+        let a_neg = self.is_negative_term(a);
+        let b_neg = self.is_negative_term(b);
+        match (a_neg, b_neg) {
+            (false, true) => std::cmp::Ordering::Less, // positive < negative
+            (true, false) => std::cmp::Ordering::Greater, // negative > positive
+            _ => crate::ordering::compare_expr(self, a, b), // same sign: regular order
+        }
+    }
+
     pub fn add(&mut self, expr: Expr) -> ExprId {
         // FLATTEN + CANONICALIZE: For Add and Mul, collect all terms, sort, rebuild
         // This ensures Add(Add(a,b),c) and Add(a,Add(b,c)) produce identical trees
@@ -99,8 +129,8 @@ impl Context {
                 let mut terms = Vec::new();
                 self.collect_add_terms(l, &mut terms);
                 self.collect_add_terms(r, &mut terms);
-                // Sort terms for canonical order
-                terms.sort_by(|a, b| crate::ordering::compare_expr(self, *a, *b));
+                // Sort terms: positive first, then by compare_expr
+                terms.sort_by(|a, b| self.compare_add_terms(*a, *b));
                 // Build right-associative tree: a + (b + (c + d))
                 self.build_right_assoc_add(&terms)
             }

@@ -226,3 +226,76 @@ fn test_expand_idempotence() {
 
     assert_eq!(once, twice, "expand should be idempotent");
 }
+
+// ============================================================================
+// DISPLAY ORDERING: Positive terms before negative (P5)
+// ============================================================================
+
+#[test]
+fn test_display_order_difference_of_squares() {
+    // (x+y)(x-y) should display as x² - y² (not -y² + x²)
+    let mut s = create_simplifier();
+    let expr = parse("(x+y)*(x-y)", &mut s.context).unwrap();
+    let (result, _) = s.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &s.context,
+            id: result
+        }
+    );
+
+    // x² should come before -y² (or y²)
+    let x2_pos = output.find("x");
+    let y2_pos = output.find("y");
+    assert!(
+        x2_pos < y2_pos,
+        "x² should come before y² in display, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_display_order_neg_plus_positive() {
+    // -x + y should display as y - x
+    let mut s = create_simplifier();
+    let expr = parse("-x + y", &mut s.context).unwrap();
+    let (result, _) = s.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &s.context,
+            id: result
+        }
+    );
+
+    assert!(
+        output.starts_with("y"),
+        "positive term y should come first, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_display_order_polynomial() {
+    // x + x² - 3 should display as x² + x - 3
+    let mut s = create_simplifier();
+    let expr = parse("x + x^2 - 3", &mut s.context).unwrap();
+    let (result, _) = s.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &s.context,
+            id: result
+        }
+    );
+
+    // x² should come first, then x, then -3
+    let x2_pos = output.find("x^");
+    let neg3_pos = output.find("-");
+    assert!(
+        x2_pos.is_some() && neg3_pos.is_some() && x2_pos < neg3_pos,
+        "x² should come before -3, got: {}",
+        output
+    );
+}
