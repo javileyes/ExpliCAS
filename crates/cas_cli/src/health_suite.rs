@@ -634,6 +634,9 @@ pub fn format_report(results: &[HealthCaseResult]) -> String {
         report.push_str(&format!("FAILED: {}/{} cases\n", failed, total));
     }
 
+    // Add legend
+    report.push_str("\nLegend: rw=total rewrites, c=Core, t=Transform, r=Rationalize, p=Post\n");
+
     report
 }
 
@@ -753,6 +756,9 @@ pub fn format_report_filtered(results: &[HealthCaseResult], category: Option<Cat
     } else {
         report.push_str(&format!("FAILED: {}/{} cases\n", failed, total));
     }
+
+    // Add legend
+    report.push_str("\nLegend: rw=total rewrites, c=Core, t=Transform, r=Rationalize, p=Post\n");
 
     report
 }
