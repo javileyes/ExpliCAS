@@ -120,6 +120,8 @@ pub struct Repl {
     simplifier: Simplifier,
     verbosity: Verbosity,
     config: CasConfig,
+    /// Options controlling the simplification pipeline (phases, budgets)
+    simplify_options: cas_engine::SimplifyOptions,
 }
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
@@ -445,9 +447,17 @@ impl Repl {
             simplifier,
             verbosity: Verbosity::Normal,
             config,
+            simplify_options: cas_engine::SimplifyOptions::default(),
         };
         repl.sync_config_to_simplifier();
         repl
+    }
+
+    /// Simplify expression using current pipeline options
+    fn do_simplify(&mut self, expr: cas_ast::ExprId) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
+        let mut opts = self.simplify_options.clone();
+        opts.collect_steps = self.simplifier.collect_steps;
+        self.simplifier.simplify_with_options(expr, opts)
     }
 
     fn sync_config_to_simplifier(&mut self) {
@@ -607,6 +617,12 @@ impl Repl {
             } else {
                 println!("Usage: steps <on|off|normal|verbose|succinct|none>");
             }
+            return;
+        }
+
+        // Check for "set" command (pipeline options)
+        if line.starts_with("set ") {
+            self.handle_set_command(&line);
             return;
         }
 
@@ -806,6 +822,91 @@ impl Repl {
             }
             _ => println!("Unknown config command: {}", parts[1]),
         }
+    }
+
+    /// Handle 'set' command for pipeline phase control
+    fn handle_set_command(&mut self, line: &str) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 3 {
+            self.print_set_help();
+            return;
+        }
+
+        match parts[1] {
+            "transform" => match parts[2] {
+                "on" | "true" | "1" => {
+                    self.simplify_options.enable_transform = true;
+                    println!("Transform phase ENABLED (distribution, expansion)");
+                }
+                "off" | "false" | "0" => {
+                    self.simplify_options.enable_transform = false;
+                    println!("Transform phase DISABLED (no distribution/expansion)");
+                }
+                _ => println!("Usage: set transform <on|off>"),
+            },
+            "rationalize" => match parts[2] {
+                "on" | "true" | "auto" => {
+                    self.simplify_options.rationalize.auto_level =
+                        cas_engine::rationalize_policy::AutoRationalizeLevel::Level15;
+                    println!("Rationalization ENABLED (Level 1.5)");
+                }
+                "off" | "false" => {
+                    self.simplify_options.rationalize.auto_level =
+                        cas_engine::rationalize_policy::AutoRationalizeLevel::Off;
+                    println!("Rationalization DISABLED");
+                }
+                "0" | "level0" => {
+                    self.simplify_options.rationalize.auto_level =
+                        cas_engine::rationalize_policy::AutoRationalizeLevel::Level0;
+                    println!("Rationalization set to Level 0 (single sqrt)");
+                }
+                "1" | "level1" => {
+                    self.simplify_options.rationalize.auto_level =
+                        cas_engine::rationalize_policy::AutoRationalizeLevel::Level1;
+                    println!("Rationalization set to Level 1 (binomial conjugate)");
+                }
+                "1.5" | "level15" => {
+                    self.simplify_options.rationalize.auto_level =
+                        cas_engine::rationalize_policy::AutoRationalizeLevel::Level15;
+                    println!("Rationalization set to Level 1.5 (same-surd products)");
+                }
+                _ => println!("Usage: set rationalize <on|off|0|1|1.5>"),
+            },
+            "max-rewrites" => {
+                if let Ok(n) = parts[2].parse::<usize>() {
+                    self.simplify_options.budgets.max_total_rewrites = n;
+                    println!("Max rewrites set to {}", n);
+                } else {
+                    println!("Usage: set max-rewrites <number>");
+                }
+            }
+            _ => self.print_set_help(),
+        }
+    }
+
+    fn print_set_help(&self) {
+        println!("Pipeline settings:");
+        println!("  set transform <on|off>         Enable/disable distribution & expansion");
+        println!("  set rationalize <on|off|0|1|1.5>  Set rationalization level");
+        println!("  set max-rewrites <N>           Set max total rewrites (safety limit)");
+        println!();
+        println!("Current settings:");
+        println!(
+            "  transform: {}",
+            if self.simplify_options.enable_transform {
+                "on"
+            } else {
+                "off"
+            }
+        );
+        println!(
+            "  rationalize: {:?}",
+            self.simplify_options.rationalize.auto_level
+        );
+        println!(
+            "  max-rewrites: {}",
+            self.simplify_options.budgets.max_total_rewrites
+        );
     }
 
     fn handle_help(&self, line: &str) {
@@ -1088,6 +1189,9 @@ impl Repl {
         println!();
 
         println!("System:");
+        println!(
+            "  set <option> <value>    Pipeline settings (transform, rationalize, max-rewrites)"
+        );
         println!("  config <subcmd>         Manage configuration (list, enable, disable...)");
         println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
         println!("  help [cmd]              Show this help message or details for a command");
@@ -1363,7 +1467,7 @@ impl Repl {
             // Use normal simplification
             match cas_parser::parse(expr_str.trim(), &mut self.simplifier.context) {
                 Ok(expr) => {
-                    let (simplified, steps) = self.simplifier.simplify(expr);
+                    let (simplified, steps) = self.do_simplify(expr);
                     (steps, expr, simplified)
                 }
                 Err(e) => {
@@ -2134,7 +2238,7 @@ impl Repl {
                         id: expr
                     }
                 );
-                let (simplified, steps) = self.simplifier.simplify(expr);
+                let (simplified, steps) = self.do_simplify(expr);
 
                 // Create global style preferences from input signals + AST
                 let style_prefs = StylePreferences::from_expression_with_signals(
