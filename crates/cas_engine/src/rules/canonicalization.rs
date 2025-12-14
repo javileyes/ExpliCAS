@@ -587,6 +587,104 @@ define_rule!(NegSubFlipRule, "Flip Negative Subtraction", |ctx, expr| {
     None
 });
 
+/// Detect (a - b) represented as Sub(a,b) or Add(a, Neg(b)) or Add(Neg(b), a)
+/// Returns Some((a, b)) where the expression represents a - b
+fn as_sub_like(
+    ctx: &cas_ast::Context,
+    id: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    match ctx.get(id) {
+        Expr::Sub(a, b) => Some((*a, *b)),
+        Expr::Add(l, r) => {
+            // Check for Add(a, Neg(b)) = a - b
+            if let Expr::Neg(x) = ctx.get(*r) {
+                return Some((*l, *x));
+            }
+            // Check for Add(Neg(b), a) = a - b (after canonicalization)
+            if let Expr::Neg(x) = ctx.get(*l) {
+                return Some((*r, *x));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+// Rule: (-k) * (...) * (a - b) → k * (...) * (b - a) when k > 0
+// This produces cleaner output like "1/2 * x * (√2 - 1)" instead of "-1/2 * x * (1 - √2)"
+// No loop risk: produces positive coefficient which won't match again
+define_rule!(
+    NegCoeffFlipBinomialRule,
+    "Flip binomial under negative coefficient",
+    |ctx, expr| {
+        use num_traits::Signed;
+
+        // Match Mul(l, r) - we work with binary Mul, not flat vec
+        if let Expr::Mul(l, r) = ctx.get(expr) {
+            let l_id = *l;
+            let r_id = *r;
+
+            // Case 1: Left is negative number, right is binomial
+            if let Expr::Number(n) = ctx.get(l_id) {
+                if n.is_negative() {
+                    if let Some((a, b)) = as_sub_like(ctx, r_id) {
+                        // (-k) * (a - b) → k * (b - a)
+                        let pos_n = ctx.add(Expr::Number(-n.clone()));
+                        let neg_a = ctx.add(Expr::Neg(a));
+                        let b_minus_a = ctx.add(Expr::Add(b, neg_a));
+                        let new_expr = ctx.add(Expr::Mul(pos_n, b_minus_a));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "(-k) * (a-b) → k * (b-a)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                        });
+                    }
+                }
+            }
+
+            // Case 2: Left is negative number, right is Mul containing binomial
+            if let Expr::Number(n) = ctx.get(l_id) {
+                if n.is_negative() {
+                    let n_clone = n.clone();
+                    if let Expr::Mul(ml, mr) = ctx.get(r_id) {
+                        let ml_id = *ml;
+                        let mr_id = *mr;
+                        // (-k) * (x * (a-b)) → k * (x * (b-a))
+                        if let Some((a, b)) = as_sub_like(ctx, mr_id) {
+                            let pos_n = ctx.add(Expr::Number(-n_clone.clone()));
+                            let neg_a = ctx.add(Expr::Neg(a));
+                            let b_minus_a = ctx.add(Expr::Add(b, neg_a));
+                            let new_inner = ctx.add(Expr::Mul(ml_id, b_minus_a));
+                            let new_expr = ctx.add(Expr::Mul(pos_n, new_inner));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "(-k) * (x * (a-b)) → k * (x * (b-a))".to_string(),
+                                before_local: None,
+                                after_local: None,
+                            });
+                        }
+                        if let Some((a, b)) = as_sub_like(ctx, ml_id) {
+                            let pos_n = ctx.add(Expr::Number(-n_clone));
+                            let neg_a = ctx.add(Expr::Neg(a));
+                            let b_minus_a = ctx.add(Expr::Add(b, neg_a));
+                            let new_inner = ctx.add(Expr::Mul(b_minus_a, mr_id));
+                            let new_expr = ctx.add(Expr::Mul(pos_n, new_inner));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "(-k) * ((a-b) * x) → k * ((b-a) * x)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -705,4 +803,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(NormalizeSignsRule));
     // NormalizeBinomialOrderRule disabled - causes infinite loop with other rules
     simplifier.add_rule(Box::new(NegSubFlipRule)); // -(a-b) → (b-a) for cleaner display
+    simplifier.add_rule(Box::new(NegCoeffFlipBinomialRule)); // (-k)*(a-b) → k*(b-a)
 }
