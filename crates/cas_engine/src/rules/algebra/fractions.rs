@@ -1665,3 +1665,212 @@ define_rule!(
         })
     }
 );
+
+// ========== Binomial Conjugate Rationalization (Level 1) ==========
+// Transforms: num / (A + B√n) → num * (A - B√n) / (A² - B²·n)
+// Only applies when:
+// - denominator is a binomial with exactly one numeric surd term
+// - A, B are rational, n is a positive integer
+// - uses closed-form arithmetic (no calls to general simplifier)
+
+define_rule!(
+    RationalizeBinomialSurdRule,
+    "Rationalize Binomial Denominator",
+    |ctx, expr| {
+        use cas_ast::views::as_rational_const;
+        use num_rational::BigRational;
+        use num_traits::ToPrimitive;
+
+        // Only match Div expressions
+        let (num, den) = match ctx.get(expr).clone() {
+            Expr::Div(n, d) => (n, d),
+            _ => return None,
+        };
+
+        // Budget guard: denominator shouldn't be too complex
+        if count_nodes(ctx, den) > 25 {
+            return None;
+        }
+
+        // Try to parse denominator as A ± B√n (binomial surd)
+        // Patterns: Add(A, Mul(B, √n)), Add(A, √n), Sub(A, Mul(B, √n)), etc.
+
+        struct BinomialSurd {
+            a: BigRational, // Rational constant term
+            b: BigRational, // Coefficient of surd
+            n: i64,         // Radicand (square-free positive integer)
+            is_sub: bool,   // true if A - B√n, false if A + B√n
+        }
+
+        fn parse_binomial_surd(ctx: &Context, den: ExprId) -> Option<BinomialSurd> {
+            // Helper to check if expression is a numeric √n
+            fn is_numeric_sqrt(ctx: &Context, id: ExprId) -> Option<i64> {
+                match ctx.get(id) {
+                    Expr::Pow(base, exp) => {
+                        let exp_val = as_rational_const(ctx, *exp, 8)?;
+                        let half = BigRational::new(1.into(), 2.into());
+                        if exp_val != half {
+                            return None;
+                        }
+                        if let Expr::Number(n) = ctx.get(*base) {
+                            if n.is_integer() {
+                                return n.numer().to_i64().filter(|&x| x > 0);
+                            }
+                        }
+                        None
+                    }
+                    Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+                        if let Expr::Number(n) = ctx.get(args[0]) {
+                            if n.is_integer() {
+                                return n.numer().to_i64().filter(|&x| x > 0);
+                            }
+                        }
+                        None
+                    }
+                    _ => None,
+                }
+            }
+
+            // Helper to parse B*√n or √n (B=1)
+            fn parse_surd_term(ctx: &Context, id: ExprId) -> Option<(BigRational, i64)> {
+                // Try √n directly (B=1)
+                if let Some(n) = is_numeric_sqrt(ctx, id) {
+                    return Some((BigRational::from_integer(1.into()), n));
+                }
+                // Try B * √n
+                if let Expr::Mul(l, r) = ctx.get(id) {
+                    if let Some(n) = is_numeric_sqrt(ctx, *r) {
+                        if let Some(b) = as_rational_const(ctx, *l, 8) {
+                            return Some((b, n));
+                        }
+                    }
+                    if let Some(n) = is_numeric_sqrt(ctx, *l) {
+                        if let Some(b) = as_rational_const(ctx, *r, 8) {
+                            return Some((b, n));
+                        }
+                    }
+                }
+                None
+            }
+
+            match ctx.get(den) {
+                // A + surd_term
+                Expr::Add(l, r) => {
+                    // Try l=A (rational), r=B√n
+                    if let Some(a) = as_rational_const(ctx, *l, 8) {
+                        if let Some((b, n)) = parse_surd_term(ctx, *r) {
+                            return Some(BinomialSurd {
+                                a,
+                                b,
+                                n,
+                                is_sub: false,
+                            });
+                        }
+                    }
+                    // Try l=B√n, r=A
+                    if let Some(a) = as_rational_const(ctx, *r, 8) {
+                        if let Some((b, n)) = parse_surd_term(ctx, *l) {
+                            return Some(BinomialSurd {
+                                a,
+                                b,
+                                n,
+                                is_sub: false,
+                            });
+                        }
+                    }
+                    None
+                }
+                // A - surd_term
+                Expr::Sub(l, r) => {
+                    if let Some(a) = as_rational_const(ctx, *l, 8) {
+                        if let Some((b, n)) = parse_surd_term(ctx, *r) {
+                            return Some(BinomialSurd {
+                                a,
+                                b,
+                                n,
+                                is_sub: true,
+                            });
+                        }
+                    }
+                    None
+                }
+                _ => None,
+            }
+        }
+
+        let surd = parse_binomial_surd(ctx, den)?;
+
+        // Compute conjugate: if A + B√n, conjugate is A - B√n (and vice versa)
+        // New denominator = A² - B²·n (always the same)
+        let a_sq = &surd.a * &surd.a;
+        let b_sq = &surd.b * &surd.b;
+        let b_sq_n = &b_sq * BigRational::from_integer(surd.n.into());
+        let new_den_val = &a_sq - &b_sq_n;
+
+        // Check denominator is non-zero
+        if new_den_val == BigRational::from_integer(0.into()) {
+            return None;
+        }
+
+        // Build conjugate expression: A ∓ B√n
+        let a_expr = ctx.add(Expr::Number(surd.a.clone()));
+        let n_expr = ctx.num(surd.n);
+        let half = ctx.rational(1, 2);
+        let sqrt_n = ctx.add(Expr::Pow(n_expr, half));
+
+        let b_sqrt_n = if surd.b == BigRational::from_integer(1.into()) {
+            sqrt_n
+        } else if surd.b == BigRational::from_integer((-1).into()) {
+            ctx.add(Expr::Neg(sqrt_n))
+        } else {
+            let b_expr = ctx.add(Expr::Number(surd.b.clone()));
+            mul2_raw(ctx, b_expr, sqrt_n)
+        };
+
+        // conjugate = A - B√n if original was A + B√n (is_sub=false)
+        // conjugate = A + B√n if original was A - B√n (is_sub=true)
+        let conjugate = if surd.is_sub {
+            ctx.add(Expr::Add(a_expr, b_sqrt_n))
+        } else {
+            ctx.add(Expr::Sub(a_expr, b_sqrt_n))
+        };
+
+        // Build new numerator: num * conjugate
+        let new_num = mul2_raw(ctx, num, conjugate);
+
+        // Build new denominator as Number
+        let new_den = ctx.add(Expr::Number(new_den_val.clone()));
+
+        let new_expr = ctx.add(Expr::Div(new_num, new_den));
+
+        // Verify we actually made progress (denominator is now rational)
+        if count_nodes(ctx, new_expr) > count_nodes(ctx, expr) + 20 {
+            return None;
+        }
+
+        Some(Rewrite {
+            new_expr,
+            description: format!(
+                "{} / {} -> {} / {}",
+                DisplayExpr {
+                    context: ctx,
+                    id: num
+                },
+                DisplayExpr {
+                    context: ctx,
+                    id: den
+                },
+                DisplayExpr {
+                    context: ctx,
+                    id: new_num
+                },
+                DisplayExpr {
+                    context: ctx,
+                    id: new_den
+                }
+            ),
+            before_local: None,
+            after_local: None,
+        })
+    }
+);
