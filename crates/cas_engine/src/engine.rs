@@ -294,9 +294,25 @@ impl Simplifier {
     }
 
     pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
+        self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::default())
+    }
+
+    /// Simplify with custom options controlling phases and policies.
+    pub fn simplify_with_options(
+        &mut self,
+        expr_id: ExprId,
+        options: crate::phase::SimplifyOptions,
+    ) -> (ExprId, Vec<Step>) {
         let mut orchestrator = crate::orchestrator::Orchestrator::new();
         orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
-        orchestrator.simplify(expr_id, self)
+        orchestrator.options = options;
+        orchestrator.options.collect_steps = self.collect_steps;
+        orchestrator.simplify_pipeline(expr_id, self)
+    }
+
+    /// Expand without rationalization.
+    pub fn expand(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
+        self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::for_expand())
     }
 
     pub fn apply_rules_loop(

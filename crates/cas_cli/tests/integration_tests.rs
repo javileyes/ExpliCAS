@@ -152,25 +152,16 @@ fn test_end_to_end_simplification() {
     );
 
     // Verify Steps
-    // Orchestrator runs `collect` first, which handles "2*3 + 0" -> "2*3" (removing +0)
-    // Then `CombineConstantsRule` runs "2*3" -> "6"
+    // With new phase-based pipeline, Core phase runs first:
+    // Step 1: Combine Constants (2*3 -> 6)
+    // Step 2: Identity Property of Addition (6 + 0 -> 6)
     assert_eq!(steps.len(), 2);
 
-    // Step 1: Collect (removes +0)
-    assert_eq!(steps[0].rule_name, "Collect");
-    assert_eq!(
-        format!(
-            "{}",
-            DisplayExpr {
-                context: &simplifier.context,
-                id: steps[0].after
-            }
-        ),
-        "2 * 3"
-    );
+    // Step 1: Combine Constants (2*3 -> 6)
+    assert_eq!(steps[0].rule_name, "Combine Constants");
 
-    // Step 2: Combine Constants (2*3 -> 6)
-    assert_eq!(steps[1].rule_name, "Combine Constants");
+    // Step 2: Identity Property of Addition (removes +0)
+    assert_eq!(steps[1].rule_name, "Identity Property of Addition");
     assert_eq!(
         format!(
             "{}",
