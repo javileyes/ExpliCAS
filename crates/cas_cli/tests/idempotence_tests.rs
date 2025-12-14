@@ -45,12 +45,9 @@ fn test_idempotence_binomial_surd_denominator() {
 }
 
 #[test]
-#[ignore = "Known issue: Add term order not stable across simplifications (canonicalization bug)"]
 fn test_idempotence_multisurd_denominator() {
     // Level 2: 1/(1+√2+√3) → generalized rationalization
-    // NOTE: This test fails because the order of terms in Add changes:
-    // sqrt(3) + 1 + sqrt(2) vs sqrt(2) + 1 + sqrt(3)
-    // Both are mathematically equivalent but not string-equal.
+    // Now passes: term order is stable after canonicalization fixes
     check_idempotence("1/(1 + sqrt(2) + sqrt(3))");
 }
 
