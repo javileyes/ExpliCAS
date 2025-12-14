@@ -38,6 +38,66 @@ pub enum RationalizeResult {
     BudgetExceeded,
 }
 
+/// Extract a numeric constant factor from a multiplicative expression.
+/// Returns (factor, core) where expr = factor * core (only for numeric factors).
+/// Handles Neg as factor of -1.
+fn extract_constant_factor(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    use num_traits::One;
+
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            // Neg(x) = -1 * x
+            let inner_id = *inner;
+            // Recursively check if inner also has a factor
+            if let Some((k, core)) = extract_constant_factor(ctx, inner_id) {
+                Some((-k, core))
+            } else {
+                Some((-BigRational::one(), inner_id))
+            }
+        }
+        Expr::Mul(l, r) => {
+            let l_id = *l;
+            let r_id = *r;
+            // Check if left is a number
+            if let Expr::Number(n) = ctx.get(l_id) {
+                // Recursively check right side for more factors
+                if let Some((k, core)) = extract_constant_factor(ctx, r_id) {
+                    return Some((n * k, core));
+                }
+                return Some((n.clone(), r_id));
+            }
+            // Check if left is Neg(Number) - handles -2*(...)
+            if let Expr::Neg(inner) = ctx.get(l_id) {
+                if let Expr::Number(n) = ctx.get(*inner) {
+                    if let Some((k, core)) = extract_constant_factor(ctx, r_id) {
+                        return Some((-n * k, core));
+                    }
+                    return Some((-n.clone(), r_id));
+                }
+            }
+            // Check if right is a number
+            if let Expr::Number(n) = ctx.get(r_id) {
+                // Recursively check left side for more factors
+                if let Some((k, core)) = extract_constant_factor(ctx, l_id) {
+                    return Some((n * k, core));
+                }
+                return Some((n.clone(), l_id));
+            }
+            // Check if right is Neg(Number)
+            if let Expr::Neg(inner) = ctx.get(r_id) {
+                if let Expr::Number(n) = ctx.get(*inner) {
+                    if let Some((k, core)) = extract_constant_factor(ctx, l_id) {
+                        return Some((-n * k, core));
+                    }
+                    return Some((-n.clone(), l_id));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 /// Attempt to rationalize a fraction expression.
 ///
 /// Input should be of the form `Div(num, den)` or `Mul(num, Pow(den, -1))`.
@@ -47,14 +107,20 @@ pub fn rationalize_denominator(
     expr: ExprId,
     _config: &RationalizeConfig,
 ) -> RationalizeResult {
+    use num_traits::One;
+
     // Extract numerator and denominator
     let (num, den) = match extract_fraction(ctx, expr) {
         Some(pair) => pair,
         None => return RationalizeResult::NotApplicable,
     };
 
-    // Check if denominator is a surd sum
-    let view = match SurdSumView::from(ctx, den) {
+    // Try to extract constant factor from denominator: k * surd_sum
+    let (den_factor, den_core) =
+        extract_constant_factor(ctx, den).unwrap_or_else(|| (BigRational::one(), den));
+
+    // Check if denominator core is a surd sum
+    let view = match SurdSumView::from(ctx, den_core) {
         Some(v) => v,
         None => return RationalizeResult::NotApplicable,
     };
@@ -64,11 +130,42 @@ pub fn rationalize_denominator(
         return RationalizeResult::Success(expr);
     }
 
-    // v1: Only handle 3-term case: constant + surd1 + surd2
-    // Split into A = (constant + surd1) and B = surd2
+    // v1: Handle 2 surds (constant + surd1 + surd2)
+    // v2: Also handle 1 surd (constant + surd) - simple conjugate case
+    if view.surds.len() == 1 {
+        // Simple case: a + b√n → multiply by (a - b√n)/(a - b√n)
+        let a = view.constant.clone();
+        let (b, n) = (view.surds[0].coeff.clone(), view.surds[0].radicand);
+
+        // Build conjugate: a - b√n
+        let a_expr = build_rational(ctx, &a);
+        let b_sqrt_n = build_sqrt_term(ctx, &b, n);
+        let neg_b_sqrt_n = ctx.add(Expr::Neg(b_sqrt_n));
+        let conjugate = ctx.add(Expr::Add(a_expr, neg_b_sqrt_n));
+
+        // New numerator: num * (a - b√n)
+        let new_num = ctx.add(Expr::Mul(num, conjugate));
+
+        // New denominator: a² - b²·n (pure rational)
+        let a_sq = &a * &a;
+        let b_sq_n = &b * &b * BigRational::from_integer(n.into());
+        let new_den_value = a_sq - b_sq_n;
+        let new_den = build_rational(ctx, &new_den_value);
+
+        let result = build_fraction(ctx, new_num, new_den);
+
+        // Apply extracted constant factor: result / den_factor
+        let final_result = if den_factor == BigRational::one() {
+            result
+        } else {
+            let factor_expr = build_rational(ctx, &den_factor);
+            build_fraction(ctx, result, factor_expr)
+        };
+        return RationalizeResult::Success(final_result);
+    }
+
     if view.surds.len() != 2 {
-        // For now, only handle exactly 2 surds
-        // Single surd case would need different treatment
+        // Only handle 1 or 2 surds for now
         return RationalizeResult::NotApplicable;
     }
 
@@ -105,7 +202,14 @@ pub fn rationalize_denominator(
         // Denominator is pure rational
         let den_expr = build_rational(ctx, &new_const);
         let result = build_fraction(ctx, new_num, den_expr);
-        return RationalizeResult::Success(result);
+        // Apply extracted constant factor: result / den_factor
+        let final_result = if den_factor == BigRational::one() {
+            result
+        } else {
+            let factor_expr = build_rational(ctx, &den_factor);
+            build_fraction(ctx, result, factor_expr)
+        };
+        return RationalizeResult::Success(final_result);
     }
 
     // Still have a surd - do one more conjugate to fully rationalize
@@ -131,7 +235,15 @@ pub fn rationalize_denominator(
     let final_den = build_rational(ctx, &final_den_value);
     let result = build_fraction(ctx, final_num, final_den);
 
-    RationalizeResult::Success(result)
+    // Apply extracted constant factor: result / den_factor
+    let final_result = if den_factor == BigRational::one() {
+        result
+    } else {
+        let factor_expr = build_rational(ctx, &den_factor);
+        build_fraction(ctx, result, factor_expr)
+    };
+
+    RationalizeResult::Success(final_result)
 }
 
 /// Extract (numerator, denominator) from a fraction expression.
