@@ -3543,3 +3543,75 @@ El identificador `ExprId` no es un simple índice `u32`. Utilizamos una técnica
 **Beneficios**:
 *   **Check de Tipo sin Pointer Chasing**: Podemos saber si una expresión es un número o un átomo simplemente mirando los bits del `ExprId`, sin acceder a la memoria del `Context`.
 *   **Localidad de Caché**: Reduce la presión sobre la caché de CPU en funciones críticas como `compare_expr`.
+
+---
+
+## 8. Auto Rationalization System (Added 2025-12)
+
+### Niveles de Racionalización Automática
+
+El sistema implementa racionalización automática de denominadores con surds en múltiples niveles:
+
+| Level | Descripción | Ejemplo | Auto |
+|-------|-------------|---------|------|
+| **0** | Single surd | `1/√n → √n/n` | ✅ |
+| **1** | Binomial | `1/(a+b√n) → conjugate` | ✅ |
+| **1.5** | Binomial in product | `1/(k*(a+b√n))` | ✅ |
+| **2** | Multi-surd | `1/((1+√2)*(1+√3))` | Manual (`rationalize` cmd) |
+
+### Tipos Centrales (`rationalize_policy.rs`)
+
+```rust
+enum AutoRationalizeLevel { Off, Level0, Level1, Level15 }
+
+struct RationalizePolicy {
+    auto_level: AutoRationalizeLevel,  // Default: Level15
+    max_den_nodes: usize,              // Default: 30
+    max_growth: usize,                 // Default: 20
+    allow_same_surd_product: bool,     // Default: true
+}
+
+enum RationalizeReason {
+    MultiSurdBlocked,
+    BudgetExceeded,
+    MaxGrowthExceeded,
+    KNotSurdFree,
+    NoBinomialFound,
+    // ...
+}
+```
+
+### Guards Implementados
+
+1. **Multi-surd guard**: `count_distinct_numeric_surds(den) > 1` → block
+2. **Budget guard**: `count_nodes(den) > 30` → block
+3. **K surd-free check**: Non-binomial factors must be surd-free
+4. **Phase flag**: `did_rationalize` prevents expansion after rationalization
+
+### Tracing / Debugging
+
+Activar trazas de racionalización:
+
+```bash
+RUST_LOG=rationalize=debug cargo run -p cas_cli
+```
+
+Logs de ejemplo:
+```
+DEBUG rationalize: auto rationalize rejected reason=MultiSurdBlocked surds=2
+DEBUG rationalize: auto rationalize rejected reason=BudgetExceeded nodes=45 max=30
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `simplify <expr>` | Auto-rationalize (levels 0, 1, 1.5) |
+| `rationalize <expr>` | Full multi-surd rationalization (level 2) |
+
+### Tests
+
+- **Semantic tests**: Verification via numeric substitution (`simplify(x) ≈ original`)
+- **Policy tests**: Unit tests for `RationalizePolicy` behavior
+- **Guard tests**: Verify multi-surd blocking, budget limits
+
