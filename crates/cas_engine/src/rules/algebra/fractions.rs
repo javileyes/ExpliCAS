@@ -1836,12 +1836,39 @@ define_rule!(
         };
 
         // Build new numerator: num * conjugate
-        let new_num = mul2_raw(ctx, num, conjugate);
+        // But first, handle negative denominator by absorbing sign into conjugate
+        let (final_conjugate, final_den_val) = if new_den_val < BigRational::from_integer(0.into())
+        {
+            // Negative denominator: flip conjugate sign instead
+            // (A - B√n) with den=-k becomes -(A - B√n) = (-A + B√n) = (B√n - A) with den=k
+            let neg_a = -surd.a.clone();
+            let neg_a_expr = ctx.add(Expr::Number(neg_a));
 
-        // Build new denominator as Number
-        let new_den = ctx.add(Expr::Number(new_den_val.clone()));
+            // Build flipped conjugate: B√n - A (or -B√n + A if was_sub)
+            let flipped = if surd.is_sub {
+                // Original: A - B√n, conjugate was A + B√n, flip → -A - B√n
+                let neg_b_sqrt_n = ctx.add(Expr::Neg(b_sqrt_n));
+                ctx.add(Expr::Add(neg_a_expr, neg_b_sqrt_n))
+            } else {
+                // Original: A + B√n, conjugate was A - B√n, flip → -A + B√n = B√n - A
+                ctx.add(Expr::Sub(b_sqrt_n, a_expr))
+            };
+            (flipped, -new_den_val.clone())
+        } else {
+            (conjugate, new_den_val.clone())
+        };
 
-        let new_expr = ctx.add(Expr::Div(new_num, new_den));
+        let new_num = mul2_raw(ctx, num, final_conjugate);
+
+        // Build new denominator as Number (now always positive or handled)
+        let new_den = ctx.add(Expr::Number(final_den_val.clone()));
+
+        // If denominator is 1, just return numerator
+        let new_expr = if final_den_val == BigRational::from_integer(1.into()) {
+            new_num
+        } else {
+            ctx.add(Expr::Div(new_num, new_den))
+        };
 
         // Verify we actually made progress (denominator is now rational)
         if count_nodes(ctx, new_expr) > count_nodes(ctx, expr) + 20 {

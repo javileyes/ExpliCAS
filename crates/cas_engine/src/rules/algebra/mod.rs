@@ -21,6 +21,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(AddFractionsRule));
+    // Compact rationalization rules (Level 0, 1) - should apply first
+    simplifier.add_rule(Box::new(RationalizeSingleSurdRule));
+    simplifier.add_rule(Box::new(RationalizeBinomialSurdRule));
+    // General rationalization rules (Level 2) - fallback for complex cases
     simplifier.add_rule(Box::new(RationalizeDenominatorRule));
     simplifier.add_rule(Box::new(GeneralizedRationalizationRule));
     simplifier.add_rule(Box::new(RationalizeProductDenominatorRule));
@@ -32,7 +36,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     simplifier.add_rule(Box::new(ExpandRule));
     simplifier.add_rule(Box::new(FactorBasedLCDRule));
-    simplifier.add_rule(Box::new(RationalizeSingleSurdRule));
-    simplifier.add_rule(Box::new(RationalizeBinomialSurdRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
