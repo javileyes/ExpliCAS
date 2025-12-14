@@ -476,7 +476,12 @@ pub fn is_cot_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> { ... }
 User Input: sec²(x) - tan²(x)
     ↓
 ┌────────────────────────────────────────┐
-│ Orchestrator::simplify()               │
+│ Orchestrator::simplify_pipeline()      │
+│   Phase 1: Core (safe simplifications) │
+│   Phase 2: Transform (distribution)    │
+│   Phase 3: Rationalize (auto per policy)│
+│   Phase 4: PostCleanup (final cleanup) │
+│                                        │
 │   1. pattern_marks = PatternScanner    │
 │      ::scan_and_mark_patterns(expr)    │
 │      → Marks: {tan(x), sec(x)}         │
@@ -484,9 +489,9 @@ User Input: sec²(x) - tan²(x)
            │
            ▼
 ┌────────────────────────────────────────┐
-│ Simplifier::apply_rules_loop(expr,     │
-│                             &pattern_marks)
-│   → Passes marks to transformer        │
+│ Simplifier::apply_rules_loop_with_phase│
+│   (expr, &pattern_marks, phase)        │
+│   → Passes marks and phase to xformer │
 └──────────┬─────────────────────────────┘
            │
            ▼
@@ -2865,24 +2870,26 @@ Esto desacopla “canonicidad interna” de “presentación de steps”.
          │
          ▼
 ┌──────────────────────────────────────────┐
-│  Orchestrator::simplify()                │
+│  Orchestrator::simplify_pipeline()       │
 │  ┌────────────────────────────────────┐  │
-│  │ 1. PRE-ANALYSIS ★ (NEW)            │  │
+│  │ 0. PRE-ANALYSIS                    │  │
 │  │    PatternScanner::scan_and_mark() │  │
 │  │    → Creates PatternMarks          │  │
-│  │    → O(n) one-time scan            │  │
 │  └────────────────────────────────────┘  │
 │  ┌────────────────────────────────────┐  │
-│  │ 2. MULTI-PASS SIMPLIFICATION       │  │
-│  │    Simplifier::apply_rules_loop(   │  │
-│  │        expr, &pattern_marks)       │  │
-│  │    → Passes marks to transformer   │  │
+│  │ 1. CORE PHASE (8 iters max)        │  │
+│  │    Safe simplifications            │  │
 │  └────────────────────────────────────┘  │
 │  ┌────────────────────────────────────┐  │
-│  │ 3. POLYNOMIAL STRATEGY (optional)  │  │
+│  │ 2. TRANSFORM PHASE (6 iters max)   │  │
+│  │    Distribution, expansion         │  │
 │  └────────────────────────────────────┘  │
 │  ┌────────────────────────────────────┐  │
-│  │ 4. FINAL COLLECTION               │  │
+│  │ 3. RATIONALIZE PHASE (3 iters max) │  │
+│  │    Auto-rationalize per policy     │  │
+│  └────────────────────────────────────┘  │
+│  ┌────────────────────────────────────┐  │
+│  │ 4. POSTCLEANUP PHASE (4 iters max) │  │
 │  └────────────────────────────────────┘  │
 └────────┬─────────────────────────────────┘
          │
