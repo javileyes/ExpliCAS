@@ -282,6 +282,9 @@ impl Simplifier {
             initial_parent_ctx,
             root_expr: expr_id,
             current_phase: phase,
+            cycle_detector: None,
+            fp_memo: std::collections::HashMap::new(),
+            last_cycle: None,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -366,6 +369,9 @@ impl Simplifier {
             initial_parent_ctx,
             root_expr: expr_id,
             current_phase: phase,
+            cycle_detector: None,
+            fp_memo: std::collections::HashMap::new(),
+            last_cycle: None,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -523,6 +529,12 @@ struct LocalSimplificationTransformer<'a> {
     root_expr: ExprId,
     /// Current phase of the simplification pipeline (controls which rules can run)
     current_phase: crate::phase::SimplifyPhase,
+    /// Cycle detector for ping-pong detection (health mode only)
+    cycle_detector: Option<crate::cycle_detector::CycleDetector>,
+    /// Fingerprint memoization cache (cleared per phase)
+    fp_memo: crate::cycle_detector::FingerprintMemo,
+    /// Last detected cycle info (for PhaseStats)
+    last_cycle: Option<crate::cycle_detector::CycleInfo>,
 }
 
 use cas_ast::visitor::Transformer;
@@ -894,6 +906,28 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // Note: Rule application tracking for rationalization is now handled by phase, not flag
                         // Apply canonical normalization to prevent loops
                         expr_id = normalize_core(self.context, expr_id);
+
+                        // Cycle detection (health mode only) - detect ping-pong patterns
+                        if self.profiler.is_health_enabled() {
+                            // Initialize detector if needed
+                            if self.cycle_detector.is_none() {
+                                self.cycle_detector = Some(
+                                    crate::cycle_detector::CycleDetector::new(self.current_phase),
+                                );
+                            }
+
+                            let h = crate::cycle_detector::expr_fingerprint(
+                                self.context,
+                                expr_id,
+                                &mut self.fp_memo,
+                            );
+                            if let Some(info) = self.cycle_detector.as_mut().unwrap().observe(h) {
+                                self.last_cycle = Some(info);
+                                // Treat as fixed-point: stop this phase early
+                                return expr_id;
+                            }
+                        }
+
                         changed = true;
                         break;
                     }

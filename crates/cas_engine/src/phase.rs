@@ -87,6 +87,8 @@ pub struct PhaseStats {
     pub rewrites_used: usize,
     /// Whether the expression changed
     pub changed: bool,
+    /// Cycle detected (ping-pong) - if Some, phase was stopped early
+    pub cycle: Option<crate::cycle_detector::CycleInfo>,
 }
 
 impl PhaseStats {
@@ -96,6 +98,7 @@ impl PhaseStats {
             iters_used: 0,
             rewrites_used: 0,
             changed: false,
+            cycle: None,
         }
     }
 }
