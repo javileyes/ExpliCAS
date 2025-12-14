@@ -3113,7 +3113,15 @@ impl Repl {
         }
 
         match cas_parser::parse(rest, &mut self.simplifier.context) {
-            Ok(expr) => {
+            Ok(parsed_expr) => {
+                // PRE-CANONICALIZE: Ensure associativity-insensitive behavior
+                // This uses structural normalization only (flatten Add/Mul, reorder)
+                // NOT the full CORE phase which would auto-rationalize
+                let expr = cas_engine::canonical_forms::normalize_core(
+                    &mut self.simplifier.context,
+                    parsed_expr,
+                );
+
                 // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
                 let user_style = cas_ast::detect_root_style(&self.simplifier.context, expr);
 
