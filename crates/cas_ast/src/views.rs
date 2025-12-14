@@ -55,6 +55,48 @@ fn int_exp_i32(ctx: &Context, id: ExprId) -> Option<i32> {
     None
 }
 
+/// Extract a BigRational constant from an expression, recognizing various forms.
+///
+/// Supports (with depth limit to prevent explosion):
+/// - `Number(q)` - direct rational
+/// - `Neg(x)` - negated rational
+/// - `Div(a, b)` - fraction of rationals
+///
+/// Returns None if the expression isn't a constant rational.
+pub fn as_rational_const(
+    ctx: &Context,
+    id: ExprId,
+    depth: u8,
+) -> Option<num_rational::BigRational> {
+    use num_rational::BigRational;
+
+    if depth == 0 {
+        return None;
+    }
+
+    match ctx.get(id) {
+        // Direct rational number
+        Expr::Number(n) => Some(n.clone()),
+
+        // Negation: -x
+        Expr::Neg(inner) => as_rational_const(ctx, *inner, depth - 1).map(|r| -r),
+
+        // Division: a/b where both are rationals
+        Expr::Div(num, den) => {
+            let num_val = as_rational_const(ctx, *num, depth - 1)?;
+            let den_val = as_rational_const(ctx, *den, depth - 1)?;
+            // Avoid division by zero
+            if den_val == BigRational::from_integer(0.into()) {
+                return None;
+            }
+            Some(num_val / den_val)
+        }
+
+        // Other expressions are not constant rationals
+        _ => None,
+    }
+}
+
 impl MulParts {
     /// Create MulParts by collecting all multiplicative factors from an expression.
     ///
@@ -1062,24 +1104,32 @@ impl SurdSumView {
         Some(SurdSumView { constant, surds })
     }
 
-    /// Check if expression is a pure surd: Pow(Number(n), Number(1/2)) with n > 0.
+    /// Check if expression is a pure surd: Pow(base, 1/2) with base a positive integer.
+    ///
+    /// Now robust to both `Number(1/2)` and `Div(1, 2)` exponent forms.
     fn as_surd(ctx: &Context, base: ExprId, exp: ExprId) -> Option<SurdAtom> {
-        // Check exponent is 1/2
-        if let Expr::Number(e) = ctx.get(exp) {
-            if !e.is_integer() && *e.numer() == 1.into() && *e.denom() == 2.into() {
-                // Exponent is 1/2
-                if let Expr::Number(n) = ctx.get(base) {
-                    if n.is_integer() {
-                        let n_int = n.numer().to_i64()?;
-                        if n_int > 0 {
-                            // Apply square-free decomposition
-                            let (outer, inner) = square_free_decompose(n_int);
-                            return Some(SurdAtom {
-                                radicand: inner,
-                                coeff: BigRational::from_integer(outer.into()),
-                            });
-                        }
-                    }
+        use num_rational::BigRational;
+
+        // Use robust rational extraction (depth 8 is plenty for simple exponents)
+        let exp_val = as_rational_const(ctx, exp, 8)?;
+
+        // Check if exponent equals 1/2
+        let half = BigRational::new(1.into(), 2.into());
+        if exp_val != half {
+            return None;
+        }
+
+        // Base must be a positive integer
+        if let Expr::Number(n) = ctx.get(base) {
+            if n.is_integer() {
+                let n_int = n.numer().to_i64()?;
+                if n_int > 0 {
+                    // Apply square-free decomposition
+                    let (outer, inner) = square_free_decompose(n_int);
+                    return Some(SurdAtom {
+                        radicand: inner,
+                        coeff: BigRational::from_integer(outer.into()),
+                    });
                 }
             }
         }
@@ -1253,6 +1303,37 @@ mod surd_tests {
         assert_eq!(view.constant, BigRational::from_integer(1.into()));
         assert_eq!(view.surd_count(), 2);
         // Check both surds present (order may vary due to HashMap)
+        let radicands: Vec<i64> = view.surds.iter().map(|s| s.radicand).collect();
+        assert!(radicands.contains(&2));
+        assert!(radicands.contains(&3));
+    }
+
+    #[test]
+    fn test_surd_sum_view_div_exponent_form() {
+        let mut ctx = Context::new();
+
+        // 1 + 2^(1/2) + 3^(1/2) using Div form for exponent
+        let one_expr = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let one = ctx.num(1);
+        let two_denom = ctx.num(2);
+        // Create Div(1, 2) as exponent
+        let half_div = ctx.add(Expr::Div(one, two_denom));
+        let sqrt2_div = ctx.add(Expr::Pow(two, half_div));
+
+        let one2 = ctx.num(1);
+        let two_denom2 = ctx.num(2);
+        let half_div2 = ctx.add(Expr::Div(one2, two_denom2));
+        let sqrt3_div = ctx.add(Expr::Pow(three, half_div2));
+
+        let sum1 = ctx.add(Expr::Add(one_expr, sqrt2_div));
+        let sum2 = ctx.add(Expr::Add(sum1, sqrt3_div));
+
+        let view = SurdSumView::from(&ctx, sum2).expect("Should parse Div(1,2) exponent form");
+        assert_eq!(view.constant, BigRational::from_integer(1.into()));
+        assert_eq!(view.surd_count(), 2);
+        // Check both surds present
         let radicands: Vec<i64> = view.surds.iter().map(|s| s.radicand).collect();
         assert!(radicands.contains(&2));
         assert!(radicands.contains(&3));
