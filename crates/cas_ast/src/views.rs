@@ -97,6 +97,63 @@ pub fn as_rational_const(
     }
 }
 
+/// Check if an expression is "surd-free" (contains no square roots).
+///
+/// Returns `false` if the expression contains:
+/// - `Pow(_, exp)` where exp equals 1/2 (robust to Div(1,2))
+/// - `Function("sqrt", _)`
+///
+/// Uses iterative worklist with budget to prevent explosion.
+pub fn is_surd_free(ctx: &Context, id: ExprId, budget: usize) -> bool {
+    use num_rational::BigRational;
+
+    let half = BigRational::new(1.into(), 2.into());
+    let mut worklist = vec![id];
+    let mut visited = 0;
+
+    while let Some(curr) = worklist.pop() {
+        visited += 1;
+        if visited > budget {
+            // Conservative: if we hit budget, assume not surd-free
+            return false;
+        }
+
+        match ctx.get(curr) {
+            // Check for sqrt as Pow(_, 1/2)
+            Expr::Pow(base, exp) => {
+                if let Some(exp_val) = as_rational_const(ctx, *exp, 8) {
+                    if exp_val == half {
+                        return false; // Found a surd!
+                    }
+                }
+                worklist.push(*base);
+                worklist.push(*exp);
+            }
+
+            // Check for sqrt() function
+            Expr::Function(name, args) => {
+                if name == "sqrt" {
+                    return false; // Found a surd!
+                }
+                worklist.extend(args.iter().copied());
+            }
+
+            // Recurse into other expression types
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                worklist.push(*l);
+                worklist.push(*r);
+            }
+            Expr::Neg(inner) => worklist.push(*inner),
+            Expr::Matrix { data, .. } => worklist.extend(data.iter().copied()),
+
+            // Atoms are surd-free
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => {}
+        }
+    }
+
+    true // No surds found
+}
+
 impl MulParts {
     /// Create MulParts by collecting all multiplicative factors from an expression.
     ///
