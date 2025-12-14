@@ -191,6 +191,40 @@ impl RuleProfiler {
         report
     }
 
+    /// Get total positive growth (node increase) across all rules
+    pub fn total_positive_growth(&self) -> i64 {
+        self.stats
+            .values()
+            .map(|s| s.total_delta_nodes.load(Ordering::Relaxed))
+            .filter(|d| *d > 0)
+            .sum()
+    }
+
+    /// Get total negative growth (node reduction) across all rules
+    pub fn total_negative_growth(&self) -> i64 {
+        self.stats
+            .values()
+            .map(|s| s.total_delta_nodes.load(Ordering::Relaxed))
+            .filter(|d| *d < 0)
+            .sum()
+    }
+
+    /// Get total applied rules count
+    pub fn total_applied(&self) -> usize {
+        self.stats
+            .values()
+            .map(|s| s.applied.load(Ordering::Relaxed))
+            .sum()
+    }
+
+    /// Get total semantic rejections count
+    pub fn total_rejected_semantic(&self) -> usize {
+        self.stats
+            .values()
+            .map(|s| s.rejected_semantic.load(Ordering::Relaxed))
+            .sum()
+    }
+
     /// Clear all statistics
     pub fn clear(&mut self) {
         for stats in self.stats.values() {
