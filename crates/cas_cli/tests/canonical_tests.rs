@@ -196,10 +196,16 @@ fn check_structural_invariants(ctx: &Context, id: ExprId, path: &str) -> Result<
             check_structural_invariants(ctx, *l, &format!("{}.l", path))?;
             check_structural_invariants(ctx, *r, &format!("{}.r", path))?;
         }
-        // No Neg(Neg(x))
+        // No Neg(Neg(x)) and no Neg(Number) - should be Number(-n)
         Expr::Neg(inner) => {
             if matches!(ctx.get(*inner), Expr::Neg(_)) {
                 return Err(format!("{}: Neg(Neg(..)) found", path));
+            }
+            if matches!(ctx.get(*inner), Expr::Number(_)) {
+                return Err(format!(
+                    "{}: Neg(Number(..)) found - should be Number(-n)",
+                    path
+                ));
             }
             check_structural_invariants(ctx, *inner, &format!("{}.inner", path))?;
         }
@@ -256,7 +262,51 @@ fn test_structural_invariants() {
 }
 
 // ============================================================================
-// 5. METAMORPHIC TESTS (Neutral Operations)
+// 5. N0 NORMALIZATION: Neg(Number) -> Number(-n)
+// ============================================================================
+
+#[test]
+fn test_n0_neg_number_normalized() {
+    use cas_engine::canonical_forms::normalize_core;
+    use num_traits::Signed;
+
+    let mut ctx = cas_ast::Context::new();
+
+    // Parse -5 which produces Neg(Number(5))
+    let expr = parse("-5", &mut ctx).unwrap();
+
+    // After normalize_core, should be Number(-5), not Neg(Number(5))
+    let normalized = normalize_core(&mut ctx, expr);
+
+    // Verify it's a Number, not a Neg
+    match ctx.get(normalized) {
+        Expr::Number(n) => {
+            assert!(n.is_negative(), "Number should be negative, got {}", n);
+        }
+        other => {
+            panic!("Expected Number(-5), got {:?}", other);
+        }
+    }
+}
+
+#[test]
+fn test_n0_structural_invariant_with_negatives() {
+    let mut s = create_simplifier();
+    // Cases with negative numbers that should NOT have Neg(Number) after simplify
+    let cases = ["-5 + x", "-2 * x", "x + (-3)", "-1/2 * y"];
+
+    for case in cases {
+        let expr = parse(case, &mut s.context).unwrap();
+        let (result, _) = s.simplify(expr);
+
+        if let Err(e) = check_structural_invariants(&s.context, result, "root") {
+            panic!("N0 structural invariant violated for '{}': {}", case, e);
+        }
+    }
+}
+
+// ============================================================================
+// 6. METAMORPHIC TESTS (Neutral Operations)
 // ============================================================================
 
 #[test]

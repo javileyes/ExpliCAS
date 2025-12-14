@@ -280,10 +280,17 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
         } else {
             // Second visit: children are cached, now normalize this node
             let result = match &node {
+                // N0: Neg(Number(n)) → Number(-n)
                 // N1: Neg(Neg(x)) → x
                 Expr::Neg(inner) => {
                     let inner_norm = *cache.get(inner).unwrap_or(inner);
-                    if let Expr::Neg(double_inner) = ctx.get(inner_norm).clone() {
+
+                    // N0: Neg(Number(n)) → Number(-n)
+                    if let Expr::Number(n) = ctx.get(inner_norm) {
+                        ctx.add(Expr::Number(-n.clone()))
+                    }
+                    // N1: Neg(Neg(x)) → x
+                    else if let Expr::Neg(double_inner) = ctx.get(inner_norm).clone() {
                         // Neg(Neg(x)) → x (recursively normalizes double_inner)
                         // We need to look up double_inner in cache
                         *cache.get(&double_inner).unwrap_or(&double_inner)

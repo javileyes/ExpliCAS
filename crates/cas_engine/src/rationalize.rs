@@ -41,6 +41,8 @@ pub enum RationalizeResult {
 /// Extract a numeric constant factor from a multiplicative expression.
 /// Returns (factor, core) where expr = factor * core (only for numeric factors).
 /// Handles Neg as factor of -1.
+/// NOTE: Neg(Number) is now converted to Number(-n) by normalize_core N0,
+/// so we don't need special handling for it here.
 fn extract_constant_factor(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
     use num_traits::One;
 
@@ -66,15 +68,6 @@ fn extract_constant_factor(ctx: &Context, expr: ExprId) -> Option<(BigRational, 
                 }
                 return Some((n.clone(), r_id));
             }
-            // Check if left is Neg(Number) - handles -2*(...)
-            if let Expr::Neg(inner) = ctx.get(l_id) {
-                if let Expr::Number(n) = ctx.get(*inner) {
-                    if let Some((k, core)) = extract_constant_factor(ctx, r_id) {
-                        return Some((-n * k, core));
-                    }
-                    return Some((-n.clone(), r_id));
-                }
-            }
             // Check if right is a number
             if let Expr::Number(n) = ctx.get(r_id) {
                 // Recursively check left side for more factors
@@ -82,15 +75,6 @@ fn extract_constant_factor(ctx: &Context, expr: ExprId) -> Option<(BigRational, 
                     return Some((n * k, core));
                 }
                 return Some((n.clone(), l_id));
-            }
-            // Check if right is Neg(Number)
-            if let Expr::Neg(inner) = ctx.get(r_id) {
-                if let Expr::Number(n) = ctx.get(*inner) {
-                    if let Some((k, core)) = extract_constant_factor(ctx, l_id) {
-                        return Some((-n * k, core));
-                    }
-                    return Some((-n.clone(), l_id));
-                }
             }
             None
         }
