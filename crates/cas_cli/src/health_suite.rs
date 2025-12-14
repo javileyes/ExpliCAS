@@ -57,12 +57,48 @@ pub struct HealthCaseResult {
     pub cycle_detected: Option<(SimplifyPhase, usize)>, // (phase, period)
     pub top_rules: Vec<(String, usize)>,
     pub failure_reason: Option<String>,
+    /// Warning: cycle detected but not failing (forbid_cycles=false) or near limit
+    pub warning: Option<String>,
 }
 
 /// The default health suite
 pub fn default_suite() -> Vec<HealthCase> {
     vec![
-        // Expansion
+        // ============ Transform-heavy (distribution/expansion) ============
+        HealthCase {
+            name: "distribute_basic",
+            category: "transform",
+            expr: "2*(x+3)",
+            limits: HealthLimits {
+                max_total_rewrites: 20,
+                max_growth: 30,
+                max_transform_rewrites: 10,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "distribute_nested",
+            category: "transform",
+            expr: "3*(x+(y+2))",
+            limits: HealthLimits {
+                max_total_rewrites: 30,
+                max_growth: 50,
+                max_transform_rewrites: 15,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "expand_product",
+            category: "transform",
+            expr: "(x+1)*(x+2)",
+            limits: HealthLimits {
+                max_total_rewrites: 40,
+                max_growth: 60,
+                max_transform_rewrites: 20,
+                forbid_cycles: true,
+            },
+        },
+        // ============ Expansion (binomial) ============
         HealthCase {
             name: "binomial_small",
             category: "expansion",
@@ -85,7 +121,7 @@ pub fn default_suite() -> Vec<HealthCase> {
                 forbid_cycles: true,
             },
         },
-        // Fractions
+        // ============ Fractions ============
         HealthCase {
             name: "fraction_add",
             category: "fractions",
@@ -108,7 +144,7 @@ pub fn default_suite() -> Vec<HealthCase> {
                 forbid_cycles: true,
             },
         },
-        // Rationalization
+        // ============ Rationalization ============
         HealthCase {
             name: "rationalize_simple",
             category: "rationalization",
@@ -142,7 +178,7 @@ pub fn default_suite() -> Vec<HealthCase> {
                 forbid_cycles: true,
             },
         },
-        // Mixed operations
+        // ============ Mixed operations ============
         HealthCase {
             name: "mixed_expression",
             category: "mixed",
@@ -154,7 +190,7 @@ pub fn default_suite() -> Vec<HealthCase> {
                 forbid_cycles: true,
             },
         },
-        // Simple (no-op baseline)
+        // ============ Baseline (no-op) ============
         HealthCase {
             name: "simple_noop",
             category: "baseline",
@@ -177,7 +213,7 @@ pub fn default_suite() -> Vec<HealthCase> {
                 forbid_cycles: true,
             },
         },
-        // Nested roots
+        // ============ Roots ============
         HealthCase {
             name: "nested_root",
             category: "roots",
@@ -189,7 +225,7 @@ pub fn default_suite() -> Vec<HealthCase> {
                 forbid_cycles: true,
             },
         },
-        // Power simplification
+        // ============ Powers ============
         HealthCase {
             name: "power_simplify",
             category: "powers",
@@ -223,6 +259,7 @@ pub fn run_case(case: &HealthCase, simplifier: &mut Simplifier) -> HealthCaseRes
                 cycle_detected: None,
                 top_rules: vec![],
                 failure_reason: Some(format!("Parse error: {}", e)),
+                warning: None,
             };
         }
     };
@@ -267,6 +304,24 @@ pub fn run_case(case: &HealthCase, simplifier: &mut Simplifier) -> HealthCaseRes
         failure_reason = Some(format!("cycle detected: {:?} period={}", phase, period));
     }
 
+    // Generate warnings for passed cases with concerning metrics
+    let mut warning = None;
+    if failure_reason.is_none() {
+        // Warning if cycle detected but not failing (forbid_cycles=false)
+        if !case.limits.forbid_cycles && cycle_detected.is_some() {
+            let (phase, period) = cycle_detected.as_ref().unwrap();
+            warning = Some(format!("cycle (allowed): {:?} period={}", phase, period));
+        }
+        // Warning if near limit (>80% of max)
+        let rewrite_pct = (total_rewrites * 100) / case.limits.max_total_rewrites.max(1);
+        let transform_pct = (transform_rewrites * 100) / case.limits.max_transform_rewrites.max(1);
+        if rewrite_pct >= 80 && warning.is_none() {
+            warning = Some(format!("near limit: rewrites={}%", rewrite_pct));
+        } else if transform_pct >= 80 && warning.is_none() {
+            warning = Some(format!("near limit: transform={}%", transform_pct));
+        }
+    }
+
     HealthCaseResult {
         case: case.clone(),
         passed: failure_reason.is_none(),
@@ -276,6 +331,7 @@ pub fn run_case(case: &HealthCase, simplifier: &mut Simplifier) -> HealthCaseRes
         cycle_detected,
         top_rules,
         failure_reason,
+        warning,
     }
 }
 
@@ -315,20 +371,25 @@ pub fn format_report(results: &[HealthCaseResult]) -> String {
     let mut failed = 0;
 
     for r in results {
-        let status = if r.passed { "✔" } else { "✘" };
         let name_padded = format!("{:25}", r.case.name);
 
         if r.passed {
             passed += 1;
+            // Show warning indicator if present
+            let status = if r.warning.is_some() { "⚠" } else { "✔" };
             report.push_str(&format!(
-                "{} {}  rewrites={:3} growth={:+4} transform={:2}\n",
+                "{} {}  rewrites={:3} growth={:+4} transform={:2}",
                 status, name_padded, r.total_rewrites, r.growth, r.transform_rewrites
             ));
+            // Append warning message
+            if let Some(ref warn) = r.warning {
+                report.push_str(&format!(" [{}]", warn));
+            }
+            report.push('\n');
         } else {
             failed += 1;
             report.push_str(&format!(
-                "{} {}  FAILED: {}\n",
-                status,
+                "✘ {}  FAILED: {}\n",
                 name_padded,
                 r.failure_reason.as_ref().unwrap_or(&"unknown".to_string())
             ));
