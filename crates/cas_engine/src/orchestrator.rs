@@ -37,15 +37,6 @@ impl Orchestrator {
         o
     }
 
-    /// Legacy simplify method - now redirects to phase-based pipeline.
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use simplify_pipeline() for explicit phase control"
-    )]
-    pub fn simplify(&mut self, expr: ExprId, simplifier: &mut Simplifier) -> (ExprId, Vec<Step>) {
-        self.simplify_pipeline(expr, simplifier)
-    }
-
     /// Run a single phase of the pipeline until fixed point or budget exhausted.
     ///
     /// Returns the simplified expression and all steps collected during this phase.
