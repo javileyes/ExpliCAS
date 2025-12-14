@@ -710,21 +710,47 @@ The engine includes a **health instrumentation system** to detect churn (excessi
 
 | Component | Purpose |
 |-----------|---------|
-| `RuleProfiler` | Tracks applied/rejected counts and node delta per rule |
-| `PipelineStats` | Aggregates phase-level statistics |
+| `RuleProfiler` | Tracks applied/rejected counts and node delta **per phase** |
+| `CycleDetector` | Detects ping-pong patterns using fingerprint ring buffer |
+| `PipelineStats` | Aggregates phase-level statistics including cycle info |
 | `health_smoke_tests.rs` | CI tests with thresholds to catch regressions |
 
-### RuleProfiler Metrics
+### Per-Phase RuleProfiler
+
+Stats are tracked separately for each phase (Core, Transform, Rationalize, PostCleanup):
 
 ```rust
-pub struct RuleStats {
-    pub applied: AtomicUsize,           // Successful applications
-    pub rejected_semantic: AtomicUsize, // Rejected by semantic check
-    pub rejected_phase: AtomicUsize,    // Rejected by phase restrictions
-    pub rejected_disabled: AtomicUsize, // Rejected (rule disabled)
-    pub total_delta_nodes: AtomicI64,   // Node growth/reduction
+pub struct RuleProfiler {
+    per_phase: [HashMap<String, RuleStats>; 4],
+    enabled: bool,
+    health_enabled: bool,
+}
+
+// Query specific phase
+profiler.top_applied_for_phase(SimplifyPhase::Transform, 3)
+profiler.health_report_for_phase(Some(SimplifyPhase::Transform))
+
+// Aggregate across all phases
+profiler.health_report()  // backward compatible
+```
+
+### Cycle Detection
+
+The engine automatically detects "ping-pong" patterns where rules undo each other:
+
+```rust
+pub struct CycleDetector {
+    buffer: [u64; 64],      // Ring buffer of fingerprints
+    phase: SimplifyPhase,
+    max_period: usize,      // Check periods 1-8
 }
 ```
+
+**When cycle is detected:**
+- Phase exits immediately (treated as fixed-point)
+- `PhaseStats.cycle` is populated with `CycleInfo`
+- REPL shows: `⚠ Cycle detected: period=2 at rewrite=37`
+- Top contributing rules for that phase are shown
 
 ### Enabling Health Metrics
 
@@ -736,38 +762,23 @@ simplifier.profiler.clear_run();  // Reset for this run
 // After simplification
 let (result, steps, stats) = simplifier.simplify_with_stats(expr, opts);
 
-// Get aggregated metrics
-let growth = simplifier.profiler.total_positive_growth();
-let applied = simplifier.profiler.total_applied();
+// Check for cycles in a phase
+if let Some(cycle) = &stats.transform.cycle {
+    println!("Cycle detected: period={}", cycle.period);
+}
 
-// Print report
-println!("{}", simplifier.profiler.health_report());
+// Print per-phase report
+println!("{}", simplifier.profiler.health_report_for_phase(Some(SimplifyPhase::Transform)));
 ```
 
-### REPL Integration
+### REPL Commands
 
-With `set explain on`, health report is automatically displayed:
-
-```
-> x/(1+sqrt(2)) + 2*(y+3)
-
-──── Pipeline Diagnostics ────
-  Core:       3 iters, 7 rewrites
-  Transform:  2 iters, 4 rewrites, changed=true
-  Total rewrites: 12
-───────────────────────────────
-
-Rule Health Report
-────────────────────────────────────────────────────────────────
-Top Applied Rules:
-  Canonicalize Add                             4
-  Distribute                                    3
-Top Semantic Rejections:
-  Canonicalize Div Term                         2
-Top Growth Rules (node increase):
-  Distribute                                  +8 nodes
-────────────────────────────────────────────────────────────────
-```
+| Command | Effect |
+|---------|--------|
+| `set explain on` | Show pipeline diagnostics + health report inline |
+| `health on` | Enable background health tracking |
+| `health` | Display last health report with cycle info |
+| `health reset` | Clear accumulated statistics |
 
 ### Health Smoke Tests
 
@@ -779,30 +790,34 @@ Located in `crates/cas_engine/tests/health_smoke_tests.rs`:
 | polynomial | `(x+1)*(x+2)` | 100 | 150 | 60 |
 | rationalization_only | `1/(3-2*sqrt(5))` | 100 | 200 | 40 |
 | simple_no_op | `x + y` | 20 | 30 | 10 |
-| budget_not_saturated | `x/(1+sqrt(2))` | (no saturation) | | |
-
-### Running Health Tests
-
-```bash
-# Run all health smoke tests
-cargo test --test health_smoke_tests
-
-# If a test fails, full diagnostics are printed:
-#   - Input and result
-#   - Pipeline stats per phase
-#   - Health report with top rules
-```
 
 ### Interpreting Health Issues
 
 | Symptom | Likely Cause | Action |
 |---------|--------------|--------|
 | High `total_rewrites` | Churn (rules undo each other) | Check top applied rules for A↔B patterns |
+| `Cycle detected` | Ping-pong between rules | Look at "Likely contributors" for the phase |
 | High `rejected_semantic` | Expensive equality checks | Consider caching or reducing matcher scope |
 | High `total_positive_growth` | Expansion-heavy rules | Add growth limits or progress gates |
-| Budget saturation | Possible loops | Enable tracing to find cycling rules |
+| Budget saturation | Possible loops | Enable health to find cycling rules |
 
-### Adding Health Test for New Feature
+### Guidelines for Adding New Rules
+
+1. **Determine correct phase:**
+   - Core: Safe, non-growing transformations
+   - Transform: Distribution, expansion (may grow)
+   - Rationalize: Denominator rationalization
+   - PostCleanup: Final cleanup (same as Core)
+
+2. **Avoid churn:**
+   - Use builders (`mul_many_simpl`, `add_many_simpl`) that simplify during construction
+   - Prefer Views for pattern matching (read-only, no intermediate nodes)
+   - Never re-expand after rationalization
+
+3. **Add tests:**
+   - Unit test: rule produces correct output
+   - Idempotency test: applying twice gives same result
+   - Health smoke test (for complex rules): verify thresholds
 
 ```rust
 #[test]
@@ -815,3 +830,13 @@ fn health_smoke_my_new_feature() {
     );
 }
 ```
+
+### CI Protection
+
+Health smoke tests run on every CI build. If a test fails:
+
+1. Check the failing expression in the error output
+2. Look at `Transform rewrites` and `Top Applied Rules`
+3. If intentional improvement, update thresholds with a comment
+4. If regression, investigate the top rules for churn
+

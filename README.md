@@ -555,38 +555,91 @@ Profiler statistics cleared.
 
 #### Health Report
 
-With `set explain on`, the engine shows detailed health metrics after each simplification, including rule application counts, semantic rejections, and node growth:
+Monitor engine health with two modes:
 
+**Explain Mode** (inline diagnostics):
 ```text
 > set explain on
 Explain mode ENABLED
 
-> x/(1+sqrt(2)) + 2*(y+3)
-
+> (1+x)^5
 ──── Pipeline Diagnostics ────
-  Core:       3 iters, 7 rewrites
-  Transform:  2 iters, 4 rewrites, changed=true
-  Rationalize: Level15
-              → Applied ✓
-  Total rewrites: 12
+  Core:       2 iters, 9 rewrites
+  Transform:  1 iters, 0 rewrites, changed=false
+  Rationalize: Off
+  PostCleanup: 1 iters, 0 rewrites
+  Total rewrites: 10
 ───────────────────────────────
 
+Result: x^(5) + 5 * x^(4) + 10 * x^(3) + 10 * x^(2) + 5 * x + 1
+```
+
+**Health Command** (standalone tracking):
+```text
+> health on
+Health tracking ENABLED
+
+> x/(1+sqrt(2))
+Result: x * (-1 + √(2))
+
+> health
 Rule Health Report
 ────────────────────────────────────────────────────────────────
 Top Applied Rules:
-  Canonicalize Add                             4
-  Distribute                                    3
-Top Semantic Rejections:
-  Canonicalize Div Term                         2
-Top Growth Rules (node increase):
-  Distribute                                  +8 nodes
+  Canonicalize Negation                       2
+  Rationalize Binomial Denominator            1
 ────────────────────────────────────────────────────────────────
 ```
 
-This helps identify:
-- **Hot rules**: Rules that fire excessively (potential churn)
-- **Semantic rejections**: Expensive no-op rewrites being blocked
-- **Growth sources**: Which rules are expanding the expression
+#### Cycle Detection
+
+The engine automatically detects "ping-pong" patterns where rules undo each other:
+
+```text
+  Transform:  15 iters, 42 rewrites, changed=true
+              ⚠ Cycle detected: period=2 at rewrite=37 (stopped early)
+              Likely contributors: Distribute=20, Factor Common Term=18
+```
+
+When a cycle is detected:
+- The phase stops immediately (treated as fixed-point)
+- Top contributing rules are shown for diagnosis
+- Zero overhead when health is disabled
+
+#### Pipeline Control
+
+Fine-tune simplification behavior:
+
+```text
+> set transform off      # Disable distribution/expansion
+> set rationalize off    # Disable auto-rationalization
+> set rationalize 1      # Only simple denominators (√2 → rationalize)
+> set rationalize 1.5    # Level 1 + binomials (1+√2 → rationalize)
+> set max-rewrites 50    # Limit total rewrites
+```
+
+#### Polynomial Display
+
+Results are automatically ordered by degree (descending):
+
+```text
+> (1+x)^3
+Result: x^(3) + 3 * x^(2) + 3 * x + 1
+
+> 5 + x^2 + 3*x
+Result: x^(2) + 3 * x + 5
+```
+
+This produces the standard mathematical form: highest degree first, constant term last.
+
+#### Health Metrics Summary
+
+| Metric | Meaning |
+|--------|---------|
+| Top Applied Rules | Rules firing most often (potential churn) |
+| Semantic Rejections | Rules blocked because result equals input |
+| Growth Rules | Rules increasing expression size |
+| Cycle Detected | Ping-pong pattern found, phase stopped |
 
 #### AST Visualizer
 

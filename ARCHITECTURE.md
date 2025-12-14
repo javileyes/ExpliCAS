@@ -2878,9 +2878,16 @@ With `explain on`:
 
 #### RuleProfiler Health Metrics ★★★ (2025-12)
 
-Per-rule instrumentation for detecting churn and hot rules:
+Per-rule instrumentation for detecting churn and hot rules, **organized by phase**:
 
 ```rust
+pub struct RuleProfiler {
+    /// Stats per phase: [Core, Transform, Rationalize, PostCleanup]
+    per_phase: [HashMap<String, RuleStats>; 4],
+    enabled: bool,
+    health_enabled: bool,
+}
+
 pub struct RuleStats {
     pub applied: AtomicUsize,           // Successful applications
     pub rejected_semantic: AtomicUsize, // Rejected by semantic check
@@ -2890,25 +2897,77 @@ pub struct RuleStats {
 }
 ```
 
-**Hooks in engine.rs:**
+**Hooks in engine.rs (all pass `current_phase`):**
 
 | Point | Hook |
 |-------|------|
-| Rule disabled | `record_rejected_disabled()` |
-| Phase restriction | `record_rejected_phase()` |
-| Semantic equality skip | `record_rejected_semantic()` |
-| Rewrite accepted | `record_with_delta()` |
+| Rule disabled | `record_rejected_disabled(phase, rule)` |
+| Phase restriction | `record_rejected_phase(phase, rule)` |
+| Semantic equality skip | `record_rejected_semantic(phase, rule)` |
+| Rewrite accepted | `record_with_delta(phase, rule, delta)` |
 
-**Aggregated metrics:**
+**Per-phase and aggregate queries:**
 
 ```rust
-profiler.total_positive_growth() -> i64  // Total node increase
-profiler.total_applied() -> usize        // Total rules applied
-profiler.total_rejected_semantic() -> usize
-profiler.health_report() -> String       // Formatted report
+profiler.health_report()                          // Aggregate all phases
+profiler.health_report_for_phase(Some(Transform)) // Transform only
+profiler.top_applied_for_phase(Transform, 3)     // Top 3 rules in Transform
 ```
 
-**Zero overhead by default:** `count_all_nodes()` only runs if `health_enabled == true`.
+**Zero overhead by default:** `count_all_nodes()` and fingerprinting only run if `health_enabled == true`.
+
+#### Cycle Detection (H2) ★★★ (2025-12)
+
+Detects "ping-pong" patterns where rules A↔B undo each other:
+
+```rust
+pub struct CycleDetector {
+    buffer: [u64; 64],    // Ring buffer of expression fingerprints
+    phase: SimplifyPhase,
+    len: usize,
+    max_period: usize,    // Check periods 1-8
+}
+
+pub struct CycleInfo {
+    pub phase: SimplifyPhase,
+    pub period: usize,    // 1=self-loop, 2=A↔B, etc.
+    pub at_step: usize,   // Rewrite number when detected
+}
+```
+
+**Fingerprinting:** `expr_fingerprint(ctx, expr_id, memo)` computes structural hash O(n) with memoization.
+
+**Detection logic:**
+- Period 1: `current == previous` (self-loop)
+- Period 2: `current == 2_back` and `previous == 3_back`
+- Period k: Pattern repeats for k positions
+
+**When cycle detected:**
+- `PhaseStats.cycle = Some(CycleInfo)`
+- Phase exits immediately (treat as fixed-point)
+- REPL shows: `⚠ Cycle detected: period=2 at rewrite=37 (stopped early)`
+- Top contributing rules shown as "Likely contributors"
+
+#### Display System ★★★ (2025-12)
+
+**StylePreferences** controls output formatting:
+
+```rust
+pub struct StylePreferences {
+    pub root_style: RootStyle,      // Radical (√x) vs Exponential (x^½)
+    pub prefer_division: bool,       // a/b vs a*b^(-1)
+    pub prefer_subtraction: bool,    // a-b vs a+(-b)
+    pub polynomial_order: bool,      // Sort by degree descending
+}
+```
+
+**Polynomial ordering:** When `polynomial_order == true`, `DisplayExprStyled` sorts Add terms by `polynomial_degree()`:
+- `x^3` → degree 3
+- `5 * x^2` → degree 2
+- `x` → degree 1
+- `7` → degree 0
+
+**Result:** `(1+x)^5` displays as `x^5 + 5x^4 + 10x^3 + 10x^2 + 5x + 1`
 
 ### Problema: Explosión Combinatoria
 
