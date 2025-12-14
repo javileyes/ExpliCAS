@@ -91,29 +91,32 @@ impl Context {
     }
 
     pub fn add(&mut self, expr: Expr) -> ExprId {
-        // Canonicalize commutative operations BEFORE adding to context
-        // This ensures deterministic ordering: always left < right for Mul and Add
+        // FLATTEN + CANONICALIZE: For Add and Mul, collect all terms, sort, rebuild
+        // This ensures Add(Add(a,b),c) and Add(a,Add(b,c)) produce identical trees
         let canonical_expr = match expr {
+            Expr::Add(l, r) => {
+                // Collect all additive terms (flatten nested Adds)
+                let mut terms = Vec::new();
+                self.collect_add_terms(l, &mut terms);
+                self.collect_add_terms(r, &mut terms);
+                // Sort terms for canonical order
+                terms.sort_by(|a, b| crate::ordering::compare_expr(self, *a, *b));
+                // Build right-associative tree: a + (b + (c + d))
+                self.build_right_assoc_add(&terms)
+            }
             Expr::Mul(l, r) => {
                 // CRITICAL: Matrix multiplication is NOT commutative
-                // Check if both operands are matrices - if so, preserve order
                 let l_is_matrix = matches!(self.get(l), Expr::Matrix { .. });
                 let r_is_matrix = matches!(self.get(r), Expr::Matrix { .. });
 
                 if l_is_matrix && r_is_matrix {
-                    // Non-commutative: A*B ≠ B*A, preserve order
+                    // Non-commutative: preserve order
                     Expr::Mul(l, r)
                 } else if crate::ordering::compare_expr(self, l, r) == std::cmp::Ordering::Greater {
-                    Expr::Mul(r, l) // Swap to canonical order (scalar or mixed)
+                    // Simple swap to canonical order (no flatten - preserves structure for conjugates)
+                    Expr::Mul(r, l)
                 } else {
                     Expr::Mul(l, r) // Already canonical
-                }
-            }
-            Expr::Add(l, r) => {
-                if crate::ordering::compare_expr(self, l, r) == std::cmp::Ordering::Greater {
-                    Expr::Add(r, l) // Swap to canonical order
-                } else {
-                    Expr::Add(l, r) // Already canonical
                 }
             }
             // Non-commutative operations and atoms: keep as-is
@@ -205,6 +208,65 @@ impl Context {
 
         self.interner.entry(hash).or_default().push(id);
         id
+    }
+
+    /// Collect all additive terms by flattening nested Add
+    fn collect_add_terms(&self, id: ExprId, terms: &mut Vec<ExprId>) {
+        match self.get(id) {
+            Expr::Add(l, r) => {
+                self.collect_add_terms(*l, terms);
+                self.collect_add_terms(*r, terms);
+            }
+            _ => terms.push(id),
+        }
+    }
+
+    /// Collect all multiplicative factors by flattening nested Mul
+    fn collect_mul_terms(&self, id: ExprId, factors: &mut Vec<ExprId>) {
+        match self.get(id) {
+            Expr::Mul(l, r) => {
+                // Don't flatten matrix multiplication
+                let l_is_matrix = matches!(self.get(*l), Expr::Matrix { .. });
+                let r_is_matrix = matches!(self.get(*r), Expr::Matrix { .. });
+                if l_is_matrix && r_is_matrix {
+                    factors.push(id); // Keep as single term
+                } else {
+                    self.collect_mul_terms(*l, factors);
+                    self.collect_mul_terms(*r, factors);
+                }
+            }
+            _ => factors.push(id),
+        }
+    }
+
+    /// Build right-associative Add tree: [a,b,c] -> Add(a, Add(b, c))
+    fn build_right_assoc_add(&mut self, terms: &[ExprId]) -> Expr {
+        match terms.len() {
+            0 => panic!("Cannot build Add from empty terms"),
+            1 => return self.get(terms[0]).clone(),
+            2 => Expr::Add(terms[0], terms[1]),
+            _ => {
+                // Build from right: a + (b + (c + d))
+                let rest = self.build_right_assoc_add(&terms[1..]);
+                let rest_id = self.add_raw(rest);
+                Expr::Add(terms[0], rest_id)
+            }
+        }
+    }
+
+    /// Build right-associative Mul tree: [a,b,c] -> Mul(a, Mul(b, c))
+    fn build_right_assoc_mul(&mut self, factors: &[ExprId]) -> Expr {
+        match factors.len() {
+            0 => panic!("Cannot build Mul from empty factors"),
+            1 => return self.get(factors[0]).clone(),
+            2 => Expr::Mul(factors[0], factors[1]),
+            _ => {
+                // Build from right: a * (b * (c * d))
+                let rest = self.build_right_assoc_mul(&factors[1..]);
+                let rest_id = self.add_raw(rest);
+                Expr::Mul(factors[0], rest_id)
+            }
+        }
     }
 
     pub fn get(&self, id: ExprId) -> &Expr {
