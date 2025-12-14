@@ -209,7 +209,7 @@ impl Completer for CasHelper {
             if parts.len() >= 2 && parts[1] == "status" {
                 // health status <TAB> or health status --<TAB>
                 if (parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space) {
-                    let options = vec!["--list", "--category"];
+                    let options = vec!["--list", "--category", "-c"];
                     for opt in options {
                         if opt.starts_with(word) {
                             matches.push(Pair {

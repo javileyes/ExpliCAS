@@ -1412,6 +1412,29 @@ impl Repl {
                 println!("  rationalize 1/(3 - 2*sqrt(5))    → -(3 + 2*√5)/11");
                 println!("  rationalize x/(sqrt(3) + 1)      → x*(√3 - 1)/2");
             }
+            "status" | "health" => {
+                println!("Command: health [on|off|reset|status]");
+                println!("Description: Engine health monitoring and diagnostic test suite.");
+                println!();
+                println!("Subcommands:");
+                println!("  health on                Enable profiler");
+                println!("  health off               Disable profiler");
+                println!("  health reset             Reset profiler stats");
+                println!("  health status            Run diagnostic test suite");
+                println!();
+                println!("Test suite options:");
+                println!("  health status --list             List all test cases");
+                println!("  health status --category <cat>   Run specific category");
+                println!("  health status -c <cat>           Shorthand for --category");
+                println!();
+                println!("Categories: transform, expansion, fractions, rationalization,");
+                println!("            mixed, baseline, roots, powers, stress, all");
+                println!();
+                println!("Examples:");
+                println!("  health status                Run all test categories");
+                println!("  health status -c stress      Run only stress tests");
+                println!("  health status --list         List available tests");
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
