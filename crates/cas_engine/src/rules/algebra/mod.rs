@@ -32,5 +32,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     simplifier.add_rule(Box::new(ExpandRule));
     simplifier.add_rule(Box::new(FactorBasedLCDRule));
+    simplifier.add_rule(Box::new(RationalizeSingleSurdRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
