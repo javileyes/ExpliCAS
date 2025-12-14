@@ -358,11 +358,9 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
                 Expr::Add(l, r) => {
                     let l_norm = *cache.get(l).unwrap_or(l);
                     let r_norm = *cache.get(r).unwrap_or(r);
-                    if l_norm == *l && r_norm == *r {
-                        id
-                    } else {
-                        ctx.add(Expr::Add(l_norm, r_norm))
-                    }
+                    // ALWAYS rebuild Add to trigger auto-flatten in Context::add()
+                    // This ensures nested Add structures get properly canonicalized
+                    ctx.add(Expr::Add(l_norm, r_norm))
                 }
 
                 Expr::Sub(l, r) => {

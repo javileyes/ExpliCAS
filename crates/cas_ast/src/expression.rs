@@ -221,24 +221,6 @@ impl Context {
         }
     }
 
-    /// Collect all multiplicative factors by flattening nested Mul
-    fn collect_mul_terms(&self, id: ExprId, factors: &mut Vec<ExprId>) {
-        match self.get(id) {
-            Expr::Mul(l, r) => {
-                // Don't flatten matrix multiplication
-                let l_is_matrix = matches!(self.get(*l), Expr::Matrix { .. });
-                let r_is_matrix = matches!(self.get(*r), Expr::Matrix { .. });
-                if l_is_matrix && r_is_matrix {
-                    factors.push(id); // Keep as single term
-                } else {
-                    self.collect_mul_terms(*l, factors);
-                    self.collect_mul_terms(*r, factors);
-                }
-            }
-            _ => factors.push(id),
-        }
-    }
-
     /// Build right-associative Add tree: [a,b,c] -> Add(a, Add(b, c))
     fn build_right_assoc_add(&mut self, terms: &[ExprId]) -> Expr {
         match terms.len() {
@@ -250,21 +232,6 @@ impl Context {
                 let rest = self.build_right_assoc_add(&terms[1..]);
                 let rest_id = self.add_raw(rest);
                 Expr::Add(terms[0], rest_id)
-            }
-        }
-    }
-
-    /// Build right-associative Mul tree: [a,b,c] -> Mul(a, Mul(b, c))
-    fn build_right_assoc_mul(&mut self, factors: &[ExprId]) -> Expr {
-        match factors.len() {
-            0 => panic!("Cannot build Mul from empty factors"),
-            1 => return self.get(factors[0]).clone(),
-            2 => Expr::Mul(factors[0], factors[1]),
-            _ => {
-                // Build from right: a * (b * (c * d))
-                let rest = self.build_right_assoc_mul(&factors[1..]);
-                let rest_id = self.add_raw(rest);
-                Expr::Mul(factors[0], rest_id)
             }
         }
     }

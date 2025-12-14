@@ -1333,11 +1333,13 @@ impl SurdSumView {
         }
 
         // Convert map to vec, removing zero coefficients
-        let surds: Vec<SurdAtom> = surd_map
+        // CRITICAL: Sort by radicand for deterministic conjugate selection
+        let mut surds: Vec<SurdAtom> = surd_map
             .into_iter()
             .filter(|(_, coeff)| *coeff != BigRational::from_integer(0.into()))
             .map(|(radicand, coeff)| SurdAtom { radicand, coeff })
             .collect();
+        surds.sort_by_key(|s| s.radicand);
 
         Some(SurdSumView { constant, surds })
     }

@@ -1,6 +1,7 @@
 use cas_engine::rules::algebra::{
-    AddFractionsRule, ExpandRule, FactorBasedLCDRule, FactorDifferenceSquaresRule, FactorRule,
-    PullConstantFromFractionRule, SimplifyFractionRule, SimplifyMulDivRule,
+    AddFractionsRule, DifferenceOfSquaresRule, ExpandRule, FactorBasedLCDRule,
+    FactorDifferenceSquaresRule, FactorRule, PullConstantFromFractionRule, SimplifyFractionRule,
+    SimplifyMulDivRule,
 };
 use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
 use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
@@ -88,6 +89,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     simplifier.add_rule(Box::new(FactorDifferenceSquaresRule));
+    simplifier.add_rule(Box::new(DifferenceOfSquaresRule)); // Policy A+: (a-b)(a+b) → a²-b²
 
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
@@ -899,4 +901,84 @@ fn test_trig_power_simplification() {
         }
     );
     assert_eq!(output, "0");
+}
+
+// ============================================================================
+// Policy A+ Tests: simplify vs expand behavior
+// See POLICY.md for full documentation
+// ============================================================================
+
+#[test]
+fn test_policy_a_simplify_preserves_binomial_products() {
+    // Policy A+: simplify() does NOT expand (x+1)(x+2)
+    let mut simplifier = create_full_simplifier();
+    let expr = parse("(x+1)*(x+2)", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: simplified
+        }
+    );
+    // Should remain as product, not expanded to x^2 + 3x + 2
+    // Note: canonical ordering may reorder to (1+x) and (2+x)
+    assert!(
+        !output.contains("x^(2)") && output.contains("*"),
+        "simplify should preserve product form (not expand), got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_policy_a_simplify_applies_difference_of_squares() {
+    // Policy A+: simplify() DOES apply diff of squares (x-1)(x+1) → x²-1
+    let mut simplifier = create_full_simplifier();
+    let expr = parse("(x-1)*(x+1)", &mut simplifier.context).unwrap();
+    let (simplified, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: simplified
+        }
+    );
+    // Should reduce to x^2 - 1 (not remain as product)
+    assert!(
+        output.contains("x^(2)") || output.contains("x^2"),
+        "simplify should reduce (x-1)(x+1), got: {}",
+        output
+    );
+    assert!(
+        !output.contains("(x + 1)") && !output.contains("(x - 1)"),
+        "simplify should NOT preserve (x-1)(x+1) as product, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_policy_a_expand_expands_binomial_products() {
+    // Policy A+: expand() DOES expand (x+1)(x+2) → x² + 3x + 2
+    let mut simplifier = create_full_simplifier();
+    let expr = parse("expand((x+1)*(x+2))", &mut simplifier.context).unwrap();
+    let (expanded, _) = simplifier.simplify(expr);
+    let output = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: expanded
+        }
+    );
+    // Should expand to polynomial form (contain x^2 term)
+    assert!(
+        output.contains("x^(2)") || output.contains("x^2"),
+        "expand should produce polynomial with x², got: {}",
+        output
+    );
+    // Should not remain as product
+    assert!(
+        !output.contains("(1 + x)") && !output.contains("(2 + x)"),
+        "expand should NOT preserve product form, got: {}",
+        output
+    );
 }
