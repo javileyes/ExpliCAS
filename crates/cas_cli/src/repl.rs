@@ -857,6 +857,12 @@ impl Repl {
             return;
         }
 
+        // Check for "expand" command - aggressive expansion/distribution
+        if line.starts_with("expand ") {
+            self.handle_expand(&line);
+            return;
+        }
+
         // Check for "rationalize" command - rationalize denominators with surds
         if line.starts_with("rationalize ") {
             self.handle_rationalize(&line);
@@ -2066,6 +2072,47 @@ impl Repl {
                 println!("{}", result.format(&self.simplifier.context));
             }
             Err(e) => println!("Parse error: {}", e),
+        }
+    }
+
+    /// Handle the 'expand' command for aggressive polynomial expansion
+    /// Uses cas_engine::expand::expand() which distributes without educational guards
+    fn handle_expand(&mut self, line: &str) {
+        use cas_ast::DisplayExpr;
+
+        let rest = line.strip_prefix("expand").unwrap_or(line).trim();
+        if rest.is_empty() {
+            println!("Usage: expand <expr>");
+            println!("Description: Aggressively expands and distributes polynomials.");
+            println!("Example: expand 1/2 * (sqrt(2) - 1) → sqrt(2)/2 - 1/2");
+            return;
+        }
+
+        match cas_parser::parse(rest, &mut self.simplifier.context) {
+            Ok(expr) => {
+                println!(
+                    "Parsed: {}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: expr
+                    }
+                );
+
+                // Use the expansion module directly (bypasses DistributeRule guards)
+                let expanded = cas_engine::expand::expand(&mut self.simplifier.context, expr);
+
+                // Simplify to clean up the result
+                let (simplified, _steps) = self.simplifier.simplify(expanded);
+
+                println!(
+                    "Result: {}",
+                    DisplayExpr {
+                        context: &self.simplifier.context,
+                        id: simplified
+                    }
+                );
+            }
+            Err(e) => println!("Parse error: {:?}", e),
         }
     }
 

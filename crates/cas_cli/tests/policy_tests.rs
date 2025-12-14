@@ -7,7 +7,7 @@
 //!
 //! See POLICY.md for full documentation.
 
-use cas_ast::DisplayExpr;
+use cas_ast::{Context, DisplayExpr, ExprId};
 use cas_engine::Simplifier;
 use cas_parser::parse;
 
@@ -20,6 +20,11 @@ fn create_simplifier() -> Simplifier {
 /// Helper to check for power notation (handles both x^2 and x^(2))
 fn contains_power(output: &str, base: &str, exp: &str) -> bool {
     output.contains(&format!("{}^{}", base, exp)) || output.contains(&format!("{}^({})", base, exp))
+}
+
+/// Helper to format an expression as string
+fn format_expr(ctx: &Context, id: ExprId) -> String {
+    format!("{}", DisplayExpr { context: ctx, id })
 }
 
 // ============================================================================
@@ -296,6 +301,43 @@ fn test_display_order_polynomial() {
     assert!(
         x2_pos.is_some() && neg3_pos.is_some() && x2_pos < neg3_pos,
         "x² should come before -3, got: {}",
+        output
+    );
+}
+
+// ============================================================================
+// FRACTIONAL DISTRIBUTION POLICY: simplify preserves, expand distributes
+// ============================================================================
+
+#[test]
+fn test_simplify_preserves_fractional_binomial() {
+    // simplify 1/2 * (√2 - 1) should preserve the factored form
+    let mut s = Simplifier::with_default_rules();
+    let expr = parse("1/2 * (sqrt(2) - 1)", &mut s.context).unwrap();
+    let (result, _) = s.simplify(expr);
+    let output = format_expr(&s.context, result);
+
+    // Should contain the binomial structure, not be fully distributed
+    // Expected: (√(2) - 1)/2 or 1/2 * (√(2) - 1)
+    assert!(
+        output.contains("√(2) - 1") || output.contains("2^(1/2) - 1"),
+        "simplify should preserve fractional binomial form: got {}",
+        output
+    );
+}
+
+#[test]
+fn test_expand_distributes_fractional_binomial() {
+    // expand 1/2 * (√2 - 1) should distribute
+    let mut ctx = Context::new();
+    let expr = parse("1/2 * (sqrt(2) - 1)", &mut ctx).unwrap();
+    let expanded = cas_engine::expand::expand(&mut ctx, expr);
+    let output = format_expr(&ctx, expanded);
+
+    // Should be distributed: √2/2 - 1/2 or similar
+    assert!(
+        output.contains("/2") && !output.contains("(√(2) - 1)/2"),
+        "expand should distribute fractional binomial: got {}",
         output
     );
 }

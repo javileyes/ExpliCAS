@@ -205,6 +205,10 @@ pub struct SimplifyOptions {
 
     /// Whether to collect steps for timeline display.
     pub collect_steps: bool,
+
+    /// Whether we're in "expand mode" - forces aggressive distribution.
+    /// When true, bypasses educational guards that preserve factored forms.
+    pub expand_mode: bool,
 }
 
 impl Default for SimplifyOptions {
@@ -214,15 +218,18 @@ impl Default for SimplifyOptions {
             rationalize: crate::rationalize_policy::RationalizePolicy::default(),
             budgets: PhaseBudgets::default(),
             collect_steps: true,
+            expand_mode: false,
         }
     }
 }
 
 impl SimplifyOptions {
     /// Options for `expand()` command: Core → Transform → PostCleanup (no Rationalize)
+    /// Forces aggressive distribution by setting expand_mode = true
     pub fn for_expand() -> Self {
         let mut opt = Self::default();
         opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
+        opt.expand_mode = true;
         opt
     }
 
