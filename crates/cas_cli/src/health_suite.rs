@@ -200,6 +200,40 @@ pub fn default_suite() -> Vec<HealthCase> {
                 forbid_cycles: true,
             },
         },
+        // Explicit expand() cases - should show t>0 and growth
+        HealthCase {
+            name: "expand_binomial",
+            category: Category::Expansion,
+            expr: "expand((x+1)^2)",
+            limits: HealthLimits {
+                max_total_rewrites: 20,
+                max_growth: 30,
+                max_transform_rewrites: 5,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "expand_conjugate",
+            category: Category::Expansion,
+            expr: "expand((x-1)*(x+1))",
+            limits: HealthLimits {
+                max_total_rewrites: 15,
+                max_growth: 20,
+                max_transform_rewrites: 3,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "expand_product_chain",
+            category: Category::Expansion,
+            expr: "expand((x-1)*(x+1)*(x^2+1))",
+            limits: HealthLimits {
+                max_total_rewrites: 40,
+                max_growth: 60,
+                max_transform_rewrites: 10,
+                forbid_cycles: true,
+            },
+        },
         // ============ Fractions ============
         HealthCase {
             name: "fraction_add",
