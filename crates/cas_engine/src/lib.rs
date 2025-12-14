@@ -1,5 +1,6 @@
 pub mod canonical_forms;
 pub mod collect;
+pub mod cycle_detector;
 pub mod didactic;
 pub mod display_context;
 pub mod engine;
