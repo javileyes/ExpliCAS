@@ -191,6 +191,7 @@ impl Completer for CasHelper {
             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
             let ends_with_space = line[..pos].ends_with(' ');
 
+            // health <subcommand>
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
                 let subcommands = vec!["on", "off", "reset", "status"];
                 for sub in subcommands {
@@ -202,6 +203,51 @@ impl Completer for CasHelper {
                     }
                 }
                 return Ok((start, matches));
+            }
+
+            // health status <options>
+            if parts.len() >= 2 && parts[1] == "status" {
+                // health status <TAB> or health status --<TAB>
+                if (parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space) {
+                    let options = vec!["--list", "--category"];
+                    for opt in options {
+                        if opt.starts_with(word) {
+                            matches.push(Pair {
+                                display: opt.to_string(),
+                                replacement: opt.to_string(),
+                            });
+                        }
+                    }
+                    return Ok((start, matches));
+                }
+
+                // health status --category <TAB>
+                if parts.len() >= 3 && (parts[2] == "--category" || parts[2] == "-c") {
+                    if (parts.len() == 3 && ends_with_space)
+                        || (parts.len() == 4 && !ends_with_space)
+                    {
+                        let categories = vec![
+                            "transform",
+                            "expansion",
+                            "fractions",
+                            "rationalization",
+                            "mixed",
+                            "baseline",
+                            "roots",
+                            "powers",
+                            "all",
+                        ];
+                        for cat in categories {
+                            if cat.starts_with(word) {
+                                matches.push(Pair {
+                                    display: cat.to_string(),
+                                    replacement: cat.to_string(),
+                                });
+                            }
+                        }
+                        return Ok((start, matches));
+                    }
+                }
             }
         }
 

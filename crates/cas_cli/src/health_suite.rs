@@ -8,6 +8,75 @@
 
 use cas_engine::phase::SimplifyPhase;
 use cas_engine::{PipelineStats, Simplifier, SimplifyOptions};
+use std::str::FromStr;
+
+/// Category of health test case
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Category {
+    Transform,
+    Expansion,
+    Fractions,
+    Rationalization,
+    Mixed,
+    Baseline,
+    Roots,
+    Powers,
+}
+
+impl Category {
+    /// All available categories
+    pub fn all() -> &'static [Category] {
+        &[
+            Category::Transform,
+            Category::Expansion,
+            Category::Fractions,
+            Category::Rationalization,
+            Category::Mixed,
+            Category::Baseline,
+            Category::Roots,
+            Category::Powers,
+        ]
+    }
+
+    /// Short name for display
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Category::Transform => "transform",
+            Category::Expansion => "expansion",
+            Category::Fractions => "fractions",
+            Category::Rationalization => "rationalization",
+            Category::Mixed => "mixed",
+            Category::Baseline => "baseline",
+            Category::Roots => "roots",
+            Category::Powers => "powers",
+        }
+    }
+}
+
+impl std::fmt::Display for Category {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for Category {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "transform" | "trans" | "t" => Ok(Category::Transform),
+            "expansion" | "expand" | "exp" | "e" => Ok(Category::Expansion),
+            "fractions" | "frac" | "f" => Ok(Category::Fractions),
+            "rationalization" | "rational" | "rat" | "r" => Ok(Category::Rationalization),
+            "mixed" | "mix" | "m" => Ok(Category::Mixed),
+            "baseline" | "base" | "b" => Ok(Category::Baseline),
+            "roots" | "root" => Ok(Category::Roots),
+            "powers" | "pow" | "p" => Ok(Category::Powers),
+            "all" | "*" => Err("Use None for all categories".to_string()),
+            _ => Err(format!("Unknown category: '{}'. Valid: transform, expansion, fractions, rationalization, mixed, baseline, roots, powers", s)),
+        }
+    }
+}
 
 /// Health limits for a test case
 #[derive(Debug, Clone)]
@@ -38,8 +107,8 @@ impl Default for HealthLimits {
 pub struct HealthCase {
     /// Human-readable name
     pub name: &'static str,
-    /// Category (expansion, fraction, rationalization, etc.)
-    pub category: &'static str,
+    /// Category
+    pub category: Category,
     /// Input expression
     pub expr: &'static str,
     /// Health limits
@@ -67,7 +136,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         // ============ Transform-heavy (distribution/expansion) ============
         HealthCase {
             name: "distribute_basic",
-            category: "transform",
+            category: Category::Transform,
             expr: "2*(x+3)",
             limits: HealthLimits {
                 max_total_rewrites: 20,
@@ -78,7 +147,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         },
         HealthCase {
             name: "distribute_nested",
-            category: "transform",
+            category: Category::Transform,
             expr: "3*(x+(y+2))",
             limits: HealthLimits {
                 max_total_rewrites: 30,
@@ -89,7 +158,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         },
         HealthCase {
             name: "expand_product",
-            category: "transform",
+            category: Category::Transform,
             expr: "(x+1)*(x+2)",
             limits: HealthLimits {
                 max_total_rewrites: 40,
@@ -101,7 +170,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         // ============ Expansion (binomial) ============
         HealthCase {
             name: "binomial_small",
-            category: "expansion",
+            category: Category::Expansion,
             expr: "(x+1)^3",
             limits: HealthLimits {
                 max_total_rewrites: 30,
@@ -112,7 +181,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         },
         HealthCase {
             name: "binomial_medium",
-            category: "expansion",
+            category: Category::Expansion,
             expr: "(x+1)^5",
             limits: HealthLimits {
                 max_total_rewrites: 50,
@@ -124,7 +193,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         // ============ Fractions ============
         HealthCase {
             name: "fraction_add",
-            category: "fractions",
+            category: Category::Fractions,
             expr: "x/2 + x/3",
             limits: HealthLimits {
                 max_total_rewrites: 40,
@@ -135,7 +204,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         },
         HealthCase {
             name: "fraction_simplify",
-            category: "fractions",
+            category: Category::Fractions,
             expr: "(x^2-1)/(x-1)",
             limits: HealthLimits {
                 max_total_rewrites: 50,
@@ -147,7 +216,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         // ============ Rationalization ============
         HealthCase {
             name: "rationalize_simple",
-            category: "rationalization",
+            category: Category::Rationalization,
             expr: "1/sqrt(2)",
             limits: HealthLimits {
                 max_total_rewrites: 30,
@@ -158,7 +227,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         },
         HealthCase {
             name: "rationalize_binomial",
-            category: "rationalization",
+            category: Category::Rationalization,
             expr: "1/(1+sqrt(2))",
             limits: HealthLimits {
                 max_total_rewrites: 50,
@@ -169,7 +238,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         },
         HealthCase {
             name: "rationalize_complex",
-            category: "rationalization",
+            category: Category::Rationalization,
             expr: "1/(3-2*sqrt(5))",
             limits: HealthLimits {
                 max_total_rewrites: 80,
@@ -181,7 +250,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         // ============ Mixed operations ============
         HealthCase {
             name: "mixed_expression",
-            category: "mixed",
+            category: Category::Mixed,
             expr: "x/(1+sqrt(2)) + 2*(y+3)",
             limits: HealthLimits {
                 max_total_rewrites: 80,
@@ -193,7 +262,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         // ============ Baseline (no-op) ============
         HealthCase {
             name: "simple_noop",
-            category: "baseline",
+            category: Category::Baseline,
             expr: "x + y",
             limits: HealthLimits {
                 max_total_rewrites: 15,
@@ -204,7 +273,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         },
         HealthCase {
             name: "constant_fold",
-            category: "baseline",
+            category: Category::Baseline,
             expr: "2 + 3 * 4",
             limits: HealthLimits {
                 max_total_rewrites: 10,
@@ -216,7 +285,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         // ============ Roots ============
         HealthCase {
             name: "nested_root",
-            category: "roots",
+            category: Category::Roots,
             expr: "sqrt(8)",
             limits: HealthLimits {
                 max_total_rewrites: 20,
@@ -228,7 +297,7 @@ pub fn default_suite() -> Vec<HealthCase> {
         // ============ Powers ============
         HealthCase {
             name: "power_simplify",
-            category: "powers",
+            category: Category::Powers,
             expr: "x^2 * x^3",
             limits: HealthLimits {
                 max_total_rewrites: 15,
@@ -425,4 +494,103 @@ pub fn count_results(results: &[HealthCaseResult]) -> (usize, usize) {
     let passed = results.iter().filter(|r| r.passed).count();
     let failed = results.len() - passed;
     (passed, failed)
+}
+
+/// List all available test cases
+pub fn list_cases() -> String {
+    let suite = default_suite();
+    let mut output = format!("Available health cases ({}):\n", suite.len());
+    output.push_str("─────────────────────────────────────────\n");
+
+    // Group by category
+    for cat in Category::all() {
+        let cases_in_cat: Vec<_> = suite.iter().filter(|c| c.category == *cat).collect();
+        if !cases_in_cat.is_empty() {
+            for case in cases_in_cat {
+                output.push_str(&format!("[{:14}] {}\n", cat.as_str(), case.name));
+            }
+        }
+    }
+    output
+}
+
+/// Get all available category names for autocomplete
+pub fn category_names() -> Vec<&'static str> {
+    Category::all().iter().map(|c| c.as_str()).collect()
+}
+
+/// Run suite filtered by category
+pub fn run_suite_filtered(
+    simplifier: &mut Simplifier,
+    filter: Option<Category>,
+) -> Vec<HealthCaseResult> {
+    let suite = default_suite();
+    let filtered: Vec<_> = match filter {
+        Some(cat) => suite.into_iter().filter(|c| c.category == cat).collect(),
+        None => suite,
+    };
+    filtered
+        .iter()
+        .map(|case| run_case(case, simplifier))
+        .collect()
+}
+
+/// Format report with category header
+pub fn format_report_filtered(results: &[HealthCaseResult], category: Option<Category>) -> String {
+    let mut report = String::new();
+
+    let header = match category {
+        Some(cat) => format!("Health Status Suite [category={}]\n", cat),
+        None => "Health Status Suite\n".to_string(),
+    };
+    report.push_str(&header);
+    report.push_str("═══════════════════════════════════════════════════════════════\n");
+
+    let mut passed = 0;
+    let mut failed = 0;
+
+    for r in results {
+        let name_padded = format!("{:25}", r.case.name);
+
+        if r.passed {
+            passed += 1;
+            let status = if r.warning.is_some() { "⚠" } else { "✔" };
+            report.push_str(&format!(
+                "{} {}  rewrites={:3} growth={:+4} transform={:2}",
+                status, name_padded, r.total_rewrites, r.growth, r.transform_rewrites
+            ));
+            if let Some(ref warn) = r.warning {
+                report.push_str(&format!(" [{}]", warn));
+            }
+            report.push('\n');
+        } else {
+            failed += 1;
+            report.push_str(&format!(
+                "✘ {}  FAILED: {}\n",
+                name_padded,
+                r.failure_reason.as_ref().unwrap_or(&"unknown".to_string())
+            ));
+            if let Some((phase, period)) = &r.cycle_detected {
+                report.push_str(&format!("    Cycle: {:?} period={}\n", phase, period));
+            }
+            if !r.top_rules.is_empty() {
+                let rules: Vec<_> = r
+                    .top_rules
+                    .iter()
+                    .map(|(n, c)| format!("{}={}", n, c))
+                    .collect();
+                report.push_str(&format!("    Top Transform: {}\n", rules.join(", ")));
+            }
+        }
+    }
+
+    report.push_str("═══════════════════════════════════════════════════════════════\n");
+    let total = passed + failed;
+    if failed == 0 {
+        report.push_str(&format!("PASSED: {}/{} cases ✓\n", passed, total));
+    } else {
+        report.push_str(&format!("FAILED: {}/{} cases\n", failed, total));
+    }
+
+    report
 }

@@ -928,10 +928,57 @@ impl Repl {
                         println!("Health statistics cleared.");
                     }
                     "status" => {
+                        // Parse options: status [--list | --category <cat>]
+                        let opts: Vec<&str> = parts.iter().skip(2).copied().collect();
+
+                        if opts.contains(&"--list") || opts.contains(&"-l") {
+                            // List available cases
+                            println!("{}", crate::health_suite::list_cases());
+                            return;
+                        }
+
+                        // Check for --category
+                        let category_filter = if let Some(idx) =
+                            opts.iter().position(|&x| x == "--category" || x == "-c")
+                        {
+                            if let Some(cat_str) = opts.get(idx + 1) {
+                                if *cat_str == "all" {
+                                    None
+                                } else {
+                                    match cat_str.parse::<crate::health_suite::Category>() {
+                                        Ok(cat) => Some(cat),
+                                        Err(e) => {
+                                            println!("Error: {}", e);
+                                            println!(
+                                                "Available categories: {}",
+                                                crate::health_suite::category_names().join(", ")
+                                            );
+                                            return;
+                                        }
+                                    }
+                                }
+                            } else {
+                                println!("Error: --category requires an argument");
+                                println!(
+                                    "Available categories: {}",
+                                    crate::health_suite::category_names().join(", ")
+                                );
+                                return;
+                            }
+                        } else {
+                            None // Run all
+                        };
+
                         // Run the health status suite
-                        println!("Running health status suite...\n");
-                        let results = crate::health_suite::run_suite(&mut self.simplifier);
-                        let report = crate::health_suite::format_report(&results);
+                        let cat_msg = category_filter.map_or("all".to_string(), |c| c.to_string());
+                        println!("Running health status suite [category={}]...\n", cat_msg);
+
+                        let results = crate::health_suite::run_suite_filtered(
+                            &mut self.simplifier,
+                            category_filter,
+                        );
+                        let report =
+                            crate::health_suite::format_report_filtered(&results, category_filter);
                         println!("{}", report);
 
                         let (_passed, failed) = crate::health_suite::count_results(&results);
@@ -944,11 +991,17 @@ impl Repl {
                     }
                     _ => {
                         println!("Usage: health [on|off|reset|status]");
-                        println!("       health           Show last health report");
-                        println!("       health on        Enable health tracking");
-                        println!("       health off       Disable health tracking");
-                        println!("       health reset     Clear health statistics");
-                        println!("       health status    Run diagnostic test suite");
+                        println!("       health               Show last health report");
+                        println!("       health on            Enable health tracking");
+                        println!("       health off           Disable health tracking");
+                        println!("       health reset         Clear health statistics");
+                        println!("       health status        Run diagnostic test suite");
+                        println!("       health status --list List available test cases");
+                        println!("       health status --category <cat>  Run only category");
+                        println!(
+                            "                            Categories: {}",
+                            crate::health_suite::category_names().join(", ")
+                        );
                     }
                 }
             }
