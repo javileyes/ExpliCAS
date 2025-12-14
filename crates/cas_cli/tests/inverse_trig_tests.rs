@@ -197,12 +197,8 @@ fn test_arcsin_arccos_with_expression() {
 fn test_inverse_trig_with_arithmetic() {
     let result = simplify_str("2 * arcsin(x) + 2 * arccos(x)");
     // 2 * (arcsin + arccos) = 2 * π/2 = π
-    // Note: This requires factoring out the 2, which may not happen automatically
-    assert!(
-        result.contains("arcsin") && result.contains("arccos") && result.contains("2"),
-        "Should contain simplified form with arcsin, arccos and 2, got: {}",
-        result
-    );
+    // Now correctly simplified thanks to coefficient matching in check_pair_with_negation
+    assert_eq!(result, "pi", "2 * arcsin(x) + 2 * arccos(x) should equal π");
 }
 
 #[test]

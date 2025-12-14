@@ -1,5 +1,6 @@
 //! Test for negated atan pairs - BEATS SYMPY! 🏆
 
+use cas_ast::{DisplayExpr, Expr};
 use cas_engine::Simplifier;
 use cas_parser;
 
@@ -23,6 +24,45 @@ fn simplify_str(input: &str) -> String {
     }
 }
 
+/// Assert that `expr` simplifies to a value algebraically equivalent to `expected`.
+fn assert_simplify_equiv(expr: &str, expected: &str, msg: &str) {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    let e = cas_parser::parse(expr, &mut simplifier.context).expect("Failed to parse expr");
+    let ex =
+        cas_parser::parse(expected, &mut simplifier.context).expect("Failed to parse expected");
+
+    let (se, _) = simplifier.simplify(e);
+    let (sx, _) = simplifier.simplify(ex);
+
+    let diff = simplifier.context.add(Expr::Sub(se, sx));
+    let (diff_simplified, _) = simplifier.simplify(diff);
+
+    let diff_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: diff_simplified,
+        }
+    );
+
+    assert!(
+        diff_str == "0",
+        "{}\n  input: {}\n  expected equiv to: {}\n  got: {}\n  diff: {}",
+        msg,
+        expr,
+        expected,
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: se
+            }
+        ),
+        diff_str
+    );
+}
+
 #[test]
 fn test_negated_atan_pair_basic() {
     // -atan(x) - arctan(1/x) = -π/2
@@ -36,22 +76,21 @@ fn test_negated_atan_pair_basic() {
 
 #[test]
 fn test_negated_atan_pair_with_variable() {
-    // The case that Sympy can't do!
-    let result = simplify_str("-atan(1/2) - arctan(2) + x");
-    assert!(
-        result.contains("1/2 * pi") && result.contains("x") && !result.contains("arctan"),
-        "Should simplify to x - π/2, got: {}",
-        result
+    // Semantic equivalence: x - π/2
+    assert_simplify_equiv(
+        "-atan(1/2) - arctan(2) + x",
+        "x - pi/2",
+        "Should simplify to x - π/2",
     );
 }
 
 #[test]
 fn test_negated_atan_pair_different_order() {
-    let result = simplify_str("-atan(3) + y - arctan(1/3)");
-    assert!(
-        result.contains("1/2 * pi") && !result.contains("arctan"),
-        "Should find negated pair, got: {}",
-        result
+    // Semantic equivalence: y - π/2
+    assert_simplify_equiv(
+        "-atan(3) + y - arctan(1/3)",
+        "y - pi/2",
+        "Should find negated pair",
     );
 }
 

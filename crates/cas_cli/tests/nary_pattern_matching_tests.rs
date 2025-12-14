@@ -3,6 +3,7 @@
 //! Verifies that rules can find patterns across all additive terms,
 //! not just binary Add pairs.
 
+use cas_ast::{DisplayExpr, Expr};
 use cas_engine::Simplifier;
 use cas_parser;
 
@@ -26,40 +27,76 @@ fn simplify_str(input: &str) -> String {
     }
 }
 
+/// Assert that `expr` simplifies to a value algebraically equivalent to `expected`.
+fn assert_simplify_equiv(expr: &str, expected: &str, msg: &str) {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    let e = cas_parser::parse(expr, &mut simplifier.context).expect("Failed to parse expr");
+    let ex =
+        cas_parser::parse(expected, &mut simplifier.context).expect("Failed to parse expected");
+
+    let (se, _) = simplifier.simplify(e);
+    let (sx, _) = simplifier.simplify(ex);
+
+    let diff = simplifier.context.add(Expr::Sub(se, sx));
+    let (diff_simplified, _) = simplifier.simplify(diff);
+
+    let diff_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: diff_simplified,
+        }
+    );
+
+    assert!(
+        diff_str == "0",
+        "{}\n  input: {}\n  expected equiv to: {}\n  got: {}\n  diff: {}",
+        msg,
+        expr,
+        expected,
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: se
+            }
+        ),
+        diff_str
+    );
+}
+
 // ============================================================================
 // Basic N-ary Matching Tests
 // ============================================================================
 
 #[test]
 fn test_nary_atan_three_terms() {
-    // atan pair with one extra term
-    let result = simplify_str("arctan(2) + 5 + arctan(1/2)");
-    assert!(
-        result.contains("1/2 * pi") && result.contains("5"),
-        "Should find pair among 3 terms"
+    // Semantic equivalence: 5 + π/2
+    assert_simplify_equiv(
+        "arctan(2) + 5 + arctan(1/2)",
+        "5 + pi/2",
+        "Should find pair among 3 terms",
     );
 }
 
 #[test]
 fn test_nary_atan_four_terms() {
-    // atan pair with two extra terms
-    let result = simplify_str("arctan(3) + 10 + arctan(1/3) - 5");
-    assert!(
-        result.contains("1/2 * pi") && result.contains("5"),
-        "Should find pair among 4 terms"
+    // Semantic equivalence: 10 - 5 + π/2 = 5 + π/2
+    assert_simplify_equiv(
+        "arctan(3) + 10 + arctan(1/3) - 5",
+        "5 + pi/2",
+        "Should find pair among 4 terms",
     );
 }
 
 #[test]
 fn test_nary_atan_five_terms_mixed() {
-    // atan pair buried in middle
-    let result = simplify_str("x + arctan(5) + y + arctan(1/5) + z");
-    assert!(
-        result.contains("1/2 * pi")
-            && result.contains("x")
-            && result.contains("y")
-            && result.contains("z"),
-        "Should find pair among 5 terms"
+    // Semantic equivalence: x + y + z + π/2
+    assert_simplify_equiv(
+        "x + arctan(5) + y + arctan(1/5) + z",
+        "x + y + z + pi/2",
+        "Should find pair among 5 terms",
     );
 }
 
@@ -78,11 +115,11 @@ fn test_nary_atan_two_pairs() {
 
 #[test]
 fn test_nary_atan_two_pairs_with_noise() {
-    // Two pairs with constants between
-    let result = simplify_str("arctan(2) + 7 + arctan(1/2) - 3 + arctan(4) + arctan(1/4)");
-    assert!(
-        result.contains("pi") && result.contains("4") && !result.contains("arctan"),
-        "Should find both pairs: 2π/2 + 7 - 3"
+    // Semantic equivalence: 7 - 3 + 2*(π/2) = 4 + π
+    assert_simplify_equiv(
+        "arctan(2) + 7 + arctan(1/2) - 3 + arctan(4) + arctan(1/4)",
+        "4 + pi",
+        "Should find both pairs: 2π/2 + 7 - 3",
     );
 }
 
@@ -107,21 +144,21 @@ fn test_nary_atan_reversed_order() {
 
 #[test]
 fn test_nary_atan_scattered() {
-    // Pair separated by many terms
-    let result = simplify_str("arctan(2) + a + b + c + d + e + arctan(1/2)");
-    assert!(
-        result.contains("1/2 * pi") && !result.contains("arctan"),
-        "Should find scattered pair"
+    // Semantic equivalence: a + b + c + d + e + π/2
+    assert_simplify_equiv(
+        "arctan(2) + a + b + c + d + e + arctan(1/2)",
+        "a + b + c + d + e + pi/2",
+        "Should find scattered pair",
     );
 }
 
 #[test]
 fn test_nary_atan_random_positions() {
-    // Pair at random positions
-    let result = simplify_str("x + y + arctan(6) + z + w + arctan(1/6) + v");
-    assert!(
-        result.contains("1/2 * pi") && !result.contains("arctan"),
-        "Should find pair regardless of position"
+    // Semantic equivalence: x + y + z + w + v + π/2
+    assert_simplify_equiv(
+        "x + y + arctan(6) + z + w + arctan(1/6) + v",
+        "x + y + z + w + v + pi/2",
+        "Should find pair regardless of position",
     );
 }
 
@@ -151,11 +188,11 @@ fn test_nary_no_reciprocal_pair() {
 
 #[test]
 fn test_nary_three_atans_one_pair() {
-    // Three atans, only two are reciprocals
-    let result = simplify_str("arctan(2) + arctan(1/2) + arctan(5)");
-    assert!(
-        result.contains("1/2 * pi") && result.contains("arctan(5)"),
-        "Should find the matching pair"
+    // Semantic equivalence: π/2 + arctan(5)
+    assert_simplify_equiv(
+        "arctan(2) + arctan(1/2) + arctan(5)",
+        "pi/2 + arctan(5)",
+        "Should find the matching pair",
     );
 }
 
@@ -227,22 +264,21 @@ fn test_nary_decimal_like_reciprocals() {
 
 #[test]
 fn test_nary_ten_terms_one_pair() {
-    // 10 terms with one pair
-    let result = simplify_str("a + b + c + d + arctan(2) + e + f + g + arctan(1/2) + h");
-    assert!(
-        result.contains("1/2 * pi") && !result.contains("arctan") && result.contains("a"),
-        "Should handle 10 terms efficiently"
+    // Semantic equivalence: a + b + c + d + e + f + g + h + π/2
+    assert_simplify_equiv(
+        "a + b + c + d + arctan(2) + e + f + g + arctan(1/2) + h",
+        "a + b + c + d + e + f + g + h + pi/2",
+        "Should handle 10 terms efficiently",
     );
 }
 
 #[test]
 fn test_nary_many_constants() {
-    // Many constant terms with atan pair
-    let result = simplify_str("1 + 2 + 3 + arctan(8) + 4 + 5 + arctan(1/8) + 6");
-    // Constants fold: 1+2+3+4+5+6=21, plus π/2
-    assert!(
-        result.contains("1/2 * pi") && result.contains("21"),
-        "Should handle many constants"
+    // Semantic equivalence: 1+2+3+4+5+6 = 21, plus π/2
+    assert_simplify_equiv(
+        "1 + 2 + 3 + arctan(8) + 4 + 5 + arctan(1/8) + 6",
+        "21 + pi/2",
+        "Should handle many constants",
     );
 }
 
@@ -294,11 +330,11 @@ fn test_nary_doesnt_break_binary() {
 
 #[test]
 fn test_nary_preserves_other_functions() {
-    // Other functions should not be affected
-    let result = simplify_str("sin(x) + arctan(3) + cos(y) + arctan(1/3)");
-    assert!(
-        result.contains("1/2 * pi") && result.contains("cos(y)") && result.contains("sin(x)"),
-        "Should not affect non-atan functions"
+    // Semantic equivalence: sin(x) + cos(y) + π/2
+    assert_simplify_equiv(
+        "sin(x) + arctan(3) + cos(y) + arctan(1/3)",
+        "sin(x) + cos(y) + pi/2",
+        "Should not affect non-atan functions",
     );
 }
 

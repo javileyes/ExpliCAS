@@ -827,32 +827,35 @@ impl FractionParts {
     /// Build as didactic division: `Div(num, den)` or just `num` if den=1.
     ///
     /// Use this for pedagogical output that shows fractions as a/b.
+    /// NOTE: Sign is applied to the numerator `(-a)/b` rather than wrapping `-(a/b)`
+    /// to match canonical form and avoid infinite loops with canonicalization rules.
     pub fn build_as_div(&self, ctx: &mut Context) -> ExprId {
         let num_expr = Self::build_product_static(ctx, &self.num);
         let den_expr = Self::build_product_static(ctx, &self.den);
 
-        let mut result = if self.den.is_empty() {
-            // No denominator, just return numerator
+        // Apply sign to numerator BEFORE building the division
+        // This produces (-a)/b instead of -(a/b), matching canonical form
+        let signed_num = if self.sign < 0 {
+            ctx.add(Expr::Neg(num_expr))
+        } else {
             num_expr
+        };
+
+        if self.den.is_empty() {
+            // No denominator, just return signed numerator
+            signed_num
         } else {
             // Check if denominator is just 1
             if let Expr::Number(n) = ctx.get(den_expr) {
                 if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                    num_expr
+                    signed_num
                 } else {
-                    ctx.add(Expr::Div(num_expr, den_expr))
+                    ctx.add(Expr::Div(signed_num, den_expr))
                 }
             } else {
-                ctx.add(Expr::Div(num_expr, den_expr))
+                ctx.add(Expr::Div(signed_num, den_expr))
             }
-        };
-
-        // Apply sign
-        if self.sign < 0 {
-            result = ctx.add(Expr::Neg(result));
         }
-
-        result
     }
 
     /// Build as canonical multiplication with negative powers: `Mul(factors..., Pow(den, -exp)...)`.

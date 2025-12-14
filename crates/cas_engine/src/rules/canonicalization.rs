@@ -111,22 +111,24 @@ define_rule!(
                 }
             }
 
-            // -(a / b) → (-a) / b   [Push negation into numerator for fraction combination]
-            if let Expr::Div(num, den) = inner_data {
-                let neg_num = if let Expr::Number(n) = ctx.get(num) {
-                    ctx.add(Expr::Number(-n.clone()))
-                } else {
-                    ctx.add(Expr::Neg(num))
-                };
-                let new_expr = ctx.add(Expr::Div(neg_num, den));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "-(a/b) = (-a)/b".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
-            }
+            // NOTE: DISABLED to break canonicalization loop.
+            // The rule -(a/b) → (-a)/b was creating loops with other rules that
+            // pull negation out. The canonical form is now -(a/b), not (-a)/b.
+            // if let Expr::Div(num, den) = inner_data {
+            //     let neg_num = if let Expr::Number(n) = ctx.get(num) {
+            //         ctx.add(Expr::Number(-n.clone()))
+            //     } else {
+            //         ctx.add(Expr::Neg(num))
+            //     };
+            //     let new_expr = ctx.add(Expr::Div(neg_num, den));
+            //     return Some(Rewrite {
+            //         new_expr,
+            //         description: "-(a/b) = (-a)/b".to_string(),
+            //         before_local: None,
+            //         after_local: None,
+            //         domain_assumption: None,
+            //     });
+            // }
 
             if false {
                 // Dummy block to handle the 'else' structure from previous code if needed, but here we just fall through
@@ -197,22 +199,11 @@ define_rule!(
             }
         }
 
-        // 4. Division: (-a) / b -> -(a / b), a / (-b) -> -(a / b)
+        // 4. Division: a / (-b) -> -(a / b) [only for denominator, NOT numerator]
+        // NOTE: We do NOT convert (-a)/b -> -(a/b) because that creates a loop with
+        // the -(a/b) -> (-a)/b rule at line 114. The canonical form is (-a)/b.
         if let Expr::Div(lhs, rhs) = expr_data {
-            let lhs_data = ctx.get(lhs);
             let rhs_data = ctx.get(rhs);
-
-            if let Expr::Neg(inner_l) = lhs_data {
-                let new_div = ctx.add(Expr::Div(*inner_l, rhs));
-                let new_expr = ctx.add(Expr::Neg(new_div));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "(-a) / b = -(a / b)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
-            }
 
             if let Expr::Neg(inner_r) = rhs_data {
                 let new_div = ctx.add(Expr::Div(lhs, *inner_r));

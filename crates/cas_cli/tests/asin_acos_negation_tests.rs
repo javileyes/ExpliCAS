@@ -1,6 +1,7 @@
 //! Tests for InverseTrigSumRule negation pattern
 //! Verifies that asin + acos AND -asin - acos both work
 
+use cas_ast::{DisplayExpr, Expr};
 use cas_engine::Simplifier;
 use cas_parser;
 
@@ -24,6 +25,43 @@ fn simplify_str(input: &str) -> String {
     }
 }
 
+/// Assert that `expr` simplifies to a value algebraically equivalent to `expected`.
+/// Uses semantic equivalence: simplify(expr - expected) should equal 0.
+fn assert_simplify_equiv(expr: &str, expected: &str, msg: &str) {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    let e = cas_parser::parse(expr, &mut simplifier.context).expect("Failed to parse expr");
+    let ex =
+        cas_parser::parse(expected, &mut simplifier.context).expect("Failed to parse expected");
+
+    // Simplify both
+    let (se, _) = simplifier.simplify(e);
+    let (sx, _) = simplifier.simplify(ex);
+
+    // Compute diff = se - sx
+    let diff = simplifier.context.add(Expr::Sub(se, sx));
+    let (diff_simplified, _) = simplifier.simplify(diff);
+
+    // Check if diff is zero
+    let diff_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: diff_simplified,
+        }
+    );
+
+    assert!(
+        diff_str == "0",
+        "{}\n  input: {}\n  expected equiv to: {}\n  got: {}\n  diff simplified to: {} (should be 0)",
+        msg,
+        expr,
+        expected,
+        format!("{}", DisplayExpr { context: &simplifier.context, id: se }),
+        diff_str
+    );
+}
+
 // ============ Positive Pairs ============
 
 #[test]
@@ -40,11 +78,11 @@ fn test_arcsin_arccos_positive_basic() {
 
 #[test]
 fn test_asin_acos_with_extra_terms() {
-    let result = simplify_str("asin(x) + y + acos(x) + z");
-    assert!(
-        result.contains("1/2 * pi") && result.contains("y") && result.contains("z"),
-        "Should find pair with extra terms, got: {}",
-        result
+    // Semantic equivalence: result should equal y + z + π/2
+    assert_simplify_equiv(
+        "asin(x) + y + acos(x) + z",
+        "y + z + pi/2",
+        "Should simplify to y + z + π/2",
     );
 }
 
@@ -72,25 +110,21 @@ fn test_arcsin_arccos_negated_basic() {
 
 #[test]
 fn test_asin_acos_negated_with_variable() {
-    // The case that BEATS Sympy! (like atan)
-    let result = simplify_str("-asin(x) - acos(x) + y");
-    assert!(
-        result.contains("y")
-            && result.contains("-")
-            && result.contains("1/2 * pi")
-            && !result.contains("asin"),
-        "Should simplify to y - π/2, got: {}",
-        result
+    // Semantic equivalence: result should equal y - π/2
+    assert_simplify_equiv(
+        "-asin(x) - acos(x) + y",
+        "y - pi/2",
+        "Should simplify to y - π/2",
     );
 }
 
 #[test]
 fn test_asin_acos_negated_scattered() {
-    let result = simplify_str("a - asin(x) + b - acos(x) + c");
-    assert!(
-        result.contains("-") && result.contains("1/2 * pi") && !result.contains("asin"),
-        "Should find scattered negated pair, got: {}",
-        result
+    // Semantic equivalence: result should equal a + b + c - π/2
+    assert_simplify_equiv(
+        "a - asin(x) + b - acos(x) + c",
+        "a + b + c - pi/2",
+        "Should simplify to a + b + c - π/2",
     );
 }
 
@@ -125,23 +159,21 @@ fn test_asin_acos_cancellation() {
 
 #[test]
 fn test_asin_acos_nary_positive() {
-    // 5 terms with one pair
-    let result = simplify_str("a + asin(x) + b + acos(x) + c");
-    assert!(
-        result.contains("1/2 * pi") && !result.contains("asin"),
-        "N-ary should find positive pair, got: {}",
-        result
+    // Semantic equivalence: result should equal a + b + c + π/2
+    assert_simplify_equiv(
+        "a + asin(x) + b + acos(x) + c",
+        "a + b + c + pi/2",
+        "N-ary should find positive pair",
     );
 }
 
 #[test]
 fn test_asin_acos_nary_negated() {
-    // 5 terms with one negated pair
-    let result = simplify_str("a - asin(x) + b - acos(x) + c");
-    assert!(
-        result.contains("-") && result.contains("1/2 * pi") && !result.contains("asin"),
-        "N-ary should find negated pair, got: {}",
-        result
+    // Semantic equivalence: result should equal a + b + c - π/2
+    assert_simplify_equiv(
+        "a - asin(x) + b - acos(x) + c",
+        "a + b + c - pi/2",
+        "N-ary should find negated pair",
     );
 }
 

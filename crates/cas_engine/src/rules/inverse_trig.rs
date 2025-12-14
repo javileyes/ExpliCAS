@@ -197,6 +197,61 @@ where
         }
     }
 
+    // Case 3: Try coefficient match (k*f(x) + k*g(x) = k*V)
+    // Extract coefficients from Mul expressions
+    if let (Expr::Mul(coef_i, inner_i), Expr::Mul(coef_j, inner_j)) = (&term_i_data, &term_j_data) {
+        // Check if coefficients are equal
+        if crate::ordering::compare_expr(ctx, *coef_i, *coef_j) == std::cmp::Ordering::Equal {
+            let inner_i_data = ctx.get(*inner_i).clone();
+            let inner_j_data = ctx.get(*inner_j).clone();
+
+            if let Some((result, desc)) = check_fn(ctx, &inner_i_data, &inner_j_data) {
+                // Multiply result by coefficient: k * V
+                let scaled_result = ctx.add(Expr::Mul(*coef_i, result));
+                let remaining = build_sum_without(ctx, terms, i, j);
+                let final_result = combine_with_term(ctx, remaining, scaled_result);
+
+                let local_before = ctx.add(Expr::Add(term_i, term_j));
+
+                return Some(Rewrite {
+                    new_expr: final_result,
+                    description: format!("k·[{}]", desc),
+                    before_local: Some(local_before),
+                    after_local: Some(scaled_result),
+                    domain_assumption: None,
+                });
+            }
+        }
+    }
+
+    // Case 4: Try negated coefficient match (k*(-f(x)) + k*(-g(x)) = -k*V)
+    if let (Expr::Mul(coef_i, inner_i), Expr::Mul(coef_j, inner_j)) = (&term_i_data, &term_j_data) {
+        if crate::ordering::compare_expr(ctx, *coef_i, *coef_j) == std::cmp::Ordering::Equal {
+            if let (Expr::Neg(neg_i), Expr::Neg(neg_j)) = (ctx.get(*inner_i), ctx.get(*inner_j)) {
+                let inner_i_data = ctx.get(*neg_i).clone();
+                let inner_j_data = ctx.get(*neg_j).clone();
+
+                if let Some((result, desc)) = check_fn(ctx, &inner_i_data, &inner_j_data) {
+                    // Multiply result by -coefficient: -k * V
+                    let scaled_result = ctx.add(Expr::Mul(*coef_i, result));
+                    let neg_scaled = ctx.add(Expr::Neg(scaled_result));
+                    let remaining = build_sum_without(ctx, terms, i, j);
+                    let final_result = combine_with_term(ctx, remaining, neg_scaled);
+
+                    let local_before = ctx.add(Expr::Add(term_i, term_j));
+
+                    return Some(Rewrite {
+                        new_expr: final_result,
+                        description: format!("-k·[{}]", desc),
+                        before_local: Some(local_before),
+                        after_local: Some(neg_scaled),
+                        domain_assumption: None,
+                    });
+                }
+            }
+        }
+    }
+
     None
 }
 

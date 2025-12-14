@@ -2,9 +2,47 @@
 /// These tests verify that:
 /// 1. Rationalization + other simplifiable parts work together correctly
 /// 2. Distribution still works when no rationalization occurs
-use cas_ast::{Context, DisplayExpr};
+use cas_ast::{Context, DisplayExpr, Expr};
 use cas_engine::Simplifier;
 use cas_parser::parse;
+
+/// Assert that `expr` simplifies to a value algebraically equivalent to `expected`.
+fn assert_simplify_equiv(expr: &str, expected: &str, msg: &str) {
+    let mut simplifier = Simplifier::with_default_rules();
+
+    let e = parse(expr, &mut simplifier.context).expect("Failed to parse expr");
+    let ex = parse(expected, &mut simplifier.context).expect("Failed to parse expected");
+
+    let (se, _) = simplifier.simplify(e);
+    let (sx, _) = simplifier.simplify(ex);
+
+    let diff = simplifier.context.add(Expr::Sub(se, sx));
+    let (diff_simplified, _) = simplifier.simplify(diff);
+
+    let diff_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: diff_simplified,
+        }
+    );
+
+    assert!(
+        diff_str == "0",
+        "{}\n  input: {}\n  expected equiv to: {}\n  got: {}\n  diff: {}",
+        msg,
+        expr,
+        expected,
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: se
+            }
+        ),
+        diff_str
+    );
+}
 
 /// Test 1: Rationalization produces correct form
 /// x/(1+√2) should become x*(√2-1) = x*√2 - x (distributed form is acceptable)
@@ -168,28 +206,13 @@ fn test_nested_surd_and_regular_parts() {
     );
 }
 
-/// Test 6: Simple fraction without surd - no rationalization, distribution allowed
+/// Test 6: Simple fraction without surd - no rationalization, distribution semantically correct
 #[test]
 fn test_simple_fraction_no_rationalization() {
-    let mut ctx = Context::new();
-    let mut simplifier = Simplifier::with_default_rules();
-
-    // Simple fraction x/2 + (a+b) - no surd, distribution should work if applicable
-    let expr = parse("x/2 + 3*(a + 1)", &mut ctx).unwrap();
-    simplifier.context = ctx;
-    let (result, _) = simplifier.simplify(expr);
-    let result_str = format!(
-        "{}",
-        DisplayExpr {
-            context: &simplifier.context,
-            id: result
-        }
-    );
-
-    // The 3*(a+1) should distribute to 3*a + 3
-    assert!(
-        result_str.contains("3"),
-        "Expected distribution of 3*(a+1), got: {}",
-        result_str
+    // Verify semantic equivalence: x/2 + 3*(a+1) = x/2 + 3*a + 3
+    assert_simplify_equiv(
+        "x/2 + 3*(a + 1)",
+        "x/2 + 3*a + 3",
+        "Distribution should produce semantically correct result",
     );
 }
