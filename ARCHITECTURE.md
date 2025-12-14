@@ -2770,6 +2770,112 @@ fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
 
 ## Orquestación y Estrategias
 
+### Phase-Based Simplification Pipeline ★★★ (2025-12)
+
+The simplification engine uses an explicit 4-phase pipeline for predictable, debuggable behavior:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              Orchestrator::simplify_pipeline()              │
+│                                                             │
+│  Phase 1: CORE         Phase 2: TRANSFORM                  │
+│  ┌────────────────┐    ┌────────────────┐                  │
+│  │ Arithmetic     │───▶│ Distribution   │                  │
+│  │ Identities     │    │ Expansion      │                  │
+│  │ Combine consts │    │ Polynomial     │                  │
+│  └────────────────┘    └────────────────┘                  │
+│         │                     │                             │
+│         │                     ▼                             │
+│         │              Phase 3: RATIONALIZE                 │
+│         │              ┌────────────────┐                  │
+│         │              │ Level 0: √n    │                  │
+│         │              │ Level 1: a+b√n │                  │
+│         │              │ Level 1.5: k*  │                  │
+│         │              └────────────────┘                  │
+│         │                     │                             │
+│         └─────────────────────┤                             │
+│                               ▼                             │
+│                       Phase 4: POST_CLEANUP                 │
+│                       ┌────────────────┐                   │
+│                       │ Final collect  │                   │
+│                       │ Canonicalize   │                   │
+│                       └────────────────┘                   │
+│                               │                             │
+│                               ▼                             │
+│                          (result, steps, stats)             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Phase Configuration
+
+```rust
+pub struct SimplifyOptions {
+    pub enable_transform: bool,        // Enable Phase 2
+    pub rationalize: RationalizePolicy,// Phase 3 config
+    pub budgets: PhaseBudgets,        // Iteration limits
+    pub collect_steps: bool,          // Record steps
+}
+
+pub struct PhaseBudgets {
+    pub core_iters: usize,       // Default: 8
+    pub transform_iters: usize,  // Default: 6
+    pub rationalize_iters: usize,// Default: 3
+    pub post_iters: usize,       // Default: 4
+    pub max_total_rewrites: usize,// Default: 300
+}
+```
+
+#### Pipeline Statistics
+
+Each phase returns detailed statistics for diagnostics:
+
+```rust
+pub struct PhaseStats {
+    pub phase: Option<SimplifyPhase>,
+    pub iters_used: usize,     // Iterations consumed
+    pub rewrites_used: usize,  // Rules applied
+    pub changed: bool,         // Expression changed?
+}
+
+pub struct PipelineStats {
+    pub core: PhaseStats,
+    pub transform: PhaseStats,
+    pub rationalize: PhaseStats,
+    pub post_cleanup: PhaseStats,
+    pub total_rewrites: usize,
+    pub rationalize_outcome: Option<RationalizeOutcome>,
+    pub rationalize_level: Option<AutoRationalizeLevel>,
+}
+```
+
+#### Key Invariant
+
+**Transform never runs after Rationalize.** This prevents undoing rationalization work.
+
+#### REPL Pipeline Control
+
+Users can control pipeline behavior interactively:
+
+```text
+> set transform off         # Skip Phase 2
+> set rationalize off       # Skip Phase 3
+> set rationalize 1.5       # Set level (0, 1, 1.5)
+> set max-rewrites 100      # Safety limit
+> set explain on            # Show diagnostics
+```
+
+With `explain on`:
+```text
+──── Pipeline Diagnostics ────
+  Core:       2 iters, 3 rewrites
+  Transform:  1 iters, 0 rewrites, changed=false
+  Rationalize: Level15
+              → Applied ✓
+  PostCleanup: 1 iters, 0 rewrites
+  Total rewrites: 5
+───────────────────────────────
+```
+
 ### Problema: Explosión Combinatoria
 
 Al aplicar reglas libremente, el número de estados intermedios puede crecer exponencialmente.

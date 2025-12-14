@@ -469,6 +469,61 @@ To reset all rules to their default state:
 All rules restored to default values.
 ```
 
+### Pipeline Settings (Phase Control)
+
+Control the simplification pipeline phases interactively. This is useful for debugging and understanding engine behavior.
+
+#### Setting Pipeline Options
+```text
+> set transform off       # Disable distribution & expansion
+Transform phase DISABLED (no distribution/expansion)
+
+> set rationalize off     # Disable auto-rationalization
+Rationalization DISABLED
+
+> set rationalize 1.5     # Set level (0, 1, or 1.5)
+Rationalization set to Level 1.5 (same-surd products)
+
+> set max-rewrites 100    # Safety limit on total rewrites
+Max rewrites set to 100
+
+> set explain on          # Show pipeline diagnostics
+Explain mode ENABLED
+```
+
+#### Pipeline Diagnostics
+With `set explain on`, each simplification shows detailed stats:
+```text
+> x/(1+sqrt(2))
+
+──── Pipeline Diagnostics ────
+  Core:       2 iters, 3 rewrites
+  Transform:  1 iters, 0 rewrites, changed=false
+  Rationalize: Level15
+              → Applied ✓
+  PostCleanup: 1 iters, 0 rewrites
+  Total rewrites: 5
+───────────────────────────────
+
+Result: x * (√2 - 1)
+```
+
+#### Viewing Current Settings
+```text
+> set
+Pipeline settings:
+  set transform <on|off>
+  set rationalize <on|off|0|1|1.5>
+  set max-rewrites <N>
+  set explain <on|off>
+
+Current settings:
+  transform: on
+  rationalize: Level15
+  max-rewrites: 300
+  explain: off
+```
+
 ### Debug Tools
 
 ExpliCAS includes powerful debugging and visualization tools for developers and educators.
