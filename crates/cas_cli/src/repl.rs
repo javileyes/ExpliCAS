@@ -1407,6 +1407,7 @@ impl Repl {
         );
         println!("  config <subcmd>         Manage configuration (list, enable, disable...)");
         println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
+        println!("  health [cmd]            Health tracking (on/off/reset) - shows top rules");
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
         println!();

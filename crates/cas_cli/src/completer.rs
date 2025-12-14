@@ -38,6 +38,8 @@ impl CasHelper {
                 "trace".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
+                "health".to_string(),
+                "set".to_string(),
                 "visualize".to_string(),
                 "timeline".to_string(),
                 "telescope".to_string(),
@@ -182,6 +184,65 @@ impl Completer for CasHelper {
                 }
             }
             return Ok((start, matches));
+        }
+
+        // Check for "health" context
+        if line.starts_with("health ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let subcommands = vec!["on", "off", "reset"];
+                for sub in subcommands {
+                    if sub.starts_with(word) {
+                        matches.push(Pair {
+                            display: sub.to_string(),
+                            replacement: sub.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+        }
+
+        // Check for "set" context
+        if line.starts_with("set ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+
+            // First argument: option name
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let options = vec!["explain", "transform", "rationalize", "max-rewrites"];
+                for opt in options {
+                    if opt.starts_with(word) {
+                        matches.push(Pair {
+                            display: opt.to_string(),
+                            replacement: opt.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+
+            // Second argument: value based on option
+            if parts.len() >= 2 {
+                if (parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space) {
+                    let values = match parts[1] {
+                        "explain" | "transform" => vec!["on", "off"],
+                        "rationalize" => vec!["off", "0", "1", "1.5"],
+                        _ => vec![],
+                    };
+                    for val in values {
+                        if val.starts_with(word) {
+                            matches.push(Pair {
+                                display: val.to_string(),
+                                replacement: val.to_string(),
+                            });
+                        }
+                    }
+                    return Ok((start, matches));
+                }
+            }
         }
 
         // Check commands
