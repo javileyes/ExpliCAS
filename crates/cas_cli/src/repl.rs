@@ -6,7 +6,9 @@ use cas_engine::rules::exponents::{
 use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule};
 use cas_engine::Simplifier;
 
-use cas_ast::{Context, DisplayExpr, DisplayExprWithHints, Expr, ExprId};
+use cas_ast::{
+    Context, DisplayExpr, DisplayExprStyled, Expr, ExprId, ParseStyleSignals, StylePreferences,
+};
 use cas_engine::display_context::build_display_context_with_result;
 use cas_engine::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
 use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
@@ -2111,6 +2113,9 @@ impl Repl {
     }
 
     fn handle_eval(&mut self, line: &str) {
+        // Sniff style preferences from input string BEFORE parsing
+        let style_signals = ParseStyleSignals::from_input_string(line);
+
         match cas_parser::parse(line, &mut self.simplifier.context) {
             Ok(expr) => {
                 println!(
@@ -2122,7 +2127,15 @@ impl Repl {
                 );
                 let (simplified, steps) = self.simplifier.simplify(expr);
 
-                // Build display hints for preserving root notation (only when showing steps)
+                // Create global style preferences from input signals + AST
+                let style_prefs = StylePreferences::from_expression_with_signals(
+                    &self.simplifier.context,
+                    expr,
+                    Some(&style_signals),
+                );
+
+                // DEPRECATED: Keep old hints for comparison during migration
+                // TODO: Remove after verifying DisplayExprStyled works correctly
                 let display_hints = if self.verbosity != Verbosity::None {
                     build_display_context_with_result(
                         &self.simplifier.context,
@@ -2133,6 +2146,7 @@ impl Repl {
                 } else {
                     cas_ast::DisplayContext::new()
                 };
+                let _ = &display_hints; // Suppress unused warning during migration
 
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
@@ -2210,19 +2224,19 @@ impl Repl {
                                 // Early check for display no-op: skip step entirely if before/after display identical
                                 let before_disp = clean_display_string(&format!(
                                     "{}",
-                                    DisplayExprWithHints {
-                                        context: &self.simplifier.context,
-                                        id: step.before,
-                                        hints: &display_hints
-                                    }
+                                    DisplayExprStyled::new(
+                                        &self.simplifier.context,
+                                        step.before,
+                                        &style_prefs
+                                    )
                                 ));
                                 let after_disp = clean_display_string(&format!(
                                     "{}",
-                                    DisplayExprWithHints {
-                                        context: &self.simplifier.context,
-                                        id: step.after,
-                                        hints: &display_hints
-                                    }
+                                    DisplayExprStyled::new(
+                                        &self.simplifier.context,
+                                        step.after,
+                                        &style_prefs
+                                    )
                                 ));
                                 if before_disp == after_disp {
                                     // Display no-op - still update state but skip step display
@@ -2244,11 +2258,11 @@ impl Repl {
                                     );
                                     println!(
                                         "-> {}",
-                                        DisplayExprWithHints {
-                                            context: &self.simplifier.context,
-                                            id: current_root,
-                                            hints: &display_hints
-                                        }
+                                        DisplayExprStyled::new(
+                                            &self.simplifier.context,
+                                            current_root,
+                                            &style_prefs
+                                        )
                                     );
                                 } else {
                                     // Normal/Verbose
@@ -2266,11 +2280,11 @@ impl Repl {
                                                 "   Before: {}",
                                                 clean_display_string(&format!(
                                                     "{}",
-                                                    DisplayExprWithHints {
-                                                        context: &self.simplifier.context,
-                                                        id: global_before,
-                                                        hints: &display_hints
-                                                    }
+                                                    DisplayExprStyled::new(
+                                                        &self.simplifier.context,
+                                                        global_before,
+                                                        &style_prefs
+                                                    )
                                                 ))
                                             );
                                         } else {
@@ -2278,11 +2292,11 @@ impl Repl {
                                                 "   Before: {}",
                                                 clean_display_string(&format!(
                                                     "{}",
-                                                    DisplayExprWithHints {
-                                                        context: &self.simplifier.context,
-                                                        id: current_root,
-                                                        hints: &display_hints
-                                                    }
+                                                    DisplayExprStyled::new(
+                                                        &self.simplifier.context,
+                                                        current_root,
+                                                        &style_prefs
+                                                    )
                                                 ))
                                             );
                                         }
@@ -2397,19 +2411,19 @@ impl Repl {
 
                                         let before_disp = clean_display_string(&format!(
                                             "{}",
-                                            DisplayExprWithHints {
-                                                context: &self.simplifier.context,
-                                                id: rule_before_id,
-                                                hints: &display_hints
-                                            }
+                                            DisplayExprStyled::new(
+                                                &self.simplifier.context,
+                                                rule_before_id,
+                                                &style_prefs
+                                            )
                                         ));
                                         let after_disp = clean_display_string(&format!(
                                             "{}",
-                                            DisplayExprWithHints {
-                                                context: &self.simplifier.context,
-                                                id: rule_after_id,
-                                                hints: &display_hints
-                                            }
+                                            DisplayExprStyled::new(
+                                                &self.simplifier.context,
+                                                rule_after_id,
+                                                &style_prefs
+                                            )
                                         ));
 
                                         // Skip display-only no-op steps (e.g., -1*(1-√2) → -(1-√2) both display as -1-√2)
@@ -2445,11 +2459,11 @@ impl Repl {
                                             "   After: {}",
                                             clean_display_string(&format!(
                                                 "{}",
-                                                DisplayExprWithHints {
-                                                    context: &self.simplifier.context,
-                                                    id: current_root,
-                                                    hints: &display_hints
-                                                }
+                                                DisplayExprStyled::new(
+                                                    &self.simplifier.context,
+                                                    current_root,
+                                                    &style_prefs
+                                                )
                                             ))
                                         );
                                     }
@@ -2471,11 +2485,7 @@ impl Repl {
                 }
                 println!(
                     "Result: {}",
-                    DisplayExprWithHints {
-                        context: &self.simplifier.context,
-                        id: simplified,
-                        hints: &display_hints
-                    }
+                    DisplayExprStyled::new(&self.simplifier.context, simplified, &style_prefs)
                 );
             }
             Err(e) => println!("Error: {}", e),
@@ -2517,7 +2527,12 @@ impl Repl {
         match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {
                 // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
-                let user_style = cas_ast::detect_root_style(&temp_simplifier.context, expr);
+                let style_signals = ParseStyleSignals::from_input_string(expr_str);
+                let style_prefs = StylePreferences::from_expression_with_signals(
+                    &temp_simplifier.context,
+                    expr,
+                    Some(&style_signals),
+                );
 
                 println!(
                     "Parsed: {}",
@@ -2528,7 +2543,7 @@ impl Repl {
                 );
                 let (simplified, steps) = temp_simplifier.simplify(expr);
 
-                // Build display hints for preserving root notation (only when showing steps)
+                // DEPRECATED: Keep display_hints for compatibility
                 let display_hints = if self.verbosity != Verbosity::None {
                     build_display_context_with_result(
                         &temp_simplifier.context,
@@ -2539,6 +2554,7 @@ impl Repl {
                 } else {
                     cas_ast::DisplayContext::new()
                 };
+                let _ = &display_hints;
 
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
@@ -2586,11 +2602,11 @@ impl Repl {
                                                 "   Before: {}",
                                                 clean_display_string(&format!(
                                                     "{}",
-                                                    DisplayExprWithHints {
-                                                        context: &temp_simplifier.context,
-                                                        id: global_before,
-                                                        hints: &display_hints
-                                                    }
+                                                    DisplayExprStyled::new(
+                                                        &temp_simplifier.context,
+                                                        global_before,
+                                                        &style_prefs
+                                                    )
                                                 ))
                                             );
                                         } else {
@@ -2598,11 +2614,11 @@ impl Repl {
                                                 "   Before: {}",
                                                 clean_display_string(&format!(
                                                     "{}",
-                                                    DisplayExprWithHints {
-                                                        context: &temp_simplifier.context,
-                                                        id: current_root,
-                                                        hints: &display_hints
-                                                    }
+                                                    DisplayExprStyled::new(
+                                                        &temp_simplifier.context,
+                                                        current_root,
+                                                        &style_prefs
+                                                    )
                                                 ))
                                             );
                                         }
@@ -2618,19 +2634,19 @@ impl Repl {
 
                                         let before_disp = clean_display_string(&format!(
                                             "{}",
-                                            DisplayExprWithHints {
-                                                context: &temp_simplifier.context,
-                                                id: rule_before_id,
-                                                hints: &display_hints
-                                            }
+                                            DisplayExprStyled::new(
+                                                &temp_simplifier.context,
+                                                rule_before_id,
+                                                &style_prefs
+                                            )
                                         ));
                                         let after_disp = clean_display_string(&format!(
                                             "{}",
-                                            DisplayExprWithHints {
-                                                context: &temp_simplifier.context,
-                                                id: rule_after_id,
-                                                hints: &display_hints
-                                            }
+                                            DisplayExprStyled::new(
+                                                &temp_simplifier.context,
+                                                rule_after_id,
+                                                &style_prefs
+                                            )
                                         ));
 
                                         println!("   Rule: {} -> {}", before_disp, after_disp);
@@ -2653,11 +2669,11 @@ impl Repl {
                                         "   After: {}",
                                         clean_display_string(&format!(
                                             "{}",
-                                            DisplayExprWithHints {
-                                                context: &temp_simplifier.context,
-                                                id: current_root,
-                                                hints: &display_hints
-                                            }
+                                            DisplayExprStyled::new(
+                                                &temp_simplifier.context,
+                                                current_root,
+                                                &style_prefs
+                                            )
                                         ))
                                     );
                                 }
@@ -2677,10 +2693,10 @@ impl Repl {
                         }
                     }
                 }
-                // Use StyledExpr with detected style for consistent output
+                // Use DisplayExprStyled with detected preferences for consistent output
                 println!(
                     "Result: {}",
-                    cas_ast::StyledExpr::new(&temp_simplifier.context, simplified, user_style,)
+                    DisplayExprStyled::new(&temp_simplifier.context, simplified, &style_prefs)
                 );
             }
             Err(e) => println!("Error: {}", e),
