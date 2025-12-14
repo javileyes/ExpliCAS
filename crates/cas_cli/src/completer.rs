@@ -235,6 +235,7 @@ impl Completer for CasHelper {
                             "baseline",
                             "roots",
                             "powers",
+                            "stress",
                             "all",
                         ];
                         for cat in categories {

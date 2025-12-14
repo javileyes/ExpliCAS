@@ -21,6 +21,7 @@ pub enum Category {
     Baseline,
     Roots,
     Powers,
+    Stress,
 }
 
 impl Category {
@@ -35,6 +36,7 @@ impl Category {
             Category::Baseline,
             Category::Roots,
             Category::Powers,
+            Category::Stress,
         ]
     }
 
@@ -49,6 +51,7 @@ impl Category {
             Category::Baseline => "baseline",
             Category::Roots => "roots",
             Category::Powers => "powers",
+            Category::Stress => "stress",
         }
     }
 }
@@ -72,8 +75,9 @@ impl FromStr for Category {
             "baseline" | "base" | "b" => Ok(Category::Baseline),
             "roots" | "root" => Ok(Category::Roots),
             "powers" | "pow" | "p" => Ok(Category::Powers),
+            "stress" | "s" => Ok(Category::Stress),
             "all" | "*" => Err("Use None for all categories".to_string()),
-            _ => Err(format!("Unknown category: '{}'. Valid: transform, expansion, fractions, rationalization, mixed, baseline, roots, powers", s)),
+            _ => Err(format!("Unknown category: '{}'. Valid: transform, expansion, fractions, rationalization, mixed, baseline, roots, powers, stress", s)),
         }
     }
 }
@@ -121,8 +125,14 @@ pub struct HealthCaseResult {
     pub case: HealthCase,
     pub passed: bool,
     pub total_rewrites: usize,
-    pub growth: i64,
+    /// Per-phase rewrites
+    pub core_rewrites: usize,
     pub transform_rewrites: usize,
+    pub rationalize_rewrites: usize,
+    pub post_rewrites: usize,
+    /// Growth metrics
+    pub growth: i64, // total_positive_growth
+    pub shrink: i64, // total_negative_growth (absolute value)
     pub cycle_detected: Option<(SimplifyPhase, usize)>, // (phase, period)
     pub top_rules: Vec<(String, usize)>,
     pub failure_reason: Option<String>,
@@ -306,6 +316,97 @@ pub fn default_suite() -> Vec<HealthCase> {
                 forbid_cycles: true,
             },
         },
+        // ============ STRESS SUITE (heavy integration tests) ============
+        // These cases are designed to exercise growth, multi-phase interactions,
+        // and higher workloads. Expected to have higher rewrites and growth.
+        HealthCase {
+            name: "expand_product_chain",
+            category: Category::Stress,
+            expr: "(x+1)*(x+2)*(x+3)",
+            limits: HealthLimits {
+                max_total_rewrites: 200,
+                max_growth: 350,
+                max_transform_rewrites: 120,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "binomial_large",
+            category: Category::Stress,
+            expr: "(x+1)^8",
+            limits: HealthLimits {
+                max_total_rewrites: 220,
+                max_growth: 450,
+                max_transform_rewrites: 120,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "distribute_sum",
+            category: Category::Stress,
+            expr: "3*(x+y+z+w)",
+            limits: HealthLimits {
+                max_total_rewrites: 160,
+                max_growth: 250,
+                max_transform_rewrites: 100,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "nested_distribution",
+            category: Category::Stress,
+            expr: "2*(x + 3*(y+4))",
+            limits: HealthLimits {
+                max_total_rewrites: 200,
+                max_growth: 300,
+                max_transform_rewrites: 120,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "rationalize_level15_mixed",
+            category: Category::Stress,
+            expr: "(x+1)/(2*(1+sqrt(2))) + 2*(y+3)",
+            limits: HealthLimits {
+                max_total_rewrites: 180,
+                max_growth: 220,
+                max_transform_rewrites: 100,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "rationalize_binomial_negative",
+            category: Category::Stress,
+            expr: "x/(2*(3-2*sqrt(5)))",
+            limits: HealthLimits {
+                max_total_rewrites: 160,
+                max_growth: 220,
+                max_transform_rewrites: 80,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "nested_root_simplify_hard",
+            category: Category::Stress,
+            expr: "sqrt(5 + 2*sqrt(6))",
+            limits: HealthLimits {
+                max_total_rewrites: 160,
+                max_growth: 200,
+                max_transform_rewrites: 60,
+                forbid_cycles: true,
+            },
+        },
+        HealthCase {
+            name: "fraction_polynomial_combo",
+            category: Category::Stress,
+            expr: "x/2 + x/3 + (x+1)^6",
+            limits: HealthLimits {
+                max_total_rewrites: 260,
+                max_growth: 500,
+                max_transform_rewrites: 140,
+                forbid_cycles: true,
+            },
+        },
     ]
 }
 
@@ -323,8 +424,12 @@ pub fn run_case(case: &HealthCase, simplifier: &mut Simplifier) -> HealthCaseRes
                 case: case.clone(),
                 passed: false,
                 total_rewrites: 0,
-                growth: 0,
+                core_rewrites: 0,
                 transform_rewrites: 0,
+                rationalize_rewrites: 0,
+                post_rewrites: 0,
+                growth: 0,
+                shrink: 0,
                 cycle_detected: None,
                 top_rules: vec![],
                 failure_reason: Some(format!("Parse error: {}", e)),
@@ -339,8 +444,12 @@ pub fn run_case(case: &HealthCase, simplifier: &mut Simplifier) -> HealthCaseRes
 
     // Collect metrics
     let total_rewrites = stats.total_rewrites;
-    let growth = simplifier.profiler.total_positive_growth();
+    let core_rewrites = stats.core.rewrites_used;
     let transform_rewrites = stats.transform.rewrites_used;
+    let rationalize_rewrites = stats.rationalize.rewrites_used;
+    let post_rewrites = stats.post_cleanup.rewrites_used;
+    let growth = simplifier.profiler.total_positive_growth();
+    let shrink = simplifier.profiler.total_negative_growth().abs();
 
     // Check for cycles
     let cycle_detected = detect_cycle(&stats);
@@ -395,8 +504,12 @@ pub fn run_case(case: &HealthCase, simplifier: &mut Simplifier) -> HealthCaseRes
         case: case.clone(),
         passed: failure_reason.is_none(),
         total_rewrites,
-        growth,
+        core_rewrites,
         transform_rewrites,
+        rationalize_rewrites,
+        post_rewrites,
+        growth,
+        shrink,
         cycle_detected,
         top_rules,
         failure_reason,
@@ -551,24 +664,38 @@ pub fn format_report_filtered(results: &[HealthCaseResult], category: Option<Cat
 
     for r in results {
         let name_padded = format!("{:25}", r.case.name);
+        // Format per-phase rewrites compactly
+        let phases = format!(
+            "(c={} t={} r={} p={})",
+            r.core_rewrites, r.transform_rewrites, r.rationalize_rewrites, r.post_rewrites
+        );
+        // Format growth/shrink
+        let growth_str = if r.shrink > 0 {
+            format!("+{:3}/-{}", r.growth, r.shrink)
+        } else {
+            format!("+{:3}", r.growth)
+        };
 
         if r.passed {
             passed += 1;
             let status = if r.warning.is_some() { "⚠" } else { "✔" };
             report.push_str(&format!(
-                "{} {}  rewrites={:3} growth={:+4} transform={:2}",
-                status, name_padded, r.total_rewrites, r.growth, r.transform_rewrites
+                "{} {}  rw={:3} {} {}\n",
+                status, name_padded, r.total_rewrites, phases, growth_str
             ));
             if let Some(ref warn) = r.warning {
-                report.push_str(&format!(" [{}]", warn));
+                report.push_str(&format!("    └─ {}\n", warn));
             }
-            report.push('\n');
         } else {
             failed += 1;
             report.push_str(&format!(
                 "✘ {}  FAILED: {}\n",
                 name_padded,
                 r.failure_reason.as_ref().unwrap_or(&"unknown".to_string())
+            ));
+            report.push_str(&format!(
+                "    rw={} {} {}\n",
+                r.total_rewrites, phases, growth_str
             ));
             if let Some((phase, period)) = &r.cycle_detected {
                 report.push_str(&format!("    Cycle: {:?} period={}\n", phase, period));
