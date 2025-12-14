@@ -1019,6 +1019,18 @@ impl Repl {
                 println!("  trace [[1, 2], [3, 4]]      → 5");
                 println!("  trace [[5, 0, 0], [0, 3, 0], [0, 0, 2]]  → 10");
             }
+            "rationalize" => {
+                println!("Command: rationalize <expr>");
+                println!("Description: Rationalize denominators containing surds (square roots).");
+                println!(
+                    "             Eliminates irrational numbers from denominators by multiplying"
+                );
+                println!("             by the conjugate.");
+                println!("Examples:");
+                println!("  rationalize 1/(1 + sqrt(2))      → √2 - 1");
+                println!("  rationalize 1/(3 - 2*sqrt(5))    → -(3 + 2*√5)/11");
+                println!("  rationalize x/(sqrt(3) + 1)      → x*(√3 - 1)/2");
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();

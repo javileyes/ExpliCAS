@@ -29,6 +29,7 @@ impl CasHelper {
                 "choose".to_string(),
                 "perm".to_string(),
                 "simplify".to_string(),
+                "rationalize".to_string(),
                 "config".to_string(),
                 "steps".to_string(),
                 "explain".to_string(),
