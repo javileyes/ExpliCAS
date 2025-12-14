@@ -12,6 +12,7 @@ pub mod parent_context;
 pub mod pattern_detection;
 pub mod pattern_marks;
 pub mod pattern_scanner;
+pub mod phase;
 pub mod polynomial;
 pub mod profiler;
 pub mod rationalize;

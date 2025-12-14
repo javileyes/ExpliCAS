@@ -156,8 +156,9 @@ impl Orchestrator {
         // 3. High-Level Strategies (Heuristics)
         // Try polynomial simplification (expand -> simplify -> factor)
         // This handles cases like (x-1)(x+1)... which need full expansion to simplify.
-        // SKIP if rationalization happened - we don't want to expand the compact form
-        if self.enable_polynomial_strategy && !simplifier.did_rationalize {
+        // Note: With phase-based simplification, rationalized expressions won't be re-expanded
+        // because distribute rules only run in Transform phase (already completed above).
+        if self.enable_polynomial_strategy {
             let skip_poly = should_skip_polynomial_strategy(&simplifier.context, current, 6, 4);
 
             if !skip_poly {

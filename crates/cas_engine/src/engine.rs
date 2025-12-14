@@ -126,8 +126,6 @@ pub struct Simplifier {
     disabled_rules: HashSet<String>,
     pub enable_polynomial_strategy: bool,
     pub profiler: RuleProfiler,
-    /// Phase control: true after any rationalization rule applies (persists across passes)
-    pub did_rationalize: bool,
 }
 
 impl Default for Simplifier {
@@ -148,7 +146,6 @@ impl Simplifier {
             disabled_rules: HashSet::new(),
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false), // Disabled by default
-            did_rationalize: false,             // Phase control starts false
         }
     }
 
@@ -257,12 +254,19 @@ impl Simplifier {
         expr_id: ExprId,
         pattern_marks: &crate::pattern_marks::PatternMarks,
     ) -> (ExprId, Vec<Step>) {
+        // Default to Core phase for local_simplify (safe, non-expanding)
+        self.local_simplify_with_phase(expr_id, pattern_marks, crate::phase::SimplifyPhase::Core)
+    }
+
+    pub fn local_simplify_with_phase(
+        &mut self,
+        expr_id: ExprId,
+        pattern_marks: &crate::pattern_marks::PatternMarks,
+        phase: crate::phase::SimplifyPhase,
+    ) -> (ExprId, Vec<Step>) {
         // Create initial ParentContext with pattern marks
         let initial_parent_ctx =
             crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
-
-        // Capture current phase state before borrowing self.context
-        let incoming_did_rationalize = self.did_rationalize;
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
@@ -274,37 +278,22 @@ impl Simplifier {
             cache: HashMap::new(),
             current_path: Vec::new(),
             profiler: &mut self.profiler,
-            pattern_marks: pattern_marks.clone(), // Clone the marks for use in rules
+            pattern_marks: pattern_marks.clone(),
             initial_parent_ctx,
-            root_expr: expr_id, // Track root for global_after computation
-            did_rationalize: incoming_did_rationalize, // Phase control: inherit from Simplifier
+            root_expr: expr_id,
+            current_phase: phase,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 
-        // Propagate phase state back to Simplifier
-        let outgoing_did_rationalize = local_transformer.did_rationalize;
-
-        // Extract steps from transformer so we can use self.context for post-processing
+        // Extract steps from transformer
         let steps = std::mem::take(&mut local_transformer.steps);
-        drop(local_transformer); // Release borrow of self.context
-
-        // Update Simplifier phase state
-        self.did_rationalize = outgoing_did_rationalize;
-
-        // Note: global_before/global_after are already set correctly by LocalSimplificationTransformer
-        // using reconstruct_at_path (path-based reconstruction).
-        // Do NOT use substitute_expr_by_id here - it replaces by ExprId everywhere in the tree,
-        // which with interning can apply the step to ALL occurrences instead of just the one
-        // where the rewrite happened.
+        drop(local_transformer);
 
         (new_expr, steps)
     }
 
     pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
-        // Reset phase control at start of new simplification
-        self.did_rationalize = false;
-
         let mut orchestrator = crate::orchestrator::Orchestrator::new();
         orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
         orchestrator.simplify(expr_id, self)
@@ -315,6 +304,20 @@ impl Simplifier {
         expr_id: ExprId,
         pattern_marks: &crate::pattern_marks::PatternMarks,
     ) -> (ExprId, Vec<Step>) {
+        // Default to Transform phase (allows all rules including distribution)
+        self.apply_rules_loop_with_phase(
+            expr_id,
+            pattern_marks,
+            crate::phase::SimplifyPhase::Transform,
+        )
+    }
+
+    pub fn apply_rules_loop_with_phase(
+        &mut self,
+        expr_id: ExprId,
+        pattern_marks: &crate::pattern_marks::PatternMarks,
+        phase: crate::phase::SimplifyPhase,
+    ) -> (ExprId, Vec<Step>) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let collect_steps = self.collect_steps;
@@ -322,9 +325,6 @@ impl Simplifier {
         // Create initial ParentContext with pattern marks
         let initial_parent_ctx =
             crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
-
-        // Capture current phase state before borrowing self.context
-        let incoming_did_rationalize = self.did_rationalize;
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
@@ -338,27 +338,15 @@ impl Simplifier {
             profiler: &mut self.profiler,
             pattern_marks: pattern_marks.clone(),
             initial_parent_ctx,
-            root_expr: expr_id, // Track root for global_after computation
-            did_rationalize: incoming_did_rationalize, // Phase control: inherit from Simplifier
+            root_expr: expr_id,
+            current_phase: phase,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 
-        // Propagate phase state back to Simplifier (persist across passes)
-        let outgoing_did_rationalize = local_transformer.did_rationalize;
-
         // Extract steps from transformer
         let steps = std::mem::take(&mut local_transformer.steps);
-        drop(local_transformer); // Release borrow of self.context
-
-        // Update Simplifier phase state
-        self.did_rationalize = outgoing_did_rationalize;
-
-        // Note: global_before/global_after are already set correctly by LocalSimplificationTransformer
-        // using reconstruct_at_path (path-based reconstruction).
-        // Do NOT use substitute_expr_by_id here - it replaces by ExprId everywhere in the tree,
-        // which with interning can apply the step to ALL occurrences instead of just the one
-        // where the rewrite happened.
+        drop(local_transformer);
 
         (new_expr, steps)
     }
@@ -507,8 +495,8 @@ struct LocalSimplificationTransformer<'a> {
     initial_parent_ctx: crate::parent_context::ParentContext, // Carries marks to rules
     /// The current root expression being simplified, used to compute global_after for steps
     root_expr: ExprId,
-    /// Flag to disable distribution after rationalization (phase control)
-    did_rationalize: bool,
+    /// Current phase of the simplification pipeline (controls which rules can run)
+    current_phase: crate::phase::SimplifyPhase,
 }
 
 use cas_ast::visitor::Transformer;
@@ -802,9 +790,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     if self.disabled_rules.contains(rule.name()) {
                         continue;
                     }
-                    // Phase control: skip distribution after rationalization
-                    // Blocks both "Distributive Property" (polynomial.rs) and "Distributive Property (Simple)" (distribution.rs)
-                    if self.did_rationalize && rule.name().starts_with("Distributive Property") {
+                    // Phase control: only allow distribution in Transform phase
+                    if !self.current_phase.allows_distribution()
+                        && rule.name().starts_with("Distributive Property")
+                    {
                         continue;
                     }
                     // CRITICAL: Use initial_parent_ctx which contains pattern_marks
@@ -865,10 +854,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             self.steps.push(step);
                         }
                         expr_id = rewrite.new_expr;
-                        // Mark if rationalization happened (to disable distribution)
-                        if rule.name().contains("Rationalize") {
-                            self.did_rationalize = true;
-                        }
+                        // Note: Rule application tracking for rationalization is now handled by phase, not flag
                         // Apply canonical normalization to prevent loops
                         expr_id = normalize_core(self.context, expr_id);
                         changed = true;
@@ -886,8 +872,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 if self.disabled_rules.contains(rule.name()) {
                     continue;
                 }
-                // Phase control: skip distribution after rationalization (same as specific rules)
-                if self.did_rationalize && rule.name().starts_with("Distributive Property") {
+                // Phase control: only allow distribution in Transform phase
+                if !self.current_phase.allows_distribution()
+                    && rule.name().starts_with("Distributive Property")
+                {
                     continue;
                 }
 
@@ -926,10 +914,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         self.steps.push(step);
                     }
                     expr_id = rewrite.new_expr;
-                    // Mark if rationalization happened (to disable distribution)
-                    if rule.name().contains("Rationalize") {
-                        self.did_rationalize = true;
-                    }
+                    // Note: Rule application tracking for rationalization is now handled by phase, not flag
                     // Apply canonical normalization to prevent loops
                     expr_id = normalize_core(self.context, expr_id);
                     changed = true;
