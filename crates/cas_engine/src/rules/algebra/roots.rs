@@ -174,7 +174,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                             new_expr,
                             description: "Denest square root".to_string(),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     }
                 }
@@ -255,7 +255,7 @@ define_rule!(
                                         new_expr: term1,
                                         description: "Simplify perfect square root".to_string(),
                                         before_local: None,
-                                        after_local: None,
+                                        after_local: None, domain_assumption: None,
                                     });
                                 } else {
                                     let sqrt_base =
@@ -265,7 +265,7 @@ define_rule!(
                                         new_expr,
                                         description: "Simplify square root factors".to_string(),
                                         before_local: None,
-                                        after_local: None,
+                                        after_local: None, domain_assumption: None,
                                     });
                                 }
                             }

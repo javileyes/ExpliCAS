@@ -23,6 +23,7 @@ define_rule!(
                 description: "Convert Subtraction to Addition (a - b -> a + (-b))".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
 
@@ -49,6 +50,7 @@ define_rule!(
                     description: format!("-({}) = {}", n, normalized_n),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -59,6 +61,7 @@ define_rule!(
                     description: "-(-x) = x".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -82,6 +85,7 @@ define_rule!(
                     description: "-(a + b) = -a - b".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -102,8 +106,26 @@ define_rule!(
                         description: format!("-({} * x) = {} * x", n, neg_n),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
+            }
+
+            // -(a / b) → (-a) / b   [Push negation into numerator for fraction combination]
+            if let Expr::Div(num, den) = inner_data {
+                let neg_num = if let Expr::Number(n) = ctx.get(num) {
+                    ctx.add(Expr::Number(-n.clone()))
+                } else {
+                    ctx.add(Expr::Neg(num))
+                };
+                let new_expr = ctx.add(Expr::Div(neg_num, den));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "-(a/b) = (-a)/b".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
             }
 
             if false {
@@ -131,6 +153,7 @@ define_rule!(
                     description: "(-a) * b = -(a * b)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -158,6 +181,7 @@ define_rule!(
                         description: format!("{} * (-x) = {} * x", n, neg_n),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
 
@@ -168,6 +192,7 @@ define_rule!(
                     description: "a * (-b) = -(a * b)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -185,6 +210,7 @@ define_rule!(
                     description: "(-a) / b = -(a / b)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -196,6 +222,7 @@ define_rule!(
                     description: "a / (-b) = -(a / b)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -251,6 +278,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
                 description: "Sort addition terms".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
 
@@ -273,6 +301,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
                     description: "Fix associativity (a+b)+c -> a+(b+c)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -365,6 +394,7 @@ define_rule!(
                     description: "Sort multiplication factors".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -380,6 +410,7 @@ define_rule!(
                         description: "Fix associativity (a*b)*c -> a*(b*c)".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -411,6 +442,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
                     description: format!("x / {} = (1/{}) * x", n, n),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -442,6 +474,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                                 description: "sqrt(x^2k) -> |x|^k".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -455,6 +488,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                     description: "sqrt(x) = x^(1/2)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             } else if args.len() == 2 {
                 // sqrt(x, n) -> x^(1/n)
@@ -466,6 +500,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                     description: "sqrt(x, n) = x^(1/n)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         } else if name == "root" && args.len() == 2 {
@@ -478,6 +513,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                 description: "root(x, n) = x^(1/n)".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
     }
@@ -497,6 +533,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         description: format!("-{} + x -> x - {}", n_clone, n_clone),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -512,6 +549,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         description: format!("x + (-{}) -> x - {}", n_clone, n_clone),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -550,6 +588,7 @@ define_rule!(
                         description: "(y-x) -> -(x-y) for canonical order".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -580,6 +619,7 @@ define_rule!(NegSubFlipRule, "Flip Negative Subtraction", |ctx, expr| {
                     description: "-(a - b) → (b - a)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -638,6 +678,7 @@ define_rule!(
                             description: "(-k) * (a-b) → k * (b-a)".to_string(),
                             before_local: None,
                             after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -662,6 +703,7 @@ define_rule!(
                                 description: "(-k) * (x * (a-b)) → k * (x * (b-a))".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         if let Some((a, b)) = as_sub_like(ctx, ml_id) {
@@ -675,6 +717,7 @@ define_rule!(
                                 description: "(-k) * ((a-b) * x) → k * ((b-a) * x)".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -697,7 +740,9 @@ mod tests {
         let mut ctx = Context::new();
         let rule = CanonicalizeNegationRule;
         // -5 -> -5 (Number)
-        let expr = parse("-5", &mut ctx).unwrap(); // Neg(Number(5))
+        // Use add_raw to bypass Context::add's canonicalization which already converts Neg(Number(n)) -> Number(-n)
+        let five = ctx.num(5);
+        let expr = ctx.add_raw(Expr::Neg(five));
         let rewrite = rule
             .apply(
                 &mut ctx,

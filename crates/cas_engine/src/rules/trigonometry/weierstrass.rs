@@ -123,7 +123,7 @@ define_rule!(
             new_expr,
             description: desc,
             before_local: None,
-            after_local: None,
+            after_local: None, domain_assumption: None,
         })
     }
 );
@@ -259,7 +259,7 @@ define_rule!(
                 }
             ),
             before_local: None,
-            after_local: None,
+            after_local: None, domain_assumption: None,
         })
     }
 );

@@ -30,6 +30,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     description: "log(b, 1) = 0".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
             if n.is_zero() {
@@ -40,6 +41,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     description: "log(b, 0) = -infinity".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
             if *n < num_rational::BigRational::zero() {
@@ -49,6 +51,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     description: "log(b, neg) = undefined".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -73,6 +76,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                                 description: format!("log({}, {}) = {}", b, n, power),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -88,6 +92,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 description: "log(b, b) = 1".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
 
@@ -99,6 +104,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     description: "log(b, b^x) = x".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -114,6 +120,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 description: "log(b, x^y) = y * log(b, x)".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: Some("Assuming x > 0"),
             });
         }
 
@@ -127,6 +134,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: Some("Assuming x > 0 and y > 0"),
             });
         }
 
@@ -140,6 +148,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: Some("Assuming x > 0 and y > 0"),
             });
         }
         // 7. log(b, |x|) -> log(b, x)
@@ -154,6 +163,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     description: "log(b, |x|) -> log(b, x)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: Some("Assuming x > 0"),
                 });
             }
         }
@@ -191,6 +201,7 @@ define_rule!(
                         description: "b^log(b, x) = x".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -208,6 +219,7 @@ define_rule!(
                                 description: "b^(c*log(b, x)) = x^c".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -246,6 +258,7 @@ define_rule!(SplitLogExponentsRule, "Split Log Exponents", |ctx, expr| {
                         description: "e^(a+b) -> e^a * e^b (log cancellation)".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -563,6 +576,7 @@ define_rule!(LogInversePowerRule, "Log Inverse Power", |ctx, expr| {
                 description: "x^(c/log(b, x)) = b^c".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
     }

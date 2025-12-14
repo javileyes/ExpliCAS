@@ -18,7 +18,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     new_expr: abs_val,
                     description: format!("abs({}) = {}", n, n.abs()),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
             }
 
@@ -38,7 +38,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                         new_expr: abs_val,
                         description: format!("abs(-{}) = {}", n, n),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                 }
 
@@ -47,7 +47,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     new_expr: abs_inner,
                     description: "abs(-x) = abs(x)".to_string(),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
             }
         }
@@ -79,7 +79,7 @@ define_rule!(
                                 new_expr,
                                 description: format!("|x|^{} = x^{}", n, n),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                         }
                     }
@@ -130,7 +130,7 @@ define_rule!(
                             new_expr: abs_base,
                             description: "sqrt(x^2) = |x|".to_string(),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                     }
                 }

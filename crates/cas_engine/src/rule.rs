@@ -13,6 +13,9 @@ pub struct Rewrite {
     pub before_local: Option<ExprId>,
     /// Optional: The specific local result after the rule (for n-ary rules)
     pub after_local: Option<ExprId>,
+    /// Optional: Domain assumption used by this rule (e.g., "x > 0 for ln(x)")
+    /// When set, CLI/timeline can display warnings about implicit assumptions
+    pub domain_assumption: Option<&'static str>,
 }
 
 impl Rewrite {
@@ -23,6 +26,7 @@ impl Rewrite {
             description: description.into(),
             before_local: None,
             after_local: None,
+            domain_assumption: None,
         }
     }
 
@@ -39,6 +43,22 @@ impl Rewrite {
             description: description.into(),
             before_local: Some(before_local),
             after_local: Some(after_local),
+            domain_assumption: None,
+        }
+    }
+
+    /// Create a rewrite with domain assumption warning
+    pub fn with_domain_assumption(
+        new_expr: ExprId,
+        description: impl Into<String>,
+        assumption: &'static str,
+    ) -> Self {
+        Rewrite {
+            new_expr,
+            description: description.into(),
+            before_local: None,
+            after_local: None,
+            domain_assumption: Some(assumption),
         }
     }
 }

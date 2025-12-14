@@ -26,7 +26,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                                 var_name
                             ),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     }
                 }
@@ -45,7 +45,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 }
             }
@@ -73,7 +73,7 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
                             var_name
                         ),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 }
             }
@@ -728,7 +728,7 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None,
+                    after_local: None, domain_assumption: None,
                 });
             }
 
@@ -770,7 +770,7 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                             end
                         ),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 }
             }
@@ -1026,7 +1026,7 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None,
+                    after_local: None, domain_assumption: None,
                 });
             }
 
@@ -1058,7 +1058,7 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None,
+                    after_local: None, domain_assumption: None,
                 });
             }
 
@@ -1100,7 +1100,7 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                             end
                         ),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 }
             }

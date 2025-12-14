@@ -36,7 +36,7 @@ define_rule!(
                 new_expr: result,
                 description: desc,
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
         }
         if let Some((result, desc)) = check_pythagorean_pattern(ctx, t2, t1) {
@@ -44,7 +44,7 @@ define_rule!(
                 new_expr: result,
                 description: desc,
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
         }
 

@@ -6,8 +6,111 @@ use crate::rule::Rewrite;
 use cas_ast::count_nodes;
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Zero};
+use std::cmp::Ordering;
 
 use super::helpers::*;
+
+// ========== Helper to extract fraction parts from both Div and Mul(1/n,x) ==========
+// This is needed because canonicalization may convert Div(x,n) to Mul(1/n,x)
+
+/// Extract (numerator, denominator, is_fraction) from an expression.
+/// Recognizes:
+/// - Div(num, den) → (num, den, true)
+/// - Mul(Number(1/n), x) or Mul(x, Number(1/n)) → (x, n, true) where numerator of coeff is ±1
+/// - Mul(Div(1,den), x) or Mul(x, Div(1,den)) → (x, den, true) for symbolic denominators
+/// - anything else → (expr, 1, false)
+fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool) {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+    use num_traits::Signed;
+
+    let expr_data = ctx.get(expr).clone();
+
+    // Case 1: Direct Div
+    if let Expr::Div(num, den) = expr_data {
+        return (num, den, true);
+    }
+
+    // Case 2 & 3: Mul with fractional coefficient
+    if let Expr::Mul(l, r) = expr_data {
+        // Helper to check if a Number is ±1/n and extract denominator
+        let check_unit_fraction = |n: &BigRational| -> Option<(BigInt, bool)> {
+            if n.is_integer() {
+                return None;
+            }
+            let numer = n.numer();
+            let abs_numer: BigInt = if numer < &BigInt::from(0) {
+                -numer.clone()
+            } else {
+                numer.clone()
+            };
+            if abs_numer == BigInt::from(1) {
+                let is_negative = numer.is_negative();
+                return Some((n.denom().clone(), is_negative));
+            }
+            None
+        };
+
+        // Helper to check if expression is Div(1, den) or Div(-1, den)
+        let check_unit_div = |factor: ExprId| -> Option<(ExprId, bool)> {
+            if let Expr::Div(num, den) = ctx.get(factor).clone() {
+                if let Expr::Number(n) = ctx.get(num) {
+                    if n.is_integer() {
+                        let n_val = n.numer();
+                        if *n_val == BigInt::from(1) {
+                            return Some((den, false));
+                        } else if *n_val == BigInt::from(-1) {
+                            return Some((den, true));
+                        }
+                    }
+                }
+            }
+            None
+        };
+
+        // Case 2: Check for Number(±1/n)
+        if let Expr::Number(n) = ctx.get(l).clone() {
+            if let Some((denom, is_neg)) = check_unit_fraction(&n) {
+                let denom_expr = ctx.add(Expr::Number(BigRational::from_integer(denom)));
+                if is_neg {
+                    let neg_r = ctx.add(Expr::Neg(r));
+                    return (neg_r, denom_expr, true);
+                }
+                return (r, denom_expr, true);
+            }
+        }
+        if let Expr::Number(n) = ctx.get(r).clone() {
+            if let Some((denom, is_neg)) = check_unit_fraction(&n) {
+                let denom_expr = ctx.add(Expr::Number(BigRational::from_integer(denom)));
+                if is_neg {
+                    let neg_l = ctx.add(Expr::Neg(l));
+                    return (neg_l, denom_expr, true);
+                }
+                return (l, denom_expr, true);
+            }
+        }
+
+        // Case 3: Check for Div(1, den) or Div(-1, den) - symbolic denominator
+        if let Some((den, is_neg)) = check_unit_div(l) {
+            if is_neg {
+                let neg_r = ctx.add(Expr::Neg(r));
+                return (neg_r, den, true);
+            }
+            return (r, den, true);
+        }
+        if let Some((den, is_neg)) = check_unit_div(r) {
+            if is_neg {
+                let neg_l = ctx.add(Expr::Neg(l));
+                return (neg_l, den, true);
+            }
+            return (l, den, true);
+        }
+    }
+
+    // Not a recognized fraction form
+    let one = ctx.num(1);
+    (expr, one, false)
+}
 
 // ========== Micro-API for safe Mul construction ==========
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.
@@ -99,6 +202,7 @@ define_rule!(
                     ),
                     before_local: Some(factored_form),
                     after_local: Some(new_num),
+                    domain_assumption: None,
                 });
             }
         }
@@ -115,6 +219,7 @@ define_rule!(
             ),
             before_local: Some(factored_form),
             after_local: Some(result),
+            domain_assumption: None,
         });
     }
 );
@@ -189,6 +294,7 @@ define_rule!(
             description: "Simplify nested fraction".to_string(),
             before_local: None,
             after_local: None,
+            domain_assumption: None,
         });
     }
 );
@@ -232,6 +338,7 @@ define_rule!(
                         description: "Cancel division: (a/b)*b -> a".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -255,6 +362,7 @@ define_rule!(
                         description: "Cancel division: a*(b/a) -> b".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -300,6 +408,7 @@ define_rule!(
                     description: "Combine fractions in multiplication".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -398,27 +507,35 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
 
     let expr_data = ctx.get(expr).clone();
     if let Expr::Add(l, r) = expr_data {
-        // Use FractionParts to detect fractions uniformly
+        // First try FractionParts (handles direct Div and complex multiplicative patterns)
         let fp_l = FractionParts::from(&*ctx, l);
         let fp_r = FractionParts::from(&*ctx, r);
 
         let (n1, d1, is_frac1) = fp_l.to_num_den(ctx);
         let (n2, d2, is_frac2) = fp_r.to_num_den(ctx);
 
+        // If FractionParts didn't detect fractions, try extract_as_fraction as fallback
+        // This handles Mul(1/n, x) pattern that FractionParts misses
+        let (n1, d1, is_frac1) = if !is_frac1 {
+            extract_as_fraction(ctx, l)
+        } else {
+            (n1, d1, is_frac1)
+        };
+        let (n2, d2, is_frac2) = if !is_frac2 {
+            extract_as_fraction(ctx, r)
+        } else {
+            (n2, d2, is_frac2)
+        };
+
         if !is_frac1 && !is_frac2 {
-            // println!("  Not fractions: {:?} {:?}", is_frac1, is_frac2);
             return None;
         }
-        // println!(
-        //     "  Got fractions: l={:?} r={:?} (frac: {} {})",
-        //     l, r, is_frac1, is_frac2
-        // );
-        // println!("  n1={:?} d1={:?}", ctx.get(n1), ctx.get(d1));
-        // println!("  n2={:?} d2={:?}", ctx.get(n2), ctx.get(d2));
 
-        // Check if d2 = -d1 or d2 == d1
+        // Check if d2 = -d1 or d2 == d1 (semantic comparison for cross-tree equality)
         let (n2, d2, opposite_denom, same_denom) = {
-            if d1 == d2 {
+            // Use semantic comparison: denominators from different subexpressions may have same value but different ExprIds
+            let cmp = crate::ordering::compare_expr(ctx, d1, d2);
+            if d1 == d2 || cmp == Ordering::Equal {
                 (n2, d2, false, true)
             } else if are_denominators_opposite(ctx, d1, d2) {
                 // Convert d2 -> d1, n2 -> -n2
@@ -473,6 +590,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                 description: "Add numeric fractions".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
 
@@ -561,6 +679,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                 description: "Add fractions: a/b + c/d -> (ad+bc)/bd".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
     }
@@ -634,6 +753,7 @@ define_rule!(
             description: "Rationalize denominator (diff squares)".to_string(),
             before_local: None,
             after_local: None,
+            domain_assumption: None,
         });
     }
 );
@@ -745,6 +865,7 @@ define_rule!(
             ),
             before_local: None,
             after_local: None,
+            domain_assumption: None,
         })
     }
 );
@@ -859,6 +980,7 @@ define_rule!(
                     description: "Rationalize: multiply by √n/√n".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
             return None;
@@ -925,6 +1047,7 @@ define_rule!(
                 description: "Rationalize product denominator".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
 
@@ -1147,6 +1270,7 @@ define_rule!(
                 description: "Cancel common factors".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
 
@@ -1187,6 +1311,7 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                         description: "a^n / a^n = 1".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 } else if diff.is_one() {
                     // Result is just the base
@@ -1195,6 +1320,7 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                         description: "a^n / a^m = a^(n-m)".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 } else {
                     let new_exp = ctx.add(Expr::Number(diff));
@@ -1204,6 +1330,7 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                         description: "a^n / a^m = a^(n-m)".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -1222,6 +1349,7 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                             description: "a^n / a = a^(n-1)".to_string(),
                             before_local: None,
                             after_local: None,
+                            domain_assumption: None,
                         });
                     } else {
                         let new_exp = ctx.add(Expr::Number(new_exp_val));
@@ -1231,6 +1359,7 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                             description: "a^n / a = a^(n-1)".to_string(),
                             before_local: None,
                             after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -1251,6 +1380,7 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                         description: "a / a^m = a^(1-m)".to_string(),
                         before_local: None,
                         after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -1287,6 +1417,7 @@ define_rule!(
                     description: "Pull constant from numerator".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             } else if r_is_const {
                 // (x * c) / y -> c * (x / y)
@@ -1297,6 +1428,7 @@ define_rule!(
                     description: "Pull constant from numerator".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -1310,6 +1442,7 @@ define_rule!(
                 description: "Pull negation from numerator".to_string(),
                 before_local: None,
                 after_local: None,
+                domain_assumption: None,
             });
         }
         None
@@ -1524,6 +1657,7 @@ define_rule!(
             description: "Combine fractions with factor-based LCD".to_string(),
             before_local: None,
             after_local: None,
+            domain_assumption: None,
         })
     }
 );
@@ -1669,6 +1803,7 @@ define_rule!(
             ),
             before_local: None,
             after_local: None,
+            domain_assumption: None,
         })
     }
 );
@@ -1999,6 +2134,7 @@ define_rule!(
             ),
             before_local: None,
             after_local: None,
+            domain_assumption: None,
         })
     }
 );

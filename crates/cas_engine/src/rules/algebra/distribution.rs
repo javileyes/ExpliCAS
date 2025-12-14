@@ -22,14 +22,14 @@ define_rule!(
                         new_expr,
                         description: "expand()".to_string(),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 } else {
                     return Some(Rewrite {
                         new_expr: arg,
                         description: "expand(atom)".to_string(),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 }
             }
@@ -54,14 +54,14 @@ define_rule!(
                         new_expr,
                         description: "expand()".to_string(),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 } else {
                     return Some(Rewrite {
                         new_expr: arg,
                         description: "expand(atom)".to_string(),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 }
             }
@@ -82,7 +82,7 @@ define_rule!(
                     new_expr,
                     description: "Conservative Expansion".to_string(),
                     before_local: None,
-                    after_local: None,
+                    after_local: None, domain_assumption: None,
                 });
             }
         }
@@ -111,7 +111,7 @@ define_rule!(
                         new_expr,
                         description: "Distribute (RHS)".to_string(),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 }
             }
@@ -122,7 +122,7 @@ define_rule!(
                         new_expr,
                         description: "Distribute (LHS)".to_string(),
                         before_local: None,
-                        after_local: None,
+                        after_local: None, domain_assumption: None,
                     });
                 }
             }

@@ -34,7 +34,7 @@ define_rule!(
                                 trig_value.display()
                             ),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     }
                 }
@@ -52,7 +52,7 @@ define_rule!(
                                 trig_value.display()
                             ),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     }
                 }
@@ -68,7 +68,7 @@ define_rule!(
                                 new_expr,
                                 description: "sin(-x) = -sin(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -77,7 +77,7 @@ define_rule!(
                                 new_expr,
                                 description: "cos(-x) = cos(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -87,7 +87,7 @@ define_rule!(
                                 new_expr,
                                 description: "tan(-x) = -tan(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         _ => {}

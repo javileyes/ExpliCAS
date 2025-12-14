@@ -110,6 +110,24 @@ pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprI
     None
 }
 
+/// Extract inner variable from 3*x pattern (for triple angle identities).
+/// Matches both Mul(3, x) and Mul(x, 3).
+pub fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Mul(lhs, rhs) = context.get(expr) {
+        if let Expr::Number(n) = context.get(*lhs) {
+            if n.is_integer() && n.to_integer() == 3.into() {
+                return Some(*rhs);
+            }
+        }
+        if let Expr::Number(n) = context.get(*rhs) {
+            if n.is_integer() && n.to_integer() == 3.into() {
+                return Some(*lhs);
+            }
+        }
+    }
+    None
+}
+
 /// Flatten an Add chain into a list of terms (simple version).
 ///
 /// This only handles `Add` nodes. For handling `Sub` and `Neg`, use
@@ -835,26 +853,31 @@ mod tests {
 
     #[test]
     fn test_as_rational_const_depth_budget() {
-        // Build a deeply nested expression: Neg(Neg(Neg(...Neg(1)...)))
+        // Build a deeply nested expression: Div(1, Div(1, Div(1, ...Div(1, 2)...)))
+        // Note: We can't use Neg(Neg(...)) because Context::add canonicalizes Neg(Neg(x)) -> x
         let mut ctx = Context::new();
         let one = ctx.num(1);
+        let two = ctx.num(2);
 
-        // 100 levels deep - more than our default depth of 50
-        let mut expr = one;
+        // Start with 1/2, then nest 100 levels: 1/(1/(1/(...1/2...)))
+        let mut expr = ctx.add(Expr::Div(one, two));
         for _ in 0..100 {
-            expr = ctx.add(Expr::Neg(expr));
+            let one_copy = ctx.num(1);
+            expr = ctx.add(Expr::Div(one_copy, expr));
         }
 
         // With depth=50, should return None (budget exhausted)
         assert!(as_rational_const_depth(&ctx, expr, 50).is_none());
 
-        // With depth=200, should succeed (even parity of Neg gives 1)
+        // With depth=200, should succeed
+        // 1/(1/(1/...(1/2)...)) with even nesting = 2, odd nesting = 1/2
+        // 100 levels of nesting on 1/2 => result depends on parity
         let result = as_rational_const_depth(&ctx, expr, 200);
         assert!(result.is_some());
-        assert_eq!(
-            result.unwrap(),
-            num_rational::BigRational::from_integer(1.into())
-        );
+        // 100 nestings of 1/x on 1/2: alternates between 2 and 1/2
+        // Even count (100) means result is 1/2
+        let expected = num_rational::BigRational::new(1.into(), 2.into());
+        assert_eq!(result.unwrap(), expected);
     }
 
     /// Test that add_raw preserves operand order while add() canonicalizes

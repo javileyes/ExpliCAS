@@ -1,5 +1,5 @@
 use crate::define_rule;
-use crate::helpers::{extract_double_angle_arg, is_pi, is_pi_over_n};
+use crate::helpers::{extract_double_angle_arg, extract_triple_angle_arg, is_pi, is_pi_over_n};
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Expr, ExprId};
@@ -28,7 +28,7 @@ define_rule!(
                                     new_expr: zero,
                                     description: format!("{}(0) = 0", name),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                             "cos" => {
@@ -37,7 +37,7 @@ define_rule!(
                                     new_expr: one,
                                     description: "cos(0) = 1".to_string(),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                             "arccos" => {
@@ -48,7 +48,7 @@ define_rule!(
                                     new_expr,
                                     description: "arccos(0) = pi/2".to_string(),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                             _ => {}
@@ -63,7 +63,7 @@ define_rule!(
                                     new_expr,
                                     description: "arcsin(1) = pi/2".to_string(),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                             "arccos" => {
@@ -72,7 +72,7 @@ define_rule!(
                                     new_expr: zero,
                                     description: "arccos(1) = 0".to_string(),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                             "arctan" => {
@@ -83,7 +83,7 @@ define_rule!(
                                     new_expr,
                                     description: "arctan(1) = pi/4".to_string(),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                             _ => {}
@@ -99,7 +99,7 @@ define_rule!(
                                     new_expr,
                                     description: "arcsin(1/2) = pi/6".to_string(),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                             "arccos" => {
@@ -110,7 +110,7 @@ define_rule!(
                                     new_expr,
                                     description: "arccos(1/2) = pi/3".to_string(),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                             _ => {}
@@ -127,7 +127,7 @@ define_rule!(
                                 new_expr: zero,
                                 description: format!("{}(pi) = 0", name),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -136,7 +136,7 @@ define_rule!(
                                 new_expr: neg_one,
                                 description: "cos(pi) = -1".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -152,7 +152,7 @@ define_rule!(
                                 new_expr: one,
                                 description: "sin(pi/2) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -161,7 +161,7 @@ define_rule!(
                                 new_expr: zero,
                                 description: "cos(pi/2) = 0".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -170,7 +170,7 @@ define_rule!(
                                 new_expr: undefined,
                                 description: "tan(pi/2) = undefined".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -193,7 +193,7 @@ define_rule!(
                                 new_expr,
                                 description: "sin(π/3) = √3/2".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -205,7 +205,7 @@ define_rule!(
                                 new_expr,
                                 description: "cos(π/3) = 1/2".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -219,7 +219,7 @@ define_rule!(
                                 new_expr,
                                 description: "tan(π/3) = √3".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -242,7 +242,7 @@ define_rule!(
                                 new_expr,
                                 description: format!("{}(π/4) = √2/2", name),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -252,7 +252,7 @@ define_rule!(
                                 new_expr: one,
                                 description: "tan(π/4) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -271,7 +271,7 @@ define_rule!(
                                 new_expr,
                                 description: "sin(π/6) = 1/2".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -287,7 +287,7 @@ define_rule!(
                                 new_expr,
                                 description: "cos(π/6) = √3/2".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -303,7 +303,7 @@ define_rule!(
                                 new_expr,
                                 description: "tan(π/6) = 1/√3".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -343,7 +343,7 @@ define_rule!(
                                 new_expr,
                                 description: "sin(-x) = -sin(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -352,7 +352,7 @@ define_rule!(
                                 new_expr,
                                 description: "cos(-x) = cos(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -362,7 +362,7 @@ define_rule!(
                                 new_expr,
                                 description: "tan(-x) = -tan(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -576,7 +576,7 @@ define_rule!(
                                             new_expr: ctx.num(0),
                                             description: "Pythagorean Identity (empty)".to_string(),
                                             before_local: None,
-                                            after_local: None,
+                                            after_local: None, domain_assumption: None,
                                         });
                                     }
 
@@ -595,7 +595,7 @@ define_rule!(
                                         new_expr,
                                         description,
                                         before_local: None,
-                                        after_local: None,
+                                        after_local: None, domain_assumption: None,
                                     });
                                 }
                             }
@@ -630,7 +630,7 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)".to_string(),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     } else if let Expr::Sub(lhs, rhs) = inner_data {
                         // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
@@ -647,7 +647,7 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)".to_string(),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     } else if let Expr::Div(num, den) = inner_data {
                         // sin((a + b) / c) -> sin(a/c + b/c) -> ...
@@ -671,7 +671,7 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                                     "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)"
                                         .to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                     }
@@ -693,7 +693,7 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)".to_string(),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     } else if let Expr::Sub(lhs, rhs) = inner_data {
                         // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
@@ -710,7 +710,7 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)".to_string(),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     } else if let Expr::Div(num, den) = inner_data {
                         // cos((a + b) / c) -> cos(a/c + b/c) -> ...
@@ -734,7 +734,7 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                                     "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)"
                                         .to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                     }
@@ -781,7 +781,7 @@ impl crate::rule::Rule for TanToSinCosRule {
                     new_expr,
                     description: "tan(x) -> sin(x)/cos(x)".to_string(),
                     before_local: None,
-                    after_local: None,
+                    after_local: None, domain_assumption: None,
                 });
             }
         }
@@ -820,7 +820,7 @@ define_rule!(
                                 new_expr: ctx.num(1),
                                 description: "sec²(x) - tan²(x) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                     }
@@ -857,7 +857,7 @@ define_rule!(
                                 new_expr: ctx.num(1),
                                 description: "csc²(x) - cot²(x) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                     }
@@ -887,7 +887,7 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(2x) -> 2sin(x)cos(x)".to_string(),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     }
                     "cos" => {
@@ -904,7 +904,72 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(2x) -> cos^2(x) - sin^2(x)".to_string(),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
+});
+
+/// Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
+/// This is a performance optimization to avoid recursive expansion via double-angle rules.
+/// Reduces ~23 rewrites to ~3-5 for triple angle expressions.
+define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if args.len() == 1 {
+            // Check if arg is 3*x or x*3
+            if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
+                match name.as_str() {
+                    "sin" => {
+                        // sin(3x) → 3sin(x) - 4sin³(x)
+                        let three = ctx.num(3);
+                        let four = ctx.num(4);
+                        let exp_three = ctx.num(3); // Separate for Pow exponent
+                        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+
+                        // 3*sin(x)
+                        let term1 = smart_mul(ctx, three, sin_x);
+
+                        // sin³(x) = sin(x)^3
+                        let sin_cubed = ctx.add(Expr::Pow(sin_x, exp_three));
+                        // 4*sin³(x)
+                        let term2 = smart_mul(ctx, four, sin_cubed);
+
+                        // 3sin(x) - 4sin³(x)
+                        let new_expr = ctx.add(Expr::Sub(term1, term2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "sin(3x) → 3sin(x) - 4sin³(x)".to_string(),
+                            before_local: None,
+                            after_local: None, domain_assumption: None,
+                        });
+                    }
+                    "cos" => {
+                        // cos(3x) → 4cos³(x) - 3cos(x)
+                        let three = ctx.num(3);
+                        let four = ctx.num(4);
+                        let exp_three = ctx.num(3); // Separate for Pow exponent
+                        let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+
+                        // cos³(x) = cos(x)^3
+                        let cos_cubed = ctx.add(Expr::Pow(cos_x, exp_three));
+                        // 4*cos³(x)
+                        let term1 = smart_mul(ctx, four, cos_cubed);
+
+                        // 3*cos(x)
+                        let term2 = smart_mul(ctx, three, cos_x);
+
+                        // 4cos³(x) - 3cos(x)
+                        let new_expr = ctx.add(Expr::Sub(term1, term2));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "cos(3x) → 4cos³(x) - 3cos(x)".to_string(),
+                            before_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     }
                     _ => {}
@@ -1352,7 +1417,7 @@ define_rule!(
                             new_expr,
                             description: format!("sin({}x) expansion", n_val),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     } else {
                         // cos
@@ -1363,7 +1428,7 @@ define_rule!(
                             new_expr,
                             description: format!("cos({}x) expansion", n_val),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     }
                 }
@@ -1410,7 +1475,7 @@ define_rule!(
                                         new_expr: base_term,
                                         description: "cos^2(x) -> 1 - sin^2(x)".to_string(),
                                         before_local: None,
-                                        after_local: None,
+                                        after_local: None, domain_assumption: None,
                                     });
                                 } else {
                                     let half_n_expr = ctx.add(Expr::Number(half_n));
@@ -1419,7 +1484,7 @@ define_rule!(
                                         new_expr,
                                         description: "cos^2k(x) -> (1 - sin^2(x))^k".to_string(),
                                         before_local: None,
-                                        after_local: None,
+                                        after_local: None, domain_assumption: None,
                                     });
                                 }
                             }
@@ -1441,6 +1506,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
+    simplifier.add_rule(Box::new(TripleAngleRule)); // Shortcut: sin(3x), cos(3x)
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
 
     // DISABLED: ProductToSumRule conflicts with AngleIdentityRule creating infinite loops
@@ -1515,7 +1581,7 @@ define_rule!(
                     new_expr,
                     description: "Half-Angle Expansion".to_string(),
                     before_local: None,
-                    after_local: None,
+                    after_local: None, domain_assumption: None,
                 });
             }
         }
@@ -1827,7 +1893,7 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                 new_expr: final_expr,
                 description: description.to_string(),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
         }
     }

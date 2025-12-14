@@ -518,8 +518,16 @@ fn collect_mul(ctx: &Context, id: ExprId, mult: i32, out: &mut MulParts) {
                 });
             }
         }
+        // Treat all numbers as atomic factors.
+        // Previously, fractional numbers with numerator 1 or -1 were decomposed.
+        Expr::Number(_n) => {
+            out.factors.push(Factor {
+                base: id,
+                exp: mult,
+            });
+        }
         _ => {
-            // Atomic factor (Number, Variable, Function, etc.)
+            // Atomic factor (Variable, Function, etc.)
             out.factors.push(Factor {
                 base: id,
                 exp: mult,

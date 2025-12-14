@@ -33,7 +33,7 @@ impl SimpleRule for MatrixAddRule {
                             m1.rows, m1.cols, m2.rows, m2.cols
                         ),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                 }
             }
@@ -71,7 +71,7 @@ impl SimpleRule for MatrixSubRule {
                             m1.rows, m1.cols, m2.rows, m2.cols
                         ),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                 }
             }
@@ -108,7 +108,7 @@ impl SimpleRule for ScalarMatrixRule {
                         matrix.rows, matrix.cols
                     ),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
             }
 
@@ -123,7 +123,7 @@ impl SimpleRule for ScalarMatrixRule {
                         matrix.rows, matrix.cols
                     ),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
             }
         }
@@ -164,7 +164,7 @@ impl SimpleRule for MatrixMultiplyRule {
                             m1.rows, m1.cols, m2.rows, m2.cols, result.rows, result.cols
                         ),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                 }
             }
@@ -202,7 +202,7 @@ impl SimpleRule for MatrixFunctionRule {
                                         matrix.rows, matrix.cols
                                     ),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                             }
                         }
@@ -219,7 +219,7 @@ impl SimpleRule for MatrixFunctionRule {
                                     matrix.rows, matrix.cols, transposed.rows, transposed.cols
                                 ),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                         }
                     }
@@ -235,7 +235,7 @@ impl SimpleRule for MatrixFunctionRule {
                                         matrix.rows, matrix.cols
                                     ),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                             }
                         }
@@ -360,7 +360,7 @@ impl SimpleRule for TransposeProductRule {
                             new_expr: result,
                             description: "(AB)^T = B^T·A^T".to_string(),
                 before_local: None,
-                after_local: None,
+                after_local: None, domain_assumption: None,
             });
                     }
                 }

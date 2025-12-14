@@ -84,7 +84,7 @@ define_rule!(
                             new_expr: build(ctx),
                             description: desc.to_string(),
                             before_local: None,
-                            after_local: None,
+                            after_local: None, domain_assumption: None,
                         });
                     }
                 }
@@ -122,7 +122,7 @@ define_rule!(
                                     new_expr: x,
                                     description: format!("{}({}(x)) = x", outer, inner),
                                     before_local: None,
-                                    after_local: None,
+                                    after_local: None, domain_assumption: None,
                                 });
                             }
                         }
@@ -187,7 +187,7 @@ define_rule!(
                                 new_expr,
                                 description: desc,
                                 before_local: None,
-                                after_local: None,
+                                after_local: None, domain_assumption: None,
                             });
                         }
                     }

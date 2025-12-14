@@ -169,6 +169,7 @@ where
             description: desc,
             before_local: Some(local_before),
             after_local: Some(result),
+            domain_assumption: None,
         });
     }
 
@@ -191,6 +192,7 @@ where
                 description: format!("-[{}]", desc),
                 before_local: Some(local_before),
                 after_local: Some(neg_result),
+                domain_assumption: None,
             });
         }
     }
@@ -242,6 +244,7 @@ define_rule!(
                                 description: "sin(arcsin(x)) = x".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
 
@@ -252,6 +255,7 @@ define_rule!(
                                 description: "cos(arccos(x)) = x".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
 
@@ -262,6 +266,7 @@ define_rule!(
                                 description: "tan(arctan(x)) = x".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
 
@@ -272,6 +277,7 @@ define_rule!(
                                 description: "arcsin(sin(x)) = x".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
 
@@ -282,6 +288,7 @@ define_rule!(
                                 description: "arccos(cos(x)) = x".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
 
@@ -292,6 +299,7 @@ define_rule!(
                                 description: "arctan(tan(x)) = x".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -305,6 +313,7 @@ define_rule!(
                             description: "arctan(sin(x)/cos(x)) = arctan(tan(x)) = x".to_string(),
                             before_local: None,
                             after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -427,17 +436,18 @@ define_rule!(
                                 && is_atan(name_j)
                                 && args_i.len() == 1
                                 && args_j.len() == 1
-                                && are_reciprocals(ctx, args_i[0], args_j[0]) {
-                                    // Found atan(x) + atan(1/x)! Build π/2
-                                    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                                    let two = ctx.num(2);
-                                    let pi_half = ctx.add(Expr::Div(pi, two));
+                                && are_reciprocals(ctx, args_i[0], args_j[0])
+                            {
+                                // Found atan(x) + atan(1/x)! Build π/2
+                                let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                                let two = ctx.num(2);
+                                let pi_half = ctx.add(Expr::Div(pi, two));
 
-                                    return Some((
-                                        pi_half,
-                                        "arctan(x) + arctan(1/x) = π/2".to_string(),
-                                    ));
-                                }
+                                return Some((
+                                    pi_half,
+                                    "arctan(x) + arctan(1/x) = π/2".to_string(),
+                                ));
+                            }
                         }
                         None
                     },
@@ -496,6 +506,7 @@ define_rule!(
                                 description: "arcsin(-x) = -arcsin(x)".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "arctan" => {
@@ -508,6 +519,7 @@ define_rule!(
                                 description: "arctan(-x) = -arctan(x)".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "arccos" => {
@@ -521,6 +533,7 @@ define_rule!(
                                 description: "arccos(-x) = π - arccos(x)".to_string(),
                                 before_local: None,
                                 after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -557,6 +570,7 @@ define_rule!(
                     description: "arcsec(x) → arccos(1/x)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -586,6 +600,7 @@ define_rule!(
                     description: "arccsc(x) → arcsin(1/x)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -616,6 +631,7 @@ define_rule!(
                     description: "arccot(x) → arctan(1/x)".to_string(),
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
