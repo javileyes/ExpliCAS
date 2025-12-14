@@ -126,6 +126,10 @@ pub struct Repl {
     explain_mode: bool,
     /// Last pipeline stats for diagnostics
     last_stats: Option<cas_engine::PipelineStats>,
+    /// When true, always track health metrics (independent of explain)
+    health_enabled: bool,
+    /// Last health report string for `health` command
+    last_health_report: Option<String>,
 }
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
@@ -454,6 +458,8 @@ impl Repl {
             simplify_options: cas_engine::SimplifyOptions::default(),
             explain_mode: false,
             last_stats: None,
+            health_enabled: false,
+            last_health_report: None,
         };
         repl.sync_config_to_simplifier();
         repl
@@ -464,22 +470,29 @@ impl Repl {
         let mut opts = self.simplify_options.clone();
         opts.collect_steps = self.simplifier.collect_steps;
 
-        // Enable health metrics and clear previous run if explain mode is on
-        if self.explain_mode {
+        // Enable health metrics and clear previous run if explain or health mode is on
+        if self.explain_mode || self.health_enabled {
             self.simplifier.profiler.enable_health();
             self.simplifier.profiler.clear_run();
         }
 
         let (result, steps, stats) = self.simplifier.simplify_with_stats(expr, opts);
 
+        // Store health report for the `health` command (if >= 5 rewrites)
+        if (self.explain_mode || self.health_enabled) && stats.total_rewrites >= 5 {
+            self.last_health_report = Some(self.simplifier.profiler.health_report());
+        }
+
         // Show explain output if enabled
         if self.explain_mode {
             self.print_pipeline_stats(&stats);
 
-            // Show health report if significant activity (>= 5 rewrites or any growth)
+            // Show health report if significant activity (>= 5 rewrites)
             if stats.total_rewrites >= 5 {
                 println!();
-                print!("{}", self.simplifier.profiler.health_report());
+                if let Some(ref report) = self.last_health_report {
+                    print!("{}", report);
+                }
             }
         }
 
@@ -802,6 +815,45 @@ impl Repl {
                         println!("Profiler statistics cleared.");
                     }
                     _ => println!("Usage: profile [enable|disable|clear]"),
+                }
+            }
+            return;
+        }
+
+        // Check for "health" commands
+        if line.starts_with("health") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() == 1 {
+                // Just "health" - show last report
+                if let Some(ref report) = self.last_health_report {
+                    println!("{}", report);
+                } else {
+                    println!("No health report available.");
+                    println!("Run a simplification first (health is captured when explain mode or health mode is on).");
+                    println!("Enable with: health on");
+                }
+            } else {
+                match parts[1] {
+                    "on" | "enable" => {
+                        self.health_enabled = true;
+                        println!("Health tracking ENABLED (metrics captured after each simplify)");
+                    }
+                    "off" | "disable" => {
+                        self.health_enabled = false;
+                        println!("Health tracking DISABLED");
+                    }
+                    "reset" | "clear" => {
+                        self.simplifier.profiler.clear_run();
+                        self.last_health_report = None;
+                        println!("Health statistics cleared.");
+                    }
+                    _ => {
+                        println!("Usage: health [on|off|reset]");
+                        println!("       health           Show last health report");
+                        println!("       health on        Enable health tracking");
+                        println!("       health off       Disable health tracking");
+                        println!("       health reset     Clear health statistics");
+                    }
                 }
             }
             return;

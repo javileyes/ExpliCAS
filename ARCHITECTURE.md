@@ -2876,6 +2876,40 @@ With `explain on`:
 ───────────────────────────────
 ```
 
+#### RuleProfiler Health Metrics ★★★ (2025-12)
+
+Per-rule instrumentation for detecting churn and hot rules:
+
+```rust
+pub struct RuleStats {
+    pub applied: AtomicUsize,           // Successful applications
+    pub rejected_semantic: AtomicUsize, // Rejected by semantic check
+    pub rejected_phase: AtomicUsize,    // Rejected by phase restrictions  
+    pub rejected_disabled: AtomicUsize, // Rejected (rule disabled)
+    pub total_delta_nodes: AtomicI64,   // Node growth/reduction
+}
+```
+
+**Hooks in engine.rs:**
+
+| Point | Hook |
+|-------|------|
+| Rule disabled | `record_rejected_disabled()` |
+| Phase restriction | `record_rejected_phase()` |
+| Semantic equality skip | `record_rejected_semantic()` |
+| Rewrite accepted | `record_with_delta()` |
+
+**Aggregated metrics:**
+
+```rust
+profiler.total_positive_growth() -> i64  // Total node increase
+profiler.total_applied() -> usize        // Total rules applied
+profiler.total_rejected_semantic() -> usize
+profiler.health_report() -> String       // Formatted report
+```
+
+**Zero overhead by default:** `count_all_nodes()` only runs if `health_enabled == true`.
+
 ### Problema: Explosión Combinatoria
 
 Al aplicar reglas libremente, el número de estados intermedios puede crecer exponencialmente.

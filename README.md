@@ -553,6 +553,41 @@ TOTAL                                        3
 Profiler statistics cleared.
 ```
 
+#### Health Report
+
+With `set explain on`, the engine shows detailed health metrics after each simplification, including rule application counts, semantic rejections, and node growth:
+
+```text
+> set explain on
+Explain mode ENABLED
+
+> x/(1+sqrt(2)) + 2*(y+3)
+
+──── Pipeline Diagnostics ────
+  Core:       3 iters, 7 rewrites
+  Transform:  2 iters, 4 rewrites, changed=true
+  Rationalize: Level15
+              → Applied ✓
+  Total rewrites: 12
+───────────────────────────────
+
+Rule Health Report
+────────────────────────────────────────────────────────────────
+Top Applied Rules:
+  Canonicalize Add                             4
+  Distribute                                    3
+Top Semantic Rejections:
+  Canonicalize Div Term                         2
+Top Growth Rules (node increase):
+  Distribute                                  +8 nodes
+────────────────────────────────────────────────────────────────
+```
+
+This helps identify:
+- **Hot rules**: Rules that fire excessively (potential churn)
+- **Semantic rejections**: Expensive no-op rewrites being blocked
+- **Growth sources**: Which rules are expanding the expression
+
 #### AST Visualizer
 
 Export expression trees to Graphviz DOT format for visual debugging:

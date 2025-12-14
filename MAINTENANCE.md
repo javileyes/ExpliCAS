@@ -700,3 +700,118 @@ RUST_MIN_STACK=16777216 cargo test
 | `stress_test.rs` | Stress tests with overflow detection and profiler integration |
 | `property_tests.rs` | Property-based tests (idempotency, etc.) |
 
+## 7. Health Instrumentation ★★★ (Added 2025-12)
+
+### Overview
+
+The engine includes a **health instrumentation system** to detect churn (excessive rewrites), hot rules, and node growth. This is critical for preventing performance regressions.
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| `RuleProfiler` | Tracks applied/rejected counts and node delta per rule |
+| `PipelineStats` | Aggregates phase-level statistics |
+| `health_smoke_tests.rs` | CI tests with thresholds to catch regressions |
+
+### RuleProfiler Metrics
+
+```rust
+pub struct RuleStats {
+    pub applied: AtomicUsize,           // Successful applications
+    pub rejected_semantic: AtomicUsize, // Rejected by semantic check
+    pub rejected_phase: AtomicUsize,    // Rejected by phase restrictions
+    pub rejected_disabled: AtomicUsize, // Rejected (rule disabled)
+    pub total_delta_nodes: AtomicI64,   // Node growth/reduction
+}
+```
+
+### Enabling Health Metrics
+
+```rust
+// Enable health tracking (by default: zero overhead)
+simplifier.profiler.enable_health();
+simplifier.profiler.clear_run();  // Reset for this run
+
+// After simplification
+let (result, steps, stats) = simplifier.simplify_with_stats(expr, opts);
+
+// Get aggregated metrics
+let growth = simplifier.profiler.total_positive_growth();
+let applied = simplifier.profiler.total_applied();
+
+// Print report
+println!("{}", simplifier.profiler.health_report());
+```
+
+### REPL Integration
+
+With `set explain on`, health report is automatically displayed:
+
+```
+> x/(1+sqrt(2)) + 2*(y+3)
+
+──── Pipeline Diagnostics ────
+  Core:       3 iters, 7 rewrites
+  Transform:  2 iters, 4 rewrites, changed=true
+  Total rewrites: 12
+───────────────────────────────
+
+Rule Health Report
+────────────────────────────────────────────────────────────────
+Top Applied Rules:
+  Canonicalize Add                             4
+  Distribute                                    3
+Top Semantic Rejections:
+  Canonicalize Div Term                         2
+Top Growth Rules (node increase):
+  Distribute                                  +8 nodes
+────────────────────────────────────────────────────────────────
+```
+
+### Health Smoke Tests
+
+Located in `crates/cas_engine/tests/health_smoke_tests.rs`:
+
+| Test | Expression | max_rewrites | max_growth | max_transform |
+|------|-----------|--------------|------------|---------------|
+| mixed_expression | `x/(1+sqrt(2)) + 2*(y+3)` | 150 | 250 | 80 |
+| polynomial | `(x+1)*(x+2)` | 100 | 150 | 60 |
+| rationalization_only | `1/(3-2*sqrt(5))` | 100 | 200 | 40 |
+| simple_no_op | `x + y` | 20 | 30 | 10 |
+| budget_not_saturated | `x/(1+sqrt(2))` | (no saturation) | | |
+
+### Running Health Tests
+
+```bash
+# Run all health smoke tests
+cargo test --test health_smoke_tests
+
+# If a test fails, full diagnostics are printed:
+#   - Input and result
+#   - Pipeline stats per phase
+#   - Health report with top rules
+```
+
+### Interpreting Health Issues
+
+| Symptom | Likely Cause | Action |
+|---------|--------------|--------|
+| High `total_rewrites` | Churn (rules undo each other) | Check top applied rules for A↔B patterns |
+| High `rejected_semantic` | Expensive equality checks | Consider caching or reducing matcher scope |
+| High `total_positive_growth` | Expansion-heavy rules | Add growth limits or progress gates |
+| Budget saturation | Possible loops | Enable tracing to find cycling rules |
+
+### Adding Health Test for New Feature
+
+```rust
+#[test]
+fn health_smoke_my_new_feature() {
+    run_health_check(
+        "my_expression",
+        100,  // max_rewrites (start conservative)
+        150,  // max_growth
+        50,   // max_transform_rewrites
+    );
+}
+```
