@@ -12,7 +12,9 @@ pub mod root_style; // Style Sniffing for root notation
 pub mod views; // Unified views for pattern matching
 pub mod visitor;
 
-pub use display::{count_nodes, DisplayExpr, DisplayExprWithHints, RawDisplayExpr};
+pub use display::{
+    count_nodes, DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr,
+};
 pub use display_context::{DisplayContext, DisplayHint};
 pub use domain::{BoundType, Interval, SolutionSet};
 pub use expression::{Constant, Context, Expr, ExprId};
@@ -22,7 +24,9 @@ pub use latex_highlight::{
 };
 pub use latex_no_roots::LatexNoRoots;
 pub use latex_parser::parse_latex;
-pub use root_style::{detect_root_style, RootStyle, StyledExpr};
+pub use root_style::{
+    detect_root_style, ParseStyleSignals, RootStyle, StylePreferences, StyledExpr,
+};
 pub use visitor::{Transformer, Visitor};
 
 // use std::rc::Rc; // Removed Rc usage

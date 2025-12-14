@@ -121,6 +121,147 @@ fn is_fractional_exponent(ctx: &Context, exp: ExprId) -> bool {
     }
 }
 
+// ============================================================================
+// StylePreferences: Global formatting preferences
+// ============================================================================
+
+/// Global formatting preferences derived from the original expression.
+///
+/// This replaces per-node hints with a single set of preferences that apply
+/// to all output formatting. Preferences are "sniffed" from the input to
+/// match the user's notation style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StylePreferences {
+    /// How to display Pow(x, 1/n): as √x or x^(1/n)
+    pub root_style: RootStyle,
+    /// Whether to prefer a/b over a*b^(-1)
+    pub prefer_division: bool,
+    /// Whether to prefer a-b over a+(-b)
+    pub prefer_subtraction: bool,
+}
+
+impl Default for StylePreferences {
+    fn default() -> Self {
+        Self {
+            root_style: RootStyle::Auto,
+            prefer_division: true,    // Most users expect fractions
+            prefer_subtraction: true, // Most users expect subtraction
+        }
+    }
+}
+
+impl StylePreferences {
+    /// Create preferences with all defaults
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Detect preferences from an expression (AST-only sniffing).
+    ///
+    /// For more accurate detection, use `from_expression_with_signals`
+    /// which also considers parser-level information.
+    pub fn from_expression(ctx: &Context, id: ExprId) -> Self {
+        let root_style = detect_root_style(ctx, id);
+        Self {
+            root_style,
+            ..Self::default()
+        }
+    }
+
+    /// Detect preferences from expression + optional parser signals.
+    ///
+    /// Parser signals provide information that may be lost in the AST
+    /// (e.g., whether user wrote `sqrt(2)` or `2^(1/2)`).
+    pub fn from_expression_with_signals(
+        ctx: &Context,
+        id: ExprId,
+        signals: Option<&ParseStyleSignals>,
+    ) -> Self {
+        let mut prefs = Self::from_expression(ctx, id);
+
+        // If parser signals are available, they take precedence
+        if let Some(sig) = signals {
+            if sig.saw_sqrt_token > 0 || sig.saw_caret_fraction > 0 {
+                if sig.saw_sqrt_token > sig.saw_caret_fraction {
+                    prefs.root_style = RootStyle::Radical;
+                } else if sig.saw_caret_fraction > sig.saw_sqrt_token {
+                    prefs.root_style = RootStyle::Exponential;
+                }
+                // On tie, keep AST-based detection
+            }
+        }
+
+        prefs
+    }
+
+    /// Create preferences with explicit root style
+    pub fn with_root_style(root_style: RootStyle) -> Self {
+        Self {
+            root_style,
+            ..Self::default()
+        }
+    }
+
+    /// Resolve Auto values to concrete preferences
+    pub fn resolve(&self) -> Self {
+        Self {
+            root_style: self.root_style.resolve(),
+            ..*self
+        }
+    }
+}
+
+/// Signals from the parser about notation preferences.
+///
+/// These capture information that may be lost when the expression
+/// is canonicalized to AST form.
+#[derive(Debug, Clone, Default)]
+pub struct ParseStyleSignals {
+    /// Number of times `sqrt(...)` or `√` was seen
+    pub saw_sqrt_token: usize,
+    /// Number of times `^(1/n)` or similar fractional exponent was seen
+    pub saw_caret_fraction: usize,
+    /// Number of `/` division operators seen  
+    pub saw_division_slash: usize,
+    /// Number of `-` subtraction operators seen
+    pub saw_minus: usize,
+}
+
+impl ParseStyleSignals {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Quick sniff from input string before parsing.
+    /// This is a lightweight alternative to parser-level signal collection.
+    pub fn from_input_string(input: &str) -> Self {
+        let mut signals = Self::new();
+
+        // Count sqrt occurrences
+        signals.saw_sqrt_token = input.matches("sqrt").count() + input.matches('√').count();
+
+        // Count potential fractional exponents (rough heuristic)
+        // Look for patterns like ^(1/2), ^(1/3), ^(2/3)
+        let mut chars = input.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '^' {
+                // Check if followed by ( and then a fraction-like pattern
+                if chars.peek() == Some(&'(') {
+                    signals.saw_caret_fraction += 1;
+                }
+            }
+            if c == '/' {
+                signals.saw_division_slash += 1;
+            }
+            if c == '-' {
+                signals.saw_minus += 1;
+            }
+        }
+
+        signals
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +308,53 @@ mod tests {
         let sum = ctx.add(Expr::Add(x, two));
 
         assert_eq!(detect_root_style(&ctx, sum), RootStyle::Auto);
+    }
+
+    #[test]
+    fn test_style_preferences_default() {
+        let prefs = StylePreferences::default();
+        assert_eq!(prefs.root_style, RootStyle::Auto);
+        assert!(prefs.prefer_division);
+        assert!(prefs.prefer_subtraction);
+    }
+
+    #[test]
+    fn test_style_preferences_from_expression() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
+
+        let prefs = StylePreferences::from_expression(&ctx, sqrt2);
+        assert_eq!(prefs.root_style, RootStyle::Radical);
+    }
+
+    #[test]
+    fn test_parse_style_signals_from_input() {
+        let signals = ParseStyleSignals::from_input_string("sqrt(2) + sqrt(3)");
+        assert_eq!(signals.saw_sqrt_token, 2);
+        assert_eq!(signals.saw_caret_fraction, 0);
+
+        let signals2 = ParseStyleSignals::from_input_string("2^(1/2) + 3^(1/3)");
+        assert_eq!(signals2.saw_sqrt_token, 0);
+        assert_eq!(signals2.saw_caret_fraction, 2);
+    }
+
+    #[test]
+    fn test_style_preferences_with_signals_sqrt_wins() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let pow_half = ctx.add(Expr::Pow(two, half)); // AST says exponent
+
+        // But signals say sqrt
+        let signals = ParseStyleSignals {
+            saw_sqrt_token: 3,
+            saw_caret_fraction: 1,
+            ..Default::default()
+        };
+
+        let prefs = StylePreferences::from_expression_with_signals(&ctx, pow_half, Some(&signals));
+        assert_eq!(prefs.root_style, RootStyle::Radical); // Signals override AST
     }
 }
 

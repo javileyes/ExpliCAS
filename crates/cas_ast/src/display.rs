@@ -1398,3 +1398,289 @@ impl<'a> fmt::Display for DisplayExprWithHints<'a> {
         self.fmt_internal(f, self.id)
     }
 }
+
+// ============================================================================
+// DisplayExprStyled: Global style-based formatting (replaces hints)
+// ============================================================================
+
+/// Display expression using global StylePreferences.
+///
+/// This is the recommended replacement for `DisplayExprWithHints`.
+/// Instead of per-node hints, it uses a single set of preferences
+/// that apply consistently to the entire output.
+pub struct DisplayExprStyled<'a> {
+    pub context: &'a Context,
+    pub id: ExprId,
+    pub style: &'a crate::root_style::StylePreferences,
+}
+
+impl<'a> DisplayExprStyled<'a> {
+    /// Create a new styled display wrapper
+    pub fn new(
+        context: &'a Context,
+        id: ExprId,
+        style: &'a crate::root_style::StylePreferences,
+    ) -> Self {
+        Self { context, id, style }
+    }
+
+    fn fmt_internal(&self, f: &mut fmt::Formatter<'_>, id: ExprId) -> fmt::Result {
+        let expr = self.context.get(id);
+        let resolved_style = self.style.resolve();
+
+        match expr {
+            // Check for root-style Pow (should display as √ if style says so)
+            Expr::Pow(base, exp) => {
+                // Check if this is a fractional power that should be a root
+                if resolved_style.root_style == crate::root_style::RootStyle::Radical {
+                    if let Expr::Number(n) = self.context.get(*exp) {
+                        // Check for 1/n form (nth root)
+                        if !n.is_integer() && n.numer() == &1.into() {
+                            if let Some(index) = n.denom().to_u32_digits().1.first() {
+                                // Print as root
+                                if *index == 2 {
+                                    write!(f, "√(")?;
+                                } else {
+                                    write!(f, "{}√(", index)?;
+                                }
+                                self.fmt_internal(f, *base)?;
+                                return write!(f, ")");
+                            }
+                        }
+                        // Check for k/n form (kth power under nth root)
+                        if !n.is_integer() {
+                            let numer: i64 = n.numer().try_into().unwrap_or(1);
+                            if let Some(denom) = n.denom().to_u32_digits().1.first() {
+                                if *denom > 1 && numer != 1 {
+                                    if *denom == 2 {
+                                        write!(f, "√(")?;
+                                    } else {
+                                        write!(f, "{}√(", denom)?;
+                                    }
+                                    self.fmt_internal(f, *base)?;
+                                    write!(f, "^{})", numer)?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+                // Default power display
+                self.fmt_power(f, *base, *exp)
+            }
+
+            Expr::Number(n) => write!(f, "{}", n),
+            Expr::Constant(c) => match c {
+                Constant::Pi => write!(f, "pi"),
+                Constant::E => write!(f, "e"),
+                Constant::Infinity => write!(f, "infinity"),
+                Constant::Undefined => write!(f, "undefined"),
+            },
+            Expr::Variable(s) => write!(f, "{}", s),
+
+            Expr::Add(_, _) => {
+                // Collect terms and display with proper signs
+                let terms = collect_add_terms(self.context, id);
+                for (i, term) in terms.iter().enumerate() {
+                    let (is_neg, _, _) = check_negative(self.context, *term);
+                    if i == 0 {
+                        self.fmt_internal(f, *term)?;
+                    } else if is_neg {
+                        write!(f, " - ")?;
+                        self.fmt_term_abs(f, *term)?;
+                    } else {
+                        write!(f, " + ")?;
+                        self.fmt_internal(f, *term)?;
+                    }
+                }
+                Ok(())
+            }
+
+            Expr::Sub(l, r) => {
+                self.fmt_internal(f, *l)?;
+                write!(f, " - ")?;
+                self.fmt_internal(f, *r)
+            }
+
+            Expr::Mul(l, r) => {
+                // Sign pull-out for all-negative Adds
+                if crate::views::has_all_negative_terms(self.context, *r) {
+                    write!(f, "-")?;
+                    return self.fmt_mul_positive(f, *l, *r);
+                }
+                if crate::views::has_all_negative_terms(self.context, *l) {
+                    write!(f, "-")?;
+                    return self.fmt_mul_positive(f, *r, *l);
+                }
+
+                // Standard multiplication
+                let lhs_prec = precedence(self.context, *l);
+                let rhs_prec = precedence(self.context, *r);
+                if lhs_prec < 2 {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *l)?;
+                    write!(f, ")")?;
+                } else {
+                    self.fmt_internal(f, *l)?;
+                }
+                write!(f, " * ")?;
+                if rhs_prec < 2 {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *r)?;
+                    write!(f, ")")
+                } else {
+                    self.fmt_internal(f, *r)
+                }
+            }
+
+            Expr::Div(l, r) => {
+                let lhs_prec = precedence(self.context, *l);
+                let rhs_prec = precedence(self.context, *r);
+                if lhs_prec < 2 {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *l)?;
+                    write!(f, ")")?;
+                } else {
+                    self.fmt_internal(f, *l)?;
+                }
+                write!(f, " / ")?;
+                if rhs_prec <= 2 {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *r)?;
+                    write!(f, ")")
+                } else {
+                    self.fmt_internal(f, *r)
+                }
+            }
+
+            Expr::Neg(inner) => {
+                write!(f, "-")?;
+                let prec = precedence(self.context, *inner);
+                if prec < 3 {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *inner)?;
+                    write!(f, ")")
+                } else {
+                    self.fmt_internal(f, *inner)
+                }
+            }
+
+            Expr::Function(name, args) => {
+                write!(f, "{}(", name)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_internal(f, *arg)?;
+                }
+                write!(f, ")")
+            }
+
+            Expr::Matrix { rows, cols, data } => {
+                write!(f, "Matrix({}x{}, [", rows, cols)?;
+                for (i, elem) in data.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.fmt_internal(f, *elem)?;
+                }
+                write!(f, "])")
+            }
+        }
+    }
+
+    fn fmt_power(&self, f: &mut fmt::Formatter<'_>, base: ExprId, exp: ExprId) -> fmt::Result {
+        // Skip ^1
+        if let Expr::Number(n) = self.context.get(exp) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.fmt_internal(f, base);
+            }
+        }
+        let base_prec = precedence(self.context, base);
+        if base_prec < 3 {
+            write!(f, "(")?;
+            self.fmt_internal(f, base)?;
+            write!(f, ")")?;
+        } else {
+            self.fmt_internal(f, base)?;
+        }
+        write!(f, "^(")?;
+        self.fmt_internal(f, exp)?;
+        write!(f, ")")
+    }
+
+    fn fmt_term_abs(&self, f: &mut fmt::Formatter<'_>, id: ExprId) -> fmt::Result {
+        match self.context.get(id) {
+            Expr::Neg(inner) => self.fmt_internal(f, *inner),
+            Expr::Number(n) => {
+                let zero = num_rational::BigRational::from_integer(0.into());
+                if n < &zero {
+                    write!(f, "{}", -n)
+                } else {
+                    write!(f, "{}", n)
+                }
+            }
+            Expr::Mul(l, r) => {
+                if let Expr::Number(n) = self.context.get(*l) {
+                    let zero = num_rational::BigRational::from_integer(0.into());
+                    if n < &zero {
+                        write!(f, "{} * ", -n)?;
+                        return self.fmt_internal(f, *r);
+                    }
+                }
+                self.fmt_internal(f, id)
+            }
+            _ => self.fmt_internal(f, id),
+        }
+    }
+
+    fn fmt_mul_positive(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        coeff: ExprId,
+        neg_add: ExprId,
+    ) -> fmt::Result {
+        // If coeff is a rational, display as -(add)/denom
+        if let Expr::Number(n) = self.context.get(coeff) {
+            if !n.is_integer() {
+                let denom = n.denom();
+                write!(f, "(")?;
+                self.fmt_positive_sum(f, neg_add)?;
+                return write!(f, ")/{}", denom);
+            }
+        }
+        // General: coeff * (positive_sum)
+        self.fmt_internal(f, coeff)?;
+        write!(f, " * (")?;
+        self.fmt_positive_sum(f, neg_add)?;
+        write!(f, ")")
+    }
+
+    fn fmt_positive_sum(&self, f: &mut fmt::Formatter<'_>, id: ExprId) -> fmt::Result {
+        let mut terms = Vec::new();
+        self.collect_terms(id, &mut terms);
+        for (i, term) in terms.iter().enumerate() {
+            if i > 0 {
+                write!(f, " + ")?;
+            }
+            self.fmt_term_abs(f, *term)?;
+        }
+        Ok(())
+    }
+
+    fn collect_terms(&self, id: ExprId, terms: &mut Vec<ExprId>) {
+        match self.context.get(id) {
+            Expr::Add(l, r) => {
+                self.collect_terms(*l, terms);
+                self.collect_terms(*r, terms);
+            }
+            _ => terms.push(id),
+        }
+    }
+}
+
+impl<'a> fmt::Display for DisplayExprStyled<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_internal(f, self.id)
+    }
+}
