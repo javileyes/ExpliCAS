@@ -656,7 +656,8 @@ mod tests {
     #[test]
     fn test_negative_exponent() {
         let mut ctx = Context::new();
-        // x^-2 should parse as Pow(x, Neg(2))
+        // x^-2 should parse as Pow(x, -2)
+        // Note: Neg(Number(2)) is canonicalized to Number(-2) by Context::add
         let e = parse("x^-2", &mut ctx).unwrap();
         if let Expr::Pow(base, exp) = ctx.get(e) {
             // base should be x
@@ -665,15 +666,14 @@ mod tests {
             } else {
                 panic!("Expected base to be Variable(x)");
             }
-            // exp should be Neg(2)
-            if let Expr::Neg(inner) = ctx.get(*exp) {
-                if let Expr::Number(n) = ctx.get(*inner) {
-                    assert_eq!(n.to_integer(), 2.into());
-                } else {
-                    panic!("Expected Neg inner to be Number(2)");
-                }
+            // exp should be Number(-2) due to canonicalization
+            if let Expr::Number(n) = ctx.get(*exp) {
+                assert_eq!(n.to_integer(), (-2).into(), "Expected exponent to be -2");
             } else {
-                panic!("Expected exponent to be Neg");
+                panic!(
+                    "Expected exponent to be Number(-2), got {:?}",
+                    ctx.get(*exp)
+                );
             }
         } else {
             panic!("Expected Pow");

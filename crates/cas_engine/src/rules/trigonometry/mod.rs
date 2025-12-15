@@ -15,6 +15,6 @@ pub mod weierstrass;
 
 pub use evaluation::EvaluateTrigTableRule;
 pub use identities::*;
-pub use pythagorean::TrigPythagoreanSimplifyRule;
+pub use pythagorean::{TrigEvenPowerDifferenceRule, TrigPythagoreanSimplifyRule};
 pub use values::{detect_special_angle, lookup_trig_value, SpecialAngle, TrigValue};
 pub use weierstrass::{ReverseWeierstrassRule, WeierstrassSubstitutionRule};

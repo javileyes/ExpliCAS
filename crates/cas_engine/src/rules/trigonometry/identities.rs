@@ -1574,6 +1574,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 
     // Phase shift: sin(x + π/2) → cos(x), cos(x + π/2) → -sin(x), etc.
     simplifier.add_rule(Box::new(TrigPhaseShiftRule));
+
+    // Fourth power difference: sin⁴(x) - cos⁴(x) → sin²(x) - cos²(x)
+    simplifier.add_rule(Box::new(super::pythagorean::TrigEvenPowerDifferenceRule));
 }
 
 define_rule!(
