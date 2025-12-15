@@ -468,10 +468,13 @@ fn parse_unary(input: &str) -> IResult<&str, ParseNode> {
     ))(input)
 }
 
-// Term
+// Term - handles explicit * and / operators
+// Also handles implicit multiplication: 2x → 2*x, 3(x+y) → 3*(x+y)
 fn parse_term(input: &str) -> IResult<&str, ParseNode> {
     let (input, init) = parse_unary(input)?;
-    fold_many0(
+
+    // First, handle explicit operators (* / mod)
+    let (input, result) = fold_many0(
         pair(
             preceded(multispace0, alt((tag("*"), tag("/"), tag("mod")))),
             parse_unary,
@@ -483,7 +486,66 @@ fn parse_term(input: &str) -> IResult<&str, ParseNode> {
             "mod" => ParseNode::Function("mod".to_string(), vec![acc, val]),
             _ => unreachable!(),
         },
-    )(input)
+    )(input)?;
+
+    // Now handle implicit multiplication (number followed by variable/parentheses/function)
+    // Examples: 2x, 3(x+y), 2sin(x), 2pi
+    // Note: We only do implicit mul when there's NO whitespace between number and next term
+    parse_implicit_mul_chain(input, result)
+}
+
+// Parse implicit multiplication chain: 2xy → 2*x*y, 2x → 2*x
+fn parse_implicit_mul_chain(input: &str, acc: ParseNode) -> IResult<&str, ParseNode> {
+    // Only apply implicit multiplication if:
+    // 1. Previous term could end with a number (or is a complete term)
+    // 2. Next character suggests a multiplicand (letter for variable, '(' for parens)
+
+    // Check if input starts with something that could be implicitly multiplied
+    let first_char = input.chars().next();
+
+    match first_char {
+        // Variable or function start: 2x, 2sin(x), 2pi
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {
+            // Only if the current accumulator could allow implicit mul
+            // (basically, if last token was a number, power, or factored expression)
+            if can_implicit_mul(&acc) {
+                if let Ok((remaining, next_factor)) = parse_unary(input) {
+                    let new_acc = ParseNode::Mul(Box::new(acc), Box::new(next_factor));
+                    return parse_implicit_mul_chain(remaining, new_acc);
+                }
+            }
+            Ok((input, acc))
+        }
+        // Parentheses start: 2(x+y)
+        Some('(') => {
+            if can_implicit_mul(&acc) {
+                if let Ok((remaining, next_factor)) = parse_unary(input) {
+                    let new_acc = ParseNode::Mul(Box::new(acc), Box::new(next_factor));
+                    return parse_implicit_mul_chain(remaining, new_acc);
+                }
+            }
+            Ok((input, acc))
+        }
+        _ => Ok((input, acc)),
+    }
+}
+
+// Check if a ParseNode can be followed by implicit multiplication
+fn can_implicit_mul(node: &ParseNode) -> bool {
+    match node {
+        // Numbers can be followed by implicit mul: 2x
+        ParseNode::Number(_) => true,
+        // Powers can be followed: 2^2x (though unusual)
+        ParseNode::Pow(_, _) => true,
+        // Factorials can be followed: n!x (unusual but valid)
+        ParseNode::Function(name, args) if name == "fact" && args.len() == 1 => true,
+        // Parenthesized expressions: (2+3)x is more like explicit, but (2)x → 2*x is valid
+        // Actually, we don't want to match this for arbitrary expressions
+        // Only allow after numbers essentially
+        // Mul/Div: chain continues 2*3x
+        ParseNode::Mul(_, right) | ParseNode::Div(_, right) => can_implicit_mul(right),
+        _ => false,
+    }
 }
 
 // Expr
@@ -1037,6 +1099,59 @@ mod tests {
             assert_eq!(*id, 0);
         } else {
             panic!("Expected SessionRef(0)");
+        }
+    }
+
+    #[test]
+    fn test_implicit_multiplication() {
+        let mut ctx = Context::new();
+
+        // 2x should parse as 2 * x
+        let e = parse("2x", &mut ctx).unwrap();
+        if let Expr::Mul(l, r) = ctx.get(e) {
+            if let Expr::Number(n) = ctx.get(*l) {
+                assert_eq!(n.to_integer(), 2.into());
+            } else {
+                panic!("Expected Number(2) on left");
+            }
+            if let Expr::Variable(v) = ctx.get(*r) {
+                assert_eq!(v, "x");
+            } else {
+                panic!("Expected Variable(x) on right");
+            }
+        } else {
+            panic!("Expected Mul for '2x'");
+        }
+
+        // x1 should remain as a single variable (not 'x' * '1')
+        let e2 = parse("x1", &mut ctx).unwrap();
+        if let Expr::Variable(v) = ctx.get(e2) {
+            assert_eq!(v, "x1", "x1 should be a single variable");
+        } else {
+            panic!("Expected Variable(x1)");
+        }
+
+        // 3(a+b) should parse as 3 * (a + b)
+        let e3 = parse("3(a+b)", &mut ctx).unwrap();
+        if let Expr::Mul(l, _) = ctx.get(e3) {
+            if let Expr::Number(n) = ctx.get(*l) {
+                assert_eq!(n.to_integer(), 3.into());
+            } else {
+                panic!("Expected Number(3) on left");
+            }
+        } else {
+            panic!("Expected Mul for '3(a+b)'");
+        }
+
+        // 2pi should parse as 2 * pi
+        let e4 = parse("2pi", &mut ctx).unwrap();
+        if let Expr::Mul(l, r) = ctx.get(e4) {
+            if let Expr::Number(n) = ctx.get(*l) {
+                assert_eq!(n.to_integer(), 2.into());
+            }
+            assert!(matches!(ctx.get(*r), Expr::Constant(_)));
+        } else {
+            panic!("Expected Mul for '2pi'");
         }
     }
 }
