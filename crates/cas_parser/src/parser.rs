@@ -2,8 +2,8 @@ use cas_ast::{Constant, Context, Equation, Expr, ExprId, RelOp};
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{digit1, multispace0},
-    combinator::{map, map_res},
+    character::complete::multispace0,
+    combinator::map,
     multi::{fold_many0, separated_list0},
     sequence::{delimited, pair, preceded},
     IResult,
@@ -86,16 +86,87 @@ impl ParseNode {
     }
 }
 
-// Parser for integers
-fn parse_i64(input: &str) -> IResult<&str, i64> {
-    map_res(digit1, |s: &str| s.parse::<i64>())(input)
+/// Convert a decimal string to BigRational.
+/// Supports: "8.2" → 41/5, ".5" → 1/2, "8." → 8, "123" → 123
+/// Algorithm: For "A.B", num = A*10^k + B, den = 10^k (where k = len(B))
+fn decimal_to_rational(integer_part: &str, fractional_part: &str) -> BigRational {
+    let k = fractional_part.len();
+
+    if k == 0 {
+        // No fractional part: just an integer
+        let n: BigInt = integer_part.parse().unwrap_or_else(|_| BigInt::from(0));
+        return BigRational::from_integer(n);
+    }
+
+    // Calculate 10^k
+    let ten = BigInt::from(10);
+    let mut denominator = BigInt::from(1);
+    for _ in 0..k {
+        denominator *= &ten;
+    }
+
+    // Parse integer part (may be empty for ".5")
+    let int_val: BigInt = if integer_part.is_empty() {
+        BigInt::from(0)
+    } else {
+        integer_part.parse().unwrap_or_else(|_| BigInt::from(0))
+    };
+
+    // Parse fractional part
+    let frac_val: BigInt = fractional_part.parse().unwrap_or_else(|_| BigInt::from(0));
+
+    // numerator = integer_part * 10^k + fractional_part
+    let numerator = int_val * &denominator + frac_val;
+
+    // BigRational::new automatically reduces the fraction (gcd)
+    BigRational::new(numerator, denominator)
 }
 
-// Parser for numbers
+// Parser for numeric literals (integers and decimals)
+// Supports: 123, 8.2, .5, 8.
 fn parse_number(input: &str) -> IResult<&str, ParseNode> {
-    map(parse_i64, |n| {
-        ParseNode::Number(BigRational::from_integer(BigInt::from(n)))
-    })(input)
+    // Try to match: [digits] "." [digits] OR just digits
+    // Pattern 1: digits "." [digits] (e.g., "8.2", "8.")
+    // Pattern 2: "." digits (e.g., ".5")
+    // Pattern 3: just digits (e.g., "123")
+
+    use nom::bytes::complete::take_while;
+    use nom::combinator::opt;
+    use nom::sequence::pair;
+
+    fn is_digit(c: char) -> bool {
+        c.is_ascii_digit()
+    }
+
+    // Parse optional integer part, then optional (dot + fractional part)
+    let (remaining, (int_part, maybe_frac)) = pair(
+        take_while(is_digit),
+        opt(pair(tag("."), take_while(is_digit))),
+    )(input)?;
+
+    let (int_str, frac_str) = match maybe_frac {
+        Some((_, frac)) => (int_part, frac),
+        None => (int_part, ""),
+    };
+
+    // Must have at least some digits somewhere
+    if int_str.is_empty() && frac_str.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Digit,
+        )));
+    }
+
+    // Edge case: just "." with no digits is not a valid number
+    if int_str.is_empty() && maybe_frac.is_some() && frac_str.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Digit,
+        )));
+    }
+
+    let rational = decimal_to_rational(int_str, frac_str);
+    Ok((remaining, ParseNode::Number(rational)))
 }
 
 // Parser for constants
@@ -478,6 +549,52 @@ mod tests {
             ),
             "123"
         );
+    }
+
+    #[test]
+    fn test_parse_decimal_literals() {
+        // Test various decimal formats
+        let cases = [
+            ("8.2", "41/5"),            // Standard decimal
+            ("0.5", "1/2"),             // Leading zero
+            (".5", "1/2"),              // No leading zero
+            ("8.", "8"),                // Trailing dot (integer)
+            ("0.125", "1/8"),           // Eighth
+            ("1.25", "5/4"),            // Mixed
+            ("100.001", "100001/1000"), // Many decimals
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let e = parse(input, &mut ctx).expect(&format!("Failed to parse: {}", input));
+            let result = format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: e
+                }
+            );
+            assert_eq!(
+                result, expected,
+                "Input {} expected {} but got {}",
+                input, expected, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_negative_decimal() {
+        // Negative decimals
+        let mut ctx = Context::new();
+        let e = parse("-0.125", &mut ctx).unwrap();
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: e
+            }
+        );
+        assert_eq!(result, "-1/8");
     }
 
     #[test]
