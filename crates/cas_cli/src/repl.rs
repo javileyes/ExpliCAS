@@ -3508,13 +3508,32 @@ impl Repl {
 
         match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {
+                // Resolve session variables (A, B, etc.) before simplifying
+                let resolved_expr = match self.state.resolve_all(&mut temp_simplifier.context, expr)
+                {
+                    Ok(resolved) => resolved,
+                    Err(e) => {
+                        println!("Error resolving variables: {:?}", e);
+                        // Swap context and profiler back before returning
+                        std::mem::swap(
+                            &mut self.engine.simplifier.context,
+                            &mut temp_simplifier.context,
+                        );
+                        std::mem::swap(
+                            &mut self.engine.simplifier.profiler,
+                            &mut temp_simplifier.profiler,
+                        );
+                        return;
+                    }
+                };
+
                 // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
                 // Parse equation part
                 // Style signals handled during display logic mostly, removing invalid context access
                 let style_signals = ParseStyleSignals::from_input_string(expr_str);
                 let style_prefs = StylePreferences::from_expression_with_signals(
                     &temp_simplifier.context,
-                    expr,
+                    resolved_expr,
                     Some(&style_signals),
                 );
 
@@ -3522,10 +3541,10 @@ impl Repl {
                     "Parsed: {}",
                     DisplayExpr {
                         context: &temp_simplifier.context,
-                        id: expr
+                        id: resolved_expr
                     }
                 );
-                let (simplified, steps) = temp_simplifier.simplify(expr);
+                let (simplified, steps) = temp_simplifier.simplify(resolved_expr);
 
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
