@@ -1018,7 +1018,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // Propagate local before/after from Rewrite for accurate Rule display
                         step.before_local = rewrite.before_local;
                         step.after_local = rewrite.after_local;
+                        // Propagate domain assumption from Rewrite to Step
+                        step.domain_assumption = rewrite.domain_assumption;
                         self.steps.push(step);
+                    }
+
+                    // Record domain assumption to profiler if present
+                    if rewrite.domain_assumption.is_some() {
+                        self.profiler
+                            .record_domain_assumption(self.current_phase, rule.name());
                     }
                     expr_id = rewrite.new_expr;
                     // Note: Rule application tracking for rationalization is now handled by phase, not flag

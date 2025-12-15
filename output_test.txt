@@ -1,6 +1,6 @@
 ==================================================
 CLI Tests Output
-Fecha: Sun Dec 14 18:54:58 CET 2025
+Fecha: Mon Dec 15 01:51:58 CET 2025
 Explain: 1 | Steps: normal
 ==================================================
 
@@ -12,7 +12,7 @@ Profiler enabled.
 Explain mode ENABLED (pipeline diagnostics after each simplify)
 Profiler statistics cleared.
 Parsed: sqrt(12)
-[2m2025-12-14T17:54:59.271509Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.088506Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
    Before: √(12)
@@ -22,7 +22,7 @@ Result: 2 * √(3)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(72)
-[2m2025-12-14T17:54:59.271649Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.088665Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Simplify root: 72^1/2  [Evaluate Numeric Power]
    Before: √(72)
@@ -32,7 +32,7 @@ Result: 6 * √(2)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(8 / 9)
-[2m2025-12-14T17:54:59.271823Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:51:59.088800Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Simplify root: 8/9^1/2  [Evaluate Numeric Power]
    Before: √(8/9)
@@ -42,7 +42,7 @@ Result: 2/3 * √(2)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(12 / 25)
-[2m2025-12-14T17:54:59.271953Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:51:59.088929Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Simplify root: 12/25^1/2  [Evaluate Numeric Power]
    Before: √(12/25)
@@ -52,7 +52,7 @@ Result: 2/5 * √(3)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(12) + sqrt(27)
-[2m2025-12-14T17:54:59.272100Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:51:59.089088Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
    Before: √(12) + sqrt(27)
@@ -70,7 +70,7 @@ Result: 5 * √(3)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(2) + sqrt(8)
-[2m2025-12-14T17:54:59.272271Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:51:59.089259Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. Simplify root: 8^1/2  [Evaluate Numeric Power]
    Before: √(2) + √(8)
@@ -84,7 +84,7 @@ Result: 3 * √(2)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(32) / sqrt(2)
-[2m2025-12-14T17:54:59.272390Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:51:59.089381Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
 Steps (Aggressive Mode):
 1. Simplify root: 32^1/2  [Evaluate Numeric Power]
    Before: √(32) / sqrt(2)
@@ -98,7 +98,7 @@ Result: 4
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (sqrt(12) + sqrt(27)) / sqrt(3)
-[2m2025-12-14T17:54:59.272535Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m8
+[2m2025-12-15T00:51:59.089531Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m8
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
    Before: (√(12) + sqrt(27)) / sqrt(3)
@@ -120,7 +120,7 @@ Result: 5
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(8 * x^2)
-[2m2025-12-14T17:54:59.272750Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
+[2m2025-12-15T00:51:59.089760Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
    Before: √(8 * x^(2))
@@ -138,7 +138,7 @@ Result: 2 * abs(x) * √(2)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(12 * x^3)
-[2m2025-12-14T17:54:59.272948Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:51:59.089966Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
    Before: √(12 * x^(3))
@@ -156,7 +156,7 @@ Result: 2 * √(3) * √(x^3)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(3 + 2 * sqrt(2))
-[2m2025-12-14T17:54:59.273153Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m10
+[2m2025-12-15T00:51:59.090187Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m10
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
    Before: √(3 + 2 * √(2))
@@ -166,7 +166,7 @@ Result: 1 + √(2)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(5 + 2 * sqrt(6))
-[2m2025-12-14T17:54:59.273356Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
+[2m2025-12-15T00:51:59.090400Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
    Before: √(5 + 2 * √(6))
@@ -176,17 +176,17 @@ Result: √(2) + √(3)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sqrt(7 - 2 * sqrt(10))
-[2m2025-12-14T17:54:59.273583Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
+[2m2025-12-15T00:51:59.090661Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
    Before: √(7 - 2 * √(10))
    Rule: √(7 - 2 * √(10)) -> sqrt((3 + 7) / 2) - sqrt((7 - 3) / 2)
    After: sqrt((3 + 7) / 2) - sqrt((7 - 3) / 2)
-Result: -√(2) + √(5)
+Result: √(5) - √(2)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 1 / sqrt(2)
-[2m2025-12-14T17:54:59.273739Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:51:59.090828Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. 1 / 2^(1/2) -> 1 * 2^(1/2) / 2  [Rationalize Single Surd]
    Before: 1 / √(2)
@@ -196,27 +196,27 @@ Result: √(2)/2
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 1 / (1 + sqrt(2))
-[2m2025-12-14T17:54:59.273920Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:51:59.091015Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m5
 Steps (Aggressive Mode):
 1. 1 / 1 + 2^(1/2) -> 1 * -(1 - 2^(1/2)) / 1  [Rationalize Binomial Denominator]
    Before: 1 / (1 + √(2))
    Rule: 1 / (1 + √(2)) -> -(1 - √(2))
    After: -(1 - √(2))
-Result: -1 + √(2)
+Result: √(2) - 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x / (1 + sqrt(2))
-[2m2025-12-14T17:54:59.274122Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:51:59.091259Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. x / 1 + 2^(1/2) -> x * -(1 - 2^(1/2)) / 1  [Rationalize Binomial Denominator]
    Before: x / (1 + √(2))
    Rule: x / (1 + √(2)) -> x * -(1 - √(2))
    After: x * -(1 - √(2))
-Result: x * (-1 + √(2))
+Result: x * (√(2) - 1)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x / (2 * (1 + sqrt(2)))
-[2m2025-12-14T17:54:59.274354Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m8
+[2m2025-12-15T00:51:59.091546Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m8
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
    Before: x / (2 * (1 + √(2)))
@@ -226,25 +226,21 @@ Steps (Aggressive Mode):
    Before: x / (2 + 2 * √(2))
    Rule: x / (2 + 2 * √(2)) -> x * -(2 - 2 * √(2)) / 4
    After: x * -(2 - 2 * √(2)) / 4
-Result: x * (-2 + 2 * √(2))/4
+Result: x * (2 * √(2) - 2)/4
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 1 / (3 - 2 * sqrt(5))
-[2m2025-12-14T17:54:59.274658Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m13
+[2m2025-12-15T00:51:59.091880Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m10
 Steps (Aggressive Mode):
 1. 1 / 3 - 2 * 5^(1/2) -> 1 * -(3 - -2 * 5^(1/2)) / 11  [Rationalize Binomial Denominator]
    Before: 1 / (3 - 2 * √(5))
    Rule: 1 / (3 - 2 * √(5)) -> -(3 - -2 * √(5)) / 11
    After: -(3 - -2 * √(5)) / 11
-2. Distribute  [Distributive Property]
-   Before: (-3 - 2 * √(5))/11
-   Rule: (-3 - 2 * √(5))/11 -> -3/11 + -2 * √(5)/11
-   After: -3/11 + -2 * √(5)/11
-Result: -3/11 - 2/11 * √(5)
+Result: (-3 - 2 * √(5))/11
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x / (2 * (3 - 2 * sqrt(5)))
-[2m2025-12-14T17:54:59.274992Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m12
+[2m2025-12-15T00:51:59.092246Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m12
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
    Before: x / (2 * (3 - 2 * √(5)))
@@ -257,126 +253,126 @@ Steps (Aggressive Mode):
 Result: -x * (6 + 4 * √(5))/44
 No rules have been applied yet.
 Profiler statistics cleared.
-Parsed: 1 / (sqrt(3) + 1 + sqrt(2))
-[2m2025-12-14T17:54:59.275477Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
-Rationalized: -1/8 * (1 - √(2) + √(3)) * (2 - 2 * √(3))
+Parsed: 1 / (1 + sqrt(2) + sqrt(3))
+[2m2025-12-15T00:51:59.092718Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+Rationalized: 1/4 * √(2) * (1 + √(2) - √(3))
 Rule Profiling Report
 ─────────────────────────────────────────────
 Rule                                       Hits
 ─────────────────────────────────────────────
-Canonicalize Addition                         1
+Canonicalize Multiplication                   1
+Identity Property of Addition                 1
+Combine Constants                             1
 Canonicalize Negation                         1
-Canonicalize Division                         1
 Identity Property of Multiplication           1
 ─────────────────────────────────────────────
-TOTAL                                         4
+TOTAL                                         5
 
 Profiler statistics cleared.
-Parsed: 1 / (sqrt(3) + 1 + sqrt(2))
-[2m2025-12-14T17:54:59.275875Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
-Rationalized: 1/4 * √(2) * (1 - √(3) + √(2))
+Parsed: 1 / (1 + sqrt(2) + sqrt(3))
+[2m2025-12-15T00:51:59.093109Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+Rationalized: 1/4 * √(2) * (1 + √(2) - √(3))
 Rule Profiling Report
 ─────────────────────────────────────────────
 Rule                                       Hits
 ─────────────────────────────────────────────
 Identity Property of Multiplication           1
-Identity Property of Addition                 1
 Canonicalize Multiplication                   1
-Canonicalize Addition                         1
+Identity Property of Addition                 1
 Canonicalize Negation                         1
 Combine Constants                             1
 ─────────────────────────────────────────────
-TOTAL                                         6
+TOTAL                                         5
 
 Profiler statistics cleared.
 Parsed: (1 + x) * (x - 1)
-[2m2025-12-14T17:54:59.276001Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:51:59.093253Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x + 1) * (x - 1)
-   Rule: (x - 1) * (x + 1) -> x^(2) - -1^(2)
-   After: x^(2) - -1^(2)
+   Rule: (x + 1) * (x - 1) -> x^(2) - 1^(2)
+   After: x^(2) - 1^(2)
 Result: x^(2) - 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (1 + x) * (x - 1) * (1 + x^2)
-[2m2025-12-14T17:54:59.276153Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m7
+[2m2025-12-15T00:51:59.093431Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
 Steps (Aggressive Mode):
 1. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x + 1) * (x - 1) * (x^(2) + 1)
-   Rule: (x - 1) * (x + 1) -> x^(2) - -1^(2)
-   After: (x^(2) - -1^(2)) * (x^(2) + 1)
+   Rule: (x + 1) * (x - 1) -> x^(2) - 1^(2)
+   After: (x^(2) - 1^(2)) * (x^(2) + 1)
 2. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x^(2) - 1) * (x^(2) + 1)
-   Rule: (x^(2) - 1) * (x^(2) + 1) -> x^(2)^(2) - -1^(2)
-   After: x^(2)^(2) - -1^(2)
+   Rule: (x^(2) + 1) * (x^(2) - 1) -> x^(2)^(2) - 1^(2)
+   After: x^(2)^(2) - 1^(2)
 Result: x^(4) - 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (1 + x) * (x - 1) * (1 + x^2) * (1 + x^4) - (x^8 - 1)
-[2m2025-12-14T17:54:59.276382Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m16
+[2m2025-12-15T00:51:59.093656Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m14
 Steps (Aggressive Mode):
 1. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x + 1) * (x - 1) * (x^(2) + 1) * (x^(4) + 1) - x^(8) - 1
-   Rule: (x - 1) * (x + 1) -> x^(2) - -1^(2)
-   After: (x^(2) - -1^(2)) * (x^(2) + 1) * (x^(4) + 1) - x^(8) - 1
+   Rule: (x + 1) * (x - 1) -> x^(2) - 1^(2)
+   After: (x^(2) - 1^(2)) * (x^(2) + 1) * (x^(4) + 1) - x^(8) - 1
 2. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x^(2) - 1) * (x^(2) + 1) * (x^(4) + 1) - x^(8) - 1
-   Rule: (x^(2) - 1) * (x^(2) + 1) -> x^(2)^(2) - -1^(2)
-   After: (x^(2)^(2) - -1^(2)) * (x^(4) + 1) - x^(8) - 1
+   Rule: (x^(2) + 1) * (x^(2) - 1) -> x^(2)^(2) - 1^(2)
+   After: (x^(2)^(2) - 1^(2)) * (x^(4) + 1) - x^(8) - 1
 3. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x^(4) - 1) * (x^(4) + 1) - x^(8) - 1
-   Rule: (x^(4) - 1) * (x^(4) + 1) -> x^(4)^(2) - -1^(2)
-   After: x^(4)^(2) - -1^(2) - x^(8) - 1
-4. (-a) + a = 0  [Add Inverse]
-   Before: -x^(8) + x^(8) - 1 + 1
-   Rule: -x^(8) + x^(8) -> 0
-   After: -1 + 1 + 0
+   Rule: (x^(4) + 1) * (x^(4) - 1) -> x^(4)^(2) - 1^(2)
+   After: x^(4)^(2) - 1^(2) - x^(8) - 1
+4. a + (-a) = 0  [Add Inverse]
+   Before: x^(8) - x^(8)
+   Rule: x^(8) - x^(8) -> 0
+   After: 0
 Result: 0
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (a + b)^2 - (a - b)^2
-[2m2025-12-14T17:54:59.276684Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m19
+[2m2025-12-15T00:51:59.094020Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m16
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
    Before: (a + b)^(2) - (a - b)^(2)
    Rule: (a + b)^(2) -> b^(2) + 2 * a * b + a^(2)
    After: b^(2) + 2 * a * b + a^(2) - (a - b)^(2)
 2. Expand binomial power ^2  [Binomial Expansion]
-   Before: a^(2) + b^(2) + 2 * a * b - (a - b)^(2)
+   Before: b^(2) + 2 * a * b + a^(2) - (a - b)^(2)
    Rule: (a - b)^(2) -> -b^(2) + 2 * a * -b + a^(2)
-   After: a^(2) + b^(2) + 2 * a * b - -b^(2) + 2 * a * -b + a^(2)
+   After: b^(2) + 2 * a * b + a^(2) - -b^(2) + 2 * a * -b + a^(2)
 3. (-x)^even -> x^even  [Negative Base Power]
-   Before: a^(2) + b^(2) + 2 * a * b - -b^(2) + 2 * a * -b + a^(2)
+   Before: b^(2) + 2 * a * b + a^(2) - -b^(2) + 2 * a * -b + a^(2)
    Rule: -b^(2) -> b^(2)
-   After: a^(2) + b^(2) + 2 * a * b - b^(2) + 2 * a * -b + a^(2)
+   After: b^(2) + 2 * a * b + a^(2) - b^(2) + 2 * a * -b + a^(2)
 4. Global Combine Like Terms  [Combine Like Terms]
-   Before: -a^(2) - b^(2) + a^(2) + b^(2) + 2 * a * b + 2 * a * b
-   Rule: 2 * a * b + 2 * a * b -> 4 * a * b
-   After: -a^(2) - b^(2) + a^(2) + b^(2) + 4 * a * b
+   Before: a^(2) + b^(2) + 2 * a * b - a^(2) - b^(2) + 2 * a * b
+   Rule: 2 * a * b + 2 * a * b - a^(2) - b^(2) -> 4 * a * b - a^(2) - b^(2)
+   After: a^(2) + b^(2) + 4 * a * b - a^(2) - b^(2)
 5. Global Combine Like Terms  [Combine Like Terms]
-   Before: -a^(2) - b^(2) + a^(2) + b^(2) + 4 * a * b
-   Rule: -b^(2) + a^(2) + b^(2) + 4 * a * b -> a^(2) + 4 * a * b
-   After: -a^(2) + a^(2) + 4 * a * b
+   Before: a^(2) + b^(2) + 4 * a * b - a^(2) - b^(2)
+   Rule: b^(2) + 4 * a * b - a^(2) - b^(2) -> 4 * a * b - a^(2)
+   After: a^(2) + 4 * a * b - a^(2)
 6. Global Combine Like Terms  [Combine Like Terms]
-   Before: -a^(2) + a^(2) + 4 * a * b
-   Rule: -a^(2) + a^(2) + 4 * a * b -> 4 * a * b
+   Before: a^(2) + 4 * a * b - a^(2)
+   Rule: a^(2) + 4 * a * b - a^(2) -> 4 * a * b
    After: 4 * a * b
 Result: 4 * a * b
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (x + y) * (x - y)
-[2m2025-12-14T17:54:59.276938Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:51:59.094280Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x + y) * (x - y)
    Rule: (x + y) * (x - y) -> x^(2) - y^(2)
    After: x^(2) - y^(2)
-Result: -y^(2) + x^(2)
+Result: x^(2) - y^(2)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (1 + x)^3
-[2m2025-12-14T17:54:59.277142Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
+[2m2025-12-15T00:51:59.094514Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m7
 Steps (Aggressive Mode):
 1. Expand binomial power ^3  [Binomial Expansion]
    Before: (x + 1)^(3)
@@ -386,7 +382,7 @@ Result: x^(3) + 3 * x^(2) + 3 * x + 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (1 + x)^5
-[2m2025-12-14T17:54:59.277548Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m15
+[2m2025-12-15T00:51:59.094944Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m11
 Steps (Aggressive Mode):
 1. Expand binomial power ^5  [Binomial Expansion]
    Before: (x + 1)^(5)
@@ -396,113 +392,54 @@ Result: x^(5) + 5 * x^(4) + 10 * x^(3) + 10 * x^(2) + 5 * x + 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (x - 1)^2
-[2m2025-12-14T17:54:59.277776Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
+[2m2025-12-15T00:51:59.095175Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m8
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
    Before: (x - 1)^(2)
-   Rule: (x - 1)^(2) -> x^(2) + 2 * -x + -1^(2)
-   After: x^(2) + 2 * -x + -1^(2)
+   Rule: (x - 1)^(2) -> x^(2) + 2 * x * -1 + -1^(2)
+   After: x^(2) + 2 * x * -1 + -1^(2)
 2. Global Combine Like Terms  [Combine Like Terms]
-   Before: x^(2) + 2 * -x + -1^(2)
+   Before: x^(2) + 2 * -x + 1
    Rule: -1 * x -> -x
-   After: x^(2) + 2 * -x + -1^(2)
+   After: x^(2) + 2 * -x + 1
 Result: x^(2) - 2 * x + 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: (1 + x) * (2 + x)
-[2m2025-12-14T17:54:59.277896Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.095311Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 No simplification steps needed.
 Result: (x + 1) * (x + 2)
 No rules have been applied yet.
 Profiler statistics cleared.
-Parsed: expand(1 + x)^6
-[2m2025-12-14T17:54:59.278684Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m2 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m19
-
-──── Pipeline Diagnostics ────
-  Core:       1 iters, 0 rewrites
-  Transform:  2 iters, 1 rewrites, changed=true
-  Rationalize: Level15
-              → NotApplied: NoBinomialFound
-  PostCleanup: 2 iters, 18 rewrites
-  Total rewrites: 19
-───────────────────────────────
-
-Rule Health Report
-────────────────────────────────────────────────────────────────
-Top Applied Rules:
-  Identity Property of Multiplication         7
-  Evaluate Numeric Power                      5
-  Canonicalize Addition                       5
-  Expand Polynomial                           1
-  Binomial Expansion                          1
-────────────────────────────────────────────────────────────────
-Steps:
-1. expand()  [Expand Polynomial]
-   Before: expand(x + 1)^(6)
-   Rule: expand(x + 1) -> x + 1
-   After: (x + 1)^(6)
-2. Expand binomial power ^6  [Binomial Expansion]
-   Before: (x + 1)^(6)
-   Rule: (x + 1)^(6) -> x^(6) + 6 * x^(5) + 15 * 1^(2) * x^(4) + 20 * 1^(3) * x^(3) + 15 * 1^(4) * x^(2) + 6 * 1^(5) * x + 1^(6)
-   After: x^(6) + 6 * x^(5) + 15 * 1^(2) * x^(4) + 20 * 1^(3) * x^(3) + 15 * 1^(4) * x^(2) + 6 * 1^(5) * x + 1^(6)
-Result: x^(6) + 6 * x^(5) + 15 * x^(4) + 20 * x^(3) + 15 * x^(2) + 6 * x + 1
+Parsed: (1 + x)^6
+[2m2025-12-15T00:51:59.096206Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
+Result: 1 + x^6 + 6 * x + 6 * x^5 + 15 * x^2 + 15 * x^4 + 20 * x^3
 Rule Profiling Report
 ─────────────────────────────────────────────
 Rule                                       Hits
 ─────────────────────────────────────────────
 Identity Property of Multiplication           7
 Evaluate Numeric Power                        5
-Canonicalize Addition                         5
-Expand Polynomial                             1
-Binomial Expansion                            1
 ─────────────────────────────────────────────
-TOTAL                                        19
+TOTAL                                        12
 
 Profiler statistics cleared.
-Parsed: expand(x - 1) * (1 + x)
-[2m2025-12-14T17:54:59.279263Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m2 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m7
-
-──── Pipeline Diagnostics ────
-  Core:       2 iters, 2 rewrites
-  Transform:  2 iters, 1 rewrites, changed=true
-  Rationalize: Level15
-              → NotApplied: NoBinomialFound
-  PostCleanup: 2 iters, 4 rewrites
-  Total rewrites: 7
-───────────────────────────────
-
-Rule Health Report
-────────────────────────────────────────────────────────────────
-Top Applied Rules:
-  Canonicalize Negation                       4
-  Evaluate Numeric Power                      1
-  Difference of Squares (Product to Dif...    1
-  Expand Polynomial                           1
-────────────────────────────────────────────────────────────────
-Steps:
-1. expand()  [Expand Polynomial]
-   Before: expand(x - 1) * (x + 1)
-   Rule: expand(x - 1) -> x - 1
-   After: (x - 1) * (x + 1)
-2. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
-   Before: (x - 1) * (x + 1)
-   Rule: (x - 1) * (x + 1) -> x^(2) - -1^(2)
-   After: x^(2) - -1^(2)
-Result: x^(2) - 1
+Parsed: (1 + x) * (x - 1)
+[2m2025-12-15T00:51:59.096498Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+Result: x^2 - 1
 Rule Profiling Report
 ─────────────────────────────────────────────
 Rule                                       Hits
 ─────────────────────────────────────────────
-Canonicalize Negation                         4
-Expand Polynomial                             1
+Canonicalize Negation                         2
 Evaluate Numeric Power                        1
 Difference of Squares (Product to Dif...      1
 ─────────────────────────────────────────────
-TOTAL                                         7
+TOTAL                                         4
 
 Profiler statistics cleared.
 Parsed: (1 + x) * (2 + x) * (3 + x)
-[2m2025-12-14T17:54:59.279506Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.096733Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
    Before: (x + 1) * (x + 2) * (x + 3)
@@ -511,35 +448,24 @@ Steps (Aggressive Mode):
 Result: x * (x + 2) * (x + 3) + (x + 2) * (x + 3)
 No rules have been applied yet.
 Profiler statistics cleared.
-Parsed: expand(1 + x) * (2 + x) * (3 + x)
-[2m2025-12-14T17:54:59.279981Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m2 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-
-──── Pipeline Diagnostics ────
-  Core:       2 iters, 1 rewrites
-  Transform:  2 iters, 1 rewrites, changed=true
-  Rationalize: Level15
-              → NotApplied: NoBinomialFound
-  PostCleanup: 1 iters, 0 rewrites
-  Total rewrites: 2
-───────────────────────────────
-Steps:
-1. expand()  [Expand Polynomial]
-   Before: expand(x + 1) * (x + 2) * (x + 3)
-   Rule: expand(x + 1) -> x + 1
-   After: (x + 1) * (x + 2) * (x + 3)
-Result: (x + 2) * (x + 3) * (x + 1)
+Parsed: (1 + x) * (2 + x) * (3 + x)
+[2m2025-12-15T00:51:59.097379Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
+Result: 6 + x^3 + 6 * x^2 + 11 * x
 Rule Profiling Report
 ─────────────────────────────────────────────
 Rule                                       Hits
 ─────────────────────────────────────────────
-Expand Polynomial                             1
+Combine Like Terms                            4
+Product of Powers                             3
+Identity Property of Multiplication           2
+Combine Constants                             2
 Canonicalize Multiplication                   1
 ─────────────────────────────────────────────
-TOTAL                                         2
+TOTAL                                        12
 
 Profiler statistics cleared.
 Parsed: x + x + x + x
-[2m2025-12-14T17:54:59.280119Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:51:59.097527Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: x + x + x + x
@@ -556,28 +482,28 @@ Steps (Aggressive Mode):
 Result: 4 * x
 No rules have been applied yet.
 Profiler statistics cleared.
-Parsed: 4 * x + 2 * x + 3 * x
-[2m2025-12-14T17:54:59.280260Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+Parsed: 2 * x + 3 * x + 4 * x
+[2m2025-12-15T00:51:59.097664Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
-   Before: 4 * x + 2 * x + 3 * x
-   Rule: 2 * x + 3 * x -> 5 * x
-   After: 4 * x + 5 * x
+   Before: 2 * x + 3 * x + 4 * x
+   Rule: 3 * x + 4 * x -> 7 * x
+   After: 2 * x + 7 * x
 2. Global Combine Like Terms  [Combine Like Terms]
-   Before: 4 * x + 5 * x
-   Rule: 4 * x + 5 * x -> 9 * x
+   Before: 2 * x + 7 * x
+   Rule: 2 * x + 7 * x -> 9 * x
    After: 9 * x
 Result: 9 * x
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: w * x + x * y + x * z
-[2m2025-12-14T17:54:59.280402Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.097786Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 No simplification steps needed.
 Result: w * x + x * y + x * z
 No rules have been applied yet.
 Profiler statistics cleared.
-Parsed: a + b + c + d + d + c + a + b
-[2m2025-12-14T17:54:59.280648Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m7
+Parsed: a + a + b + b + c + c + d + d
+[2m2025-12-15T00:51:59.098039Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: a + a + b + b + c + c + d + d
@@ -598,24 +524,32 @@ Steps (Aggressive Mode):
 Result: 2 * a + 2 * b + 2 * c + 2 * d
 No rules have been applied yet.
 Profiler statistics cleared.
-Parsed: 4 + x + 3 + x + 1 + x + 2 + x
-[2m2025-12-14T17:54:59.280906Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
+Parsed: 1 + 2 + 3 + 4 + x + x + x + x
+[2m2025-12-15T00:51:59.098282Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
-   Before: x + 3 * x + 4 + 6
+   Before: x + x + x + x + 1 + 2 + 3 + 4
+   Rule: x + x -> 2 * x
+   After: x + x + 2 * x + 1 + 2 + 3 + 4
+2. Global Combine Like Terms  [Combine Like Terms]
+   Before: x + x + 2 * x + 1 + 2 + 3 + 4
+   Rule: x + 2 * x -> 3 * x
+   After: x + 3 * x + 1 + 2 + 3 + 4
+3. Global Combine Like Terms  [Combine Like Terms]
+   Before: x + 3 * x + 1 + 2 + 3 + 4
    Rule: x + 3 * x -> 4 * x
-   After: 4 * x + 4 + 6
+   After: 4 * x + 1 + 2 + 3 + 4
 Result: 4 * x + 10
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 1 / 2 + 1 / 3
-[2m2025-12-14T17:54:59.281023Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:51:59.098402Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 Result: 5/6
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x / 2 + x / 3
-[2m2025-12-14T17:54:59.281126Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:51:59.098499Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: x/2 + x/3
@@ -625,13 +559,13 @@ Result: 5/6 * x
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 1 / x + 1 / y
-[2m2025-12-14T17:54:59.281256Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.098619Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 No simplification steps needed.
 Result: 1 / x + 1 / y
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 1 / x + (1 + x) / x
-[2m2025-12-14T17:54:59.281412Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.098792Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
    Before: (x + 1) / x + 1 / x
@@ -641,7 +575,7 @@ Result: (x + 2) / x
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 1 / x / (1 / y)
-[2m2025-12-14T17:54:59.281503Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.098885Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. Simplify nested fraction  [Simplify Complex Fraction]
    Before: 1 / x / (1 / y)
@@ -651,7 +585,7 @@ Result: y / x
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 1 / (1 / x)
-[2m2025-12-14T17:54:59.281567Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.098946Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Simplify nested fraction  [Simplify Complex Fraction]
    Before: 1 / (1 / x)
@@ -661,19 +595,19 @@ Result: x
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 2^3 * 2^4
-[2m2025-12-14T17:54:59.281645Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:51:59.099037Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 Result: 128
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 2^3^4
-[2m2025-12-14T17:54:59.281709Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.099101Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 Result: 4096
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x^2^3
-[2m2025-12-14T17:54:59.281780Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099172Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. Multiply exponents  [Power of a Power]
    Before: x^(2)^(3)
@@ -683,7 +617,7 @@ Result: x^(6)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x^2 * x^3
-[2m2025-12-14T17:54:59.281871Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099256Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. Combine powers with same base  [Product of Powers]
    Before: x^(2) * x^(3)
@@ -693,31 +627,31 @@ Result: x^(5)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x^0
-[2m2025-12-14T17:54:59.281929Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099311Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x
-[2m2025-12-14T17:54:59.281971Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099348Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 No simplification steps needed.
 Result: x
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: 2^(-3)
-[2m2025-12-14T17:54:59.282026Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.099395Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: 1/8
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: x^(-2)
-[2m2025-12-14T17:54:59.282092Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099445Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 No simplification steps needed.
 Result: x^(-2)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: ln(x * y) - ln(x)
-[2m2025-12-14T17:54:59.282200Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:51:59.099549Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: log(e, x) + log(e, y) - log(e, x)
@@ -727,7 +661,7 @@ Result: log(e, y)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: ln(x^2) / ln(x)
-[2m2025-12-14T17:54:59.282298Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:51:59.099639Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Cancel common factors  [Cancel Common Factors]
    Before: 2 * log(e, x) / log(e, x)
@@ -737,19 +671,19 @@ Result: 2
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: ln(e)
-[2m2025-12-14T17:54:59.282362Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099697Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: ln(1)
-[2m2025-12-14T17:54:59.282408Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099739Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: 0
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: e^ln(x)
-[2m2025-12-14T17:54:59.282456Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099780Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. b^log(b, x) = x  [Exponential-Log Inverse]
    Before: e^(log(e, x))
@@ -759,13 +693,13 @@ Result: x
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: ln(e^x)
-[2m2025-12-14T17:54:59.282507Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099828Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: x
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: cos(x)^2 + sin(x)^2
-[2m2025-12-14T17:54:59.282577Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.099897Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. Pythagorean Identity  [Pythagorean Identity]
    Before: cos(x)^(2) + sin(x)^(2)
@@ -775,7 +709,7 @@ Result: 1
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sin(2 * x) + cos(x) * 2 * sin(x)
-[2m2025-12-14T17:54:59.282723Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:51:59.100053Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. sin(2x) -> 2sin(x)cos(x)  [Double Angle Identity]
    Before: sin(2 * x) + cos(x) * 2 * sin(x)
@@ -789,67 +723,39 @@ Result: 4 * cos(x) * sin(x)
 No rules have been applied yet.
 Profiler statistics cleared.
 Parsed: sin(3 * x) - (3 * sin(x) - 4 * sin(x)^3)
-[2m2025-12-14T17:54:59.283036Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m23
+[2m2025-12-15T00:51:59.100247Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
 Steps (Aggressive Mode):
-1. sin(3x) expansion  [Recursive Trig Expansion]
+1. sin(3x) → 3sin(x) - 4sin³(x)  [Triple Angle Identity]
    Before: sin(3 * x) - 3 * sin(x) - 4 * sin(x)^(3)
-   Rule: sin(3 * x) -> cos(2 * x) * sin(x) + sin(2 * x) * cos(x)
-   After: cos(2 * x) * sin(x) + sin(2 * x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-2. cos(2x) -> cos^2(x) - sin^2(x)  [Double Angle Identity]
-   Before: cos(2 * x) * sin(x) + sin(2 * x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-   Rule: cos(2 * x) -> cos(x)^(2) - sin(x)^(2)
-   After: (cos(x)^(2) - sin(x)^(2)) * sin(x) + sin(2 * x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-3. Distribute  [Distributive Property]
-   Before: (-sin(x)^(2) + cos(x)^(2)) * sin(x) + sin(2 * x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-   Rule: sin(x) * (-sin(x)^(2) + cos(x)^(2)) -> sin(x) * -sin(x)^(2) + sin(x) * cos(x)^(2)
-   After: sin(x) * -sin(x)^(2) + sin(x) * cos(x)^(2) + sin(2 * x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-4. Combine base and power  [Product of Powers]
-   Before: -(sin(x) * sin(x)^(2)) + sin(x) * cos(x)^(2) + sin(2 * x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-   Rule: sin(x) * sin(x)^(2) -> sin(x)^(3)
-   After: -sin(x)^(3) + sin(x) * cos(x)^(2) + sin(2 * x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-5. sin(2x) -> 2sin(x)cos(x)  [Double Angle Identity]
-   Before: -sin(x)^(3) + sin(x) * cos(x)^(2) + sin(2 * x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-   Rule: sin(2 * x) -> 2 * sin(x) * cos(x)
-   After: -sin(x)^(3) + sin(x) * cos(x)^(2) + 2 * sin(x) * cos(x) * cos(x) - 3 * sin(x) - 4 * sin(x)^(3)
-6. Combine nested identical terms  [Product of Powers]
-   Before: -sin(x)^(3) + sin(x) * cos(x)^(2) + 2 * cos(x) * cos(x) * sin(x) - 3 * sin(x) - 4 * sin(x)^(3)
-   Rule: cos(x) * cos(x) * sin(x) -> cos(x)^(2) * sin(x)
-   After: -sin(x)^(3) + sin(x) * cos(x)^(2) + 2 * cos(x)^(2) * sin(x) - 3 * sin(x) - 4 * sin(x)^(3)
-7. Global Combine Like Terms  [Combine Like Terms]
-   Before: -sin(x)^(3) + 2 * sin(x) * cos(x)^(2) + sin(x) * cos(x)^(2) - 3 * sin(x) - 4 * sin(x)^(3)
-   Rule: 2 * sin(x) * cos(x)^(2) + sin(x) * cos(x)^(2) -> 3 * sin(x) * cos(x)^(2)
-   After: -sin(x)^(3) + 3 * sin(x) * cos(x)^(2) - 3 * sin(x) - 4 * sin(x)^(3)
-8. Global Combine Like Terms  [Combine Like Terms]
-   Before: -sin(x)^(3) - 3 * sin(x) + 3 * sin(x) * cos(x)^(2) + 4 * sin(x)^(3)
-   Rule: -sin(x)^(3) - 3 * sin(x) + 3 * sin(x) * cos(x)^(2) + 4 * sin(x)^(3) -> -3 * sin(x) + 3 * sin(x)^(3) + 3 * sin(x) * cos(x)^(2)
-   After: -3 * sin(x) + 3 * sin(x)^(3) + 3 * sin(x) * cos(x)^(2)
-9. Pythagorean Identity  [Pythagorean Identity]
-   Before: -3 * sin(x) + 3 * sin(x)^(3) + 3 * sin(x) * cos(x)^(2)
-   Rule: 3 * sin(x)^(3) + 3 * sin(x) * cos(x)^(2) -> 3 * sin(x)
-   After: -3 * sin(x) + 3 * sin(x)
-10. Global Combine Like Terms  [Combine Like Terms]
-   Before: -3 * sin(x) + 3 * sin(x)
-   Rule: -3 * sin(x) + 3 * sin(x) -> 0
+   Rule: sin(3 * x) -> 3 * sin(x) - 4 * sin(x)^(3)
+   After: 3 * sin(x) - 4 * sin(x)^(3) - 3 * sin(x) - 4 * sin(x)^(3)
+2. Global Combine Like Terms  [Combine Like Terms]
+   Before: 3 * sin(x) + 4 * sin(x)^(3) - 3 * sin(x) - 4 * sin(x)^(3)
+   Rule: 4 * sin(x)^(3) - 4 * sin(x)^(3) - 3 * sin(x) -> -3 * sin(x)
+   After: 3 * sin(x) - 3 * sin(x)
+3. Global Combine Like Terms  [Combine Like Terms]
+   Before: 3 * sin(x) - 3 * sin(x)
+   Rule: 3 * sin(x) - 3 * sin(x) -> 0
    After: 0
 Result: 0
 No rules have been applied yet.
 Profiler statistics cleared.
-[2m2025-12-14T17:54:59.283368Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.283394Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.283472Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.283587Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
-[2m2025-12-14T17:54:59.283715Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
-[2m2025-12-14T17:54:59.283745Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.283784Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-14T17:54:59.283825Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-14T17:54:59.283873Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-14T17:54:59.283898Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.283942Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-14T17:54:59.283967Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.284030Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m2 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.100390Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.100416Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.100471Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.100611Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.100747Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.100769Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.100805Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.100840Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.100903Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.100926Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.100973Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.100995Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.101052Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m2 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps:
-[2m2025-12-14T17:54:59.284055Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.284107Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.101072Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.101118Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 1. Subtract 2 from both sides
    -> x = 3
 Result: { 3 }
@@ -857,27 +763,28 @@ Rule Profiling Report
 ─────────────────────────────────────────────
 Rule                                       Hits
 ─────────────────────────────────────────────
-Combine Constants                             6
-Canonicalize Negation                         4
+Combine Constants                             4
+Canonicalize Negation                         2
+Combine Like Terms                            2
 Identity Property of Addition                 2
 Expand Polynomial                             1
 ─────────────────────────────────────────────
-TOTAL                                        13
+TOTAL                                        11
 
 Profiler statistics cleared.
-[2m2025-12-14T17:54:59.284205Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.284233Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.284299Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.284456Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-[2m2025-12-14T17:54:59.284608Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-[2m2025-12-14T17:54:59.284656Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-14T17:54:59.284681Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.284722Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-14T17:54:59.284820Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
-[2m2025-12-14T17:54:59.284897Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:51:59.101191Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.101212Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.101268Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.101408Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.101544Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.101583Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.101602Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.101636Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.101734Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:51:59.101920Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps:
-[2m2025-12-14T17:54:59.285012Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.285035Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.102054Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.102077Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 1. Detected quadratic equation. Applying quadratic formula.
    -> x^2 - 4 = 0
 Result: { -2, 2 }
@@ -885,43 +792,43 @@ Rule Profiling Report
 ─────────────────────────────────────────────
 Rule                                       Hits
 ─────────────────────────────────────────────
+Combine Constants                             5
+Identity Property of Addition                 3
+Canonicalize Negation                         2
+Evaluate Numeric Power                        2
+─────────────────────────────────────────────
+TOTAL                                        12
+
+Profiler statistics cleared.
+[2m2025-12-15T00:51:59.102271Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.102293Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.102429Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.102558Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.102686Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:51:59.102724Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.102740Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.102771Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:51:59.102854Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:51:59.102921Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+Steps:
+[2m2025-12-15T00:51:59.103025Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:51:59.103040Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+1. Detected quadratic equation. Applying quadratic formula.
+   -> x^2 - 4 = 0
+Result: { -2, 2 }
+Rule Profiling Report
+─────────────────────────────────────────────
+Rule                                       Hits
+─────────────────────────────────────────────
+Identity Property of Addition                 5
 Combine Constants                             5
 Canonicalize Negation                         4
-Identity Property of Addition                 3
 Evaluate Numeric Power                        2
 ─────────────────────────────────────────────
-TOTAL                                        14
-
-Profiler statistics cleared.
-[2m2025-12-14T17:54:59.285205Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-[2m2025-12-14T17:54:59.285229Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.285380Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-[2m2025-12-14T17:54:59.285539Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
-[2m2025-12-14T17:54:59.285710Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
-[2m2025-12-14T17:54:59.285758Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-14T17:54:59.285783Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.285823Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-14T17:54:59.285911Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
-[2m2025-12-14T17:54:59.285981Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
-Steps:
-[2m2025-12-14T17:54:59.286100Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-14T17:54:59.286124Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-1. Detected quadratic equation. Applying quadratic formula.
-   -> x^2 - 4 = 0
-Result: { -2, 2 }
-Rule Profiling Report
-─────────────────────────────────────────────
-Rule                                       Hits
-─────────────────────────────────────────────
-Canonicalize Negation                         8
-Combine Constants                             5
-Identity Property of Addition                 5
-Evaluate Numeric Power                        2
-─────────────────────────────────────────────
-TOTAL                                        20
+TOTAL                                        16
 
 Goodbye!
 
 ==================================================
-Tests completados: Sun Dec 14 18:54:59 CET 2025
+Tests completados: Mon Dec 15 01:51:59 CET 2025
 ==================================================
