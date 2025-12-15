@@ -289,9 +289,35 @@ mod tests {
     }
 }
 
+// EvaluateSimplifyFunctionRule: simplify(expr) → expr
+// Since simplification is bottom-up, the argument is already simplified by the time
+// this rule runs. We just need to unwrap the function wrapper to make it transparent.
+// This ensures simplify(simplify(e)) == simplify(e) (idempotence).
+define_rule!(
+    EvaluateSimplifyFunctionRule,
+    "Evaluate Simplify Function",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "simplify" && args.len() == 1 {
+                // Just return the (already simplified) argument
+                return Some(Rewrite {
+                    new_expr: args[0],
+                    description: "simplify(x) = x (already simplified)".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
     simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(AbsSquaredRule));
+    simplifier.add_rule(Box::new(EvaluateSimplifyFunctionRule)); // Make simplify() transparent
 }

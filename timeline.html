@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \log_{x\cdot y}(2)</title>
+    <title>CAS Steps: \frac{1}{1 + \sqrt{2}}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -222,35 +222,37 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\log_{x\cdot y}(2)\]
+            \[\frac{1}{1 + \sqrt{2}}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Evaluate Logarithms</h3>
+                    <h3>Rationalize Binomial Denominator</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\log_{x\cdot y}(2)}}\]
+                        \[{\color{red}{\frac{1}{1 + \sqrt{2}}}}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Pasos intermedios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{1}{1 + \sqrt{2}} \rightarrow \text{Conjugado: } a + b \to a - b\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{log(b, x*y) = log(b, x) + log(b, y)}\)</div>
+                        <div class="rule-name">\(\text{1 / 1 + 2^(1/2) -> 1 * -(1 - 2^(1/2)) / 1}\)</div>
                         <div class="local-change">
-                            \[\log_{x\cdot y}(2) \rightarrow \log_{x}(2) + \log_{y}(2)\]
+                            \[\frac{1}{1 + \sqrt{2}} \rightarrow -1 - \sqrt{2}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\log_{x}(2) + \log_{y}(2)}}\]
+                        \[{\color{green}{-1 - \sqrt{2}}}\]
                     </div>
-                    <div class="domain-warning">Domain: Assuming x &gt; 0 and y &gt; 0</div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[\log_{x}(2) + \log_{y}(2)\]
+            \[\sqrt{2} - 1\]
         </div>
     </div>
     <footer>
