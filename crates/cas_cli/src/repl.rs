@@ -1960,6 +1960,9 @@ impl Repl {
                     println!("Steps:");
                     for (i, step) in steps.iter().enumerate() {
                         println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
+                        if let Some(assumption) = &step.domain_assumption {
+                            println!("   ⚠ Domain: {}", assumption);
+                        }
                     }
                 }
 

@@ -94,6 +94,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     global_after: last.global_after,
                     before_local: None,
                     after_local: None,
+                    domain_assumption: None,
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;

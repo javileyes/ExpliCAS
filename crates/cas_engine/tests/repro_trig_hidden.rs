@@ -15,13 +15,11 @@ mod tests {
         cas_engine::rules::canonicalization::register(&mut simplifier);
 
         // sin(x)^4 - cos(x)^4 - (sin(x)^2 - cos(x)^2)
-        // This SHOULD simplify to 0 via: sin^4 - cos^4 = (sin^2+cos^2)(sin^2-cos^2) = sin^2-cos^2
-        // However, after disabling CanonicalizeTrigSquareRule (which caused stack overflow
-        // with Pythagorean identities), the algebraic factorization doesn't fully reduce.
+        // This SHOULD simplify to 0 via: sin^4 - cos^4 = (sin^2-cos^2) (using sin²+cos²=1)
+        // so the expression becomes (sin^2-cos^2) - (sin^2-cos^2) = 0
         //
-        // The expression partially simplifies but doesn't reach 0 without the cos²→1-sin² conversion.
-        // This is acceptable since avoiding the stack overflow is more important than this
-        // specific edge case. The expression still simplifies significantly.
+        // Now correctly simplified by TrigEvenPowerDifferenceRule which reduces
+        // sin^4 - cos^4 → sin^2 - cos^2 (degree-reducing, loop-safe)
         let expr_str = "sin(x)^4 - cos(x)^4 - (sin(x)^2 - cos(x)^2)";
         let expr = parse(expr_str, &mut simplifier.context).unwrap();
         let (res, _) = simplifier.simplify(expr);
@@ -35,12 +33,7 @@ mod tests {
         );
         println!("Result: {}", res_str);
 
-        // Updated expectation: expression simplifies but not to 0 without CanonicalizeTrigSquareRule
-        // The actual result is a partially simplified form
-        assert!(
-            res_str.contains("sin") || res_str.contains("cos"),
-            "Expected simplified trig expression, got: {}",
-            res_str
-        );
+        // Fixed: TrigEvenPowerDifferenceRule now correctly simplifies this to 0
+        assert_eq!(res_str, "0", "Expression should simplify to 0");
     }
 }

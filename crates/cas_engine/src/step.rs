@@ -40,6 +40,8 @@ pub struct Step {
     pub before_local: Option<ExprId>,
     /// Optional: The specific result of the pattern (for n-ary rules)
     pub after_local: Option<ExprId>,
+    /// Optional domain assumption used by the rule (e.g., "x > 0" assumed)
+    pub domain_assumption: Option<&'static str>,
 }
 
 impl Step {
@@ -71,6 +73,7 @@ impl Step {
             global_after: None,
             before_local: None,
             after_local: None,
+            domain_assumption: None,
         }
     }
 

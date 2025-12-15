@@ -25,6 +25,8 @@ pub struct RuleStats {
     pub rejected_disabled: AtomicUsize,
     /// Total node delta (positive = growth, negative = reduction)
     pub total_delta_nodes: std::sync::atomic::AtomicI64,
+    /// Times a domain assumption was used (e.g., "x > 0" assumed)
+    pub domain_assumption_hits: AtomicUsize,
 }
 
 /// Convert SimplifyPhase to array index
@@ -110,6 +112,17 @@ impl RuleProfiler {
         stats.rejected_disabled.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Record a domain assumption used by a rule (e.g., "x > 0" assumed)
+    pub fn record_domain_assumption(&mut self, phase: SimplifyPhase, rule_name: &str) {
+        if !self.enabled || !self.health_enabled {
+            return;
+        }
+        let stats = self.per_phase[phase_idx(phase)]
+            .entry(rule_name.to_string())
+            .or_default();
+        stats.domain_assumption_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Aggregate stats across all phases (for backward compatibility)
     fn aggregate_stats(&self) -> HashMap<String, RuleStats> {
         let mut aggregated: HashMap<String, RuleStats> = HashMap::new();
@@ -133,6 +146,10 @@ impl RuleProfiler {
                 );
                 agg.total_delta_nodes.fetch_add(
                     stats.total_delta_nodes.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+                agg.domain_assumption_hits.fetch_add(
+                    stats.domain_assumption_hits.load(Ordering::Relaxed),
                     Ordering::Relaxed,
                 );
             }
@@ -217,6 +234,10 @@ impl RuleProfiler {
                         stats.total_delta_nodes.load(Ordering::Relaxed),
                         Ordering::Relaxed,
                     );
+                    new_stats.domain_assumption_hits.store(
+                        stats.domain_assumption_hits.load(Ordering::Relaxed),
+                        Ordering::Relaxed,
+                    );
                     result.insert(name.clone(), new_stats);
                 }
                 result
@@ -279,6 +300,26 @@ impl RuleProfiler {
                     truncate(name, 40),
                     delta
                 ));
+            }
+        }
+
+        // Domain assumptions section
+        let mut domain_hits: Vec<_> = stats_map
+            .iter()
+            .map(|(n, s)| (n.as_str(), s.domain_assumption_hits.load(Ordering::Relaxed)))
+            .filter(|(_, c)| *c > 0)
+            .collect();
+        domain_hits.sort_by_key(|(_, c)| Reverse(*c));
+
+        let total_domain_hits: usize = domain_hits.iter().map(|(_, c)| *c).sum();
+        if total_domain_hits > 0 {
+            report.push_str(&format!(
+                "\nDomain assumptions used: {}\n",
+                total_domain_hits
+            ));
+            report.push_str("Top Domain-Assumption Rules:\n");
+            for (name, count) in domain_hits.iter().take(5) {
+                report.push_str(&format!("  {:40} {:>4}\n", truncate(name, 40), count));
             }
         }
 
@@ -346,6 +387,7 @@ impl RuleProfiler {
                 stats.rejected_phase.store(0, Ordering::Relaxed);
                 stats.rejected_disabled.store(0, Ordering::Relaxed);
                 stats.total_delta_nodes.store(0, Ordering::Relaxed);
+                stats.domain_assumption_hits.store(0, Ordering::Relaxed);
             }
         }
     }
@@ -359,6 +401,7 @@ impl RuleProfiler {
                 stats.rejected_phase.store(0, Ordering::Relaxed);
                 stats.rejected_disabled.store(0, Ordering::Relaxed);
                 stats.total_delta_nodes.store(0, Ordering::Relaxed);
+                stats.domain_assumption_hits.store(0, Ordering::Relaxed);
             }
         }
     }
