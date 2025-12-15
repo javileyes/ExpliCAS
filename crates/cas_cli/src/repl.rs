@@ -3414,11 +3414,17 @@ impl Repl {
                             self.show_simplification_steps(
                                 output.resolved,
                                 output.steps,
-                                style_signals,
+                                style_signals.clone(),
                             );
                         }
 
-                        // Show Final Result
+                        // Show Final Result with style sniffing (root notation preservation)
+                        let style_prefs = cas_ast::StylePreferences::from_expression_with_signals(
+                            &self.engine.simplifier.context,
+                            output.parsed,
+                            Some(&style_signals),
+                        );
+
                         match output.result {
                             EvalResult::Expr(res) => {
                                 // Check if it is Equal function
@@ -3427,20 +3433,25 @@ impl Repl {
                                     if name == "Equal" && args.len() == 2 {
                                         println!(
                                             "Result: {} = {}",
-                                            cas_ast::DisplayExpr {
+                                            cas_ast::DisplayExprStyled::new(
                                                 context,
-                                                id: args[0]
-                                            },
-                                            cas_ast::DisplayExpr {
+                                                args[0],
+                                                &style_prefs
+                                            ),
+                                            cas_ast::DisplayExprStyled::new(
                                                 context,
-                                                id: args[1]
-                                            }
+                                                args[1],
+                                                &style_prefs
+                                            )
                                         );
                                         return;
                                     }
                                 }
 
-                                println!("Result: {}", cas_ast::DisplayExpr { context, id: res });
+                                println!(
+                                    "Result: {}",
+                                    cas_ast::DisplayExprStyled::new(context, res, &style_prefs)
+                                );
                             }
                             EvalResult::Set(_sols) => {
                                 println!("Result: Set(...)"); // Simplify result logic doesn't usually produce Set

@@ -1693,6 +1693,13 @@ impl<'a> DisplayExprStyled<'a> {
             }
 
             Expr::Function(name, args) => {
+                // Special case: abs(x) displays as |x|
+                if name == "abs" && args.len() == 1 {
+                    write!(f, "|")?;
+                    self.fmt_internal(f, args[0])?;
+                    return write!(f, "|");
+                }
+
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
