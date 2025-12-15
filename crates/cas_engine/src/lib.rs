@@ -4,6 +4,7 @@ pub mod cycle_detector;
 pub mod didactic;
 pub mod display_context;
 pub mod engine;
+pub mod env;
 pub mod expand;
 pub mod factor;
 pub mod matrix;

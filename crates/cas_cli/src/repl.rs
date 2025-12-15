@@ -130,6 +130,8 @@ pub struct Repl {
     health_enabled: bool,
     /// Last health report string for `health` command
     last_health_report: Option<String>,
+    /// Session environment for variable bindings
+    env: cas_engine::env::Environment,
 }
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
@@ -460,6 +462,7 @@ impl Repl {
             last_stats: None,
             health_enabled: false,
             last_health_report: None,
+            env: cas_engine::env::Environment::default(),
         };
         repl.sync_config_to_simplifier();
         repl
@@ -733,6 +736,44 @@ impl Repl {
             self.handle_help(&line);
             return;
         }
+
+        // ========== SESSION ENVIRONMENT COMMANDS ==========
+
+        // "let <name> = <expr>" - assign variable
+        if line.starts_with("let ") {
+            self.handle_let_command(&line[4..]);
+            return;
+        }
+
+        // "<name> := <expr>" - alternative assignment syntax
+        if let Some(idx) = line.find(":=") {
+            let name = line[..idx].trim();
+            let expr_str = line[idx + 2..].trim();
+            if !name.is_empty() && !expr_str.is_empty() {
+                self.handle_assignment(name, expr_str);
+                return;
+            }
+        }
+
+        // "vars" - list all variables
+        if line == "vars" {
+            self.handle_vars_command();
+            return;
+        }
+
+        // "clear" or "clear <names>" - clear variables
+        if line == "clear" || line.starts_with("clear ") {
+            self.handle_clear_command(&line);
+            return;
+        }
+
+        // "reset" - reset entire session
+        if line == "reset" {
+            self.handle_reset_command();
+            return;
+        }
+
+        // ========== END SESSION ENVIRONMENT COMMANDS ==========
 
         // Check for "steps" command
         if line.starts_with("steps ") {
@@ -1938,6 +1979,165 @@ impl Repl {
         }
     }
 
+    // ========== SESSION ENVIRONMENT HANDLERS ==========
+
+    /// Handle "let <name> = <expr>" command
+    fn handle_let_command(&mut self, rest: &str) {
+        // Parse: <name> = <expr>
+        if let Some(eq_idx) = rest.find('=') {
+            let name = rest[..eq_idx].trim();
+            let expr_str = rest[eq_idx + 1..].trim();
+            self.handle_assignment(name, expr_str);
+        } else {
+            println!("Usage: let <name> = <expr>");
+            println!("Example: let a = 1 + sqrt(2)");
+        }
+    }
+
+    /// Handle variable assignment (from "let" or ":=")
+    fn handle_assignment(&mut self, name: &str, expr_str: &str) {
+        // Validate name
+        if name.is_empty() {
+            println!("Error: Variable name cannot be empty");
+            return;
+        }
+
+        // Check if identifier is valid (alphanumeric + underscore, starts with letter/underscore)
+        if !name.chars().next().unwrap().is_alphabetic() && !name.starts_with('_') {
+            println!("Error: Variable name must start with a letter or underscore");
+            return;
+        }
+
+        // Check reserved names
+        if cas_engine::env::is_reserved(name) {
+            println!(
+                "Error: '{}' is a reserved name and cannot be assigned",
+                name
+            );
+            return;
+        }
+
+        // Parse the expression
+        match cas_parser::parse(expr_str, &mut self.simplifier.context) {
+            Ok(rhs_expr) => {
+                // Temporarily remove this binding to prevent self-reference in substitute
+                let old_binding = self.env.get(name).map(|id| id);
+                self.env.unset(name);
+
+                // Substitute using current environment (allows a = b+1 where b is defined)
+                let rhs_substituted =
+                    cas_engine::env::substitute(&mut self.simplifier.context, &self.env, rhs_expr);
+
+                // Store the binding
+                self.env.set(name.to_string(), rhs_substituted);
+
+                // Display confirmation
+                let display = cas_ast::DisplayExpr {
+                    context: &self.simplifier.context,
+                    id: rhs_substituted,
+                };
+                println!("{} = {}", name, display);
+
+                // Note: we don't restore old_binding - this is an assignment/update
+                let _ = old_binding;
+            }
+            Err(e) => {
+                println!("Parse error: {}", e);
+            }
+        }
+    }
+
+    /// Handle "vars" command - list all variable bindings
+    fn handle_vars_command(&self) {
+        let bindings = self.env.list();
+        if bindings.is_empty() {
+            println!("No variables defined.");
+        } else {
+            println!("Variables:");
+            for (name, expr_id) in bindings {
+                let display = cas_ast::DisplayExpr {
+                    context: &self.simplifier.context,
+                    id: expr_id,
+                };
+                println!("  {} = {}", name, display);
+            }
+        }
+    }
+
+    /// Handle "clear" or "clear <names>" command
+    fn handle_clear_command(&mut self, line: &str) {
+        if line == "clear" {
+            // Clear all
+            let count = self.env.len();
+            self.env.clear_all();
+            if count == 0 {
+                println!("No variables to clear.");
+            } else {
+                println!("Cleared {} variable(s).", count);
+            }
+        } else {
+            // Clear specific variables
+            let names: Vec<&str> = line[6..].split_whitespace().collect();
+            let mut cleared = 0;
+            for name in names {
+                if self.env.unset(name) {
+                    cleared += 1;
+                } else {
+                    println!("Warning: '{}' was not defined", name);
+                }
+            }
+            if cleared > 0 {
+                println!("Cleared {} variable(s).", cleared);
+            }
+        }
+    }
+
+    /// Handle "reset" command - reset entire session
+    fn handle_reset_command(&mut self) {
+        // Clear environment
+        self.env.clear_all();
+
+        // Reset simplifier with new context
+        self.simplifier = Simplifier::with_default_rules();
+
+        // Re-register custom rules (same as in new())
+        self.simplifier
+            .add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
+        self.simplifier.add_rule(Box::new(EvaluateTrigRule));
+        self.simplifier.add_rule(Box::new(PythagoreanIdentityRule));
+        if self.config.trig_angle_sum {
+            self.simplifier.add_rule(Box::new(AngleIdentityRule));
+        }
+        self.simplifier.add_rule(Box::new(TanToSinCosRule));
+        if self.config.trig_double_angle {
+            self.simplifier.add_rule(Box::new(DoubleAngleRule));
+        }
+        if self.config.canonicalize_trig_square {
+            self.simplifier.add_rule(Box::new(
+                cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
+            ));
+        }
+        self.simplifier.add_rule(Box::new(EvaluateLogRule));
+        self.simplifier.add_rule(Box::new(ExponentialLogRule));
+        self.simplifier.add_rule(Box::new(SimplifyFractionRule));
+        self.simplifier.add_rule(Box::new(ExpandRule));
+        self.simplifier
+            .add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
+
+        // Sync config
+        self.sync_config_to_simplifier();
+
+        // Reset options
+        self.explain_mode = false;
+        self.last_stats = None;
+        self.health_enabled = false;
+        self.last_health_report = None;
+
+        println!("Session reset. Environment and context cleared.");
+    }
+
+    // ========== END SESSION ENVIRONMENT HANDLERS ==========
+
     fn handle_det(&mut self, line: &str) {
         let rest = line[4..].trim(); // Remove "det "
 
@@ -2606,6 +2806,11 @@ impl Repl {
                         id: expr
                     }
                 );
+
+                // Substitute variables from environment
+                let expr =
+                    cas_engine::env::substitute(&mut self.simplifier.context, &self.env, expr);
+
                 let (simplified, steps) = self.do_simplify(expr);
 
                 // Create global style preferences from input signals + AST
