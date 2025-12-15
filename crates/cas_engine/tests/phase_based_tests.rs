@@ -75,3 +75,29 @@ fn test_level_1_5_stays_compact() {
         result
     );
 }
+
+/// Anti-regression test for Factor↔Distribute loop (Issue: FactorCommonIntegerFromAdd)
+/// This verifies:
+/// 1. Factoring actually happens: 2*√2 + 2 → 2*(√2 + 1)
+/// 2. Idempotence: factored form stays factored
+/// 3. No infinite loop (test completes in reasonable time)
+#[test]
+fn test_factor_distribute_no_loop() {
+    // Part 1: Verify factoring works
+    let factored = simplify_to_string("2*sqrt(2) + 2");
+    assert!(
+        factored.contains("2 * (") || factored.contains("2*("),
+        "Expected factored form '2*(...)', got: {}",
+        factored
+    );
+
+    // Part 2: Verify idempotence - factored form should stay factored
+    let idempotent = simplify_to_string("2*(sqrt(2) + 1)");
+    assert!(
+        idempotent.contains("2 * (") || idempotent.contains("2*("),
+        "Idempotence failed: factored form was redistributed to: {}",
+        idempotent
+    );
+
+    // If we got here without timeout/stack overflow, no loop occurred
+}

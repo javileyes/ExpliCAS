@@ -30,6 +30,7 @@ define_rule!(
     DistributeRule,
     "Distributive Property",
     None,
+    // NO POST: evita ciclo con FactorCommonIntegerFromAdd (ver test_factor_distribute_no_loop)
     PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE,
     |ctx, expr| {
         // Don't distribute if expression is in canonical form (e.g., inside abs() or sqrt())
