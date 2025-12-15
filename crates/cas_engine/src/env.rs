@@ -92,7 +92,8 @@ pub fn is_reserved(name: &str) -> bool {
 }
 
 /// Session environment holding variable → expression bindings
-#[derive(Default, Clone)]
+/// Storage for variable bindings
+#[derive(Default, Debug, Clone)]
 pub struct Environment {
     bindings: HashMap<String, ExprId>,
 }

@@ -189,34 +189,72 @@ Variables:
 
 ---
 
+## Advanced Usage
+
+### Solving with References
+
+You can use session IDs directly in `solve` commands. This is powerful for solving equations you've just built or manipulated.
+
+```text
+> x + 1 = 5
+#1: x + 1 = 5
+
+> solve #1, x
+Result: x = 4
+```
+
+### Equivalence Checking
+
+You can verify if two session entries are mathematically equivalent using `equiv`.
+
+```text
+> (x+1)^2
+#1: (x+1)^2
+
+> x^2 + 2x + 1
+#2: x^2 + 2x + 1
+
+> equiv #1, #2
+Result: True
+```
+
+---
+
 ## Architecture (for Developers)
 
-The session system is designed for **portability** — the CLI is just one consumer.
+The session system is designed for **portability** — the CLI is just one consumer. The `SessionState` struct bundles the store and environment for easy management.
 
 ### Engine Modules
 
 | Module | Location | Purpose |
 |--------|----------|---------|
+| `SessionState` | `cas_engine/src/session_state.rs` | Bundles `SessionStore` + `Environment` |
+| `Engine` | `cas_engine/src/eval.rs` | High-level evaluation pipeline |
 | `SessionStore` | `cas_engine/src/session.rs` | Stores expressions with `#id` |
 | `Environment` | `cas_engine/src/env.rs` | Stores variable bindings |
-| `resolve_session_refs()` | `cas_engine/src/session.rs` | Substitutes `#id` references |
+| `resolve_all()` | `cas_engine/src/session_state.rs` | Resolves both `#id` and variables |
 | `substitute()` | `cas_engine/src/env.rs` | Substitutes environment variables |
 
 ### Public API
 
 ```rust
-use cas_engine::{SessionStore, EntryKind, resolve_session_refs};
-use cas_engine::env::{Environment, substitute};
+use cas_engine::eval::{Engine, EvalRequest, EvalAction};
+use cas_engine::session_state::SessionState;
 
-// Create session store
-let mut store = SessionStore::new();
-let id = store.push(EntryKind::Expr(expr_id), "x + 1".to_string());
+// Initialize
+let mut engine = Engine::new();
+let mut state = SessionState::new();
 
-// Resolve #id references
-let resolved = resolve_session_refs(&mut ctx, expr, &store)?;
+// Eval request
+let req = EvalRequest {
+    expression: parsed_expr,
+    action: EvalAction::Simplify, // or Solve, Equiv, etc.
+    auto_store: true,
+};
 
-// Substitute variables
-let substituted = substitute(&mut ctx, &env, resolved);
+// Evaluate (handles storage, resolution, and logic)
+let output = engine.eval(&mut state, req)?;
+println!("Result: {}", output.result);
 ```
 
 ### Key Types

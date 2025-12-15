@@ -65,6 +65,7 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 -   **Session Management**:
     -   Persistent **Session Store** with auto-incrementing IDs (`#1`, `#2`) to reference previous results.
     -   **Environment** for variable bindings (`let a = 5`, `b := a + 1`).
+    -   **Deep Integration**: Use session references directly in `solve` (`solve #1, x`) and `equiv` (`equiv #1, #2`).
     -   Transitive substitution and cycle detection.
     -   See [ENVIRONMENT.md](ENVIRONMENT.md) for full documentation.
 

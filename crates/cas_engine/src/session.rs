@@ -176,44 +176,14 @@ fn resolve_recursive(
     let node = ctx.get(expr).clone();
 
     match node {
-        Expr::SessionRef(id) => {
-            // Check cache first
-            if let Some(&resolved) = cache.get(&id) {
-                return Ok(resolved);
-            }
-
-            // Cycle detection
-            if visiting.contains(&id) {
-                return Err(ResolveError::CircularReference(id));
-            }
-
-            // Get entry from store
-            let entry = store.get(id).ok_or(ResolveError::NotFound(id))?;
-
-            // Mark as visiting for cycle detection
-            visiting.insert(id);
-
-            // Get the expression to substitute
-            let substitution = match &entry.kind {
-                EntryKind::Expr(stored_expr) => {
-                    // Recursively resolve the stored expression (it may contain #refs too)
-                    resolve_recursive(ctx, *stored_expr, store, cache, visiting)?
+        Expr::SessionRef(id) => resolve_session_id(ctx, id, store, cache, visiting),
+        Expr::Variable(ref name) => {
+            if name.starts_with('#') && name.len() > 1 && name[1..].chars().all(char::is_numeric) {
+                if let Ok(id) = name[1..].parse::<u64>() {
+                    return resolve_session_id(ctx, id, store, cache, visiting);
                 }
-                EntryKind::Eq { lhs, rhs } => {
-                    // For equations used as expressions, use residue form: (lhs - rhs)
-                    let resolved_lhs = resolve_recursive(ctx, *lhs, store, cache, visiting)?;
-                    let resolved_rhs = resolve_recursive(ctx, *rhs, store, cache, visiting)?;
-                    ctx.add(Expr::Sub(resolved_lhs, resolved_rhs))
-                }
-            };
-
-            // Done visiting
-            visiting.remove(&id);
-
-            // Cache the result
-            cache.insert(id, substitution);
-
-            Ok(substitution)
+            }
+            Ok(expr)
         }
 
         // Binary operators - recurse into children
@@ -314,11 +284,58 @@ fn resolve_recursive(
         }
 
         // Leaf nodes - no change needed
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => Ok(expr),
+        Expr::Number(_) | Expr::Constant(_) => Ok(expr),
     }
 }
 
-#[cfg(test)]
+fn resolve_session_id(
+    ctx: &mut cas_ast::Context,
+    id: EntryId,
+    store: &SessionStore,
+    cache: &mut HashMap<EntryId, ExprId>,
+    visiting: &mut HashSet<EntryId>,
+) -> Result<ExprId, ResolveError> {
+    use cas_ast::Expr;
+
+    // Check cache first
+    if let Some(&resolved) = cache.get(&id) {
+        return Ok(resolved);
+    }
+
+    // Cycle detection
+    if visiting.contains(&id) {
+        return Err(ResolveError::CircularReference(id));
+    }
+
+    // Get entry from store
+    let entry = store.get(id).ok_or(ResolveError::NotFound(id))?;
+
+    // Mark as visiting for cycle detection
+    visiting.insert(id);
+
+    // Get the expression to substitute
+    let substitution = match &entry.kind {
+        EntryKind::Expr(stored_expr) => {
+            // Recursively resolve the stored expression (it may contain #refs too)
+            resolve_recursive(ctx, *stored_expr, store, cache, visiting)?
+        }
+        EntryKind::Eq { lhs, rhs } => {
+            // For equations used as expressions, use residue form: (lhs - rhs)
+            let resolved_lhs = resolve_recursive(ctx, *lhs, store, cache, visiting)?;
+            let resolved_rhs = resolve_recursive(ctx, *rhs, store, cache, visiting)?;
+            ctx.add(Expr::Sub(resolved_lhs, resolved_rhs))
+        }
+    };
+
+    // Done visiting
+    visiting.remove(&id);
+
+    // Cache the result
+    cache.insert(id, substitution);
+
+    Ok(substitution)
+}
+
 mod tests {
     use super::*;
 

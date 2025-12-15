@@ -117,7 +117,8 @@ fn clean_display_string(s: &str) -> String {
 }
 
 pub struct Repl {
-    simplifier: Simplifier,
+    /// The high-level Engine instance (wraps Simplifier)
+    pub engine: cas_engine::Engine,
     verbosity: Verbosity,
     config: CasConfig,
     /// Options controlling the simplification pipeline (phases, budgets)
@@ -130,10 +131,8 @@ pub struct Repl {
     health_enabled: bool,
     /// Last health report string for `health` command
     last_health_report: Option<String>,
-    /// Session environment for variable bindings
-    env: cas_engine::env::Environment,
-    /// Session store for expression history with #id references
-    session: cas_engine::SessionStore,
+    /// Session state (store + env)
+    state: cas_engine::SessionState,
 }
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
@@ -148,100 +147,62 @@ fn substitute_expr_by_id(
     if root == target {
         return replacement;
     }
-
-    let expr = context.get(root).clone();
-    match expr {
+    match context.get(root).clone() {
         Expr::Add(l, r) => {
             let new_l = substitute_expr_by_id(context, l, target, replacement);
             let new_r = substitute_expr_by_id(context, r, target, replacement);
-            if new_l != l || new_r != r {
+            if new_l == l && new_r == r {
+                root
+            } else {
                 context.add(Expr::Add(new_l, new_r))
-            } else {
-                root
-            }
-        }
-        Expr::Sub(l, r) => {
-            let new_l = substitute_expr_by_id(context, l, target, replacement);
-            let new_r = substitute_expr_by_id(context, r, target, replacement);
-            if new_l != l || new_r != r {
-                context.add(Expr::Sub(new_l, new_r))
-            } else {
-                root
             }
         }
         Expr::Mul(l, r) => {
             let new_l = substitute_expr_by_id(context, l, target, replacement);
             let new_r = substitute_expr_by_id(context, r, target, replacement);
-            if new_l != l || new_r != r {
-                context.add(Expr::Mul(new_l, new_r))
-            } else {
+            if new_l == l && new_r == r {
                 root
+            } else {
+                context.add(Expr::Mul(new_l, new_r))
             }
         }
         Expr::Div(l, r) => {
             let new_l = substitute_expr_by_id(context, l, target, replacement);
             let new_r = substitute_expr_by_id(context, r, target, replacement);
-            if new_l != l || new_r != r {
+            if new_l == l && new_r == r {
+                root
+            } else {
                 context.add(Expr::Div(new_l, new_r))
-            } else {
-                root
             }
         }
-        Expr::Pow(b, e) => {
-            let new_b = substitute_expr_by_id(context, b, target, replacement);
+        Expr::Pow(base, exp) => {
+            let new_base = substitute_expr_by_id(context, base, target, replacement);
+            let new_exp = substitute_expr_by_id(context, exp, target, replacement);
+            if new_base == base && new_exp == exp {
+                root
+            } else {
+                context.add(Expr::Pow(new_base, new_exp))
+            }
+        }
+        Expr::Neg(e) => {
             let new_e = substitute_expr_by_id(context, e, target, replacement);
-            if new_b != b || new_e != e {
-                context.add(Expr::Pow(new_b, new_e))
-            } else {
+            if new_e == e {
                 root
-            }
-        }
-        Expr::Neg(inner) => {
-            let new_inner = substitute_expr_by_id(context, inner, target, replacement);
-            if new_inner != inner {
-                context.add(Expr::Neg(new_inner))
             } else {
-                root
+                context.add(Expr::Neg(new_e))
             }
         }
         Expr::Function(name, args) => {
-            let mut new_args = Vec::new();
-            let mut changed = false;
-            for arg in args.iter() {
-                let new_arg = substitute_expr_by_id(context, *arg, target, replacement);
-                if new_arg != *arg {
-                    changed = true;
-                }
-                new_args.push(new_arg);
-            }
-            if changed {
+            let new_args: Vec<_> = args
+                .iter()
+                .map(|&a| substitute_expr_by_id(context, a, target, replacement))
+                .collect();
+            if new_args == args {
+                root
+            } else {
                 context.add(Expr::Function(name, new_args))
-            } else {
-                root
             }
         }
-        // Matrix: substitute in data elements
-        Expr::Matrix { rows, cols, data } => {
-            let mut new_data = Vec::new();
-            let mut changed = false;
-            for elem in data.iter() {
-                let new_elem = substitute_expr_by_id(context, *elem, target, replacement);
-                if new_elem != *elem {
-                    changed = true;
-                }
-                new_data.push(new_elem);
-            }
-            if changed {
-                context.add(Expr::Matrix {
-                    rows,
-                    cols,
-                    data: new_data,
-                })
-            } else {
-                root
-            }
-        }
-        // Leaf nodes: no substitution possible
         _ => root,
     }
 }
@@ -456,7 +417,7 @@ impl Repl {
         simplifier.add_rule(Box::new(NumberTheoryRule));
 
         let mut repl = Self {
-            simplifier,
+            engine: cas_engine::Engine { simplifier },
             verbosity: Verbosity::Normal,
             config,
             simplify_options: cas_engine::SimplifyOptions::default(),
@@ -464,8 +425,7 @@ impl Repl {
             last_stats: None,
             health_enabled: false,
             last_health_report: None,
-            env: cas_engine::env::Environment::default(),
-            session: cas_engine::SessionStore::new(),
+            state: cas_engine::SessionState::new(),
         };
         repl.sync_config_to_simplifier();
         repl
@@ -474,20 +434,20 @@ impl Repl {
     /// Simplify expression using current pipeline options
     fn do_simplify(&mut self, expr: cas_ast::ExprId) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
         let mut opts = self.simplify_options.clone();
-        opts.collect_steps = self.simplifier.collect_steps;
+        opts.collect_steps = self.engine.simplifier.collect_steps;
 
         // Enable health metrics and clear previous run if explain or health mode is on
         if self.explain_mode || self.health_enabled {
-            self.simplifier.profiler.enable_health();
-            self.simplifier.profiler.clear_run();
+            self.engine.simplifier.profiler.enable_health();
+            self.engine.simplifier.profiler.clear_run();
         }
 
-        let (result, steps, stats) = self.simplifier.simplify_with_stats(expr, opts);
+        let (result, steps, stats) = self.engine.simplifier.simplify_with_stats(expr, opts);
 
         // Store health report for the `health` command
         // Always store if health_enabled; for explain-only use threshold
         if self.health_enabled || (self.explain_mode && stats.total_rewrites >= 5) {
-            self.last_health_report = Some(self.simplifier.profiler.health_report());
+            self.last_health_report = Some(self.engine.simplifier.profiler.health_report());
         }
 
         // Show explain output if enabled
@@ -497,7 +457,7 @@ impl Repl {
             // Policy A+ hint: when simplify makes minimal changes to a Mul expression
             if stats.total_rewrites <= 1 {
                 if matches!(
-                    self.simplifier.context.get(result),
+                    self.engine.simplifier.context.get(result),
                     cas_ast::Expr::Mul(_, _)
                 ) {
                     println!(
@@ -533,6 +493,7 @@ impl Repl {
                 cycle.period, cycle.at_step
             );
             let top = self
+                .engine
                 .simplifier
                 .profiler
                 .top_applied_for_phase(cas_engine::SimplifyPhase::Core, 2);
@@ -551,6 +512,7 @@ impl Repl {
                 cycle.period, cycle.at_step
             );
             let top = self
+                .engine
                 .simplifier
                 .profiler
                 .top_applied_for_phase(cas_engine::SimplifyPhase::Transform, 2);
@@ -582,6 +544,7 @@ impl Repl {
                 cycle.period, cycle.at_step
             );
             let top = self
+                .engine
                 .simplifier
                 .profiler
                 .top_applied_for_phase(cas_engine::SimplifyPhase::Rationalize, 2);
@@ -601,6 +564,7 @@ impl Repl {
                 cycle.period, cycle.at_step
             );
             let top = self
+                .engine
                 .simplifier
                 .profiler
                 .top_applied_for_phase(cas_engine::SimplifyPhase::PostCleanup, 2);
@@ -619,9 +583,9 @@ impl Repl {
         // Helper to toggle rule
         let mut toggle = |name: &str, enabled: bool| {
             if enabled {
-                self.simplifier.enable_rule(name);
+                self.engine.simplifier.enable_rule(name);
             } else {
-                self.simplifier.disable_rule(name);
+                self.engine.simplifier.disable_rule(name);
             }
         };
 
@@ -643,17 +607,21 @@ impl Repl {
         // If auto_factor is on, we enable AutomaticFactorRule AND ConservativeExpandRule.
         // We DISABLE the aggressive ExpandRule to prevent loops.
         if config.auto_factor {
-            self.simplifier.enable_rule("Automatic Factorization");
-            self.simplifier.enable_rule("Conservative Expand");
-            self.simplifier.disable_rule("Expand Polynomial");
-            self.simplifier.disable_rule("Binomial Expansion");
+            self.engine
+                .simplifier
+                .enable_rule("Automatic Factorization");
+            self.engine.simplifier.enable_rule("Conservative Expand");
+            self.engine.simplifier.disable_rule("Expand Polynomial");
+            self.engine.simplifier.disable_rule("Binomial Expansion");
         } else {
-            self.simplifier.disable_rule("Automatic Factorization");
-            self.simplifier.disable_rule("Conservative Expand");
-            self.simplifier.enable_rule("Expand Polynomial");
+            self.engine
+                .simplifier
+                .disable_rule("Automatic Factorization");
+            self.engine.simplifier.disable_rule("Conservative Expand");
+            self.engine.simplifier.enable_rule("Expand Polynomial");
             // Re-enable Binomial Expansion if config says so
             if config.expand_binomials {
-                self.simplifier.enable_rule("Binomial Expansion");
+                self.engine.simplifier.enable_rule("Binomial Expansion");
             }
         }
     }
@@ -803,22 +771,22 @@ impl Repl {
                 match parts[1] {
                     "on" | "normal" => {
                         self.verbosity = Verbosity::Normal;
-                        self.simplifier.collect_steps = true;
+                        self.engine.simplifier.collect_steps = true;
                         println!("Step-by-step output enabled (Normal).");
                     }
                     "off" | "none" => {
                         self.verbosity = Verbosity::None;
-                        self.simplifier.collect_steps = false;
+                        self.engine.simplifier.collect_steps = false;
                         println!("Step-by-step output disabled.");
                     }
                     "verbose" => {
                         self.verbosity = Verbosity::Verbose;
-                        self.simplifier.collect_steps = true;
+                        self.engine.simplifier.collect_steps = true;
                         println!("Step-by-step output enabled (Verbose).");
                     }
                     "succinct" => {
                         self.verbosity = Verbosity::Succinct;
-                        self.simplifier.collect_steps = true;
+                        self.engine.simplifier.collect_steps = true;
                         println!("Step-by-step output enabled (Succinct - compact display).");
                     }
                     _ => println!("Usage: steps <on|off|normal|verbose|succinct|none>"),
@@ -936,19 +904,19 @@ impl Repl {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() == 1 {
                 // Just "profile" - show report
-                println!("{}", self.simplifier.profiler.report());
+                println!("{}", self.engine.simplifier.profiler.report());
             } else {
                 match parts[1] {
                     "enable" => {
-                        self.simplifier.profiler.enable();
+                        self.engine.simplifier.profiler.enable();
                         println!("Profiler enabled.");
                     }
                     "disable" => {
-                        self.simplifier.profiler.disable();
+                        self.engine.simplifier.profiler.disable();
                         println!("Profiler disabled.");
                     }
                     "clear" => {
-                        self.simplifier.profiler.clear();
+                        self.engine.simplifier.profiler.clear();
                         println!("Profiler statistics cleared.");
                     }
                     _ => println!("Usage: profile [enable|disable|clear]"),
@@ -1003,7 +971,7 @@ impl Repl {
                         println!("Health tracking DISABLED");
                     }
                     "reset" | "clear" => {
-                        self.simplifier.profiler.clear_run();
+                        self.engine.simplifier.profiler.clear_run();
                         self.last_health_report = None;
                         println!("Health statistics cleared.");
                     }
@@ -1054,7 +1022,7 @@ impl Repl {
                         println!("Running health status suite [category={}]...\n", cat_msg);
 
                         let results = crate::health_suite::run_suite_filtered(
-                            &mut self.simplifier,
+                            &mut self.engine.simplifier,
                             category_filter,
                         );
                         let report =
@@ -1661,57 +1629,63 @@ impl Repl {
     }
 
     fn handle_equiv(&mut self, line: &str) {
+        use cas_ast::Expr;
+        use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
+        use cas_engine::EntryKind;
+        use cas_parser::Statement;
+
         let rest = line[6..].trim();
         if let Some((expr1_str, expr2_str)) = rsplit_ignoring_parens(rest, ',') {
-            // We need to parse both, but parse takes &mut Context.
-            // We can't borrow self.simplifier.context mutably twice.
-            // So we parse one, then the other.
+            let expr1_str = expr1_str.trim();
+            let expr2_str = expr2_str.trim();
 
-            let e1_res = cas_parser::parse(expr1_str.trim(), &mut self.simplifier.context);
-            match e1_res {
-                Ok(e1) => {
-                    let e2_res = cas_parser::parse(expr2_str.trim(), &mut self.simplifier.context);
-                    match e2_res {
-                        Ok(e2) => {
-                            // Resolve session references (e.g. #1) and variables for E1
-                            let e1 = match cas_engine::resolve_session_refs(
-                                &mut self.simplifier.context,
-                                e1,
-                                &self.session,
-                            ) {
-                                Ok(r) => cas_engine::env::substitute(
-                                    &mut self.simplifier.context,
-                                    &self.env,
-                                    r,
-                                ),
-                                Err(_) => e1,
-                            };
-
-                            // Resolve session references (e.g. #2) and variables for E2
-                            let e2 = match cas_engine::resolve_session_refs(
-                                &mut self.simplifier.context,
-                                e2,
-                                &self.session,
-                            ) {
-                                Ok(r) => cas_engine::env::substitute(
-                                    &mut self.simplifier.context,
-                                    &self.env,
-                                    r,
-                                ),
-                                Err(_) => e2,
-                            };
-
-                            let are_eq = self.simplifier.are_equivalent(e1, e2);
-                            if are_eq {
-                                println!("True");
-                            } else {
-                                println!("False");
-                            }
+            // Helper to parse string to ExprId
+            // Note: We use a block to limit mutable borrow scope if needed, though sequential calls work for separate statements.
+            // But we need to use 'self' to access context inside logic? No, passed as arg.
+            fn parse_arg(s: &str, ctx: &mut cas_ast::Context) -> Result<cas_ast::ExprId, String> {
+                if s.starts_with('#') && s[1..].chars().all(char::is_numeric) {
+                    Ok(ctx.add(Expr::Variable(s.to_string())))
+                } else {
+                    match cas_parser::parse_statement(s, ctx) {
+                        Ok(Statement::Equation(eq)) => {
+                            Ok(ctx.add(Expr::Function("Equal".to_string(), vec![eq.lhs, eq.rhs])))
                         }
-                        Err(e) => println!("Error parsing second expression: {}", e),
+                        Ok(Statement::Expression(e)) => Ok(e),
+                        Err(e) => Err(format!("{}", e)),
                     }
                 }
-                Err(e) => println!("Error parsing first expression: {}", e),
+            }
+
+            let e1_res = parse_arg(expr1_str, &mut self.engine.simplifier.context);
+            // Verify e1_res to avoid borrow issues? No, Result doesn't borrow.
+            let e2_res = parse_arg(expr2_str, &mut self.engine.simplifier.context);
+
+            match (e1_res, e2_res) {
+                (Ok(e1), Ok(e2)) => {
+                    let req = EvalRequest {
+                        raw_input: expr1_str.to_string(),
+                        parsed: e1,
+                        kind: EntryKind::Expr(e1),
+                        action: EvalAction::Equiv { other: e2 },
+                        auto_store: false,
+                    };
+
+                    match self.engine.eval(&mut self.state, req) {
+                        Ok(output) => match output.result {
+                            EvalResult::Bool(b) => {
+                                if b {
+                                    println!("True")
+                                } else {
+                                    println!("False")
+                                }
+                            }
+                            _ => println!("Unexpected result type"),
+                        },
+                        Err(e) => println!("Error: {}", e),
+                    }
+                }
+                (Err(e), _) => println!("Error parsing first arg: {}", e),
+                (_, Err(e)) => println!("Error parsing second arg: {}", e),
             }
         } else {
             println!("Usage: equiv <expr1>, <expr2>");
@@ -1739,24 +1713,24 @@ impl Repl {
             let val_str = val_str.trim();
 
             // Parse expr first
-            match cas_parser::parse(expr_str, &mut self.simplifier.context) {
+            match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
                 Ok(expr) => {
                     // Parse val
-                    match cas_parser::parse(val_str, &mut self.simplifier.context) {
+                    match cas_parser::parse(val_str, &mut self.engine.simplifier.context) {
                         Ok(val_expr) => {
                             if self.verbosity != Verbosity::None {
                                 println!("Substituting {} = {} into {}", var, val_str, expr_str);
                             }
                             // Substitute
-                            let target_var = self.simplifier.context.var(var);
+                            let target_var = self.engine.simplifier.context.var(var);
                             let subbed = cas_engine::solver::strategies::substitute_expr(
-                                &mut self.simplifier.context,
+                                &mut self.engine.simplifier.context,
                                 expr,
                                 target_var,
                                 val_expr,
                             );
 
-                            let (result, steps) = self.simplifier.simplify(subbed);
+                            let (result, steps) = self.engine.simplifier.simplify(subbed);
                             if self.verbosity != Verbosity::None {
                                 if self.verbosity != Verbosity::Succinct {
                                     println!("Steps:");
@@ -1770,7 +1744,7 @@ impl Repl {
                                         if self.verbosity == Verbosity::Succinct {
                                             // Low mode: just global state
                                             current_root = reconstruct_global_expr(
-                                                &mut self.simplifier.context,
+                                                &mut self.engine.simplifier.context,
                                                 current_root,
                                                 &step.path,
                                                 step.after,
@@ -1778,7 +1752,7 @@ impl Repl {
                                             println!(
                                                 "-> {}",
                                                 DisplayExpr {
-                                                    context: &self.simplifier.context,
+                                                    context: &self.engine.simplifier.context,
                                                     id: current_root
                                                 }
                                             );
@@ -1799,7 +1773,10 @@ impl Repl {
                                                         clean_display_string(&format!(
                                                             "{}",
                                                             DisplayExpr {
-                                                                context: &self.simplifier.context,
+                                                                context: &self
+                                                                    .engine
+                                                                    .simplifier
+                                                                    .context,
                                                                 id: global_before,
                                                             }
                                                         ))
@@ -1810,7 +1787,10 @@ impl Repl {
                                                         clean_display_string(&format!(
                                                             "{}",
                                                             DisplayExpr {
-                                                                context: &self.simplifier.context,
+                                                                context: &self
+                                                                    .engine
+                                                                    .simplifier
+                                                                    .context,
                                                                 id: current_root,
                                                             }
                                                         ))
@@ -1824,7 +1804,10 @@ impl Repl {
                                                     format!(
                                                         "{}",
                                                         DisplayExpr {
-                                                            context: &self.simplifier.context,
+                                                            context: &self
+                                                                .engine
+                                                                .simplifier
+                                                                .context,
                                                             id: step.after
                                                         }
                                                     )
@@ -1834,7 +1817,10 @@ impl Repl {
                                                     clean_display_string(&format!(
                                                         "{}",
                                                         DisplayExpr {
-                                                            context: &self.simplifier.context,
+                                                            context: &self
+                                                                .engine
+                                                                .simplifier
+                                                                .context,
                                                             id: step.before
                                                         }
                                                     )),
@@ -1848,7 +1834,7 @@ impl Repl {
                                             } else {
                                                 // Use identity-based substitution instead of path-based reconstruction
                                                 current_root = substitute_expr_by_id(
-                                                    &mut self.simplifier.context,
+                                                    &mut self.engine.simplifier.context,
                                                     current_root,
                                                     step.before,
                                                     step.after,
@@ -1864,7 +1850,10 @@ impl Repl {
                                                     clean_display_string(&format!(
                                                         "{}",
                                                         DisplayExpr {
-                                                            context: &self.simplifier.context,
+                                                            context: &self
+                                                                .engine
+                                                                .simplifier
+                                                                .context,
                                                             id: current_root,
                                                         }
                                                     ))
@@ -1876,7 +1865,7 @@ impl Repl {
                                             current_root = global_after;
                                         } else {
                                             current_root = substitute_expr_by_id(
-                                                &mut self.simplifier.context,
+                                                &mut self.engine.simplifier.context,
                                                 current_root,
                                                 step.before,
                                                 step.after,
@@ -1888,7 +1877,7 @@ impl Repl {
                             println!(
                                 "Result: {}",
                                 DisplayExpr {
-                                    context: &self.simplifier.context,
+                                    context: &self.engine.simplifier.context,
                                     id: result
                                 }
                             );
@@ -1933,27 +1922,36 @@ impl Repl {
             temp_simplifier.collect_steps = true; // Always collect steps for timeline
 
             // Swap context to preserve variables
-            std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+            std::mem::swap(
+                &mut self.engine.simplifier.context,
+                &mut temp_simplifier.context,
+            );
 
             match cas_parser::parse(expr_str.trim(), &mut temp_simplifier.context) {
                 Ok(expr) => {
                     let (simplified, steps) = temp_simplifier.simplify(expr);
 
                     // Swap context back
-                    std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+                    std::mem::swap(
+                        &mut self.engine.simplifier.context,
+                        &mut temp_simplifier.context,
+                    );
 
                     (steps, expr, simplified)
                 }
                 Err(e) => {
                     // Swap context back even on error
-                    std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+                    std::mem::swap(
+                        &mut self.engine.simplifier.context,
+                        &mut temp_simplifier.context,
+                    );
                     println!("Parse error: {}", e);
                     return;
                 }
             }
         } else {
             // Use normal simplification
-            match cas_parser::parse(expr_str.trim(), &mut self.simplifier.context) {
+            match cas_parser::parse(expr_str.trim(), &mut self.engine.simplifier.context) {
                 Ok(expr) => {
                     let (simplified, steps) = self.do_simplify(expr);
                     (steps, expr, simplified)
@@ -1973,7 +1971,7 @@ impl Repl {
         // Filter out non-productive steps (where global state doesn't change)
         // But pass ALL steps to timeline so it can correctly compute final result
         let _filtered_steps = cas_engine::strategies::filter_non_productive_steps(
-            &mut self.simplifier.context,
+            &mut self.engine.simplifier.context,
             expr_id,
             steps.clone(),
         );
@@ -1987,7 +1985,7 @@ impl Repl {
 
         // Generate HTML timeline with ALL steps and the known simplified result
         let mut timeline = cas_engine::timeline::TimelineHtml::new_with_result(
-            &mut self.simplifier.context,
+            &mut self.engine.simplifier.context,
             &steps,
             expr_id,
             Some(simplified),
@@ -2022,9 +2020,10 @@ impl Repl {
         }
         .trim();
 
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
-                let mut viz = cas_engine::visualizer::AstVisualizer::new(&self.simplifier.context);
+                let mut viz =
+                    cas_engine::visualizer::AstVisualizer::new(&self.engine.simplifier.context);
                 let dot = viz.to_dot(expr);
 
                 // Save to file
@@ -2046,17 +2045,17 @@ impl Repl {
         let rest = line[8..].trim(); // Remove "explain "
 
         // Parse the expression
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
                 // Check if it's a function call
-                let expr_data = self.simplifier.context.get(expr).clone();
+                let expr_data = self.engine.simplifier.context.get(expr).clone();
                 if let Expr::Function(name, args) = expr_data {
                     match name.as_str() {
                         "gcd" => {
                             if args.len() == 2 {
                                 // Call the explain_gcd function
                                 let result = cas_engine::rules::number_theory::explain_gcd(
-                                    &mut self.simplifier.context,
+                                    &mut self.engine.simplifier.context,
                                     args[0],
                                     args[1],
                                 );
@@ -2077,7 +2076,7 @@ impl Repl {
                                     println!(
                                         "Result: {}",
                                         DisplayExpr {
-                                            context: &self.simplifier.context,
+                                            context: &self.engine.simplifier.context,
                                             id: result_expr
                                         }
                                     );
@@ -2141,22 +2140,27 @@ impl Repl {
         }
 
         // Parse the expression
-        match cas_parser::parse(expr_str, &mut self.simplifier.context) {
+        match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
             Ok(rhs_expr) => {
                 // Temporarily remove this binding to prevent self-reference in substitute
-                let old_binding = self.env.get(name).map(|id| id);
-                self.env.unset(name);
+                let old_binding = self.state.env.get(name).map(|id| id);
+                self.state.env.unset(name);
 
-                // Substitute using current environment (allows a = b+1 where b is defined)
-                let rhs_substituted =
-                    cas_engine::env::substitute(&mut self.simplifier.context, &self.env, rhs_expr);
+                // Substitute using current environment and session refs
+                let rhs_substituted = match self
+                    .state
+                    .resolve_all(&mut self.engine.simplifier.context, rhs_expr)
+                {
+                    Ok(r) => r,
+                    Err(_) => rhs_expr,
+                };
 
                 // Store the binding
-                self.env.set(name.to_string(), rhs_substituted);
+                self.state.env.set(name.to_string(), rhs_substituted);
 
                 // Display confirmation
                 let display = cas_ast::DisplayExpr {
-                    context: &self.simplifier.context,
+                    context: &self.engine.simplifier.context,
                     id: rhs_substituted,
                 };
                 println!("{} = {}", name, display);
@@ -2172,14 +2176,14 @@ impl Repl {
 
     /// Handle "vars" command - list all variable bindings
     fn handle_vars_command(&self) {
-        let bindings = self.env.list();
+        let bindings = self.state.env.list();
         if bindings.is_empty() {
             println!("No variables defined.");
         } else {
             println!("Variables:");
             for (name, expr_id) in bindings {
                 let display = cas_ast::DisplayExpr {
-                    context: &self.simplifier.context,
+                    context: &self.engine.simplifier.context,
                     id: expr_id,
                 };
                 println!("  {} = {}", name, display);
@@ -2191,8 +2195,8 @@ impl Repl {
     fn handle_clear_command(&mut self, line: &str) {
         if line == "clear" {
             // Clear all
-            let count = self.env.len();
-            self.env.clear_all();
+            let count = self.state.env.len();
+            self.state.env.clear_all();
             if count == 0 {
                 println!("No variables to clear.");
             } else {
@@ -2203,7 +2207,7 @@ impl Repl {
             let names: Vec<&str> = line[6..].split_whitespace().collect();
             let mut cleared = 0;
             for name in names {
-                if self.env.unset(name) {
+                if self.state.env.unset(name) {
                     cleared += 1;
                 } else {
                     println!("Warning: '{}' was not defined", name);
@@ -2217,37 +2221,42 @@ impl Repl {
 
     /// Handle "reset" command - reset entire session
     fn handle_reset_command(&mut self) {
-        // Clear environment
-        self.env.clear_all();
-        // Clear session history explicitly to avoid referencing invalid ExprIds from destroyed context
-        // This fixes the OOB panic when calling 'list' after 'reset'
-        self.session.clear();
+        // Clear session state (history + env)
+        self.state.clear();
 
         // Reset simplifier with new context
-        self.simplifier = Simplifier::with_default_rules();
+        self.engine.simplifier = Simplifier::with_default_rules();
 
         // Re-register custom rules (same as in new())
-        self.simplifier
+        self.engine
+            .simplifier
             .add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
-        self.simplifier.add_rule(Box::new(EvaluateTrigRule));
-        self.simplifier.add_rule(Box::new(PythagoreanIdentityRule));
+        self.engine.simplifier.add_rule(Box::new(EvaluateTrigRule));
+        self.engine
+            .simplifier
+            .add_rule(Box::new(PythagoreanIdentityRule));
         if self.config.trig_angle_sum {
-            self.simplifier.add_rule(Box::new(AngleIdentityRule));
+            self.engine.simplifier.add_rule(Box::new(AngleIdentityRule));
         }
-        self.simplifier.add_rule(Box::new(TanToSinCosRule));
+        self.engine.simplifier.add_rule(Box::new(TanToSinCosRule));
         if self.config.trig_double_angle {
-            self.simplifier.add_rule(Box::new(DoubleAngleRule));
+            self.engine.simplifier.add_rule(Box::new(DoubleAngleRule));
         }
         if self.config.canonicalize_trig_square {
-            self.simplifier.add_rule(Box::new(
+            self.engine.simplifier.add_rule(Box::new(
                 cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
             ));
         }
-        self.simplifier.add_rule(Box::new(EvaluateLogRule));
-        self.simplifier.add_rule(Box::new(ExponentialLogRule));
-        self.simplifier.add_rule(Box::new(SimplifyFractionRule));
-        self.simplifier.add_rule(Box::new(ExpandRule));
-        self.simplifier
+        self.engine.simplifier.add_rule(Box::new(EvaluateLogRule));
+        self.engine
+            .simplifier
+            .add_rule(Box::new(ExponentialLogRule));
+        self.engine
+            .simplifier
+            .add_rule(Box::new(SimplifyFractionRule));
+        self.engine.simplifier.add_rule(Box::new(ExpandRule));
+        self.engine
+            .simplifier
             .add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
 
         // Sync config
@@ -2264,7 +2273,7 @@ impl Repl {
 
     /// Handle "history" or "list" command - show session history
     fn handle_history_command(&self) {
-        let entries = self.session.list();
+        let entries = self.state.store.list();
         if entries.is_empty() {
             println!("No entries in session history.");
             return;
@@ -2282,7 +2291,7 @@ impl Repl {
                     format!(
                         "{}",
                         cas_ast::DisplayExpr {
-                            context: &self.simplifier.context,
+                            context: &self.engine.simplifier.context,
                             id: *expr_id
                         }
                     )
@@ -2291,11 +2300,11 @@ impl Repl {
                     format!(
                         "{} = {}",
                         cas_ast::DisplayExpr {
-                            context: &self.simplifier.context,
+                            context: &self.engine.simplifier.context,
                             id: *lhs
                         },
                         cas_ast::DisplayExpr {
-                            context: &self.simplifier.context,
+                            context: &self.engine.simplifier.context,
                             id: *rhs
                         }
                     )
@@ -2310,7 +2319,7 @@ impl Repl {
         let input = line.trim().trim_start_matches('#');
         match input.parse::<u64>() {
             Ok(id) => {
-                if let Some(entry) = self.session.get(id) {
+                if let Some(entry) = self.state.store.get(id) {
                     println!("Entry #{}:", id);
                     println!("  Type:       {}", entry.type_str());
                     println!("  Raw:        {}", entry.raw_text);
@@ -2321,41 +2330,36 @@ impl Repl {
                             println!(
                                 "  Parsed:     {}",
                                 DisplayExpr {
-                                    context: &self.simplifier.context,
+                                    context: &self.engine.simplifier.context,
                                     id: *expr_id
                                 }
                             );
 
                             // Show resolved (after #id and env substitution)
-                            let resolved = match cas_engine::resolve_session_refs(
-                                &mut self.simplifier.context,
-                                *expr_id,
-                                &self.session,
-                            ) {
-                                Ok(r) => cas_engine::env::substitute(
-                                    &mut self.simplifier.context,
-                                    &self.env,
-                                    r,
-                                ),
+                            let resolved = match self
+                                .state
+                                .resolve_all(&mut self.engine.simplifier.context, *expr_id)
+                            {
+                                Ok(r) => r,
                                 Err(_) => *expr_id,
                             };
                             if resolved != *expr_id {
                                 println!(
                                     "  Resolved:   {}",
                                     DisplayExpr {
-                                        context: &self.simplifier.context,
+                                        context: &self.engine.simplifier.context,
                                         id: resolved
                                     }
                                 );
                             }
 
                             // Show simplified
-                            let (simplified, _) = self.simplifier.simplify(resolved);
+                            let (simplified, _) = self.engine.simplifier.simplify(resolved);
                             if simplified != resolved {
                                 println!(
                                     "  Simplified: {}",
                                     DisplayExpr {
-                                        context: &self.simplifier.context,
+                                        context: &self.engine.simplifier.context,
                                         id: simplified
                                     }
                                 );
@@ -2366,14 +2370,14 @@ impl Repl {
                             println!(
                                 "  LHS:        {}",
                                 DisplayExpr {
-                                    context: &self.simplifier.context,
+                                    context: &self.engine.simplifier.context,
                                     id: *lhs
                                 }
                             );
                             println!(
                                 "  RHS:        {}",
                                 DisplayExpr {
-                                    context: &self.simplifier.context,
+                                    context: &self.engine.simplifier.context,
                                     id: *rhs
                                 }
                             );
@@ -2408,9 +2412,9 @@ impl Repl {
             return;
         }
 
-        let before_len = self.session.len();
-        self.session.remove(&ids);
-        let removed = before_len - self.session.len();
+        let before_len = self.state.store.len();
+        self.state.store.remove(&ids);
+        let removed = before_len - self.state.store.len();
 
         if removed > 0 {
             let id_str: Vec<String> = ids.iter().map(|id| format!("#{}", id)).collect();
@@ -2426,16 +2430,17 @@ impl Repl {
         let rest = line[4..].trim(); // Remove "det "
 
         // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
                 // Wrap in det() function call
                 let det_expr = self
+                    .engine
                     .simplifier
                     .context
                     .add(Expr::Function("det".to_string(), vec![expr]));
 
                 // Simplify to compute determinant
-                let (result, steps) = self.simplifier.simplify(det_expr);
+                let (result, steps) = self.engine.simplifier.simplify(det_expr);
 
                 println!("Parsed: det({})", rest);
 
@@ -2453,7 +2458,7 @@ impl Repl {
                 println!(
                     "Result: {}",
                     DisplayExpr {
-                        context: &self.simplifier.context,
+                        context: &self.engine.simplifier.context,
                         id: result
                     }
                 );
@@ -2466,16 +2471,17 @@ impl Repl {
         let rest = line[10..].trim(); // Remove "transpose "
 
         // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
                 // Wrap in transpose() function call
                 let transpose_expr = self
+                    .engine
                     .simplifier
                     .context
                     .add(Expr::Function("transpose".to_string(), vec![expr]));
 
                 // Simplify to compute transpose
-                let (result, steps) = self.simplifier.simplify(transpose_expr);
+                let (result, steps) = self.engine.simplifier.simplify(transpose_expr);
 
                 println!("Parsed: transpose({})", rest);
 
@@ -2490,7 +2496,7 @@ impl Repl {
                 println!(
                     "Result: {}",
                     DisplayExpr {
-                        context: &self.simplifier.context,
+                        context: &self.engine.simplifier.context,
                         id: result
                     }
                 );
@@ -2503,16 +2509,17 @@ impl Repl {
         let rest = line[6..].trim(); // Remove "trace "
 
         // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
                 // Wrap in trace() function call
                 let trace_expr = self
+                    .engine
                     .simplifier
                     .context
                     .add(Expr::Function("trace".to_string(), vec![expr]));
 
                 // Simplify to compute trace
-                let (result, steps) = self.simplifier.simplify(trace_expr);
+                let (result, steps) = self.engine.simplifier.simplify(trace_expr);
 
                 println!("Parsed: trace({})", rest);
 
@@ -2527,7 +2534,7 @@ impl Repl {
                 println!(
                     "Result: {}",
                     DisplayExpr {
-                        context: &self.simplifier.context,
+                        context: &self.engine.simplifier.context,
                         id: result
                     }
                 );
@@ -2547,16 +2554,17 @@ impl Repl {
         }
 
         // Parse the expression
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
                 println!("Parsed: {}", rest);
                 println!();
 
                 // Apply telescoping strategy
-                let result = cas_engine::telescoping::telescope(&mut self.simplifier.context, expr);
+                let result =
+                    cas_engine::telescoping::telescope(&mut self.engine.simplifier.context, expr);
 
                 // Print formatted output
-                println!("{}", result.format(&self.simplifier.context));
+                println!("{}", result.format(&self.engine.simplifier.context));
             }
             Err(e) => println!("Parse error: {}", e),
         }
@@ -2575,26 +2583,27 @@ impl Repl {
             return;
         }
 
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
                 println!(
                     "Parsed: {}",
                     DisplayExpr {
-                        context: &self.simplifier.context,
+                        context: &self.engine.simplifier.context,
                         id: expr
                     }
                 );
 
                 // Use the expansion module directly (bypasses DistributeRule guards)
-                let expanded = cas_engine::expand::expand(&mut self.simplifier.context, expr);
+                let expanded =
+                    cas_engine::expand::expand(&mut self.engine.simplifier.context, expr);
 
                 // Simplify to clean up the result
-                let (simplified, _steps) = self.simplifier.simplify(expanded);
+                let (simplified, _steps) = self.engine.simplifier.simplify(expanded);
 
                 println!(
                     "Result: {}",
                     DisplayExpr {
-                        context: &self.simplifier.context,
+                        context: &self.engine.simplifier.context,
                         id: simplified
                     }
                 );
@@ -2620,7 +2629,7 @@ impl Repl {
         }
 
         // Parse the expression
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
                 use cas_ast::DisplayExpr;
                 println!("Parsed: {}", rest);
@@ -2633,7 +2642,7 @@ impl Repl {
                 let result_str = format!(
                     "{}",
                     DisplayExpr {
-                        context: &self.simplifier.context,
+                        context: &self.engine.simplifier.context,
                         id: result
                     }
                 );
@@ -2643,11 +2652,11 @@ impl Repl {
                 // Try to simplify the result
                 println!();
                 println!("Simplifying...");
-                let (simplified, _steps) = self.simplifier.simplify(result);
+                let (simplified, _steps) = self.engine.simplifier.simplify(result);
                 let simplified_str = format!(
                     "{}",
                     DisplayExpr {
-                        context: &self.simplifier.context,
+                        context: &self.engine.simplifier.context,
                         id: simplified
                     }
                 );
@@ -2661,57 +2670,82 @@ impl Repl {
     fn apply_weierstrass_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
         use cas_ast::Expr;
 
-        match self.simplifier.context.get(expr).clone() {
+        match self.engine.simplifier.context.get(expr).clone() {
             Expr::Function(name, args)
                 if matches!(name.as_str(), "sin" | "cos" | "tan") && args.len() == 1 =>
             {
                 let arg = args[0];
 
                 // Build t = tan(x/2) as sin(x/2)/cos(x/2)
-                let two_num = self.simplifier.context.num(2);
-                let half_arg = self.simplifier.context.add(Expr::Div(arg, two_num));
+                let two_num = self.engine.simplifier.context.num(2);
+                let half_arg = self.engine.simplifier.context.add(Expr::Div(arg, two_num));
                 let sin_half = self
+                    .engine
                     .simplifier
                     .context
                     .add(Expr::Function("sin".to_string(), vec![half_arg]));
                 let cos_half = self
+                    .engine
                     .simplifier
                     .context
                     .add(Expr::Function("cos".to_string(), vec![half_arg]));
-                let t = self.simplifier.context.add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
+                let t = self
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
 
                 // Apply appropriate transformation
                 match name.as_str() {
                     "sin" => {
                         // sin(x) → 2t/(1+t²)
-                        let two = self.simplifier.context.num(2);
-                        let one = self.simplifier.context.num(1);
-                        let t_squared = self.simplifier.context.add(Expr::Pow(t, two));
-                        let numerator = self.simplifier.context.add(Expr::Mul(two, t));
-                        let denominator = self.simplifier.context.add(Expr::Add(one, t_squared));
-                        self.simplifier
+                        let two = self.engine.simplifier.context.num(2);
+                        let one = self.engine.simplifier.context.num(1);
+                        let t_squared = self.engine.simplifier.context.add(Expr::Pow(t, two));
+                        let numerator = self.engine.simplifier.context.add(Expr::Mul(two, t));
+                        let denominator = self
+                            .engine
+                            .simplifier
+                            .context
+                            .add(Expr::Add(one, t_squared));
+                        self.engine
+                            .simplifier
                             .context
                             .add(Expr::Div(numerator, denominator))
                     }
                     "cos" => {
                         // cos(x) → (1-t²)/(1+t²)
-                        let one = self.simplifier.context.num(1);
-                        let two = self.simplifier.context.num(2);
-                        let t_squared = self.simplifier.context.add(Expr::Pow(t, two));
-                        let numerator = self.simplifier.context.add(Expr::Sub(one, t_squared));
-                        let denominator = self.simplifier.context.add(Expr::Add(one, t_squared));
-                        self.simplifier
+                        let one = self.engine.simplifier.context.num(1);
+                        let two = self.engine.simplifier.context.num(2);
+                        let t_squared = self.engine.simplifier.context.add(Expr::Pow(t, two));
+                        let numerator = self
+                            .engine
+                            .simplifier
+                            .context
+                            .add(Expr::Sub(one, t_squared));
+                        let denominator = self
+                            .engine
+                            .simplifier
+                            .context
+                            .add(Expr::Add(one, t_squared));
+                        self.engine
+                            .simplifier
                             .context
                             .add(Expr::Div(numerator, denominator))
                     }
                     "tan" => {
                         // tan(x) → 2t/(1-t²)
-                        let two = self.simplifier.context.num(2);
-                        let one = self.simplifier.context.num(1);
-                        let t_squared = self.simplifier.context.add(Expr::Pow(t, two));
-                        let numerator = self.simplifier.context.add(Expr::Mul(two, t));
-                        let denominator = self.simplifier.context.add(Expr::Sub(one, t_squared));
-                        self.simplifier
+                        let two = self.engine.simplifier.context.num(2);
+                        let one = self.engine.simplifier.context.num(1);
+                        let t_squared = self.engine.simplifier.context.add(Expr::Pow(t, two));
+                        let numerator = self.engine.simplifier.context.add(Expr::Mul(two, t));
+                        let denominator = self
+                            .engine
+                            .simplifier
+                            .context
+                            .add(Expr::Sub(one, t_squared));
+                        self.engine
+                            .simplifier
                             .context
                             .add(Expr::Div(numerator, denominator))
                     }
@@ -2721,31 +2755,34 @@ impl Repl {
             Expr::Add(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
-                self.simplifier.context.add(Expr::Add(new_l, new_r))
+                self.engine.simplifier.context.add(Expr::Add(new_l, new_r))
             }
             Expr::Sub(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
-                self.simplifier.context.add(Expr::Sub(new_l, new_r))
+                self.engine.simplifier.context.add(Expr::Sub(new_l, new_r))
             }
             Expr::Mul(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
-                self.simplifier.context.add(Expr::Mul(new_l, new_r))
+                self.engine.simplifier.context.add(Expr::Mul(new_l, new_r))
             }
             Expr::Div(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
-                self.simplifier.context.add(Expr::Div(new_l, new_r))
+                self.engine.simplifier.context.add(Expr::Div(new_l, new_r))
             }
             Expr::Pow(base, exp) => {
                 let new_base = self.apply_weierstrass_recursive(base);
                 let new_exp = self.apply_weierstrass_recursive(exp);
-                self.simplifier.context.add(Expr::Pow(new_base, new_exp))
+                self.engine
+                    .simplifier
+                    .context
+                    .add(Expr::Pow(new_base, new_exp))
             }
             Expr::Neg(e) => {
                 let new_e = self.apply_weierstrass_recursive(e);
-                self.simplifier.context.add(Expr::Neg(new_e))
+                self.engine.simplifier.context.add(Expr::Neg(new_e))
             }
             Expr::Function(name, args) => {
                 // Recurse into function arguments
@@ -2753,7 +2790,8 @@ impl Repl {
                     .iter()
                     .map(|&a| self.apply_weierstrass_recursive(a))
                     .collect();
-                self.simplifier
+                self.engine
+                    .simplifier
                     .context
                     .add(Expr::Function(name.clone(), new_args))
             }
@@ -2779,25 +2817,28 @@ impl Repl {
             }
         };
 
-        match cas_parser::parse_statement(eq_str, &mut self.simplifier.context) {
+        match cas_parser::parse_statement(eq_str, &mut self.engine.simplifier.context) {
             Ok(cas_parser::Statement::Equation(eq)) => {
                 // Call solver with step collection enabled
-                self.simplifier.collect_steps = true;
+                self.engine.simplifier.collect_steps = true;
 
-                match cas_engine::solver::solve(&eq, var, &mut self.simplifier) {
+                match cas_engine::solver::solve(&eq, var, &mut self.engine.simplifier) {
                     Ok((solution_set, steps)) => {
                         if steps.is_empty() {
                             println!("No solving steps to visualize.");
                             println!(
                                 "Result: {}",
-                                display_solution_set(&self.simplifier.context, &solution_set)
+                                display_solution_set(
+                                    &self.engine.simplifier.context,
+                                    &solution_set
+                                )
                             );
                             return;
                         }
 
                         // Generate HTML timeline for solve steps
                         let mut timeline = cas_engine::timeline::SolveTimelineHtml::new(
-                            &mut self.simplifier.context,
+                            &mut self.engine.simplifier.context,
                             &steps,
                             &eq,
                             &solution_set,
@@ -2811,7 +2852,10 @@ impl Repl {
                                 println!("Solve timeline exported to {}", filename);
                                 println!(
                                     "Result: {}",
-                                    display_solution_set(&self.simplifier.context, &solution_set)
+                                    display_solution_set(
+                                        &self.engine.simplifier.context,
+                                        &solution_set
+                                    )
                                 );
                                 println!("Open in browser to view interactive visualization.");
 
@@ -2838,6 +2882,11 @@ impl Repl {
     }
 
     fn handle_solve(&mut self, line: &str) {
+        use cas_ast::{DisplayExpr, Expr};
+        use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
+        use cas_engine::EntryKind;
+        use cas_parser::Statement;
+
         // solve <equation>, <var>
         let rest = line[6..].trim();
 
@@ -2846,8 +2895,6 @@ impl Repl {
             (e.trim(), v.trim())
         } else {
             // No comma. Try to see if it looks like "eq var"
-            // We only accept "eq var" if "eq" is a valid equation.
-            // Otherwise, we assume the whole string is the equation (e.g. "ln(x) = a + b")
             if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
                 let v_trim = v.trim();
                 // Check if v is a variable name (alphabetic)
@@ -2861,686 +2908,551 @@ impl Repl {
             }
         };
 
-        // Check if eq_str is a session reference (e.g., "#1")
-        let eq_str_trimmed = eq_str.trim().trim_start_matches('#');
-        let session_eq: Option<cas_ast::Equation> = if eq_str.trim().starts_with('#') {
-            if let Ok(id) = eq_str_trimmed.parse::<u64>() {
-                if let Some(entry) = self.session.get(id) {
-                    match &entry.kind {
-                        cas_engine::EntryKind::Eq { lhs, rhs } => Some(cas_ast::Equation {
-                            lhs: *lhs,
-                            rhs: *rhs,
-                            op: cas_ast::RelOp::Eq,
-                        }),
-                        cas_engine::EntryKind::Expr(_) => {
-                            println!("Error: Entry #{} is an expression, not an equation.", id);
-                            println!(
-                                "Hint: Use 'solve <expr> = <value>, <var>' to solve an expression."
-                            );
-                            return;
-                        }
-                    }
-                } else {
-                    println!(
-                        "Error: Entry #{} not found. Use 'history' to see available entries.",
-                        id
-                    );
-                    return;
-                }
+        // Parse equation part
+        // Style signals handled during display logic mostly, removing invalid context access
+
+        // Handle #id manually as Variable to let Engine resolve it, or parse string
+        let parsed_expr_res =
+            if eq_str.starts_with('#') && eq_str[1..].chars().all(char::is_numeric) {
+                // Pass as Variable("#id") - the engine will now handle this resolution!
+                Ok(Statement::Expression(
+                    self.engine
+                        .simplifier
+                        .context
+                        .add(Expr::Variable(eq_str.to_string())),
+                ))
             } else {
-                None
-            }
-        } else {
-            None
-        };
+                cas_parser::parse_statement(eq_str, &mut self.engine.simplifier.context)
+            };
 
-        // Use session equation if found, otherwise parse the string
-        let eq_result = if let Some(eq) = session_eq {
-            Ok(eq)
-        } else {
-            match cas_parser::parse_statement(eq_str, &mut self.simplifier.context) {
-                Ok(cas_parser::Statement::Equation(eq)) => Ok(eq),
-                Ok(cas_parser::Statement::Expression(_)) => {
-                    Err("Expected an equation, got an expression.".to_string())
-                }
-                Err(e) => Err(format!("{}", e)),
-            }
-        };
-
-        match eq_result {
-            Ok(eq) => {
-                // Check if variable exists in equation
-                // We should simplify the equation first to handle cases like "ln(x) + ln(x) = 2" -> "2*ln(x) = 2"
-                let (sim_lhs, steps_lhs) = self.simplifier.simplify(eq.lhs);
-                let (sim_rhs, steps_rhs) = self.simplifier.simplify(eq.rhs);
-
-                if self.verbosity != Verbosity::None
-                    && (!steps_lhs.is_empty() || !steps_rhs.is_empty())
-                {
-                    if self.verbosity != Verbosity::Succinct {
-                        println!("Simplification Steps:");
-                    }
-                    for (i, step) in steps_lhs.iter().enumerate() {
-                        if should_show_step(step, self.verbosity) {
-                            if self.verbosity == Verbosity::Succinct {
-                                // Low mode: just global state? No, for solve simplification we don't track global state easily here
-                                // because steps_lhs are local to lhs.
-                                // We can show the result of the step on LHS.
-                                // But wait, solve simplification is just pre-simplification.
-                                // Let's just show it if not Low.
-                                // Or if Low, maybe we skip pre-simplification steps display?
-                                // User said "Low mode only shows global changes".
-                                // For solve, the "Global" is the equation.
-                                // But here we simplify LHS and RHS separately.
-                                // Let's skip detailed steps in Low mode for pre-simplification,
-                                // and just show the simplified equation.
-                            } else {
-                                println!(
-                                    "LHS {}. {}  [{}]",
-                                    i + 1,
-                                    step.description,
-                                    step.rule_name
-                                );
-                                let after_disp = if let Some(s) = &step.after_str {
-                                    s.clone()
-                                } else {
-                                    format!(
-                                        "{}",
-                                        DisplayExpr {
-                                            context: &self.simplifier.context,
-                                            id: step.after
-                                        }
-                                    )
-                                };
-                                println!(
-                                    "   Rule: {} -> {}",
-                                    DisplayExpr {
-                                        context: &self.simplifier.context,
-                                        id: step.before
-                                    },
-                                    after_disp
-                                );
-                            }
-                        }
-                    }
-                    for (i, step) in steps_rhs.iter().enumerate() {
-                        if should_show_step(step, self.verbosity) {
-                            if self.verbosity != Verbosity::Succinct {
-                                println!(
-                                    "RHS {}. {}  [{}]",
-                                    i + 1,
-                                    step.description,
-                                    step.rule_name
-                                );
-                                let after_disp = if let Some(s) = &step.after_str {
-                                    s.clone()
-                                } else {
-                                    format!(
-                                        "{}",
-                                        DisplayExpr {
-                                            context: &self.simplifier.context,
-                                            id: step.after
-                                        }
-                                    )
-                                };
-                                println!(
-                                    "   Rule: {} -> {}",
-                                    DisplayExpr {
-                                        context: &self.simplifier.context,
-                                        id: step.before
-                                    },
-                                    after_disp
-                                );
-                            }
-                        }
-                    }
-                    if self.verbosity != Verbosity::Succinct {
-                        println!(
-                            "Solving simplified equation: {} {} {}",
-                            DisplayExpr {
-                                context: &self.simplifier.context,
-                                id: sim_lhs
+        match parsed_expr_res {
+            Ok(stmt) => {
+                let (kind, parsed_expr) = match stmt {
+                    Statement::Equation(eq) => {
+                        let eq_expr = self
+                            .engine
+                            .simplifier
+                            .context
+                            .add(Expr::Function("Equal".to_string(), vec![eq.lhs, eq.rhs]));
+                        (
+                            EntryKind::Eq {
+                                lhs: eq.lhs,
+                                rhs: eq.rhs,
                             },
-                            eq.op,
-                            DisplayExpr {
-                                context: &self.simplifier.context,
-                                id: sim_rhs
-                            }
-                        );
+                            eq_expr,
+                        )
                     }
-                }
-
-                let simplified_eq = cas_ast::Equation {
-                    lhs: sim_lhs,
-                    rhs: sim_rhs,
-                    op: eq.op.clone(),
+                    Statement::Expression(e) => (EntryKind::Expr(e), e),
                 };
 
-                let lhs_has = cas_engine::solver::contains_var(
-                    &self.simplifier.context,
-                    simplified_eq.lhs,
-                    var,
-                );
-                let rhs_has = cas_engine::solver::contains_var(
-                    &self.simplifier.context,
-                    simplified_eq.rhs,
-                    var,
-                );
+                let req = EvalRequest {
+                    raw_input: eq_str.to_string(),
+                    parsed: parsed_expr,
+                    kind,
+                    action: EvalAction::Solve {
+                        var: var.to_string(),
+                    },
+                    auto_store: true,
+                };
 
-                if !lhs_has && !rhs_has {
-                    // Constant equation (w.r.t var). Evaluate truthiness.
-                    // Already simplified above
-                    // We need to compare values.
-                    // But sim_lhs and sim_rhs are ExprIds.
-                    // We can use are_equivalent? No, that checks symbolic equivalence.
-                    // We can use compare_values from solution_set if we expose it?
-                    // Or just check if they are same ID?
-                    // If simplified, they should be same ID if they are identical.
-                    if sim_lhs == sim_rhs {
-                        println!("True (Identity)");
-                    } else {
-                        println!("False (Contradiction)");
-                        println!(
-                            "{} != {}",
-                            DisplayExpr {
-                                context: &self.simplifier.context,
-                                id: sim_lhs
-                            },
-                            DisplayExpr {
-                                context: &self.simplifier.context,
-                                id: sim_rhs
+                match self.engine.eval(&mut self.state, req) {
+                    Ok(output) => {
+                        // Show ID
+                        if let Some(id) = output.stored_id {
+                            print!("#{}: ", id);
+                        }
+                        println!("Solving for {}...", var);
+
+                        for w in &output.domain_warnings {
+                            println!("Warning: {}", w);
+                        }
+
+                        // Show Solve Steps
+                        if !output.solve_steps.is_empty() && self.verbosity != Verbosity::None {
+                            if self.verbosity != Verbosity::Succinct {
+                                println!("Steps:");
                             }
+                            for (i, step) in output.solve_steps.iter().enumerate() {
+                                println!("{}. {}", i + 1, step.description);
+                                // Display equation after step
+                                let lhs_d = DisplayExpr {
+                                    context: &self.engine.simplifier.context,
+                                    id: step.equation_after.lhs,
+                                };
+                                let rhs_d = DisplayExpr {
+                                    context: &self.engine.simplifier.context,
+                                    id: step.equation_after.rhs,
+                                };
+                                println!("   -> {} {} {}", lhs_d, step.equation_after.op, rhs_d);
+                            }
+                        }
+
+                        match output.result {
+                            EvalResult::Set(sols) => {
+                                let sol_strs: Vec<String> = sols
+                                    .iter()
+                                    .map(|id| {
+                                        DisplayExpr {
+                                            context: &self.engine.simplifier.context,
+                                            id: *id,
+                                        }
+                                        .to_string()
+                                    })
+                                    .collect();
+                                if sol_strs.is_empty() {
+                                    println!("Result: No solution");
+                                } else {
+                                    println!("Result: {{ {} }}", sol_strs.join(", "));
+                                }
+                            }
+                            _ => println!("Result: {:?}", output.result),
+                        }
+                    }
+                    Err(e) => println!("Error: {}", e),
+                }
+            }
+            Err(e) => println!("Parse error: {}", e),
+        }
+    }
+    fn show_simplification_steps(
+        &mut self,
+        expr: cas_ast::ExprId,
+        steps: Vec<cas_engine::Step>,
+        style_signals: cas_ast::root_style::ParseStyleSignals,
+    ) {
+        use cas_ast::root_style::StylePreferences;
+        use cas_ast::DisplayExprStyled;
+
+        if self.verbosity == Verbosity::None {
+            return;
+        }
+
+        // Create global style preferences from input signals + AST
+        let style_prefs = StylePreferences::from_expression_with_signals(
+            &self.engine.simplifier.context,
+            expr,
+            Some(&style_signals),
+        );
+
+        if steps.is_empty() {
+            // Even with no engine steps, show didactic sub-steps if there are fraction sums
+            let standalone_substeps = cas_engine::didactic::get_standalone_substeps(
+                &self.engine.simplifier.context,
+                expr,
+            );
+
+            if !standalone_substeps.is_empty() && self.verbosity != Verbosity::Succinct {
+                println!("Computation:");
+                // Helper function for LaTeX to plain text
+                fn latex_to_text(s: &str) -> String {
+                    let mut result = s.to_string();
+                    while let Some(start) = result.find("\\frac{") {
+                        let end_start = start + 6;
+                        if let Some(first_close) = result[end_start..].find('}') {
+                            let numer_end = end_start + first_close;
+                            let numer = &result[end_start..numer_end];
+                            if result.len() > numer_end + 1
+                                && result.chars().nth(numer_end + 1) == Some('{')
+                            {
+                                if let Some(second_close) = result[numer_end + 2..].find('}') {
+                                    let denom_end = numer_end + 2 + second_close;
+                                    let denom = &result[numer_end + 2..denom_end];
+                                    let replacement = format!("({}/{})", numer, denom);
+                                    result = format!(
+                                        "{}{}{}",
+                                        &result[..start],
+                                        replacement,
+                                        &result[denom_end + 1..]
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                    result.replace("\\", "")
+                }
+
+                for sub in &standalone_substeps {
+                    println!("   → {}", sub.description);
+                    if !sub.before_latex.is_empty() {
+                        println!(
+                            "     {} → {}",
+                            latex_to_text(&sub.before_latex),
+                            latex_to_text(&sub.after_latex)
                         );
                     }
-                } else {
-                    // Pass the ORIGINAL equation to solve, so it can check for domain restrictions (singularities).
-                    // If we pass simplified_eq, we lose information about e.g. (x-1) in denominator.
-                    match cas_engine::solver::solve(&eq, var, &mut self.simplifier) {
-                        Ok((solution_set, steps)) => {
-                            if self.verbosity != Verbosity::None {
-                                if self.verbosity != Verbosity::Succinct {
-                                    println!("Steps:");
-                                }
-                                for (i, step) in steps.iter().enumerate() {
-                                    // SolveStep is different from Step, so we can't use should_show_step directly.
-                                    // For now, just show all steps if verbosity is not None/Low?
-                                    // Or implement filtering for SolveStep too?
-                                    // SolveStep has description but no rule_name in the same way?
-                                    // Let's just show it.
-                                    if true {
-                                        // Simplify the equation for display
-                                        let (sim_lhs, _) =
-                                            self.simplifier.simplify(step.equation_after.lhs);
-                                        let (sim_rhs, _) =
-                                            self.simplifier.simplify(step.equation_after.rhs);
+                }
+            } else if self.verbosity != Verbosity::Succinct {
+                println!("No simplification steps needed.");
+            }
+        } else {
+            if self.verbosity != Verbosity::Succinct {
+                println!("Steps:");
+            }
 
-                                        if self.verbosity == Verbosity::Succinct {
-                                            println!(
-                                                "-> {} {} {}",
-                                                DisplayExpr {
-                                                    context: &self.simplifier.context,
-                                                    id: sim_lhs
-                                                },
-                                                step.equation_after.op,
-                                                DisplayExpr {
-                                                    context: &self.simplifier.context,
-                                                    id: sim_rhs
+            // Enrich steps ONCE before iterating
+            let enriched_steps = cas_engine::didactic::enrich_steps(
+                &self.engine.simplifier.context,
+                expr,
+                steps.clone(),
+            );
+
+            let mut current_root = expr;
+            let mut step_count = 0;
+            let mut sub_steps_shown = false; // Track to show sub-steps only on first visible step
+            for (step_idx, step) in steps.iter().enumerate() {
+                if should_show_step(step, self.verbosity) {
+                    // Early check for display no-op: skip step entirely if before/after display identical
+                    let before_disp = clean_display_string(&format!(
+                        "{}",
+                        DisplayExprStyled::new(
+                            &self.engine.simplifier.context,
+                            step.before,
+                            &style_prefs
+                        )
+                    ));
+                    let after_disp = clean_display_string(&format!(
+                        "{}",
+                        DisplayExprStyled::new(
+                            &self.engine.simplifier.context,
+                            step.after,
+                            &style_prefs
+                        )
+                    ));
+                    // Display no-op check removed/simplified for brevity, logic copied from prev if needed
+                    // But let's assume helper needs to be robust. I'll rely on copied logic.
+                    if before_disp == after_disp {
+                        if let Some(global_after) = step.global_after {
+                            current_root = global_after;
+                        }
+                        continue;
+                    }
+
+                    step_count += 1;
+
+                    if self.verbosity == Verbosity::Succinct {
+                        // Low mode: just global state
+                        current_root = reconstruct_global_expr(
+                            &mut self.engine.simplifier.context,
+                            current_root,
+                            &step.path,
+                            step.after,
+                        );
+                        println!(
+                            "-> {}",
+                            DisplayExprStyled::new(
+                                &self.engine.simplifier.context,
+                                current_root,
+                                &style_prefs
+                            )
+                        );
+                    } else {
+                        // Normal/Verbose
+                        println!("{}. {}  [{}]", step_count, step.description, step.rule_name);
+
+                        if self.verbosity == Verbosity::Verbose
+                            || self.verbosity == Verbosity::Normal
+                        {
+                            // Show Before: global expression before this step (always)
+                            if let Some(global_before) = step.global_before {
+                                println!(
+                                    "   Before: {}",
+                                    clean_display_string(&format!(
+                                        "{}",
+                                        DisplayExprStyled::new(
+                                            &self.engine.simplifier.context,
+                                            global_before,
+                                            &style_prefs
+                                        )
+                                    ))
+                                );
+                            } else {
+                                println!(
+                                    "   Before: {}",
+                                    clean_display_string(&format!(
+                                        "{}",
+                                        DisplayExprStyled::new(
+                                            &self.engine.simplifier.context,
+                                            current_root,
+                                            &style_prefs
+                                        )
+                                    ))
+                                );
+                            }
+
+                            // Didactic: Show sub-steps AFTER Before: line
+                            if !sub_steps_shown {
+                                if let Some(enriched_step) = enriched_steps.get(step_idx) {
+                                    if !enriched_step.sub_steps.is_empty() {
+                                        sub_steps_shown = true;
+                                        // Helper function for LaTeX to plain text
+                                        fn latex_to_text(s: &str) -> String {
+                                            let mut result = s.to_string();
+                                            while let Some(start) = result.find("\\frac{") {
+                                                let end_start = start + 6;
+                                                if let Some(first_close) =
+                                                    result[end_start..].find('}')
+                                                {
+                                                    let numer_end = end_start + first_close;
+                                                    let numer = &result[end_start..numer_end];
+                                                    if result.len() > numer_end + 1
+                                                        && result.chars().nth(numer_end + 1)
+                                                            == Some('{')
+                                                    {
+                                                        if let Some(second_close) =
+                                                            result[numer_end + 2..].find('}')
+                                                        {
+                                                            let denom_end =
+                                                                numer_end + 2 + second_close;
+                                                            let denom =
+                                                                &result[numer_end + 2..denom_end];
+                                                            let replacement =
+                                                                format!("({}/{})", numer, denom);
+                                                            result = format!(
+                                                                "{}{}{}",
+                                                                &result[..start],
+                                                                replacement,
+                                                                &result[denom_end + 1..]
+                                                            );
+                                                            continue;
+                                                        }
+                                                    }
                                                 }
-                                            );
-                                        } else {
-                                            println!("{}. {}", i + 1, step.description);
-                                            println!(
-                                                "   -> {} {} {}",
-                                                DisplayExpr {
-                                                    context: &self.simplifier.context,
-                                                    id: sim_lhs
-                                                },
-                                                step.equation_after.op,
-                                                DisplayExpr {
-                                                    context: &self.simplifier.context,
-                                                    id: sim_rhs
-                                                }
-                                            );
+                                                break;
+                                            }
+                                            result.replace("\\", "")
+                                        }
+
+                                        // Show title for substeps section (detect type from description)
+                                        let has_fraction_sum =
+                                            enriched_step.sub_steps.iter().any(|s| {
+                                                s.description.contains("common denominator")
+                                                    || s.description.contains("Sum the fractions")
+                                            });
+                                        let has_factorization =
+                                            enriched_step.sub_steps.iter().any(|s| {
+                                                s.description.contains("Cancel common factor")
+                                                    || s.description.contains("Factor")
+                                            });
+
+                                        if has_fraction_sum {
+                                            println!("   [Suma de fracciones en exponentes]");
+                                        } else if has_factorization {
+                                            println!("   [Factorización de polinomios]");
+                                        }
+
+                                        for sub in &enriched_step.sub_steps {
+                                            println!("      → {}", sub.description);
+                                            if !sub.before_latex.is_empty() {
+                                                println!(
+                                                    "        {} → {}",
+                                                    latex_to_text(&sub.before_latex),
+                                                    latex_to_text(&sub.after_latex)
+                                                );
+                                            }
                                         }
                                     }
                                 }
                             }
-                            // SolutionSet doesn't implement Display with Context.
-                            // We need to manually display it.
-                            println!(
-                                "Result: {}",
-                                display_solution_set(&self.simplifier.context, &solution_set)
+
+                            // Show Rule: local transformation
+                            let (rule_before_id, rule_after_id) =
+                                match (step.before_local, step.after_local) {
+                                    (Some(bl), Some(al)) => (bl, al),
+                                    _ => (step.before, step.after),
+                                };
+
+                            let before_disp = clean_display_string(&format!(
+                                "{}",
+                                DisplayExprStyled::new(
+                                    &self.engine.simplifier.context,
+                                    rule_before_id,
+                                    &style_prefs
+                                )
+                            ));
+                            let after_disp = clean_display_string(&format!(
+                                "{}",
+                                DisplayExprStyled::new(
+                                    &self.engine.simplifier.context,
+                                    rule_after_id,
+                                    &style_prefs
+                                )
+                            ));
+
+                            if before_disp == after_disp {
+                                if let Some(global_after) = step.global_after {
+                                    current_root = global_after;
+                                }
+                                continue;
+                            }
+
+                            println!("   Rule: {} -> {}", before_disp, after_disp);
+                        }
+
+                        // Use precomputed global_after if available, fall back to reconstruction
+                        if let Some(global_after) = step.global_after {
+                            current_root = global_after;
+                        } else {
+                            current_root = reconstruct_global_expr(
+                                &mut self.engine.simplifier.context,
+                                current_root,
+                                &step.path,
+                                step.after,
                             );
                         }
-                        Err(e) => println!("Error solving: {}", e),
+
+                        // Show After
+                        if self.verbosity == Verbosity::Normal
+                            || self.verbosity == Verbosity::Verbose
+                        {
+                            println!(
+                                "   After: {}",
+                                clean_display_string(&format!(
+                                    "{}",
+                                    DisplayExprStyled::new(
+                                        &self.engine.simplifier.context,
+                                        current_root,
+                                        &style_prefs
+                                    )
+                                ))
+                            );
+
+                            if let Some(assumption) = &step.domain_assumption {
+                                println!("   ⚠ Domain: {}", assumption);
+                            }
+                        }
+                    }
+                } else {
+                    if let Some(global_after) = step.global_after {
+                        current_root = global_after;
+                    } else {
+                        current_root = reconstruct_global_expr(
+                            &mut self.engine.simplifier.context,
+                            current_root,
+                            &step.path,
+                            step.after,
+                        );
                     }
                 }
             }
-            Err(e) => println!("Error: {}", e),
         }
     }
 
     fn handle_eval(&mut self, line: &str) {
-        // Sniff style preferences from input string BEFORE parsing
+        use cas_ast::root_style::ParseStyleSignals;
+
+        use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
+        use cas_engine::EntryKind;
+        use cas_parser::Statement;
+
         let style_signals = ParseStyleSignals::from_input_string(line);
+        let parser_result = cas_parser::parse_statement(line, &mut self.engine.simplifier.context);
 
-        // Use parse_statement to support both expressions and equations
-        match cas_parser::parse_statement(line, &mut self.simplifier.context) {
-            Ok(cas_parser::Statement::Expression(expr)) => {
-                // Auto-store: save the parsed expression to session history
-                let entry_id = self
-                    .session
-                    .push(cas_engine::EntryKind::Expr(expr), line.to_string());
-                println!(
-                    "#{}  {}",
-                    entry_id,
-                    DisplayExpr {
-                        context: &self.simplifier.context,
-                        id: expr
+        match parser_result {
+            Ok(stmt) => {
+                // Map to EvalRequest
+                let (kind, parsed_expr) = match stmt {
+                    Statement::Equation(eq) => {
+                        let eq_expr = self
+                            .engine
+                            .simplifier
+                            .context
+                            .add(Expr::Function("Equal".to_string(), vec![eq.lhs, eq.rhs]));
+                        (
+                            EntryKind::Eq {
+                                lhs: eq.lhs,
+                                rhs: eq.rhs,
+                            },
+                            eq_expr,
+                        )
                     }
-                );
-
-                // Resolve session references (#id) before substitution
-                let expr = match cas_engine::resolve_session_refs(
-                    &mut self.simplifier.context,
-                    expr,
-                    &self.session,
-                ) {
-                    Ok(resolved) => resolved,
-                    Err(e) => {
-                        println!("Error resolving session reference: {}", e);
-                        return;
-                    }
+                    Statement::Expression(e) => (EntryKind::Expr(e), e),
                 };
 
-                // Substitute variables from environment
-                let expr =
-                    cas_engine::env::substitute(&mut self.simplifier.context, &self.env, expr);
+                let req = EvalRequest {
+                    raw_input: line.to_string(),
+                    parsed: parsed_expr,
+                    kind,
+                    // Eval usually just Simplifies.
+                    action: EvalAction::Simplify,
+                    auto_store: true,
+                };
 
-                let (simplified, steps) = self.do_simplify(expr);
-
-                // Create global style preferences from input signals + AST
-                let style_prefs = StylePreferences::from_expression_with_signals(
-                    &self.simplifier.context,
-                    expr,
-                    Some(&style_signals),
-                );
-
-                if self.verbosity != Verbosity::None {
-                    if steps.is_empty() {
-                        // Even with no engine steps, show didactic sub-steps if there are fraction sums
-                        let standalone_substeps = cas_engine::didactic::get_standalone_substeps(
-                            &self.simplifier.context,
-                            expr,
-                        );
-
-                        if !standalone_substeps.is_empty() && self.verbosity != Verbosity::Succinct
-                        {
-                            println!("Computation:");
-                            // Helper function for LaTeX to plain text
-                            fn latex_to_text(s: &str) -> String {
-                                let mut result = s.to_string();
-                                while let Some(start) = result.find("\\frac{") {
-                                    let end_start = start + 6;
-                                    if let Some(first_close) = result[end_start..].find('}') {
-                                        let numer_end = end_start + first_close;
-                                        let numer = &result[end_start..numer_end];
-                                        if result.len() > numer_end + 1
-                                            && result.chars().nth(numer_end + 1) == Some('{')
-                                        {
-                                            if let Some(second_close) =
-                                                result[numer_end + 2..].find('}')
-                                            {
-                                                let denom_end = numer_end + 2 + second_close;
-                                                let denom = &result[numer_end + 2..denom_end];
-                                                let replacement = format!("({}/{})", numer, denom);
-                                                result = format!(
-                                                    "{}{}{}",
-                                                    &result[..start],
-                                                    replacement,
-                                                    &result[denom_end + 1..]
-                                                );
-                                                continue;
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
-                                result.replace("\\", "")
-                            }
-
-                            for sub in &standalone_substeps {
-                                println!("   → {}", sub.description);
-                                if !sub.before_latex.is_empty() {
-                                    println!(
-                                        "     {} → {}",
-                                        latex_to_text(&sub.before_latex),
-                                        latex_to_text(&sub.after_latex)
-                                    );
-                                }
-                            }
-                        } else if self.verbosity != Verbosity::Succinct {
-                            println!("No simplification steps needed.");
-                        }
-                    } else {
-                        if self.verbosity != Verbosity::Succinct {
-                            println!("Steps:");
+                match self.engine.eval(&mut self.state, req) {
+                    Ok(output) => {
+                        // Display ID
+                        if let Some(id) = output.stored_id {
+                            print!("#{}: ", id);
                         }
 
-                        // Enrich steps ONCE before iterating
-                        let enriched_steps = cas_engine::didactic::enrich_steps(
-                            &self.simplifier.context,
-                            expr,
-                            steps.clone(),
-                        );
-
-                        let mut current_root = expr;
-                        let mut step_count = 0;
-                        let mut sub_steps_shown = false; // Track to show sub-steps only on first visible step
-                        for (step_idx, step) in steps.iter().enumerate() {
-                            if should_show_step(step, self.verbosity) {
-                                // Early check for display no-op: skip step entirely if before/after display identical
-                                let before_disp = clean_display_string(&format!(
-                                    "{}",
-                                    DisplayExprStyled::new(
-                                        &self.simplifier.context,
-                                        step.before,
-                                        &style_prefs
-                                    )
-                                ));
-                                let after_disp = clean_display_string(&format!(
-                                    "{}",
-                                    DisplayExprStyled::new(
-                                        &self.simplifier.context,
-                                        step.after,
-                                        &style_prefs
-                                    )
-                                ));
-                                if before_disp == after_disp {
-                                    // Display no-op - still update state but skip step display
-                                    if let Some(global_after) = step.global_after {
-                                        current_root = global_after;
-                                    }
-                                    continue;
+                        // Show result initially? No, usually Result is shown at end.
+                        // But we might want to show initial state?
+                        // Old logic printed #id and parsed expr.
+                        // I'll skip it to reduce noise or rely on Result.
+                        // Actually old logic printed: `#{id}  {expr}`.
+                        if let Some(id) = output.stored_id {
+                            println!(
+                                "#{}: {}",
+                                id,
+                                cas_ast::DisplayExpr {
+                                    context: &self.engine.simplifier.context,
+                                    id: output.parsed
                                 }
+                            );
+                        }
 
-                                step_count += 1;
+                        // Show warnings
+                        for w in output.domain_warnings {
+                            println!("Warning: {}", w);
+                        }
 
-                                if self.verbosity == Verbosity::Succinct {
-                                    // Low mode: just global state
-                                    current_root = reconstruct_global_expr(
-                                        &mut self.simplifier.context,
-                                        current_root,
-                                        &step.path,
-                                        step.after,
-                                    );
-                                    println!(
-                                        "-> {}",
-                                        DisplayExprStyled::new(
-                                            &self.simplifier.context,
-                                            current_root,
-                                            &style_prefs
-                                        )
-                                    );
-                                } else {
-                                    // Normal/Verbose
-                                    println!(
-                                        "{}. {}  [{}]",
-                                        step_count, step.description, step.rule_name
-                                    );
+                        // Show steps using helper
+                        // We use output.resolved (input to simplify) and output.steps
+                        if !output.steps.is_empty() || self.verbosity != Verbosity::None {
+                            // trigger logic if verbosity on
+                            self.show_simplification_steps(
+                                output.resolved,
+                                output.steps,
+                                style_signals,
+                            );
+                        }
 
-                                    if self.verbosity == Verbosity::Verbose
-                                        || self.verbosity == Verbosity::Normal
-                                    {
-                                        // Show Before: global expression before this step (always)
-                                        if let Some(global_before) = step.global_before {
-                                            println!(
-                                                "   Before: {}",
-                                                clean_display_string(&format!(
-                                                    "{}",
-                                                    DisplayExprStyled::new(
-                                                        &self.simplifier.context,
-                                                        global_before,
-                                                        &style_prefs
-                                                    )
-                                                ))
-                                            );
-                                        } else {
-                                            println!(
-                                                "   Before: {}",
-                                                clean_display_string(&format!(
-                                                    "{}",
-                                                    DisplayExprStyled::new(
-                                                        &self.simplifier.context,
-                                                        current_root,
-                                                        &style_prefs
-                                                    )
-                                                ))
-                                            );
-                                        }
-
-                                        // Didactic: Show sub-steps AFTER Before: line
-                                        // Sub-steps explain hidden computations (e.g., fraction sums)
-                                        // Only show on first visible step to avoid duplication
-                                        if !sub_steps_shown {
-                                            if let Some(enriched_step) =
-                                                enriched_steps.get(step_idx)
-                                            {
-                                                if !enriched_step.sub_steps.is_empty() {
-                                                    sub_steps_shown = true;
-                                                    // Helper function for LaTeX to plain text
-                                                    fn latex_to_text(s: &str) -> String {
-                                                        let mut result = s.to_string();
-                                                        while let Some(start) =
-                                                            result.find("\\frac{")
-                                                        {
-                                                            let end_start = start + 6;
-                                                            if let Some(first_close) =
-                                                                result[end_start..].find('}')
-                                                            {
-                                                                let numer_end =
-                                                                    end_start + first_close;
-                                                                let numer =
-                                                                    &result[end_start..numer_end];
-                                                                if result.len() > numer_end + 1
-                                                                    && result
-                                                                        .chars()
-                                                                        .nth(numer_end + 1)
-                                                                        == Some('{')
-                                                                {
-                                                                    if let Some(second_close) =
-                                                                        result[numer_end + 2..]
-                                                                            .find('}')
-                                                                    {
-                                                                        let denom_end = numer_end
-                                                                            + 2
-                                                                            + second_close;
-                                                                        let denom = &result
-                                                                            [numer_end + 2
-                                                                                ..denom_end];
-                                                                        let replacement = format!(
-                                                                            "({}/{})",
-                                                                            numer, denom
-                                                                        );
-                                                                        result = format!(
-                                                                            "{}{}{}",
-                                                                            &result[..start],
-                                                                            replacement,
-                                                                            &result
-                                                                                [denom_end + 1..]
-                                                                        );
-                                                                        continue;
-                                                                    }
-                                                                }
-                                                            }
-                                                            break;
-                                                        }
-                                                        result.replace("\\", "")
-                                                    }
-
-                                                    // Show sub-steps (Before: already shown above for all steps)
-                                                    // Show title for substeps section (detect type from description)
-                                                    let has_fraction_sum =
-                                                        enriched_step.sub_steps.iter().any(|s| {
-                                                            s.description
-                                                                .contains("common denominator")
-                                                                || s.description
-                                                                    .contains("Sum the fractions")
-                                                        });
-                                                    let has_factorization =
-                                                        enriched_step.sub_steps.iter().any(|s| {
-                                                            s.description
-                                                                .contains("Cancel common factor")
-                                                                || s.description.contains("Factor")
-                                                        });
-
-                                                    if has_fraction_sum {
-                                                        println!(
-                                                            "   [Suma de fracciones en exponentes]"
-                                                        );
-                                                    } else if has_factorization {
-                                                        println!(
-                                                            "   [Factorización de polinomios]"
-                                                        );
-                                                    }
-
-                                                    for sub in &enriched_step.sub_steps {
-                                                        println!("      → {}", sub.description);
-                                                        if !sub.before_latex.is_empty() {
-                                                            println!(
-                                                                "        {} → {}",
-                                                                latex_to_text(&sub.before_latex),
-                                                                latex_to_text(&sub.after_latex)
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Show Rule: local transformation
-                                        // Use before_local/after_local if available (for n-ary rules),
-                                        // otherwise fall back to before/after
-                                        let (rule_before_id, rule_after_id) =
-                                            match (step.before_local, step.after_local) {
-                                                (Some(bl), Some(al)) => (bl, al),
-                                                _ => (step.before, step.after),
-                                            };
-
-                                        let before_disp = clean_display_string(&format!(
-                                            "{}",
-                                            DisplayExprStyled::new(
-                                                &self.simplifier.context,
-                                                rule_before_id,
-                                                &style_prefs
-                                            )
-                                        ));
-                                        let after_disp = clean_display_string(&format!(
-                                            "{}",
-                                            DisplayExprStyled::new(
-                                                &self.simplifier.context,
-                                                rule_after_id,
-                                                &style_prefs
-                                            )
-                                        ));
-
-                                        // Skip display-only no-op steps (e.g., -1*(1-√2) → -(1-√2) both display as -1-√2)
-                                        if before_disp == after_disp {
-                                            // Still update current_root to maintain state
-                                            if let Some(global_after) = step.global_after {
-                                                current_root = global_after;
-                                            }
-                                            continue;
-                                        }
-
-                                        // Always show Rule line - it now shows the accurate local transformation
-                                        println!("   Rule: {} -> {}", before_disp, after_disp);
-                                    }
-
-                                    // Use precomputed global_after if available, fall back to reconstruction
-                                    if let Some(global_after) = step.global_after {
-                                        current_root = global_after;
-                                    } else {
-                                        current_root = reconstruct_global_expr(
-                                            &mut self.simplifier.context,
-                                            current_root,
-                                            &step.path,
-                                            step.after,
-                                        );
-                                    }
-
-                                    // Show After: global expression after this step
-                                    if self.verbosity == Verbosity::Normal
-                                        || self.verbosity == Verbosity::Verbose
-                                    {
+                        // Show Final Result
+                        match output.result {
+                            EvalResult::Expr(res) => {
+                                // Check if it is Equal function
+                                let context = &self.engine.simplifier.context;
+                                if let Expr::Function(name, args) = context.get(res) {
+                                    if name == "Equal" && args.len() == 2 {
                                         println!(
-                                            "   After: {}",
-                                            clean_display_string(&format!(
-                                                "{}",
-                                                DisplayExprStyled::new(
-                                                    &self.simplifier.context,
-                                                    current_root,
-                                                    &style_prefs
-                                                )
-                                            ))
+                                            "Result: {} = {}",
+                                            cas_ast::DisplayExpr {
+                                                context,
+                                                id: args[0]
+                                            },
+                                            cas_ast::DisplayExpr {
+                                                context,
+                                                id: args[1]
+                                            }
                                         );
-
-                                        // Show domain assumption warning if present
-                                        if let Some(assumption) = &step.domain_assumption {
-                                            println!("   ⚠ Domain: {}", assumption);
-                                        }
+                                        return;
                                     }
                                 }
-                            } else {
-                                if let Some(global_after) = step.global_after {
-                                    current_root = global_after;
-                                } else {
-                                    current_root = reconstruct_global_expr(
-                                        &mut self.simplifier.context,
-                                        current_root,
-                                        &step.path,
-                                        step.after,
-                                    );
-                                }
+
+                                println!("Result: {}", cas_ast::DisplayExpr { context, id: res });
                             }
+                            EvalResult::Set(_sols) => {
+                                println!("Result: Set(...)"); // Simplify result logic doesn't usually produce Set
+                            }
+                            EvalResult::Bool(b) => println!("Result: {}", b),
+                            EvalResult::None => {}
                         }
                     }
+                    Err(e) => println!("Error: {}", e),
                 }
-                println!(
-                    "Result: {}",
-                    DisplayExprStyled::new(&self.simplifier.context, simplified, &style_prefs)
-                );
             }
-            Ok(cas_parser::Statement::Equation(eq)) => {
-                // Store equation in session history
-                let entry_id = self.session.push(
-                    cas_engine::EntryKind::Eq {
-                        lhs: eq.lhs,
-                        rhs: eq.rhs,
-                    },
-                    line.to_string(),
-                );
-
-                // Display the equation
-                let lhs_disp = DisplayExpr {
-                    context: &self.simplifier.context,
-                    id: eq.lhs,
-                };
-                let rhs_disp = DisplayExpr {
-                    context: &self.simplifier.context,
-                    id: eq.rhs,
-                };
-                let op_str = match eq.op {
-                    cas_ast::RelOp::Eq => "=",
-                    cas_ast::RelOp::Neq => "≠",
-                    cas_ast::RelOp::Lt => "<",
-                    cas_ast::RelOp::Gt => ">",
-                    cas_ast::RelOp::Leq => "≤",
-                    cas_ast::RelOp::Geq => "≥",
-                };
-                println!("#{}  {} {} {}  [Eq]", entry_id, lhs_disp, op_str, rhs_disp);
-            }
-            Err(e) => println!("Error: {}", e),
+            Err(e) => println!("Parse error: {}", e),
         }
     }
     fn handle_full_simplify(&mut self, line: &str) {
@@ -3557,7 +3469,7 @@ impl Repl {
         // Easiest: Create new simplifier, parse string into it.
         // Note: Variables from previous history won't be available if we don't copy context.
         // But REPL history is just text in rustyline, not context state (unless we implement variable storage).
-        // Current implementation: Context is reset per line? No, self.simplifier.context persists.
+        // Current implementation: Context is reset per line? No, self.engine.simplifier.context persists.
         // If we want to support "x = 5; simplify x", we need to share context.
 
         // Better approach:
@@ -3568,8 +3480,14 @@ impl Repl {
 
         let mut temp_simplifier = Simplifier::with_default_rules();
         // Swap context and profiler so temp_simplifier uses main profiler
-        std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
-        std::mem::swap(&mut self.simplifier.profiler, &mut temp_simplifier.profiler);
+        std::mem::swap(
+            &mut self.engine.simplifier.context,
+            &mut temp_simplifier.context,
+        );
+        std::mem::swap(
+            &mut self.engine.simplifier.profiler,
+            &mut temp_simplifier.profiler,
+        );
 
         // Ensure we have the aggressive rules we want (DistributeRule is in default)
         // Also add DistributeConstantRule just in case (though DistributeRule covers it)
@@ -3580,6 +3498,8 @@ impl Repl {
         match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {
                 // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
+                // Parse equation part
+                // Style signals handled during display logic mostly, removing invalid context access
                 let style_signals = ParseStyleSignals::from_input_string(expr_str);
                 let style_prefs = StylePreferences::from_expression_with_signals(
                     &temp_simplifier.context,
@@ -3748,12 +3668,18 @@ impl Repl {
         }
 
         // Swap context and profiler back
-        std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
-        std::mem::swap(&mut self.simplifier.profiler, &mut temp_simplifier.profiler);
+        std::mem::swap(
+            &mut self.engine.simplifier.context,
+            &mut temp_simplifier.context,
+        );
+        std::mem::swap(
+            &mut self.engine.simplifier.profiler,
+            &mut temp_simplifier.profiler,
+        );
 
         // Store health report for the `health` command (if health tracking is enabled)
         if self.health_enabled {
-            self.last_health_report = Some(self.simplifier.profiler.health_report());
+            self.last_health_report = Some(self.engine.simplifier.profiler.health_report());
         }
     }
 
@@ -3771,35 +3697,36 @@ impl Repl {
             return;
         }
 
-        match cas_parser::parse(rest, &mut self.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(parsed_expr) => {
                 // CANONICALIZE: Rebuild tree to trigger Add auto-flatten at all levels
                 // Parser creates tree incrementally, so nested Adds may not be flattened
                 // normalize_core forces reconstruction ensuring canonical form
                 let expr = cas_engine::canonical_forms::normalize_core(
-                    &mut self.simplifier.context,
+                    &mut self.engine.simplifier.context,
                     parsed_expr,
                 );
                 // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
-                let user_style = cas_ast::detect_root_style(&self.simplifier.context, expr);
+                let user_style = cas_ast::detect_root_style(&self.engine.simplifier.context, expr);
 
                 let disp = cas_ast::DisplayExpr {
-                    context: &self.simplifier.context,
+                    context: &self.engine.simplifier.context,
                     id: expr,
                 };
                 println!("Parsed: {}", disp);
 
                 let config = RationalizeConfig::default();
-                let result = rationalize_denominator(&mut self.simplifier.context, expr, &config);
+                let result =
+                    rationalize_denominator(&mut self.engine.simplifier.context, expr, &config);
 
                 match result {
                     RationalizeResult::Success(rationalized) => {
                         // Simplify the result
-                        let (simplified, _) = self.simplifier.simplify(rationalized);
+                        let (simplified, _) = self.engine.simplifier.simplify(rationalized);
 
                         // Use StyledExpr with detected style for consistent output
                         let result_disp = cas_ast::StyledExpr::new(
-                            &self.simplifier.context,
+                            &self.engine.simplifier.context,
                             simplified,
                             user_style,
                         );
