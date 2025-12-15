@@ -385,17 +385,31 @@ proptest! {
     }
 
     /// N3: No Pow(Pow(x,a),b) after normalize_core - should be Pow(x, a*b)
+    /// Note: N3 only applies when BOTH exponents are integer Numbers
     #[test]
     fn test_normalize_core_no_nested_pow(re in strategies::arb_recursive_expr()) {
         let (mut ctx, expr) = strategies::to_context(re);
         let normalized = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
 
+        fn is_integer_number(ctx: &Context, id: ExprId) -> bool {
+            if let Expr::Number(n) = ctx.get(id) {
+                n.is_integer()
+            } else {
+                false
+            }
+        }
+
         fn check_no_nested_pow(ctx: &Context, id: ExprId) -> bool {
             match ctx.get(id) {
-                Expr::Pow(base, _) => {
+                Expr::Pow(base, outer_exp) => {
                     // Base should NOT be Pow (N3 should flatten)
-                    if matches!(ctx.get(*base), Expr::Pow(_, _)) {
-                        return false;
+                    // BUT only if both exponents are integers
+                    if let Expr::Pow(_, inner_exp) = ctx.get(*base) {
+                        // N3 only applies when BOTH exponents are integers
+                        if is_integer_number(ctx, *inner_exp) && is_integer_number(ctx, *outer_exp) {
+                            return false; // This should have been flattened
+                        }
+                        // If either exponent is non-integer, nested Pow is allowed
                     }
                     check_no_nested_pow(ctx, *base)
                 }
@@ -409,7 +423,7 @@ proptest! {
         }
 
         let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
-        prop_assert!(check_no_nested_pow(&ctx, normalized), "Found Pow(Pow(x,a),b) after normalize_core: {}", d);
+        prop_assert!(check_no_nested_pow(&ctx, normalized), "Found Pow(Pow(x,a),b) with integer exponents after normalize_core: {}", d);
     }
 
     /// Ordering consistency: same expression should always produce same normalized form
