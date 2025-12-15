@@ -62,6 +62,11 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 -   **Development Debug System** (tracing-based):
     -   Parametrizable debug logging with zero overhead when disabled.
     -   See [DEBUG_SYSTEM.md](DEBUG_SYSTEM.md) for usage details.
+-   **Session Management**:
+    -   Persistent **Session Store** with auto-incrementing IDs (`#1`, `#2`) to reference previous results.
+    -   **Environment** for variable bindings (`let a = 5`, `b := a + 1`).
+    -   Transitive substitution and cycle detection.
+    -   See [ENVIRONMENT.md](ENVIRONMENT.md) for full documentation.
 
 
 ## Getting Started
