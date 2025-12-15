@@ -20,21 +20,63 @@ pub struct SolveStep {
 use crate::error::CasError;
 
 use crate::solver::strategies::{
-    CollectTermsStrategy, IsolationStrategy, QuadraticStrategy, SubstitutionStrategy,
-    UnwrapStrategy,
+    CollectTermsStrategy, IsolationStrategy, QuadraticStrategy, RationalExponentStrategy,
+    SubstitutionStrategy, UnwrapStrategy,
 };
 use crate::solver::strategy::SolverStrategy;
+
+/// Maximum recursion depth for solver to prevent stack overflow
+pub(crate) const MAX_SOLVE_DEPTH: usize = 50;
+
+thread_local! {
+    pub(crate) static SOLVE_DEPTH: std::cell::RefCell<usize> = const { std::cell::RefCell::new(0) };
+}
+
+/// Guard that decrements depth on drop
+pub(crate) struct DepthGuard;
+
+impl Drop for DepthGuard {
+    fn drop(&mut self) {
+        SOLVE_DEPTH.with(|d| {
+            *d.borrow_mut() -= 1;
+        });
+    }
+}
 
 pub fn solve(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // Check and increment recursion depth
+    let current_depth = SOLVE_DEPTH.with(|d| {
+        let mut depth = d.borrow_mut();
+        *depth += 1;
+        *depth
+    });
+
+    // Create guard to decrement on exit
+    let _guard = DepthGuard;
+
+    if current_depth > MAX_SOLVE_DEPTH {
+        return Err(CasError::SolverError(
+            "Maximum solver recursion depth exceeded. The equation may be too complex.".to_string(),
+        ));
+    }
+
     // 1. Check if variable exists in equation
     if !contains_var(&simplifier.context, eq.lhs, var)
         && !contains_var(&simplifier.context, eq.rhs, var)
     {
         return Err(CasError::VariableNotFound(var.to_string()));
+    }
+
+    // EARLY CHECK: Handle rational exponent equations BEFORE simplification
+    // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
+    if eq.op == cas_ast::RelOp::Eq {
+        if let Some(result) = try_solve_rational_exponent(eq, var, simplifier) {
+            return result;
+        }
     }
 
     // 2. Simplify both sides BEFORE applying strategies
@@ -87,6 +129,7 @@ pub fn solve(
     // 3. Define strategies
     // In a real app, these might be configured in Simplifier or passed in.
     let strategies: Vec<Box<dyn SolverStrategy>> = vec![
+        Box::new(RationalExponentStrategy), // Must run BEFORE UnwrapStrategy to avoid loops
         Box::new(SubstitutionStrategy),
         Box::new(UnwrapStrategy),
         Box::new(QuadraticStrategy),
@@ -127,6 +170,76 @@ pub fn solve(
     Err(CasError::SolverError(
         "No strategy could solve this equation.".to_string(),
     ))
+}
+
+/// Try to solve equations with rational exponents like x^(3/2) = 8
+/// by converting to x^3 = 64 (raising both sides to power q)
+fn try_solve_rational_exponent(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    use cas_ast::Expr;
+    use strategies::match_rational_power;
+
+    // Check if RHS contains the variable (we only handle simple cases)
+    if contains_var(&simplifier.context, eq.rhs, var) {
+        return None;
+    }
+
+    // Try to match x^(p/q) on LHS
+    let (base, p, q) = match_rational_power(&simplifier.context, eq.lhs, var)?;
+
+    let mut steps = Vec::new();
+
+    // Build new equation: base^p = rhs^q
+    let p_expr = simplifier.context.num(p);
+    let q_expr = simplifier.context.num(q);
+
+    let new_lhs = simplifier.context.add(Expr::Pow(base, p_expr));
+    let new_rhs = simplifier.context.add(Expr::Pow(eq.rhs, q_expr));
+
+    // Simplify RHS (no variable, safe to simplify)
+    let (sim_rhs, _) = simplifier.simplify(new_rhs);
+
+    // DON'T simplify LHS yet - it might contain x^p which we want to solve
+
+    let new_eq = Equation {
+        lhs: new_lhs,
+        rhs: sim_rhs,
+        op: cas_ast::RelOp::Eq,
+    };
+
+    if simplifier.collect_steps {
+        steps.push(SolveStep {
+            description: format!(
+                "Raise both sides to power {} to eliminate rational exponent",
+                q
+            ),
+            equation_after: new_eq.clone(),
+        });
+    }
+
+    // Recursively solve (this will go through the full solve pipeline)
+    match solve(&new_eq, var, simplifier) {
+        Ok((set, mut sub_steps)) => {
+            steps.append(&mut sub_steps);
+
+            // Verify solutions against original equation (handles extraneous roots)
+            if let SolutionSet::Discrete(sols) = set {
+                let mut valid_sols = Vec::new();
+                for sol in sols {
+                    if verify_solution(eq, var, sol, simplifier) {
+                        valid_sols.push(sol);
+                    }
+                }
+                Some(Ok((SolutionSet::Discrete(valid_sols), steps)))
+            } else {
+                Some(Ok((set, steps)))
+            }
+        }
+        Err(e) => Some(Err(e)),
+    }
 }
 
 fn verify_solution(eq: &Equation, var: &str, sol: ExprId, simplifier: &mut Simplifier) -> bool {

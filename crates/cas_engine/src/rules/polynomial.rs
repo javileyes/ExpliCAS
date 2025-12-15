@@ -458,84 +458,111 @@ fn contains_matrix(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-define_rule!(BinomialExpansionRule, "Binomial Expansion", |ctx, expr| {
-    // Skip if expression is in canonical (elegant) form
-    // e.g., ((x+1)*(x-1))^2 should stay as is, not expand
-    if crate::canonical_forms::is_canonical_form(ctx, expr) {
-        return None;
+/// BinomialExpansionRule: (a + b)^n → expanded polynomial
+/// Implements Rule directly to access ParentContext
+pub struct BinomialExpansionRule;
+
+impl crate::rule::Rule for BinomialExpansionRule {
+    fn name(&self) -> &str {
+        "Binomial Expansion"
     }
 
-    // (a + b)^n
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Pow(base, exp) = expr_data {
-        let base_data = ctx.get(base).clone();
-        let (a, b) = match base_data {
-            Expr::Add(a, b) => (a, b),
-            Expr::Sub(a, b) => {
-                let neg_b = ctx.add(Expr::Neg(b));
-                (a, neg_b)
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Skip if expression is in canonical (elegant) form
+        if crate::canonical_forms::is_canonical_form(ctx, expr) {
+            return None;
+        }
+
+        // GUARD: Don't expand if this expression is protected as a sqrt-square base
+        // This is set by pre-scan when this expr is inside sqrt(u²) or sqrt(u*u)
+        if let Some(marks) = parent_ctx.pattern_marks() {
+            if marks.is_sqrt_square_protected(expr) {
+                // Protected from expansion - let sqrt(u²) → |u| shortcut fire instead
+                return None;
             }
-            _ => return None,
-        };
+        }
 
-        let exp_data = ctx.get(exp).clone();
-        if let Expr::Number(n) = exp_data {
-            if n.is_integer() && !n.is_negative() {
-                if let Some(n_val) = n.to_integer().to_u32() {
-                    // Limit expansion to reasonable size to prevent explosion
-                    if (2..=10).contains(&n_val) {
-                        // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
-                        let mut terms = Vec::new();
-                        for k in 0..=n_val {
-                            let coeff = binomial_coeff(n_val, k);
-                            let exp_a = n_val - k;
-                            let exp_b = k;
+        // (a + b)^n
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            let base_data = ctx.get(base).clone();
+            let (a, b) = match base_data {
+                Expr::Add(a, b) => (a, b),
+                Expr::Sub(a, b) => {
+                    let neg_b = ctx.add(Expr::Neg(b));
+                    (a, neg_b)
+                }
+                _ => return None,
+            };
 
-                            let term_a = if exp_a == 0 {
-                                ctx.num(1)
-                            } else if exp_a == 1 {
-                                a
-                            } else {
-                                let e = ctx.num(exp_a as i64);
-                                ctx.add(Expr::Pow(a, e))
-                            };
-                            let term_b = if exp_b == 0 {
-                                ctx.num(1)
-                            } else if exp_b == 1 {
-                                b
-                            } else {
-                                let e = ctx.num(exp_b as i64);
-                                ctx.add(Expr::Pow(b, e))
-                            };
+            let exp_data = ctx.get(exp).clone();
+            if let Expr::Number(n) = exp_data {
+                if n.is_integer() && !n.is_negative() {
+                    if let Some(n_val) = n.to_integer().to_u32() {
+                        // Limit expansion to reasonable size to prevent explosion
+                        if (2..=10).contains(&n_val) {
+                            // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
+                            let mut terms = Vec::new();
+                            for k in 0..=n_val {
+                                let coeff = binomial_coeff(n_val, k);
+                                let exp_a = n_val - k;
+                                let exp_b = k;
 
-                            let mut term = mul2_raw(ctx, term_a, term_b);
-                            if coeff > 1 {
-                                let c = ctx.num(coeff as i64);
-                                term = mul2_raw(ctx, c, term);
+                                let term_a = if exp_a == 0 {
+                                    ctx.num(1)
+                                } else if exp_a == 1 {
+                                    a
+                                } else {
+                                    let e = ctx.num(exp_a as i64);
+                                    ctx.add(Expr::Pow(a, e))
+                                };
+                                let term_b = if exp_b == 0 {
+                                    ctx.num(1)
+                                } else if exp_b == 1 {
+                                    b
+                                } else {
+                                    let e = ctx.num(exp_b as i64);
+                                    ctx.add(Expr::Pow(b, e))
+                                };
+
+                                let mut term = mul2_raw(ctx, term_a, term_b);
+                                if coeff > 1 {
+                                    let c = ctx.num(coeff as i64);
+                                    term = mul2_raw(ctx, c, term);
+                                }
+                                terms.push(term);
                             }
-                            terms.push(term);
-                        }
 
-                        // Sum up terms
-                        let mut expanded = terms[0];
-                        for i in 1..terms.len() {
-                            expanded = ctx.add(Expr::Add(expanded, terms[i]));
-                        }
+                            // Sum up terms
+                            let mut expanded = terms[0];
+                            for i in 1..terms.len() {
+                                expanded = ctx.add(Expr::Add(expanded, terms[i]));
+                            }
 
-                        return Some(Rewrite {
-                            new_expr: expanded,
-                            description: format!("Expand binomial power ^{}", n_val),
-                            before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                        });
+                            return Some(Rewrite {
+                                new_expr: expanded,
+                                description: format!("Expand binomial power ^{}", n_val),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        }
                     }
                 }
             }
         }
+        None
     }
-    None
-});
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Pow"])
+    }
+}
 
 fn binomial_coeff(n: u32, k: u32) -> u32 {
     if k == 0 || k == n {

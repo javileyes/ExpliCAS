@@ -1322,3 +1322,138 @@ impl SolverStrategy for CollectTermsStrategy {
         }
     }
 }
+
+// --- RationalExponentStrategy: Handles equations like x^(p/q) = rhs ---
+// Converts x^(p/q) = rhs to x^p = rhs^q to avoid infinite loops with fractional exponents
+
+pub struct RationalExponentStrategy;
+
+impl SolverStrategy for RationalExponentStrategy {
+    fn name(&self) -> &str {
+        "Rational Exponent"
+    }
+
+    fn apply(
+        &self,
+        eq: &Equation,
+        var: &str,
+        simplifier: &mut Simplifier,
+    ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+        // Only handle equality for now
+        if eq.op != RelOp::Eq {
+            return None;
+        }
+
+        // Check if LHS is Pow(base, exp) where base contains var and exp is rational p/q
+        let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
+        let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
+
+        // We need var only on one side in a power
+        if rhs_has {
+            return None;
+        }
+        if !lhs_has {
+            return None;
+        }
+
+        // Try to match Pow(base, p/q) on LHS
+        let (base, p, q) = match_rational_power(&simplifier.context, eq.lhs, var)?;
+
+        let mut steps = Vec::new();
+
+        // Raise both sides to power q: (base^(p/q))^q = rhs^q → base^p = rhs^q
+        let q_expr = simplifier.context.num(q);
+
+        // New LHS: base^p
+        let p_expr = simplifier.context.num(p);
+        let new_lhs = simplifier.context.add(Expr::Pow(base, p_expr));
+
+        // New RHS: rhs^q
+        let new_rhs = simplifier.context.add(Expr::Pow(eq.rhs, q_expr));
+
+        // Simplify both sides
+        let (sim_lhs, _) = simplifier.simplify(new_lhs);
+        let (sim_rhs, _) = simplifier.simplify(new_rhs);
+
+        let new_eq = Equation {
+            lhs: sim_lhs,
+            rhs: sim_rhs,
+            op: RelOp::Eq,
+        };
+
+        if simplifier.collect_steps {
+            steps.push(SolveStep {
+                description: format!(
+                    "Raise both sides to power {} to eliminate fractional exponent",
+                    q
+                ),
+                equation_after: new_eq.clone(),
+            });
+        }
+
+        // Recursively solve the new equation
+        match solve(&new_eq, var, simplifier) {
+            Ok((set, mut sub_steps)) => {
+                steps.append(&mut sub_steps);
+
+                // For even q, we need to verify solutions (could introduce extraneous)
+                // The main solve() already verifies against original equation
+                Some(Ok((set, steps)))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+/// Match Pow(base, p/q) where base contains var and p/q is a non-integer rational
+pub fn match_rational_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(ExprId, i64, i64)> {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        // Check that base contains the variable
+        if !contains_var(ctx, *base, var) {
+            return None;
+        }
+
+        // Check if exp is a rational number p/q with q != 1
+        let exp_data = ctx.get(*exp);
+
+        match exp_data {
+            Expr::Number(n) => {
+                // Check if denominator != 1 (not an integer)
+                let denom = n.denom();
+                let numer = n.numer();
+                if *denom == 1.into() {
+                    // Integer exponent, not what we're looking for
+                    return None;
+                }
+                // Convert to i64 (if possible)
+                let p: i64 = numer.try_into().ok()?;
+                let q: i64 = denom.try_into().ok()?;
+                if q <= 0 {
+                    return None;
+                }
+                Some((*base, p, q))
+            }
+            Expr::Div(num_id, den_id) => {
+                // Check if it's a simple p/q
+                if let (Expr::Number(p_rat), Expr::Number(q_rat)) =
+                    (ctx.get(*num_id), ctx.get(*den_id))
+                {
+                    if !p_rat.is_integer() || !q_rat.is_integer() {
+                        return None;
+                    }
+                    let p: i64 = p_rat.numer().try_into().ok()?;
+                    let q: i64 = q_rat.numer().try_into().ok()?;
+                    if q <= 1 {
+                        return None;
+                    }
+                    Some((*base, p, q))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
+}

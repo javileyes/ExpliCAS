@@ -1114,9 +1114,23 @@ fn test_fractional_exponents_complex() {
         rhs,
         op: RelOp::Eq,
     };
-    let result = solve(&eq, "x", &mut s);
+    let (solution, _) = solve(&eq, "x", &mut s).expect("Fractional exponents should solve");
 
-    assert!(result.is_ok(), "Fractional exponents should solve");
+    match solution {
+        SolutionSet::Discrete(values) => {
+            assert_eq!(values.len(), 1, "Expected exactly 1 solution");
+            // Verify x = 4
+            let result_str = format!(
+                "{}",
+                cas_ast::DisplayExpr {
+                    context: &s.context,
+                    id: values[0]
+                }
+            );
+            assert_eq!(result_str, "4", "Expected x = 4");
+        }
+        _ => panic!("Expected discrete solution"),
+    }
 }
 
 #[test]

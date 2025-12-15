@@ -330,3 +330,61 @@ fn test_abs_not_canonical() {
     // Debe mantener abs
     assert!(result_str.contains('|'));
 }
+
+/// Regression test: sqrt of perfect square with rational coefficients
+/// ((5*x + 8/3) * (5*x + 8/3))^(1/2) should simplify to |5*x + 8/3|
+#[test]
+fn test_sqrt_perfect_square_rational_coefficients() {
+    let mut simplifier = create_simplifier();
+
+    // ((5*x + 8/3)^2)^(1/2) via multiplication
+    let expr = parse("((5*x + 8/3) * (5*x + 8/3))^(1/2)", &mut simplifier.context).unwrap();
+    let (result, steps) = simplifier.simplify(expr);
+
+    let result_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+
+    println!("Input: ((5*x + 8/3) * (5*x + 8/3))^(1/2)");
+    println!("Result: {}", result_str);
+    for (i, step) in steps.iter().enumerate() {
+        println!(
+            "  Step {}: {} [{}]",
+            i + 1,
+            step.description,
+            step.rule_name
+        );
+    }
+
+    // Should contain absolute value
+    assert!(
+        result_str.contains('|'),
+        "Expected |...| form, got: {}",
+        result_str
+    );
+
+    // Should contain x (either as 'x' or in the expression)
+    assert!(
+        result_str.contains('x'),
+        "Expected x in result, got: {}",
+        result_str
+    );
+
+    // Should contain 5 (coefficient)
+    assert!(
+        result_str.contains('5'),
+        "Expected 5 in result, got: {}",
+        result_str
+    );
+
+    // Should contain 8/3 in some form
+    assert!(
+        result_str.contains("8/3") || result_str.contains("8") && result_str.contains("3"),
+        "Expected 8/3 in result, got: {}",
+        result_str
+    );
+}

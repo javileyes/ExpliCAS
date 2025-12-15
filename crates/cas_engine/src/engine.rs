@@ -753,6 +753,68 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 }
             }
             Expr::Pow(b, e) => {
+                // EARLY DETECTION: sqrt-of-square pattern (u^2)^(1/2) -> |u|
+                // Must check BEFORE recursing into children to prevent binomial expansion
+                if crate::helpers::is_half(self.context, e) {
+                    // Outer is ^(1/2), check if base is (something)^2
+                    if let Expr::Pow(inner_base, inner_exp) = self.context.get(b) {
+                        if let Expr::Number(n) = self.context.get(*inner_exp) {
+                            if n.is_integer()
+                                && *n == num_rational::BigRational::from_integer(2.into())
+                            {
+                                // Pattern matched: (inner_base^2)^(1/2) -> |inner_base|
+                                let abs_expr = self
+                                    .context
+                                    .add(Expr::Function("abs".to_string(), vec![*inner_base]));
+
+                                // Record the step
+                                if self.collect_steps {
+                                    let step = crate::step::Step::new(
+                                        "sqrt(u^2) = |u|",
+                                        "Simplify Square Root of Square",
+                                        id,
+                                        abs_expr,
+                                        self.current_path.clone(),
+                                        Some(self.context),
+                                    );
+                                    self.steps.push(step);
+                                }
+
+                                // Continue simplifying the result
+                                return self.transform_expr_recursive(abs_expr);
+                            }
+                        }
+                    }
+                    // Also check for (u * u)^(1/2) -> |u| directly
+                    // This prevents binomial expansion from firing on the squared form
+                    if let Expr::Mul(left, right) = self.context.get(b) {
+                        if crate::ordering::compare_expr(self.context, *left, *right)
+                            == std::cmp::Ordering::Equal
+                        {
+                            // Pattern matched: (u * u)^(1/2) -> |u|
+                            let abs_expr = self
+                                .context
+                                .add(Expr::Function("abs".to_string(), vec![*left]));
+
+                            // Record the step
+                            if self.collect_steps {
+                                let step = crate::step::Step::new(
+                                    "sqrt(u * u) = |u|",
+                                    "Simplify Square Root of Product",
+                                    id,
+                                    abs_expr,
+                                    self.current_path.clone(),
+                                    Some(self.context),
+                                );
+                                self.steps.push(step);
+                            }
+
+                            // Continue simplifying the result
+                            return self.transform_expr_recursive(abs_expr);
+                        }
+                    }
+                }
+
                 // Check if this Pow is canonical before recursing into children
                 // If it's canonical (like ((x+1)*(x-1))^2), we should NOT simplify the base
                 if crate::canonical_forms::is_canonical_form(self.context, id) {

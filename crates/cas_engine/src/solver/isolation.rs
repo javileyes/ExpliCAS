@@ -1,6 +1,6 @@
 use crate::engine::Simplifier;
 use crate::solver::solution_set::{intersect_solution_sets, neg_inf, pos_inf, union_solution_sets};
-use crate::solver::{solve, SolveStep};
+use crate::solver::{solve, SolveStep, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
 use num_traits::Zero;
 
@@ -13,6 +13,14 @@ pub fn isolate(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // Check recursion depth
+    let current_depth = SOLVE_DEPTH.with(|d| *d.borrow());
+    if current_depth > MAX_SOLVE_DEPTH {
+        return Err(CasError::SolverError(
+            "Maximum solver recursion depth exceeded in isolation.".to_string(),
+        ));
+    }
+
     let mut steps = Vec::new();
 
     let lhs_expr = simplifier.context.get(lhs).clone();

@@ -31,8 +31,9 @@ fn scan_recursive(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
         _ => {}
     }
 
-    // After scanning children, check if THIS node is a Pythagorean pattern
+    // After scanning children, check if THIS node is a special pattern
     check_and_mark_pythagorean_pattern(ctx, expr_id, marks);
+    check_and_mark_sqrt_square_pattern(ctx, expr_id, marks);
 }
 
 fn check_and_mark_pythagorean_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
@@ -80,6 +81,63 @@ fn check_and_mark_pythagorean_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
     if let Expr::Add(left, _) | Expr::Sub(left, _) = ctx.get(expr_id) {
         // Recursively check if left is a Sub with Pythagorean pattern
         check_and_mark_pythagorean_pattern(ctx, *left, marks);
+    }
+}
+
+/// Detect sqrt(u²) or sqrt(u*u) patterns and mark the base for protection.
+/// This prevents BinomialExpansionRule from expanding the squared expression,
+/// allowing the sqrt(u²) → |u| shortcut to fire instead.
+fn check_and_mark_sqrt_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
+    // Check for Pow(base, 1/2) where base is u² or u*u
+    if let Expr::Pow(base, exp) = ctx.get(expr_id) {
+        // Check if exponent is 1/2
+        if crate::helpers::is_half(ctx, *exp) {
+            let base_id = *base;
+            let base_expr = ctx.get(base_id);
+
+            // Case 1: base is Pow(u, 2) → mark the whole base (the u² expression)
+            if let Expr::Pow(_, inner_exp) = base_expr {
+                if let Expr::Number(n) = ctx.get(*inner_exp) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
+                        marks.mark_sqrt_square(base_id);
+                        return;
+                    }
+                }
+            }
+
+            // Case 2: base is Mul(u, u) → mark the whole base (the u*u expression)
+            if let Expr::Mul(left, right) = base_expr {
+                if crate::ordering::compare_expr(ctx, *left, *right) == std::cmp::Ordering::Equal {
+                    marks.mark_sqrt_square(base_id);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Also check for sqrt(base) function form
+    if let Expr::Function(name, args) = ctx.get(expr_id) {
+        if name == "sqrt" && args.len() == 1 {
+            let base_id = args[0];
+            let base_expr = ctx.get(base_id);
+
+            // Case 1: base is Pow(u, 2)
+            if let Expr::Pow(_, inner_exp) = base_expr {
+                if let Expr::Number(n) = ctx.get(*inner_exp) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
+                        marks.mark_sqrt_square(base_id);
+                        return;
+                    }
+                }
+            }
+
+            // Case 2: base is Mul(u, u)
+            if let Expr::Mul(left, right) = base_expr {
+                if crate::ordering::compare_expr(ctx, *left, *right) == std::cmp::Ordering::Equal {
+                    marks.mark_sqrt_square(base_id);
+                }
+            }
+        }
     }
 }
 

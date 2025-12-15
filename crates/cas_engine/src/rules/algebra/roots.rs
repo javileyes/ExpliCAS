@@ -2,7 +2,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Context, Expr};
-use num_traits::Zero;
+use num_traits::{Signed, Zero};
 
 define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
@@ -174,7 +174,8 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                             new_expr,
                             description: "Denest square root".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -230,6 +231,73 @@ define_rule!(
             if vars.len() == 1 {
                 let var = vars.iter().next().unwrap();
                 if let Ok(poly) = Polynomial::from_expr(ctx, arg, var) {
+                    // First: Try to detect perfect square with rational coefficients
+                    // For ax² + bx + c to be (dx + e)², we need:
+                    // - a = d², c = e², b = 2de
+                    // - Equivalently: b² = 4ac (discriminant = 0)
+                    if poly.degree() == 2 && poly.coeffs.len() >= 3 {
+                        let a = poly.coeffs.get(2).cloned();
+                        let b = poly.coeffs.get(1).cloned();
+                        let c = poly.coeffs.get(0).cloned();
+
+                        if let (Some(a), Some(b), Some(c)) = (a, b, c) {
+                            // Check discriminant: b² - 4ac = 0
+                            let four = num_rational::BigRational::from_integer(4.into());
+                            let discriminant = b.clone() * b.clone() - four * a.clone() * c.clone();
+
+                            if discriminant.is_zero() {
+                                // Perfect square! Now find d and e where (dx + e)² = ax² + bx + c
+                                // d = √a, e = √c (with appropriate sign)
+                                if let (Some(d), Some(_e_abs)) =
+                                    (rational_sqrt(&a), rational_sqrt(&c))
+                                {
+                                    // Determine sign of e: 2de = b, so e = b/(2d)
+                                    let two = num_rational::BigRational::from_integer(2.into());
+                                    let e = if d.is_zero() {
+                                        rational_sqrt(&c)
+                                            .unwrap_or_else(|| num_rational::BigRational::zero())
+                                    } else {
+                                        b.clone() / (two * d.clone())
+                                    };
+
+                                    // Build (dx + e)
+                                    let var_expr = ctx.var(var);
+                                    let d_expr = ctx.add(Expr::Number(d.clone()));
+                                    let e_expr = ctx.add(Expr::Number(e.clone()));
+
+                                    let one = num_rational::BigRational::from_integer(1.into());
+                                    let dx = if d == one {
+                                        var_expr
+                                    } else {
+                                        smart_mul(ctx, d_expr, var_expr)
+                                    };
+
+                                    let linear = if e.is_zero() {
+                                        dx
+                                    } else if e.is_positive() {
+                                        ctx.add(Expr::Add(dx, e_expr))
+                                    } else {
+                                        // e is negative, use Add with the actual (negative) value
+                                        ctx.add(Expr::Add(dx, e_expr))
+                                    };
+
+                                    // sqrt((dx+e)²) = |dx+e|
+                                    let abs_linear =
+                                        ctx.add(Expr::Function("abs".to_string(), vec![linear]));
+
+                                    return Some(Rewrite {
+                                        new_expr: abs_linear,
+                                        description: "Simplify perfect square root".to_string(),
+                                        before_local: None,
+                                        after_local: None,
+                                        domain_assumption: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // Fallback: Try integer factorization
                     let factors = poly.factor_rational_roots();
                     if !factors.is_empty() {
                         let first = &factors[0];
@@ -255,7 +323,8 @@ define_rule!(
                                         new_expr: term1,
                                         description: "Simplify perfect square root".to_string(),
                                         before_local: None,
-                                        after_local: None, domain_assumption: None,
+                                        after_local: None,
+                                        domain_assumption: None,
                                     });
                                 } else {
                                     let sqrt_base =
@@ -265,7 +334,8 @@ define_rule!(
                                         new_expr,
                                         description: "Simplify square root factors".to_string(),
                                         before_local: None,
-                                        after_local: None, domain_assumption: None,
+                                        after_local: None,
+                                        domain_assumption: None,
                                     });
                                 }
                             }
@@ -278,3 +348,36 @@ define_rule!(
         None
     }
 );
+
+/// Try to compute the square root of a rational number.
+/// Returns Some(√r) if both numerator and denominator are perfect squares.
+fn rational_sqrt(r: &num_rational::BigRational) -> Option<num_rational::BigRational> {
+    use num_integer::Roots;
+    use num_traits::Signed;
+
+    // For negative numbers, no real square root
+    if r.is_negative() {
+        return None;
+    }
+
+    if r.is_zero() {
+        return Some(num_rational::BigRational::from_integer(0.into()));
+    }
+
+    let numer = r.numer().clone();
+    let denom = r.denom().clone();
+
+    // Check if numerator is a perfect square
+    let numer_sqrt = numer.sqrt();
+    if &numer_sqrt * &numer_sqrt != numer {
+        return None;
+    }
+
+    // Check if denominator is a perfect square
+    let denom_sqrt = denom.sqrt();
+    if &denom_sqrt * &denom_sqrt != denom {
+        return None;
+    }
+
+    Some(num_rational::BigRational::new(numer_sqrt, denom_sqrt))
+}
