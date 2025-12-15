@@ -102,6 +102,11 @@ impl Step {
             return ImportanceLevel::Trivial;
         }
 
+        // Steps with domain assumptions are always shown - important for user awareness
+        if self.domain_assumption.is_some() {
+            return ImportanceLevel::Medium;
+        }
+
         // Trivial steps - identity operations that don't teach anything
         if self.rule_name.contains("Add Zero")
             || self.rule_name.contains("Mul By One")

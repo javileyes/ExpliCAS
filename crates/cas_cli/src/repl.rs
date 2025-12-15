@@ -2933,6 +2933,11 @@ impl Repl {
                                                 )
                                             ))
                                         );
+
+                                        // Show domain assumption warning if present
+                                        if let Some(assumption) = &step.domain_assumption {
+                                            println!("   ⚠ Domain: {}", assumption);
+                                        }
                                     }
                                 }
                             } else {
@@ -3131,6 +3136,11 @@ impl Repl {
                                             )
                                         ))
                                     );
+
+                                    // Show domain assumption warning if present
+                                    if let Some(assumption) = &step.domain_assumption {
+                                        println!("   ⚠ Domain: {}", assumption);
+                                    }
                                 }
                             } else {
                                 // Step not shown, but still update current_root for subsequent steps

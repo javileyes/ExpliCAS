@@ -935,6 +935,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             // Propagate local before/after from Rewrite for accurate Rule display
                             step.before_local = rewrite.before_local;
                             step.after_local = rewrite.after_local;
+                            step.domain_assumption = rewrite.domain_assumption;
                             self.steps.push(step);
                         }
                         expr_id = rewrite.new_expr;

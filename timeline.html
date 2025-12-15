@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: 6 + 4\cdot \sqrt{5}</title>
+    <title>CAS Steps: \log_{x\cdot y}(2)</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -202,6 +202,18 @@
             border-radius: 4px;
             text-align: center;
         }
+        .domain-warning {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            color: #856404;
+            font-size: 0.9em;
+        }
+        .domain-warning::before {
+            content: '⚠ ';
+        }
     </style>
 </head>
 <body>
@@ -210,13 +222,35 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[6 + 4\cdot \sqrt{5}\]
+            \[\log_{x\cdot y}(2)\]
         </div>
         <div class="timeline">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Evaluate Logarithms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{\log_{x\cdot y}(2)}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{log(b, x*y) = log(b, x) + log(b, y)}\)</div>
+                        <div class="local-change">
+                            \[\log_{x\cdot y}(2) \rightarrow \log_{x}(2) + \log_{y}(2)\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{\color{green}{\log_{x}(2) + \log_{y}(2)}}\]
+                    </div>
+                    <div class="domain-warning">Domain: Assuming x &gt; 0 and y &gt; 0</div>
+                </div>
+            </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[6 + 4\cdot \sqrt{5}\]
+            \[\log_{x}(2) + \log_{y}(2)\]
         </div>
     </div>
     <footer>

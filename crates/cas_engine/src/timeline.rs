@@ -985,6 +985,18 @@ impl<'a> TimelineHtml<'a> {
             border-radius: 4px;
             text-align: center;
         }}
+        .domain-warning {{
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            color: #856404;
+            font-size: 0.9em;
+        }}
+        .domain-warning::before {{
+            content: '⚠ ';
+        }}
     </style>
 </head>
 <body>
@@ -1249,6 +1261,17 @@ impl<'a> TimelineHtml<'a> {
                 String::new()
             };
 
+            // Build domain warning HTML if present
+            let domain_html = if let Some(assumption) = step.domain_assumption {
+                format!(
+                    r#"                    <div class="domain-warning">Domain: {}</div>
+"#,
+                    html_escape(assumption)
+                )
+            } else {
+                String::new()
+            };
+
             html.push_str(&format!(
                 r#"            <div class="step">
                 <div class="step-number">{}</div>
@@ -1269,7 +1292,7 @@ impl<'a> TimelineHtml<'a> {
                         \(\textbf{{After:}}\)
                         \[{}\]
                     </div>
-                </div>
+{}                </div>
             </div>
 "#,
                 step_number,
@@ -1278,7 +1301,8 @@ impl<'a> TimelineHtml<'a> {
                 sub_steps_html,
                 step.description,
                 local_change_latex,
-                global_after
+                global_after,
+                domain_html
             ));
         }
 

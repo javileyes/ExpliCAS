@@ -197,6 +197,18 @@ h1 {
     border-radius: 4px;
     text-align: center;
 }
+.domain-warning {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    color: #856404;
+    font-size: 0.9em;
+}
+.domain-warning::before {
+    content: '⚠ ';
+}
 "#;
 
 /// Generate the HTML header with title
@@ -241,8 +253,18 @@ pub fn step_html(
     importance_label: &str,
     math_content: &str,
     is_final: bool,
+    domain_assumption: Option<&str>,
 ) -> String {
     let final_class = if is_final { " step-final" } else { "" };
+    let domain_html = if let Some(assumption) = domain_assumption {
+        format!(
+            r#"        <div class="domain-warning">Domain: {}</div>
+"#,
+            crate::timeline::html_escape(assumption)
+        )
+    } else {
+        String::new()
+    };
     format!(
         r#"<div class="step{final_class}">
     <div class="step-number">{step_number}</div>
@@ -252,7 +274,7 @@ pub fn step_html(
             {description}
         </div>
         <div class="step-math">\[{math_content}\]</div>
-    </div>
+{domain_html}    </div>
 </div>
 "#,
         final_class = final_class,
@@ -260,7 +282,8 @@ pub fn step_html(
         importance_class = importance_class,
         importance_label = importance_label,
         description = crate::timeline::html_escape(description),
-        math_content = math_content
+        math_content = math_content,
+        domain_html = domain_html
     )
 }
 
