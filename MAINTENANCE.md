@@ -11,6 +11,9 @@ This document provides a comprehensive overview of the project's architecture, d
 **No code changes needed!** Control logging via environment variable:
 
 ```bash
+# Enable info logging (engine pipeline stats)
+RUST_LOG=info cargo run -p cas_cli
+
 # Enable debug logging for entire engine
 RUST_LOG=cas_engine=debug cargo test
 
@@ -21,11 +24,14 @@ RUST_LOG=cas_engine::canonical_forms=debug cargo run -p cas_cli
 RUST_LOG=cas_engine=trace ./target/release/cas_cli
 ```
 
+> **Note**: By default, log level is `warn` — no info/debug messages are shown.
+> This keeps the CLI output clean. Use `RUST_LOG` to enable verbose output.
+
 ### Log Levels
 
-- `error` - Critical errors only
-- `warn` - Warnings  
-- `info` - General information
+- `error` - Critical errors only  
+- `warn` - Warnings (**default level**)
+- `info` - Pipeline statistics (rewrites, iterations)
 - `debug` - ⭐ **Recommended for development** - Detailed debugging info
 - `trace` - Very verbose, every detail
 

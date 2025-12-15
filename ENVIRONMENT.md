@@ -292,3 +292,43 @@ pub enum ResolveError {
 3. **Combine both**: `let base = #1` to name a previous result.
 4. **Use `reset` carefully**: It clears everything. Use `clear` for partial cleanup.
 5. **Check `history`**: Before referencing `#id`, verify it exists.
+
+---
+
+## Logging & Debug Output
+
+The CLI uses `tracing` for logging. By default, only warnings and errors are shown.
+
+### Controlling Log Level
+
+Use the `RUST_LOG` environment variable:
+
+```bash
+# No extra output (default)
+cargo run -p cas_cli
+
+# Show pipeline statistics (rewrites, iterations)
+RUST_LOG=info cargo run -p cas_cli
+
+# Show detailed debug info
+RUST_LOG=debug cargo run -p cas_cli
+
+# Very verbose (trace level)
+RUST_LOG=trace cargo run -p cas_cli
+
+# Disable all logs
+RUST_LOG=off cargo run -p cas_cli
+```
+
+### Log Levels
+
+| Level | What's Shown |
+|-------|--------------|
+| `error` | Critical errors only |
+| `warn` | Warnings (**default**) |
+| `info` | Pipeline stats (iterations, rewrites) |
+| `debug` | Detailed debugging (rule applications) |
+| `trace` | Everything (very verbose) |
+
+> [!TIP]
+> For normal use, keep the default (no `RUST_LOG`). Use `RUST_LOG=info` when debugging performance issues or investigating simplification behavior.
