@@ -2275,43 +2275,88 @@ impl Repl {
     }
 
     /// Handle "show #id" command - show details of a specific entry
-    fn handle_show_command(&self, line: &str) {
+    fn handle_show_command(&mut self, line: &str) {
         let input = line.trim().trim_start_matches('#');
         match input.parse::<u64>() {
             Ok(id) => {
                 if let Some(entry) = self.session.get(id) {
                     println!("Entry #{}:", id);
-                    println!("  Type: {}", entry.type_str());
-                    println!("  Raw:  {}", entry.raw_text);
+                    println!("  Type:       {}", entry.type_str());
+                    println!("  Raw:        {}", entry.raw_text);
+
                     match &entry.kind {
                         cas_engine::EntryKind::Expr(expr_id) => {
+                            // Show parsed expression
                             println!(
-                                "  Expr: {}",
-                                cas_ast::DisplayExpr {
+                                "  Parsed:     {}",
+                                DisplayExpr {
                                     context: &self.simplifier.context,
                                     id: *expr_id
                                 }
                             );
+
+                            // Show resolved (after #id and env substitution)
+                            let resolved = match cas_engine::resolve_session_refs(
+                                &mut self.simplifier.context,
+                                *expr_id,
+                                &self.session,
+                            ) {
+                                Ok(r) => cas_engine::env::substitute(
+                                    &mut self.simplifier.context,
+                                    &self.env,
+                                    r,
+                                ),
+                                Err(_) => *expr_id,
+                            };
+                            if resolved != *expr_id {
+                                println!(
+                                    "  Resolved:   {}",
+                                    DisplayExpr {
+                                        context: &self.simplifier.context,
+                                        id: resolved
+                                    }
+                                );
+                            }
+
+                            // Show simplified
+                            let (simplified, _) = self.simplifier.simplify(resolved);
+                            if simplified != resolved {
+                                println!(
+                                    "  Simplified: {}",
+                                    DisplayExpr {
+                                        context: &self.simplifier.context,
+                                        id: simplified
+                                    }
+                                );
+                            }
                         }
                         cas_engine::EntryKind::Eq { lhs, rhs } => {
+                            // Show LHS and RHS
                             println!(
-                                "  LHS:  {}",
-                                cas_ast::DisplayExpr {
+                                "  LHS:        {}",
+                                DisplayExpr {
                                     context: &self.simplifier.context,
                                     id: *lhs
                                 }
                             );
                             println!(
-                                "  RHS:  {}",
-                                cas_ast::DisplayExpr {
+                                "  RHS:        {}",
+                                DisplayExpr {
                                     context: &self.simplifier.context,
                                     id: *rhs
                                 }
                             );
+
+                            // Note about equation-as-expression
+                            println!();
+                            println!("  Note: When used as expression, this becomes (LHS - RHS).");
                         }
                     }
                 } else {
+                    // Check if this ID was ever assigned (it's above next_id means never existed)
+                    // Entry not found — could be deleted or never existed
                     println!("Error: Entry #{} not found.", id);
+                    println!("Hint: Use 'history' to see available entries.");
                 }
             }
             Err(_) => {
