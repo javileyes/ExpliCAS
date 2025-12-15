@@ -26,6 +26,7 @@ enum ParseNode {
     Neg(Box<ParseNode>),
     Function(String, Vec<ParseNode>),
     Matrix(Vec<Vec<ParseNode>>), // 2D structure for validation during parsing
+    SessionRef(u64),             // Reference to session history #id
 }
 
 impl ParseNode {
@@ -82,6 +83,7 @@ impl ParseNode {
 
                 ctx.matrix(num_rows, num_cols, data)
             }
+            ParseNode::SessionRef(id) => ctx.add(Expr::SessionRef(id)),
         }
     }
 }
@@ -167,6 +169,43 @@ fn parse_number(input: &str) -> IResult<&str, ParseNode> {
 
     let rational = decimal_to_rational(int_str, frac_str);
     Ok((remaining, ParseNode::Number(rational)))
+}
+
+// Parser for session references (#1, #42, etc.)
+// Syntax: # followed by one or more digits
+fn parse_session_ref(input: &str) -> IResult<&str, ParseNode> {
+    // Must start with '#'
+    if !input.starts_with('#') {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
+    }
+
+    let after_hash = &input[1..];
+
+    // Collect digits
+    let digit_count = after_hash
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .count();
+
+    if digit_count == 0 {
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Digit,
+        )));
+    }
+
+    let digit_str = &after_hash[..digit_count];
+    let remaining = &after_hash[digit_count..];
+
+    // Parse the id
+    let id: u64 = digit_str.parse().map_err(|_| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Digit))
+    })?;
+
+    Ok((remaining, ParseNode::SessionRef(id)))
 }
 
 // Parser for constants
@@ -353,6 +392,7 @@ fn parse_atom(input: &str) -> IResult<&str, ParseNode> {
     preceded(
         multispace0,
         alt((
+            parse_session_ref, // #id references - try early to avoid # confusion
             parse_number,
             parse_function,
             parse_constant,
@@ -895,6 +935,108 @@ mod tests {
             assert!(r_var == "theta3" || r_var == "phi123");
         } else {
             panic!("Expected Mul");
+        }
+    }
+
+    // ========== Session Reference Tests ==========
+
+    #[test]
+    fn test_parse_session_ref_simple() {
+        let mut ctx = Context::new();
+        let e = parse("#1", &mut ctx).unwrap();
+        if let Expr::SessionRef(id) = ctx.get(e) {
+            assert_eq!(*id, 1);
+        } else {
+            panic!("Expected SessionRef, got {:?}", ctx.get(e));
+        }
+    }
+
+    #[test]
+    fn test_parse_session_ref_larger_id() {
+        let mut ctx = Context::new();
+        let e = parse("#42", &mut ctx).unwrap();
+        if let Expr::SessionRef(id) = ctx.get(e) {
+            assert_eq!(*id, 42);
+        } else {
+            panic!("Expected SessionRef(42)");
+        }
+    }
+
+    #[test]
+    fn test_parse_session_ref_in_expression() {
+        let mut ctx = Context::new();
+        // #1 + 2
+        let e = parse("#1 + 2", &mut ctx).unwrap();
+        if let Expr::Add(l, r) = ctx.get(e) {
+            // One of them should be SessionRef(1), other Number(2)
+            let has_ref = matches!(ctx.get(*l), Expr::SessionRef(1))
+                || matches!(ctx.get(*r), Expr::SessionRef(1));
+            let has_num =
+                matches!(ctx.get(*l), Expr::Number(_)) || matches!(ctx.get(*r), Expr::Number(_));
+            assert!(has_ref && has_num, "Expected SessionRef and Number in Add");
+        } else {
+            panic!("Expected Add");
+        }
+    }
+
+    #[test]
+    fn test_parse_session_ref_in_function() {
+        let mut ctx = Context::new();
+        // sin(#12)
+        let e = parse("sin(#12)", &mut ctx).unwrap();
+        if let Expr::Function(name, args) = ctx.get(e) {
+            assert_eq!(name, "sin");
+            assert_eq!(args.len(), 1);
+            if let Expr::SessionRef(id) = ctx.get(args[0]) {
+                assert_eq!(*id, 12);
+            } else {
+                panic!("Expected SessionRef(12) as function arg");
+            }
+        } else {
+            panic!("Expected Function");
+        }
+    }
+
+    #[test]
+    fn test_parse_session_ref_with_power() {
+        let mut ctx = Context::new();
+        // #3^2
+        let e = parse("#3^2", &mut ctx).unwrap();
+        if let Expr::Pow(base, exp) = ctx.get(e) {
+            if let Expr::SessionRef(id) = ctx.get(*base) {
+                assert_eq!(*id, 3);
+            } else {
+                panic!("Expected SessionRef(3) as base");
+            }
+            if let Expr::Number(n) = ctx.get(*exp) {
+                assert_eq!(n.to_integer(), 2.into());
+            } else {
+                panic!("Expected Number(2) as exponent");
+            }
+        } else {
+            panic!("Expected Pow");
+        }
+    }
+
+    #[test]
+    fn test_parse_session_ref_in_parens() {
+        let mut ctx = Context::new();
+        let e = parse("(#5)", &mut ctx).unwrap();
+        if let Expr::SessionRef(id) = ctx.get(e) {
+            assert_eq!(*id, 5);
+        } else {
+            panic!("Expected SessionRef(5)");
+        }
+    }
+
+    #[test]
+    fn test_parse_session_ref_zero() {
+        let mut ctx = Context::new();
+        let e = parse("#0", &mut ctx).unwrap();
+        if let Expr::SessionRef(id) = ctx.get(e) {
+            assert_eq!(*id, 0);
+        } else {
+            panic!("Expected SessionRef(0)");
         }
     }
 }

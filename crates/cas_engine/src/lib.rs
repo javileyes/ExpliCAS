@@ -44,5 +44,6 @@ pub use error::CasError;
 pub use phase::{PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions, SimplifyPhase};
 pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
 pub use rule::Rule;
+pub use session::{resolve_session_refs, Entry, EntryId, EntryKind, ResolveError, SessionStore};
 pub use step::Step;
 pub use visitors::{DepthVisitor, VariableCollector};

@@ -368,7 +368,7 @@ fn test_batch_overflow_finder() {
 #[allow(dead_code)]
 fn count_depth(ctx: &Context, expr: cas_ast::ExprId) -> usize {
     match ctx.get(expr) {
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => 1,
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => 1,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             1 + count_depth(ctx, *l).max(count_depth(ctx, *r))
         }
