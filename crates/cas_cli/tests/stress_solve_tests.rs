@@ -4,6 +4,7 @@
 use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_engine::engine::Simplifier;
 use cas_engine::solver::solve;
+use cas_engine::CasError;
 
 // ============================================================================
 // LEVEL 1: Basic Linear Equations
@@ -609,7 +610,6 @@ fn test_large_coefficients() {
 }
 
 #[test]
-#[ignore = "Pre-existing bug: VariableNotFound for x/10000 form"]
 fn test_very_small_coefficients() {
     // 0.0001x = 0.0005 → x = 5
     let mut s = Simplifier::with_default_rules();
@@ -626,6 +626,116 @@ fn test_very_small_coefficients() {
     match solution {
         SolutionSet::Discrete(values) => {
             assert_eq!(values.len(), 1);
+        }
+        _ => panic!("Expected discrete solution"),
+    }
+}
+
+// ============================================================================
+// Regression tests for QuadraticStrategy factor skipping (Issue: VariableNotFound)
+// These test that constant factors in products don't cause solver to fail
+// ============================================================================
+
+#[test]
+fn test_factor_skip_simple_division() {
+    // (x-5)/10000 = 0 → x = 5
+    // The 1/10000 factor has no variable and should be skipped
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(x - 5) / 10000", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let (solution, _) = solve(&eq, "x", &mut s).unwrap();
+
+    match solution {
+        SolutionSet::Discrete(values) => {
+            assert_eq!(values.len(), 1, "Expected 1 solution");
+        }
+        _ => panic!("Expected discrete solution"),
+    }
+}
+
+#[test]
+fn test_factor_zero_coefficient_all_reals() {
+    // 0*(x-5) = 0 → All reals (0 = 0 is always true)
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("0 * (x - 5)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let (solution, _) = solve(&eq, "x", &mut s).unwrap();
+
+    assert!(
+        matches!(solution, SolutionSet::AllReals),
+        "Expected AllReals, got {:?}",
+        solution
+    );
+}
+
+#[test]
+fn test_factor_skip_with_squared() {
+    // (1/10000)*(x-5)^2 = 0 → x = 5 (double root)
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(1/10000) * (x - 5)^2", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let (solution, _) = solve(&eq, "x", &mut s).unwrap();
+
+    match solution {
+        SolutionSet::Discrete(values) => {
+            assert!(!values.is_empty(), "Expected at least 1 solution");
+        }
+        _ => panic!("Expected discrete solution"),
+    }
+}
+
+#[test]
+fn test_constant_equation_no_variable() {
+    // (1/2)*(3/7) = 0 → False (no x in equation)
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(1/2) * (3/7)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let result = solve(&eq, "x", &mut s);
+
+    // Should be VariableNotFound or Empty
+    match result {
+        Err(CasError::VariableNotFound(_)) => {} // Expected
+        Ok((SolutionSet::Empty, _)) => {}        // Also acceptable
+        other => panic!("Expected VariableNotFound or Empty, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_factor_skip_half_times_linear() {
+    // (1/2)*(x-1) = 0 → x = 1
+    let mut s = Simplifier::with_default_rules();
+    let lhs = cas_parser::parse("(1/2) * (x - 1)", &mut s.context).unwrap();
+    let rhs = cas_parser::parse("0", &mut s.context).unwrap();
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+    let (solution, _) = solve(&eq, "x", &mut s).unwrap();
+
+    match solution {
+        SolutionSet::Discrete(values) => {
+            assert_eq!(values.len(), 1, "Expected exactly 1 solution");
         }
         _ => panic!("Expected discrete solution"),
     }

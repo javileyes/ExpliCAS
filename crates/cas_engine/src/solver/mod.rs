@@ -117,7 +117,9 @@ pub fn solve(
                     }
                     return Ok((result, steps));
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    return Err(e);
+                }
             }
         }
     }

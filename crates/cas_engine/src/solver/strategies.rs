@@ -493,6 +493,13 @@ impl SolverStrategy for QuadraticStrategy {
             if eq.op == RelOp::Eq {
                 let mut all_solutions = Vec::new();
                 for factor in factors {
+                    // Skip factors that don't contain the variable (e.g., constant multipliers)
+                    // This fixes cases like x/10000 = 5/10000 where simplified is (x-5)/10000 = Mul(1/10000, x-5)
+                    // The 1/10000 factor has no variable, so we skip it
+                    if !contains_var(&simplifier.context, factor, var) {
+                        continue;
+                    }
+
                     if simplifier.collect_steps {
                         steps.push(SolveStep {
                             description: format!(
