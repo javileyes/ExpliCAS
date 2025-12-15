@@ -49,6 +49,9 @@ fn create_full_simplifier() -> Simplifier {
         cas_engine::rules::trigonometry::TrigPythagoreanSimplifyRule,
     ));
     simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
+    simplifier.add_rule(Box::new(
+        cas_engine::rules::trigonometry::TrigPhaseShiftRule,
+    ));
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
     // NOTE: CanonicalizeTrigSquareRule DISABLED - conflicts with TrigPythagoreanSimplifyRule
     // causing infinite loops (cos² → 1-sin² → cos² → ...)
@@ -745,7 +748,6 @@ fn test_torture_14_rational_telescoping() {
 }
 
 #[test]
-#[ignore = "Pre-existing bug: Trig shift identity not yet implemented"]
 fn test_torture_15_trig_shift() {
     // 15. El "Cambio de Fase Trigonométrico"
     // sin(x + pi/2) - cos(x) -> 0

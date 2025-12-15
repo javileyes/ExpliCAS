@@ -153,14 +153,12 @@ fn test_atanh_negative() {
 // ==================== Pythagorean Identity Tests ====================
 
 #[test]
-#[ignore] // TODO: Expression gets factorized before Pythagorean rule applies
 fn test_hyperbolic_pythagorean() {
     let result = simplify_str("cosh(x)^2 - sinh(x)^2");
     assert_eq!(result, "1", "cosh²(x) - sinh²(x) should equal 1");
 }
 
 #[test]
-#[ignore] // TODO: Expression gets factorized before Pythagorean rule applies
 fn test_hyperbolic_pythagorean_reverse() {
     let result = simplify_str("sinh(y)^2 - cosh(y)^2");
     assert_eq!(result, "-1", "sinh²(y) - cosh²(y) should equal -1");
@@ -231,7 +229,6 @@ fn test_mixed_hyperbolic() {
 }
 
 #[test]
-#[ignore] // TODO: Expression gets factorized before Pythagorean rule applies
 fn test_pythagorean_with_variable() {
     let result = simplify_str("cosh(a+b)^2 - sinh(a+b)^2");
     assert_eq!(

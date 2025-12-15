@@ -28,7 +28,8 @@ define_rule!(
                                     new_expr: zero,
                                     description: format!("{}(0) = 0", name),
                                     before_local: None,
-                                    after_local: None, domain_assumption: None,
+                                    after_local: None,
+                                    domain_assumption: None,
                                 });
                             }
                             "cos" => {
@@ -37,7 +38,8 @@ define_rule!(
                                     new_expr: one,
                                     description: "cos(0) = 1".to_string(),
                                     before_local: None,
-                                    after_local: None, domain_assumption: None,
+                                    after_local: None,
+                                    domain_assumption: None,
                                 });
                             }
                             "arccos" => {
@@ -48,7 +50,8 @@ define_rule!(
                                     new_expr,
                                     description: "arccos(0) = pi/2".to_string(),
                                     before_local: None,
-                                    after_local: None, domain_assumption: None,
+                                    after_local: None,
+                                    domain_assumption: None,
                                 });
                             }
                             _ => {}
@@ -63,7 +66,8 @@ define_rule!(
                                     new_expr,
                                     description: "arcsin(1) = pi/2".to_string(),
                                     before_local: None,
-                                    after_local: None, domain_assumption: None,
+                                    after_local: None,
+                                    domain_assumption: None,
                                 });
                             }
                             "arccos" => {
@@ -72,7 +76,8 @@ define_rule!(
                                     new_expr: zero,
                                     description: "arccos(1) = 0".to_string(),
                                     before_local: None,
-                                    after_local: None, domain_assumption: None,
+                                    after_local: None,
+                                    domain_assumption: None,
                                 });
                             }
                             "arctan" => {
@@ -83,7 +88,8 @@ define_rule!(
                                     new_expr,
                                     description: "arctan(1) = pi/4".to_string(),
                                     before_local: None,
-                                    after_local: None, domain_assumption: None,
+                                    after_local: None,
+                                    domain_assumption: None,
                                 });
                             }
                             _ => {}
@@ -99,7 +105,8 @@ define_rule!(
                                     new_expr,
                                     description: "arcsin(1/2) = pi/6".to_string(),
                                     before_local: None,
-                                    after_local: None, domain_assumption: None,
+                                    after_local: None,
+                                    domain_assumption: None,
                                 });
                             }
                             "arccos" => {
@@ -110,7 +117,8 @@ define_rule!(
                                     new_expr,
                                     description: "arccos(1/2) = pi/3".to_string(),
                                     before_local: None,
-                                    after_local: None, domain_assumption: None,
+                                    after_local: None,
+                                    domain_assumption: None,
                                 });
                             }
                             _ => {}
@@ -127,7 +135,8 @@ define_rule!(
                                 new_expr: zero,
                                 description: format!("{}(pi) = 0", name),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -136,7 +145,8 @@ define_rule!(
                                 new_expr: neg_one,
                                 description: "cos(pi) = -1".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -152,7 +162,8 @@ define_rule!(
                                 new_expr: one,
                                 description: "sin(pi/2) = 1".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -161,7 +172,8 @@ define_rule!(
                                 new_expr: zero,
                                 description: "cos(pi/2) = 0".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -170,7 +182,8 @@ define_rule!(
                                 new_expr: undefined,
                                 description: "tan(pi/2) = undefined".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -193,7 +206,8 @@ define_rule!(
                                 new_expr,
                                 description: "sin(π/3) = √3/2".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -205,7 +219,8 @@ define_rule!(
                                 new_expr,
                                 description: "cos(π/3) = 1/2".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -219,7 +234,8 @@ define_rule!(
                                 new_expr,
                                 description: "tan(π/3) = √3".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -242,7 +258,8 @@ define_rule!(
                                 new_expr,
                                 description: format!("{}(π/4) = √2/2", name),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -252,7 +269,8 @@ define_rule!(
                                 new_expr: one,
                                 description: "tan(π/4) = 1".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -271,7 +289,8 @@ define_rule!(
                                 new_expr,
                                 description: "sin(π/6) = 1/2".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -287,7 +306,8 @@ define_rule!(
                                 new_expr,
                                 description: "cos(π/6) = √3/2".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -303,7 +323,8 @@ define_rule!(
                                 new_expr,
                                 description: "tan(π/6) = 1/√3".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -343,7 +364,8 @@ define_rule!(
                                 new_expr,
                                 description: "sin(-x) = -sin(x)".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "cos" => {
@@ -352,7 +374,8 @@ define_rule!(
                                 new_expr,
                                 description: "cos(-x) = cos(x)".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         "tan" => {
@@ -362,7 +385,8 @@ define_rule!(
                                 new_expr,
                                 description: "tan(-x) = -tan(x)".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                         _ => {}
@@ -576,7 +600,8 @@ define_rule!(
                                             new_expr: ctx.num(0),
                                             description: "Pythagorean Identity (empty)".to_string(),
                                             before_local: None,
-                                            after_local: None, domain_assumption: None,
+                                            after_local: None,
+                                            domain_assumption: None,
                                         });
                                     }
 
@@ -595,7 +620,8 @@ define_rule!(
                                         new_expr,
                                         description,
                                         before_local: None,
-                                        after_local: None, domain_assumption: None,
+                                        after_local: None,
+                                        domain_assumption: None,
                                     });
                                 }
                             }
@@ -630,7 +656,8 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     } else if let Expr::Sub(lhs, rhs) = inner_data {
                         // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
@@ -647,7 +674,8 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     } else if let Expr::Div(num, den) = inner_data {
                         // sin((a + b) / c) -> sin(a/c + b/c) -> ...
@@ -671,7 +699,8 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                                     "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)"
                                         .to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -693,7 +722,8 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     } else if let Expr::Sub(lhs, rhs) = inner_data {
                         // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
@@ -710,7 +740,8 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     } else if let Expr::Div(num, den) = inner_data {
                         // cos((a + b) / c) -> cos(a/c + b/c) -> ...
@@ -734,7 +765,8 @@ define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
                                     "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)"
                                         .to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -781,7 +813,8 @@ impl crate::rule::Rule for TanToSinCosRule {
                     new_expr,
                     description: "tan(x) -> sin(x)/cos(x)".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -820,7 +853,8 @@ define_rule!(
                                 new_expr: ctx.num(1),
                                 description: "sec²(x) - tan²(x) = 1".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -857,7 +891,8 @@ define_rule!(
                                 new_expr: ctx.num(1),
                                 description: "csc²(x) - cot²(x) = 1".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -887,7 +922,8 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(2x) -> 2sin(x)cos(x)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                     "cos" => {
@@ -904,7 +940,8 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(2x) -> cos^2(x) - sin^2(x)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                     _ => {}
@@ -945,7 +982,8 @@ define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(3x) → 3sin(x) - 4sin³(x)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                     "cos" => {
@@ -969,7 +1007,8 @@ define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(3x) → 4cos³(x) - 3cos(x)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                     _ => {}
@@ -1417,7 +1456,8 @@ define_rule!(
                             new_expr,
                             description: format!("sin({}x) expansion", n_val),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     } else {
                         // cos
@@ -1428,7 +1468,8 @@ define_rule!(
                             new_expr,
                             description: format!("cos({}x) expansion", n_val),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -1475,7 +1516,8 @@ define_rule!(
                                         new_expr: base_term,
                                         description: "cos^2(x) -> 1 - sin^2(x)".to_string(),
                                         before_local: None,
-                                        after_local: None, domain_assumption: None,
+                                        after_local: None,
+                                        domain_assumption: None,
                                     });
                                 } else {
                                     let half_n_expr = ctx.add(Expr::Number(half_n));
@@ -1484,7 +1526,8 @@ define_rule!(
                                         new_expr,
                                         description: "cos^2k(x) -> (1 - sin^2(x))^k".to_string(),
                                         before_local: None,
-                                        after_local: None, domain_assumption: None,
+                                        after_local: None,
+                                        domain_assumption: None,
                                     });
                                 }
                             }
@@ -1528,6 +1571,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanSimplifyRule));
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
+
+    // Phase shift: sin(x + π/2) → cos(x), cos(x + π/2) → -sin(x), etc.
+    simplifier.add_rule(Box::new(TrigPhaseShiftRule));
 }
 
 define_rule!(
@@ -1581,7 +1627,8 @@ define_rule!(
                     new_expr,
                     description: "Half-Angle Expansion".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -1893,9 +1940,350 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                 new_expr: final_expr,
                 description: description.to_string(),
                 before_local: None,
-                after_local: None, domain_assumption: None,
+                after_local: None,
+                domain_assumption: None,
             });
         }
     }
     None
 });
+// ============================================================================
+// Trig Phase Shift Rule
+// ============================================================================
+// sin(x + π/2) → cos(x)
+// sin(x - π/2) → -cos(x)
+// sin(x + π) → -sin(x)
+// cos(x + π/2) → -sin(x)
+// cos(x - π/2) → sin(x)
+// cos(x + π) → -cos(x)
+//
+// Also handles canonical form: sin((2*x + π)/2) where arg = (2*x + π)/2
+
+define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
+    let expr_data = ctx.get(expr).clone();
+
+    if let Expr::Function(name, args) = expr_data {
+        if args.len() != 1 {
+            return None;
+        }
+
+        let is_sin = name == "sin";
+        let is_cos = name == "cos";
+        if !is_sin && !is_cos {
+            return None;
+        }
+
+        let arg = args[0];
+
+        // Try to extract (base_term, pi_multiple) where arg = base_term + pi_multiple * π/2
+        let (base_term, pi_multiple) = extract_phase_shift(ctx, arg)?;
+
+        if pi_multiple == 0 {
+            return None;
+        }
+
+        // Normalize k to 0..3 range (mod 4)
+        let k = ((pi_multiple % 4) + 4) % 4;
+
+        // Apply phase shift
+        // sin(x + k*π/2): k=0→sin(x), k=1→cos(x), k=2→-sin(x), k=3→-cos(x)
+        // cos(x + k*π/2): k=0→cos(x), k=1→-sin(x), k=2→-cos(x), k=3→sin(x)
+        let (new_func, negate) = if is_sin {
+            match k {
+                0 => ("sin", false),
+                1 => ("cos", false),
+                2 => ("sin", true),
+                3 => ("cos", true),
+                _ => return None,
+            }
+        } else {
+            match k {
+                0 => ("cos", false),
+                1 => ("sin", true),
+                2 => ("cos", true),
+                3 => ("sin", false),
+                _ => return None,
+            }
+        };
+
+        let new_trig = ctx.add(Expr::Function(new_func.to_string(), vec![base_term]));
+        let new_expr = if negate {
+            ctx.add(Expr::Neg(new_trig))
+        } else {
+            new_trig
+        };
+
+        let shift_desc = match pi_multiple {
+            1 => "π/2",
+            -1 => "-π/2",
+            2 => "π",
+            -2 => "-π",
+            3 => "3π/2",
+            -3 => "-3π/2",
+            _ => "kπ/2",
+        };
+
+        return Some(Rewrite {
+            new_expr,
+            description: format!("{}(x + {}) phase shift", name, shift_desc),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        });
+    }
+
+    None
+});
+
+/// Extract (base_term, k) from arg such that arg = base_term + k*π/2
+/// Handles multiple canonical forms:
+/// - Add(x, π/2) → (x, 1)
+/// - Sub(x, π/2) → (x, -1)  
+/// - Div(Add(n*x, k*π), m) → (x, k*2/m) if m divides k*2
+fn extract_phase_shift(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<(ExprId, i32)> {
+    // Form 1: Div((coeff*x + k*pi), denom) - the canonical form!
+    // Example: (2*x + pi)/2 means x + pi/2, so k=1
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        let num = *num;
+        let den = *den;
+
+        // Get denominator value
+        let denom_val: i32 = if let Expr::Number(n) = ctx.get(den) {
+            if n.is_integer() {
+                n.to_integer().try_into().ok()?
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        // Check if numerator is Add/Sub
+        if let Expr::Add(l, r) = ctx.get(num).clone() {
+            // Check both terms for π
+            // Form: (base + k*pi)/denom where we want k/denom = m/2 for some integer m
+
+            // Check right term for π (most common: 2*x + pi)
+            if is_pi(ctx, r) {
+                // pi/denom * 2 = shift in units of pi/2
+                // For denom=2, shift = 1 (one pi/2)
+                let k = 2 / denom_val; // Only works if denom divides 2
+                if 2 % denom_val != 0 {
+                    // Not a clean pi/2 multiple
+                } else {
+                    let base = ctx.add(Expr::Div(l, den));
+                    return Some((base, k));
+                }
+            }
+
+            // Check left term for π (less common: pi + 2*x)
+            if is_pi(ctx, l) {
+                let k = 2 / denom_val;
+                if 2 % denom_val != 0 {
+                    // Not a clean pi/2 multiple
+                } else {
+                    let base = ctx.add(Expr::Div(r, den));
+                    return Some((base, k));
+                }
+            }
+
+            // Also check for k*pi form using extract_pi_coefficient
+            if let Some(pi_coeff) = extract_pi_coefficient(ctx, r) {
+                let k_times_2 = 2 * pi_coeff;
+                if k_times_2 % denom_val == 0 {
+                    let k = k_times_2 / denom_val;
+                    let base = ctx.add(Expr::Div(l, den));
+                    return Some((base, k));
+                }
+            }
+
+            if let Some(pi_coeff) = extract_pi_coefficient(ctx, l) {
+                let k_times_2 = 2 * pi_coeff;
+                if k_times_2 % denom_val == 0 {
+                    let k = k_times_2 / denom_val;
+                    let base = ctx.add(Expr::Div(r, den));
+                    return Some((base, k));
+                }
+            }
+        }
+    }
+
+    // Form 1b: Mul(1/n, Add(coeff*x, k*pi)) - the canonical form for (a + b)/n!
+    // Example: (2*x + pi)/2 becomes Mul(1/2, Add(2*x, pi)); shift = 1
+    if let Expr::Mul(coeff_id, inner) = ctx.get(expr).clone() {
+        // Check if coeff is 1/n (a rational with numerator 1)
+        if let Expr::Number(coeff) = ctx.get(coeff_id) {
+            if coeff.numer() == &num_bigint::BigInt::from(1) && !coeff.denom().is_one() {
+                let denom_val: i32 = coeff.denom().try_into().ok().unwrap_or(0);
+                if denom_val > 0 {
+                    // Check if inner is Add containing pi
+                    if let Expr::Add(l, r) = ctx.get(inner).clone() {
+                        // Check right term for pi
+                        if is_pi(ctx, r) {
+                            let k = 2 / denom_val;
+                            if 2 % denom_val == 0 {
+                                // base = l / denom = l * (1/denom) = coeff * l
+                                let base = ctx.add(Expr::Mul(coeff_id, l));
+                                return Some((base, k));
+                            }
+                        }
+
+                        // Check left term for pi
+                        if is_pi(ctx, l) {
+                            let k = 2 / denom_val;
+                            if 2 % denom_val == 0 {
+                                let base = ctx.add(Expr::Mul(coeff_id, r));
+                                return Some((base, k));
+                            }
+                        }
+
+                        // Check for k*pi form
+                        if let Some(pi_coeff) = extract_pi_coefficient(ctx, r) {
+                            let k_times_2 = 2 * pi_coeff;
+                            if k_times_2 % denom_val == 0 {
+                                let k = k_times_2 / denom_val;
+                                let base = ctx.add(Expr::Mul(coeff_id, l));
+                                return Some((base, k));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Form 2: Add(x, k*π/2)
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        if let Some(k) = extract_pi_half_multiple(ctx, *r) {
+            return Some((*l, k));
+        }
+        if let Some(k) = extract_pi_half_multiple(ctx, *l) {
+            return Some((*r, k));
+        }
+    }
+
+    // Form 3: Sub(x, k*π/2)
+    if let Expr::Sub(l, r) = ctx.get(expr) {
+        if let Some(k) = extract_pi_half_multiple(ctx, *r) {
+            return Some((*l, -k));
+        }
+    }
+
+    None
+}
+
+/// Extract the coefficient of π from an expression.
+/// - π → 1
+/// - k*π → k  
+/// - π*k → k
+fn extract_pi_coefficient(ctx: &cas_ast::Context, expr: ExprId) -> Option<i32> {
+    // Check for π alone
+    if is_pi(ctx, expr) {
+        return Some(1);
+    }
+
+    // Check for Mul(k, π) or Mul(π, k)
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        if is_pi(ctx, *r) {
+            if let Expr::Number(n) = ctx.get(*l) {
+                if n.is_integer() {
+                    return n.to_integer().try_into().ok();
+                }
+            }
+        }
+        if is_pi(ctx, *l) {
+            if let Expr::Number(n) = ctx.get(*r) {
+                if n.is_integer() {
+                    return n.to_integer().try_into().ok();
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Extract k from expressions like k*π/2, π/2, π, 3π/2, etc.
+/// Returns Some(k) if the expression equals k*π/2 for integer k.
+fn extract_pi_half_multiple(ctx: &cas_ast::Context, expr: ExprId) -> Option<i32> {
+    // Check for π/2 (k=1)
+    if is_pi_over_n(ctx, expr, 2) {
+        return Some(1);
+    }
+
+    // Check for π (k=2)
+    if is_pi(ctx, expr) {
+        return Some(2);
+    }
+
+    // Check for Mul(k, π/2) or Mul(π/2, k)
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        // Check Mul(Number, π/2)
+        if let Expr::Number(n) = ctx.get(*l) {
+            if is_pi_over_n(ctx, *r, 2) {
+                if n.is_integer() {
+                    if let Some(k) = n.to_integer().try_into().ok() {
+                        return Some(k);
+                    }
+                }
+            }
+            // Check Mul(Number, π) means k = 2*number
+            if is_pi(ctx, *r) {
+                if n.is_integer() {
+                    if let Some(k_half) = n.to_integer().try_into().ok() {
+                        let k: i32 = k_half;
+                        return Some(k * 2);
+                    }
+                }
+            }
+        }
+        // Check Mul(π/2, Number)
+        if let Expr::Number(n) = ctx.get(*r) {
+            if is_pi_over_n(ctx, *l, 2) {
+                if n.is_integer() {
+                    if let Some(k) = n.to_integer().try_into().ok() {
+                        return Some(k);
+                    }
+                }
+            }
+            if is_pi(ctx, *l) {
+                if n.is_integer() {
+                    if let Some(k_half) = n.to_integer().try_into().ok() {
+                        let k: i32 = k_half;
+                        return Some(k * 2);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for Div(k*π, 2)
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        if let Expr::Number(d) = ctx.get(*den) {
+            if d.is_integer() && *d == num_rational::BigRational::from_integer(2.into()) {
+                // Check if numerator is k*π or just π
+                if is_pi(ctx, *num) {
+                    return Some(1);
+                }
+                if let Expr::Mul(l, r) = ctx.get(*num) {
+                    if let Expr::Number(n) = ctx.get(*l) {
+                        if is_pi(ctx, *r) && n.is_integer() {
+                            if let Some(k) = n.to_integer().try_into().ok() {
+                                return Some(k);
+                            }
+                        }
+                    }
+                    if let Expr::Number(n) = ctx.get(*r) {
+                        if is_pi(ctx, *l) && n.is_integer() {
+                            if let Some(k) = n.to_integer().try_into().ok() {
+                                return Some(k);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
