@@ -2982,8 +2982,9 @@ impl Repl {
         //    But we can temporarily TAKE the context, use it in a new Simplifier, and then put it back.
 
         let mut temp_simplifier = Simplifier::with_default_rules();
-        // Swap context
+        // Swap context and profiler so temp_simplifier uses main profiler
         std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+        std::mem::swap(&mut self.simplifier.profiler, &mut temp_simplifier.profiler);
 
         // Ensure we have the aggressive rules we want (DistributeRule is in default)
         // Also add DistributeConstantRule just in case (though DistributeRule covers it)
@@ -3156,8 +3157,9 @@ impl Repl {
             Err(e) => println!("Error: {}", e),
         }
 
-        // Swap context back
+        // Swap context and profiler back
         std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
+        std::mem::swap(&mut self.simplifier.profiler, &mut temp_simplifier.profiler);
     }
 
     /// Handle the 'rationalize' command for rationalizing denominators

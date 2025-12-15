@@ -19,15 +19,16 @@ build_cli() {
   fi
 }
 
-# Añade un "caso" aislado con profile: reset -> cmd -> profile
+# Añade un "caso" aislado con profile: reset -> cmd -> profile -> health
 add_case() {
   local label="$1"
   local cmd="$2"
 
-  # Clear profiler, run command, then show profile stats
+  # Clear profiler, run command, then show profile stats and health table
   echo "profile clear" >> "$COMMANDS_FILE"
   echo "$cmd"          >> "$COMMANDS_FILE"
   echo "profile"       >> "$COMMANDS_FILE"
+  echo "health"        >> "$COMMANDS_FILE"
   echo ""              >> "$COMMANDS_FILE"
 }
 

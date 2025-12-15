@@ -1,6 +1,6 @@
 ==================================================
 CLI Tests Output
-Fecha: Mon Dec 15 01:51:58 CET 2025
+Fecha: Mon Dec 15 01:56:59 CET 2025
 Explain: 1 | Steps: normal
 ==================================================
 
@@ -12,7 +12,7 @@ Profiler enabled.
 Explain mode ENABLED (pipeline diagnostics after each simplify)
 Profiler statistics cleared.
 Parsed: sqrt(12)
-[2m2025-12-15T00:51:59.088506Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.519514Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
    Before: √(12)
@@ -20,9 +20,12 @@ Steps (Aggressive Mode):
    After: 2 * √(3)
 Result: 2 * √(3)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(72)
-[2m2025-12-15T00:51:59.088665Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.519729Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Simplify root: 72^1/2  [Evaluate Numeric Power]
    Before: √(72)
@@ -30,9 +33,12 @@ Steps (Aggressive Mode):
    After: 6 * √(2)
 Result: 6 * √(2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(8 / 9)
-[2m2025-12-15T00:51:59.088800Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.519919Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Simplify root: 8/9^1/2  [Evaluate Numeric Power]
    Before: √(8/9)
@@ -40,9 +46,12 @@ Steps (Aggressive Mode):
    After: 2/3 * √(2)
 Result: 2/3 * √(2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(12 / 25)
-[2m2025-12-15T00:51:59.088929Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.520103Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Simplify root: 12/25^1/2  [Evaluate Numeric Power]
    Before: √(12/25)
@@ -50,9 +59,12 @@ Steps (Aggressive Mode):
    After: 2/5 * √(3)
 Result: 2/5 * √(3)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(12) + sqrt(27)
-[2m2025-12-15T00:51:59.089088Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:57:02.520331Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
    Before: √(12) + sqrt(27)
@@ -68,9 +80,12 @@ Steps (Aggressive Mode):
    After: 5 * √(3)
 Result: 5 * √(3)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(2) + sqrt(8)
-[2m2025-12-15T00:51:59.089259Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.520572Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. Simplify root: 8^1/2  [Evaluate Numeric Power]
    Before: √(2) + √(8)
@@ -82,9 +97,12 @@ Steps (Aggressive Mode):
    After: 3 * √(2)
 Result: 3 * √(2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(32) / sqrt(2)
-[2m2025-12-15T00:51:59.089381Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:57:02.520740Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
 Steps (Aggressive Mode):
 1. Simplify root: 32^1/2  [Evaluate Numeric Power]
    Before: √(32) / sqrt(2)
@@ -96,9 +114,12 @@ Steps (Aggressive Mode):
    After: 4 / 1
 Result: 4
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (sqrt(12) + sqrt(27)) / sqrt(3)
-[2m2025-12-15T00:51:59.089531Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m8
+[2m2025-12-15T00:57:02.520934Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m8
 Steps (Aggressive Mode):
 1. Simplify root: 12^1/2  [Evaluate Numeric Power]
    Before: (√(12) + sqrt(27)) / sqrt(3)
@@ -118,9 +139,12 @@ Steps (Aggressive Mode):
    After: 5 / 1
 Result: 5
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(8 * x^2)
-[2m2025-12-15T00:51:59.089760Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
+[2m2025-12-15T00:57:02.521237Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
    Before: √(8 * x^(2))
@@ -136,9 +160,12 @@ Steps (Aggressive Mode):
    After: 2 * √(2) * abs(x)
 Result: 2 * abs(x) * √(2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(12 * x^3)
-[2m2025-12-15T00:51:59.089966Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:57:02.521513Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
 Steps (Aggressive Mode):
 1. Distribute power over product  [Power of a Product]
    Before: √(12 * x^(3))
@@ -154,9 +181,12 @@ Steps (Aggressive Mode):
    After: 2 * √(3) * √(x^3)
 Result: 2 * √(3) * √(x^3)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(3 + 2 * sqrt(2))
-[2m2025-12-15T00:51:59.090187Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m10
+[2m2025-12-15T00:57:02.521799Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m10
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
    Before: √(3 + 2 * √(2))
@@ -164,9 +194,12 @@ Steps (Aggressive Mode):
    After: sqrt((1 + 3) / 2) + sqrt((3 - 1) / 2)
 Result: 1 + √(2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(5 + 2 * sqrt(6))
-[2m2025-12-15T00:51:59.090400Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
+[2m2025-12-15T00:57:02.522075Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
    Before: √(5 + 2 * √(6))
@@ -174,9 +207,12 @@ Steps (Aggressive Mode):
    After: sqrt((1 + 5) / 2) + sqrt((5 - 1) / 2)
 Result: √(2) + √(3)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sqrt(7 - 2 * sqrt(10))
-[2m2025-12-15T00:51:59.090661Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
+[2m2025-12-15T00:57:02.522389Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
 Steps (Aggressive Mode):
 1. Denest square root  [Root Denesting]
    Before: √(7 - 2 * √(10))
@@ -184,9 +220,12 @@ Steps (Aggressive Mode):
    After: sqrt((3 + 7) / 2) - sqrt((7 - 3) / 2)
 Result: √(5) - √(2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / sqrt(2)
-[2m2025-12-15T00:51:59.090828Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.522599Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. 1 / 2^(1/2) -> 1 * 2^(1/2) / 2  [Rationalize Single Surd]
    Before: 1 / √(2)
@@ -194,9 +233,12 @@ Steps (Aggressive Mode):
    After: √(2) / 2
 Result: √(2)/2
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / (1 + sqrt(2))
-[2m2025-12-15T00:51:59.091015Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:57:02.522844Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m5
 Steps (Aggressive Mode):
 1. 1 / 1 + 2^(1/2) -> 1 * -(1 - 2^(1/2)) / 1  [Rationalize Binomial Denominator]
    Before: 1 / (1 + √(2))
@@ -204,9 +246,12 @@ Steps (Aggressive Mode):
    After: -(1 - √(2))
 Result: √(2) - 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x / (1 + sqrt(2))
-[2m2025-12-15T00:51:59.091259Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.523149Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. x / 1 + 2^(1/2) -> x * -(1 - 2^(1/2)) / 1  [Rationalize Binomial Denominator]
    Before: x / (1 + √(2))
@@ -214,9 +259,12 @@ Steps (Aggressive Mode):
    After: x * -(1 - √(2))
 Result: x * (√(2) - 1)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x / (2 * (1 + sqrt(2)))
-[2m2025-12-15T00:51:59.091546Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m8
+[2m2025-12-15T00:57:02.523519Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m8
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
    Before: x / (2 * (1 + √(2)))
@@ -228,9 +276,12 @@ Steps (Aggressive Mode):
    After: x * -(2 - 2 * √(2)) / 4
 Result: x * (2 * √(2) - 2)/4
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / (3 - 2 * sqrt(5))
-[2m2025-12-15T00:51:59.091880Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m10
+[2m2025-12-15T00:57:02.523951Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m10
 Steps (Aggressive Mode):
 1. 1 / 3 - 2 * 5^(1/2) -> 1 * -(3 - -2 * 5^(1/2)) / 11  [Rationalize Binomial Denominator]
    Before: 1 / (3 - 2 * √(5))
@@ -238,9 +289,12 @@ Steps (Aggressive Mode):
    After: -(3 - -2 * √(5)) / 11
 Result: (-3 - 2 * √(5))/11
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x / (2 * (3 - 2 * sqrt(5)))
-[2m2025-12-15T00:51:59.092246Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m12
+[2m2025-12-15T00:57:02.524436Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m2 [3mpost_iters[0m[2m=[0m2 [3mtotal_rewrites[0m[2m=[0m12
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
    Before: x / (2 * (3 - 2 * √(5)))
@@ -252,9 +306,31 @@ Steps (Aggressive Mode):
    After: x * -(6 - -4 * √(5)) / 44
 Result: -x * (6 + 4 * √(5))/44
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / (1 + sqrt(2) + sqrt(3))
-[2m2025-12-15T00:51:59.092718Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+[2m2025-12-15T00:57:02.525055Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
+Rationalized: 1/4 * √(2) * (1 + √(2) - √(3))
+Rule Profiling Report
+─────────────────────────────────────────────
+Rule                                       Hits
+─────────────────────────────────────────────
+Canonicalize Negation                         1
+Identity Property of Addition                 1
+Identity Property of Multiplication           1
+Canonicalize Multiplication                   1
+Combine Constants                             1
+─────────────────────────────────────────────
+TOTAL                                         5
+
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
+Profiler statistics cleared.
+Parsed: 1 / (1 + sqrt(2) + sqrt(3))
+[2m2025-12-15T00:57:02.525612Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
 Rationalized: 1/4 * √(2) * (1 + √(2) - √(3))
 Rule Profiling Report
 ─────────────────────────────────────────────
@@ -262,31 +338,18 @@ Rule                                       Hits
 ─────────────────────────────────────────────
 Canonicalize Multiplication                   1
 Identity Property of Addition                 1
-Combine Constants                             1
 Canonicalize Negation                         1
 Identity Property of Multiplication           1
-─────────────────────────────────────────────
-TOTAL                                         5
-
-Profiler statistics cleared.
-Parsed: 1 / (1 + sqrt(2) + sqrt(3))
-[2m2025-12-15T00:51:59.093109Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m5
-Rationalized: 1/4 * √(2) * (1 + √(2) - √(3))
-Rule Profiling Report
-─────────────────────────────────────────────
-Rule                                       Hits
-─────────────────────────────────────────────
-Identity Property of Multiplication           1
-Canonicalize Multiplication                   1
-Identity Property of Addition                 1
-Canonicalize Negation                         1
 Combine Constants                             1
 ─────────────────────────────────────────────
 TOTAL                                         5
 
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x) * (x - 1)
-[2m2025-12-15T00:51:59.093253Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.525808Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x + 1) * (x - 1)
@@ -294,9 +357,12 @@ Steps (Aggressive Mode):
    After: x^(2) - 1^(2)
 Result: x^(2) - 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x) * (x - 1) * (1 + x^2)
-[2m2025-12-15T00:51:59.093431Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
+[2m2025-12-15T00:57:02.526037Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
 Steps (Aggressive Mode):
 1. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x + 1) * (x - 1) * (x^(2) + 1)
@@ -308,9 +374,12 @@ Steps (Aggressive Mode):
    After: x^(2)^(2) - 1^(2)
 Result: x^(4) - 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x) * (x - 1) * (1 + x^2) * (1 + x^4) - (x^8 - 1)
-[2m2025-12-15T00:51:59.093656Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m14
+[2m2025-12-15T00:57:02.526323Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m14
 Steps (Aggressive Mode):
 1. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x + 1) * (x - 1) * (x^(2) + 1) * (x^(4) + 1) - x^(8) - 1
@@ -330,9 +399,12 @@ Steps (Aggressive Mode):
    After: 0
 Result: 0
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (a + b)^2 - (a - b)^2
-[2m2025-12-15T00:51:59.094020Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m16
+[2m2025-12-15T00:57:02.526800Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m16
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
    Before: (a + b)^(2) - (a - b)^(2)
@@ -360,9 +432,12 @@ Steps (Aggressive Mode):
    After: 4 * a * b
 Result: 4 * a * b
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (x + y) * (x - y)
-[2m2025-12-15T00:51:59.094280Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.527138Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. (a-b)(a+b) = a² - b²  [Difference of Squares (Product to Difference)]
    Before: (x + y) * (x - y)
@@ -370,9 +445,12 @@ Steps (Aggressive Mode):
    After: x^(2) - y^(2)
 Result: x^(2) - y^(2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x)^3
-[2m2025-12-15T00:51:59.094514Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m7
+[2m2025-12-15T00:57:02.527435Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m7
 Steps (Aggressive Mode):
 1. Expand binomial power ^3  [Binomial Expansion]
    Before: (x + 1)^(3)
@@ -380,9 +458,12 @@ Steps (Aggressive Mode):
    After: x^(3) + 3 * x^(2) + 3 * 1^(2) * x + 1^(3)
 Result: x^(3) + 3 * x^(2) + 3 * x + 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x)^5
-[2m2025-12-15T00:51:59.094944Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m11
+[2m2025-12-15T00:57:02.527955Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m11
 Steps (Aggressive Mode):
 1. Expand binomial power ^5  [Binomial Expansion]
    Before: (x + 1)^(5)
@@ -390,9 +471,12 @@ Steps (Aggressive Mode):
    After: x^(5) + 5 * x^(4) + 10 * 1^(2) * x^(3) + 10 * 1^(3) * x^(2) + 5 * 1^(4) * x + 1^(5)
 Result: x^(5) + 5 * x^(4) + 10 * x^(3) + 10 * x^(2) + 5 * x + 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (x - 1)^2
-[2m2025-12-15T00:51:59.095175Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m8
+[2m2025-12-15T00:57:02.528243Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m8
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
    Before: (x - 1)^(2)
@@ -404,15 +488,21 @@ Steps (Aggressive Mode):
    After: x^(2) + 2 * -x + 1
 Result: x^(2) - 2 * x + 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x) * (2 + x)
-[2m2025-12-15T00:51:59.095311Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.528407Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 No simplification steps needed.
 Result: (x + 1) * (x + 2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x)^6
-[2m2025-12-15T00:51:59.096206Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
+[2m2025-12-15T00:57:02.529476Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
 Result: 1 + x^6 + 6 * x + 6 * x^5 + 15 * x^2 + 15 * x^4 + 20 * x^3
 Rule Profiling Report
 ─────────────────────────────────────────────
@@ -423,9 +513,12 @@ Evaluate Numeric Power                        5
 ─────────────────────────────────────────────
 TOTAL                                        12
 
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x) * (x - 1)
-[2m2025-12-15T00:51:59.096498Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.529740Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Result: x^2 - 1
 Rule Profiling Report
 ─────────────────────────────────────────────
@@ -437,9 +530,12 @@ Difference of Squares (Product to Dif...      1
 ─────────────────────────────────────────────
 TOTAL                                         4
 
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x) * (2 + x) * (3 + x)
-[2m2025-12-15T00:51:59.096733Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.529967Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Distribute  [Distributive Property]
    Before: (x + 1) * (x + 2) * (x + 3)
@@ -447,9 +543,12 @@ Steps (Aggressive Mode):
    After: x * (x + 2) * (x + 3) + (x + 2) * (x + 3)
 Result: x * (x + 2) * (x + 3) + (x + 2) * (x + 3)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: (1 + x) * (2 + x) * (3 + x)
-[2m2025-12-15T00:51:59.097379Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
+[2m2025-12-15T00:57:02.530707Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m12
 Result: 6 + x^3 + 6 * x^2 + 11 * x
 Rule Profiling Report
 ─────────────────────────────────────────────
@@ -457,15 +556,18 @@ Rule                                       Hits
 ─────────────────────────────────────────────
 Combine Like Terms                            4
 Product of Powers                             3
-Identity Property of Multiplication           2
 Combine Constants                             2
+Identity Property of Multiplication           2
 Canonicalize Multiplication                   1
 ─────────────────────────────────────────────
 TOTAL                                        12
 
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x + x + x + x
-[2m2025-12-15T00:51:59.097527Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.530871Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: x + x + x + x
@@ -481,9 +583,12 @@ Steps (Aggressive Mode):
    After: 4 * x
 Result: 4 * x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 2 * x + 3 * x + 4 * x
-[2m2025-12-15T00:51:59.097664Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.531030Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: 2 * x + 3 * x + 4 * x
@@ -495,15 +600,21 @@ Steps (Aggressive Mode):
    After: 9 * x
 Result: 9 * x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: w * x + x * y + x * z
-[2m2025-12-15T00:51:59.097786Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.531171Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 No simplification steps needed.
 Result: w * x + x * y + x * z
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: a + a + b + b + c + c + d + d
-[2m2025-12-15T00:51:59.098039Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.531479Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: a + a + b + b + c + c + d + d
@@ -523,9 +634,12 @@ Steps (Aggressive Mode):
    After: 2 * a + 2 * b + 2 * c + 2 * d
 Result: 2 * a + 2 * b + 2 * c + 2 * d
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 + 2 + 3 + 4 + x + x + x + x
-[2m2025-12-15T00:51:59.098282Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
+[2m2025-12-15T00:57:02.531754Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m6
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: x + x + x + x + 1 + 2 + 3 + 4
@@ -541,15 +655,21 @@ Steps (Aggressive Mode):
    After: 4 * x + 1 + 2 + 3 + 4
 Result: 4 * x + 10
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / 2 + 1 / 3
-[2m2025-12-15T00:51:59.098402Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.531896Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 Result: 5/6
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x / 2 + x / 3
-[2m2025-12-15T00:51:59.098499Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.532009Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: x/2 + x/3
@@ -557,15 +677,21 @@ Steps (Aggressive Mode):
    After: 5/6 * x
 Result: 5/6 * x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / x + 1 / y
-[2m2025-12-15T00:51:59.098619Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.532152Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 No simplification steps needed.
 Result: 1 / x + 1 / y
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / x + (1 + x) / x
-[2m2025-12-15T00:51:59.098792Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.532358Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Add fractions: a/b + c/d -> (ad+bc)/bd  [Add Fractions]
    Before: (x + 1) / x + 1 / x
@@ -573,9 +699,12 @@ Steps (Aggressive Mode):
    After: (x + 1 + 1) / x
 Result: (x + 2) / x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / x / (1 / y)
-[2m2025-12-15T00:51:59.098885Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.532469Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. Simplify nested fraction  [Simplify Complex Fraction]
    Before: 1 / x / (1 / y)
@@ -583,9 +712,12 @@ Steps (Aggressive Mode):
    After: y / x
 Result: y / x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 1 / (1 / x)
-[2m2025-12-15T00:51:59.098946Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.532543Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 1. Simplify nested fraction  [Simplify Complex Fraction]
    Before: 1 / (1 / x)
@@ -593,21 +725,30 @@ Steps (Aggressive Mode):
    After: x / 1
 Result: x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 2^3 * 2^4
-[2m2025-12-15T00:51:59.099037Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.532643Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 Result: 128
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 2^3^4
-[2m2025-12-15T00:51:59.099101Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.532718Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps (Aggressive Mode):
 Result: 4096
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x^2^3
-[2m2025-12-15T00:51:59.099172Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.532801Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. Multiply exponents  [Power of a Power]
    Before: x^(2)^(3)
@@ -615,9 +756,12 @@ Steps (Aggressive Mode):
    After: x^(6)
 Result: x^(6)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x^2 * x^3
-[2m2025-12-15T00:51:59.099256Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.532898Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. Combine powers with same base  [Product of Powers]
    Before: x^(2) * x^(3)
@@ -625,33 +769,48 @@ Steps (Aggressive Mode):
    After: x^(5)
 Result: x^(5)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x^0
-[2m2025-12-15T00:51:59.099311Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.532967Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x
-[2m2025-12-15T00:51:59.099348Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.533012Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 No simplification steps needed.
 Result: x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: 2^(-3)
-[2m2025-12-15T00:51:59.099395Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.533068Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: 1/8
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: x^(-2)
-[2m2025-12-15T00:51:59.099445Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.533127Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 No simplification steps needed.
 Result: x^(-2)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: ln(x * y) - ln(x)
-[2m2025-12-15T00:51:59.099549Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.533247Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Global Combine Like Terms  [Combine Like Terms]
    Before: log(e, x) + log(e, y) - log(e, x)
@@ -659,9 +818,12 @@ Steps (Aggressive Mode):
    After: log(e, y)
 Result: log(e, y)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: ln(x^2) / ln(x)
-[2m2025-12-15T00:51:59.099639Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
+[2m2025-12-15T00:57:02.533351Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m3
 Steps (Aggressive Mode):
 1. Cancel common factors  [Cancel Common Factors]
    Before: 2 * log(e, x) / log(e, x)
@@ -669,21 +831,30 @@ Steps (Aggressive Mode):
    After: 2 / 1
 Result: 2
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: ln(e)
-[2m2025-12-15T00:51:59.099697Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.533418Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: ln(1)
-[2m2025-12-15T00:51:59.099739Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.533472Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: 0
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: e^ln(x)
-[2m2025-12-15T00:51:59.099780Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.533524Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. b^log(b, x) = x  [Exponential-Log Inverse]
    Before: e^(log(e, x))
@@ -691,15 +862,21 @@ Steps (Aggressive Mode):
    After: x
 Result: x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: ln(e^x)
-[2m2025-12-15T00:51:59.099828Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.533581Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 Result: x
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: cos(x)^2 + sin(x)^2
-[2m2025-12-15T00:51:59.099897Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.533663Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 Steps (Aggressive Mode):
 1. Pythagorean Identity  [Pythagorean Identity]
    Before: cos(x)^(2) + sin(x)^(2)
@@ -707,9 +884,12 @@ Steps (Aggressive Mode):
    After: 1
 Result: 1
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sin(2 * x) + cos(x) * 2 * sin(x)
-[2m2025-12-15T00:51:59.100053Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.533852Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps (Aggressive Mode):
 1. sin(2x) -> 2sin(x)cos(x)  [Double Angle Identity]
    Before: sin(2 * x) + cos(x) * 2 * sin(x)
@@ -721,9 +901,12 @@ Steps (Aggressive Mode):
    After: 4 * cos(x) * sin(x)
 Result: 4 * cos(x) * sin(x)
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
 Parsed: sin(3 * x) - (3 * sin(x) - 4 * sin(x)^3)
-[2m2025-12-15T00:51:59.100247Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
+[2m2025-12-15T00:57:02.534084Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m9
 Steps (Aggressive Mode):
 1. sin(3x) → 3sin(x) - 4sin³(x)  [Triple Angle Identity]
    Before: sin(3 * x) - 3 * sin(x) - 4 * sin(x)^(3)
@@ -739,23 +922,26 @@ Steps (Aggressive Mode):
    After: 0
 Result: 0
 No rules have been applied yet.
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
-[2m2025-12-15T00:51:59.100390Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.100416Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.100471Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.100611Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-[2m2025-12-15T00:51:59.100747Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-[2m2025-12-15T00:51:59.100769Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.100805Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.100840Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.100903Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.100926Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.100973Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.100995Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.101052Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m2 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.534265Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.534290Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.534356Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.534507Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.534658Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.534684Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.534725Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.534765Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.534831Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.534856Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.534905Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.534930Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.534992Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m2 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
 Steps:
-[2m2025-12-15T00:51:59.101072Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.101118Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.535015Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.535064Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
 1. Subtract 2 from both sides
    -> x = 3
 Result: { 3 }
@@ -764,27 +950,30 @@ Rule Profiling Report
 Rule                                       Hits
 ─────────────────────────────────────────────
 Combine Constants                             4
-Canonicalize Negation                         2
 Combine Like Terms                            2
 Identity Property of Addition                 2
+Canonicalize Negation                         2
 Expand Polynomial                             1
 ─────────────────────────────────────────────
 TOTAL                                        11
 
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
-[2m2025-12-15T00:51:59.101191Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.101212Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.101268Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.101408Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.101544Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.101583Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.101602Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.101636Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.101734Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
-[2m2025-12-15T00:51:59.101920Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.535146Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.535169Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.535221Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.535373Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.535523Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.535567Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.535586Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.535622Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.535729Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.535811Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps:
-[2m2025-12-15T00:51:59.102054Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.102077Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.535914Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.535933Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 1. Detected quadratic equation. Applying quadratic formula.
    -> x^2 - 4 = 0
 Result: { -2, 2 }
@@ -799,20 +988,23 @@ Evaluate Numeric Power                        2
 ─────────────────────────────────────────────
 TOTAL                                        12
 
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Profiler statistics cleared.
-[2m2025-12-15T00:51:59.102271Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.102293Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.102429Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.102558Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-[2m2025-12-15T00:51:59.102686Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
-[2m2025-12-15T00:51:59.102724Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.102740Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.102771Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
-[2m2025-12-15T00:51:59.102854Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
-[2m2025-12-15T00:51:59.102921Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.536096Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.536116Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.536253Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.536396Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.536541Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m2
+[2m2025-12-15T00:57:02.536583Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.536602Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.536637Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m1
+[2m2025-12-15T00:57:02.536734Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
+[2m2025-12-15T00:57:02.536813Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m2 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m4
 Steps:
-[2m2025-12-15T00:51:59.103025Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
-[2m2025-12-15T00:51:59.103040Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.536913Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
+[2m2025-12-15T00:57:02.536932Z[0m [32m INFO[0m [2msimplify[0m[2m:[0m pipeline_complete [3mcore_iters[0m[2m=[0m1 [3mtransform_iters[0m[2m=[0m1 [3mrationalize_iters[0m[2m=[0m1 [3mpost_iters[0m[2m=[0m1 [3mtotal_rewrites[0m[2m=[0m0
 1. Detected quadratic equation. Applying quadratic formula.
    -> x^2 - 4 = 0
 Result: { -2, 2 }
@@ -820,15 +1012,18 @@ Rule Profiling Report
 ─────────────────────────────────────────────
 Rule                                       Hits
 ─────────────────────────────────────────────
-Identity Property of Addition                 5
 Combine Constants                             5
+Identity Property of Addition                 5
 Canonicalize Negation                         4
 Evaluate Numeric Power                        2
 ─────────────────────────────────────────────
 TOTAL                                        16
 
+No health report available.
+Run a simplification first (health is captured when explain mode or health mode is on).
+Enable with: health on
 Goodbye!
 
 ==================================================
-Tests completados: Mon Dec 15 01:51:59 CET 2025
+Tests completados: Mon Dec 15 01:57:02 CET 2025
 ==================================================
