@@ -541,6 +541,7 @@ fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Opti
             cas_ast::Constant::Undefined => Some(f64::NAN),
         },
         Expr::Matrix { .. } => None, // Matrix evaluation not supported in f64
+        Expr::SessionRef(_) => None, // SessionRef should be resolved before eval
     }
 }
 
@@ -841,6 +842,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     id
                 }
             }
+            // SessionRef is a leaf - return as-is (should be resolved before simplification)
+            Expr::SessionRef(_) => id,
         };
 
         // 2. Apply rules
@@ -1060,5 +1063,6 @@ fn get_variant_name(expr: &Expr) -> &'static str {
         Expr::Number(_) => "Number",
         Expr::Constant(_) => "Constant",
         Expr::Matrix { .. } => "Matrix",
+        Expr::SessionRef(_) => "SessionRef",
     }
 }

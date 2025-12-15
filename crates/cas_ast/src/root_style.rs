@@ -547,6 +547,8 @@ impl<'a> StyledExpr<'a> {
                 let _ = data; // Suppress unused warning
                 Ok(())
             }
+
+            Expr::SessionRef(id) => write!(f, "#{}", id),
         }
     }
 

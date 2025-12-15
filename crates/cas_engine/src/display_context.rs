@@ -233,6 +233,7 @@ fn expr_to_string(ctx: &Context, expr: cas_ast::ExprId) -> String {
             let data_str: Vec<_> = data.iter().map(|e| expr_to_string(ctx, *e)).collect();
             format!("Mat({},{},{})", rows, cols, data_str.join(","))
         }
+        Expr::SessionRef(id) => format!("Ref(#{})", id),
     }
 }
 

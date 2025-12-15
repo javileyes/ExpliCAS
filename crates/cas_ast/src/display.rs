@@ -738,6 +738,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     write!(f, "]")
                 }
             }
+            Expr::SessionRef(id) => write!(f, "#{}", id),
         }
     }
 }
@@ -752,7 +753,8 @@ fn precedence(ctx: &Context, id: ExprId) -> i32 {
         | Expr::Variable(_)
         | Expr::Number(_)
         | Expr::Constant(_)
-        | Expr::Matrix { .. } => 5,
+        | Expr::Matrix { .. }
+        | Expr::SessionRef(_) => 5,
     }
 }
 
@@ -848,7 +850,7 @@ fn polynomial_degree(ctx: &Context, id: ExprId) -> i32 {
         }
 
         // Functions: treat as degree 0 for ordering purposes
-        Expr::Function(_, _) | Expr::Matrix { .. } => 0,
+        Expr::Function(_, _) | Expr::Matrix { .. } | Expr::SessionRef(_) => 0,
     }
 }
 
@@ -999,6 +1001,7 @@ impl<'a> fmt::Display for RawDisplayExpr<'a> {
                 }
                 write!(f, "])")
             }
+            Expr::SessionRef(id) => write!(f, "#{}", id),
         }
     }
 }
@@ -1326,6 +1329,7 @@ impl<'a> DisplayExprWithHints<'a> {
                 }
                 write!(f, "])")
             }
+            Expr::SessionRef(id) => write!(f, "#{}", id),
         }
     }
 
@@ -1709,6 +1713,7 @@ impl<'a> DisplayExprStyled<'a> {
                 }
                 write!(f, "])")
             }
+            Expr::SessionRef(id) => write!(f, "#{}", id),
         }
     }
 

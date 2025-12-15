@@ -369,6 +369,7 @@ pub fn get_variant_name(expr: &Expr) -> &'static str {
         Expr::Neg(_) => "Neg",
         Expr::Function(_, _) => "Function",
         Expr::Matrix { .. } => "Matrix",
+        Expr::SessionRef(_) => "SessionRef",
     }
 }
 

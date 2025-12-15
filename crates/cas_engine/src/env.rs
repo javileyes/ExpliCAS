@@ -317,7 +317,8 @@ fn substitute_impl(
         }
 
         // Literals: no substitution needed
-        Expr::Number(_) | Expr::Constant(_) => expr,
+        // SessionRef should be resolved before substitution, so leave unchanged
+        Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => expr,
     }
 }
 

@@ -400,6 +400,10 @@ impl CycleDetector {
                         hash_expr(ctx, *elem, hasher);
                     }
                 }
+                cas_ast::Expr::SessionRef(id) => {
+                    11u8.hash(hasher);
+                    id.hash(hasher);
+                }
             }
         }
 

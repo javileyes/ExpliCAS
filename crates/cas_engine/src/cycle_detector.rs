@@ -264,6 +264,8 @@ pub fn expr_fingerprint(ctx: &Context, root: ExprId, memo: &mut FingerprintMemo)
             }
             h
         }
+        // SessionRef is a leaf - hash the id
+        Expr::SessionRef(id) => mix1(TAG_VAR, *id),
     };
 
     memo.insert(root, h);

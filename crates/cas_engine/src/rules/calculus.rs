@@ -5,7 +5,6 @@ use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::One;
 
-
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {
         if name == "integrate" {
@@ -26,7 +25,8 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                                 var_name
                             ),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -45,7 +45,8 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -73,7 +74,8 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
                             var_name
                         ),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -404,6 +406,8 @@ fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
         Expr::Neg(e) => contains_var(ctx, *e, var),
         Expr::Function(_, args) => args.iter().any(|a| contains_var(ctx, *a, var)),
         Expr::Matrix { data, .. } => data.iter().any(|elem| contains_var(ctx, *elem, var)),
+        // SessionRef is a leaf - doesn't contain variables
+        Expr::SessionRef(_) => false,
     }
 }
 
@@ -728,7 +732,8 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -770,7 +775,8 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                             end
                         ),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -973,6 +979,8 @@ fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> 
                 data: new_data,
             })
         }
+        // SessionRef is a leaf - no substitution needed
+        Expr::SessionRef(_) => expr,
     }
 }
 
@@ -1026,7 +1034,8 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -1058,7 +1067,8 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -1100,7 +1110,8 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                             end
                         ),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }

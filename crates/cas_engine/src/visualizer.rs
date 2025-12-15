@@ -158,6 +158,12 @@ impl<'a> AstVisualizer<'a> {
                     ));
                 }
             }
+            Expr::SessionRef(id) => {
+                output.push_str(&format!(
+                    "  n{} [label=\"#{}\", shape=note, fillcolor=\"#e1bee7\"];\n",
+                    node_id, id
+                ));
+            }
         }
 
         node_id

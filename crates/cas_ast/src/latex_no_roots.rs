@@ -126,6 +126,7 @@ impl<'a> LatexNoRoots<'a> {
                 result.push_str("\n\\end{bmatrix}");
                 result
             }
+            Expr::SessionRef(id) => format!("\\#{}", id), // LaTeX escape for #
         }
     }
 

@@ -15,6 +15,7 @@ pub trait Visitor {
             Expr::Neg(e) => self.visit_neg(context, *e),
             Expr::Function(name, args) => self.visit_function(context, name, args),
             Expr::Matrix { data, .. } => self.visit_matrix(context, data),
+            Expr::SessionRef(id) => self.visit_session_ref(*id),
         }
     }
 
@@ -62,6 +63,10 @@ pub trait Visitor {
             self.visit_expr(context, *elem);
         }
     }
+
+    fn visit_session_ref(&mut self, _id: u64) {
+        // SessionRef is a leaf node - no children to recurse into
+    }
 }
 
 pub trait Transformer {
@@ -81,6 +86,7 @@ pub trait Transformer {
             Expr::Matrix { rows, cols, data } => {
                 self.transform_matrix(context, id, rows, cols, &data)
             }
+            Expr::SessionRef(_) => self.transform_session_ref(context, id),
         }
     }
 
@@ -232,5 +238,10 @@ pub trait Transformer {
         } else {
             original
         }
+    }
+
+    fn transform_session_ref(&mut self, _context: &mut Context, id: ExprId) -> ExprId {
+        // SessionRef is a leaf - return as-is (should be resolved before transform)
+        id
     }
 }

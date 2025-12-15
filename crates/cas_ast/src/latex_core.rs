@@ -91,6 +91,7 @@ pub trait LaTeXRenderer {
             Expr::Neg(e) => self.format_neg(*e),
             Expr::Function(name, args) => self.format_function(name, args),
             Expr::Matrix { rows, cols, data } => self.format_matrix(*rows, *cols, data),
+            Expr::SessionRef(id) => format!("\\#{}", id), // LaTeX escape
         }
     }
 

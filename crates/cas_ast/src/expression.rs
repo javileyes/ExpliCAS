@@ -39,6 +39,12 @@ impl ExprId {
         let t = self.tag();
         t == Self::TAG_NUMBER || t == Self::TAG_ATOM
     }
+
+    /// Create an ExprId from a raw u32 value (for testing purposes)
+    #[inline]
+    pub fn from_raw(val: u32) -> Self {
+        ExprId(val)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -71,6 +77,9 @@ pub enum Expr {
         cols: usize,
         data: Vec<ExprId>, // Length must be rows * cols
     },
+    /// Session reference: refers to a previously stored expression by ID (#1, #2, etc.)
+    /// Resolved before simplification using SessionStore
+    SessionRef(u64),
 }
 
 #[derive(Default, Clone)]
@@ -189,7 +198,7 @@ impl Context {
         // Determine tag based on expression type
         let tag = match &canonical_expr {
             Expr::Number(_) => ExprId::TAG_NUMBER,
-            Expr::Variable(_) | Expr::Constant(_) => ExprId::TAG_ATOM,
+            Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => ExprId::TAG_ATOM,
             Expr::Neg(_) => ExprId::TAG_UNARY,
             Expr::Add(_, _)
             | Expr::Sub(_, _)
@@ -243,7 +252,7 @@ impl Context {
 
         let tag = match &expr {
             Expr::Number(_) => ExprId::TAG_NUMBER,
-            Expr::Variable(_) | Expr::Constant(_) => ExprId::TAG_ATOM,
+            Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => ExprId::TAG_ATOM,
             Expr::Neg(_) => ExprId::TAG_UNARY,
             Expr::Add(_, _)
             | Expr::Sub(_, _)

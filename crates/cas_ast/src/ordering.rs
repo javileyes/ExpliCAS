@@ -81,6 +81,7 @@ fn get_rank(expr: &Expr) -> u8 {
         Add(_, _) => 8,
         Sub(_, _) => 9,
         Matrix { .. } => 10,
+        SessionRef(_) => 11,
     }
 }
 

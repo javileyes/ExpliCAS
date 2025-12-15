@@ -22,6 +22,7 @@ pub mod rationalize_policy;
 pub mod rule;
 pub mod rules;
 pub mod semantic_equality;
+pub mod session;
 pub mod solver;
 pub mod step;
 pub mod step_optimization;
