@@ -3160,6 +3160,11 @@ impl Repl {
         // Swap context and profiler back
         std::mem::swap(&mut self.simplifier.context, &mut temp_simplifier.context);
         std::mem::swap(&mut self.simplifier.profiler, &mut temp_simplifier.profiler);
+
+        // Store health report for the `health` command (if health tracking is enabled)
+        if self.health_enabled {
+            self.last_health_report = Some(self.simplifier.profiler.health_report());
+        }
     }
 
     /// Handle the 'rationalize' command for rationalizing denominators

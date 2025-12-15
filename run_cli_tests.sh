@@ -46,6 +46,7 @@ add_case() {
 {
   echo "steps $STEPS_MODE"
   echo "profile enable"
+  echo "health on"
   if [[ "$ENABLE_EXPLAIN" == "1" ]]; then
     echo "set explain on"
   else
