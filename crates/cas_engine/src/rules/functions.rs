@@ -289,29 +289,41 @@ mod tests {
     }
 }
 
-// EvaluateMetaFunctionsRule: simplify(expr), factor(expr), expand(expr) → expr
-// These are "meta" functions that represent operations on expressions.
-// Since simplification is bottom-up, arguments are already processed by the time
-// this rule runs. We just unwrap the function wrapper to make them transparent.
-// This ensures:
-//   - simplify(simplify(e)) == simplify(e) (idempotence)
-//   - factor(x+x) → 2*x (doesn't leave factor() wrapper)
-//   - expand(a*b) → ... (doesn't leave expand() wrapper)
+// EvaluateMetaFunctionsRule: Handles meta functions that operate on expressions
+// - simplify(expr) → expr (already simplified by bottom-up processing)
+// - factor(expr) → expr (factoring is done by other rules during simplification)
+// - expand(expr) → expanded version (calls actual expand logic)
 define_rule!(
     EvaluateMetaFunctionsRule,
     "Evaluate Meta Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(name, args) = ctx.get(expr) {
-            // Meta functions that should be transparent (return their argument)
-            if (name == "simplify" || name == "factor" || name == "expand") && args.len() == 1 {
-                return Some(Rewrite {
-                    new_expr: args[0],
-                    description: format!("{}(x) = x (already processed)", name),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
+            if args.len() == 1 {
+                match name.as_str() {
+                    // simplify() and factor() are transparent - argument already processed
+                    "simplify" | "factor" => {
+                        return Some(Rewrite {
+                            new_expr: args[0],
+                            description: format!("{}(x) = x (already processed)", name),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    }
+                    // expand() needs to call actual expansion logic
+                    "expand" => {
+                        let expanded = crate::expand::expand(ctx, args[0]);
+                        return Some(Rewrite {
+                            new_expr: expanded,
+                            description: "expand(x) → expanded form".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    }
+                    _ => {}
+                }
             }
         }
         None
