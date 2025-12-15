@@ -1515,6 +1515,68 @@ impl Repl {
                 println!("  health status -c stress      Run only stress tests");
                 println!("  health status --list         List available tests");
             }
+            // Session environment commands
+            "let" => {
+                println!("Command: let <name> = <expr>");
+                println!("Description: Assigns an expression to a variable name.");
+                println!("             The variable can be used in subsequent expressions.");
+                println!("             Substitution is transitive and cycle-safe.");
+                println!();
+                println!("Examples:");
+                println!("  let a = 5");
+                println!("  let b = a + 1        → b becomes 6");
+                println!("  let f = x^2 + 1      → f stores symbolic expression");
+            }
+            "vars" => {
+                println!("Command: vars");
+                println!("Description: Lists all defined variables and their values.");
+                println!();
+                println!("Example output:");
+                println!("  a = 5");
+                println!("  b = 6");
+                println!("  f = x^2 + 1");
+            }
+            "clear" => {
+                println!("Command: clear [name ...]");
+                println!("Description: Clears variable bindings from the environment.");
+                println!("             Without arguments, clears ALL variables.");
+                println!("             With arguments, clears only the specified variables.");
+                println!();
+                println!("Examples:");
+                println!("  clear           → clears all variables");
+                println!("  clear a b       → clears only a and b");
+            }
+            "reset" => {
+                println!("Command: reset");
+                println!("Description: Resets the entire session state.");
+                println!("             Clears all variables AND session history (#ids).");
+            }
+            "history" | "list" => {
+                println!("Command: history (or list)");
+                println!("Description: Shows all stored session entries with their #ids.");
+                println!("             Each expression you evaluate is stored with a unique ID.");
+                println!();
+                println!("Example output:");
+                println!("  #1: x + 1");
+                println!("  #2: 2*x - 3");
+                println!("  #3: x + 1 = 5  [Eq]");
+            }
+            "show" => {
+                println!("Command: show #<id>");
+                println!("Description: Displays a specific session entry by its ID.");
+                println!();
+                println!("Example:");
+                println!("  show #1         → shows the expression stored as #1");
+            }
+            "del" => {
+                println!("Command: del #<id> [#<id> ...]");
+                println!("Description: Deletes session entries by their IDs.");
+                println!("             IDs are never reused after deletion.");
+                println!();
+                println!("Examples:");
+                println!("  del #1          → deletes entry #1");
+                println!("  del #2 #3 #5    → deletes entries #2, #3, and #5");
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
@@ -1583,6 +1645,18 @@ impl Repl {
         println!("  help [cmd]              Show this help message or details for a command");
         println!("  quit / exit             Exit the REPL");
         println!();
+
+        println!("Session Environment:");
+        println!("  let <name> = <expr>     Assign a variable");
+        println!("  <name> := <expr>        Alternative assignment syntax");
+        println!("  vars                    List all defined variables");
+        println!("  clear [name]            Clear one or all variables");
+        println!("  reset                   Clear all session state");
+        println!("  history / list          Show session history (#ids)");
+        println!("  show #<id>              Display a session entry");
+        println!("  del #<id> ...           Delete session entries");
+        println!();
+
         println!("Type 'help <command>' for more details on a specific command.");
     }
 
@@ -2711,8 +2785,54 @@ impl Repl {
             }
         };
 
-        match cas_parser::parse_statement(eq_str, &mut self.simplifier.context) {
-            Ok(cas_parser::Statement::Equation(eq)) => {
+        // Check if eq_str is a session reference (e.g., "#1")
+        let eq_str_trimmed = eq_str.trim().trim_start_matches('#');
+        let session_eq: Option<cas_ast::Equation> = if eq_str.trim().starts_with('#') {
+            if let Ok(id) = eq_str_trimmed.parse::<u64>() {
+                if let Some(entry) = self.session.get(id) {
+                    match &entry.kind {
+                        cas_engine::EntryKind::Eq { lhs, rhs } => Some(cas_ast::Equation {
+                            lhs: *lhs,
+                            rhs: *rhs,
+                            op: cas_ast::RelOp::Eq,
+                        }),
+                        cas_engine::EntryKind::Expr(_) => {
+                            println!("Error: Entry #{} is an expression, not an equation.", id);
+                            println!(
+                                "Hint: Use 'solve <expr> = <value>, <var>' to solve an expression."
+                            );
+                            return;
+                        }
+                    }
+                } else {
+                    println!(
+                        "Error: Entry #{} not found. Use 'history' to see available entries.",
+                        id
+                    );
+                    return;
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Use session equation if found, otherwise parse the string
+        let eq_result = if let Some(eq) = session_eq {
+            Ok(eq)
+        } else {
+            match cas_parser::parse_statement(eq_str, &mut self.simplifier.context) {
+                Ok(cas_parser::Statement::Equation(eq)) => Ok(eq),
+                Ok(cas_parser::Statement::Expression(_)) => {
+                    Err("Expected an equation, got an expression.".to_string())
+                }
+                Err(e) => Err(format!("{}", e)),
+            }
+        };
+
+        match eq_result {
+            Ok(eq) => {
                 // Check if variable exists in equation
                 // We should simplify the equation first to handle cases like "ln(x) + ln(x) = 2" -> "2*ln(x) = 2"
                 let (sim_lhs, steps_lhs) = self.simplifier.simplify(eq.lhs);
@@ -2920,10 +3040,7 @@ impl Repl {
                     }
                 }
             }
-            Ok(cas_parser::Statement::Expression(_)) => {
-                println!("Error: Expected an equation, got an expression.");
-            }
-            Err(e) => println!("Error parsing equation: {}", e),
+            Err(e) => println!("Error: {}", e),
         }
     }
 
@@ -2931,8 +3048,9 @@ impl Repl {
         // Sniff style preferences from input string BEFORE parsing
         let style_signals = ParseStyleSignals::from_input_string(line);
 
-        match cas_parser::parse(line, &mut self.simplifier.context) {
-            Ok(expr) => {
+        // Use parse_statement to support both expressions and equations
+        match cas_parser::parse_statement(line, &mut self.simplifier.context) {
+            Ok(cas_parser::Statement::Expression(expr)) => {
                 // Auto-store: save the parsed expression to session history
                 let entry_id = self
                     .session
@@ -3316,6 +3434,35 @@ impl Repl {
                     "Result: {}",
                     DisplayExprStyled::new(&self.simplifier.context, simplified, &style_prefs)
                 );
+            }
+            Ok(cas_parser::Statement::Equation(eq)) => {
+                // Store equation in session history
+                let entry_id = self.session.push(
+                    cas_engine::EntryKind::Eq {
+                        lhs: eq.lhs,
+                        rhs: eq.rhs,
+                    },
+                    line.to_string(),
+                );
+
+                // Display the equation
+                let lhs_disp = DisplayExpr {
+                    context: &self.simplifier.context,
+                    id: eq.lhs,
+                };
+                let rhs_disp = DisplayExpr {
+                    context: &self.simplifier.context,
+                    id: eq.rhs,
+                };
+                let op_str = match eq.op {
+                    cas_ast::RelOp::Eq => "=",
+                    cas_ast::RelOp::Neq => "≠",
+                    cas_ast::RelOp::Lt => "<",
+                    cas_ast::RelOp::Gt => ">",
+                    cas_ast::RelOp::Leq => "≤",
+                    cas_ast::RelOp::Geq => "≥",
+                };
+                println!("#{}  {} {} {}  [Eq]", entry_id, lhs_disp, op_str, rhs_disp);
             }
             Err(e) => println!("Error: {}", e),
         }
