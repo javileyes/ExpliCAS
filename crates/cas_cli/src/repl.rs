@@ -1673,6 +1673,34 @@ impl Repl {
                     let e2_res = cas_parser::parse(expr2_str.trim(), &mut self.simplifier.context);
                     match e2_res {
                         Ok(e2) => {
+                            // Resolve session references (e.g. #1) and variables for E1
+                            let e1 = match cas_engine::resolve_session_refs(
+                                &mut self.simplifier.context,
+                                e1,
+                                &self.session,
+                            ) {
+                                Ok(r) => cas_engine::env::substitute(
+                                    &mut self.simplifier.context,
+                                    &self.env,
+                                    r,
+                                ),
+                                Err(_) => e1,
+                            };
+
+                            // Resolve session references (e.g. #2) and variables for E2
+                            let e2 = match cas_engine::resolve_session_refs(
+                                &mut self.simplifier.context,
+                                e2,
+                                &self.session,
+                            ) {
+                                Ok(r) => cas_engine::env::substitute(
+                                    &mut self.simplifier.context,
+                                    &self.env,
+                                    r,
+                                ),
+                                Err(_) => e2,
+                            };
+
                             let are_eq = self.simplifier.are_equivalent(e1, e2);
                             if are_eq {
                                 println!("True");
@@ -2191,6 +2219,9 @@ impl Repl {
     fn handle_reset_command(&mut self) {
         // Clear environment
         self.env.clear_all();
+        // Clear session history explicitly to avoid referencing invalid ExprIds from destroyed context
+        // This fixes the OOB panic when calling 'list' after 'reset'
+        self.session.clear();
 
         // Reset simplifier with new context
         self.simplifier = Simplifier::with_default_rules();
