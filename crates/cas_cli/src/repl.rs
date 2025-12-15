@@ -132,6 +132,8 @@ pub struct Repl {
     last_health_report: Option<String>,
     /// Session environment for variable bindings
     env: cas_engine::env::Environment,
+    /// Session store for expression history with #id references
+    session: cas_engine::SessionStore,
 }
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
@@ -463,6 +465,7 @@ impl Repl {
             health_enabled: false,
             last_health_report: None,
             env: cas_engine::env::Environment::default(),
+            session: cas_engine::SessionStore::new(),
         };
         repl.sync_config_to_simplifier();
         repl
@@ -770,6 +773,24 @@ impl Repl {
         // "reset" - reset entire session
         if line == "reset" {
             self.handle_reset_command();
+            return;
+        }
+
+        // "history" or "list" - show session history
+        if line == "history" || line == "list" {
+            self.handle_history_command();
+            return;
+        }
+
+        // "show #id" - show a specific session entry
+        if line.starts_with("show ") {
+            self.handle_show_command(&line[5..]);
+            return;
+        }
+
+        // "del #id [#id...]" - delete session entries
+        if line.starts_with("del ") {
+            self.handle_del_command(&line[4..]);
             return;
         }
 
@@ -2136,6 +2157,119 @@ impl Repl {
         println!("Session reset. Environment and context cleared.");
     }
 
+    /// Handle "history" or "list" command - show session history
+    fn handle_history_command(&self) {
+        let entries = self.session.list();
+        if entries.is_empty() {
+            println!("No entries in session history.");
+            return;
+        }
+
+        println!("Session history ({} entries):", entries.len());
+        for entry in entries {
+            let type_indicator = match &entry.kind {
+                cas_engine::EntryKind::Expr(_) => "Expr",
+                cas_engine::EntryKind::Eq { .. } => "Eq  ",
+            };
+            // Show simplified form if possible
+            let display = match &entry.kind {
+                cas_engine::EntryKind::Expr(expr_id) => {
+                    format!(
+                        "{}",
+                        cas_ast::DisplayExpr {
+                            context: &self.simplifier.context,
+                            id: *expr_id
+                        }
+                    )
+                }
+                cas_engine::EntryKind::Eq { lhs, rhs } => {
+                    format!(
+                        "{} = {}",
+                        cas_ast::DisplayExpr {
+                            context: &self.simplifier.context,
+                            id: *lhs
+                        },
+                        cas_ast::DisplayExpr {
+                            context: &self.simplifier.context,
+                            id: *rhs
+                        }
+                    )
+                }
+            };
+            println!("  #{:<3} [{}] {}", entry.id, type_indicator, display);
+        }
+    }
+
+    /// Handle "show #id" command - show details of a specific entry
+    fn handle_show_command(&self, line: &str) {
+        let input = line.trim().trim_start_matches('#');
+        match input.parse::<u64>() {
+            Ok(id) => {
+                if let Some(entry) = self.session.get(id) {
+                    println!("Entry #{}:", id);
+                    println!("  Type: {}", entry.type_str());
+                    println!("  Raw:  {}", entry.raw_text);
+                    match &entry.kind {
+                        cas_engine::EntryKind::Expr(expr_id) => {
+                            println!(
+                                "  Expr: {}",
+                                cas_ast::DisplayExpr {
+                                    context: &self.simplifier.context,
+                                    id: *expr_id
+                                }
+                            );
+                        }
+                        cas_engine::EntryKind::Eq { lhs, rhs } => {
+                            println!(
+                                "  LHS:  {}",
+                                cas_ast::DisplayExpr {
+                                    context: &self.simplifier.context,
+                                    id: *lhs
+                                }
+                            );
+                            println!(
+                                "  RHS:  {}",
+                                cas_ast::DisplayExpr {
+                                    context: &self.simplifier.context,
+                                    id: *rhs
+                                }
+                            );
+                        }
+                    }
+                } else {
+                    println!("Error: Entry #{} not found.", id);
+                }
+            }
+            Err(_) => {
+                println!("Error: Invalid entry ID. Use 'show #N' or 'show N'.");
+            }
+        }
+    }
+
+    /// Handle "del #id [#id...]" command - delete session entries
+    fn handle_del_command(&mut self, line: &str) {
+        let ids: Vec<u64> = line
+            .split_whitespace()
+            .filter_map(|s| s.trim_start_matches('#').parse::<u64>().ok())
+            .collect();
+
+        if ids.is_empty() {
+            println!("Error: No valid IDs specified. Use 'del #1 #2' or 'del 1 2'.");
+            return;
+        }
+
+        let before_len = self.session.len();
+        self.session.remove(&ids);
+        let removed = before_len - self.session.len();
+
+        if removed > 0 {
+            let id_str: Vec<String> = ids.iter().map(|id| format!("#{}", id)).collect();
+            println!("Deleted {} entry/entries: {}", removed, id_str.join(", "));
+        } else {
+            println!("No entries found with the specified IDs.");
+        }
+    }
+
     // ========== END SESSION ENVIRONMENT HANDLERS ==========
 
     fn handle_det(&mut self, line: &str) {
@@ -2799,13 +2933,31 @@ impl Repl {
 
         match cas_parser::parse(line, &mut self.simplifier.context) {
             Ok(expr) => {
+                // Auto-store: save the parsed expression to session history
+                let entry_id = self
+                    .session
+                    .push(cas_engine::EntryKind::Expr(expr), line.to_string());
                 println!(
-                    "Parsed: {}",
+                    "#{}  {}",
+                    entry_id,
                     DisplayExpr {
                         context: &self.simplifier.context,
                         id: expr
                     }
                 );
+
+                // Resolve session references (#id) before substitution
+                let expr = match cas_engine::resolve_session_refs(
+                    &mut self.simplifier.context,
+                    expr,
+                    &self.session,
+                ) {
+                    Ok(resolved) => resolved,
+                    Err(e) => {
+                        println!("Error resolving session reference: {}", e);
+                        return;
+                    }
+                };
 
                 // Substitute variables from environment
                 let expr =
