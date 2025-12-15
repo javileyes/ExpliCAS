@@ -289,21 +289,25 @@ mod tests {
     }
 }
 
-// EvaluateSimplifyFunctionRule: simplify(expr) → expr
-// Since simplification is bottom-up, the argument is already simplified by the time
-// this rule runs. We just need to unwrap the function wrapper to make it transparent.
-// This ensures simplify(simplify(e)) == simplify(e) (idempotence).
+// EvaluateMetaFunctionsRule: simplify(expr), factor(expr), expand(expr) → expr
+// These are "meta" functions that represent operations on expressions.
+// Since simplification is bottom-up, arguments are already processed by the time
+// this rule runs. We just unwrap the function wrapper to make them transparent.
+// This ensures:
+//   - simplify(simplify(e)) == simplify(e) (idempotence)
+//   - factor(x+x) → 2*x (doesn't leave factor() wrapper)
+//   - expand(a*b) → ... (doesn't leave expand() wrapper)
 define_rule!(
-    EvaluateSimplifyFunctionRule,
-    "Evaluate Simplify Function",
+    EvaluateMetaFunctionsRule,
+    "Evaluate Meta Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(name, args) = ctx.get(expr) {
-            if name == "simplify" && args.len() == 1 {
-                // Just return the (already simplified) argument
+            // Meta functions that should be transparent (return their argument)
+            if (name == "simplify" || name == "factor" || name == "expand") && args.len() == 1 {
                 return Some(Rewrite {
                     new_expr: args[0],
-                    description: "simplify(x) = x (already simplified)".to_string(),
+                    description: format!("{}(x) = x (already processed)", name),
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
@@ -319,5 +323,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(AbsSquaredRule));
-    simplifier.add_rule(Box::new(EvaluateSimplifyFunctionRule)); // Make simplify() transparent
+    simplifier.add_rule(Box::new(EvaluateMetaFunctionsRule)); // Make simplify/factor/expand transparent
 }
