@@ -41,5 +41,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // R1, R2: Fraction difference canonicalization for cyclic sums
     simplifier.add_rule(Box::new(AbsorbNegationIntoDifferenceRule));
     simplifier.add_rule(Box::new(CanonicalDifferenceProductRule));
+    // Factor common integer from sums (POST phase): 2*√2 - 2 → 2*(√2 - 1)
+    // Safe because DistributeRule now has PhaseMask excluding POST
+    simplifier.add_rule(Box::new(FactorCommonIntegerFromAdd));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }

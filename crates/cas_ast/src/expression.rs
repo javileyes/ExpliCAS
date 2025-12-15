@@ -219,6 +219,12 @@ impl Context {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
+        // DEBUG: Catch Variables being created via add_raw (should use ctx.var() instead)
+        debug_assert!(
+            !matches!(expr, Expr::Variable(_)),
+            "add_raw must not be used for Variable; use ctx.var() or ctx.add() instead"
+        );
+
         // Expression Interning: Deduplicate expressions
         let mut hasher = DefaultHasher::new();
         expr.hash(&mut hasher);

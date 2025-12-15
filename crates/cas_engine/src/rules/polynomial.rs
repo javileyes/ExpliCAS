@@ -1,6 +1,7 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::ordering::compare_expr;
+use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
@@ -23,264 +24,276 @@ fn is_binomial(ctx: &Context, e: ExprId) -> bool {
     }
 }
 
-define_rule!(DistributeRule, "Distributive Property", |ctx, expr| {
-    // Don't distribute if expression is in canonical form (e.g., inside abs() or sqrt())
-    // This protects patterns like abs((x-2)(x+2)) from expanding
-    if crate::canonical_forms::is_canonical_form(ctx, expr) {
-        return None;
-    }
+// DistributeRule: Runs in CORE, TRANSFORM, RATIONALIZE but NOT in POST
+// This prevents Factor↔Distribute infinite loops (FactorCommonIntegerFromAdd runs in POST)
+define_rule!(
+    DistributeRule,
+    "Distributive Property",
+    None,
+    PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE,
+    |ctx, expr| {
+        // Don't distribute if expression is in canonical form (e.g., inside abs() or sqrt())
+        // This protects patterns like abs((x-2)(x+2)) from expanding
+        if crate::canonical_forms::is_canonical_form(ctx, expr) {
+            return None;
+        }
 
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Mul(l, r) = expr_data {
-        // a * (b + c) -> a*b + a*c
-        let r_data = ctx.get(r).clone();
-        if let Expr::Add(b, c) = r_data {
-            // Distribute if 'l' is a Number, Function, Add/Sub, Pow, Mul, or Div.
-            // We exclude Var to keep x(x+1) factored, but allow x^2(x+1) to expand.
-            let l_expr = ctx.get(l);
-            let should_distribute = matches!(l_expr, Expr::Number(_))
-                || matches!(l_expr, Expr::Function(_, _))
-                || matches!(l_expr, Expr::Add(_, _))
-                || matches!(l_expr, Expr::Sub(_, _))
-                || matches!(l_expr, Expr::Pow(_, _))
-                || matches!(l_expr, Expr::Mul(_, _))
-                || matches!(l_expr, Expr::Div(_, _))
-                || (matches!(l_expr, Expr::Variable(_))
-                    && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Mul(l, r) = expr_data {
+            // a * (b + c) -> a*b + a*c
+            let r_data = ctx.get(r).clone();
+            if let Expr::Add(b, c) = r_data {
+                // Distribute if 'l' is a Number, Function, Add/Sub, Pow, Mul, or Div.
+                // We exclude Var to keep x(x+1) factored, but allow x^2(x+1) to expand.
+                let l_expr = ctx.get(l);
+                let should_distribute = matches!(l_expr, Expr::Number(_))
+                    || matches!(l_expr, Expr::Function(_, _))
+                    || matches!(l_expr, Expr::Add(_, _))
+                    || matches!(l_expr, Expr::Sub(_, _))
+                    || matches!(l_expr, Expr::Pow(_, _))
+                    || matches!(l_expr, Expr::Mul(_, _))
+                    || matches!(l_expr, Expr::Div(_, _))
+                    || (matches!(l_expr, Expr::Variable(_))
+                        && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
 
-            if !should_distribute {
-                return None;
-            }
-
-            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
-            // If we have (A+B)(A-B), do NOT distribute.
-            if is_conjugate(ctx, l, r) {
-                return None;
-            }
-
-            // CRITICAL: Don't expand binomial*binomial products like (a-b)*(a-c)
-            // This preserves factored form for opposite denominator detection
-            if is_binomial(ctx, l) && is_binomial(ctx, r) {
-                return None;
-            }
-
-            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
-            // Preserves clean form like 1/2*(√2-1) instead of √2/2 - 1/2
-            if let Expr::Number(n) = ctx.get(l) {
-                if !n.is_integer() && is_binomial(ctx, r) {
+                if !should_distribute {
                     return None;
                 }
-            }
 
-            let ab = smart_mul(ctx, l, b);
-            let ac = smart_mul(ctx, l, c);
-            let new_expr = ctx.add(Expr::Add(ab, ac));
-            return Some(Rewrite {
-                new_expr,
-                description: "Distribute".to_string(),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
-        }
-        // (b + c) * a -> b*a + c*a
-        let l_data = ctx.get(l).clone();
-        if let Expr::Add(b, c) = l_data {
-            // Same logic for 'r'
-            let r_expr = ctx.get(r);
-            let should_distribute = matches!(r_expr, Expr::Number(_))
-                || matches!(r_expr, Expr::Function(_, _))
-                || matches!(r_expr, Expr::Add(_, _))
-                || matches!(r_expr, Expr::Sub(_, _))
-                || matches!(r_expr, Expr::Pow(_, _))
-                || matches!(r_expr, Expr::Mul(_, _))
-                || matches!(r_expr, Expr::Div(_, _))
-                || (matches!(r_expr, Expr::Variable(_))
-                    && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
-
-            if !should_distribute {
-                return None;
-            }
-
-            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
-            if is_conjugate(ctx, l, r) {
-                return None;
-            }
-
-            // CRITICAL: Don't expand binomial*binomial products (Policy A+)
-            // This preserves factored form like (a+b)*(c+d)
-            if is_binomial(ctx, l) && is_binomial(ctx, r) {
-                return None;
-            }
-
-            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
-            // Preserves clean form like (√2-1)/2 instead of √2/2 - 1/2
-            if let Expr::Number(n) = ctx.get(r) {
-                if !n.is_integer() && is_binomial(ctx, l) {
+                // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
+                // If we have (A+B)(A-B), do NOT distribute.
+                if is_conjugate(ctx, l, r) {
                     return None;
                 }
-            }
 
-            let ba = smart_mul(ctx, b, r);
-            let ca = smart_mul(ctx, c, r);
-            let new_expr = ctx.add(Expr::Add(ba, ca));
-            return Some(Rewrite {
-                new_expr,
-                description: "Distribute".to_string(),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                // CRITICAL: Don't expand binomial*binomial products like (a-b)*(a-c)
+                // This preserves factored form for opposite denominator detection
+                if is_binomial(ctx, l) && is_binomial(ctx, r) {
+                    return None;
+                }
+
+                // EDUCATIONAL: Don't distribute fractional coefficient over binomial
+                // Preserves clean form like 1/2*(√2-1) instead of √2/2 - 1/2
+                if let Expr::Number(n) = ctx.get(l) {
+                    if !n.is_integer() && is_binomial(ctx, r) {
+                        return None;
+                    }
+                }
+
+                let ab = smart_mul(ctx, l, b);
+                let ac = smart_mul(ctx, l, c);
+                let new_expr = ctx.add(Expr::Add(ab, ac));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Distribute".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
+            }
+            // (b + c) * a -> b*a + c*a
+            let l_data = ctx.get(l).clone();
+            if let Expr::Add(b, c) = l_data {
+                // Same logic for 'r'
+                let r_expr = ctx.get(r);
+                let should_distribute = matches!(r_expr, Expr::Number(_))
+                    || matches!(r_expr, Expr::Function(_, _))
+                    || matches!(r_expr, Expr::Add(_, _))
+                    || matches!(r_expr, Expr::Sub(_, _))
+                    || matches!(r_expr, Expr::Pow(_, _))
+                    || matches!(r_expr, Expr::Mul(_, _))
+                    || matches!(r_expr, Expr::Div(_, _))
+                    || (matches!(r_expr, Expr::Variable(_))
+                        && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
+
+                if !should_distribute {
+                    return None;
+                }
+
+                // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
+                if is_conjugate(ctx, l, r) {
+                    return None;
+                }
+
+                // CRITICAL: Don't expand binomial*binomial products (Policy A+)
+                // This preserves factored form like (a+b)*(c+d)
+                if is_binomial(ctx, l) && is_binomial(ctx, r) {
+                    return None;
+                }
+
+                // EDUCATIONAL: Don't distribute fractional coefficient over binomial
+                // Preserves clean form like (√2-1)/2 instead of √2/2 - 1/2
+                if let Expr::Number(n) = ctx.get(r) {
+                    if !n.is_integer() && is_binomial(ctx, l) {
+                        return None;
+                    }
+                }
+
+                let ba = smart_mul(ctx, b, r);
+                let ca = smart_mul(ctx, c, r);
+                let new_expr = ctx.add(Expr::Add(ba, ca));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Distribute".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
+            }
         }
-    }
 
-    // Handle Division Distribution: (a + b) / c -> a/c + b/c
-    if let Expr::Div(l, r) = expr_data {
-        let l_data = ctx.get(l).clone();
+        // Handle Division Distribution: (a + b) / c -> a/c + b/c
+        if let Expr::Div(l, r) = expr_data {
+            let l_data = ctx.get(l).clone();
 
-        // Helper to check if division simplifies (shares factors) and return factor size
-        let get_simplification_reduction = |ctx: &Context, num: ExprId, den: ExprId| -> usize {
-            if num == den {
-                return cas_ast::count_nodes(ctx, num);
-            }
-
-            // Structural factor check
-            let get_factors = |e: ExprId| -> Vec<ExprId> {
-                let mut factors = Vec::new();
-                let mut stack = vec![e];
-                while let Some(curr) = stack.pop() {
-                    if let Expr::Mul(a, b) = ctx.get(curr) {
-                        stack.push(*a);
-                        stack.push(*b);
-                    } else {
-                        factors.push(curr);
-                    }
-                }
-                factors
-            };
-
-            let num_factors = get_factors(num);
-            let den_factors = get_factors(den);
-
-            for df in den_factors {
-                // Check for structural equality using compare_expr
-                let found = num_factors
-                    .iter()
-                    .any(|nf| compare_expr(ctx, *nf, df) == Ordering::Equal);
-
-                if found {
-                    let factor_size = cas_ast::count_nodes(ctx, df);
-                    // Factor removed from num and den -> 2 * size
-                    let mut reduction = factor_size * 2;
-                    // If factor is entire denominator, Div is removed -> +1
-                    if df == den {
-                        reduction += 1;
-                    }
-                    return reduction;
+            // Helper to check if division simplifies (shares factors) and return factor size
+            let get_simplification_reduction = |ctx: &Context, num: ExprId, den: ExprId| -> usize {
+                if num == den {
+                    return cas_ast::count_nodes(ctx, num);
                 }
 
-                // Check for numeric GCD
-                if let Expr::Number(n_den) = ctx.get(df) {
-                    let found_numeric = num_factors.iter().any(|nf| {
-                        if let Expr::Number(n_num) = ctx.get(*nf) {
-                            if n_num.is_integer() && n_den.is_integer() {
-                                let num_int = n_num.to_integer();
-                                let den_int = n_den.to_integer();
-                                if !num_int.is_zero() && !den_int.is_zero() {
-                                    let gcd = num_int.gcd(&den_int);
-                                    return gcd > One::one();
+                // Structural factor check
+                let get_factors = |e: ExprId| -> Vec<ExprId> {
+                    let mut factors = Vec::new();
+                    let mut stack = vec![e];
+                    while let Some(curr) = stack.pop() {
+                        if let Expr::Mul(a, b) = ctx.get(curr) {
+                            stack.push(*a);
+                            stack.push(*b);
+                        } else {
+                            factors.push(curr);
+                        }
+                    }
+                    factors
+                };
+
+                let num_factors = get_factors(num);
+                let den_factors = get_factors(den);
+
+                for df in den_factors {
+                    // Check for structural equality using compare_expr
+                    let found = num_factors
+                        .iter()
+                        .any(|nf| compare_expr(ctx, *nf, df) == Ordering::Equal);
+
+                    if found {
+                        let factor_size = cas_ast::count_nodes(ctx, df);
+                        // Factor removed from num and den -> 2 * size
+                        let mut reduction = factor_size * 2;
+                        // If factor is entire denominator, Div is removed -> +1
+                        if df == den {
+                            reduction += 1;
+                        }
+                        return reduction;
+                    }
+
+                    // Check for numeric GCD
+                    if let Expr::Number(n_den) = ctx.get(df) {
+                        let found_numeric = num_factors.iter().any(|nf| {
+                            if let Expr::Number(n_num) = ctx.get(*nf) {
+                                if n_num.is_integer() && n_den.is_integer() {
+                                    let num_int = n_num.to_integer();
+                                    let den_int = n_den.to_integer();
+                                    if !num_int.is_zero() && !den_int.is_zero() {
+                                        let gcd = num_int.gcd(&den_int);
+                                        return gcd > One::one();
+                                    }
                                 }
                             }
+                            false
+                        });
+                        if found_numeric {
+                            return 1; // Conservative estimate for number simplification
                         }
-                        false
-                    });
-                    if found_numeric {
-                        return 1; // Conservative estimate for number simplification
+                    }
+                }
+
+                // Fallback to Polynomial GCD
+                let vars = crate::rules::algebra::collect_variables(ctx, num);
+                if vars.is_empty() {
+                    return 0;
+                }
+
+                for var in vars {
+                    if let (Ok(p_num), Ok(p_den)) = (
+                        Polynomial::from_expr(ctx, num, &var),
+                        Polynomial::from_expr(ctx, den, &var),
+                    ) {
+                        if p_den.is_zero() {
+                            continue;
+                        }
+                        let gcd = p_num.gcd(&p_den);
+                        // println!("DistributeRule Poly GCD check: num={:?} den={:?} var={} gcd={:?}", ctx.get(num), ctx.get(den), var, gcd);
+                        if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
+                            // Estimate complexity of GCD
+                            // If GCD cancels denominator (degree match), reduction is high
+                            if gcd.degree() == p_den.degree() {
+                                // Assume denominator is removed (size(den) + 1)
+                                return cas_ast::count_nodes(ctx, den) + 1;
+                            }
+                            // Otherwise, just return 1
+                            return 1;
+                        }
+                    }
+                }
+                0
+            };
+
+            if let Expr::Add(a, b) = l_data {
+                let red_a = get_simplification_reduction(ctx, a, r);
+                let red_b = get_simplification_reduction(ctx, b, r);
+
+                // Only distribute if EITHER term simplifies
+                if red_a > 0 || red_b > 0 {
+                    let ac = ctx.add(Expr::Div(a, r));
+                    let bc = ctx.add(Expr::Div(b, r));
+                    let new_expr = ctx.add(Expr::Add(ac, bc));
+
+                    // Check complexity to prevent cycles with AddFractionsRule
+                    let old_complexity = cas_ast::count_nodes(ctx, expr);
+                    let new_complexity = cas_ast::count_nodes(ctx, new_expr);
+
+                    // Allow if predicted complexity (after simplification) is not worse
+                    if new_complexity <= old_complexity + red_a + red_b {
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Distribute division (simplifying)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
                     }
                 }
             }
+            if let Expr::Sub(a, b) = l_data {
+                let red_a = get_simplification_reduction(ctx, a, r);
+                let red_b = get_simplification_reduction(ctx, b, r);
 
-            // Fallback to Polynomial GCD
-            let vars = crate::rules::algebra::collect_variables(ctx, num);
-            if vars.is_empty() {
-                return 0;
-            }
+                if red_a > 0 || red_b > 0 {
+                    let ac = ctx.add(Expr::Div(a, r));
+                    let bc = ctx.add(Expr::Div(b, r));
+                    let new_expr = ctx.add(Expr::Sub(ac, bc));
 
-            for var in vars {
-                if let (Ok(p_num), Ok(p_den)) = (
-                    Polynomial::from_expr(ctx, num, &var),
-                    Polynomial::from_expr(ctx, den, &var),
-                ) {
-                    if p_den.is_zero() {
-                        continue;
+                    // Check complexity to prevent cycles with AddFractionsRule
+                    let old_complexity = cas_ast::count_nodes(ctx, expr);
+                    let new_complexity = cas_ast::count_nodes(ctx, new_expr);
+
+                    // Allow if predicted complexity (after simplification) is not worse
+                    if new_complexity <= old_complexity + red_a + red_b {
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "Distribute division (simplifying)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
                     }
-                    let gcd = p_num.gcd(&p_den);
-                    // println!("DistributeRule Poly GCD check: num={:?} den={:?} var={} gcd={:?}", ctx.get(num), ctx.get(den), var, gcd);
-                    if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
-                        // Estimate complexity of GCD
-                        // If GCD cancels denominator (degree match), reduction is high
-                        if gcd.degree() == p_den.degree() {
-                            // Assume denominator is removed (size(den) + 1)
-                            return cas_ast::count_nodes(ctx, den) + 1;
-                        }
-                        // Otherwise, just return 1
-                        return 1;
-                    }
-                }
-            }
-            0
-        };
-
-        if let Expr::Add(a, b) = l_data {
-            let red_a = get_simplification_reduction(ctx, a, r);
-            let red_b = get_simplification_reduction(ctx, b, r);
-
-            // Only distribute if EITHER term simplifies
-            if red_a > 0 || red_b > 0 {
-                let ac = ctx.add(Expr::Div(a, r));
-                let bc = ctx.add(Expr::Div(b, r));
-                let new_expr = ctx.add(Expr::Add(ac, bc));
-
-                // Check complexity to prevent cycles with AddFractionsRule
-                let old_complexity = cas_ast::count_nodes(ctx, expr);
-                let new_complexity = cas_ast::count_nodes(ctx, new_expr);
-
-                // Allow if predicted complexity (after simplification) is not worse
-                if new_complexity <= old_complexity + red_a + red_b {
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Distribute division (simplifying)".to_string(),
-                        before_local: None,
-                        after_local: None, domain_assumption: None,
-                    });
                 }
             }
         }
-        if let Expr::Sub(a, b) = l_data {
-            let red_a = get_simplification_reduction(ctx, a, r);
-            let red_b = get_simplification_reduction(ctx, b, r);
-
-            if red_a > 0 || red_b > 0 {
-                let ac = ctx.add(Expr::Div(a, r));
-                let bc = ctx.add(Expr::Div(b, r));
-                let new_expr = ctx.add(Expr::Sub(ac, bc));
-
-                // Check complexity to prevent cycles with AddFractionsRule
-                let old_complexity = cas_ast::count_nodes(ctx, expr);
-                let new_complexity = cas_ast::count_nodes(ctx, new_expr);
-
-                // Allow if predicted complexity (after simplification) is not worse
-                if new_complexity <= old_complexity + red_a + red_b {
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Distribute division (simplifying)".to_string(),
-                        before_local: None,
-                        after_local: None, domain_assumption: None,
-                    });
-                }
-            }
-        }
+        None
     }
-    None
-});
+);
 
 fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     // Check for (A+B) and (A-B) or (A-B) and (A+B)
@@ -388,7 +401,8 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
                 new_expr: zero,
                 description: "x - x = 0".to_string(),
                 before_local: None,
-                after_local: None, domain_assumption: None,
+                after_local: None,
+                domain_assumption: None,
             });
         }
     }
@@ -422,7 +436,8 @@ define_rule!(CombineLikeTermsRule, "Combine Like Terms", |ctx, expr| {
                 new_expr,
                 description: "Global Combine Like Terms".to_string(),
                 before_local: None,
-                after_local: None, domain_assumption: None,
+                after_local: None,
+                domain_assumption: None,
             });
         }
     }
@@ -510,7 +525,8 @@ define_rule!(BinomialExpansionRule, "Binomial Expansion", |ctx, expr| {
                             new_expr: expanded,
                             description: format!("Expand binomial power ^{}", n_val),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -544,12 +560,13 @@ mod tests {
     fn test_distribute() {
         let mut ctx = Context::new();
         let rule = DistributeRule;
-        // 2 * (x + 3)
-        let two = ctx.num(2);
+        // x^2 * (x + 3) - use x^2 (not an integer) so guard doesn't block
         let x = ctx.var("x");
+        let two = ctx.num(2);
         let three = ctx.num(3);
+        let x_sq = ctx.add(Expr::Pow(x, two));
         let add = ctx.add(Expr::Add(x, three));
-        let expr = ctx.add(Expr::Mul(two, add));
+        let expr = ctx.add(Expr::Mul(x_sq, add));
 
         let rewrite = rule
             .apply(
@@ -558,8 +575,8 @@ mod tests {
                 &crate::parent_context::ParentContext::root(),
             )
             .unwrap();
-        // Should be (2 * x) + (2 * 3)
-        // Note: Simplification of 2*3 happens in a later pass by CombineConstantsRule
+        // Should be (x^2 * x) + (x^2 * 3) before further simplification
+        // Note: x^2*x -> x^3 happens in a later pass, not in DistributeRule
         assert_eq!(
             format!(
                 "{}",
@@ -568,7 +585,7 @@ mod tests {
                     id: rewrite.new_expr
                 }
             ),
-            "2 * 3 + 2 * x" // Canonical: numbers before variables
+            "x^2 * 3 + x^2 * x" // Exact Distribute output before simplification
         );
     }
 

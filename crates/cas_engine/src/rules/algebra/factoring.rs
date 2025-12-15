@@ -128,7 +128,8 @@ define_rule!(
                     new_expr,
                     description: "(a-b)(a+b) = a² - b²".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -147,7 +148,8 @@ define_rule!(FactorRule, "Factor Polynomial", |ctx, expr| {
                     new_expr,
                     description: "Factorization".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -231,7 +233,8 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: "Factor difference of squares (Empty)".to_string(),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
 
@@ -244,7 +247,8 @@ define_rule!(
                             new_expr,
                             description: "Factor difference of squares (N-ary)".to_string(),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -283,7 +287,8 @@ define_rule!(
                         new_expr,
                         description: "Automatic Factorization (Reduced Size)".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -305,12 +310,153 @@ define_rule!(
                         new_expr,
                         description: "Automatic Factorization (Diff Squares)".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
         }
 
         None
+    }
+);
+
+// FactorCommonIntegerFromAdd: Factor out common integer GCD from sum terms
+// Example: 2*√2 - 2 → 2*(√2 - 1)
+// Phase: POST (runs after rationalization to clean up results)
+define_rule!(
+    FactorCommonIntegerFromAdd,
+    "Factor Common Integer",
+    None,
+    PhaseMask::POST,
+    |ctx, expr| {
+        use crate::rules::algebra::helpers::gcd_rational;
+        use num_rational::BigRational;
+        use num_traits::{One, Signed};
+
+        // Only match simple binary Add(a, b)
+        let (l, r) = match ctx.get(expr) {
+            Expr::Add(l, r) => (*l, *r),
+            _ => return None,
+        };
+
+        // Extract integer coefficient from a term
+        fn get_int_coef(ctx: &cas_ast::Context, term: cas_ast::ExprId) -> Option<BigRational> {
+            match ctx.get(term) {
+                Expr::Number(n) if n.is_integer() => Some(n.clone()),
+                Expr::Mul(a, b) => {
+                    if let Expr::Number(n) = ctx.get(*a) {
+                        if n.is_integer() {
+                            return Some(n.clone());
+                        }
+                    }
+                    if let Expr::Number(n) = ctx.get(*b) {
+                        if n.is_integer() {
+                            return Some(n.clone());
+                        }
+                    }
+                    None
+                }
+                Expr::Neg(inner) => get_int_coef(ctx, *inner).map(|c| -c),
+                _ => None,
+            }
+        }
+
+        // Get coefficients
+        let coef_l = get_int_coef(ctx, l);
+        let coef_r = get_int_coef(ctx, r);
+        let coef_l = coef_l?;
+        let coef_r = coef_r?;
+
+        // CRITICAL: Skip if either term contains a Variable
+        // We only want to factor pure numeric expressions like 2*√2 - 2, NOT algebraic like 2*x - 6
+        fn contains_variable(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
+            match ctx.get(e) {
+                Expr::Variable(_) => true,
+                Expr::Add(l, r)
+                | Expr::Sub(l, r)
+                | Expr::Mul(l, r)
+                | Expr::Div(l, r)
+                | Expr::Pow(l, r) => contains_variable(ctx, *l) || contains_variable(ctx, *r),
+                Expr::Neg(inner) => contains_variable(ctx, *inner),
+                Expr::Function(_, args) => args.iter().any(|a| contains_variable(ctx, *a)),
+                _ => false,
+            }
+        }
+
+        if contains_variable(ctx, l) || contains_variable(ctx, r) {
+            return None;
+        }
+
+        // Compute GCD of absolute values
+        let gcd = gcd_rational(coef_l.abs(), coef_r.abs());
+        if gcd <= BigRational::one() {
+            return None;
+        }
+
+        // Check GCD is at least 2
+        let gcd_int = gcd.to_integer();
+        if gcd_int <= num_bigint::BigInt::from(1) {
+            return None;
+        }
+
+        // Divide coefficients by GCD
+        fn divide_term(
+            ctx: &mut cas_ast::Context,
+            term: cas_ast::ExprId,
+            gcd: &BigRational,
+        ) -> cas_ast::ExprId {
+            match ctx.get(term).clone() {
+                Expr::Number(n) => {
+                    let new_n = &n / gcd;
+                    ctx.add(Expr::Number(new_n))
+                }
+                Expr::Mul(a, b) => {
+                    if let Expr::Number(n) = ctx.get(a).clone() {
+                        let new_n = &n / gcd;
+                        if new_n.is_one() {
+                            return b;
+                        }
+                        let num = ctx.add(Expr::Number(new_n));
+                        return ctx.add_raw(Expr::Mul(num, b));
+                    }
+                    if let Expr::Number(n) = ctx.get(b).clone() {
+                        let new_n = &n / gcd;
+                        if new_n.is_one() {
+                            return a;
+                        }
+                        let num = ctx.add(Expr::Number(new_n));
+                        return ctx.add_raw(Expr::Mul(a, num));
+                    }
+                    term
+                }
+                Expr::Neg(inner) => {
+                    let divided = divide_term(ctx, inner, gcd);
+                    ctx.add(Expr::Neg(divided))
+                }
+                _ => term,
+            }
+        }
+
+        let new_l = divide_term(ctx, l, &gcd);
+        let new_r = divide_term(ctx, r, &gcd);
+        let inner = ctx.add_raw(Expr::Add(new_l, new_r));
+        let gcd_expr = ctx.add(Expr::Number(gcd.clone()));
+        let new_expr = ctx.add_raw(Expr::Mul(gcd_expr, inner));
+
+        // Safety guard: only apply if node count doesn't increase
+        let old_count = cas_ast::count_nodes(ctx, expr);
+        let new_count = cas_ast::count_nodes(ctx, new_expr);
+        if new_count > old_count {
+            return None;
+        }
+
+        Some(Rewrite {
+            new_expr,
+            description: format!("Factor out {}", gcd_int),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        })
     }
 );
