@@ -1,4 +1,5 @@
 use crate::define_rule;
+use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
 use num_integer::Integer;
@@ -17,9 +18,10 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                 return Some(Rewrite {
                     new_expr: abs_val,
                     description: format!("abs({}) = {}", n, n.abs()),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
             }
 
             // Case 2: abs(-x) -> abs(x)
@@ -37,18 +39,20 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     return Some(Rewrite {
                         new_expr: abs_val,
                         description: format!("abs(-{}) = {}", n, n),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
 
                 let abs_inner = ctx.add(Expr::Function("abs".to_string(), vec![*inner]));
                 return Some(Rewrite {
                     new_expr: abs_inner,
                     description: "abs(-x) = abs(x)".to_string(),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
             }
         }
     }
@@ -59,6 +63,7 @@ define_rule!(
     AbsSquaredRule,
     "Abs Squared Identity",
     Some(vec!["Pow"]),
+    PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE, // Exclude POST to prevent loop with SimplifySqrtOddPowerRule
     |ctx, expr| {
         // abs(x)^2 -> x^2
         // General: abs(x)^(2k) -> x^(2k) for integer k
@@ -78,9 +83,10 @@ define_rule!(
                             return Some(Rewrite {
                                 new_expr,
                                 description: format!("|x|^{} = x^{}", n, n),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
                         }
                     }
                 }
@@ -129,13 +135,79 @@ define_rule!(
                         return Some(Rewrite {
                             new_expr: abs_base,
                             description: "sqrt(x^2) = |x|".to_string(),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
                     }
                 }
             }
         }
+        None
+    }
+);
+
+// SimplifySqrtOddPowerRule: x^(n/2) -> |x|^k * sqrt(x) where n = 2k+1 (odd >= 3)
+// Works on canonicalized form: sqrt(x^3) becomes x^(3/2) before reaching this rule
+// Examples:
+//   x^(3/2) -> |x| * sqrt(x)     (n=3, k=1)
+//   x^(5/2) -> |x|^2 * sqrt(x)   (n=5, k=2)
+//   x^(7/2) -> |x|^3 * sqrt(x)   (n=7, k=3)
+define_rule!(
+    SimplifySqrtOddPowerRule,
+    "Simplify Odd Half-Integer Power",
+    Some(vec!["Pow"]), // Only match Pow expressions
+    PhaseMask::POST,   // Run in POST phase after canonicalization is done
+    |ctx, expr| {
+        use num_traits::ToPrimitive;
+
+        // Match Pow(base, exp) where exp = n/2 with n odd >= 3
+        let (base, k) = if let Expr::Pow(b, e) = ctx.get(expr) {
+            let base = *b;
+            if let Expr::Number(exp) = ctx.get(*e) {
+                // Check if exp = n/2 where n is odd integer >= 3
+                // That means denom = 2 and numer is odd >= 3
+                let numer = exp.numer().to_i64()?;
+                let denom = exp.denom().to_i64()?;
+
+                if denom == 2 && numer >= 3 && numer % 2 == 1 {
+                    // n = numer, k = (n-1)/2
+                    let k = (numer - 1) / 2;
+                    (Some(base), Some((numer, k)))
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+
+        if let (Some(base), Some((n, k))) = (base, k) {
+            // Build: |x|^k * sqrt(x)
+            let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![base]));
+            let sqrt_base = ctx.add(Expr::Function("sqrt".to_string(), vec![base]));
+
+            let result = if k == 1 {
+                // |x| * sqrt(x)
+                ctx.add(Expr::Mul(abs_base, sqrt_base))
+            } else {
+                // |x|^k * sqrt(x)
+                let k_expr = ctx.num(k);
+                let abs_pow_k = ctx.add(Expr::Pow(abs_base, k_expr));
+                ctx.add(Expr::Mul(abs_pow_k, sqrt_base))
+            };
+
+            return Some(Rewrite {
+                new_expr: result,
+                description: format!("x^({}/2) = |x|^{} * √x", n, k),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
+        }
+
         None
     }
 );
@@ -157,7 +229,13 @@ mod tests {
         // Note: Parser might produce Number(-5) or Neg(Number(5)).
         // Our parser likely produces Number(-5) for literals.
         let expr1 = parse("abs(-5)", &mut ctx).expect("Failed to parse abs(-5)");
-        let rewrite1 = rule.apply(&mut ctx, expr1, &crate::parent_context::ParentContext::root()).expect("Rule failed to apply");
+        let rewrite1 = rule
+            .apply(
+                &mut ctx,
+                expr1,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .expect("Rule failed to apply");
         assert_eq!(
             format!(
                 "{}",
@@ -171,7 +249,13 @@ mod tests {
 
         // abs(5) -> 5
         let expr2 = parse("abs(5)", &mut ctx).expect("Failed to parse abs(5)");
-        let rewrite2 = rule.apply(&mut ctx, expr2, &crate::parent_context::ParentContext::root()).expect("Rule failed to apply");
+        let rewrite2 = rule
+            .apply(
+                &mut ctx,
+                expr2,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .expect("Rule failed to apply");
         assert_eq!(
             format!(
                 "{}",
@@ -185,7 +269,13 @@ mod tests {
 
         // abs(-x) -> abs(x)
         let expr3 = parse("abs(-x)", &mut ctx).expect("Failed to parse abs(-x)");
-        let rewrite3 = rule.apply(&mut ctx, expr3, &crate::parent_context::ParentContext::root()).expect("Rule failed to apply");
+        let rewrite3 = rule
+            .apply(
+                &mut ctx,
+                expr3,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .expect("Rule failed to apply");
         assert_eq!(
             format!(
                 "{}",
@@ -201,6 +291,7 @@ mod tests {
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
+    simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(AbsSquaredRule));
 }

@@ -365,6 +365,7 @@ define_rule!(
         // Get coefficients
         let coef_l = get_int_coef(ctx, l);
         let coef_r = get_int_coef(ctx, r);
+
         let coef_l = coef_l?;
         let coef_r = coef_r?;
 
@@ -444,12 +445,8 @@ define_rule!(
         let gcd_expr = ctx.add(Expr::Number(gcd.clone()));
         let new_expr = ctx.add_raw(Expr::Mul(gcd_expr, inner));
 
-        // Safety guard: only apply if node count doesn't increase
-        let old_count = cas_ast::count_nodes(ctx, expr);
-        let new_count = cas_ast::count_nodes(ctx, new_expr);
-        if new_count > old_count {
-            return None;
-        }
+        // Note: We intentionally allow node count to increase for GCD factoring
+        // because 2*(3 + 2*√5) is mathematically cleaner than 6 + 4*√5
 
         Some(Rewrite {
             new_expr,
