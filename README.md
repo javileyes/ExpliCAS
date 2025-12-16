@@ -68,7 +68,12 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   **Deep Integration**: Use session references directly in `solve` (`solve #1, x`) and `equiv` (`equiv #1, #2`).
     -   Transitive substitution and cycle detection.
     -   See [ENVIRONMENT.md](ENVIRONMENT.md) for full documentation.
-
+-   **Unicode Pretty Output** ★ (2025-12):
+    -   By default, CLI displays mathematically formatted output: `3·x²` instead of `3 * x^2`.
+    -   Unicode roots: `√x`, `∛x`, `∜x` instead of `sqrt(x)`.
+    -   Superscript exponents for small integers (0-99): `x²`, `x³`, etc.
+    -   Middle dot for multiplication: `·` instead of `*`.
+    -   Use `--no-pretty` flag for ASCII compatibility: `cas_cli --no-pretty`.
 
 ## Getting Started
 

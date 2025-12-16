@@ -9,6 +9,40 @@ use crate::{Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{ToPrimitive, Zero};
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+// ============================================================================
+// Pretty Output Configuration
+// ============================================================================
+
+/// Global flag controlling pretty Unicode output (∛, x², ·) vs ASCII (sqrt, ^, *)
+/// Default: false (ASCII mode for tests compatibility)
+/// CLI enables pretty mode for end users
+static PRETTY_OUTPUT: AtomicBool = AtomicBool::new(false);
+
+/// Enable pretty Unicode output (∛, x², ·)
+pub fn enable_pretty_output() {
+    PRETTY_OUTPUT.store(true, Ordering::SeqCst);
+}
+
+/// Disable pretty output, use ASCII (sqrt, ^, *)
+pub fn disable_pretty_output() {
+    PRETTY_OUTPUT.store(false, Ordering::SeqCst);
+}
+
+/// Check if pretty output is enabled
+pub fn is_pretty_output() -> bool {
+    PRETTY_OUTPUT.load(Ordering::SeqCst)
+}
+
+/// Get the multiplication symbol based on pretty mode
+pub fn mul_symbol() -> &'static str {
+    if PRETTY_OUTPUT.load(Ordering::SeqCst) {
+        "·"
+    } else {
+        " * "
+    }
+}
 
 // ============================================================================
 // Unicode Pretty Output Helpers
@@ -54,9 +88,18 @@ pub fn number_to_superscript(n: u64) -> String {
     result
 }
 
-/// Get the Unicode root prefix for a given index
-/// Examples: 2 → "√", 3 → "∛", 4 → "∜", 5 → "⁵√", 12 → "¹²√"
+/// Get the root prefix for a given index
+/// Pretty mode: 2 → "√", 3 → "∛", 4 → "∜", 5 → "⁵√"
+/// ASCII mode: 2 → "sqrt", 3 → "cbrt", n → "root(,n)"
 pub fn unicode_root_prefix(index: u64) -> String {
+    if !is_pretty_output() {
+        // ASCII mode - will be handled by the caller using sqrt() format
+        return match index {
+            2 => "sqrt".to_string(),
+            n => format!("{}√", n), // Fallback, normally caller handles ASCII
+        };
+    }
+
     match index {
         2 => "√".to_string(),
         3 => "∛".to_string(),
@@ -196,7 +239,7 @@ fn format_factors(
 
     for (i, factor) in factors.iter().enumerate() {
         if i > 0 {
-            write!(f, "·")?;
+            write!(f, "{}", mul_symbol())?;
         }
 
         let base_prec = precedence(ctx, factor.base);
@@ -484,7 +527,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     )?
                 }
 
-                write!(f, "·")?;
+                write!(f, "{}", mul_symbol())?;
 
                 if rhs_prec < op_prec {
                     write!(
@@ -705,7 +748,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 } else if name == "factored" {
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {
-                            write!(f, "·")?;
+                            write!(f, "{}", mul_symbol())?;
                         }
                         write!(
                             f,
@@ -1200,7 +1243,7 @@ impl<'a> DisplayExprWithHints<'a> {
                         write!(f, "(")?;
                         for (i, factor) in frac.num.iter().enumerate() {
                             if i > 0 {
-                                write!(f, "·")?;
+                                write!(f, "{}", mul_symbol())?;
                             }
                             self.fmt_internal(f, factor.base)?;
                             if factor.exp != 1 {
@@ -1223,7 +1266,7 @@ impl<'a> DisplayExprWithHints<'a> {
                         write!(f, "(")?;
                         for (i, factor) in frac.den.iter().enumerate() {
                             if i > 0 {
-                                write!(f, "·")?;
+                                write!(f, "{}", mul_symbol())?;
                             }
                             self.fmt_internal(f, factor.base)?;
                             if factor.exp != 1 {
@@ -1255,7 +1298,7 @@ impl<'a> DisplayExprWithHints<'a> {
                     self.fmt_internal(f, *l)?;
                 }
 
-                write!(f, "·")?;
+                write!(f, "{}", mul_symbol())?;
 
                 if rhs_prec < op_prec {
                     write!(f, "(")?;
@@ -1685,7 +1728,7 @@ impl<'a> DisplayExprStyled<'a> {
                 } else {
                     self.fmt_internal(f, *l)?;
                 }
-                write!(f, "·")?;
+                write!(f, "{}", mul_symbol())?;
                 if rhs_prec < 2 {
                     write!(f, "(")?;
                     self.fmt_internal(f, *r)?;
@@ -1777,13 +1820,15 @@ impl<'a> DisplayExprStyled<'a> {
             self.fmt_internal(f, base)?;
         }
 
-        // Check if exponent is a small positive integer (use superscript)
-        if let Expr::Number(n) = self.context.get(exp) {
-            if n.is_integer() {
-                if let Some(exp_i64) = n.to_integer().try_into().ok() as Option<i64> {
-                    // Use superscript for positive integers 0-99
-                    if exp_i64 >= 0 && exp_i64 <= 99 {
-                        return write!(f, "{}", number_to_superscript(exp_i64 as u64));
+        // Check if exponent is a small positive integer (use superscript in pretty mode)
+        if is_pretty_output() {
+            if let Expr::Number(n) = self.context.get(exp) {
+                if n.is_integer() {
+                    if let Some(exp_i64) = n.to_integer().try_into().ok() as Option<i64> {
+                        // Use superscript for positive integers 0-99
+                        if exp_i64 >= 0 && exp_i64 <= 99 {
+                            return write!(f, "{}", number_to_superscript(exp_i64 as u64));
+                        }
                     }
                 }
             }

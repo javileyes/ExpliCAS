@@ -587,15 +587,15 @@ fn parse_unary(input: &str) -> IResult<&str, ParseNode> {
 fn parse_term(input: &str) -> IResult<&str, ParseNode> {
     let (input, init) = parse_unary(input)?;
 
-    // First, handle explicit operators (* / mod)
+    // First, handle explicit operators (* · / mod)
     let (input, result) = fold_many0(
         pair(
-            preceded(multispace0, alt((tag("*"), tag("/"), tag("mod")))),
+            preceded(multispace0, alt((tag("*"), tag("·"), tag("/"), tag("mod")))),
             parse_unary,
         ),
         move || init.clone(),
         |acc, (op, val)| match op {
-            "*" => ParseNode::Mul(Box::new(acc), Box::new(val)),
+            "*" | "·" => ParseNode::Mul(Box::new(acc), Box::new(val)),
             "/" => ParseNode::Div(Box::new(acc), Box::new(val)),
             "mod" => ParseNode::Function("mod".to_string(), vec![acc, val]),
             _ => unreachable!(),
