@@ -81,19 +81,45 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 
 -   Rust, cargo
 
-# Clonar el repositorio
+### Installation
 
 ```bash
+# Clone the repository
 git clone <repository-url>
 cd math
 
-# Compilar y ejecutar
-cargo run -p cas_cli
-
-# O compilar en modo release (más rápido)
+# Build release version (recommended)
 cargo build --release -p cas_cli
+
+# Run the CLI
 ./target/release/cas_cli
 ```
+
+### CLI Options
+
+```bash
+# Pretty Unicode output (default) - uses ·, ², √
+./target/release/cas_cli
+
+# ASCII output - uses *, ^, sqrt
+./target/release/cas_cli --no-pretty
+
+# Show help
+./target/release/cas_cli --help
+```
+
+### Output Examples
+
+| Mode | Input | Output |
+|------|-------|--------|
+| Pretty (default) | `x^2 * 3` | `3·x²` |
+| ASCII (`--no-pretty`) | `x^2 * 3` | `3 * x^(2)` |
+
+> **Note**: When using `cargo run`, add `--` before program arguments:
+> ```bash
+> cargo run -p cas_cli -- --no-pretty
+> ```
+
 
 ## Otras Características
 
