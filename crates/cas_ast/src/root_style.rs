@@ -432,11 +432,7 @@ impl<'a> StyledExpr<'a> {
                     match self.style {
                         RootStyle::Radical | RootStyle::Auto => {
                             // Display as radical
-                            if degree == 2 {
-                                write!(f, "√(")?;
-                            } else {
-                                write!(f, "{}√(", degree)?;
-                            }
+                            write!(f, "{}(", crate::display::unicode_root_prefix(degree as u64))?;
                             self.fmt_expr(f, *base)?;
                             write!(f, ")")
                         }

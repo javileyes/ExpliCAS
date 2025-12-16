@@ -10,6 +10,61 @@ use num_rational::BigRational;
 use num_traits::{ToPrimitive, Zero};
 use std::fmt;
 
+// ============================================================================
+// Unicode Pretty Output Helpers
+// ============================================================================
+
+/// Convert a digit (0-9) to its Unicode superscript equivalent
+fn digit_to_superscript(d: u32) -> char {
+    match d {
+        0 => '⁰',
+        1 => '¹',
+        2 => '²',
+        3 => '³',
+        4 => '⁴',
+        5 => '⁵',
+        6 => '⁶',
+        7 => '⁷',
+        8 => '⁸',
+        9 => '⁹',
+        _ => '?',
+    }
+}
+
+/// Convert an integer to a Unicode superscript string
+/// Examples: 2 → "²", 12 → "¹²", 100 → "¹⁰⁰"
+pub fn number_to_superscript(n: u64) -> String {
+    if n == 0 {
+        return "⁰".to_string();
+    }
+
+    let mut result = String::new();
+    let mut num = n;
+    let mut digits = Vec::new();
+
+    while num > 0 {
+        digits.push((num % 10) as u32);
+        num /= 10;
+    }
+
+    for d in digits.into_iter().rev() {
+        result.push(digit_to_superscript(d));
+    }
+
+    result
+}
+
+/// Get the Unicode root prefix for a given index
+/// Examples: 2 → "√", 3 → "∛", 4 → "∜", 5 → "⁵√", 12 → "¹²√"
+pub fn unicode_root_prefix(index: u64) -> String {
+    match index {
+        2 => "√".to_string(),
+        3 => "∛".to_string(),
+        4 => "∜".to_string(),
+        n => format!("{}√", number_to_superscript(n)),
+    }
+}
+
 // We need a way to display Expr with Context, or just Expr if it doesn't recurse.
 // But Expr DOES recurse via IDs. So we can't implement Display for Expr easily without Context.
 // We can implement a helper struct for display.
@@ -1029,11 +1084,7 @@ impl<'a> DisplayExprWithHints<'a> {
                             1
                         };
 
-                        if *index == 2 {
-                            write!(f, "√(")?;
-                        } else {
-                            write!(f, "{}√(", index)?;
-                        }
+                        write!(f, "{}(", unicode_root_prefix(*index as u64))?;
 
                         // If numerator > 1, show base^k inside the root
                         if inner_power != 1 {
@@ -1288,11 +1339,7 @@ impl<'a> DisplayExprWithHints<'a> {
                     } else {
                         2u32
                     };
-                    if index == 2 {
-                        write!(f, "√(")?;
-                    } else {
-                        write!(f, "{}√(", index)?;
-                    }
+                    write!(f, "{}(", unicode_root_prefix(index as u64))?;
                     self.fmt_internal(f, args[0])?;
                     return write!(f, ")");
                 } else if name == "root" && args.len() == 2 {
@@ -1301,11 +1348,7 @@ impl<'a> DisplayExprWithHints<'a> {
                     } else {
                         2u32
                     };
-                    if index == 2 {
-                        write!(f, "√(")?;
-                    } else {
-                        write!(f, "{}√(", index)?;
-                    }
+                    write!(f, "{}(", unicode_root_prefix(index as u64))?;
                     self.fmt_internal(f, args[0])?;
                     return write!(f, ")");
                 }
@@ -1497,11 +1540,7 @@ impl<'a> DisplayExprStyled<'a> {
                         if !n.is_integer() && n.numer() == &1.into() {
                             if let Some(index) = n.denom().to_u32_digits().1.first() {
                                 // Print as root
-                                if *index == 2 {
-                                    write!(f, "√(")?;
-                                } else {
-                                    write!(f, "{}√(", index)?;
-                                }
+                                write!(f, "{}(", unicode_root_prefix(*index as u64))?;
                                 self.fmt_internal(f, *base)?;
                                 return write!(f, ")");
                             }
@@ -1511,11 +1550,7 @@ impl<'a> DisplayExprStyled<'a> {
                             let numer: i64 = n.numer().try_into().unwrap_or(1);
                             if let Some(denom) = n.denom().to_u32_digits().1.first() {
                                 if *denom > 1 && numer != 1 {
-                                    if *denom == 2 {
-                                        write!(f, "√(")?;
-                                    } else {
-                                        write!(f, "{}√(", denom)?;
-                                    }
+                                    write!(f, "{}(", unicode_root_prefix(*denom as u64))?;
                                     self.fmt_internal(f, *base)?;
                                     write!(f, "^{})", numer)?;
                                     return Ok(());
@@ -1731,6 +1766,8 @@ impl<'a> DisplayExprStyled<'a> {
                 return self.fmt_internal(f, base);
             }
         }
+
+        // Format base with parens if needed
         let base_prec = precedence(self.context, base);
         if base_prec < 3 {
             write!(f, "(")?;
@@ -1739,6 +1776,20 @@ impl<'a> DisplayExprStyled<'a> {
         } else {
             self.fmt_internal(f, base)?;
         }
+
+        // Check if exponent is a small positive integer (use superscript)
+        if let Expr::Number(n) = self.context.get(exp) {
+            if n.is_integer() {
+                if let Some(exp_i64) = n.to_integer().try_into().ok() as Option<i64> {
+                    // Use superscript for positive integers 0-99
+                    if exp_i64 >= 0 && exp_i64 <= 99 {
+                        return write!(f, "{}", number_to_superscript(exp_i64 as u64));
+                    }
+                }
+            }
+        }
+
+        // Default: ^(exp) format
         write!(f, "^(")?;
         self.fmt_internal(f, exp)?;
         write!(f, ")")
