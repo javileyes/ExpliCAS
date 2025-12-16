@@ -1,16 +1,42 @@
 use cas_ast::{Context, Expr, ExprId};
 use cas_engine::Simplifier;
 use proptest::prelude::*;
+use std::io::Write;
 
 mod strategies;
 
-// NOTE: These property tests can cause stack overflow due to the recursive
-// nature of the simplifier. To run reliably, use:
+/// Log expression to file before processing - helps capture what causes stack overflow
+fn log_expr_before_simplify(ctx: &Context, expr: ExprId, test_name: &str) {
+    let display = cas_ast::DisplayExpr {
+        context: ctx,
+        id: expr,
+    };
+    let expr_str = display.to_string();
+    let log_entry = format!("[{}] {}\n", test_name, expr_str);
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open("/tmp/last_tested_expr.txt")
+    {
+        let _ = file.write_all(log_entry.as_bytes());
+        let _ = file.flush();
+    }
+}
+
+// ============================================================================
+// PROPERTY TESTS - REQUIRE LARGER STACK
+// ============================================================================
+//
+// These property tests can cause stack overflow due to the recursive nature
+// of the simplifier and related functions (expand, normalize_core, etc).
+//
+// To run ALL property tests reliably, use:
 //   RUST_MIN_STACK=16777216 cargo test --package cas_engine --test property_tests
 //
-// The test_numbers_reduced_form test is marked #[ignore] by default as it
-// intermittently causes stack overflow even with SAFE profile. To run it:
-//   RUST_MIN_STACK=16777216 cargo test --package cas_engine --test property_tests -- --ignored
+// For CI environments, these tests should be run separately with increased stack.
+// ============================================================================
 
 proptest! {
     // Reduce number of cases to minimize stack overflow probability
@@ -486,6 +512,10 @@ proptest! {
 
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx;
+
+        // Log expression before simplify to capture what causes overflow
+        log_expr_before_simplify(&simplifier.context, n1, "test_metamorphic_mul_one");
+
         let (s1, _) = simplifier.simplify(n1);
         let (s2, _) = simplifier.simplify(n2);
 

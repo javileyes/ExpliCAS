@@ -728,6 +728,22 @@ define_rule!(
             if let Expr::Mul(a, b) = ctx.get(base) {
                 let a = *a;
                 let b = *b;
+
+                // GUARD: Prevent ping-pong with ProductSameExponentRule
+                // If one factor is a number and exponent is SYMBOLIC (variable),
+                // ProductSameExponentRule would recombine them creating a cycle.
+                // Allow distribution when:
+                // 1. Exponent is a Number (integer, rational, etc) - will evaluate
+                // 2. OR both factors are non-numeric (ProductSameExponentRule won't recombine)
+                let a_is_num = matches!(ctx.get(a), Expr::Number(_));
+                let b_is_num = matches!(ctx.get(b), Expr::Number(_));
+                let exp_is_numeric = matches!(ctx.get(exp), Expr::Number(_));
+
+                // If one is a number and exponent is symbolic, this would ping-pong
+                if (a_is_num || b_is_num) && !exp_is_numeric {
+                    return None;
+                }
+
                 let a_pow = ctx.add(Expr::Pow(a, exp));
                 let b_pow = ctx.add(Expr::Pow(b, exp));
                 let new_expr = mul2_raw(ctx, a_pow, b_pow);
