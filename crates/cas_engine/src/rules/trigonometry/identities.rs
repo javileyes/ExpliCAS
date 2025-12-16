@@ -904,6 +904,230 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// HIDDEN CUBIC TRIG IDENTITY
+// sin^6(x) + cos^6(x) + 3*sin^2(x)*cos^2(x) = (sin^2(x) + cos^2(x))^3
+// =============================================================================
+
+/// Extract sin(arg)^6 or cos(arg)^6 from a term.
+/// Returns Some((arg, "sin"|"cos")) if matched.
+fn extract_trig_pow6(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'static str)> {
+    if let Expr::Pow(base, exp) = ctx.get(term) {
+        // Check exponent is 6
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if n.is_integer() && *n.numer() == 6.into() {
+                // Check base is sin(arg) or cos(arg)
+                if let Expr::Function(name, args) = ctx.get(*base) {
+                    if args.len() == 1 {
+                        match name.as_str() {
+                            "sin" => return Some((args[0], "sin")),
+                            "cos" => return Some((args[0], "cos")),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract sin(arg)^2 or cos(arg)^2 from terms.
+/// Returns Some((arg, "sin"|"cos")) if matched.
+fn extract_trig_pow2(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'static str)> {
+    if let Expr::Pow(base, exp) = ctx.get(term) {
+        // Check exponent is 2
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if n.is_integer() && *n.numer() == 2.into() {
+                // Check base is sin(arg) or cos(arg)
+                if let Expr::Function(name, args) = ctx.get(*base) {
+                    if args.len() == 1 {
+                        match name.as_str() {
+                            "sin" => return Some((args[0], "sin")),
+                            "cos" => return Some((args[0], "cos")),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract coeff * sin(arg)^2 * cos(arg)^2 from a term.
+/// Returns Some((coeff_expr, arg)) where coeff_expr is the coefficient expression.
+/// The caller should verify coeff_expr simplifies to 3.
+fn extract_sin2_cos2_product(ctx: &mut cas_ast::Context, term: ExprId) -> Option<(ExprId, ExprId)> {
+    // Flatten the multiplication
+    let factors = crate::helpers::flatten_mul_chain(ctx, term);
+
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut sin2_arg: Option<ExprId> = None;
+    let mut cos2_arg: Option<ExprId> = None;
+    let mut other_factors: Vec<ExprId> = Vec::new();
+
+    for factor in &factors {
+        if let Some((arg, name)) = extract_trig_pow2(ctx, *factor) {
+            match name {
+                "sin" if sin2_arg.is_none() => sin2_arg = Some(arg),
+                "cos" if cos2_arg.is_none() => cos2_arg = Some(arg),
+                _ => other_factors.push(*factor), // Duplicate or already matched
+            }
+        } else {
+            other_factors.push(*factor);
+        }
+    }
+
+    // Must have exactly one sin^2 and one cos^2 with same argument
+    let sin_arg = sin2_arg?;
+    let cos_arg = cos2_arg?;
+
+    // Verify same argument
+    if crate::ordering::compare_expr(ctx, sin_arg, cos_arg) != Ordering::Equal {
+        return None;
+    }
+
+    // Build the coefficient expression from remaining factors
+    let coeff = if other_factors.is_empty() {
+        ctx.num(1)
+    } else if other_factors.len() == 1 {
+        other_factors[0]
+    } else {
+        // Build product of remaining factors
+        let mut result = other_factors[0];
+        for &f in &other_factors[1..] {
+            result = ctx.add(Expr::Mul(result, f));
+        }
+        result
+    };
+
+    Some((coeff, sin_arg))
+}
+
+/// Check if a coefficient expression equals 3.
+/// Uses simplification: coeff - 3 == 0
+fn coeff_is_three(ctx: &mut cas_ast::Context, coeff: ExprId) -> bool {
+    // Fast path: direct number check
+    if let Expr::Number(n) = ctx.get(coeff) {
+        return n.is_integer() && *n.numer() == 3.into();
+    }
+
+    // Use as_rational_const for expressions like 6/2
+    if let Some(val) = crate::helpers::as_rational_const(ctx, coeff) {
+        return val == num_rational::BigRational::from_integer(3.into());
+    }
+
+    false
+}
+
+define_rule!(
+    TrigHiddenCubicIdentityRule,
+    "Hidden Cubic Trig Identity",
+    None,
+    crate::phase::PhaseMask::TRANSFORM,
+    |ctx, expr| {
+        // Only match Add nodes (sums)
+        if !matches!(ctx.get(expr), Expr::Add(_, _)) {
+            return None;
+        }
+
+        // Flatten the sum to get all terms
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        // We need exactly 3 terms for the pattern
+        if terms.len() != 3 {
+            return None;
+        }
+
+        // Try to find: sin^6(arg), cos^6(arg), coeff*sin^2(arg)*cos^2(arg)
+        let mut sin6_arg: Option<ExprId> = None;
+        let mut cos6_arg: Option<ExprId> = None;
+        let mut sin2cos2_info: Option<(ExprId, ExprId)> = None; // (coeff, arg)
+        let mut sin6_idx: Option<usize> = None;
+        let mut cos6_idx: Option<usize> = None;
+        let mut sin2cos2_idx: Option<usize> = None;
+
+        for (i, &term) in terms.iter().enumerate() {
+            // Try to match sin^6 or cos^6
+            if let Some((arg, name)) = extract_trig_pow6(ctx, term) {
+                match name {
+                    "sin" if sin6_arg.is_none() => {
+                        sin6_arg = Some(arg);
+                        sin6_idx = Some(i);
+                    }
+                    "cos" if cos6_arg.is_none() => {
+                        cos6_arg = Some(arg);
+                        cos6_idx = Some(i);
+                    }
+                    _ => {} // Already matched or duplicate
+                }
+            }
+        }
+
+        // Find the sin^2*cos^2 term (the remaining one)
+        for (i, &term) in terms.iter().enumerate() {
+            if Some(i) == sin6_idx || Some(i) == cos6_idx {
+                continue;
+            }
+
+            if let Some((coeff, arg)) = extract_sin2_cos2_product(ctx, term) {
+                sin2cos2_info = Some((coeff, arg));
+                sin2cos2_idx = Some(i);
+                break;
+            }
+        }
+
+        // Verify we found all three pieces
+        let sin6_a = sin6_arg?;
+        let cos6_a = cos6_arg?;
+        let (coeff, sin2cos2_a) = sin2cos2_info?;
+
+        // Ensure we used all three terms (no extras)
+        if sin6_idx.is_none() || cos6_idx.is_none() || sin2cos2_idx.is_none() {
+            return None;
+        }
+
+        // Verify all arguments are the same
+        if crate::ordering::compare_expr(ctx, sin6_a, cos6_a) != Ordering::Equal {
+            return None;
+        }
+        if crate::ordering::compare_expr(ctx, sin6_a, sin2cos2_a) != Ordering::Equal {
+            return None;
+        }
+
+        // Verify coefficient is 3
+        if !coeff_is_three(ctx, coeff) {
+            return None;
+        }
+
+        // All conditions met! Rewrite to (sin^2(arg) + cos^2(arg))^3
+        let arg = sin6_a;
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+
+        let sin_arg = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+        let cos_arg = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+        let sin2 = ctx.add(Expr::Pow(sin_arg, two));
+        let two_again = ctx.num(2);
+        let cos2 = ctx.add(Expr::Pow(cos_arg, two_again));
+        let sum = ctx.add(Expr::Add(sin2, cos2));
+        let result = ctx.add(Expr::Pow(sum, three));
+
+        Some(Rewrite {
+            new_expr: result,
+            description: "sin⁶(x) + cos⁶(x) + 3sin²(x)cos²(x) = (sin²(x) + cos²(x))³".to_string(),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        })
+    }
+);
+
 define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {
         if args.len() == 1 {
@@ -1546,6 +1770,11 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(SecTanPythagoreanRule));
     simplifier.add_rule(Box::new(CscCotPythagoreanRule));
+
+    // Hidden Cubic Identity: sin^6 + cos^6 + 3sin^2cos^2 = (sin^2+cos^2)^3
+    // Should run in TRANSFORM phase before power expansions
+    simplifier.add_rule(Box::new(TrigHiddenCubicIdentityRule));
+
     simplifier.add_rule(Box::new(AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
@@ -2649,5 +2878,134 @@ mod cot_half_angle_tests {
             &crate::parent_context::ParentContext::root(),
         );
         assert!(rewrite.is_none(), "Should not match cot(x/3) - cot(x)");
+    }
+
+    // =========================================================================
+    // TrigHiddenCubicIdentityRule tests
+    // =========================================================================
+
+    #[test]
+    fn test_hidden_cubic_basic() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)^6 + cos(x)^6 + 3*sin(x)^2*cos(x)^2", &mut ctx).unwrap();
+
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        simplifier.context = ctx;
+        let (result, _) = simplifier.simplify(expr);
+
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        assert_eq!(result_str, "1");
+    }
+
+    #[test]
+    fn test_hidden_cubic_permutation_cos_first() {
+        let mut ctx = Context::new();
+        // Different order: cos^6 first
+        let expr = parse("cos(x)^6 + 3*cos(x)^2*sin(x)^2 + sin(x)^6", &mut ctx).unwrap();
+
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        simplifier.context = ctx;
+        let (result, _) = simplifier.simplify(expr);
+
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        assert_eq!(result_str, "1");
+    }
+
+    #[test]
+    fn test_hidden_cubic_coeff_product_first() {
+        let mut ctx = Context::new();
+        // Coefficient product first
+        let expr = parse("3*sin(x)^2*cos(x)^2 + sin(x)^6 + cos(x)^6", &mut ctx).unwrap();
+
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        simplifier.context = ctx;
+        let (result, _) = simplifier.simplify(expr);
+
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        assert_eq!(result_str, "1");
+    }
+
+    #[test]
+    fn test_hidden_cubic_equivalent_coeff() {
+        let mut ctx = Context::new();
+        // Coefficient 6/2 = 3
+        let expr = parse("sin(x)^6 + cos(x)^6 + (6/2)*sin(x)^2*cos(x)^2", &mut ctx).unwrap();
+
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        simplifier.context = ctx;
+        let (result, _) = simplifier.simplify(expr);
+
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        assert_eq!(result_str, "1");
+    }
+
+    #[test]
+    fn test_hidden_cubic_no_match_wrong_coeff() {
+        let mut ctx = Context::new();
+        // Wrong coefficient: 2 instead of 3
+        let expr = parse("sin(x)^6 + cos(x)^6 + 2*sin(x)^2*cos(x)^2", &mut ctx).unwrap();
+
+        let rule = TrigHiddenCubicIdentityRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(rewrite.is_none(), "Should not match with coeff=2");
+    }
+
+    #[test]
+    fn test_hidden_cubic_no_match_different_args() {
+        let mut ctx = Context::new();
+        // Different arguments: x vs y
+        let expr = parse("sin(x)^6 + cos(y)^6 + 3*sin(x)^2*cos(y)^2", &mut ctx).unwrap();
+
+        let rule = TrigHiddenCubicIdentityRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(rewrite.is_none(), "Should not match with different args");
+    }
+
+    #[test]
+    fn test_hidden_cubic_no_match_extra_terms() {
+        let mut ctx = Context::new();
+        // Extra term: should not match partially
+        let expr = parse("sin(x)^6 + cos(x)^6 + 3*sin(x)^2*cos(x)^2 + 1", &mut ctx).unwrap();
+
+        let rule = TrigHiddenCubicIdentityRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        // flatten_add will produce 4 terms, so rule should not match (requires exactly 3)
+        assert!(rewrite.is_none(), "Should not match with extra terms");
     }
 }
