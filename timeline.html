@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \sqrt[3]{{x}^{6}\cdot {y}^{9}}</title>
+    <title>CAS Steps: \sqrt{{x}^{2}} - x</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -222,76 +222,13 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\sqrt[3]{{x}^{6}\cdot {y}^{9}}\]
+            \[\sqrt{{x}^{2}} - x\]
         </div>
         <div class="timeline">
-            <div class="step">
-                <div class="step-number">1</div>
-                <div class="step-content">
-                    <h3>Power of a Product</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\sqrt[3]{{x}^{6}\cdot {y}^{9}}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute power over product}\)</div>
-                        <div class="local-change">
-                            \[\sqrt[3]{{x}^{6}\cdot {y}^{9}} \rightarrow \sqrt[3]{{x}^{6}}\cdot \sqrt[3]{{y}^{9}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\sqrt[3]{{x}^{6}}\cdot \sqrt[3]{{y}^{9}}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Power of a Power</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\sqrt[3]{{x}^{6}}}}\cdot \sqrt[3]{{y}^{9}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
-                        <div class="local-change">
-                            \[\sqrt[3]{{x}^{6}} \rightarrow {x}^{2}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{{x}^{2}}}\cdot \sqrt[3]{{y}^{9}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Power of a Power</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{x}^{2}\cdot {\color{red}{\sqrt[3]{{y}^{9}}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
-                        <div class="local-change">
-                            \[\sqrt[3]{{y}^{9}} \rightarrow {y}^{3}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{x}^{2}\cdot {\color{green}{{y}^{3}}}\]
-                    </div>
-                </div>
-            </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[{x}^{2}\cdot {y}^{3}\]
+            \[|x| - x\]
         </div>
     </div>
     <footer>

@@ -294,20 +294,18 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 // Flatten Add chain to handle mixed signs gracefully
                 let mut terms = collect_add_terms(self.context, self.id);
 
-                // Reorder for display: put positive terms first
-                // This makes -√2 + √5 display as √5 - √2 which is cleaner
-                if terms.len() >= 2 {
-                    let (is_first_neg, _, _) = check_negative(self.context, terms[0]);
-                    if is_first_neg {
-                        // Find the first positive term and swap it to the front
-                        if let Some(first_positive_idx) = terms
-                            .iter()
-                            .position(|t| !check_negative(self.context, *t).0)
-                        {
-                            terms.swap(0, first_positive_idx);
-                        }
+                // Reorder for display: put positive terms first, negative terms last
+                // This makes -x + √x² display as √x² - x which is cleaner
+                // Use stable_sort to preserve relative order within positive/negative groups
+                terms.sort_by(|a, b| {
+                    let a_neg = check_negative(self.context, *a).0;
+                    let b_neg = check_negative(self.context, *b).0;
+                    match (a_neg, b_neg) {
+                        (false, true) => std::cmp::Ordering::Less, // positive before negative
+                        (true, false) => std::cmp::Ordering::Greater, // negative after positive
+                        _ => std::cmp::Ordering::Equal,            // same sign: keep order
                     }
-                }
+                });
 
                 for (i, term) in terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
@@ -882,16 +880,20 @@ fn check_negative(ctx: &Context, id: ExprId) -> (bool, Option<ExprId>, Option<Bi
                 (false, None, None)
             }
         }
-        Expr::Mul(a, _) => {
+        Expr::Mul(a, b) => {
+            // Check left factor for negative number
             if let Expr::Number(n) = ctx.get(*a) {
                 if *n < num_rational::BigRational::zero() {
-                    (true, None, Some(n.clone()))
-                } else {
-                    (false, None, None)
+                    return (true, None, Some(n.clone()));
                 }
-            } else {
-                (false, None, None)
             }
+            // Check right factor for negative number (in case of canonicalization order)
+            if let Expr::Number(n) = ctx.get(*b) {
+                if *n < num_rational::BigRational::zero() {
+                    return (true, None, Some(n.clone()));
+                }
+            }
+            (false, None, None)
         }
         _ => (false, None, None),
     }
@@ -1157,20 +1159,17 @@ impl<'a> DisplayExprWithHints<'a> {
                 // Flatten Add chain to handle mixed signs gracefully
                 let mut terms = collect_add_terms(self.context, id);
 
-                // Reorder for display: put positive terms first
-                // This makes -x + y display as y - x which is cleaner
-                if terms.len() >= 2 {
-                    let (is_first_neg, _, _) = check_negative(self.context, terms[0]);
-                    if is_first_neg {
-                        // Find the first positive term and swap it to the front
-                        if let Some(first_positive_idx) = terms
-                            .iter()
-                            .position(|t| !check_negative(self.context, *t).0)
-                        {
-                            terms.swap(0, first_positive_idx);
-                        }
+                // Reorder for display: put positive terms first, negative terms last
+                // This makes -x + |x| display as |x| - x which is cleaner
+                terms.sort_by(|a, b| {
+                    let a_neg = check_negative(self.context, *a).0;
+                    let b_neg = check_negative(self.context, *b).0;
+                    match (a_neg, b_neg) {
+                        (false, true) => std::cmp::Ordering::Less, // positive before negative
+                        (true, false) => std::cmp::Ordering::Greater, // negative after positive
+                        _ => std::cmp::Ordering::Equal,            // same sign: keep order
                     }
-                }
+                });
 
                 for (i, term) in terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
@@ -1620,6 +1619,7 @@ impl<'a> DisplayExprStyled<'a> {
                 let mut terms = collect_add_terms(self.context, id);
 
                 // Polynomial ordering: sort by degree descending (x^3, x^2, x, constant)
+                // Applied FIRST since positive-first should take priority for display
                 if resolved_style.polynomial_order {
                     terms.sort_by(|a, b| {
                         let deg_a = polynomial_degree(self.context, *a);
@@ -1627,6 +1627,18 @@ impl<'a> DisplayExprStyled<'a> {
                         deg_b.cmp(&deg_a) // Descending
                     });
                 }
+
+                // Reorder for display: put positive terms first, negative terms last
+                // This is applied LAST so it takes priority - makes -x + |x| display as |x| - x
+                terms.sort_by(|a, b| {
+                    let a_neg = check_negative(self.context, *a).0;
+                    let b_neg = check_negative(self.context, *b).0;
+                    match (a_neg, b_neg) {
+                        (false, true) => std::cmp::Ordering::Less, // positive before negative
+                        (true, false) => std::cmp::Ordering::Greater, // negative after positive
+                        _ => std::cmp::Ordering::Equal,            // same sign: keep order
+                    }
+                });
 
                 for (i, term) in terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
