@@ -1577,6 +1577,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 
     // Fourth power difference: sin⁴(x) - cos⁴(x) → sin²(x) - cos²(x)
     simplifier.add_rule(Box::new(super::pythagorean::TrigEvenPowerDifferenceRule));
+
+    // Cotangent half-angle difference: cot(u/2) - cot(u) = 1/sin(u)
+    simplifier.add_rule(Box::new(CotHalfAngleDifferenceRule));
 }
 
 define_rule!(
@@ -2289,4 +2292,362 @@ fn extract_pi_half_multiple(ctx: &cas_ast::Context, expr: ExprId) -> Option<i32>
     }
 
     None
+}
+
+// ============================================================================
+// Cotangent Half-Angle Difference Rule
+// ============================================================================
+// cot(u/2) - cot(u) = 1/sin(u) = csc(u)
+//
+// This is a common precalculus identity that avoids term explosion from
+// brute-force expansion via cot→cos/sin + double angle formulas.
+//
+// Pattern matching:
+// - cot(u/2) - cot(u) → 1/sin(u)
+// - k*cot(u/2) - k*cot(u) → k/sin(u)
+// - Works on n-ary sums via flatten_add
+
+/// Helper: Check if arg represents u/2 and return u
+/// Supports: Mul(1/2, u), Div(u, 2)
+fn is_half_angle(ctx: &cas_ast::Context, arg: ExprId) -> Option<ExprId> {
+    match ctx.get(arg) {
+        Expr::Mul(coef, inner) => {
+            if let Expr::Number(n) = ctx.get(*coef) {
+                if *n == num_rational::BigRational::new(1.into(), 2.into()) {
+                    return Some(*inner);
+                }
+            }
+            // Check reversed order: inner * 1/2
+            if let Expr::Number(n) = ctx.get(*inner) {
+                if *n == num_rational::BigRational::new(1.into(), 2.into()) {
+                    return Some(*coef);
+                }
+            }
+        }
+        Expr::Div(numer, denom) => {
+            if let Expr::Number(d) = ctx.get(*denom) {
+                if *d == num_rational::BigRational::from_integer(2.into()) {
+                    return Some(*numer);
+                }
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
+/// Helper: Extract coefficient and cot argument from a term
+/// Returns (coefficient_opt, cot_arg, is_positive)
+/// coefficient_opt=None means coefficient is implicitly 1
+/// is_positive=false means the term is negated (represents -coeff*cot(arg))
+fn extract_cot_term(
+    ctx: &cas_ast::Context,
+    term: ExprId,
+) -> Option<(Option<ExprId>, ExprId, bool)> {
+    let term_data = ctx.get(term);
+
+    // Check for Neg(...)
+    let (inner_term, is_positive) = match term_data {
+        Expr::Neg(inner) => (*inner, false),
+        _ => (term, true),
+    };
+
+    let inner_data = ctx.get(inner_term);
+
+    // Check for cot(arg) directly
+    if let Expr::Function(name, args) = inner_data {
+        if name == "cot" && args.len() == 1 {
+            // Coefficient is implicitly 1
+            return Some((None, args[0], is_positive));
+        }
+    }
+
+    // Check for Mul(coef, cot(arg))
+    if let Expr::Mul(l, r) = inner_data {
+        // Check if right is cot
+        if let Expr::Function(name, args) = ctx.get(*r) {
+            if name == "cot" && args.len() == 1 {
+                return Some((Some(*l), args[0], is_positive));
+            }
+        }
+        // Check if left is cot
+        if let Expr::Function(name, args) = ctx.get(*l) {
+            if name == "cot" && args.len() == 1 {
+                return Some((Some(*r), args[0], is_positive));
+            }
+        }
+    }
+
+    None
+}
+
+define_rule!(
+    CotHalfAngleDifferenceRule,
+    "Cotangent Half-Angle Difference",
+    |ctx, expr| {
+        // Only match Add or Sub at top level
+        let expr_data = ctx.get(expr).clone();
+
+        // Normalize Sub to Add(a, Neg(b)) conceptually by handling both
+        let terms: Vec<ExprId> = match expr_data {
+            Expr::Add(_, _) => {
+                let mut ts = Vec::new();
+                crate::helpers::flatten_add(ctx, expr, &mut ts);
+                ts
+            }
+            Expr::Sub(l, r) => {
+                // Treat as [l, -r]
+                vec![l, r] // We'll handle the sign in matching
+            }
+            _ => return None,
+        };
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // For Sub, we have special handling
+        let is_explicit_sub = matches!(ctx.get(expr), Expr::Sub(_, _));
+
+        // Collect cot terms: (index, coeff, arg, is_positive_in_original)
+        struct CotTerm {
+            index: usize,
+            coeff: Option<ExprId>, // None means coefficient is 1
+            arg: ExprId,
+            is_positive: bool,
+        }
+
+        let mut cot_terms = Vec::new();
+
+        if is_explicit_sub {
+            // For Sub(a, b): a is positive, b is effectively negative
+            if let Some((c1, arg1, _)) = extract_cot_term(ctx, terms[0]) {
+                cot_terms.push(CotTerm {
+                    index: 0,
+                    coeff: c1,
+                    arg: arg1,
+                    is_positive: true,
+                });
+            }
+            if let Some((c2, arg2, sign2)) = extract_cot_term(ctx, terms[1]) {
+                // In Sub(a, b), b appears with flipped sign
+                cot_terms.push(CotTerm {
+                    index: 1,
+                    coeff: c2,
+                    arg: arg2,
+                    is_positive: !sign2, // Flip because it's subtracted
+                });
+            }
+        } else {
+            // For Add chain
+            for (i, &term) in terms.iter().enumerate() {
+                if let Some((c, arg, is_pos)) = extract_cot_term(ctx, term) {
+                    cot_terms.push(CotTerm {
+                        index: i,
+                        coeff: c,
+                        arg,
+                        is_positive: is_pos,
+                    });
+                }
+            }
+        }
+
+        // Look for pairs: cot(u/2) and cot(u) with opposite signs
+        for i in 0..cot_terms.len() {
+            for j in 0..cot_terms.len() {
+                if i == j {
+                    continue;
+                }
+
+                let t_half = &cot_terms[i];
+                let t_full = &cot_terms[j];
+
+                // Check if t_half.arg is half of t_full.arg
+                if let Some(full_angle) = is_half_angle(ctx, t_half.arg) {
+                    // Verify full_angle == t_full.arg
+                    if crate::ordering::compare_expr(ctx, full_angle, t_full.arg) != Ordering::Equal
+                    {
+                        continue;
+                    }
+
+                    // Check that coefficients match (or both are 1)
+                    let coeffs_match = match (&t_half.coeff, &t_full.coeff) {
+                        (None, None) => true,
+                        (Some(c1), Some(c2)) => {
+                            crate::ordering::compare_expr(ctx, *c1, *c2) == Ordering::Equal
+                        }
+                        _ => false,
+                    };
+
+                    if !coeffs_match {
+                        continue;
+                    }
+
+                    // Check signs: cot(u/2) positive AND cot(u) negative = cot(u/2) - cot(u)
+                    // OR cot(u/2) negative AND cot(u) positive = -cot(u/2) + cot(u) = -(cot(u/2) - cot(u))
+                    if t_half.is_positive && !t_full.is_positive {
+                        // cot(u/2) - cot(u) → 1/sin(u)
+                        let one = ctx.num(1);
+                        let sin_u = ctx.add(Expr::Function("sin".to_string(), vec![t_full.arg]));
+                        let result = ctx.add(Expr::Div(one, sin_u));
+
+                        // Apply coefficient if present
+                        let final_result = if let Some(c) = t_half.coeff {
+                            smart_mul(ctx, c, result)
+                        } else {
+                            result
+                        };
+
+                        // Reconstruct expression without the matched terms
+                        if is_explicit_sub && terms.len() == 2 {
+                            // Simple case: Sub(cot(u/2), cot(u)) → 1/sin(u)
+                            return Some(Rewrite {
+                                new_expr: final_result,
+                                description: "cot(u/2) - cot(u) = 1/sin(u)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        }
+
+                        // N-ary case: rebuild sum without matched terms
+                        let mut new_terms: Vec<ExprId> = Vec::new();
+                        for (k, &term) in terms.iter().enumerate() {
+                            if k != t_half.index && k != t_full.index {
+                                new_terms.push(term);
+                            }
+                        }
+                        new_terms.push(final_result);
+
+                        let mut new_expr = new_terms[0];
+                        for k in 1..new_terms.len() {
+                            new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                        }
+
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "cot(u/2) - cot(u) = 1/sin(u)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    } else if !t_half.is_positive && t_full.is_positive {
+                        // -cot(u/2) + cot(u) → -1/sin(u)
+                        let one = ctx.num(1);
+                        let sin_u = ctx.add(Expr::Function("sin".to_string(), vec![t_full.arg]));
+                        let result = ctx.add(Expr::Div(one, sin_u));
+                        let neg_result = ctx.add(Expr::Neg(result));
+
+                        // Apply coefficient if present
+                        let final_result = if let Some(c) = t_half.coeff {
+                            smart_mul(ctx, c, neg_result)
+                        } else {
+                            neg_result
+                        };
+
+                        if is_explicit_sub && terms.len() == 2 {
+                            return Some(Rewrite {
+                                new_expr: final_result,
+                                description: "-cot(u/2) + cot(u) = -1/sin(u)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        }
+
+                        // N-ary case
+                        let mut new_terms: Vec<ExprId> = Vec::new();
+                        for (k, &term) in terms.iter().enumerate() {
+                            if k != t_half.index && k != t_full.index {
+                                new_terms.push(term);
+                            }
+                        }
+                        new_terms.push(final_result);
+
+                        let mut new_expr = new_terms[0];
+                        for k in 1..new_terms.len() {
+                            new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                        }
+
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "-cot(u/2) + cot(u) = -1/sin(u)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        None
+    }
+);
+
+#[cfg(test)]
+mod cot_half_angle_tests {
+    use super::*;
+    use crate::rule::Rule;
+    use cas_ast::{Context, DisplayExpr};
+    use cas_parser::parse;
+
+    #[test]
+    fn test_cot_half_angle_basic() {
+        let mut ctx = Context::new();
+        let rule = CotHalfAngleDifferenceRule;
+
+        // cot(x/2) - cot(x) → 1/sin(x)
+        let expr = parse("cot(x/2) - cot(x)", &mut ctx).unwrap();
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(rewrite.is_some(), "Should match cot(x/2) - cot(x)");
+
+        let result = rewrite.unwrap();
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: result.new_expr
+            }
+        );
+        assert!(
+            result_str.contains("sin"),
+            "Result should contain sin, got: {}",
+            result_str
+        );
+    }
+
+    #[test]
+    fn test_cot_half_angle_no_match_different_args() {
+        let mut ctx = Context::new();
+        let rule = CotHalfAngleDifferenceRule;
+
+        // cot(x/2) - cot(y) → no change (different args)
+        let expr = parse("cot(x/2) - cot(y)", &mut ctx).unwrap();
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(rewrite.is_none(), "Should not match cot(x/2) - cot(y)");
+    }
+
+    #[test]
+    fn test_cot_half_angle_no_match_third() {
+        let mut ctx = Context::new();
+        let rule = CotHalfAngleDifferenceRule;
+
+        // cot(x/3) - cot(x) → no change (not half-angle)
+        let expr = parse("cot(x/3) - cot(x)", &mut ctx).unwrap();
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(rewrite.is_none(), "Should not match cot(x/3) - cot(x)");
+    }
 }
