@@ -492,7 +492,7 @@ impl<'a> StyledExpr<'a> {
             Expr::Mul(l, r) => {
                 // Parenthesize Add/Sub factors
                 self.fmt_mul_factor(f, *l)?;
-                write!(f, " * ")?;
+                write!(f, "·")?;
                 self.fmt_mul_factor(f, *r)
             }
 
@@ -624,7 +624,7 @@ impl<'a> StyledExpr<'a> {
                             } else {
                                 write!(f, "{}/{}", abs_n.numer(), abs_n.denom())?;
                             }
-                            write!(f, " * ")?;
+                            write!(f, "·")?;
                             self.fmt_mul_factor(f, *r)
                         }
                     } else {

@@ -196,7 +196,7 @@ fn format_factors(
 
     for (i, factor) in factors.iter().enumerate() {
         if i > 0 {
-            write!(f, " * ")?;
+            write!(f, "·")?;
         }
 
         let base_prec = precedence(ctx, factor.base);
@@ -484,7 +484,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     )?
                 }
 
-                write!(f, " * ")?;
+                write!(f, "·")?;
 
                 if rhs_prec < op_prec {
                     write!(
@@ -705,7 +705,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 } else if name == "factored" {
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {
-                            write!(f, " * ")?;
+                            write!(f, "·")?;
                         }
                         write!(
                             f,
@@ -1200,7 +1200,7 @@ impl<'a> DisplayExprWithHints<'a> {
                         write!(f, "(")?;
                         for (i, factor) in frac.num.iter().enumerate() {
                             if i > 0 {
-                                write!(f, " * ")?;
+                                write!(f, "·")?;
                             }
                             self.fmt_internal(f, factor.base)?;
                             if factor.exp != 1 {
@@ -1223,7 +1223,7 @@ impl<'a> DisplayExprWithHints<'a> {
                         write!(f, "(")?;
                         for (i, factor) in frac.den.iter().enumerate() {
                             if i > 0 {
-                                write!(f, " * ")?;
+                                write!(f, "·")?;
                             }
                             self.fmt_internal(f, factor.base)?;
                             if factor.exp != 1 {
@@ -1255,7 +1255,7 @@ impl<'a> DisplayExprWithHints<'a> {
                     self.fmt_internal(f, *l)?;
                 }
 
-                write!(f, " * ")?;
+                write!(f, "·")?;
 
                 if rhs_prec < op_prec {
                     write!(f, "(")?;
@@ -1685,7 +1685,7 @@ impl<'a> DisplayExprStyled<'a> {
                 } else {
                     self.fmt_internal(f, *l)?;
                 }
-                write!(f, " * ")?;
+                write!(f, "·")?;
                 if rhs_prec < 2 {
                     write!(f, "(")?;
                     self.fmt_internal(f, *r)?;
