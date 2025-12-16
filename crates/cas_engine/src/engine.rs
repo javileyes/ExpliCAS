@@ -317,6 +317,8 @@ impl Simplifier {
             cycle_detector: None,
             fp_memo: std::collections::HashMap::new(),
             last_cycle: None,
+            current_depth: 0,
+            depth_overflow_warned: false,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -404,6 +406,8 @@ impl Simplifier {
             cycle_detector: None,
             fp_memo: std::collections::HashMap::new(),
             last_cycle: None,
+            current_depth: 0,
+            depth_overflow_warned: false,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -545,6 +549,14 @@ fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Opti
     }
 }
 
+/// Maximum recursion depth for simplification to prevent stack overflow.
+/// This is intentionally high to avoid interfering with normal operation.
+/// If exceeded, a warning is logged and the expression is returned unsimplified.
+const MAX_SIMPLIFY_DEPTH: usize = 500;
+
+/// Path to log expressions that exceed the depth limit for later investigation.
+const DEPTH_OVERFLOW_LOG_PATH: &str = "/tmp/cas_depth_overflow_expressions.log";
+
 struct LocalSimplificationTransformer<'a> {
     context: &'a mut Context,
     rules: &'a HashMap<String, Vec<Rc<dyn Rule>>>,
@@ -568,6 +580,10 @@ struct LocalSimplificationTransformer<'a> {
     fp_memo: crate::cycle_detector::FingerprintMemo,
     /// Last detected cycle info (for PhaseStats)
     last_cycle: Option<crate::cycle_detector::CycleInfo>,
+    /// Current recursion depth for stack overflow prevention
+    current_depth: usize,
+    /// Flag to track if we already warned about depth overflow (to avoid spamming)
+    depth_overflow_warned: bool,
 }
 
 use cas_ast::visitor::Transformer;
@@ -677,6 +693,51 @@ impl<'a> LocalSimplificationTransformer<'a> {
     }
 
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
+        // Depth guard: prevent stack overflow by limiting recursion depth
+        self.current_depth += 1;
+        if self.current_depth > MAX_SIMPLIFY_DEPTH {
+            if !self.depth_overflow_warned {
+                self.depth_overflow_warned = true;
+
+                // Log the expression to file for later investigation
+                let display = cas_ast::DisplayExpr {
+                    context: self.context,
+                    id: self.root_expr,
+                };
+                let expr_str = display.to_string();
+                let log_entry = format!(
+                    "[{:?}] Depth overflow at phase {:?}, depth {}: {}\n",
+                    std::time::SystemTime::now(),
+                    self.current_phase,
+                    self.current_depth,
+                    expr_str
+                );
+
+                // Append to log file (ignore errors - this is best-effort)
+                use std::io::Write;
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(DEPTH_OVERFLOW_LOG_PATH)
+                {
+                    let _ = file.write_all(log_entry.as_bytes());
+                }
+
+                // Emit warning via tracing
+                tracing::warn!(
+                    target: "simplify",
+                    depth = self.current_depth,
+                    phase = ?self.current_phase,
+                    expr = %expr_str,
+                    "depth_overflow - returning expression unsimplified"
+                );
+            }
+
+            // Return expression as-is without further simplification
+            self.current_depth -= 1;
+            return id;
+        }
+
         // Use tracing for debug logging
         let expr = self.context.get(id);
         debug!("{}[DEBUG] Visiting: {:?}", self.indent(), expr);
@@ -684,6 +745,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         // println!("Visiting: {:?} {:?}", id, self.context.get(id));
         // println!("Simplifying: {:?}", id);
         if let Some(&cached) = self.cache.get(&id) {
+            self.current_depth -= 1;
             return cached;
         }
 
@@ -1025,6 +1087,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             if let Some(info) = self.cycle_detector.as_mut().unwrap().observe(h) {
                                 self.last_cycle = Some(info);
                                 // Treat as fixed-point: stop this phase early
+                                self.current_depth -= 1;
                                 return expr_id;
                             }
                         }
@@ -1107,6 +1170,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 return self.transform_expr_recursive(expr_id);
             }
 
+            self.current_depth -= 1;
             return expr_id;
         }
     }

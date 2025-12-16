@@ -6,10 +6,11 @@ mod strategies;
 
 // NOTE: These property tests can cause stack overflow due to the recursive
 // nature of the simplifier. To run reliably, use:
-//   RUST_MIN_STACK=8388608 cargo test --package cas_engine --test property_tests
+//   RUST_MIN_STACK=16777216 cargo test --package cas_engine --test property_tests
 //
-// Or run with: cargo test --package cas_engine --test property_tests -- --ignored
-// to skip the problematic tests.
+// The test_numbers_reduced_form test is marked #[ignore] by default as it
+// intermittently causes stack overflow even with SAFE profile. To run it:
+//   RUST_MIN_STACK=16777216 cargo test --package cas_engine --test property_tests -- --ignored
 
 proptest! {
     // Reduce number of cases to minimize stack overflow probability
