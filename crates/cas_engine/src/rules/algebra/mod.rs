@@ -34,6 +34,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RootDenestingRule));
     simplifier.add_rule(Box::new(CubicConjugateTrapRule));
     simplifier.add_rule(Box::new(DenestSqrtAddSqrtRule));
+    simplifier.add_rule(Box::new(DenestPerfectCubeInQuadraticFieldRule));
     simplifier.add_rule(Box::new(SimplifySquareRootRule));
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     simplifier.add_rule(Box::new(ExpandRule));
