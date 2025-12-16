@@ -12,6 +12,78 @@ use num_rational::BigRational;
 
 use num_bigint::BigInt;
 
+// ============================================================================
+// Unicode Math Helpers
+// ============================================================================
+
+/// Convert a superscript digit character to its numeric value
+/// Returns None if the character is not a superscript digit
+fn superscript_to_digit(c: char) -> Option<u32> {
+    match c {
+        '⁰' => Some(0),
+        '¹' => Some(1),
+        '²' => Some(2),
+        '³' => Some(3),
+        '⁴' => Some(4),
+        '⁵' => Some(5),
+        '⁶' => Some(6),
+        '⁷' => Some(7),
+        '⁸' => Some(8),
+        '⁹' => Some(9),
+        _ => None,
+    }
+}
+
+/// Parse a sequence of superscript digits into a number
+/// Returns the number and the remaining string
+fn parse_superscript_number(input: &str) -> Option<(u64, &str)> {
+    let mut chars = input.chars().peekable();
+    let mut value: u64 = 0;
+    let mut count = 0;
+    let mut byte_len = 0;
+
+    while let Some(&c) = chars.peek() {
+        if let Some(digit) = superscript_to_digit(c) {
+            value = value * 10 + digit as u64;
+            count += 1;
+            byte_len += c.len_utf8();
+            chars.next();
+        } else {
+            break;
+        }
+    }
+
+    if count > 0 {
+        Some((value, &input[byte_len..]))
+    } else {
+        None
+    }
+}
+
+/// Get the root index from a Unicode root symbol
+/// Returns (index, remaining_input) or None
+fn parse_unicode_root_prefix(input: &str) -> Option<(u64, &str)> {
+    // Check for direct Unicode root symbols
+    if input.starts_with('∛') {
+        return Some((3, &input['∛'.len_utf8()..]));
+    }
+    if input.starts_with('∜') {
+        return Some((4, &input['∜'.len_utf8()..]));
+    }
+    if input.starts_with('√') {
+        return Some((2, &input['√'.len_utf8()..]));
+    }
+
+    // Check for superscript number followed by √ (e.g., ³√, ⁴√, ⁵√)
+    if let Some((index, after_num)) = parse_superscript_number(input) {
+        if after_num.starts_with('√') {
+            return Some((index, &after_num['√'.len_utf8()..]));
+        }
+    }
+
+    None
+}
+
 // Intermediate AST for parsing
 #[derive(Debug, Clone)]
 enum ParseNode {
@@ -387,12 +459,39 @@ fn parse_matrix(input: &str) -> IResult<&str, ParseNode> {
     Ok((input, ParseNode::Matrix(all_rows)))
 }
 
+// Parser for Unicode root symbols: √, ∛, ∜, or ⁿ√ followed by expression
+// Examples: √(x), ∛8, ³√(x+1), ⁵√32
+fn parse_unicode_root(input: &str) -> IResult<&str, ParseNode> {
+    let input = input.trim_start();
+
+    // Try to parse a Unicode root prefix
+    let (index, after_prefix) = parse_unicode_root_prefix(input).ok_or_else(|| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
+    })?;
+
+    // Parse the argument (either parenthesized or simple expression)
+    // Try parentheses first for expressions like √(x+1)
+    let (remaining, arg) = alt((
+        parse_parens,
+        parse_factorial, // For simple bases like √x or ∛8
+    ))(after_prefix)?;
+
+    // Create sqrt(arg, index) function call
+    let index_node = ParseNode::Number(BigRational::from_integer(BigInt::from(index)));
+
+    Ok((
+        remaining,
+        ParseNode::Function("sqrt".to_string(), vec![arg, index_node]),
+    ))
+}
+
 // Atom
 fn parse_atom(input: &str) -> IResult<&str, ParseNode> {
     preceded(
         multispace0,
         alt((
-            parse_session_ref, // #id references - try early to avoid # confusion
+            parse_session_ref,  // #id references - try early to avoid # confusion
+            parse_unicode_root, // Unicode roots: √, ∛, ∜, ⁿ√
             parse_number,
             parse_function,
             parse_constant,
@@ -410,14 +509,29 @@ fn parse_atom(input: &str) -> IResult<&str, ParseNode> {
 // So parse_factorial should be called by parse_power for the base?
 // No, parse_power calls parse_factorial.
 // parse_factorial calls parse_atom.
+// Also handles superscript exponents: x⁶ → x^6
 
 fn parse_factorial(input: &str) -> IResult<&str, ParseNode> {
     let (input, atom) = parse_atom(input)?;
-    fold_many0(
+
+    // First handle factorials
+    let (input, with_factorial) = fold_many0(
         preceded(multispace0, tag("!")),
         move || atom.clone(),
         |acc, _| ParseNode::Function("fact".to_string(), vec![acc]),
-    )(input)
+    )(input)?;
+
+    // Then check for superscript exponents (x⁶ → x^6)
+    // Note: no whitespace allowed before superscript (it's attached to the base)
+    if let Some((exp_value, remaining)) = parse_superscript_number(input) {
+        let exp_node = ParseNode::Number(BigRational::from_integer(BigInt::from(exp_value)));
+        return Ok((
+            remaining,
+            ParseNode::Pow(Box::new(with_factorial), Box::new(exp_node)),
+        ));
+    }
+
+    Ok((input, with_factorial))
 }
 
 // Power - right associative: 2^3^4 = 2^(3^4), not (2^3)^4
