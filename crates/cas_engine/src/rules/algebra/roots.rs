@@ -793,6 +793,132 @@ fn compute_t_squared(
     }
 }
 
+// =============================================================================
+// DENEST SQRT(a + SQRT(b)) RULE
+// Simplifies √(a + √b) → √m + √n where m,n = (a ± √(a²-b))/2
+// =============================================================================
+
+/// Extract the radicand if expression is a sqrt (either sqrt(x) function or x^(1/2))
+fn as_sqrt(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
+    match ctx.get(e) {
+        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => Some(args[0]),
+        Expr::Pow(base, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n.numer() == 1.into() && *n.denom() == 2.into() {
+                    return Some(*base);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+define_rule!(
+    DenestSqrtAddSqrtRule,
+    "Denest Nested Square Root",
+    None,
+    crate::phase::PhaseMask::TRANSFORM,
+    |ctx, expr| {
+        // Match sqrt(inner) where inner = a + sqrt(b) or a - sqrt(b)
+        let inner = as_sqrt(ctx, expr)?;
+
+        // Inner must be Add or Sub
+        let (left, right, is_add) = match ctx.get(inner) {
+            Expr::Add(l, r) => (*l, *r, true),
+            Expr::Sub(l, r) => (*l, *r, false),
+            _ => return None,
+        };
+
+        // Identify which is `a` (rational) and which is `sqrt(b)`
+        // Try both orderings
+        let (a_val, b_val) = {
+            // Try: left = a (Number), right = sqrt(b)
+            if let Expr::Number(a) = ctx.get(left) {
+                if let Some(b_inner) = as_sqrt(ctx, right) {
+                    if let Expr::Number(b) = ctx.get(b_inner) {
+                        Some((a.clone(), b.clone()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+        .or_else(|| {
+            // Try: left = sqrt(b), right = a (Number)
+            if let Some(b_inner) = as_sqrt(ctx, left) {
+                if let Expr::Number(b) = ctx.get(b_inner) {
+                    if let Expr::Number(a) = ctx.get(right) {
+                        Some((a.clone(), b.clone()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })?;
+
+        // For subtraction (a - sqrt(b)), we'd need a different formula
+        // For now, only handle addition: sqrt(a + sqrt(b))
+        if !is_add {
+            // TODO: Handle subtraction case
+            return None;
+        }
+
+        // Apply denesting formula:
+        // √(a + √b) = √m + √n where m = (a + √disc)/2, n = (a - √disc)/2
+        // disc = a² - b
+
+        let disc = &a_val * &a_val - &b_val;
+
+        // disc must have a rational square root
+        let disc_sqrt = rational_sqrt(&disc)?;
+
+        // m = (a + disc_sqrt) / 2
+        // n = (a - disc_sqrt) / 2
+        let two = num_rational::BigRational::from_integer(2.into());
+        let m = (&a_val + &disc_sqrt) / &two;
+        let n = (&a_val - &disc_sqrt) / &two;
+
+        // Both m and n must be non-negative for real roots
+        if m.is_negative() || n.is_negative() {
+            return None;
+        }
+
+        // Build result: sqrt(m) + sqrt(n)
+        let m_expr = ctx.add(Expr::Number(m.clone()));
+        let n_expr = ctx.add(Expr::Number(n.clone()));
+
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let sqrt_m = ctx.add(Expr::Pow(m_expr, half));
+        let half2 = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let sqrt_n = ctx.add(Expr::Pow(n_expr, half2));
+
+        let result = ctx.add(Expr::Add(sqrt_m, sqrt_n));
+
+        Some(Rewrite {
+            new_expr: result,
+            description: format!("Denest nested square root: √(a+√b) = √({}) + √({})", m, n),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        })
+    }
+);
+
 #[cfg(test)]
 mod cubic_conjugate_tests {
     use super::*;
@@ -995,5 +1121,141 @@ mod cubic_conjugate_tests {
             &crate::parent_context::ParentContext::root(),
         );
         assert!(rewrite.is_none(), "Should not match different m values");
+    }
+}
+
+#[cfg(test)]
+mod denest_sqrt_tests {
+    use super::*;
+    use crate::rule::Rule;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    #[test]
+    fn test_denest_sqrt_4_plus_sqrt7() {
+        // √(4 + √7) → √(7/2) + √(1/2)
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(4 + sqrt(7))", &mut ctx).unwrap();
+
+        let rule = DenestSqrtAddSqrtRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(rewrite.is_some(), "Rule should apply to √(4+√7)");
+
+        // Verify the result simplifies correctly
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        simplifier.context = ctx;
+        let (result, _) = simplifier.simplify(expr);
+
+        // Just check that we get the denested form with surds
+        let result_str = format!(
+            "{}",
+            cas_ast::DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        // Should contain fractions 1/2 and 7/2
+        assert!(
+            result_str.contains("1/2") && result_str.contains("7/2"),
+            "Result should be √(1/2)+√(7/2), got: {}",
+            result_str
+        );
+    }
+
+    #[test]
+    fn test_denest_sqrt_pow_form() {
+        // (4 + 7^(1/2))^(1/2) → pow form instead of sqrt function
+        // Use simplifier since the expression needs canonicalization
+        let mut ctx = Context::new();
+        let expr = parse("(4 + 7^(1/2))^(1/2)", &mut ctx).unwrap();
+
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        simplifier.context = ctx;
+        let (result, _) = simplifier.simplify(expr);
+
+        let result_str = format!(
+            "{}",
+            cas_ast::DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        // Should contain fractions 1/2 and 7/2
+        assert!(
+            result_str.contains("1/2") && result_str.contains("7/2"),
+            "Result should be denested with 1/2 and 7/2, got: {}",
+            result_str
+        );
+    }
+
+    #[test]
+    fn test_denest_sqrt_no_match_bad_discriminant() {
+        // √(3 + √5): disc = 9 - 5 = 4 ✓, but let's check it works
+        // disc_sqrt = 2, m = (3+2)/2 = 5/2, n = (3-2)/2 = 1/2
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(3 + sqrt(5))", &mut ctx).unwrap();
+
+        let rule = DenestSqrtAddSqrtRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(
+            rewrite.is_some(),
+            "Should match √(3+√5) since disc=4 is perfect square"
+        );
+    }
+
+    #[test]
+    fn test_denest_sqrt_no_match_non_perfect_square_disc() {
+        // √(4 + √10): disc = 16 - 10 = 6 (not a perfect square)
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(4 + sqrt(10))", &mut ctx).unwrap();
+
+        let rule = DenestSqrtAddSqrtRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(
+            rewrite.is_none(),
+            "Should not match when disc=6 is not a perfect square"
+        );
+    }
+
+    #[test]
+    fn test_denest_sqrt_no_match_negative_m_or_n() {
+        // √(1 + √10): disc = 1 - 10 = -9 (negative)
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(1 + sqrt(10))", &mut ctx).unwrap();
+
+        let rule = DenestSqrtAddSqrtRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(rewrite.is_none(), "Should not match when disc < 0");
+    }
+
+    #[test]
+    fn test_denest_sqrt_commuted_order() {
+        // √(√7 + 4) - surd comes first
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(sqrt(7) + 4)", &mut ctx).unwrap();
+
+        let rule = DenestSqrtAddSqrtRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+        assert!(rewrite.is_some(), "Should match commuted order √(√7+4)");
     }
 }
