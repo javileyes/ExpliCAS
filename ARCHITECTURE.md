@@ -10,6 +10,7 @@
    - [2.2. Normalización Canónica y Views (C2) ★★★](#22-normalización-canónica-y-views-c2-)
    - [2.5. `cas_engine` - Pattern Detection Infrastructure ★★★](#25-cas_engine---pattern-detection-infrastructure-)
    - [2.9. `cas_engine` - Context Mode ★★ (2025-12)](#29-cas_engine---context-mode--2025-12)
+   - [2.10. `cas_engine` - Rule Priority System ★★ (2025-12)](#210-cas_engine---rule-priority-system--2025-12)
    - [2.6. N-ary Pattern Matching (Add/Mul Flattening) ★★](#26-n-ary-pattern-matching-addmul-flattening-)
    - [2.7. Patrón de Negación Generalizada ★★★](#27-patrón-de-negación-generalizada-)
    - [2.8. `cas_engine` - Semantic Equality + nf_score (aceptación de rewrites) ★★★](#28-cas_engine---semantic-equality--nf_score-aceptación-de-rewrites-)
@@ -924,6 +925,74 @@ pub struct DomainWarning {
 
 - `context_no_contamination.rs`: 16 tests passed (2 ignored)
 - Verifica que integration rules NO se aplican en Standard/Solve
+
+---
+
+### 2.10. `cas_engine` - Rule Priority System ★★ (2025-12)
+
+Sistema de ordenación de reglas por prioridad para control determinista del orden de aplicación.
+
+#### Motivación
+
+Algunas reglas deben aplicarse **antes** que otras aunque ambas matcheen el mismo patrón:
+
+| Escenario | Problema | Solución |
+|-----------|----------|----------|
+| Telescoping vs Double-Angle | `cos(x)*cos(2x)*cos(4x)` matchea ambas | Telescoping prioridad 100 > Double-Angle 0 |
+| Product-to-Sum vs general | Werner formulas antes de expansión general | ProductToSum prioridad 50 |
+
+#### Diseño
+
+```rust
+pub trait Rule {
+    fn name(&self) -> &str;
+    fn priority(&self) -> i32 { 0 }  // Higher = tried first
+    fn apply(...) -> Option<Rewrite>;
+}
+```
+
+**Ordenamiento en `add_rule`**:
+- Reglas con **mayor prioridad** van primero
+- **Mismo prioridad**: preserva orden de inserción (append)
+
+```rust
+// engine.rs::add_rule
+let pos = vec.iter()
+    .position(|r| r.priority() < priority)
+    .unwrap_or(vec.len());
+vec.insert(pos, rule_rc);
+```
+
+#### Prioridades Actuales
+
+| Regla | Prioridad | Justificación |
+|-------|-----------|---------------|
+| `CosProductTelescopingRule` | **100** | Debe matchear antes de que Double-Angle destruya el patrón |
+| `ProductToSumRule` | **50** | Werner formulas antes de reglas generales |
+| Todas las demás | **0** | Default, orden de registro |
+
+#### Garantías
+
+1. **Determinismo**: Mismo código = mismo orden de reglas
+2. **Estabilidad**: Insertar regla alta no reordena reglas existentes
+3. **Semántica**: Si el orden importa → asignar prioridades distintas
+
+#### Tests
+
+```rust
+// context_no_contamination.rs - Section 6
+test_priority_same_first_registered_wins  // Primera registrada gana
+test_priority_higher_wins                 // Mayor prioridad gana  
+test_priority_insert_high_preserves_order // No reordena existentes
+```
+
+#### Design Decision: Por qué NO name-based tie-breaking
+
+Inicialmente se intentó `(priority desc, name asc)` pero causó regresiones:
+- Reglas delicadas (trig/powers) asumen orden de registro implícito
+- Cambiar a orden alfabético rompió simplificaciones existentes
+
+**Solución**: Priority-only con insertion order para empates.
 
 ---
 

@@ -275,7 +275,8 @@ impl Simplifier {
         if let Some(targets) = rule_rc.target_types() {
             for target in targets {
                 let vec = self.rules.entry(target.to_string()).or_default();
-                // Insert maintaining descending priority order
+                // Insert maintaining priority order (higher first)
+                // For equal priority, preserve insertion order (append after same-priority rules)
                 let priority = rule_rc.priority();
                 let pos = vec
                     .iter()
@@ -284,7 +285,7 @@ impl Simplifier {
                 vec.insert(pos, rule_rc.clone());
             }
         } else {
-            // Insert into global_rules maintaining descending priority order
+            // Insert into global_rules maintaining priority order
             let priority = rule_rc.priority();
             let pos = self
                 .global_rules

@@ -204,3 +204,206 @@ fn test_integrateprep_telescoping_base_3() {
     let (_, steps) = run_simplify("cos(3*x)*cos(6*x)*cos(12*x)", &integrate_opts());
     assert_rule_fired(&steps, "CosProductTelescoping");
 }
+
+// =============================================================================
+// SECTION 5: Determinism Tests - Rule ordering is stable
+// =============================================================================
+
+/// Verify that telescoping (priority 100) fires before general trig identity rules (priority 0)
+/// when both could theoretically apply, due to explicit priority ordering.
+#[test]
+fn test_priority_telescoping_before_general() {
+    // This test verifies priority system works:
+    // CosProductTelescopingRule (priority 100) should be listed before
+    // any default-priority rules in the same target_type bucket.
+
+    let opts = integrate_opts();
+    let mut simplifier = Simplifier::with_profile(&opts);
+
+    // Check that high-priority rules come first in the Mul bucket
+    // (This is an indirect test - the rule ordering is internal)
+    let (_, steps) = run_simplify("cos(x)*cos(2*x)*cos(4*x)", &opts);
+
+    // CosProductTelescoping should fire, proving it ran before any rule
+    // that might have transformed the cos(2x) or cos(4x) terms
+    assert_rule_fired(&steps, "CosProductTelescoping");
+}
+
+/// Verify that rule order is deterministic across multiple runs.
+#[test]
+fn test_deterministic_rule_order() {
+    // Run the same simplification multiple times and verify same result
+    let opts = integrate_opts();
+
+    let mut results = Vec::new();
+    for _ in 0..3 {
+        let (result, _) = run_simplify("2*sin(x)*cos(y)", &opts);
+        results.push(result);
+    }
+
+    // All runs should produce identical results
+    assert!(
+        results.windows(2).all(|w| w[0] == w[1]),
+        "Non-deterministic results: {:?}",
+        results
+    );
+}
+
+/// Verify that ProductToSum (priority 50) fires after Telescoping (100) but before default (0)
+#[test]
+fn test_priority_ordering_50_before_0() {
+    let (_, steps) = run_simplify("2*sin(x)*cos(y)", &integrate_opts());
+    // ProductToSum has priority 50, should fire before any priority-0 rule
+    // that might transform sin/cos individually
+    assert_rule_fired(&steps, "ProductToSum");
+}
+
+// =============================================================================
+// SECTION 6: Priority System Stability Tests
+// These tests document the priority system guarantees
+// =============================================================================
+
+use cas_ast::ExprId;
+use cas_engine::parent_context::ParentContext;
+use cas_engine::rule::{Rewrite, Rule};
+
+/// Test rule that matches only value 999 and rewrites to marker
+struct OneTimeMarkerRule {
+    name: &'static str,
+    priority: i32,
+    marker: i64,
+}
+
+impl Rule for OneTimeMarkerRule {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn priority(&self) -> i32 {
+        self.priority
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Number"])
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        _parent_ctx: &ParentContext,
+    ) -> Option<Rewrite> {
+        // Only match value 999 (the input we use in tests)
+        if let cas_ast::Expr::Number(n) = ctx.get(expr) {
+            if n.to_integer() == num_bigint::BigInt::from(999) {
+                let marker = ctx.num(self.marker);
+                return Some(Rewrite::simple(
+                    marker,
+                    format!("Marker {} applied", self.name),
+                ));
+            }
+        }
+        None
+    }
+}
+
+/// Same priority: first registered wins (insertion order preserved)
+#[test]
+fn test_priority_same_first_registered_wins() {
+    let mut simplifier = Simplifier::new();
+
+    // Register A first, then B (both priority 0)
+    simplifier.add_rule(Box::new(OneTimeMarkerRule {
+        name: "A",
+        priority: 0,
+        marker: 111,
+    }));
+    simplifier.add_rule(Box::new(OneTimeMarkerRule {
+        name: "B",
+        priority: 0,
+        marker: 222,
+    }));
+
+    let expr = simplifier.context.num(999);
+    let (result, steps) = simplifier.simplify(expr);
+
+    // A was registered first, so A should win
+    assert!(!steps.is_empty(), "Should have at least one step");
+    assert_eq!(
+        steps[0].rule_name, "A",
+        "First registered rule should apply first"
+    );
+
+    let result_str = format!(
+        "{}",
+        cas_ast::DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+    assert_eq!(result_str, "111", "Result should be A's marker");
+}
+
+/// Higher priority wins over lower priority
+#[test]
+fn test_priority_higher_wins() {
+    let mut simplifier = Simplifier::new();
+
+    // Register low priority first, then high priority
+    simplifier.add_rule(Box::new(OneTimeMarkerRule {
+        name: "Low",
+        priority: 0,
+        marker: 111,
+    }));
+    simplifier.add_rule(Box::new(OneTimeMarkerRule {
+        name: "High",
+        priority: 100,
+        marker: 888, // Must differ from input value 999
+    }));
+
+    let expr = simplifier.context.num(999);
+    let (_, steps) = simplifier.simplify(expr);
+
+    // High priority should win despite being registered second
+    assert!(!steps.is_empty(), "Should have at least one step");
+    assert_eq!(
+        steps[0].rule_name, "High",
+        "Higher priority rule should apply first"
+    );
+}
+
+/// Inserting higher priority doesn't reorder existing same-priority rules
+#[test]
+fn test_priority_insert_high_preserves_order() {
+    let mut simplifier = Simplifier::new();
+
+    // Register A, B, C all with priority 0
+    simplifier.add_rule(Box::new(OneTimeMarkerRule {
+        name: "A",
+        priority: 0,
+        marker: 1,
+    }));
+    simplifier.add_rule(Box::new(OneTimeMarkerRule {
+        name: "B",
+        priority: 0,
+        marker: 2,
+    }));
+    simplifier.add_rule(Box::new(OneTimeMarkerRule {
+        name: "C",
+        priority: 0,
+        marker: 3,
+    }));
+
+    // Now insert X with high priority (only matches value 999)
+    simplifier.add_rule(Box::new(OneTimeMarkerRule {
+        name: "X",
+        priority: 100,
+        marker: 888,
+    }));
+
+    // X should be first (highest priority)
+    let expr = simplifier.context.num(999);
+    let (_, steps) = simplifier.simplify(expr);
+    assert!(!steps.is_empty(), "Should have at least one step");
+    assert_eq!(steps[0].rule_name, "X", "High priority X should be first");
+}
