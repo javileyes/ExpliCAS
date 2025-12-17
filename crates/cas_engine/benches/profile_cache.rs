@@ -5,7 +5,7 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use cas_ast::Context;
 use cas_parser::parse;
 
-use cas_engine::options::{BranchMode, ContextMode, EvalOptions};
+use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions};
 use cas_engine::profile_cache::ProfileCache;
 use cas_engine::Simplifier;
 
@@ -19,6 +19,7 @@ fn bench_profile_build(c: &mut Criterion) {
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
+        complex_mode: ComplexMode::Auto,
     };
 
     c.bench_function("profile_build/uncached", |b| {
@@ -53,6 +54,7 @@ fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
+        complex_mode: ComplexMode::Auto,
     };
 
     // Cached: perfil construido una vez
