@@ -611,6 +611,7 @@ impl MultiPoly {
 pub struct GcdBudget {
     pub max_points: usize,
     pub max_total_terms: usize,
+    pub max_seeds: usize,
 }
 
 impl Default for GcdBudget {
@@ -618,6 +619,7 @@ impl Default for GcdBudget {
         Self {
             max_points: 8,
             max_total_terms: 200,
+            max_seeds: 4,
         }
     }
 }
@@ -696,10 +698,10 @@ fn interpolate_lagrange(points: &[(BigRational, BigRational)], var: &str) -> Opt
     Some(result)
 }
 
-/// Heuristic multivariate GCD using evaluation and interpolation (2-variable case)
+/// Heuristic multivariate GCD using evaluation and interpolation
+/// Supports N variables (N >= 2) by fixing extra vars to seed values
 pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> Option<MultiPoly> {
-    // Currently only handles 2 variables
-    if p.vars.len() != 2 || q.vars.len() != 2 {
+    if p.vars.len() < 2 {
         return None;
     }
     if p.vars != q.vars {
@@ -708,56 +710,232 @@ pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> 
     if p.is_zero() || q.is_zero() {
         return None;
     }
+    if p.num_terms() + q.num_terms() > budget.max_total_terms {
+        return None; // Too complex
+    }
 
+    let n_vars = p.vars.len();
     let vars = &p.vars;
 
-    // Try both variables as main_var
-    for main_var in 0..2 {
-        let param_var = 1 - main_var;
+    // Seed values for fixing extra variables: 2, 3, 5, 7, -1, -2, ...
+    let seed_values: Vec<Vec<BigRational>> = generate_seed_combinations(n_vars, budget.max_seeds);
 
-        // Expected max degree of GCD in main_var
+    // Choose main/param variable candidates based on min degree
+    let var_candidates = choose_var_candidates(p, q);
+
+    for (main_var, param_var) in &var_candidates {
+        let main_var = *main_var;
+        let param_var = *param_var;
+
+        // Expected degrees
         let deg_p = p.degree_in(main_var);
         let deg_q = q.degree_in(main_var);
         let expected_gcd_deg = deg_p.min(deg_q);
 
         if expected_gcd_deg == 0 {
-            continue; // Skip if expected trivial
+            continue;
         }
 
-        // Expected max degree in param_var for coefficients
         let param_deg_p = p.degree_in(param_var);
         let param_deg_q = q.degree_in(param_var);
         let max_coeff_deg = param_deg_p.min(param_deg_q);
 
-        // Need at least max_coeff_deg + 1 points for interpolation
+        // Try different seeds for the extra variables
+        for seed in &seed_values {
+            // Build fixed assignments for all vars except main and param
+            let fixed_assigns: Vec<(VarIdx, BigRational)> = (0..n_vars)
+                .filter(|&v| v != main_var && v != param_var)
+                .enumerate()
+                .map(|(i, v)| {
+                    (
+                        v,
+                        seed.get(i)
+                            .cloned()
+                            .unwrap_or_else(|| BigRational::from_integer(2.into())),
+                    )
+                })
+                .collect();
+
+            // Reduce p and q by fixing extra vars
+            let mut p_reduced = p.clone();
+            let mut q_reduced = q.clone();
+            for (var, val) in &fixed_assigns {
+                // We need to remap indices after each eval_var
+                // For simplicity, eval all at once using eval_multiple
+                p_reduced = p_reduced.eval_var_adjusted(*var, val, main_var, param_var);
+                q_reduced = q_reduced.eval_var_adjusted(*var, val, main_var, param_var);
+            }
+
+            // Now p_reduced and q_reduced should have only 2 vars (remapped to 0, 1)
+            if p_reduced.vars.len() != 2 || q_reduced.vars.len() != 2 {
+                continue;
+            }
+
+            // Run bivar interpolation
+            if let Some(gcd_bivar) = try_bivar_layer2(&p_reduced, &q_reduced, budget) {
+                // Lift candidate back to N-var by replacing variable names
+                if let Some(candidate) = lift_to_nvar(&gcd_bivar, vars, main_var, param_var) {
+                    // Verify on original polys
+                    if p.div_exact(&candidate).is_some() && q.div_exact(&candidate).is_some() {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+impl MultiPoly {
+    /// Evaluate a variable and adjust remaining indices for main/param vars
+    fn eval_var_adjusted(
+        &self,
+        var_idx: VarIdx,
+        val: &BigRational,
+        main: VarIdx,
+        param: VarIdx,
+    ) -> Self {
+        if var_idx >= self.vars.len() || var_idx == main || var_idx == param {
+            return self.clone();
+        }
+
+        let mut new_vars = self.vars.clone();
+        new_vars.remove(var_idx);
+
+        let mut map: BTreeMap<Monomial, BigRational> = BTreeMap::new();
+
+        for (coeff, mono) in &self.terms {
+            let exp = mono[var_idx];
+            let mut val_pow = BigRational::one();
+            for _ in 0..exp {
+                val_pow = val_pow * val;
+            }
+            let new_coeff = coeff * &val_pow;
+
+            let mut new_mono = mono.clone();
+            new_mono.remove(var_idx);
+
+            let entry = map.entry(new_mono).or_insert_with(BigRational::zero);
+            *entry = entry.clone() + new_coeff;
+        }
+
+        Self::from_map(new_vars, map)
+    }
+}
+
+/// Generate seed combinations for fixing extra variables
+fn generate_seed_combinations(n_vars: usize, max_seeds: usize) -> Vec<Vec<BigRational>> {
+    // For extra vars, we need n_vars - 2 values per seed
+    let extra_count = if n_vars > 2 { n_vars - 2 } else { 0 };
+    if extra_count == 0 {
+        return vec![vec![]];
+    }
+
+    // Simple seeds: small primes and negatives
+    let base_vals: Vec<i64> = vec![2, 3, 5, 7, -1, -2, 11, 13];
+
+    let mut seeds = Vec::new();
+    for start in 0..max_seeds.min(base_vals.len()) {
+        let seed: Vec<BigRational> = (0..extra_count)
+            .map(|i| {
+                let idx = (start + i) % base_vals.len();
+                BigRational::from_integer(base_vals[idx].into())
+            })
+            .collect();
+        seeds.push(seed);
+    }
+
+    if seeds.is_empty() {
+        seeds.push(vec![BigRational::from_integer(2.into()); extra_count]);
+    }
+
+    seeds
+}
+
+/// Choose candidate (main_var, param_var) pairs based on degrees
+fn choose_var_candidates(p: &MultiPoly, q: &MultiPoly) -> Vec<(VarIdx, VarIdx)> {
+    let n = p.vars.len();
+    let mut scored: Vec<(VarIdx, u32)> = (0..n)
+        .map(|v| {
+            let min_deg = p.degree_in(v).min(q.degree_in(v));
+            (v, min_deg)
+        })
+        .collect();
+
+    // Sort by min degree descending (higher = better main var)
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let mut candidates = Vec::new();
+    // Try top 2-3 combinations
+    for i in 0..scored.len().min(2) {
+        for j in 0..scored.len().min(3) {
+            if i != j {
+                candidates.push((scored[i].0, scored[j].0));
+            }
+        }
+    }
+
+    if candidates.is_empty() && n >= 2 {
+        candidates.push((0, 1));
+    }
+
+    candidates
+}
+
+/// Run bivar Layer 2 on a 2-variable polynomial pair
+fn try_bivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> Option<MultiPoly> {
+    if p.vars.len() != 2 || q.vars.len() != 2 {
+        return None;
+    }
+
+    let vars = &p.vars;
+
+    for main_var in 0..2 {
+        let param_var = 1 - main_var;
+
+        let deg_p = p.degree_in(main_var);
+        let deg_q = q.degree_in(main_var);
+        let expected_gcd_deg = deg_p.min(deg_q);
+
+        if expected_gcd_deg == 0 {
+            continue;
+        }
+
+        let param_deg_p = p.degree_in(param_var);
+        let param_deg_q = q.degree_in(param_var);
+        let max_coeff_deg = param_deg_p.min(param_deg_q);
+
         let num_points = (max_coeff_deg as usize + 1).min(budget.max_points);
+        let eval_points: Vec<BigRational> = generate_eval_points(num_points + 4); // Extra for bad points
 
-        // Evaluation points: 0, 1, -1, 2, -2, ...
-        let eval_points: Vec<BigRational> = generate_eval_points(num_points);
-
-        // Collect (point, gcd_coeffs) for each evaluation
         let mut samples: Vec<(BigRational, Polynomial)> = Vec::new();
 
         for point in &eval_points {
-            // Evaluate param_var = point
             let assigns = vec![(param_var, point.clone())];
 
-            let p_uni = p.eval_to_univariate(main_var, &assigns)?;
-            let q_uni = q.eval_to_univariate(main_var, &assigns)?;
+            let p_uni = match p.eval_to_univariate(main_var, &assigns) {
+                Some(u) => u,
+                None => continue,
+            };
+            let q_uni = match q.eval_to_univariate(main_var, &assigns) {
+                Some(u) => u,
+                None => continue,
+            };
 
-            // Skip if degree dropped (bad evaluation point)
+            // Skip if degree dropped
             if p_uni.degree() < deg_p as usize || q_uni.degree() < deg_q as usize {
                 continue;
             }
 
-            // Compute scaled GCD
-            let g = scaled_gcd_sample(&p_uni, &q_uni)?;
+            let g = match scaled_gcd_sample(&p_uni, &q_uni) {
+                Some(g) => g,
+                None => continue,
+            };
 
-            // Check degrees are consistent
             if !samples.is_empty() {
                 let first_deg = samples[0].1.degree();
                 if g.degree() != first_deg {
-                    // Inconsistent degrees, try different main_var
                     break;
                 }
             }
@@ -769,12 +947,10 @@ pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> 
             }
         }
 
-        // Need enough points
         if samples.len() < (max_coeff_deg as usize + 1) {
             continue;
         }
 
-        // Interpolate each coefficient of the GCD as polynomial in param_var
         let gcd_deg = samples[0].1.degree();
         let mut gcd_coeffs: Vec<Polynomial> = Vec::new();
 
@@ -795,16 +971,47 @@ pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> 
             gcd_coeffs.push(coeff_poly);
         }
 
-        // Assemble candidate MultiPoly from interpolated coefficients
         let candidate = assemble_candidate(vars, main_var, param_var, &gcd_coeffs)?;
 
-        // Verify by exact division
-        if let (Some(_q1), Some(_q2)) = (p.div_exact(&candidate), q.div_exact(&candidate)) {
+        // Verify
+        if p.div_exact(&candidate).is_some() && q.div_exact(&candidate).is_some() {
             return Some(candidate);
         }
     }
 
     None
+}
+
+/// Lift a 2-var GCD back to N-var form
+fn lift_to_nvar(
+    gcd: &MultiPoly,
+    original_vars: &[String],
+    main: VarIdx,
+    param: VarIdx,
+) -> Option<MultiPoly> {
+    if gcd.vars.len() != 2 {
+        return None;
+    }
+
+    // Map gcd variables back to original positions
+    let mut map: BTreeMap<Monomial, BigRational> = BTreeMap::new();
+    let n = original_vars.len();
+
+    for (coeff, mono) in &gcd.terms {
+        let mut new_mono = vec![0u32; n];
+        // mono[0] goes to main, mono[1] goes to param
+        if mono.len() >= 1 {
+            new_mono[main] = mono[0];
+        }
+        if mono.len() >= 2 {
+            new_mono[param] = mono[1];
+        }
+
+        let entry = map.entry(new_mono).or_insert_with(BigRational::zero);
+        *entry = entry.clone() + coeff.clone();
+    }
+
+    Some(MultiPoly::from_map(original_vars.to_vec(), map))
 }
 
 /// Generate evaluation points: 0, 1, -1, 2, -2, 3, -3, ...

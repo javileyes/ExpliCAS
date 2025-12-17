@@ -53,8 +53,8 @@ fn try_multivar_gcd(
 
     // If no GCD found at Layer 1, try Layer 2 (heuristic polynomial GCD)
     if !has_mono_gcd && !has_content_gcd {
-        // Try Layer 2 for 2-variable case
-        if p_num.vars.len() == 2 {
+        // Try Layer 2 for N-variable case (N >= 2)
+        if p_num.vars.len() >= 2 {
             let gcd_budget = GcdBudget::default();
             if let Some(gcd_poly) = gcd_multivar_layer2(&p_num, &p_den, &gcd_budget) {
                 if !gcd_poly.is_one() && !gcd_poly.is_constant() {
