@@ -25,3 +25,7 @@ lazy_static = "1.4"
 [[bench]]
 name = "simplification_bench"
 harness = false
+
+[[bench]]
+name = "profile_cache"
+harness = false
