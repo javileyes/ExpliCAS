@@ -180,6 +180,12 @@ impl Simplifier {
         match opts.context_mode {
             ContextMode::IntegratePrep => {
                 crate::rules::integration::register_integration_prep(&mut s);
+                // Disable angle expansion rules that destroy telescoping patterns
+                // These rules transform cos(2x), cos(4x) before telescoping can match
+                s.disabled_rules.insert("Double Angle Identity".to_string());
+                s.disabled_rules.insert("Triple Angle Identity".to_string());
+                s.disabled_rules
+                    .insert("Recursive Trig Expansion".to_string());
             }
             ContextMode::Solve => {
                 // Disable rules that introduce abs() which can cause issues with solver strategies

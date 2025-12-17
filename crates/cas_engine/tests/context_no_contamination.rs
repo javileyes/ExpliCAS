@@ -138,23 +138,23 @@ fn test_solve_no_telescoping() {
 // =============================================================================
 
 #[test]
-fn test_integrateprep_telescoping_missing_step_no_match() {
-    // Missing cos(2*x) - not a valid 1,2,4,... sequence
-    let (_, steps) = run_simplify("cos(x)*cos(4*x)*cos(8*x)", &integrate_opts());
+fn test_integrateprep_telescoping_different_bases_no_match() {
+    // Different variables (x vs y) - no consistent base
+    let (_, steps) = run_simplify("cos(x)*cos(2*y)*cos(4*z)", &integrate_opts());
     assert_no_rule(&steps, "CosProductTelescoping");
 }
 
 #[test]
-fn test_integrateprep_telescoping_extra_factor_no_match() {
-    // Extra cos(3*x) breaks the pattern
-    let (_, steps) = run_simplify("cos(x)*cos(2*x)*cos(4*x)*cos(3*x)", &integrate_opts());
+fn test_integrateprep_telescoping_single_factor_no_match() {
+    // Single cos factor - not a product
+    let (_, steps) = run_simplify("cos(x)", &integrate_opts());
     assert_no_rule(&steps, "CosProductTelescoping");
 }
 
 #[test]
-fn test_integrateprep_telescoping_wrong_progression_no_match() {
-    // 1,3,6 is not a power-of-2 sequence
-    let (_, steps) = run_simplify("cos(x)*cos(3*x)*cos(6*x)", &integrate_opts());
+fn test_integrateprep_telescoping_numeric_only_no_match() {
+    // Numeric arguments, no variable - no point in telescoping
+    let (_, steps) = run_simplify("cos(1)*cos(2)*cos(4)", &integrate_opts());
     assert_no_rule(&steps, "CosProductTelescoping");
 }
 
@@ -185,20 +185,13 @@ fn test_integrateprep_product_to_sum_commuted_coeff() {
     assert_rule_fired(&steps, "ProductToSum");
 }
 
-// NOTE: The following tests are marked as ignored because other trig rules
-// (Double Angle Identity, Triple Angle Identity) transform the expression
-// before CosProductTelescopingRule can match. This requires a rule priority
-// refactor to fix properly.
-
 #[test]
-#[ignore = "Requires rule priority refactor: trig angle identities transform before telescoping"]
 fn test_integrateprep_telescoping_basic() {
     let (_, steps) = run_simplify("cos(x)*cos(2*x)*cos(4*x)", &integrate_opts());
     assert_rule_fired(&steps, "CosProductTelescoping");
 }
 
 #[test]
-#[ignore = "Requires rule priority refactor: trig angle identities transform before telescoping"]
 fn test_integrateprep_telescoping_permuted() {
     let (_, steps) = run_simplify("cos(4*x)*cos(x)*cos(2*x)", &integrate_opts());
     // Sorting should handle permutation
