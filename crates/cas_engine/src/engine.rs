@@ -5,7 +5,7 @@ use crate::step::Step;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::{ToPrimitive, Zero};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use tracing::debug;
 
@@ -118,8 +118,8 @@ pub fn substitute_expr_by_id(
 
 pub struct Simplifier {
     pub context: Context,
-    rules: HashMap<String, Vec<Rc<dyn Rule>>>,
-    global_rules: Vec<Rc<dyn Rule>>,
+    rules: HashMap<String, Vec<Arc<dyn Rule>>>,
+    global_rules: Vec<Arc<dyn Rule>>,
     pub collect_steps: bool,
     pub allow_numerical_verification: bool,
     pub debug_mode: bool,
@@ -270,7 +270,7 @@ impl Simplifier {
     }
 
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
-        let rule_rc: Rc<dyn Rule> = rule.into();
+        let rule_rc: Arc<dyn Rule> = rule.into();
 
         if let Some(targets) = rule_rc.target_types() {
             for target in targets {
@@ -340,6 +340,21 @@ impl Simplifier {
                 }
             }
         }
+    }
+
+    /// Get a clone of the rules map (for profile caching).
+    pub fn get_rules_clone(&self) -> HashMap<String, Vec<Arc<dyn Rule>>> {
+        self.rules.clone()
+    }
+
+    /// Get a clone of the global rules (for profile caching).
+    pub fn get_global_rules_clone(&self) -> Vec<Arc<dyn Rule>> {
+        self.global_rules.clone()
+    }
+
+    /// Get a clone of the disabled rules set (for profile caching).
+    pub fn get_disabled_rules_clone(&self) -> HashSet<String> {
+        self.disabled_rules.clone()
     }
 
     pub fn local_simplify(
@@ -622,8 +637,8 @@ const DEPTH_OVERFLOW_LOG_PATH: &str = "/tmp/cas_depth_overflow_expressions.log";
 
 struct LocalSimplificationTransformer<'a> {
     context: &'a mut Context,
-    rules: &'a HashMap<String, Vec<Rc<dyn Rule>>>,
-    global_rules: &'a Vec<Rc<dyn Rule>>,
+    rules: &'a HashMap<String, Vec<Arc<dyn Rule>>>,
+    global_rules: &'a Vec<Arc<dyn Rule>>,
     disabled_rules: &'a HashSet<String>,
     collect_steps: bool,
     steps: Vec<Step>,

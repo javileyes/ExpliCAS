@@ -7,7 +7,7 @@
 ///
 /// - `Strict` (default): Mathematically safe, never assumes domain restrictions
 /// - `PrincipalBranch`: Educational mode, assumes principal domain for inverse trig
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum BranchMode {
     /// Safe mode: inverse∘function compositions are not simplified
     /// because they are only valid on restricted domains.
@@ -27,7 +27,7 @@ pub enum BranchMode {
 /// - Integration: product→sum, telescoping series
 /// - Solving: preserve polynomial structure
 /// - General simplification: conservative, universally valid
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum ContextMode {
     /// Auto-detect from expression: if contains integral → IntegratePrep
     #[default]
