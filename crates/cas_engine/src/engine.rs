@@ -319,6 +319,7 @@ impl Simplifier {
             last_cycle: None,
             current_depth: 0,
             depth_overflow_warned: false,
+            ancestor_stack: Vec::new(),
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -408,6 +409,7 @@ impl Simplifier {
             last_cycle: None,
             current_depth: 0,
             depth_overflow_warned: false,
+            ancestor_stack: Vec::new(),
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -584,6 +586,8 @@ struct LocalSimplificationTransformer<'a> {
     current_depth: usize,
     /// Flag to track if we already warned about depth overflow (to avoid spamming)
     depth_overflow_warned: bool,
+    /// Stack of ancestor ExprIds for parent context propagation to rules
+    ancestor_stack: Vec<ExprId>,
 }
 
 use cas_ast::visitor::Transformer;
@@ -756,11 +760,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
             Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => id,
             Expr::Add(l, r) => {
                 self.current_path.push(crate::step::PathStep::Left);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_l = self.transform_expr_recursive(l);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 self.current_path.push(crate::step::PathStep::Right);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_r = self.transform_expr_recursive(r);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 if new_l != l || new_r != r {
@@ -996,10 +1004,20 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             .record_rejected_phase(self.current_phase, rule.name());
                         continue;
                     }
-                    // CRITICAL: Use initial_parent_ctx which contains pattern_marks
-                    if let Some(rewrite) =
-                        rule.apply(self.context, expr_id, &self.initial_parent_ctx)
-                    {
+                    // Build ParentContext with ancestors from traversal stack + pattern marks
+                    let parent_ctx = {
+                        let mut ctx = crate::parent_context::ParentContext::root();
+                        // Copy pattern marks from initial context
+                        if let Some(marks) = self.initial_parent_ctx.pattern_marks() {
+                            ctx = crate::parent_context::ParentContext::with_marks(marks.clone());
+                        }
+                        // Build ancestor chain from stack
+                        for &ancestor in &self.ancestor_stack {
+                            ctx = ctx.extend(ancestor);
+                        }
+                        ctx
+                    };
+                    if let Some(rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
                         // Check semantic equality - skip if no real change
                         // EXCEPTION: Didactic rules should always generate steps
                         // even if result is semantically equivalent (e.g., sqrt(12) → 2*√3)

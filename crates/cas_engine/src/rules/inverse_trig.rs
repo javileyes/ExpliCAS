@@ -481,11 +481,32 @@ define_rule!(
 
 // Rule: arctan(a) + arctan(b) = arctan((a+b)/(1-a*b)) when a,b are rational and 1-a*b > 0
 // This is Machin's identity (simplified form) - enables atan(1/2)+atan(1/3) = π/4
-define_rule!(
-    AtanAddRationalRule,
-    "Arctan Addition (Machin)",
-    Some(vec!["Add"]),
-    |ctx, expr| {
+//
+// CRITICAL: Uses manual Rule impl to access parent_ctx for sub-sum guard.
+// Only applies at "root sum" level - skips when parent is also Add to avoid
+// interfering with reciprocal pair detection in larger sums.
+pub struct AtanAddRationalRule;
+
+impl crate::rule::Rule for AtanAddRationalRule {
+    fn name(&self) -> &str {
+        "Arctan Addition (Machin)"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        // GUARD: Skip if this Add is inside another Add (sub-sum)
+        // This prevents combining atan(1/2)+atan(1/5) inside atan(2)+atan(1/2)+atan(5)+atan(1/5)
+        // before the reciprocal rule can find atan(2)+atan(1/2) → π/2
+        if let Some(parent_id) = parent_ctx.immediate_parent() {
+            if matches!(ctx.get(parent_id), Expr::Add(_, _)) {
+                return None; // Don't combine in sub-sums
+            }
+        }
+
         // Collect all additive terms
         let terms = collect_add_terms_flat(ctx, expr);
 
@@ -493,27 +514,6 @@ define_rule!(
         if terms.len() < 2 {
             return None;
         }
-
-        // Helper: collect all rational values from atan terms
-        let mut atan_values: Vec<num_rational::BigRational> = Vec::new();
-        for &term in &terms {
-            if let Expr::Function(name, args) = ctx.get(term) {
-                if is_atan(name) && args.len() == 1 {
-                    if let Some(val) = extract_numeric_value(ctx, &ctx.get(args[0]).clone()) {
-                        atan_values.push(val);
-                    }
-                }
-            }
-        }
-
-        // Helper: check if a value has its reciprocal in the list
-        let has_reciprocal = |val: &num_rational::BigRational| -> bool {
-            if val.numer() == &num_bigint::BigInt::from(0) {
-                return false;
-            }
-            let recip = num_rational::BigRational::from_integer(1.into()) / val;
-            atan_values.iter().any(|v| v == &recip)
-        };
 
         // Search for atan(a) + atan(b) pairs among all terms
         for i in 0..terms.len() {
@@ -535,11 +535,6 @@ define_rule!(
                         let val_j = extract_numeric_value(ctx, &ctx.get(arg_j).clone());
 
                         if let (Some(a), Some(b)) = (val_i, val_j) {
-                            // Guard: Skip if a or b has a reciprocal elsewhere - let InverseTrigAtanRule handle
-                            if has_reciprocal(&a) || has_reciprocal(&b) {
-                                continue;
-                            }
-
                             // Guard: 1 - a*b > 0 (ensures no branch crossing)
                             let ab = &a * &b;
                             let one = num_rational::BigRational::from_integer(1.into());
@@ -571,7 +566,7 @@ define_rule!(
                             // Build local before: Add(term_i, term_j)
                             let local_before = ctx.add(Expr::Add(terms[i], terms[j]));
 
-                            return Some(Rewrite {
+                            return Some(crate::rule::Rewrite {
                                 new_expr: final_result,
                                 description: format!(
                                     "arctan({}) + arctan({}) = arctan((a+b)/(1-ab))",
@@ -589,7 +584,11 @@ define_rule!(
 
         None
     }
-);
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Add"])
+    }
+}
 
 // Rule 4: Negative argument handling for inverse trig
 define_rule!(
@@ -775,10 +774,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(InverseTrigCompositionRule));
     simplifier.add_rule(Box::new(InverseTrigSumRule));
     simplifier.add_rule(Box::new(InverseTrigAtanRule));
-    // TODO: AtanAddRationalRule currently disabled - causes interference with InverseTrigAtanRule
-    // when expressions contain both non-reciprocal and reciprocal atan pairs.
-    // Re-enable when we have a proper way to prioritize reciprocal pairs.
-    // simplifier.add_rule(Box::new(AtanAddRationalRule));
+    // AtanAddRationalRule: Uses sub-sum guard (skips when parent is Add) to avoid
+    // interfering with reciprocal pairs in larger sums.
+    simplifier.add_rule(Box::new(AtanAddRationalRule));
     simplifier.add_rule(Box::new(InverseTrigNegativeRule));
     simplifier.add_rule(Box::new(ArcsecToArccosRule));
     simplifier.add_rule(Box::new(ArccscToArcsinRule));

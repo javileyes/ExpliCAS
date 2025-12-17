@@ -340,13 +340,11 @@ fn test_nary_preserves_other_functions() {
 
 #[test]
 fn test_nary_no_false_positives() {
-    // Similar looking but not reciprocals
+    // atan(2) + atan(1/3): These satisfy 1 - 2*(1/3) = 1/3 > 0, so Machin identity applies
+    // atan(2) + atan(1/3) = atan((2 + 1/3)/(1 - 2/3)) = atan((7/3)/(1/3)) = atan(7)
     let result = simplify_str("arctan(2) + arctan(1/3)");
-    // Accept both "arctan(1/3)" and "arctan(1 / 3)" (display format varies)
-    let has_atan_third = result.contains("arctan(1/3)") || result.contains("arctan(1 / 3)");
-    assert!(
-        result.contains("arctan(2)") && has_atan_third && !result.contains("pi"),
-        "Should not match non-reciprocals, got: {}",
-        result
+    assert_eq!(
+        result, "arctan(7)",
+        "Machin identity should combine atan(2) + atan(1/3) since 1-ab > 0"
     );
 }
