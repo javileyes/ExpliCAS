@@ -2,6 +2,7 @@ pub mod algebra;
 pub mod arithmetic;
 pub mod calculus;
 pub mod canonicalization;
+pub mod complex;
 pub mod exponents;
 pub mod functions;
 pub mod grouping;

@@ -280,6 +280,10 @@ impl Simplifier {
         grouping::register(self);
         number_theory::register(self);
 
+        // Complex number rules (i^n → {1, i, -1, -i})
+        // Registered unconditionally - only fires when i^n patterns exist
+        complex::register(self);
+
         // P0: Validate no duplicate rule names (debug only)
         #[cfg(debug_assertions)]
         self.assert_unique_rule_names();
