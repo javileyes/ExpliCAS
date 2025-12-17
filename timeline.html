@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: {(2 + \sqrt{5})}^{\frac{1}{3}} + {(2 - \sqrt{5})}^{\frac{1}{3}}</title>
+    <title>CAS Steps: \sin(x + y) - (\cos(y)\cdot \sin(x))</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -222,76 +222,55 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[{(2 + \sqrt{5})}^{\frac{1}{3}} + {(2 - \sqrt{5})}^{\frac{1}{3}}\]
+            \[\sin(x + y) - (\cos(y)\cdot \sin(x))\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Denest Cube Root in Quadratic Field</h3>
+                    <h3>Angle Sum/Diff Identity</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{{(2 - \sqrt{5})}^{\frac{1}{3}}}} + {(2 + \sqrt{5})}^{\frac{1}{3}}\]
+                        \[{\color{red}{\sin(x + y)}} - (\cos(y)\cdot \sin(x))\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Denest cube root in quadratic field: ∛(A+B√n) = 1/2 + -1/2√5}\)</div>
+                        <div class="rule-name">\(\text{sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)}\)</div>
                         <div class="local-change">
-                            \[{(2 - \sqrt{5})}^{\frac{1}{3}} \rightarrow \frac{1}{2} - \frac{1}{2}\cdot \sqrt{5}\]
+                            \[\sin(x + y) \rightarrow \cos(x)\cdot \sin(y) + \sin(x)\cdot \cos(y)\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{1}{2} - \frac{1}{2}\cdot \sqrt{5}}} + {(2 + \sqrt{5})}^{\frac{1}{3}}\]
+                        \[{\color{green}{\cos(x)\cdot \sin(y) + \sin(x)\cdot \cos(y)}} - (\cos(y)\cdot \sin(x))\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Denest Cube Root in Quadratic Field</h3>
+                    <h3>Add Inverse</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{1}{2} - \frac{1}{2}\cdot \sqrt{5} + {\color{red}{{(2 + \sqrt{5})}^{\frac{1}{3}}}}\]
+                        \[\cos(x)\cdot \sin(y) + {\color{red}{\cos(y)\cdot \sin(x) - (\cos(y)\cdot \sin(x))}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Denest cube root in quadratic field: ∛(A+B√n) = 1/2 + 1/2√5}\)</div>
+                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
                         <div class="local-change">
-                            \[{(2 + \sqrt{5})}^{\frac{1}{3}} \rightarrow \frac{1}{2} + \frac{1}{2}\cdot \sqrt{5}\]
+                            \[\cos(y)\cdot \sin(x) - (\cos(y)\cdot \sin(x)) \rightarrow 0\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{1}{2} - \frac{1}{2}\cdot \sqrt{5} + {\color{green}{\frac{1}{2} + \frac{1}{2}\cdot \sqrt{5}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{1}{2} + \frac{1}{2} + {\color{red}{\frac{1}{2}\cdot \sqrt{5} - \frac{1}{2}\cdot \sqrt{5}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
-                        <div class="local-change">
-                            \[\frac{1}{2}\cdot \sqrt{5} - \frac{1}{2}\cdot \sqrt{5} \rightarrow 0\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{1}{2} + \frac{1}{2} + {\color{green}{0}}\]
+                        \[\cos(x)\cdot \sin(y) + {\color{green}{0}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[1\]
+            \[\cos(x)\cdot \sin(y)\]
         </div>
     </div>
     <footer>

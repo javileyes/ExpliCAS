@@ -255,26 +255,6 @@ where
     None
 }
 
-/// Check if expression is sin(x)/cos(x) pattern (expanded tan)
-/// Returns Some(x) if pattern matches, None otherwise
-fn is_expanded_tan(ctx: &Context, expr: ExprId) -> Option<ExprId> {
-    if let Expr::Div(num, den) = ctx.get(expr) {
-        if let (Expr::Function(num_fn, num_args), Expr::Function(den_fn, den_args)) =
-            (ctx.get(*num), ctx.get(*den))
-        {
-            if num_fn == "sin"
-                && den_fn == "cos"
-                && num_args.len() == 1
-                && den_args.len() == 1
-                && num_args[0] == den_args[0]
-            {
-                return Some(num_args[0]); // Return the argument x
-            }
-        }
-    }
-    None
-}
-
 // ==================== Inverse Trig Identity Rules ====================
 
 // Rule 1: Composition Identities - sin(arcsin(x)) = x, etc.
@@ -325,51 +305,34 @@ define_rule!(
                             });
                         }
 
-                        // arcsin(sin(x)) = x (with domain restrictions, but we simplify anyway)
-                        if outer_name == "arcsin" && inner_name == "sin" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "arcsin(sin(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                            });
+                        // SAFE NESTED CASE: arctan(tan(arctan(u))) = arctan(u)
+                        // Because arctan(u) is always in (-π/2, π/2), it's safe to cancel
+                        if (outer_name == "arctan" || outer_name == "atan") && inner_name == "tan" {
+                            // Check if the argument of tan is arctan(something)
+                            if let Expr::Function(innermost_name, innermost_args) = ctx.get(x) {
+                                if (innermost_name == "arctan" || innermost_name == "atan")
+                                    && innermost_args.len() == 1
+                                {
+                                    // atan(tan(atan(u))) → atan(u)
+                                    let atan_u = x; // x is already atan(u)
+                                    return Some(Rewrite {
+                                        new_expr: atan_u,
+                                        description:
+                                            "arctan(tan(arctan(u))) = arctan(u) (principal branch)"
+                                                .to_string(),
+                                        before_local: None,
+                                        after_local: None,
+                                        domain_assumption: None,
+                                    });
+                                }
+                            }
                         }
 
-                        // arccos(cos(x)) = x
-                        if outer_name == "arccos" && inner_name == "cos" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "arccos(cos(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                            });
-                        }
-
-                        // arctan(tan(x)) = x
-                        if outer_name == "arctan" && inner_name == "tan" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "arctan(tan(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                            });
-                        }
-                    }
-                }
-
-                // ✨ NEW: Check for expanded tan in arctan: arctan(sin(x)/cos(x)) = x
-                if outer_name == "arctan" {
-                    if let Some(arg) = is_expanded_tan(ctx, inner_expr) {
-                        return Some(Rewrite {
-                            new_expr: arg,
-                            description: "arctan(sin(x)/cos(x)) = arctan(tan(x)) = x".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                        });
+                        // NOTE: We intentionally DO NOT simplify:
+                        // - arcsin(sin(x)) → x  (unsafe: fails outside [-π/2, π/2])
+                        // - arccos(cos(x)) → x  (unsafe: fails outside [0, π])
+                        // - arctan(tan(x)) → x  (unsafe: fails outside (-π/2, π/2))
+                        // These would require domain knowledge to be correct.
                     }
                 }
             }
@@ -508,6 +471,118 @@ define_rule!(
                     },
                 ) {
                     return Some(rewrite);
+                }
+            }
+        }
+
+        None
+    }
+);
+
+// Rule: arctan(a) + arctan(b) = arctan((a+b)/(1-a*b)) when a,b are rational and 1-a*b > 0
+// This is Machin's identity (simplified form) - enables atan(1/2)+atan(1/3) = π/4
+define_rule!(
+    AtanAddRationalRule,
+    "Arctan Addition (Machin)",
+    Some(vec!["Add"]),
+    |ctx, expr| {
+        // Collect all additive terms
+        let terms = collect_add_terms_flat(ctx, expr);
+
+        // Need at least 2 terms
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Helper: collect all rational values from atan terms
+        let mut atan_values: Vec<num_rational::BigRational> = Vec::new();
+        for &term in &terms {
+            if let Expr::Function(name, args) = ctx.get(term) {
+                if is_atan(name) && args.len() == 1 {
+                    if let Some(val) = extract_numeric_value(ctx, &ctx.get(args[0]).clone()) {
+                        atan_values.push(val);
+                    }
+                }
+            }
+        }
+
+        // Helper: check if a value has its reciprocal in the list
+        let has_reciprocal = |val: &num_rational::BigRational| -> bool {
+            if val.numer() == &num_bigint::BigInt::from(0) {
+                return false;
+            }
+            let recip = num_rational::BigRational::from_integer(1.into()) / val;
+            atan_values.iter().any(|v| v == &recip)
+        };
+
+        // Search for atan(a) + atan(b) pairs among all terms
+        for i in 0..terms.len() {
+            for j in (i + 1)..terms.len() {
+                let term_i_data = ctx.get(terms[i]).clone();
+                let term_j_data = ctx.get(terms[j]).clone();
+
+                // Check if both are atan functions with rational arguments
+                if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
+                    (&term_i_data, &term_j_data)
+                {
+                    if is_atan(name_i) && is_atan(name_j) && args_i.len() == 1 && args_j.len() == 1
+                    {
+                        let arg_i = args_i[0];
+                        let arg_j = args_j[0];
+
+                        // Extract rational values from both arguments
+                        let val_i = extract_numeric_value(ctx, &ctx.get(arg_i).clone());
+                        let val_j = extract_numeric_value(ctx, &ctx.get(arg_j).clone());
+
+                        if let (Some(a), Some(b)) = (val_i, val_j) {
+                            // Guard: Skip if a or b has a reciprocal elsewhere - let InverseTrigAtanRule handle
+                            if has_reciprocal(&a) || has_reciprocal(&b) {
+                                continue;
+                            }
+
+                            // Guard: 1 - a*b > 0 (ensures no branch crossing)
+                            let ab = &a * &b;
+                            let one = num_rational::BigRational::from_integer(1.into());
+                            // Guard: Skip if a*b = 1 (reciprocals) - let InverseTrigAtanRule handle those
+                            if ab == one {
+                                continue;
+                            }
+
+                            let one_minus_ab = &one - &ab;
+
+                            // Skip if 1-ab <= 0 (would need +kπ correction)
+                            if one_minus_ab <= num_rational::BigRational::from_integer(0.into()) {
+                                continue;
+                            }
+
+                            // Compute (a+b)/(1-ab)
+                            let a_plus_b = &a + &b;
+                            let result_val = &a_plus_b / &one_minus_ab;
+
+                            // Build the result expression: arctan((a+b)/(1-ab))
+                            let result_num = ctx.add(Expr::Number(result_val));
+                            let result_atan =
+                                ctx.add(Expr::Function("arctan".to_string(), vec![result_num]));
+
+                            // Build remaining terms (if any)
+                            let remaining = build_sum_without(ctx, &terms, i, j);
+                            let final_result = combine_with_term(ctx, remaining, result_atan);
+
+                            // Build local before: Add(term_i, term_j)
+                            let local_before = ctx.add(Expr::Add(terms[i], terms[j]));
+
+                            return Some(Rewrite {
+                                new_expr: final_result,
+                                description: format!(
+                                    "arctan({}) + arctan({}) = arctan((a+b)/(1-ab))",
+                                    a, b
+                                ),
+                                before_local: Some(local_before),
+                                after_local: Some(result_atan),
+                                domain_assumption: None,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -700,6 +775,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(InverseTrigCompositionRule));
     simplifier.add_rule(Box::new(InverseTrigSumRule));
     simplifier.add_rule(Box::new(InverseTrigAtanRule));
+    // TODO: AtanAddRationalRule currently disabled - causes interference with InverseTrigAtanRule
+    // when expressions contain both non-reciprocal and reciprocal atan pairs.
+    // Re-enable when we have a proper way to prioritize reciprocal pairs.
+    // simplifier.add_rule(Box::new(AtanAddRationalRule));
     simplifier.add_rule(Box::new(InverseTrigNegativeRule));
     simplifier.add_rule(Box::new(ArcsecToArccosRule));
     simplifier.add_rule(Box::new(ArccscToArcsinRule));
