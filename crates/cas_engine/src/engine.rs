@@ -179,8 +179,7 @@ impl Simplifier {
         // Apply context mode rules (placeholder for future rule bundles)
         match opts.context_mode {
             ContextMode::IntegratePrep => {
-                // TODO: register integration prep rules (telescoping, product→sum)
-                // crate::rules::integration::register_integration_prep(&mut s);
+                crate::rules::integration::register_integration_prep(&mut s);
             }
             ContextMode::Solve => {
                 // TODO: register solve prep rules

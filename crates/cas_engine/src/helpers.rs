@@ -959,3 +959,44 @@ mod tests {
         }
     }
 }
+
+/// Check if an expression contains an integral (for auto-context detection).
+///
+/// Searches the expression tree for `integrate(...)` function calls.
+/// Uses iterative traversal to avoid stack overflow on deep expressions.
+pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Function(name, _) if name == "integrate" || name == "int" => {
+                return true;
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => {
+                stack.push(*inner);
+            }
+            Expr::Function(_, args) => {
+                for arg in args {
+                    stack.push(*arg);
+                }
+            }
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    stack.push(*elem);
+                }
+            }
+            Expr::Div(num, den) => {
+                stack.push(*num);
+                stack.push(*den);
+            }
+            // Leaf nodes: nothing to push
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
