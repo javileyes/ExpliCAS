@@ -94,6 +94,10 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 -   **Profile Cache** ★ (2025-12):
     -   Rule profiles cached automatically in `SessionState` to avoid rebuilding ~30 rules per evaluation.
     -   First evaluation builds and caches the profile; subsequent evaluations reuse `Arc<RuleProfile>`.
+    -   **CLI Commands**:
+        -   `cache` or `cache status` — Show number of cached profiles
+        -   `cache clear` — Clear all cached profiles (will rebuild on next eval)
+        -   `reset full` — Clear session state AND profile cache
     -   **Library Usage**:
         ```rust
         use cas_engine::{SessionState, Simplifier};

@@ -744,6 +744,18 @@ impl Repl {
             return;
         }
 
+        // "reset full" - reset everything including profile cache
+        if line == "reset full" {
+            self.handle_reset_full_command();
+            return;
+        }
+
+        // "cache clear" - clear only profile cache
+        if line == "cache clear" || line == "cache" {
+            self.handle_cache_command(&line);
+            return;
+        }
+
         // "mode" - show/switch branch mode (strict vs principal)
         if line == "mode" || line.starts_with("mode ") {
             self.handle_mode_command(&line);
@@ -1632,7 +1644,9 @@ impl Repl {
         println!("  <name> := <expr>        Alternative assignment syntax");
         println!("  vars                    List all defined variables");
         println!("  clear [name]            Clear one or all variables");
-        println!("  reset                   Clear all session state");
+        println!("  reset                   Clear all session state (keeps cache)");
+        println!("  reset full              Clear all session state AND profile cache");
+        println!("  cache [status|clear]    View or clear profile cache");
         println!("  history / list          Show session history (#ids)");
         println!("  show #<id>              Display a session entry");
         println!("  del #<id> ...           Delete session entries");
@@ -2282,6 +2296,43 @@ impl Repl {
         self.last_health_report = None;
 
         println!("Session reset. Environment and context cleared.");
+    }
+
+    /// Handle "reset full" command - reset session AND clear profile cache
+    fn handle_reset_full_command(&mut self) {
+        // First do normal reset
+        self.handle_reset_command();
+
+        // Also clear profile cache
+        self.state.profile_cache.clear();
+
+        println!("Profile cache cleared (will rebuild on next eval).");
+    }
+
+    /// Handle "cache" command - show status or clear cache
+    fn handle_cache_command(&mut self, line: &str) {
+        let args: Vec<&str> = line.split_whitespace().collect();
+
+        match args.get(1).map(|s| *s) {
+            None | Some("status") => {
+                // Show cache status
+                let count = self.state.profile_cache.len();
+                println!("Profile Cache: {} profiles cached", count);
+                if count == 0 {
+                    println!("  (empty - profiles will be built on first eval)");
+                } else {
+                    println!("  (profiles are reused across evaluations)");
+                }
+            }
+            Some("clear") => {
+                self.state.profile_cache.clear();
+                println!("Profile cache cleared.");
+            }
+            Some(cmd) => {
+                println!("Unknown cache command: {}", cmd);
+                println!("Usage: cache [status|clear]");
+            }
+        }
     }
 
     /// Handle "mode" command - show or switch branch mode
