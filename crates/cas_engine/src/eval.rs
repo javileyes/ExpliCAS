@@ -71,15 +71,46 @@ pub enum EvalResult {
     None,             // For commands with no output
 }
 
+/// A domain assumption warning with its source rule.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DomainWarning {
+    pub message: String,
+    pub rule_name: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct EvalOutput {
     pub stored_id: Option<u64>,
     pub parsed: ExprId,
     pub resolved: ExprId,
     pub result: EvalResult,
-    pub domain_warnings: Vec<String>,
+    /// Domain warnings with deduplication and rule source.
+    pub domain_warnings: Vec<DomainWarning>,
     pub steps: Vec<crate::Step>,
     pub solve_steps: Vec<crate::solver::SolveStep>,
+}
+
+/// Collect domain warnings from steps with deduplication.
+fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut warnings = Vec::new();
+
+    for step in steps {
+        if let Some(msg) = &step.domain_assumption {
+            let msg_str = msg.to_string();
+            if !seen.contains(&msg_str) {
+                seen.insert(msg_str.clone());
+                warnings.push(DomainWarning {
+                    message: msg_str,
+                    rule_name: step.rule_name.clone(),
+                });
+            }
+        }
+    }
+
+    warnings
 }
 
 impl Engine {
@@ -123,20 +154,14 @@ impl Engine {
                 // Transfer context back
                 self.simplifier.context = ctx_simplifier.context;
 
-                // Collect domain assumptions from steps
-                let warnings: Vec<String> = steps
-                    .iter()
-                    .filter_map(|s| s.domain_assumption.as_ref().map(|d| d.to_string()))
-                    .collect();
+                // Collect domain assumptions from steps with deduplication
+                let warnings = collect_domain_warnings(&steps);
                 (EvalResult::Expr(res), warnings, steps, vec![])
             }
             EvalAction::Expand => {
                 // Treating Expand as Simplify for now, as Simplifier has no explicit expand mode yet exposed cleanly
                 let (res, steps) = self.simplifier.simplify(resolved);
-                let warnings: Vec<String> = steps
-                    .iter()
-                    .filter_map(|s| s.domain_assumption.as_ref().map(|d| d.to_string()))
-                    .collect();
+                let warnings = collect_domain_warnings(&steps);
                 (EvalResult::Expr(res), warnings, steps, vec![])
             }
             EvalAction::Solve { var } => {
@@ -193,8 +218,8 @@ impl Engine {
                         // Let's rely on what solve produces.
 
                         use cas_ast::SolutionSet;
-                        // For Solve, currently no domain warnings in steps, but we can collect descriptions if we wanted.
-                        let warnings: Vec<String> = vec![];
+                        // For Solve, currently no domain warnings in steps
+                        let warnings: Vec<DomainWarning> = vec![];
 
                         let eval_res = match solution_set {
                             SolutionSet::Discrete(sols) => EvalResult::Set(sols),

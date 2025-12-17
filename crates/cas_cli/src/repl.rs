@@ -3078,7 +3078,7 @@ impl Repl {
                         println!("Solving for {}...", var);
 
                         for w in &output.domain_warnings {
-                            println!("Warning: {}", w);
+                            println!("⚠ {} (from {})", w.message, w.rule_name);
                         }
 
                         // Show Solve Steps
@@ -3518,7 +3518,7 @@ impl Repl {
 
                         // Show warnings
                         for w in output.domain_warnings {
-                            println!("Warning: {}", w);
+                            println!("⚠ {} (from {})", w.message, w.rule_name);
                         }
 
                         // Show steps using helper

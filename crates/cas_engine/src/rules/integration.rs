@@ -107,6 +107,10 @@ impl Rule for CosProductTelescopingRule {
         "CosProductTelescoping"
     }
 
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Mul"])
+    }
+
     fn apply(
         &self,
         ctx: &mut Context,
