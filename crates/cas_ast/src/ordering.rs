@@ -32,9 +32,35 @@ pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
             ord => ord,
         },
         (Neg(e1), Neg(e2)) => compare_expr(context, *e1, *e2),
-        (Add(l1, r1), Add(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
+        // Add is commutative: both orderings should be checked
+        (Add(l1, r1), Add(l2, r2)) => {
+            // First try direct comparison
+            let direct = compare_binary(context, *l1, *r1, *l2, *r2);
+            if direct == Ordering::Equal {
+                return Ordering::Equal;
+            }
+            // Try swapped: Add(a,b) == Add(b,a)
+            let swapped = compare_binary(context, *l1, *r1, *r2, *l2);
+            if swapped == Ordering::Equal {
+                return Ordering::Equal;
+            }
+            direct
+        }
         (Sub(l1, r1), Sub(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
-        (Mul(l1, r1), Mul(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
+        // Mul is commutative: both orderings should be checked
+        (Mul(l1, r1), Mul(l2, r2)) => {
+            // First try direct comparison
+            let direct = compare_binary(context, *l1, *r1, *l2, *r2);
+            if direct == Ordering::Equal {
+                return Ordering::Equal;
+            }
+            // Try swapped: Mul(a,b) == Mul(b,a)
+            let swapped = compare_binary(context, *l1, *r1, *r2, *l2);
+            if swapped == Ordering::Equal {
+                return Ordering::Equal;
+            }
+            direct
+        }
         (Div(l1, r1), Div(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
         // Matrix comparison: by dimensions first, then by ExprId of data elements
         (

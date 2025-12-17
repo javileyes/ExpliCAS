@@ -401,6 +401,8 @@ define_rule!(
 define_rule!(
     PythagoreanIdentityRule,
     "Pythagorean Identity",
+    None,
+    crate::phase::PhaseMask::TRANSFORM, // Match phase with TrigHiddenCubicIdentityRule
     |ctx, expr| {
         // Look for sin(x)^2 + cos(x)^2 = 1
         // Or a*sin(x)^2 + a*cos(x)^2 = a
@@ -634,149 +636,183 @@ define_rule!(
     }
 );
 
-define_rule!(AngleIdentityRule, "Angle Sum/Diff Identity", |ctx, expr| {
-    if let Expr::Function(name, args) = ctx.get(expr) {
-        if args.len() == 1 {
-            let inner = args[0];
-            match name.as_str() {
-                "sin" => {
-                    let inner_data = ctx.get(inner).clone();
-                    if let Expr::Add(lhs, rhs) = inner_data {
-                        // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
-                        let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
-                        let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                        let term1 = smart_mul(ctx, sin_a, cos_b);
+// MANUAL IMPLEMENTATION: AngleIdentityRule with parent context guard
+// Don't expand sin(a+b)/cos(a+b) when they are being raised to power ≥ 2
+// This preserves the Pythagorean identity pattern sin²+cos²=1
+pub struct AngleIdentityRule;
 
-                        let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
-                        let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                        let term2 = smart_mul(ctx, cos_a, sin_b);
+impl crate::rule::Rule for AngleIdentityRule {
+    fn name(&self) -> &str {
+        "Angle Sum/Diff Identity"
+    }
 
-                        let new_expr = ctx.add(Expr::Add(term1, term2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                        });
-                    } else if let Expr::Sub(lhs, rhs) = inner_data {
-                        // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
-                        let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
-                        let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                        let term1 = smart_mul(ctx, sin_a, cos_b);
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::TRANSFORM
+    }
 
-                        let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
-                        let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                        let term2 = smart_mul(ctx, cos_a, sin_b);
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        use cas_ast::Expr;
 
-                        let new_expr = ctx.add(Expr::Sub(term1, term2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                        });
-                    } else if let Expr::Div(num, den) = inner_data {
-                        // sin((a + b) / c) -> sin(a/c + b/c) -> ...
-                        let num_data = ctx.get(num).clone();
-                        if let Expr::Add(lhs, rhs) = num_data {
-                            let a = ctx.add(Expr::Div(lhs, den));
-                            let b = ctx.add(Expr::Div(rhs, den));
+        // GUARD: Don't expand sin(a+b)/cos(a+b) if this function is part of sin²+cos²=1 pattern
+        // The pattern marks are set by pre-scan before simplification
+        if let Some(marks) = parent_ctx.pattern_marks() {
+            if marks.is_trig_square_protected(expr) {
+                return None; // Skip expansion to preserve Pythagorean identity
+            }
+        }
 
-                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
-                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if args.len() == 1 {
+                let inner = args[0];
+                match name.as_str() {
+                    "sin" => {
+                        let inner_data = ctx.get(inner).clone();
+                        if let Expr::Add(lhs, rhs) = inner_data {
+                            // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
+                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
+                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
                             let term1 = smart_mul(ctx, sin_a, cos_b);
 
-                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
-                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
+                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
+                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
                             let term2 = smart_mul(ctx, cos_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Add(term1, term2));
                             return Some(Rewrite {
                                 new_expr,
-                                description:
-                                    "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)"
-                                        .to_string(),
+                                description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)"
+                                    .to_string(),
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
                             });
+                        } else if let Expr::Sub(lhs, rhs) = inner_data {
+                            // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
+                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
+                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
+                            let term1 = smart_mul(ctx, sin_a, cos_b);
+
+                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
+                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
+                            let term2 = smart_mul(ctx, cos_a, sin_b);
+
+                            let new_expr = ctx.add(Expr::Sub(term1, term2));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)"
+                                    .to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        } else if let Expr::Div(num, den) = inner_data {
+                            // sin((a + b) / c) -> sin(a/c + b/c) -> ...
+                            let num_data = ctx.get(num).clone();
+                            if let Expr::Add(lhs, rhs) = num_data {
+                                let a = ctx.add(Expr::Div(lhs, den));
+                                let b = ctx.add(Expr::Div(rhs, den));
+
+                                let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
+                                let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
+                                let term1 = smart_mul(ctx, sin_a, cos_b);
+
+                                let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
+                                let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
+                                let term2 = smart_mul(ctx, cos_a, sin_b);
+
+                                let new_expr = ctx.add(Expr::Add(term1, term2));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description:
+                                        "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)"
+                                            .to_string(),
+                                    before_local: None,
+                                    after_local: None,
+                                    domain_assumption: None,
+                                });
+                            }
                         }
                     }
-                }
-                "cos" => {
-                    let inner_data = ctx.get(inner).clone();
-                    if let Expr::Add(lhs, rhs) = inner_data {
-                        // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)
-                        let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
-                        let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                        let term1 = smart_mul(ctx, cos_a, cos_b);
-
-                        let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
-                        let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                        let term2 = smart_mul(ctx, sin_a, sin_b);
-
-                        let new_expr = ctx.add(Expr::Sub(term1, term2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                        });
-                    } else if let Expr::Sub(lhs, rhs) = inner_data {
-                        // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
-                        let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
-                        let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
-                        let term1 = smart_mul(ctx, cos_a, cos_b);
-
-                        let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
-                        let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
-                        let term2 = smart_mul(ctx, sin_a, sin_b);
-
-                        let new_expr = ctx.add(Expr::Add(term1, term2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                        });
-                    } else if let Expr::Div(num, den) = inner_data {
-                        // cos((a + b) / c) -> cos(a/c + b/c) -> ...
-                        let num_data = ctx.get(num).clone();
-                        if let Expr::Add(lhs, rhs) = num_data {
-                            let a = ctx.add(Expr::Div(lhs, den));
-                            let b = ctx.add(Expr::Div(rhs, den));
-
-                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
-                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
+                    "cos" => {
+                        let inner_data = ctx.get(inner).clone();
+                        if let Expr::Add(lhs, rhs) = inner_data {
+                            // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)
+                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
+                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
                             let term1 = smart_mul(ctx, cos_a, cos_b);
 
-                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
-                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
+                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
+                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
                             let term2 = smart_mul(ctx, sin_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Sub(term1, term2));
                             return Some(Rewrite {
                                 new_expr,
-                                description:
-                                    "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)"
-                                        .to_string(),
+                                description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)"
+                                    .to_string(),
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
                             });
+                        } else if let Expr::Sub(lhs, rhs) = inner_data {
+                            // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
+                            let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
+                            let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![rhs]));
+                            let term1 = smart_mul(ctx, cos_a, cos_b);
+
+                            let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
+                            let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![rhs]));
+                            let term2 = smart_mul(ctx, sin_a, sin_b);
+
+                            let new_expr = ctx.add(Expr::Add(term1, term2));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)"
+                                    .to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        } else if let Expr::Div(num, den) = inner_data {
+                            // cos((a + b) / c) -> cos(a/c + b/c) -> ...
+                            let num_data = ctx.get(num).clone();
+                            if let Expr::Add(lhs, rhs) = num_data {
+                                let a = ctx.add(Expr::Div(lhs, den));
+                                let b = ctx.add(Expr::Div(rhs, den));
+
+                                let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![a]));
+                                let cos_b = ctx.add(Expr::Function("cos".to_string(), vec![b]));
+                                let term1 = smart_mul(ctx, cos_a, cos_b);
+
+                                let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![a]));
+                                let sin_b = ctx.add(Expr::Function("sin".to_string(), vec![b]));
+                                let term2 = smart_mul(ctx, sin_a, sin_b);
+
+                                let new_expr = ctx.add(Expr::Sub(term1, term2));
+                                return Some(Rewrite {
+                                    new_expr,
+                                    description:
+                                        "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)"
+                                            .to_string(),
+                                    before_local: None,
+                                    after_local: None,
+                                    domain_assumption: None,
+                                });
+                            }
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
+        None
     }
-    None
-});
+}
 
 /// Convert tan(x) to sin(x)/cos(x) UNLESS it's part of a Pythagorean pattern
 pub struct TanToSinCosRule;

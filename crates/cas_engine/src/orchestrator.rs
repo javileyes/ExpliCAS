@@ -62,6 +62,15 @@ impl Orchestrator {
         );
 
         for iter in 0..max_iters {
+            // Re-scan for patterns each iteration since expression may have changed
+            // This ensures marks are up-to-date for the current expression tree
+            self.pattern_marks = crate::pattern_marks::PatternMarks::new();
+            crate::pattern_scanner::scan_and_mark_patterns(
+                &simplifier.context,
+                current,
+                &mut self.pattern_marks,
+            );
+
             let (next, steps) =
                 simplifier.apply_rules_loop_with_phase(current, &self.pattern_marks, phase);
 

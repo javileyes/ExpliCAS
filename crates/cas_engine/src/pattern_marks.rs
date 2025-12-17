@@ -11,6 +11,9 @@ pub struct PatternMarks {
     /// ExprIds that are bases inside sqrt(u²) or sqrt(u*u) patterns
     /// Protected from binomial expansion to allow sqrt(u²) → |u| shortcut
     pub sqrt_square_protected: HashSet<ExprId>,
+    /// ExprIds of sin/cos Function nodes that are part of sin²(u)+cos²(u)=1 patterns
+    /// Protected from angle expansion (AngleIdentityRule) to preserve Pythagorean identity
+    pub trig_square_protected: HashSet<ExprId>,
 }
 
 impl PatternMarks {
@@ -18,6 +21,7 @@ impl PatternMarks {
         Self {
             pythagorean_protected: HashSet::new(),
             sqrt_square_protected: HashSet::new(),
+            trig_square_protected: HashSet::new(),
         }
     }
 
@@ -40,5 +44,16 @@ impl PatternMarks {
     /// Mark an expression as a sqrt-square base (e.g., u² in sqrt(u²))
     pub fn mark_sqrt_square(&mut self, expr: ExprId) {
         self.sqrt_square_protected.insert(expr);
+    }
+
+    /// Check if a sin/cos function is protected as part of sin²+cos²=1 pattern
+    /// (should not be expanded by AngleIdentityRule)
+    pub fn is_trig_square_protected(&self, expr: ExprId) -> bool {
+        self.trig_square_protected.contains(&expr)
+    }
+
+    /// Mark a sin/cos function as part of sin²+cos²=1 pattern
+    pub fn mark_trig_square(&mut self, expr: ExprId) {
+        self.trig_square_protected.insert(expr);
     }
 }

@@ -1115,12 +1115,34 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     continue;
                 }
 
-                // Apply rule with semantic checking
-                if let Some(rewrite) = crate::semantic_equality::apply_rule_with_semantic_check(
-                    self.context,
-                    rule.as_ref(),
-                    expr_id,
-                ) {
+                // Apply rule with initial_parent_ctx which contains pattern_marks
+                // CRITICAL: Must use initial_parent_ctx for pattern-aware guards (like AngleIdentityRule)
+                if let Some(rewrite) = rule.apply(self.context, expr_id, &self.initial_parent_ctx) {
+                    // Fast path: if rewrite produces identical ExprId, skip entirely
+                    if rewrite.new_expr == expr_id {
+                        continue;
+                    }
+
+                    // Semantic equality check to prevent infinite loops
+                    // Skip rewrites that produce semantically equivalent results without improvement
+                    let is_didactic_rule =
+                        rule.name() == "Evaluate Numeric Power" || rule.name() == "Sum Exponents";
+
+                    if !is_didactic_rule {
+                        use crate::semantic_equality::SemanticEqualityChecker;
+                        let checker = SemanticEqualityChecker::new(self.context);
+                        if checker.are_equal(expr_id, rewrite.new_expr) {
+                            // Provably equal - only accept if it improves normal form
+                            if !crate::helpers::nf_score_after_is_better(
+                                self.context,
+                                expr_id,
+                                rewrite.new_expr,
+                            ) {
+                                continue; // Skip - no improvement
+                            }
+                        }
+                    }
+
                     // Record rule application for profiling
                     self.profiler.record(self.current_phase, rule.name());
 

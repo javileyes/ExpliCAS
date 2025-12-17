@@ -1,12 +1,19 @@
-use cas_engine::Simplifier;
-use cas_engine::rules::arithmetic::{AddZeroRule, MulOneRule, MulZeroRule, CombineConstantsRule};
-use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule, BinomialExpansionRule};
-use cas_engine::rules::exponents::{ProductPowerRule, PowerPowerRule, EvaluatePowerRule, IdentityPowerRule, PowerProductRule, PowerQuotientRule};
-use cas_engine::rules::canonicalization::{CanonicalizeNegationRule, CanonicalizeAddRule, CanonicalizeMulRule};
-use cas_engine::rules::algebra::{SimplifyFractionRule, AddFractionsRule, SimplifyMulDivRule, CancelCommonFactorsRule};
-use cas_engine::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
-use cas_parser::parse;
 use cas_ast::DisplayExpr;
+use cas_engine::rules::algebra::{
+    AddFractionsRule, CancelCommonFactorsRule, SimplifyFractionRule, SimplifyMulDivRule,
+};
+use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
+use cas_engine::rules::canonicalization::{
+    CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule,
+};
+use cas_engine::rules::exponents::{
+    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
+    ProductPowerRule,
+};
+use cas_engine::rules::polynomial::{BinomialExpansionRule, CombineLikeTermsRule, DistributeRule};
+use cas_engine::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
+use cas_engine::Simplifier;
+use cas_parser::parse;
 
 fn create_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();
@@ -38,11 +45,18 @@ fn create_simplifier() -> Simplifier {
 
 #[test]
 fn test_tangent_sum() {
-    let mut simplifier = create_simplifier();
+    // Use default simplifier with all rules registered for proper angle expansion
+    let mut simplifier = Simplifier::with_default_rules();
     // sin(x + y) / (cos(x) * cos(y)) - (tan(x) + tan(y))
     let input = "sin(x + y) / (cos(x) * cos(y)) - (tan(x) + tan(y))";
     let expr = parse(input, &mut simplifier.context).unwrap();
     let (simplified, _) = simplifier.simplify(expr);
-    let result = format!("{}", DisplayExpr { context: &simplifier.context, id: simplified });
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: simplified
+        }
+    );
     assert_eq!(result, "0", "Tangent Sum failed to simplify to 0");
 }

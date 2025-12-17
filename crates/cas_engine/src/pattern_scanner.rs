@@ -34,6 +34,7 @@ fn scan_recursive(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
     // After scanning children, check if THIS node is a special pattern
     check_and_mark_pythagorean_pattern(ctx, expr_id, marks);
     check_and_mark_sqrt_square_pattern(ctx, expr_id, marks);
+    check_and_mark_trig_square_pattern(ctx, expr_id, marks);
 }
 
 fn check_and_mark_pythagorean_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
@@ -141,6 +142,69 @@ fn check_and_mark_sqrt_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
     }
 }
 
+/// Detect sin²(u) + cos²(v) patterns where u ≡ v (using commutative compare_expr)
+/// Mark the sin/cos Function nodes so AngleIdentityRule won't expand them
+fn check_and_mark_trig_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
+    // Only check Add patterns (sin² + cos²)
+    if !matches!(ctx.get(expr_id), Expr::Add(_, _)) {
+        return;
+    }
+
+    // Flatten the Add to get all terms
+    let mut terms = Vec::new();
+    crate::helpers::flatten_add(ctx, expr_id, &mut terms);
+
+    // Extract (func_name, func_id, arg_id) from terms that are sin²/cos²
+    // Returns: ("sin"|"cos", function ExprId, argument ExprId)
+    let extract_trig_square =
+        |ctx: &Context, term: ExprId| -> Option<(&'static str, ExprId, ExprId)> {
+            // Match Pow(Function("sin"|"cos", [arg]), 2)
+            if let Expr::Pow(base, exp) = ctx.get(term) {
+                // Check exponent is 2
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
+                        // Check base is sin or cos
+                        if let Expr::Function(name, args) = ctx.get(*base) {
+                            if args.len() == 1 {
+                                match name.as_str() {
+                                    "sin" => return Some(("sin", *base, args[0])),
+                                    "cos" => return Some(("cos", *base, args[0])),
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        };
+
+    // Collect all sin² and cos² terms with their info
+    let mut sin_terms: Vec<(ExprId, ExprId)> = Vec::new(); // (func_id, arg_id)
+    let mut cos_terms: Vec<(ExprId, ExprId)> = Vec::new();
+
+    for &term in &terms {
+        if let Some((name, func_id, arg_id)) = extract_trig_square(ctx, term) {
+            match name {
+                "sin" => sin_terms.push((func_id, arg_id)),
+                "cos" => cos_terms.push((func_id, arg_id)),
+                _ => {}
+            }
+        }
+    }
+
+    // Find pairs with matching arguments (using commutative compare_expr)
+    for (sin_func_id, sin_arg) in &sin_terms {
+        for (cos_func_id, cos_arg) in &cos_terms {
+            if crate::ordering::compare_expr(ctx, *sin_arg, *cos_arg) == std::cmp::Ordering::Equal {
+                // Found a match! Mark both functions for protection
+                marks.mark_trig_square(*sin_func_id);
+                marks.mark_trig_square(*cos_func_id);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,5 +251,73 @@ mod tests {
         // Both sec(x) and tan(x) should be marked
         assert!(marks.is_pythagorean_protected(sec_x));
         assert!(marks.is_pythagorean_protected(tan_x));
+    }
+
+    #[test]
+    fn test_scan_marks_trig_square_simple() {
+        let mut ctx = Context::new();
+        let mut marks = PatternMarks::new();
+
+        // Build: sin(x)^2 + cos(x)^2
+        let x = ctx.var("x");
+        let sin_x = ctx.add(Expr::Function("sin".into(), vec![x]));
+        let cos_x = ctx.add(Expr::Function("cos".into(), vec![x]));
+        let two = ctx.num(2);
+        let sin_sq = ctx.add(Expr::Pow(sin_x, two));
+        let cos_sq = ctx.add(Expr::Pow(cos_x, two));
+        let pattern = ctx.add(Expr::Add(sin_sq, cos_sq));
+
+        scan_and_mark_patterns(&ctx, pattern, &mut marks);
+
+        // Both sin(x) and cos(x) should be marked
+        assert!(
+            marks.is_trig_square_protected(sin_x),
+            "sin(x) should be protected"
+        );
+        assert!(
+            marks.is_trig_square_protected(cos_x),
+            "cos(x) should be protected"
+        );
+    }
+
+    #[test]
+    fn test_scan_marks_trig_square_commuted_args() {
+        let mut ctx = Context::new();
+        let mut marks = PatternMarks::new();
+
+        // Build: sin(2*x + 1)^2 + cos(1 + 2*x)^2
+        // Args are commuted: 2*x + 1 vs 1 + 2*x
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+
+        // sin arg: 2*x + 1  => Add(Mul(2, x), 1)
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let sin_arg = ctx.add(Expr::Add(two_x, one));
+        let sin_func = ctx.add(Expr::Function("sin".into(), vec![sin_arg]));
+        let sin_sq = ctx.add(Expr::Pow(sin_func, two));
+
+        // cos arg: 1 + 2*x  => Add(1, Mul(2, x))
+        let two_2 = ctx.num(2);
+        let one_2 = ctx.num(1);
+        let two_x_2 = ctx.add(Expr::Mul(two_2, x));
+        let cos_arg = ctx.add(Expr::Add(one_2, two_x_2));
+        let cos_func = ctx.add(Expr::Function("cos".into(), vec![cos_arg]));
+        let two_3 = ctx.num(2);
+        let cos_sq = ctx.add(Expr::Pow(cos_func, two_3));
+
+        let pattern = ctx.add(Expr::Add(sin_sq, cos_sq));
+
+        scan_and_mark_patterns(&ctx, pattern, &mut marks);
+
+        // Both should be marked because compare_expr handles Add commutativity
+        assert!(
+            marks.is_trig_square_protected(sin_func),
+            "sin(2*x+1) should be protected"
+        );
+        assert!(
+            marks.is_trig_square_protected(cos_func),
+            "cos(1+2*x) should be protected"
+        );
     }
 }
