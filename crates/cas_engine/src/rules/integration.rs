@@ -92,10 +92,166 @@ impl Rule for ProductToSumRule {
     }
 }
 
+/// Morrie's law: telescoping product of cosines.
+///
+/// `cos(u) * cos(2u) * cos(4u) * ... * cos(2^(n-1) u) → sin(2^n u) / (2^n sin(u))`
+///
+/// Example: `cos(x) * cos(2x) * cos(4x) → sin(8x) / (8 sin(x))`
+///
+/// **Warning**: This introduces a division by sin(u), so it's only valid where sin(u) ≠ 0.
+/// The rule emits a domain_assumption warning.
+pub struct CosProductTelescopingRule;
+
+impl Rule for CosProductTelescopingRule {
+    fn name(&self) -> &str {
+        "CosProductTelescoping"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        _parent_ctx: &ParentContext,
+    ) -> Option<Rewrite> {
+        use num_bigint::BigInt;
+        use num_rational::BigRational;
+
+        // Flatten the product
+        let factors = crate::helpers::flatten_mul_chain(ctx, expr);
+
+        // We need at least 2 cosine factors
+        if factors.len() < 2 {
+            return None;
+        }
+
+        // Extract cosine arguments: look for cos(k*u) pattern
+        // Collect (factor_idx, multiplier_k, base_arg_u)
+        let mut cos_info: Vec<(usize, i64, ExprId)> = Vec::new();
+
+        for (i, &f) in factors.iter().enumerate() {
+            if let Expr::Function(name, args) = ctx.get(f) {
+                if name == "cos" && args.len() == 1 {
+                    let arg = args[0];
+                    // Try to extract k and u from: k*u or just u (k=1)
+                    let (k, u) = extract_multiplier_and_base(ctx, arg);
+                    cos_info.push((i, k, u));
+                }
+            }
+        }
+
+        // Need at least 2 cosines
+        if cos_info.len() < 2 {
+            return None;
+        }
+
+        // Check if the multipliers form a geometric sequence with ratio 2
+        // i.e., {1, 2, 4, ...} or {a, 2a, 4a, ...}
+        // First, group by base expression
+        // For simplicity, check if all have the same base u
+        let base_u = cos_info[0].2;
+        let mut multipliers: Vec<i64> = Vec::new();
+
+        for (_, k, u) in &cos_info {
+            // Check same base (structural equality)
+            if *u != base_u {
+                return None; // Different bases
+            }
+            multipliers.push(*k);
+        }
+
+        // Sort multipliers
+        multipliers.sort();
+
+        // Check for {1, 2, 4, ...} pattern (powers of 2 starting from 1)
+        // or more generally {a, 2a, 4a, ...} (powers of 2 times a)
+        let base_mult = multipliers[0];
+        if base_mult <= 0 {
+            return None;
+        }
+
+        let n = multipliers.len();
+        for (i, &m) in multipliers.iter().enumerate() {
+            let expected = base_mult * (1i64 << i); // base * 2^i
+            if m != expected {
+                return None; // Not a power-of-2 sequence
+            }
+        }
+
+        // Pattern matches! Apply Morrie's law
+        // Result: sin(2^n * base_mult * u) / (2^n * sin(base_mult * u))
+        let power_of_2 = 1i64 << n; // 2^n
+        let final_mult = base_mult * power_of_2; // 2^n * base_mult
+
+        // Build final_mult * u
+        let final_mult_num = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
+            final_mult,
+        ))));
+        let final_arg = ctx.add(Expr::Mul(final_mult_num, base_u));
+
+        // Build base_mult * u (argument for sin in denominator)
+        let base_mult_num = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
+            base_mult,
+        ))));
+        let base_arg = if base_mult == 1 {
+            base_u
+        } else {
+            ctx.add(Expr::Mul(base_mult_num, base_u))
+        };
+
+        // Build sin(final_arg) and sin(base_arg)
+        let sin_num = ctx.add(Expr::Function("sin".to_string(), vec![final_arg]));
+        let sin_den = ctx.add(Expr::Function("sin".to_string(), vec![base_arg]));
+
+        // Build 2^n * sin(base_arg)
+        let power_of_2_num = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
+            power_of_2,
+        ))));
+        let denominator = ctx.add(Expr::Mul(power_of_2_num, sin_den));
+
+        // Build sin(final_arg) / (2^n * sin(base_arg))
+        let result = ctx.add(Expr::Div(sin_num, denominator));
+
+        Some(Rewrite {
+            new_expr: result,
+            description: format!(
+                "cos telescoping (Morrie's law): cos(u)·cos(2u)·...·cos(2^{}u) → sin(2^{}u)/(2^{}·sin(u))",
+                n - 1, n, n
+            ),
+            before_local: None,
+            after_local: None,
+            domain_assumption: Some("Assuming sin(u) ≠ 0 (used for integration transforms)"),
+        })
+    }
+}
+
+/// Extract multiplier k and base expression u from k*u or just u (k=1).
+fn extract_multiplier_and_base(ctx: &Context, expr: ExprId) -> (i64, ExprId) {
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        // Check if left is a number
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n.is_integer() {
+                if let Some(k) = n.to_integer().try_into().ok() {
+                    return (k, *r);
+                }
+            }
+        }
+        // Check if right is a number (canonical form puts numbers first, but be safe)
+        if let Expr::Number(n) = ctx.get(*r) {
+            if n.is_integer() {
+                if let Some(k) = n.to_integer().try_into().ok() {
+                    return (k, *l);
+                }
+            }
+        }
+    }
+    // No multiplier: k=1, u=expr
+    (1, expr)
+}
+
 /// Register integration preparation rules.
 pub fn register_integration_prep(simplifier: &mut Simplifier) {
     simplifier.add_rule(Box::new(ProductToSumRule));
-    // TODO: Add CosProductTelescopingRule (Morrie's law)
+    simplifier.add_rule(Box::new(CosProductTelescopingRule));
 }
 
 #[cfg(test)]
@@ -114,6 +270,31 @@ mod tests {
         assert!(
             result.is_some(),
             "ProductToSum should match 2*sin(x)*cos(y)"
+        );
+    }
+
+    #[test]
+    fn test_cos_product_telescoping() {
+        let mut ctx = Context::new();
+        // cos(x) * cos(2*x) * cos(4*x) -> sin(8*x) / (8*sin(x))
+        let expr = parse("cos(x)*cos(2*x)*cos(4*x)", &mut ctx).unwrap();
+
+        let rule = CosProductTelescopingRule;
+        let result = rule.apply(&mut ctx, expr, &ParentContext::root());
+
+        assert!(
+            result.is_some(),
+            "CosProductTelescoping should match cos(x)*cos(2x)*cos(4x)"
+        );
+
+        let rewrite = result.unwrap();
+        assert!(
+            rewrite.domain_assumption.is_some(),
+            "Should have domain_assumption warning"
+        );
+        assert!(
+            rewrite.domain_assumption.unwrap().contains("sin(u) ≠ 0"),
+            "Warning should mention sin(u) ≠ 0"
         );
     }
 }
