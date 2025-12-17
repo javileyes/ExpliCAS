@@ -1,9 +1,9 @@
 //! Rule Profile Caching
 //!
 //! Caches rule profiles to avoid rebuilding rules on each evaluation.
-//! Profiles are keyed by (BranchMode, ContextMode) combination.
+//! Profiles are keyed by (BranchMode, ContextMode, ComplexMode) combination.
 
-use crate::options::{BranchMode, ContextMode, EvalOptions};
+use crate::options::{BranchMode, ComplexMode, ContextMode, EvalOptions};
 use crate::rule::Rule;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -13,6 +13,7 @@ use std::sync::Arc;
 pub struct ProfileKey {
     pub branch_mode: BranchMode,
     pub context_mode: ContextMode,
+    pub complex_mode: ComplexMode,
 }
 
 impl ProfileKey {
@@ -20,6 +21,7 @@ impl ProfileKey {
         Self {
             branch_mode: opts.branch_mode,
             context_mode: opts.context_mode,
+            complex_mode: opts.complex_mode,
         }
     }
 }

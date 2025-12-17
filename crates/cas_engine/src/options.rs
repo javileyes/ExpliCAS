@@ -46,6 +46,24 @@ pub enum ContextMode {
     IntegratePrep,
 }
 
+/// Complex mode controls whether complex number rules are applied.
+///
+/// - `Auto`: Detect if expression contains `i`; if so, enable complex rules
+/// - `Off`: Never apply complex rules (i remains literal)
+/// - `On`: Always apply complex rules (i² = -1, gaussian arithmetic)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ComplexMode {
+    /// Auto-detect: if expression contains `i`, enable complex rules
+    #[default]
+    Auto,
+
+    /// Complex rules disabled: `i` is treated as a literal constant
+    Off,
+
+    /// Complex rules enabled: i² = -1, gaussian arithmetic
+    On,
+}
+
 /// Evaluation options for expression processing.
 ///
 /// Stored in `SessionState` for persistence, but can be overridden per request.
@@ -55,6 +73,8 @@ pub struct EvalOptions {
     pub branch_mode: BranchMode,
     /// Which context-specific rules to enable
     pub context_mode: ContextMode,
+    /// Whether to apply complex number rules
+    pub complex_mode: ComplexMode,
 }
 
 impl EvalOptions {
@@ -63,6 +83,7 @@ impl EvalOptions {
         Self {
             branch_mode: BranchMode::Strict,
             context_mode: ContextMode::Standard,
+            complex_mode: ComplexMode::Auto,
         }
     }
 
@@ -71,6 +92,7 @@ impl EvalOptions {
         Self {
             branch_mode: BranchMode::PrincipalBranch,
             context_mode: ContextMode::Auto,
+            complex_mode: ComplexMode::Auto,
         }
     }
 
@@ -79,6 +101,7 @@ impl EvalOptions {
         Self {
             branch_mode: BranchMode::Strict,
             context_mode: ContextMode::IntegratePrep,
+            complex_mode: ComplexMode::Auto,
         }
     }
 
@@ -87,6 +110,7 @@ impl EvalOptions {
         Self {
             branch_mode: BranchMode::Strict,
             context_mode: ContextMode::Solve,
+            complex_mode: ComplexMode::Auto,
         }
     }
 }

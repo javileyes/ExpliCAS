@@ -15,25 +15,36 @@ impl Engine {
         }
     }
 
-    /// Determine effective options, resolving ContextMode::Auto based on expression content.
+    /// Determine effective options, resolving Auto modes based on expression content.
+    /// - ContextMode::Auto → IntegratePrep if contains integrate(), else Standard
+    /// - ComplexMode::Auto → On if contains i, else Off
     fn effective_options(
         &self,
         opts: &crate::options::EvalOptions,
         expr: ExprId,
     ) -> crate::options::EvalOptions {
-        use crate::options::ContextMode;
+        use crate::options::{ComplexMode, ContextMode};
 
-        if opts.context_mode != ContextMode::Auto {
-            return opts.clone();
-        }
-
-        // Auto-detect: if expression contains integrate(), use IntegratePrep
         let mut effective = opts.clone();
-        if crate::helpers::contains_integral(&self.simplifier.context, expr) {
-            effective.context_mode = ContextMode::IntegratePrep;
-        } else {
-            effective.context_mode = ContextMode::Standard;
+
+        // Resolve ContextMode::Auto
+        if opts.context_mode == ContextMode::Auto {
+            if crate::helpers::contains_integral(&self.simplifier.context, expr) {
+                effective.context_mode = ContextMode::IntegratePrep;
+            } else {
+                effective.context_mode = ContextMode::Standard;
+            }
         }
+
+        // Resolve ComplexMode::Auto
+        if opts.complex_mode == ComplexMode::Auto {
+            if crate::helpers::contains_i(&self.simplifier.context, expr) {
+                effective.complex_mode = ComplexMode::On;
+            } else {
+                effective.complex_mode = ComplexMode::Off;
+            }
+        }
+
         effective
     }
 }

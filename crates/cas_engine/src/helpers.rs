@@ -1000,3 +1000,43 @@ pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
 
     false
 }
+
+/// Check if an expression contains the imaginary unit `i` anywhere.
+/// Searches the expression tree for `Constant::I`.
+/// Uses iterative traversal to avoid stack overflow on deep expressions.
+pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Constant(c) if *c == cas_ast::Constant::I => {
+                return true;
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => {
+                stack.push(*inner);
+            }
+            Expr::Function(_, args) => {
+                for arg in args {
+                    stack.push(*arg);
+                }
+            }
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    stack.push(*elem);
+                }
+            }
+            Expr::Div(num, den) => {
+                stack.push(*num);
+                stack.push(*den);
+            }
+            // Leaf nodes: nothing to push
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
