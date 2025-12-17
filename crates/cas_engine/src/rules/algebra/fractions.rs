@@ -1,5 +1,6 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
+use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, MultiPoly, PolyBudget};
 use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
@@ -9,6 +10,88 @@ use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 
 use super::helpers::*;
+
+// =============================================================================
+// Multivariate GCD (Layer 1: monomial + content)
+// =============================================================================
+
+/// Try to compute GCD of two expressions using multivariate polynomial representation.
+/// Returns None if expressions can't be converted to polynomials or if GCD is trivial (1).
+/// Returns Some((quotient_num, quotient_den, gcd_expr)) if non-trivial GCD found.
+fn try_multivar_gcd(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let budget = PolyBudget::default();
+
+    // Try to convert both to MultiPoly
+    let p_num = multipoly_from_expr(ctx, num, &budget).ok()?;
+    let p_den = multipoly_from_expr(ctx, den, &budget).ok()?;
+
+    // Skip if not multivariate (let univariate path handle it)
+    if p_num.vars.len() <= 1 {
+        return None;
+    }
+
+    // Align variables if needed
+    if p_num.vars != p_den.vars {
+        return None; // For now, require same vars
+    }
+
+    // Layer 1: Monomial GCD
+    let mono_gcd = p_num.monomial_gcd_with(&p_den).ok()?;
+    let has_mono_gcd = mono_gcd.iter().any(|&e| e > 0);
+
+    // Layer 1: Content GCD
+    let content_num = p_num.content();
+    let content_den = p_den.content();
+    let content_gcd = gcd_rational(content_num.clone(), content_den.clone());
+    let has_content_gcd = !content_gcd.is_one();
+
+    // If no GCD found at Layer 1, skip
+    if !has_mono_gcd && !has_content_gcd {
+        return None;
+    }
+
+    // Divide by monomial GCD
+    let (p_num, p_den) = if has_mono_gcd {
+        (
+            p_num.div_monomial_exact(&mono_gcd)?,
+            p_den.div_monomial_exact(&mono_gcd)?,
+        )
+    } else {
+        (p_num, p_den)
+    };
+
+    // Divide by content GCD
+    let (p_num, p_den) = if has_content_gcd {
+        (
+            p_num.div_scalar_exact(&content_gcd)?,
+            p_den.div_scalar_exact(&content_gcd)?,
+        )
+    } else {
+        (p_num, p_den)
+    };
+
+    // Build GCD expression (monomial * content)
+    let mut gcd_poly = MultiPoly::one(p_num.vars.clone());
+
+    if has_mono_gcd {
+        gcd_poly = gcd_poly.mul_monomial(&mono_gcd).ok()?;
+    }
+
+    if has_content_gcd {
+        gcd_poly = gcd_poly.mul_scalar(&content_gcd);
+    }
+
+    // Convert back to expressions
+    let new_num = multipoly_to_expr(&p_num, ctx);
+    let new_den = multipoly_to_expr(&p_den, ctx);
+    let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
+
+    Some((new_num, new_den, gcd_expr))
+}
 
 // ========== Helper to extract fraction parts from both Div and Mul(1/n,x) ==========
 // This is needed because canonicalization may convert Div(x,n) to Mul(1/n,x)
@@ -125,10 +208,62 @@ define_rule!(
         let view = RationalFnView::from(ctx, expr)?;
         let (num, den) = (view.num, view.den);
 
-        // 1. Identify variable
+        // 0. Try multivariate GCD first (Layer 1: monomial + content)
         let vars = collect_variables(ctx, expr);
+        if vars.len() > 1 {
+            if let Some((new_num, new_den, gcd_expr)) = try_multivar_gcd(ctx, num, den) {
+                // Build factored form for display
+                let factored_num = mul2_raw(ctx, new_num, gcd_expr);
+                let factored_den = if let Expr::Number(n) = ctx.get(new_den) {
+                    if n.is_one() {
+                        gcd_expr
+                    } else {
+                        mul2_raw(ctx, new_den, gcd_expr)
+                    }
+                } else {
+                    mul2_raw(ctx, new_den, gcd_expr)
+                };
+                let factored_form = ctx.add(Expr::Div(factored_num, factored_den));
+
+                // If denominator is 1, return just numerator
+                if let Expr::Number(n) = ctx.get(new_den) {
+                    if n.is_one() {
+                        return Some(Rewrite {
+                            new_expr: new_num,
+                            description: format!(
+                                "Simplified fraction by GCD: {}",
+                                DisplayExpr {
+                                    context: ctx,
+                                    id: gcd_expr
+                                }
+                            ),
+                            before_local: Some(factored_form),
+                            after_local: Some(new_num),
+                            domain_assumption: None,
+                        });
+                    }
+                }
+
+                let result = ctx.add(Expr::Div(new_num, new_den));
+                return Some(Rewrite {
+                    new_expr: result,
+                    description: format!(
+                        "Simplified fraction by GCD: {}",
+                        DisplayExpr {
+                            context: ctx,
+                            id: gcd_expr
+                        }
+                    ),
+                    before_local: Some(factored_form),
+                    after_local: Some(result),
+                    domain_assumption: None,
+                });
+            }
+        }
+
+        // 1. Univariate path: require single variable
         if vars.len() != 1 {
-            return None; // Only univariate for now
+            return None;
         }
         let var = vars.iter().next().unwrap();
 
