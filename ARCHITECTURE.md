@@ -11,6 +11,7 @@
    - [2.5. `cas_engine` - Pattern Detection Infrastructure ★★★](#25-cas_engine---pattern-detection-infrastructure-)
    - [2.9. `cas_engine` - Context Mode ★★ (2025-12)](#29-cas_engine---context-mode--2025-12)
    - [2.10. `cas_engine` - Rule Priority System ★★ (2025-12)](#210-cas_engine---rule-priority-system--2025-12)
+   - [2.11. `cas_engine` - Profile Cache ★★ (2025-12)](#211-cas_engine---profile-cache--2025-12)
    - [2.6. N-ary Pattern Matching (Add/Mul Flattening) ★★](#26-n-ary-pattern-matching-addmul-flattening-)
    - [2.7. Patrón de Negación Generalizada ★★★](#27-patrón-de-negación-generalizada-)
    - [2.8. `cas_engine` - Semantic Equality + nf_score (aceptación de rewrites) ★★★](#28-cas_engine---semantic-equality--nf_score-aceptación-de-rewrites-)
@@ -993,6 +994,78 @@ Inicialmente se intentó `(priority desc, name asc)` pero causó regresiones:
 - Cambiar a orden alfabético rompió simplificaciones existentes
 
 **Solución**: Priority-only con insertion order para empates.
+
+---
+
+### 2.11. `cas_engine` - Profile Cache ★★ (2025-12)
+
+**Motivación**: Evitar reconstruir ~30 reglas en cada evaluación. Cada perfil (Standard, Solve, IntegratePrep) se construye una vez y se reutiliza.
+
+#### Arquitectura
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      SessionState                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐│
+│  │   store     │  │    env      │  │   profile_cache      ││
+│  │ SessionStore│  │ Environment │  │   ProfileCache       ││
+│  └─────────────┘  └─────────────┘  └──────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                      ┌───────────────────┐
+                      │   ProfileCache    │
+                      │ ┌───────────────┐ │
+                      │ │ Standard → Arc│ │
+                      │ │ Solve    → Arc│ │
+                      │ │ IntPrep  → Arc│ │
+                      │ └───────────────┘ │
+                      └───────────────────┘
+```
+
+#### Componentes Clave
+
+| Struct | Ubicación | Descripción |
+|--------|-----------|-------------|
+| `ProfileKey` | `profile_cache.rs` | `(BranchMode, ContextMode)` para cache key |
+| `RuleProfile` | `profile_cache.rs` | Reglas pre-construidas + disabled set |
+| `ProfileCache` | `profile_cache.rs` | HashMap-based cache de profiles |
+
+#### API
+
+```rust
+// SessionState contiene el cache
+pub struct SessionState {
+    pub profile_cache: ProfileCache,
+    // ...
+}
+
+// Engine::eval usa el cache automáticamente
+let effective_opts = self.effective_options(&state.options, expr);
+let profile = state.profile_cache.get_or_build(&effective_opts);
+let simplifier = Simplifier::from_profile(profile);
+```
+
+#### Flujo
+
+1. **Primera evaluación**: `get_or_build()` construye perfil y lo cachea
+2. **Siguientes evaluaciones**: devuelve `Arc` cacheado (O(1))
+3. **Cambio de modo**: construye nuevo perfil para ese modo
+
+#### Tests
+
+```rust
+// profile_cache.rs
+test_profile_reuse                        // Arc::ptr_eq confirma reuso
+test_different_modes_different_profiles   // Modos distintos = perfiles distintos
+test_no_rebuild_multiple_calls            // 100 calls = 1 build
+test_from_profile_end_to_end              // Simplify funciona con profile cacheado
+```
+
+#### Comportamiento de `reset`
+
+- `state.clear()` → limpia store/env, **NO** limpia cache
+- Cache persiste durante sesión (optimización sin afectar resultados)
 
 ---
 

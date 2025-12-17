@@ -1,15 +1,19 @@
 use crate::env::Environment;
 use crate::options::EvalOptions;
+use crate::profile_cache::ProfileCache;
 use crate::session::{resolve_session_refs, ResolveError, SessionStore};
 use cas_ast::{Context, ExprId};
 
 /// bundled session state for portability (GUI/Web/CLI)
-#[derive(Default, Debug, Clone)]
+/// NOTE: Cannot derive Clone due to ProfileCache
+#[derive(Default, Debug)]
 pub struct SessionState {
     pub store: SessionStore,
     pub env: Environment,
     /// Evaluation options (branch mode, context mode, etc.)
     pub options: EvalOptions,
+    /// Cached rule profiles for performance
+    pub profile_cache: ProfileCache,
 }
 
 // Backwards compatibility: expose assumptions as alias
@@ -25,6 +29,7 @@ impl SessionState {
             store: SessionStore::new(),
             env: Environment::new(),
             options: EvalOptions::default(),
+            profile_cache: ProfileCache::new(),
         }
     }
 

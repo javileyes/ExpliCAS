@@ -39,7 +39,7 @@ pub struct RuleProfile {
 }
 
 /// Cache for rule profiles, reusing rules across Simplifier instances.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ProfileCache {
     profiles: HashMap<ProfileKey, Arc<RuleProfile>>,
 }

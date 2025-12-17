@@ -91,6 +91,18 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
         -   `2·sin(A)·cos(B) → sin(A+B) + sin(A-B)` (Werner product-to-sum)
         -   `cos(x)·cos(2x)·cos(4x) → sin(8x)/(8·sin(x))` (Morrie's law telescoping)
     -   Domain warnings are deduplicated and show their source rule.
+-   **Profile Cache** ★ (2025-12):
+    -   Rule profiles cached automatically in `SessionState` to avoid rebuilding ~30 rules per evaluation.
+    -   First evaluation builds and caches the profile; subsequent evaluations reuse `Arc<RuleProfile>`.
+    -   **Library Usage**:
+        ```rust
+        use cas_engine::{SessionState, Simplifier};
+        
+        let mut state = SessionState::new();
+        let profile = state.profile_cache.get_or_build(&opts);
+        let simplifier = Simplifier::from_profile(profile);
+        ```
+    -   See [ARCHITECTURE.md](ARCHITECTURE.md#211-cas_engine---profile-cache--2025-12) for implementation details.
 
 ## Getting Started
 

@@ -144,8 +144,11 @@ impl Engine {
                 // Determine effective context mode for this request
                 let effective_opts = self.effective_options(&state.options, resolved);
 
-                // Rebuild simplifier with appropriate rules for this context
-                let mut ctx_simplifier = Simplifier::with_profile(&effective_opts);
+                // Get cached profile (or build once and cache)
+                let profile = state.profile_cache.get_or_build(&effective_opts);
+
+                // Create simplifier from cached profile
+                let mut ctx_simplifier = Simplifier::from_profile(profile);
                 // Transfer the context (expressions)
                 ctx_simplifier.context = std::mem::take(&mut self.simplifier.context);
 
