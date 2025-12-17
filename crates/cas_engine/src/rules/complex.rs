@@ -308,6 +308,7 @@ define_rule!(GaussianMulRule, "Gaussian Multiplication", |ctx, expr| {
 
 // ============================================================================
 // GaussianAddRule: (a + bi) + (c + di) → (a + c) + (b + d)i
+// Only fires when combining two non-trivial gaussian expressions
 // ============================================================================
 
 define_rule!(GaussianAddRule, "Gaussian Addition", |ctx, expr| {
@@ -323,6 +324,21 @@ define_rule!(GaussianAddRule, "Gaussian Addition", |ctx, expr| {
         // Skip if both are pure real (regular addition handles it)
         if left.is_real() && right.is_real() {
             return None;
+        }
+
+        // Skip if one side is already a + b*i form and the other is just a number
+        // This prevents rewriting "a + b*i" to "a + b*i" (no-op)
+        // Only combine when BOTH sides have imaginary components OR
+        // when we're genuinely combining separate complex numbers
+        if (left.is_real() && !right.is_real()) || (!left.is_real() && right.is_real()) {
+            // One is real, one is complex - this is already canonical form a + bi
+            // Check if this is exactly (real) + (imag*i) pattern
+            if left.is_real() && right.is_pure_imag() {
+                return None; // Already in a + bi form
+            }
+            if right.is_real() && left.is_pure_imag() {
+                return None; // Already in bi + a form (unusual but valid)
+            }
         }
 
         // (a + bi) + (c + di) = (a + c) + (b + d)i
@@ -344,6 +360,67 @@ define_rule!(GaussianAddRule, "Gaussian Addition", |ctx, expr| {
 });
 
 // ============================================================================
+// GaussianDivRule: (a + bi) / (c + di) → conjugate method
+// (a+bi)/(c+di) = (a+bi)(c-di) / (c+di)(c-di) = (ac+bd + (bc-ad)i) / (c²+d²)
+// ============================================================================
+
+define_rule!(GaussianDivRule, "Gaussian Division", |ctx, expr| {
+    // (a + bi) / (c + di) → using conjugate method
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        let num = *num;
+        let den = *den;
+
+        // Try to extract gaussian rationals from both sides
+        let numerator = extract_gaussian(ctx, num)?;
+        let denominator = extract_gaussian(ctx, den)?;
+
+        // Skip if denominator is pure real (regular division handles it)
+        if denominator.is_real() {
+            return None;
+        }
+
+        // Skip if numerator is pure real and denominator is pure real
+        if numerator.is_real() && denominator.is_real() {
+            return None;
+        }
+
+        // (a + bi) / (c + di) = (ac + bd) / (c² + d²) + (bc - ad) / (c² + d²) · i
+        let a = &numerator.real;
+        let b = &numerator.imag;
+        let c = &denominator.real;
+        let d = &denominator.imag;
+
+        // Denominator magnitude squared: c² + d²
+        let denom_sq = c * c + d * d;
+
+        // Check for division by zero
+        if denom_sq.is_zero() {
+            return None; // Let other rules handle undefined
+        }
+
+        // Real part: (ac + bd) / (c² + d²)
+        let real_num = a * c + b * d;
+        let real_part = &real_num / &denom_sq;
+
+        // Imaginary part: (bc - ad) / (c² + d²)
+        let imag_num = b * c - a * d;
+        let imag_part = &imag_num / &denom_sq;
+
+        let result = GaussianRational::new(real_part, imag_part);
+        let new_expr = result.to_expr(ctx);
+
+        return Some(Rewrite {
+            new_expr,
+            description: "Gaussian division: (a+bi)/(c+di) using conjugate".to_string(),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        });
+    }
+    None
+});
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -352,6 +429,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ISquaredMulRule));
     simplifier.add_rule(Box::new(GaussianMulRule));
     simplifier.add_rule(Box::new(GaussianAddRule));
+    simplifier.add_rule(Box::new(GaussianDivRule));
 }
 
 // ============================================================================

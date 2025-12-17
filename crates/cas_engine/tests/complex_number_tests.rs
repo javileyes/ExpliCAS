@@ -195,3 +195,67 @@ fn test_parser_i_in_expression() {
     // Just verify it parses without error and contains i
     assert!(display.contains("i"), "Expression should contain i");
 }
+
+// =============================================================================
+// SECTION 7: Gaussian Division
+// =============================================================================
+
+#[test]
+fn test_gaussian_div_simple() {
+    // (1+i)/(1-i) = i
+    let result = simplify_with("(1+i)/(1-i)", &complex_on_opts());
+    assert_eq!(result, "i", "(1+i)/(1-i) = i");
+}
+
+#[test]
+fn test_gaussian_div_one_over_i() {
+    // 1/i = -i
+    let result = simplify_with("1/i", &complex_on_opts());
+    assert_eq!(result, "-i", "1/i = -i");
+}
+
+// =============================================================================
+// SECTION 8: Regression Tests - No infinite loops
+// =============================================================================
+
+/// Helper that returns step count along with result
+fn simplify_with_steps(input: &str, opts: &EvalOptions) -> (String, usize) {
+    let mut ctx = Context::new();
+    let expr = parse(input, &mut ctx).expect("Failed to parse");
+
+    let mut simplifier = Simplifier::with_profile(opts);
+    simplifier.context = ctx;
+    let (result, steps) = simplifier.simplify(expr);
+
+    let result_str = format!(
+        "{}",
+        cas_ast::DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+    (result_str, steps.len())
+}
+
+#[test]
+fn test_gaussian_div_no_infinite_loop() {
+    // Regression test: (3+4i)/(1+2i) should not cause infinite loop
+    // Expected result: 11/5 - 2/5*i (or equivalent)
+    // This used to cause depth>500 warnings due to ping-pong between rules
+    let (result, step_count) = simplify_with_steps("(3+4*i)/(1+2*i)", &complex_on_opts());
+
+    // Should complete in reasonable number of steps (< 20)
+    assert!(
+        step_count < 20,
+        "Gaussian division should not cause excessive rewrites. Got {} steps for result: {}",
+        step_count,
+        result
+    );
+
+    // Result should contain the expected values
+    assert!(
+        result.contains("11") && result.contains("5"),
+        "Result should be 11/5 - 2/5*i, got: {}",
+        result
+    );
+}
