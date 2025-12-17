@@ -75,6 +75,11 @@ pub trait SimpleRule {
     fn allowed_phases(&self) -> PhaseMask {
         PhaseMask::CORE | PhaseMask::POST
     }
+
+    /// Priority for rule ordering (higher = applied first). Default: 0
+    fn priority(&self) -> i32 {
+        0
+    }
 }
 
 /// Main Rule trait with parent-context awareness
@@ -103,6 +108,12 @@ pub trait Rule {
     fn allowed_phases(&self) -> PhaseMask {
         PhaseMask::CORE | PhaseMask::POST
     }
+
+    /// Priority for rule ordering (higher = applied first). Default: 0
+    /// Use higher values for rules that should match before more general rules.
+    fn priority(&self) -> i32 {
+        0
+    }
 }
 
 /// Auto-implement Rule for any SimpleRule
@@ -127,5 +138,9 @@ impl<T: SimpleRule> Rule for T {
 
     fn allowed_phases(&self) -> PhaseMask {
         SimpleRule::allowed_phases(self)
+    }
+
+    fn priority(&self) -> i32 {
+        SimpleRule::priority(self)
     }
 }

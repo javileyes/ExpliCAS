@@ -23,7 +23,9 @@ impl Rule for ProductToSumRule {
         "ProductToSum"
     }
 
-    // Uses default allowed_phases (CORE | POST)
+    fn priority(&self) -> i32 {
+        50 // Medium priority for Werner formulas
+    }
 
     fn apply(
         &self,
@@ -109,6 +111,10 @@ impl Rule for CosProductTelescopingRule {
 
     fn target_types(&self) -> Option<Vec<&str>> {
         Some(vec!["Mul"])
+    }
+
+    fn priority(&self) -> i32 {
+        100 // High priority - must match before general identity rules
     }
 
     fn apply(

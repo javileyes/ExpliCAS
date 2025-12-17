@@ -274,13 +274,24 @@ impl Simplifier {
 
         if let Some(targets) = rule_rc.target_types() {
             for target in targets {
-                self.rules
-                    .entry(target.to_string())
-                    .or_default()
-                    .push(rule_rc.clone());
+                let vec = self.rules.entry(target.to_string()).or_default();
+                // Insert maintaining descending priority order
+                let priority = rule_rc.priority();
+                let pos = vec
+                    .iter()
+                    .position(|r| r.priority() < priority)
+                    .unwrap_or(vec.len());
+                vec.insert(pos, rule_rc.clone());
             }
         } else {
-            self.global_rules.push(rule_rc);
+            // Insert into global_rules maintaining descending priority order
+            let priority = rule_rc.priority();
+            let pos = self
+                .global_rules
+                .iter()
+                .position(|r| r.priority() < priority)
+                .unwrap_or(self.global_rules.len());
+            self.global_rules.insert(pos, rule_rc);
         }
     }
 
