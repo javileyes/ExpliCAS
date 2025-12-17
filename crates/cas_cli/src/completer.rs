@@ -48,6 +48,7 @@ impl CasHelper {
                 "vars".to_string(),
                 "clear".to_string(),
                 "reset".to_string(),
+                "mode".to_string(),
                 "history".to_string(),
                 "list".to_string(),
                 "show".to_string(),
@@ -155,6 +156,26 @@ impl Completer for CasHelper {
                         matches.push(Pair {
                             display: level.to_string(),
                             replacement: level.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+        }
+
+        // Check for "mode" context
+        if line.starts_with("mode ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+
+            // Case: "mode <TAB>" or "mode st<TAB>"
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let modes = vec!["strict", "principal"];
+                for m in modes {
+                    if m.starts_with(word) {
+                        matches.push(Pair {
+                            display: m.to_string(),
+                            replacement: m.to_string(),
                         });
                     }
                 }
