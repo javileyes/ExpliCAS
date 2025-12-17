@@ -182,8 +182,13 @@ impl Simplifier {
                 crate::rules::integration::register_integration_prep(&mut s);
             }
             ContextMode::Solve => {
-                // TODO: register solve prep rules
-                // crate::rules::solve_prep::register_solve_prep(&mut s);
+                // Disable rules that introduce abs() which can cause issues with solver strategies
+                // SimplifySqrtSquareRule: sqrt(x^2) -> |x|
+                // SimplifySqrtOddPowerRule: x^(3/2) -> |x|·sqrt(x)
+                s.disabled_rules
+                    .insert("Simplify Square Root of Square".to_string());
+                s.disabled_rules
+                    .insert("Simplify Odd Half-Integer Power".to_string());
             }
             ContextMode::Auto | ContextMode::Standard => {
                 // Standard rules only (already registered)
