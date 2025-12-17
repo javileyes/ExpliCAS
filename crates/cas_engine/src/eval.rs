@@ -14,6 +14,28 @@ impl Engine {
             simplifier: Simplifier::with_default_rules(),
         }
     }
+
+    /// Determine effective options, resolving ContextMode::Auto based on expression content.
+    fn effective_options(
+        &self,
+        opts: &crate::options::EvalOptions,
+        expr: ExprId,
+    ) -> crate::options::EvalOptions {
+        use crate::options::ContextMode;
+
+        if opts.context_mode != ContextMode::Auto {
+            return opts.clone();
+        }
+
+        // Auto-detect: if expression contains integrate(), use IntegratePrep
+        let mut effective = opts.clone();
+        if crate::helpers::contains_integral(&self.simplifier.context, expr) {
+            effective.context_mode = ContextMode::IntegratePrep;
+        } else {
+            effective.context_mode = ContextMode::Standard;
+        }
+        effective
+    }
 }
 
 impl Default for Engine {
@@ -88,7 +110,19 @@ impl Engine {
         // 3. Dispatch Action -> produce EvalResult
         let (result, domain_warnings, steps, solve_steps) = match req.action {
             EvalAction::Simplify => {
-                let (res, steps) = self.simplifier.simplify(resolved);
+                // Determine effective context mode for this request
+                let effective_opts = self.effective_options(&state.options, resolved);
+
+                // Rebuild simplifier with appropriate rules for this context
+                let mut ctx_simplifier = Simplifier::with_profile(&effective_opts);
+                // Transfer the context (expressions)
+                ctx_simplifier.context = std::mem::take(&mut self.simplifier.context);
+
+                let (res, steps) = ctx_simplifier.simplify(resolved);
+
+                // Transfer context back
+                self.simplifier.context = ctx_simplifier.context;
+
                 // Collect domain assumptions from steps
                 let warnings: Vec<String> = steps
                     .iter()
