@@ -768,6 +768,12 @@ impl Repl {
             return;
         }
 
+        // "complex" - show/switch complex mode (auto, on, off)
+        if line == "complex" || line.starts_with("complex ") {
+            self.handle_complex_command(&line);
+            return;
+        }
+
         // "history" or "list" - show session history
         if line == "history" || line == "list" {
             self.handle_history_command();
@@ -2432,6 +2438,60 @@ impl Repl {
             Some(other) => {
                 println!("Unknown context: '{}'", other);
                 println!("Usage: context [auto | standard | solve | integrate]");
+            }
+        }
+    }
+
+    /// Handle "complex" command - show or switch complex mode
+    fn handle_complex_command(&mut self, line: &str) {
+        use cas_engine::options::ComplexMode;
+
+        let args: Vec<&str> = line.split_whitespace().collect();
+
+        match args.get(1) {
+            None => {
+                // Just "complex" - show current mode
+                let mode_str = match self.state.options.complex_mode {
+                    ComplexMode::Auto => "auto",
+                    ComplexMode::Off => "off",
+                    ComplexMode::On => "on",
+                };
+                println!("Complex mode: {}", mode_str);
+                match self.state.options.complex_mode {
+                    ComplexMode::Auto => {
+                        println!("  Auto: complex rules apply when `i` is detected")
+                    }
+                    ComplexMode::Off => println!("  Off: `i` is treated as literal constant"),
+                    ComplexMode::On => println!("  On: complex rules always apply (i² = -1)"),
+                }
+            }
+            Some(&"auto") => {
+                self.state.options.complex_mode = ComplexMode::Auto;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                println!("Complex mode: auto");
+                println!("  Complex rules apply when `i` is detected in expression.");
+            }
+            Some(&"off") => {
+                self.state.options.complex_mode = ComplexMode::Off;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                println!("Complex mode: off");
+                println!("  `i` is treated as a literal constant (no simplification).");
+            }
+            Some(&"on") => {
+                self.state.options.complex_mode = ComplexMode::On;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                println!("Complex mode: on");
+                println!("  Complex rules always apply: i² = -1, gaussian arithmetic.");
+            }
+            Some(other) => {
+                println!("Unknown complex mode: '{}'", other);
+                println!("Usage: complex [auto | on | off]");
+                println!("  auto - Enable when `i` detected (default)");
+                println!("  on   - Always enable complex rules");
+                println!("  off  - Treat `i` as literal constant");
             }
         }
     }
