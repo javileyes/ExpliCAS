@@ -524,6 +524,339 @@ impl MultiPoly {
 }
 
 // =============================================================================
+// Layer 2: Evaluation, Interpolation, Heuristic GCD
+// =============================================================================
+
+use crate::polynomial::Polynomial;
+
+impl MultiPoly {
+    /// Evaluate a single variable to a rational value
+    /// Returns a new polynomial with one fewer variable
+    pub fn eval_var(&self, var_idx: VarIdx, val: &BigRational) -> Self {
+        if var_idx >= self.vars.len() {
+            return self.clone();
+        }
+
+        let mut new_vars = self.vars.clone();
+        new_vars.remove(var_idx);
+
+        let mut map: BTreeMap<Monomial, BigRational> = BTreeMap::new();
+
+        for (coeff, mono) in &self.terms {
+            let exp = mono[var_idx];
+            // Compute val^exp
+            let mut val_pow = BigRational::one();
+            for _ in 0..exp {
+                val_pow = val_pow * val;
+            }
+            // New coefficient = old_coeff * val^exp
+            let new_coeff = coeff * &val_pow;
+
+            // New monomial without this variable
+            let mut new_mono = mono.clone();
+            new_mono.remove(var_idx);
+
+            let entry = map.entry(new_mono).or_insert_with(BigRational::zero);
+            *entry = entry.clone() + new_coeff;
+        }
+
+        Self::from_map(new_vars, map)
+    }
+
+    /// Evaluate all variables except main_var, returns univariate Polynomial
+    pub fn eval_to_univariate(
+        &self,
+        main_var: VarIdx,
+        assigns: &[(VarIdx, BigRational)],
+    ) -> Option<Polynomial> {
+        if main_var >= self.vars.len() {
+            return None;
+        }
+
+        // Apply all assignments
+        let mut p = self.clone();
+        // Sort assigns in reverse order so indices don't shift
+        let mut sorted_assigns: Vec<_> = assigns.iter().cloned().collect();
+        sorted_assigns.sort_by(|a, b| b.0.cmp(&a.0));
+
+        for (var, val) in sorted_assigns {
+            if var != main_var && var < p.vars.len() {
+                p = p.eval_var(var, &val);
+            }
+        }
+
+        // Now p should have only main_var (at new index 0 since others removed)
+        if p.vars.len() != 1 {
+            return None;
+        }
+
+        // Convert to Polynomial
+        let var_name = p.vars[0].clone();
+        let max_deg = p.degree_in(0);
+        let mut coeffs = vec![BigRational::zero(); (max_deg + 1) as usize];
+
+        for (coeff, mono) in &p.terms {
+            let exp = mono[0] as usize;
+            if exp < coeffs.len() {
+                coeffs[exp] = coeff.clone();
+            }
+        }
+
+        Some(Polynomial::new(coeffs, var_name))
+    }
+}
+
+/// Budget for heuristic GCD computation
+#[derive(Clone, Debug)]
+pub struct GcdBudget {
+    pub max_points: usize,
+    pub max_total_terms: usize,
+}
+
+impl Default for GcdBudget {
+    fn default() -> Self {
+        Self {
+            max_points: 8,
+            max_total_terms: 200,
+        }
+    }
+}
+
+/// Compute scaled GCD of two univariate polynomials
+/// Returns gcd * gcd(lc(p), lc(q)) to preserve parameter-dependent factors
+fn scaled_gcd_sample(p: &Polynomial, q: &Polynomial) -> Option<Polynomial> {
+    if p.is_zero() {
+        return Some(q.clone());
+    }
+    if q.is_zero() {
+        return Some(p.clone());
+    }
+
+    // Compute monic GCD
+    let g = p.gcd(q);
+    if g.is_zero() {
+        return Some(g);
+    }
+
+    // Scale by gcd of leading coefficients
+    let lc_p = p.leading_coeff();
+    let lc_q = q.leading_coeff();
+    let lc_gcd = gcd_bigrational(&lc_p, &lc_q);
+
+    // Multiply g by lc_gcd
+    let scale = Polynomial::new(vec![lc_gcd], g.var.clone());
+    Some(g.mul(&scale))
+}
+
+/// Lagrange interpolation: given points (x_i, y_i), find polynomial P with P(x_i) = y_i
+fn interpolate_lagrange(points: &[(BigRational, BigRational)], var: &str) -> Option<Polynomial> {
+    if points.is_empty() {
+        return None;
+    }
+    if points.len() == 1 {
+        // Constant polynomial
+        return Some(Polynomial::new(vec![points[0].1.clone()], var.to_string()));
+    }
+
+    let n = points.len();
+    let mut result = Polynomial::zero(var.to_string());
+
+    for i in 0..n {
+        let (xi, yi) = &points[i];
+
+        // Build Lagrange basis polynomial L_i(x) = prod_{j!=i} (x - x_j) / (x_i - x_j)
+        let mut basis = Polynomial::one(var.to_string());
+
+        for j in 0..n {
+            if i == j {
+                continue;
+            }
+            let (xj, _) = &points[j];
+
+            // (x - x_j)
+            let linear = Polynomial::new(vec![-xj.clone(), BigRational::one()], var.to_string());
+            basis = basis.mul(&linear);
+
+            // Divide by (x_i - x_j)
+            let denom = xi - xj;
+            if denom.is_zero() {
+                return None; // Duplicate x values
+            }
+            let inv_denom = BigRational::one() / denom;
+            let scale = Polynomial::new(vec![inv_denom], var.to_string());
+            basis = basis.mul(&scale);
+        }
+
+        // Add y_i * L_i(x)
+        let scale = Polynomial::new(vec![yi.clone()], var.to_string());
+        let term = basis.mul(&scale);
+        result = result.add(&term);
+    }
+
+    Some(result)
+}
+
+/// Heuristic multivariate GCD using evaluation and interpolation (2-variable case)
+pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> Option<MultiPoly> {
+    // Currently only handles 2 variables
+    if p.vars.len() != 2 || q.vars.len() != 2 {
+        return None;
+    }
+    if p.vars != q.vars {
+        return None;
+    }
+    if p.is_zero() || q.is_zero() {
+        return None;
+    }
+
+    let vars = &p.vars;
+
+    // Try both variables as main_var
+    for main_var in 0..2 {
+        let param_var = 1 - main_var;
+
+        // Expected max degree of GCD in main_var
+        let deg_p = p.degree_in(main_var);
+        let deg_q = q.degree_in(main_var);
+        let expected_gcd_deg = deg_p.min(deg_q);
+
+        if expected_gcd_deg == 0 {
+            continue; // Skip if expected trivial
+        }
+
+        // Expected max degree in param_var for coefficients
+        let param_deg_p = p.degree_in(param_var);
+        let param_deg_q = q.degree_in(param_var);
+        let max_coeff_deg = param_deg_p.min(param_deg_q);
+
+        // Need at least max_coeff_deg + 1 points for interpolation
+        let num_points = (max_coeff_deg as usize + 1).min(budget.max_points);
+
+        // Evaluation points: 0, 1, -1, 2, -2, ...
+        let eval_points: Vec<BigRational> = generate_eval_points(num_points);
+
+        // Collect (point, gcd_coeffs) for each evaluation
+        let mut samples: Vec<(BigRational, Polynomial)> = Vec::new();
+
+        for point in &eval_points {
+            // Evaluate param_var = point
+            let assigns = vec![(param_var, point.clone())];
+
+            let p_uni = p.eval_to_univariate(main_var, &assigns)?;
+            let q_uni = q.eval_to_univariate(main_var, &assigns)?;
+
+            // Skip if degree dropped (bad evaluation point)
+            if p_uni.degree() < deg_p as usize || q_uni.degree() < deg_q as usize {
+                continue;
+            }
+
+            // Compute scaled GCD
+            let g = scaled_gcd_sample(&p_uni, &q_uni)?;
+
+            // Check degrees are consistent
+            if !samples.is_empty() {
+                let first_deg = samples[0].1.degree();
+                if g.degree() != first_deg {
+                    // Inconsistent degrees, try different main_var
+                    break;
+                }
+            }
+
+            samples.push((point.clone(), g));
+
+            if samples.len() >= num_points {
+                break;
+            }
+        }
+
+        // Need enough points
+        if samples.len() < (max_coeff_deg as usize + 1) {
+            continue;
+        }
+
+        // Interpolate each coefficient of the GCD as polynomial in param_var
+        let gcd_deg = samples[0].1.degree();
+        let mut gcd_coeffs: Vec<Polynomial> = Vec::new();
+
+        for k in 0..=gcd_deg {
+            let points: Vec<(BigRational, BigRational)> = samples
+                .iter()
+                .map(|(pt, poly)| {
+                    let coeff = poly
+                        .coeffs
+                        .get(k)
+                        .cloned()
+                        .unwrap_or_else(BigRational::zero);
+                    (pt.clone(), coeff)
+                })
+                .collect();
+
+            let coeff_poly = interpolate_lagrange(&points, &vars[param_var])?;
+            gcd_coeffs.push(coeff_poly);
+        }
+
+        // Assemble candidate MultiPoly from interpolated coefficients
+        let candidate = assemble_candidate(vars, main_var, param_var, &gcd_coeffs)?;
+
+        // Verify by exact division
+        if let (Some(_q1), Some(_q2)) = (p.div_exact(&candidate), q.div_exact(&candidate)) {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+/// Generate evaluation points: 0, 1, -1, 2, -2, 3, -3, ...
+fn generate_eval_points(n: usize) -> Vec<BigRational> {
+    let mut points = Vec::with_capacity(n);
+    points.push(BigRational::zero());
+
+    let mut k = 1i64;
+    while points.len() < n {
+        points.push(BigRational::from_integer(k.into()));
+        if points.len() < n {
+            points.push(BigRational::from_integer((-k).into()));
+        }
+        k += 1;
+    }
+
+    points
+}
+
+/// Assemble MultiPoly from interpolated coefficients
+/// G(main, param) = sum_k coeff_k(param) * main^k
+fn assemble_candidate(
+    vars: &[String],
+    main_var: VarIdx,
+    param_var: VarIdx,
+    coeffs_in_param: &[Polynomial],
+) -> Option<MultiPoly> {
+    if vars.len() != 2 {
+        return None;
+    }
+
+    let mut map: BTreeMap<Monomial, BigRational> = BTreeMap::new();
+
+    for (k, coeff_poly) in coeffs_in_param.iter().enumerate() {
+        for (j, c) in coeff_poly.coeffs.iter().enumerate() {
+            if c.is_zero() {
+                continue;
+            }
+            // Monomial: main^k * param^j
+            let mut mono = vec![0u32; 2];
+            mono[main_var] = k as u32;
+            mono[param_var] = j as u32;
+
+            let entry = map.entry(mono).or_insert_with(BigRational::zero);
+            *entry = entry.clone() + c.clone();
+        }
+    }
+
+    Some(MultiPoly::from_map(vars.to_vec(), map))
+}
+
+// =============================================================================
 // AST Conversion
 // =============================================================================
 

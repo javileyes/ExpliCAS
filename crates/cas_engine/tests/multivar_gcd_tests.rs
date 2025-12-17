@@ -37,18 +37,9 @@ fn simplify(input: &str) -> String {
 #[test]
 fn test_content_gcd_multivar() {
     // (2x + 2y) / (4x + 4y)
-    // Layer 1: Content GCD = 2
-    // After dividing: (x + y) / (2x + 2y)
-    // Full simplification to 1/2 requires Layer 2 (polynomial GCD: x+y)
+    // With Layer 2: GCD = 2*(x+y), so result = 1/2
     let result = simplify("(2*x + 2*y) / (4*x + 4*y)");
-
-    // Layer 1 simplifies by content GCD = 2
-    // Current behavior: (x + y) / (2 * x + 2 * y)
-    assert!(
-        result.contains("x") && result.contains("y"),
-        "Should contain x and y in result, got: {}",
-        result
-    );
+    assert_eq!(result, "1/2", "(2x+2y)/(4x+4y) should simplify to 1/2");
 }
 
 // =============================================================================
@@ -84,5 +75,22 @@ fn test_combined_content_and_monomial() {
         result.contains("1") && result.contains("2"),
         "Should simplify, got: {}",
         result
+    );
+}
+
+// =============================================================================
+// Layer 2 Tests: Heuristic Polynomial GCD
+// =============================================================================
+
+#[test]
+fn test_layer2_difference_of_squares() {
+    // (x^2 - y^2) / (x - y) should simplify to x + y
+    // This requires Layer 2: GCD = (x - y)
+    let result = simplify("(x^2 - y^2) / (x - y)");
+    // Expected: x + y (or y + x depending on ordering)
+    assert!(
+        (result.contains("x") && result.contains("y") && result.contains("+"))
+            || result == "x + y"
+            || result == "y + x",
     );
 }

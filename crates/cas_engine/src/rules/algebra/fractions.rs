@@ -1,6 +1,8 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, MultiPoly, PolyBudget};
+use crate::multipoly::{
+    gcd_multivar_layer2, multipoly_from_expr, multipoly_to_expr, GcdBudget, MultiPoly, PolyBudget,
+};
 use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
@@ -12,7 +14,7 @@ use std::cmp::Ordering;
 use super::helpers::*;
 
 // =============================================================================
-// Multivariate GCD (Layer 1: monomial + content)
+// Multivariate GCD (Layer 1 + Layer 2)
 // =============================================================================
 
 /// Try to compute GCD of two expressions using multivariate polynomial representation.
@@ -49,8 +51,25 @@ fn try_multivar_gcd(
     let content_gcd = gcd_rational(content_num.clone(), content_den.clone());
     let has_content_gcd = !content_gcd.is_one();
 
-    // If no GCD found at Layer 1, skip
+    // If no GCD found at Layer 1, try Layer 2 (heuristic polynomial GCD)
     if !has_mono_gcd && !has_content_gcd {
+        // Try Layer 2 for 2-variable case
+        if p_num.vars.len() == 2 {
+            let gcd_budget = GcdBudget::default();
+            if let Some(gcd_poly) = gcd_multivar_layer2(&p_num, &p_den, &gcd_budget) {
+                if !gcd_poly.is_one() && !gcd_poly.is_constant() {
+                    // Divide by GCD
+                    let q_num = p_num.div_exact(&gcd_poly)?;
+                    let q_den = p_den.div_exact(&gcd_poly)?;
+
+                    let new_num = multipoly_to_expr(&q_num, ctx);
+                    let new_den = multipoly_to_expr(&q_den, ctx);
+                    let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
+
+                    return Some((new_num, new_den, gcd_expr));
+                }
+            }
+        }
         return None;
     }
 
