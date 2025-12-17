@@ -218,7 +218,6 @@ fn test_priority_telescoping_before_general() {
     // any default-priority rules in the same target_type bucket.
 
     let opts = integrate_opts();
-    let mut simplifier = Simplifier::with_profile(&opts);
 
     // Check that high-priority rules come first in the Mul bucket
     // (This is an indirect test - the rule ordering is internal)

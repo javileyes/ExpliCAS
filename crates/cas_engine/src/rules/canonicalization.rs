@@ -724,7 +724,6 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_ast::{Context, DisplayExpr};
-    use cas_parser::parse;
 
     #[test]
     fn test_canonicalize_negation() {
