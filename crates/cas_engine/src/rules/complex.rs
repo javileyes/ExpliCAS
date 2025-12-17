@@ -238,11 +238,120 @@ define_rule!(ImaginaryPowerRule, "Imaginary Power", |ctx, expr| {
 });
 
 // ============================================================================
+// ISquaredMulRule: i * i → -1 (handles Mul case, not Pow)
+// ============================================================================
+
+define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr| {
+    // i * i → -1
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        let l = *l;
+        let r = *r;
+
+        // Check if both are i
+        if matches!(ctx.get(l), Expr::Constant(Constant::I))
+            && matches!(ctx.get(r), Expr::Constant(Constant::I))
+        {
+            let neg_one = ctx.num(-1);
+            return Some(Rewrite {
+                new_expr: neg_one,
+                description: "i · i = -1".to_string(),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
+        }
+    }
+    None
+});
+
+// ============================================================================
+// GaussianMulRule: (a + bi)(c + di) → (ac - bd) + (ad + bc)i
+// ============================================================================
+
+define_rule!(GaussianMulRule, "Gaussian Multiplication", |ctx, expr| {
+    // (a + bi) * (c + di) → (ac - bd) + (ad + bc)i
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        let l = *l;
+        let r = *r;
+
+        // Try to extract gaussian rationals from both sides
+        let left = extract_gaussian(ctx, l)?;
+        let right = extract_gaussian(ctx, r)?;
+
+        // Skip if both are pure real (regular multiplication handles it)
+        if left.is_real() && right.is_real() {
+            return None;
+        }
+
+        // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+        let ac = &left.real * &right.real;
+        let bd = &left.imag * &right.imag;
+        let ad = &left.real * &right.imag;
+        let bc = &left.imag * &right.real;
+
+        let real_part = ac - bd;
+        let imag_part = ad + bc;
+
+        let result = GaussianRational::new(real_part, imag_part);
+        let new_expr = result.to_expr(ctx);
+
+        return Some(Rewrite {
+            new_expr,
+            description: "Gaussian multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i".to_string(),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        });
+    }
+    None
+});
+
+// ============================================================================
+// GaussianAddRule: (a + bi) + (c + di) → (a + c) + (b + d)i
+// ============================================================================
+
+define_rule!(GaussianAddRule, "Gaussian Addition", |ctx, expr| {
+    // (a + bi) + (c + di) → (a + c) + (b + d)i
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        let l = *l;
+        let r = *r;
+
+        // Try to extract gaussian rationals from both sides
+        let left = extract_gaussian(ctx, l)?;
+        let right = extract_gaussian(ctx, r)?;
+
+        // Skip if both are pure real (regular addition handles it)
+        if left.is_real() && right.is_real() {
+            return None;
+        }
+
+        // (a + bi) + (c + di) = (a + c) + (b + d)i
+        let real_part = &left.real + &right.real;
+        let imag_part = &left.imag + &right.imag;
+
+        let result = GaussianRational::new(real_part, imag_part);
+        let new_expr = result.to_expr(ctx);
+
+        return Some(Rewrite {
+            new_expr,
+            description: "Gaussian addition: (a+bi) + (c+di) = (a+c) + (b+d)i".to_string(),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        });
+    }
+    None
+});
+
+// ============================================================================
 // Registration
 // ============================================================================
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ImaginaryPowerRule));
+    simplifier.add_rule(Box::new(ISquaredMulRule));
+    simplifier.add_rule(Box::new(GaussianMulRule));
+    simplifier.add_rule(Box::new(GaussianAddRule));
 }
 
 // ============================================================================
