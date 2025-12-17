@@ -1,4 +1,5 @@
 use crate::env::Environment;
+use crate::options::Assumptions;
 use crate::session::{resolve_session_refs, ResolveError, SessionStore};
 use cas_ast::{Context, ExprId};
 
@@ -7,6 +8,8 @@ use cas_ast::{Context, ExprId};
 pub struct SessionState {
     pub store: SessionStore,
     pub env: Environment,
+    /// Assumptions for evaluation (branch mode, etc.)
+    pub assumptions: Assumptions,
 }
 
 impl SessionState {
@@ -14,6 +17,7 @@ impl SessionState {
         Self {
             store: SessionStore::new(),
             env: Environment::new(),
+            assumptions: Assumptions::default(),
         }
     }
 
@@ -34,5 +38,6 @@ impl SessionState {
     pub fn clear(&mut self) {
         self.store.clear();
         self.env.clear_all();
+        // Note: assumptions are NOT cleared - user must explicitly change mode
     }
 }

@@ -9,6 +9,7 @@ pub mod eval;
 pub mod expand;
 pub mod factor;
 pub mod matrix;
+pub mod options;
 pub mod orchestrator;
 pub mod ordering;
 pub mod parent_context;

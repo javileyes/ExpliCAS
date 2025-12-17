@@ -155,6 +155,15 @@ impl Simplifier {
         s
     }
 
+    /// Create simplifier with principal branch rules enabled.
+    /// This includes `PrincipalBranchInverseTrigRule` which simplifies
+    /// compositions like `arctan(tan(u)) → u` with domain warnings.
+    pub fn with_principal_branch_rules() -> Self {
+        let mut s = Self::with_default_rules();
+        crate::rules::inverse_trig::register_principal_branch(&mut s);
+        s
+    }
+
     pub fn enable_debug(&mut self) {
         self.debug_mode = true;
     }

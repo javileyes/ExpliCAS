@@ -782,3 +782,108 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ArccscToArcsinRule));
     simplifier.add_rule(Box::new(ArccotToArctanRule));
 }
+
+/// Register additional rules for principal branch mode (educational).
+/// These rules are ONLY safe when assuming inputs are in principal domain.
+pub fn register_principal_branch(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(PrincipalBranchInverseTrigRule));
+}
+
+// ==================== Principal Branch Rules (Educational) ====================
+//
+// These rules simplify inverse∘function compositions like arctan(tan(u)) → u.
+// They are ONLY valid when u is in the principal domain, so they emit warnings.
+
+define_rule!(
+    PrincipalBranchInverseTrigRule,
+    "Principal Branch Inverse Trig",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
+            if outer_args.len() != 1 {
+                return None;
+            }
+            let inner = outer_args[0];
+            let inner_data = ctx.get(inner).clone();
+
+            // Pattern: arcsin(sin(u)) → u (assuming u ∈ [-π/2, π/2])
+            if outer_name == "arcsin" {
+                if let Expr::Function(inner_name, inner_args) = &inner_data {
+                    if inner_name == "sin" && inner_args.len() == 1 {
+                        let u = inner_args[0];
+                        return Some(Rewrite {
+                            new_expr: u,
+                            description: "arcsin(sin(u)) → u (principal branch)".to_string(),
+                            before_local: Some(expr),
+                            after_local: Some(u),
+                            domain_assumption: Some("Assuming u ∈ [-π/2, π/2] (principal branch)"),
+                        });
+                    }
+                }
+            }
+
+            // Pattern: arccos(cos(u)) → u (assuming u ∈ [0, π])
+            if outer_name == "arccos" {
+                if let Expr::Function(inner_name, inner_args) = &inner_data {
+                    if inner_name == "cos" && inner_args.len() == 1 {
+                        let u = inner_args[0];
+                        return Some(Rewrite {
+                            new_expr: u,
+                            description: "arccos(cos(u)) → u (principal branch)".to_string(),
+                            before_local: Some(expr),
+                            after_local: Some(u),
+                            domain_assumption: Some("Assuming u ∈ [0, π] (principal branch)"),
+                        });
+                    }
+                }
+            }
+
+            // Pattern: arctan(tan(u)) → u (assuming u ∈ (-π/2, π/2))
+            if outer_name == "arctan" {
+                if let Expr::Function(inner_name, inner_args) = &inner_data {
+                    if inner_name == "tan" && inner_args.len() == 1 {
+                        let u = inner_args[0];
+                        return Some(Rewrite {
+                            new_expr: u,
+                            description: "arctan(tan(u)) → u (principal branch)".to_string(),
+                            before_local: Some(expr),
+                            after_local: Some(u),
+                            domain_assumption: Some("Assuming u ∈ (-π/2, π/2) (principal branch)"),
+                        });
+                    }
+                }
+            }
+
+            // Pattern: arctan(sin(u)/cos(u)) → u (tan(u) in disguise)
+            if outer_name == "arctan" {
+                if let Expr::Div(num, den) = &inner_data {
+                    let num_data = ctx.get(*num).clone();
+                    let den_data = ctx.get(*den).clone();
+                    if let (Expr::Function(n_name, n_args), Expr::Function(d_name, d_args)) =
+                        (&num_data, &den_data)
+                    {
+                        if n_name == "sin"
+                            && d_name == "cos"
+                            && n_args.len() == 1
+                            && d_args.len() == 1
+                            && n_args[0] == d_args[0]
+                        {
+                            let u = n_args[0];
+                            return Some(Rewrite {
+                                new_expr: u,
+                                description: "arctan(sin(u)/cos(u)) → u (principal branch)"
+                                    .to_string(),
+                                before_local: Some(expr),
+                                after_local: Some(u),
+                                domain_assumption: Some(
+                                    "Assuming u ∈ (-π/2, π/2) (principal branch)",
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
