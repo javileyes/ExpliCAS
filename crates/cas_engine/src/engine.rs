@@ -637,6 +637,7 @@ fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Opti
             cas_ast::Constant::E => Some(std::f64::consts::E),
             cas_ast::Constant::Infinity => Some(f64::INFINITY),
             cas_ast::Constant::Undefined => Some(f64::NAN),
+            cas_ast::Constant::I => None, // Imaginary unit cannot be evaluated to f64
         },
         Expr::Matrix { .. } => None, // Matrix evaluation not supported in f64
         Expr::SessionRef(_) => None, // SessionRef should be resolved before eval

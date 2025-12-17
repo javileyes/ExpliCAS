@@ -40,6 +40,7 @@ impl Visitor for LatexVisitor {
             Constant::E => self.output.push_str("e"),
             Constant::Infinity => self.output.push_str("\\infty"),
             Constant::Undefined => self.output.push_str("\\text{undefined}"),
+            Constant::I => self.output.push_str("i"),
         }
     }
 

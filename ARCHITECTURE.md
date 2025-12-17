@@ -1067,6 +1067,33 @@ test_from_profile_end_to_end              // Simplify funciona con profile cache
 - `state.clear()` → limpia store/env, **NO** limpia cache
 - Cache persiste durante sesión (optimización sin afectar resultados)
 
+#### Añadir Nuevas Reglas (Soporte Automático)
+
+Las reglas nuevas se cachean automáticamente si se registran en el flujo estándar:
+
+```
+Simplifier::with_profile(&opts)
+    └─→ register_default_rules()
+        └─→ add_rule(new_rule)  ← cacheada automáticamente
+```
+
+**Para añadir una regla:**
+
+1. Créala en `rules/my_module.rs`
+2. Exporta `pub fn register(s: &mut Simplifier)`
+3. Llámala desde `register_default_rules()` en `engine.rs`
+
+```rust
+// En engine.rs → register_default_rules()
+my_new_module::register(self);  // ✅ Cacheada automáticamente
+```
+
+**Reglas condicionales** (por modo) también se cachean:
+- `ContextMode::IntegratePrep` → perfil separado cacheado
+- Cada `(BranchMode, ContextMode)` tiene su cache
+
+**No cacheadas**: Reglas añadidas post-construcción (REPL config dinámica).
+
 ---
 
 ### 2.6. N-ary Pattern Matching (Add/Mul Flattening) ★★

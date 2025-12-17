@@ -53,6 +53,8 @@ pub enum Constant {
     E,
     Infinity,
     Undefined,
+    /// Imaginary unit i (where i² = -1)
+    I,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

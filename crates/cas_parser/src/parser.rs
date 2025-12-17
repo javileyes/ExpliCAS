@@ -316,9 +316,15 @@ fn parse_identifier(input: &str) -> IResult<&str, &str> {
 }
 
 // Parser for variables
+// Note: "i" (imaginary unit) is recognized as Constant::I, not a variable
 fn parse_variable(input: &str) -> IResult<&str, ParseNode> {
     map(parse_identifier, |s: &str| {
-        ParseNode::Variable(s.to_string())
+        // Recognize imaginary unit as constant
+        if s == "i" {
+            ParseNode::Constant(Constant::I)
+        } else {
+            ParseNode::Variable(s.to_string())
+        }
     })(input)
 }
 

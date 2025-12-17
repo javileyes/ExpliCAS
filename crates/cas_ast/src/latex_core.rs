@@ -114,6 +114,7 @@ pub trait LaTeXRenderer {
             Constant::E => "e".to_string(),
             Constant::Infinity => "\\infty".to_string(),
             Constant::Undefined => "\\text{undefined}".to_string(),
+            Constant::I => "i".to_string(),
         }
     }
 

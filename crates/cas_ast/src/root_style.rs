@@ -425,6 +425,7 @@ impl<'a> StyledExpr<'a> {
                 crate::Constant::E => write!(f, "e"),
                 crate::Constant::Infinity => write!(f, "∞"),
                 crate::Constant::Undefined => write!(f, "undefined"),
+                crate::Constant::I => write!(f, "i"),
             },
             Expr::Pow(base, exp) => {
                 // Check if this is a root (exponent is 1/n)
