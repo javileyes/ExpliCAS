@@ -164,6 +164,36 @@ impl Simplifier {
         s
     }
 
+    /// Create a simplifier based on evaluation options.
+    /// This is the main entry point for context-aware simplification.
+    pub fn with_profile(opts: &crate::options::EvalOptions) -> Self {
+        use crate::options::{BranchMode, ContextMode};
+
+        let mut s = Self::with_default_rules();
+
+        // Apply branch mode rules
+        if opts.branch_mode == BranchMode::PrincipalBranch {
+            crate::rules::inverse_trig::register_principal_branch(&mut s);
+        }
+
+        // Apply context mode rules (placeholder for future rule bundles)
+        match opts.context_mode {
+            ContextMode::IntegratePrep => {
+                // TODO: register integration prep rules (telescoping, product→sum)
+                // crate::rules::integration::register_integration_prep(&mut s);
+            }
+            ContextMode::Solve => {
+                // TODO: register solve prep rules
+                // crate::rules::solve_prep::register_solve_prep(&mut s);
+            }
+            ContextMode::Auto | ContextMode::Standard => {
+                // Standard rules only (already registered)
+            }
+        }
+
+        s
+    }
+
     pub fn enable_debug(&mut self) {
         self.debug_mode = true;
     }

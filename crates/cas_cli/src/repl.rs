@@ -750,6 +750,12 @@ impl Repl {
             return;
         }
 
+        // "context" - show/switch context mode (auto, standard, solve, integrate)
+        if line == "context" || line.starts_with("context ") {
+            self.handle_context_command(&line);
+            return;
+        }
+
         // "history" or "list" - show session history
         if line == "history" || line == "list" {
             self.handle_history_command();
@@ -2287,7 +2293,7 @@ impl Repl {
         match args.get(1) {
             None => {
                 // Just "mode" - show current mode
-                let mode_str = match self.state.assumptions.branch_mode {
+                let mode_str = match self.state.options.branch_mode {
                     BranchMode::Strict => "strict",
                     BranchMode::PrincipalBranch => "principal",
                 };
@@ -2298,14 +2304,14 @@ impl Repl {
                 );
             }
             Some(&"strict") => {
-                self.state.assumptions.branch_mode = BranchMode::Strict;
+                self.state.options.branch_mode = BranchMode::Strict;
                 self.engine.simplifier = cas_engine::Simplifier::with_default_rules();
                 self.sync_config_to_simplifier();
                 println!("Switched to strict mode.");
                 println!("  Mathematically safe: inverse∘function compositions not simplified.");
             }
             Some(&"principal") => {
-                self.state.assumptions.branch_mode = BranchMode::PrincipalBranch;
+                self.state.options.branch_mode = BranchMode::PrincipalBranch;
                 self.engine.simplifier = cas_engine::Simplifier::with_principal_branch_rules();
                 self.sync_config_to_simplifier();
                 println!("Switched to principal branch mode.");
@@ -2323,9 +2329,59 @@ impl Repl {
 
     fn get_mode_description(&self) -> &'static str {
         use cas_engine::options::BranchMode;
-        match self.state.assumptions.branch_mode {
+        match self.state.options.branch_mode {
             BranchMode::Strict => "mathematically safe",
             BranchMode::PrincipalBranch => "assumes principal domain for inverse trig",
+        }
+    }
+
+    /// Handle "context" command - show or switch context mode
+    fn handle_context_command(&mut self, line: &str) {
+        use cas_engine::options::ContextMode;
+
+        let args: Vec<&str> = line.split_whitespace().collect();
+
+        match args.get(1) {
+            None => {
+                // Just "context" - show current context
+                let ctx_str = match self.state.options.context_mode {
+                    ContextMode::Auto => "auto",
+                    ContextMode::Standard => "standard",
+                    ContextMode::Solve => "solve",
+                    ContextMode::IntegratePrep => "integrate",
+                };
+                println!("Current context: {}", ctx_str);
+                println!("  (use 'context auto|standard|solve|integrate' to change)");
+            }
+            Some(&"auto") => {
+                self.state.options.context_mode = ContextMode::Auto;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                println!("Context: auto (infers from expression)");
+            }
+            Some(&"standard") => {
+                self.state.options.context_mode = ContextMode::Standard;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                println!("Context: standard (safe simplification only)");
+            }
+            Some(&"solve") => {
+                self.state.options.context_mode = ContextMode::Solve;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                println!("Context: solve (preserves solver-friendly forms)");
+            }
+            Some(&"integrate") => {
+                self.state.options.context_mode = ContextMode::IntegratePrep;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                println!("Context: integrate-prep");
+                println!("  ⚠️ Enables transforms for integration (telescoping, product→sum)");
+            }
+            Some(other) => {
+                println!("Unknown context: '{}'", other);
+                println!("Usage: context [auto | standard | solve | integrate]");
+            }
         }
     }
 

@@ -49,6 +49,7 @@ impl CasHelper {
                 "clear".to_string(),
                 "reset".to_string(),
                 "mode".to_string(),
+                "context".to_string(),
                 "history".to_string(),
                 "list".to_string(),
                 "show".to_string(),
@@ -176,6 +177,25 @@ impl Completer for CasHelper {
                         matches.push(Pair {
                             display: m.to_string(),
                             replacement: m.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+        }
+
+        // Check for "context" context
+        if line.starts_with("context ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let contexts = vec!["auto", "standard", "solve", "integrate"];
+                for ctx in contexts {
+                    if ctx.starts_with(word) {
+                        matches.push(Pair {
+                            display: ctx.to_string(),
+                            replacement: ctx.to_string(),
                         });
                     }
                 }

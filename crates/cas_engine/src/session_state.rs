@@ -1,5 +1,5 @@
 use crate::env::Environment;
-use crate::options::Assumptions;
+use crate::options::EvalOptions;
 use crate::session::{resolve_session_refs, ResolveError, SessionStore};
 use cas_ast::{Context, ExprId};
 
@@ -8,8 +8,15 @@ use cas_ast::{Context, ExprId};
 pub struct SessionState {
     pub store: SessionStore,
     pub env: Environment,
-    /// Assumptions for evaluation (branch mode, etc.)
-    pub assumptions: Assumptions,
+    /// Evaluation options (branch mode, context mode, etc.)
+    pub options: EvalOptions,
+}
+
+// Backwards compatibility: expose assumptions as alias
+impl SessionState {
+    pub fn assumptions(&self) -> &EvalOptions {
+        &self.options
+    }
 }
 
 impl SessionState {
@@ -17,7 +24,7 @@ impl SessionState {
         Self {
             store: SessionStore::new(),
             env: Environment::new(),
-            assumptions: Assumptions::default(),
+            options: EvalOptions::default(),
         }
     }
 
