@@ -162,4 +162,37 @@ mod tests {
         // Should only have built once
         assert_eq!(cache.len(), 1, "Should not rebuild on each call");
     }
+
+    #[test]
+    fn test_from_profile_end_to_end() {
+        use crate::Simplifier;
+        use cas_ast::DisplayExpr;
+
+        let mut cache = ProfileCache::new();
+        let opts = EvalOptions::default();
+
+        // Get cached profile
+        let profile = cache.get_or_build(&opts);
+
+        // Create simplifier from cached profile
+        let mut simplifier = Simplifier::from_profile(profile);
+
+        // Simplify an expression
+        let x = simplifier.context.var("x");
+        let zero = simplifier.context.num(0);
+        let expr = simplifier.context.add(cas_ast::Expr::Add(x, zero));
+
+        let (result, steps) = simplifier.simplify(expr);
+
+        // Should simplify x + 0 → x
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        assert_eq!(result_str, "x", "Should simplify x + 0 to x");
+        assert!(!steps.is_empty(), "Should have simplification steps");
+    }
 }

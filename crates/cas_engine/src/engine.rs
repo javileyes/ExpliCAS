@@ -204,6 +204,22 @@ impl Simplifier {
         s
     }
 
+    /// Create a simplifier from a cached profile.
+    /// This avoids rebuilding rules and is the preferred way when using ProfileCache.
+    pub fn from_profile(profile: std::sync::Arc<crate::profile_cache::RuleProfile>) -> Self {
+        Self {
+            context: Context::new(),
+            rules: profile.rules.clone(),
+            global_rules: profile.global_rules.clone(),
+            collect_steps: true,
+            allow_numerical_verification: true,
+            debug_mode: false,
+            disabled_rules: profile.disabled_rules.clone(),
+            enable_polynomial_strategy: true,
+            profiler: RuleProfiler::new(false),
+        }
+    }
+
     pub fn enable_debug(&mut self) {
         self.debug_mode = true;
     }
