@@ -744,6 +744,12 @@ impl Repl {
             return;
         }
 
+        // "mode" - show/switch branch mode (strict vs principal)
+        if line == "mode" || line.starts_with("mode ") {
+            self.handle_mode_command(&line);
+            return;
+        }
+
         // "history" or "list" - show session history
         if line == "history" || line == "list" {
             self.handle_history_command();
@@ -1607,6 +1613,7 @@ impl Repl {
         println!(
             "  set <option> <value>    Pipeline settings (transform, rationalize, max-rewrites)"
         );
+        println!("  mode [strict|principal] Switch simplification mode (educational)");
         println!("  config <subcmd>         Manage configuration (list, enable, disable...)");
         println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
         println!("  health [cmd]            Health tracking (on/off/reset/status)");
@@ -2269,6 +2276,57 @@ impl Repl {
         self.last_health_report = None;
 
         println!("Session reset. Environment and context cleared.");
+    }
+
+    /// Handle "mode" command - show or switch branch mode
+    fn handle_mode_command(&mut self, line: &str) {
+        use cas_engine::options::BranchMode;
+
+        let args: Vec<&str> = line.split_whitespace().collect();
+
+        match args.get(1) {
+            None => {
+                // Just "mode" - show current mode
+                let mode_str = match self.state.assumptions.branch_mode {
+                    BranchMode::Strict => "strict",
+                    BranchMode::PrincipalBranch => "principal",
+                };
+                println!(
+                    "Current mode: {} ({})",
+                    mode_str,
+                    self.get_mode_description()
+                );
+            }
+            Some(&"strict") => {
+                self.state.assumptions.branch_mode = BranchMode::Strict;
+                self.engine.simplifier = cas_engine::Simplifier::with_default_rules();
+                self.sync_config_to_simplifier();
+                println!("Switched to strict mode.");
+                println!("  Mathematically safe: inverse∘function compositions not simplified.");
+            }
+            Some(&"principal") => {
+                self.state.assumptions.branch_mode = BranchMode::PrincipalBranch;
+                self.engine.simplifier = cas_engine::Simplifier::with_principal_branch_rules();
+                self.sync_config_to_simplifier();
+                println!("Switched to principal branch mode.");
+                println!("  ⚠️ Simplifications assume principal domain for inverse trig.");
+                println!("  Example: arctan(tan(x)) → x (assuming x ∈ (-π/2, π/2))");
+            }
+            Some(other) => {
+                println!("Unknown mode: '{}'", other);
+                println!("Usage: mode [strict | principal]");
+                println!("  strict    - Mathematically safe (default)");
+                println!("  principal - Educational: assumes principal branch");
+            }
+        }
+    }
+
+    fn get_mode_description(&self) -> &'static str {
+        use cas_engine::options::BranchMode;
+        match self.state.assumptions.branch_mode {
+            BranchMode::Strict => "mathematically safe",
+            BranchMode::PrincipalBranch => "assumes principal domain for inverse trig",
+        }
     }
 
     /// Handle "history" or "list" command - show session history

@@ -74,6 +74,12 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   Superscript exponents for small integers (0-99): `x²`, `x³`, etc.
     -   Middle dot for multiplication: `·` instead of `*`.
     -   Use `--no-pretty` flag for ASCII compatibility: `cas_cli --no-pretty`.
+-   **Branch Mode** ★ (2025-12):
+    -   Two simplification modes for educational purposes:
+        -   `strict` (default): Mathematically safe, inverse∘function compositions not simplified.
+        -   `principal`: Assumes principal domain for inverse trig (e.g., `arctan(tan(x)) → x`).
+    -   Switch modes via `mode strict` or `mode principal` in REPL.
+    -   Principal branch mode emits domain warnings in step-by-step output.
 
 ## Getting Started
 

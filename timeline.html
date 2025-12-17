@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \sin(x + y) - (\cos(y)\cdot \sin(x))</title>
+    <title>CAS Steps: \text{arctan}(\tan(x))</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -222,55 +222,56 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\sin(x + y) - (\cos(y)\cdot \sin(x))\]
+            \[\text{arctan}(\tan(x))\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Angle Sum/Diff Identity</h3>
+                    <h3>Tan to Sin/Cos</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\sin(x + y)}} - (\cos(y)\cdot \sin(x))\]
+                        \[\text{arctan}({\color{red}{\tan(x)}})\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)}\)</div>
+                        <div class="rule-name">\(\text{tan(x) -> sin(x)/cos(x)}\)</div>
                         <div class="local-change">
-                            \[\sin(x + y) \rightarrow \cos(x)\cdot \sin(y) + \sin(x)\cdot \cos(y)\]
+                            \[\tan(x) \rightarrow \frac{\sin(x)}{\cos(x)}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\cos(x)\cdot \sin(y) + \sin(x)\cdot \cos(y)}} - (\cos(y)\cdot \sin(x))\]
+                        \[\text{arctan}({\color{green}{\frac{\sin(x)}{\cos(x)}}})\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Add Inverse</h3>
+                    <h3>Principal Branch Inverse Trig</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\cos(x)\cdot \sin(y) + {\color{red}{\cos(y)\cdot \sin(x) - (\cos(y)\cdot \sin(x))}}\]
+                        \[{\color{red}{\text{arctan}(\frac{\sin(x)}{\cos(x)})}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
+                        <div class="rule-name">\(\text{arctan(sin(u)/cos(u)) → u (principal branch)}\)</div>
                         <div class="local-change">
-                            \[\cos(y)\cdot \sin(x) - (\cos(y)\cdot \sin(x)) \rightarrow 0\]
+                            \[\text{arctan}(\frac{\sin(x)}{\cos(x)}) \rightarrow x\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\cos(x)\cdot \sin(y) + {\color{green}{0}}\]
+                        \[{\color{green}{x}}\]
                     </div>
+                    <div class="domain-warning">Domain: Assuming u ∈ (-π/2, π/2) (principal branch)</div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[\cos(x)\cdot \sin(y)\]
+            \[x\]
         </div>
     </div>
     <footer>

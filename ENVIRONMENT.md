@@ -79,6 +79,7 @@ Error: Circular reference detected involving #1
 | `history` or `list` | Show all stored entries with their IDs |
 | `show #N` | Display details of entry `#N` (type, raw input, expression) |
 | `del #N [#M ...]` | Delete entries by ID (IDs are never reused) |
+| `mode [strict\|principal]` | Show or switch simplification mode (strict = safe, principal = educational) |
 | `reset` | Clear **all** session state (history + variables) |
 
 ### Example: `show #N`
