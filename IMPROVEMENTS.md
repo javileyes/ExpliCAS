@@ -13,6 +13,8 @@
 - Fraction simplification con opposite/same denominators
 - 100% tests passing (17/17 + suite completa)
 - "El Puente Conjugado" resuelto
+- **Context Mode** (2025-12): Auto-detection (integrate→IntegratePrep), Werner/Morrie rules, Solve-safe config
+- **Domain Warning Deduplication** (2025-12): `DomainWarning` struct con rule_name source
 
 ⚠️ **Problemas Críticos Detectados**:
 - **Performance regression**: Hasta **+99.9%** slowdown en sum_fractions_10

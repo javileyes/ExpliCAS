@@ -9,6 +9,7 @@
    - [2.1. `cas_ast` - Automatic Canonical Ordering (conmutativo-only) ★★★](#21-cas_ast---automatic-canonical-ordering-conmutativo-only-)
    - [2.2. Normalización Canónica y Views (C2) ★★★](#22-normalización-canónica-y-views-c2-)
    - [2.5. `cas_engine` - Pattern Detection Infrastructure ★★★](#25-cas_engine---pattern-detection-infrastructure-)
+   - [2.9. `cas_engine` - Context Mode ★★ (2025-12)](#29-cas_engine---context-mode--2025-12)
    - [2.6. N-ary Pattern Matching (Add/Mul Flattening) ★★](#26-n-ary-pattern-matching-addmul-flattening-)
    - [2.7. Patrón de Negación Generalizada ★★★](#27-patrón-de-negación-generalizada-)
    - [2.8. `cas_engine` - Semantic Equality + nf_score (aceptación de rewrites) ★★★](#28-cas_engine---semantic-equality--nf_score-aceptación-de-rewrites-)
@@ -823,6 +824,106 @@ Para agregar nuevos patrones protegidos:
        }
    }
     ```
+
+---
+
+### 2.9. `cas_engine` - Context Mode ★★ (2025-12)
+
+Sistema de simplificación context-aware que adapta las reglas según la operación.
+
+#### Motivación
+
+Diferentes operaciones matemáticas requieren diferentes estrategias de simplificación:
+
+- **Integración**: Transformar `2·sin(A)·cos(B) → sin(A+B) + sin(A-B)` facilita integración
+- **Solver**: Evitar introducir `abs()` que complica la resolución de ecuaciones
+- **Standard**: Simplificación general sin transformaciones destructivas
+
+#### Arquitectura
+
+```
+┌─────────────────────────────────────────┐
+│  EvalOptions                            │
+│   - branch_mode: Strict | Principal     │
+│   - context_mode: Auto | Standard |     │
+│                   Solve | IntegratePrep │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  Engine::effective_options()            │
+│   - Auto + contains_integral() → Prep   │
+│   - Auto + no integral → Standard       │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│  Simplifier::with_profile(opts)         │
+│   - IntegratePrep: +integration rules   │
+│   - Solve: disable abs-introducing      │
+│   - Standard: default rules             │
+└─────────────────────────────────────────┘
+```
+
+#### Componentes
+
+**1. EvalOptions** (`options.rs`):
+```rust
+pub enum ContextMode {
+    Auto,          // Auto-detect from expression
+    Standard,      // Default safe rules
+    Solve,         // Solver-friendly (no abs)
+    IntegratePrep, // Integration transforms
+}
+```
+
+**2. Auto-Detection** (`eval.rs`):
+```rust
+fn effective_options(&self, opts, expr) -> EvalOptions {
+    if opts.context_mode == Auto {
+        if contains_integral(&ctx, expr) { IntegratePrep }
+        else { Standard }
+    }
+}
+```
+
+**3. Integration Prep Rules** (`rules/integration.rs`):
+
+| Rule | Pattern | Result |
+|------|---------|--------|
+| `ProductToSumRule` | `2·sin(A)·cos(B)` | `sin(A+B) + sin(A-B)` |
+| `CosProductTelescopingRule` | `cos(u)·cos(2u)·cos(4u)` | `sin(8u)/(8·sin(u))` |
+
+**4. Solve Mode** (`engine.rs`):
+```rust
+ContextMode::Solve => {
+    // Disable abs-introducing rules
+    s.disabled_rules.insert("Simplify Square Root of Square");
+    s.disabled_rules.insert("Simplify Odd Half-Integer Power");
+}
+```
+
+**5. Domain Warning Deduplication** (`eval.rs`):
+```rust
+pub struct DomainWarning {
+    pub message: String,
+    pub rule_name: String,  // Source rule for GUI/debugging
+}
+```
+
+#### CLI Commands
+
+```bash
+> context auto     # Auto-detect (default)
+> context standard # Default rules only
+> context solve    # Solver-friendly
+> context integrate # Integration prep
+```
+
+#### Tests
+
+- `context_no_contamination.rs`: 16 tests passed (2 ignored)
+- Verifica que integration rules NO se aplican en Standard/Solve
 
 ---
 

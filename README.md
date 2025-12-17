@@ -80,6 +80,17 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
         -   `principal`: Assumes principal domain for inverse trig (e.g., `arctan(tan(x)) → x`).
     -   Switch modes via `mode strict` or `mode principal` in REPL.
     -   Principal branch mode emits domain warnings in step-by-step output.
+-   **Context Mode** ★ (2025-12):
+    -   Context-aware simplification that adapts rules based on the operation being performed:
+        -   `auto` (default): Auto-detect context from expression (e.g., `integrate()` → IntegratePrep).
+        -   `standard`: Default safe simplification rules only.
+        -   `solve`: Disable rules that introduce `abs()` or piecewise forms (solver-friendly).
+        -   `integrate`: Enable integration preparation transforms (Werner, Morrie's law, etc.).
+    -   Switch modes via `context auto|standard|solve|integrate` in REPL.
+    -   **Integration Prep Rules**:
+        -   `2·sin(A)·cos(B) → sin(A+B) + sin(A-B)` (Werner product-to-sum)
+        -   `cos(x)·cos(2x)·cos(4x) → sin(8x)/(8·sin(x))` (Morrie's law telescoping)
+    -   Domain warnings are deduplicated and show their source rule.
 
 ## Getting Started
 
