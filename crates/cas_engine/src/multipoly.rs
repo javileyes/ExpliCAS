@@ -624,6 +624,17 @@ impl Default for GcdBudget {
     }
 }
 
+/// Enum indicating which GCD technique was used
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GcdLayer {
+    /// Monomial and content GCD (fastest)
+    Layer1MonomialContent,
+    /// Heuristic bivariate with seed assignments
+    Layer2HeuristicSeeds,
+    /// Tensor grid interpolation for multi-param factors
+    Layer25TensorGrid,
+}
+
 /// Compute scaled GCD of two univariate polynomials
 /// Returns gcd * gcd(lc(p), lc(q)) to preserve parameter-dependent factors
 fn scaled_gcd_sample(p: &Polynomial, q: &Polynomial) -> Option<Polynomial> {

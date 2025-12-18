@@ -2,7 +2,7 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::multipoly::{
     gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
-    Layer25Budget, MultiPoly, PolyBudget,
+    GcdLayer, Layer25Budget, MultiPoly, PolyBudget,
 };
 use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
@@ -220,12 +220,12 @@ fn build_cancel_domain_assumption(ctx: &Context, cancelled: &[ExprId]) -> Option
 
 /// Try to compute GCD of two expressions using multivariate polynomial representation.
 /// Returns None if expressions can't be converted to polynomials or if GCD is trivial (1).
-/// Returns Some((quotient_num, quotient_den, gcd_expr)) if non-trivial GCD found.
+/// Returns Some((quotient_num, quotient_den, gcd_expr, layer)) if non-trivial GCD found.
 fn try_multivar_gcd(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
-) -> Option<(ExprId, ExprId, ExprId)> {
+) -> Option<(ExprId, ExprId, ExprId, GcdLayer)> {
     let budget = PolyBudget::default();
 
     // Try to convert both to MultiPoly
@@ -264,7 +264,7 @@ fn try_multivar_gcd(
                     let new_num = multipoly_to_expr(&q_num, ctx);
                     let new_den = multipoly_to_expr(&q_den, ctx);
                     let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
-                    return Some((new_num, new_den, gcd_expr));
+                    return Some((new_num, new_den, gcd_expr, GcdLayer::Layer2HeuristicSeeds));
                 }
             }
 
@@ -277,7 +277,7 @@ fn try_multivar_gcd(
                     let new_num = multipoly_to_expr(&q_num, ctx);
                     let new_den = multipoly_to_expr(&q_den, ctx);
                     let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
-                    return Some((new_num, new_den, gcd_expr));
+                    return Some((new_num, new_den, gcd_expr, GcdLayer::Layer25TensorGrid));
                 }
             }
         }
@@ -320,7 +320,7 @@ fn try_multivar_gcd(
     let new_den = multipoly_to_expr(&p_den, ctx);
     let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
 
-    Some((new_num, new_den, gcd_expr))
+    Some((new_num, new_den, gcd_expr, GcdLayer::Layer1MonomialContent))
 }
 
 // ========== Helper to extract fraction parts from both Div and Mul(1/n,x) ==========
@@ -441,7 +441,7 @@ define_rule!(
         // 0. Try multivariate GCD first (Layer 1: monomial + content)
         let vars = collect_variables(ctx, expr);
         if vars.len() > 1 {
-            if let Some((new_num, new_den, gcd_expr)) = try_multivar_gcd(ctx, num, den) {
+            if let Some((new_num, new_den, gcd_expr, layer)) = try_multivar_gcd(ctx, num, den) {
                 // Build factored form for display
                 let factored_num = mul2_raw(ctx, new_num, gcd_expr);
                 let factored_den = if let Expr::Number(n) = ctx.get(new_den) {
@@ -455,17 +455,25 @@ define_rule!(
                 };
                 let factored_form = ctx.add(Expr::Div(factored_num, factored_den));
 
+                // Layer tag for description
+                let layer_tag = match layer {
+                    GcdLayer::Layer1MonomialContent => "Layer 1: monomial+content",
+                    GcdLayer::Layer2HeuristicSeeds => "Layer 2: heuristic seeds",
+                    GcdLayer::Layer25TensorGrid => "Layer 2.5: tensor grid",
+                };
+
                 // If denominator is 1, return just numerator
                 if let Expr::Number(n) = ctx.get(new_den) {
                     if n.is_one() {
                         return Some(Rewrite {
                             new_expr: new_num,
                             description: format!(
-                                "Simplified fraction by GCD: {}",
+                                "Simplified fraction by GCD: {} [{}]",
                                 DisplayExpr {
                                     context: ctx,
                                     id: gcd_expr
-                                }
+                                },
+                                layer_tag
                             ),
                             before_local: Some(factored_form),
                             after_local: Some(new_num),
@@ -478,11 +486,12 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr: result,
                     description: format!(
-                        "Simplified fraction by GCD: {}",
+                        "Simplified fraction by GCD: {} [{}]",
                         DisplayExpr {
                             context: ctx,
                             id: gcd_expr
-                        }
+                        },
+                        layer_tag
                     ),
                     before_local: Some(factored_form),
                     after_local: Some(result),
