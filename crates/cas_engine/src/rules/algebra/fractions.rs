@@ -1,7 +1,8 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::multipoly::{
-    gcd_multivar_layer2, multipoly_from_expr, multipoly_to_expr, GcdBudget, MultiPoly, PolyBudget,
+    gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
+    Layer25Budget, MultiPoly, PolyBudget,
 };
 use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
@@ -51,21 +52,31 @@ fn try_multivar_gcd(
     let content_gcd = gcd_rational(content_num.clone(), content_den.clone());
     let has_content_gcd = !content_gcd.is_one();
 
-    // If no GCD found at Layer 1, try Layer 2 (heuristic polynomial GCD)
+    // If no GCD found at Layer 1, try Layer 2 and Layer 2.5
     if !has_mono_gcd && !has_content_gcd {
-        // Try Layer 2 for N-variable case (N >= 2)
         if p_num.vars.len() >= 2 {
+            // Try Layer 2 first (bivar with seeds)
             let gcd_budget = GcdBudget::default();
             if let Some(gcd_poly) = gcd_multivar_layer2(&p_num, &p_den, &gcd_budget) {
                 if !gcd_poly.is_one() && !gcd_poly.is_constant() {
-                    // Divide by GCD
                     let q_num = p_num.div_exact(&gcd_poly)?;
                     let q_den = p_den.div_exact(&gcd_poly)?;
-
                     let new_num = multipoly_to_expr(&q_num, ctx);
                     let new_den = multipoly_to_expr(&q_den, ctx);
                     let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
+                    return Some((new_num, new_den, gcd_expr));
+                }
+            }
 
+            // Try Layer 2.5 (tensor grid for multi-param factors)
+            let layer25_budget = Layer25Budget::default();
+            if let Some(gcd_poly) = gcd_multivar_layer25(&p_num, &p_den, &layer25_budget) {
+                if !gcd_poly.is_one() && !gcd_poly.is_constant() {
+                    let q_num = p_num.div_exact(&gcd_poly)?;
+                    let q_den = p_den.div_exact(&gcd_poly)?;
+                    let new_num = multipoly_to_expr(&q_num, ctx);
+                    let new_den = multipoly_to_expr(&q_den, ctx);
+                    let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
                     return Some((new_num, new_den, gcd_expr));
                 }
             }

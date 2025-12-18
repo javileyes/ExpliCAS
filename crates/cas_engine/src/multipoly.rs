@@ -1064,6 +1064,441 @@ fn assemble_candidate(
 }
 
 // =============================================================================
+// Layer 2.5: Zippel-lite Tensor Grid GCD
+// =============================================================================
+
+/// Budget for Layer 2.5 Zippel-lite GCD
+#[derive(Clone, Debug)]
+pub struct Layer25Budget {
+    pub max_vars: usize,
+    pub max_samples: usize,
+    pub max_param_deg: u32,
+    pub max_gcd_deg: usize,
+}
+
+impl Default for Layer25Budget {
+    fn default() -> Self {
+        Self {
+            max_vars: 4,
+            max_samples: 64,
+            max_param_deg: 3,
+            max_gcd_deg: 6,
+        }
+    }
+}
+
+/// Layer 2.5: Zippel-lite GCD using tensor grid interpolation
+/// Handles GCD that depends on multiple parameter variables
+pub fn gcd_multivar_layer25(
+    p: &MultiPoly,
+    q: &MultiPoly,
+    budget: &Layer25Budget,
+) -> Option<MultiPoly> {
+    let n_vars = p.vars.len();
+
+    // Pre-checks
+    if n_vars < 2 || n_vars > budget.max_vars {
+        return None;
+    }
+    if p.vars != q.vars {
+        return None;
+    }
+    if p.is_zero() || q.is_zero() {
+        return None;
+    }
+
+    let vars = &p.vars;
+
+    // Choose main variable (highest min degree)
+    let main_var = choose_main_var(p, q);
+    let params: Vec<VarIdx> = (0..n_vars).filter(|&v| v != main_var).collect();
+
+    if params.is_empty() {
+        return None; // Only 1 var, use univar
+    }
+
+    // Expected GCD degree in main_var
+    let deg_p = p.degree_in(main_var);
+    let deg_q = q.degree_in(main_var);
+    let max_gcd_deg = deg_p.min(deg_q) as usize;
+
+    if max_gcd_deg == 0 || max_gcd_deg > budget.max_gcd_deg {
+        return None;
+    }
+
+    // Compute degree bounds per param
+    let param_degs: Vec<u32> = params
+        .iter()
+        .map(|&v| p.degree_in(v).min(q.degree_in(v)).min(budget.max_param_deg))
+        .collect();
+
+    // Build tensor grid
+    let grid = build_tensor_grid(&params, &param_degs, budget.max_samples);
+    if grid.is_empty() {
+        return None;
+    }
+
+    // Sample univariate GCDs at each grid point
+    let mut samples: Vec<(Vec<BigRational>, Polynomial)> = Vec::new();
+    let mut target_deg: Option<usize> = None;
+
+    for point in &grid {
+        // Build assignment: vec of (var_idx, value)
+        let assigns: Vec<(VarIdx, BigRational)> = params
+            .iter()
+            .zip(point.iter())
+            .map(|(&v, val)| (v, val.clone()))
+            .collect();
+
+        // Evaluate to univariate
+        let p_uni = match eval_all_but_main(p, main_var, &assigns) {
+            Some(u) => u,
+            None => continue,
+        };
+        let q_uni = match eval_all_but_main(q, main_var, &assigns) {
+            Some(u) => u,
+            None => continue,
+        };
+
+        // Skip if degree dropped
+        if p_uni.degree() < deg_p as usize || q_uni.degree() < deg_q as usize {
+            continue;
+        }
+
+        // Compute scaled GCD
+        let g = match scaled_gcd_sample(&p_uni, &q_uni) {
+            Some(g) => g,
+            None => continue,
+        };
+
+        // Check degree consistency
+        match target_deg {
+            None => target_deg = Some(g.degree()),
+            Some(td) => {
+                if g.degree() != td {
+                    continue; // Inconsistent, skip this point
+                }
+            }
+        }
+
+        samples.push((point.clone(), g));
+    }
+
+    let gcd_deg = target_deg?;
+    if gcd_deg == 0 {
+        return None; // Trivial GCD
+    }
+
+    // Need enough points for interpolation: product of (param_deg + 1)
+    let min_points: usize = param_degs.iter().map(|&d| (d + 1) as usize).product();
+    if samples.len() < min_points {
+        return None;
+    }
+
+    // Interpolate each coefficient of GCD as MultiPoly in params
+    let mut gcd_coeffs: Vec<MultiPoly> = Vec::new();
+    let param_vars: Vec<String> = params.iter().map(|&v| vars[v].clone()).collect();
+
+    for k in 0..=gcd_deg {
+        // Extract coefficient k from each sample
+        let coeff_samples: Vec<(Vec<BigRational>, BigRational)> = samples
+            .iter()
+            .map(|(pt, poly)| {
+                let c = poly
+                    .coeffs
+                    .get(k)
+                    .cloned()
+                    .unwrap_or_else(BigRational::zero);
+                (pt.clone(), c)
+            })
+            .collect();
+
+        // Interpolate as MultiPoly in params
+        let coeff_poly = interpolate_tensor(&param_vars, &param_degs, &coeff_samples)?;
+        gcd_coeffs.push(coeff_poly);
+    }
+
+    // Build GCD: G = sum_k c_k(params) * main^k
+    let candidate = build_gcd_multivar(vars, main_var, &params, &gcd_coeffs)?;
+
+    // Verify by exact division
+    if p.div_exact(&candidate).is_some() && q.div_exact(&candidate).is_some() {
+        return Some(candidate);
+    }
+
+    None
+}
+
+/// Choose main variable based on max min-degree
+fn choose_main_var(p: &MultiPoly, q: &MultiPoly) -> VarIdx {
+    let n = p.vars.len();
+    (0..n)
+        .max_by_key(|&v| p.degree_in(v).min(q.degree_in(v)))
+        .unwrap_or(0)
+}
+
+/// Build tensor grid of evaluation points
+fn build_tensor_grid(
+    params: &[VarIdx],
+    param_degs: &[u32],
+    max_samples: usize,
+) -> Vec<Vec<BigRational>> {
+    if params.is_empty() {
+        return vec![vec![]];
+    }
+
+    // Points per param: degree + 1 for interpolation
+    let points_per_param: Vec<Vec<BigRational>> = param_degs
+        .iter()
+        .map(|&deg| generate_eval_points((deg + 1) as usize))
+        .collect();
+
+    // Cartesian product
+    let mut grid: Vec<Vec<BigRational>> = vec![vec![]];
+    for pts in &points_per_param {
+        let mut new_grid = Vec::new();
+        for existing in &grid {
+            for pt in pts {
+                if new_grid.len() >= max_samples {
+                    break;
+                }
+                let mut new_point = existing.clone();
+                new_point.push(pt.clone());
+                new_grid.push(new_point);
+            }
+            if new_grid.len() >= max_samples {
+                break;
+            }
+        }
+        grid = new_grid;
+    }
+
+    grid
+}
+
+/// Evaluate all variables except main to get univariate in main
+fn eval_all_but_main(
+    p: &MultiPoly,
+    main_var: VarIdx,
+    assigns: &[(VarIdx, BigRational)],
+) -> Option<Polynomial> {
+    p.eval_to_univariate(main_var, assigns)
+}
+
+/// Interpolate tensor grid samples into MultiPoly
+fn interpolate_tensor(
+    param_names: &[String],
+    param_degs: &[u32],
+    samples: &[(Vec<BigRational>, BigRational)],
+) -> Option<MultiPoly> {
+    if param_names.is_empty() {
+        // Constant: should be single sample
+        if samples.len() == 1 {
+            return Some(MultiPoly::from_const(samples[0].1.clone()));
+        }
+        return None;
+    }
+
+    if param_names.len() == 1 {
+        // Direct univariate Lagrange interpolation
+        let points: Vec<(BigRational, BigRational)> = samples
+            .iter()
+            .map(|(pt, val)| (pt[0].clone(), val.clone()))
+            .collect();
+        let poly = interpolate_lagrange(&points, &param_names[0])?;
+
+        // Convert Polynomial to MultiPoly
+        return Some(polynomial_to_multipoly(&poly));
+    }
+
+    // Multi-variable: recursive interpolation
+    // Group samples by first param value
+    let first_var = &param_names[0];
+    let first_deg = param_degs[0];
+    let first_points = generate_eval_points((first_deg + 1) as usize);
+
+    let rest_names: Vec<String> = param_names[1..].to_vec();
+    let rest_degs: Vec<u32> = param_degs[1..].to_vec();
+
+    // For each first_point, collect samples with that value and recurse
+    let mut interpolated_coeffs: Vec<(BigRational, MultiPoly)> = Vec::new();
+
+    for fp in &first_points {
+        // Filter samples where first coord == fp
+        let sub_samples: Vec<(Vec<BigRational>, BigRational)> = samples
+            .iter()
+            .filter(|(pt, _)| &pt[0] == fp)
+            .map(|(pt, val)| (pt[1..].to_vec(), val.clone()))
+            .collect();
+
+        if sub_samples.is_empty() {
+            continue;
+        }
+
+        // Recurse
+        let sub_poly = interpolate_tensor(&rest_names, &rest_degs, &sub_samples)?;
+        interpolated_coeffs.push((fp.clone(), sub_poly));
+    }
+
+    // Now interpolate in first_var using MultiPoly values
+    lagrange_interpolate_multipoly(first_var, &interpolated_coeffs, &rest_names)
+}
+
+/// Convert Polynomial to MultiPoly (single variable)
+fn polynomial_to_multipoly(poly: &Polynomial) -> MultiPoly {
+    let mut map: BTreeMap<Monomial, BigRational> = BTreeMap::new();
+    for (i, c) in poly.coeffs.iter().enumerate() {
+        if !c.is_zero() {
+            map.insert(vec![i as u32], c.clone());
+        }
+    }
+    MultiPoly::from_map(vec![poly.var.clone()], map)
+}
+
+/// Lagrange interpolation with MultiPoly values
+fn lagrange_interpolate_multipoly(
+    var: &str,
+    points: &[(BigRational, MultiPoly)],
+    other_vars: &[String],
+) -> Option<MultiPoly> {
+    if points.is_empty() {
+        return None;
+    }
+
+    // Build full variable list: [var, other_vars...]
+    let mut all_vars = vec![var.to_string()];
+    all_vars.extend(other_vars.iter().cloned());
+
+    let n = points.len();
+    let mut result = MultiPoly::zero(all_vars.clone());
+
+    for i in 0..n {
+        let (xi, yi) = &points[i];
+
+        // Build Lagrange basis L_i = prod_{j≠i} (var - x_j) / (x_i - x_j)
+        let mut basis_numer = MultiPoly::one(all_vars.clone());
+        let mut basis_denom = BigRational::one();
+
+        for j in 0..n {
+            if i == j {
+                continue;
+            }
+            let (xj, _) = &points[j];
+
+            // Numerator: multiply by (var - x_j)
+            // Create (var - x_j) as MultiPoly
+            let var_poly = var_minus_const(&all_vars, var, xj);
+            basis_numer = basis_numer.mul(&var_poly, &PolyBudget::default()).ok()?;
+
+            // Denominator: (x_i - x_j)
+            let diff = xi - xj;
+            if diff.is_zero() {
+                return None;
+            }
+            basis_denom = basis_denom * diff;
+        }
+
+        // Scale basis by 1/denom
+        let inv_denom = BigRational::one() / basis_denom;
+        basis_numer = basis_numer.mul_scalar(&inv_denom);
+
+        // Embed yi into all_vars
+        let yi_embedded = embed_multipoly(yi, &all_vars);
+
+        // Multiply basis * yi_embedded and add to result
+        let term = basis_numer.mul(&yi_embedded, &PolyBudget::default()).ok()?;
+        result = result.add(&term).ok()?;
+    }
+
+    Some(result)
+}
+
+/// Create MultiPoly for (var - c)
+fn var_minus_const(vars: &[String], var: &str, c: &BigRational) -> MultiPoly {
+    let var_idx = vars.iter().position(|v| v == var).unwrap_or(0);
+    let mut map = BTreeMap::new();
+
+    // Constant term: -c
+    if !c.is_zero() {
+        map.insert(vec![0u32; vars.len()], -c.clone());
+    }
+
+    // Variable term: +var
+    let mut mono = vec![0u32; vars.len()];
+    mono[var_idx] = 1;
+    map.insert(mono, BigRational::one());
+
+    MultiPoly::from_map(vars.to_vec(), map)
+}
+
+/// Embed MultiPoly into larger variable space
+fn embed_multipoly(p: &MultiPoly, target_vars: &[String]) -> MultiPoly {
+    if p.vars.is_empty() {
+        // Constant: embed into target_vars as constant term
+        if let Some(c) = p.constant_value() {
+            let mut map = BTreeMap::new();
+            if !c.is_zero() {
+                map.insert(vec![0u32; target_vars.len()], c);
+            }
+            return MultiPoly::from_map(target_vars.to_vec(), map);
+        }
+    }
+
+    // Map old var indices to new indices
+    let mapping: Vec<Option<usize>> = p
+        .vars
+        .iter()
+        .map(|v| target_vars.iter().position(|tv| tv == v))
+        .collect();
+
+    let mut map = BTreeMap::new();
+    for (coeff, mono) in &p.terms {
+        let mut new_mono = vec![0u32; target_vars.len()];
+        for (old_idx, &exp) in mono.iter().enumerate() {
+            if let Some(Some(new_idx)) = mapping.get(old_idx) {
+                new_mono[*new_idx] = exp;
+            }
+        }
+        let entry = map.entry(new_mono).or_insert_with(BigRational::zero);
+        *entry = entry.clone() + coeff.clone();
+    }
+
+    MultiPoly::from_map(target_vars.to_vec(), map)
+}
+
+/// Build GCD MultiPoly from coefficients
+fn build_gcd_multivar(
+    all_vars: &[String],
+    main_var: VarIdx,
+    params: &[VarIdx],
+    coeffs: &[MultiPoly],
+) -> Option<MultiPoly> {
+    let mut map = BTreeMap::new();
+
+    for (k, coeff_poly) in coeffs.iter().enumerate() {
+        // Embed coeff_poly (in param vars) into all_vars
+        let coeff_embedded = embed_multipoly(coeff_poly, all_vars);
+
+        for (c, mono) in &coeff_embedded.terms {
+            if c.is_zero() {
+                continue;
+            }
+            // Add main^k to the monomial
+            let mut new_mono = mono.clone();
+            if new_mono.len() <= main_var {
+                new_mono.resize(all_vars.len(), 0);
+            }
+            new_mono[main_var] += k as u32;
+
+            let entry = map.entry(new_mono).or_insert_with(BigRational::zero);
+            *entry = entry.clone() + c.clone();
+        }
+    }
+
+    Some(MultiPoly::from_map(all_vars.to_vec(), map))
+}
+
+// =============================================================================
 // AST Conversion
 // =============================================================================
 
