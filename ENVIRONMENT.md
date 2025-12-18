@@ -72,6 +72,77 @@ Error: Circular reference detected involving #1
 
 ---
 
+## Steps Mode (Performance & Display Control)
+
+The `steps` command controls how simplification steps are recorded and displayed. This affects both performance and output verbosity.
+
+### Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `on` (default) | Full step recording with before/after snapshots | Educational display, debugging |
+| `compact` | Record steps without snapshots | Memory-efficient step tracking |
+| `off` | No step recording (fastest) | Batch processing, performance optimization |
+
+### Commands
+
+```text
+> steps              # Show current mode
+Current steps mode: on
+  (use 'steps on|off|compact' to change)
+
+> steps off          # Disable step recording
+Steps mode: off
+  ⚡ Steps disabled (faster). Warnings still enabled.
+
+> steps compact      # Compact mode (no snapshots)
+Steps mode: compact
+  Compact steps (no before/after snapshots).
+
+> steps on           # Full step recording
+Steps mode: on
+  Full step recording with before/after snapshots.
+```
+
+### Prompt Indicator
+
+When steps mode is not `on` (default), the prompt shows the current mode:
+
+```text
+> x + 1                           # Default: no indicator
+
+> steps off
+[steps:off] > x + 1               # Indicator visible
+
+> context integrate
+[steps:off][ctx:integrate] > x    # Multiple indicators
+```
+
+### Domain Warnings Survival
+
+Even with `steps off`, **domain warnings** are preserved. This ensures mathematical safety information (like "assuming sin(u) ≠ 0") is never silently dropped.
+
+```rust
+// In code:
+let (result, steps) = simplifier.simplify(expr);
+let warnings = simplifier.take_domain_warnings(); // Works in all modes
+```
+
+### Performance
+
+Benchmarks show `steps off` provides modest performance gains:
+
+| Workload | Steps On | Steps Off | Improvement |
+|----------|----------|-----------|-------------|
+| Batch (11 inputs) | 1.38 ms | 1.25 ms | ~9% faster |
+| Light (i^12345) | 14.6 µs | 13.6 µs | ~7% faster |
+| Heavy (multivar GCD) | 7.67 ms | 7.58 ms | ~1% faster |
+
+> [!TIP]
+> Use `steps off` for batch processing or when steps aren't needed. The prompt indicator helps you remember the current mode.
+
+---
+
 ## Session Commands
 
 | Command | Description |

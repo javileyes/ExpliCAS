@@ -91,6 +91,15 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
         -   `2·sin(A)·cos(B) → sin(A+B) + sin(A-B)` (Werner product-to-sum)
         -   `cos(x)·cos(2x)·cos(4x) → sin(8x)/(8·sin(x))` (Morrie's law telescoping)
     -   Domain warnings are deduplicated and show their source rule.
+-   **Steps Mode** ★ (2025-12):
+    -   Control step recording for performance optimization:
+        -   `on` (default): Full step recording with before/after snapshots.
+        -   `compact`: Record steps without expression snapshots (memory-efficient).
+        -   `off`: No step recording (fastest, ~9% improvement on batch workloads).
+    -   Switch modes via `steps on|off|compact` in REPL.
+    -   **Prompt Indicator**: Shows `[steps:off]` or `[steps:compact]` when not in default mode.
+    -   **Domain Warnings Survive**: Even with `steps off`, domain assumptions are preserved.
+    -   **Benchmarks**: `off` provides ~9% speedup on batch, ~7% on light expressions.
 -   **Profile Cache** ★ (2025-12):
     -   Rule profiles cached automatically in `SessionState` to avoid rebuilding ~30 rules per evaluation.
     -   First evaluation builds and caches the profile; subsequent evaluations reuse `Arc<RuleProfile>`.
