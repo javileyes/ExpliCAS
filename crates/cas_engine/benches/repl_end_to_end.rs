@@ -33,6 +33,35 @@ fn full_eval(profile_cache: &mut ProfileCache, opts: &EvalOptions, input: &str) 
     )
 }
 
+/// Full REPL flow with explicit StepsMode: parse → simplify → format result
+/// Consumes domain_warnings to prevent optimizer from skipping side-channel work
+fn full_eval_with_mode(
+    profile_cache: &mut ProfileCache,
+    opts: &EvalOptions,
+    input: &str,
+    steps_mode: StepsMode,
+) -> (String, usize) {
+    let mut ctx = Context::new();
+    let expr = parse(input, &mut ctx).expect("parse failed");
+
+    let profile = profile_cache.get_or_build(opts);
+    let mut simplifier = Simplifier::from_profile(profile);
+    simplifier.context = ctx;
+    simplifier.set_steps_mode(steps_mode);
+
+    let (result, steps) = simplifier.simplify(expr);
+    let warnings = simplifier.take_domain_warnings(); // Consume to prevent optimization
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+    (display, steps.len() + warnings.len())
+}
+
 fn bench_repl_end_to_end(c: &mut Criterion) {
     // Representative input set (mixed difficulty)
     let inputs = [
@@ -117,8 +146,24 @@ fn bench_repl_end_to_end(c: &mut Criterion) {
     individual.finish();
 }
 
-/// Measure just steps overhead
-fn bench_steps_overhead(c: &mut Criterion) {
+/// Compare StepsMode::On vs Off vs Compact
+/// Tests: batch + light + heavy expressions
+fn bench_steps_mode_comparison(c: &mut Criterion) {
+    // Representative input set (mixed difficulty)
+    let inputs = [
+        "x + 1",
+        "2 * 3 + 4",
+        "sin(x)^2 + cos(x)^2",
+        "sqrt(12*x^3)",
+        "((5*x + 8)^2)^(1/2)",
+        "i^5",
+        "(2*x + 2*y)/(4*x + 4*y)",
+        "(x^2 - y^2)/(x - y)",
+        "((x+y)*(a+b))/((x+y)*(c+d))",
+        "(3 + 4*i)/(1 + 2*i)",
+        "sin(2*x + 1)^2 + cos(1 + 2*x)^2",
+    ];
+
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
@@ -126,25 +171,138 @@ fn bench_steps_overhead(c: &mut Criterion) {
         steps_mode: StepsMode::On,
     };
 
-    let mut cache = ProfileCache::new();
-    let profile = cache.get_or_build(&opts);
+    let mut group = c.benchmark_group("steps_mode_comparison");
 
-    let heavy_input = "(x^2 - y^2)/(x - y)";
-
-    c.bench_function("steps/with_steps", |b| {
+    // ========== BATCH BENCHMARKS ==========
+    // StepsMode::On - batch
+    group.bench_function("batch_11/steps_on", |b| {
         b.iter(|| {
-            let mut ctx = Context::new();
-            let expr = parse(heavy_input, &mut ctx).unwrap();
-            let mut s = Simplifier::from_profile(profile.clone());
-            s.context = ctx;
-            let (result, steps) = s.simplify(expr);
-            black_box((result, steps.len()));
+            let mut cache = ProfileCache::new();
+            let _ = cache.get_or_build(&opts); // warm once
+            for input in &inputs {
+                black_box(full_eval_with_mode(&mut cache, &opts, input, StepsMode::On));
+            }
         })
     });
 
-    // Note: Currently no way to disable steps, but this baseline helps
-    // identify the overhead when comparing with future StepsMode::Off
+    // StepsMode::Compact - batch
+    group.bench_function("batch_11/steps_compact", |b| {
+        b.iter(|| {
+            let mut cache = ProfileCache::new();
+            let _ = cache.get_or_build(&opts);
+            for input in &inputs {
+                black_box(full_eval_with_mode(
+                    &mut cache,
+                    &opts,
+                    input,
+                    StepsMode::Compact,
+                ));
+            }
+        })
+    });
+
+    // StepsMode::Off - batch
+    group.bench_function("batch_11/steps_off", |b| {
+        b.iter(|| {
+            let mut cache = ProfileCache::new();
+            let _ = cache.get_or_build(&opts);
+            for input in &inputs {
+                black_box(full_eval_with_mode(
+                    &mut cache,
+                    &opts,
+                    input,
+                    StepsMode::Off,
+                ));
+            }
+        })
+    });
+
+    // ========== LIGHT EXPRESSION (overhead-dominated) ==========
+    let light_input = "i^12345";
+
+    group.bench_function("light/steps_on", |b| {
+        let mut cache = ProfileCache::new();
+        let _ = cache.get_or_build(&opts);
+        b.iter(|| {
+            black_box(full_eval_with_mode(
+                &mut cache,
+                &opts,
+                light_input,
+                StepsMode::On,
+            ))
+        })
+    });
+
+    group.bench_function("light/steps_compact", |b| {
+        let mut cache = ProfileCache::new();
+        let _ = cache.get_or_build(&opts);
+        b.iter(|| {
+            black_box(full_eval_with_mode(
+                &mut cache,
+                &opts,
+                light_input,
+                StepsMode::Compact,
+            ))
+        })
+    });
+
+    group.bench_function("light/steps_off", |b| {
+        let mut cache = ProfileCache::new();
+        let _ = cache.get_or_build(&opts);
+        b.iter(|| {
+            black_box(full_eval_with_mode(
+                &mut cache,
+                &opts,
+                light_input,
+                StepsMode::Off,
+            ))
+        })
+    });
+
+    // ========== HEAVY EXPRESSION (algebra-dominated) ==========
+    let heavy_input = "((x+y+z)*(x+2*y+3*z))/((x+y+z)*(2*x-y+z))";
+
+    group.bench_function("heavy/steps_on", |b| {
+        let mut cache = ProfileCache::new();
+        let _ = cache.get_or_build(&opts);
+        b.iter(|| {
+            black_box(full_eval_with_mode(
+                &mut cache,
+                &opts,
+                heavy_input,
+                StepsMode::On,
+            ))
+        })
+    });
+
+    group.bench_function("heavy/steps_compact", |b| {
+        let mut cache = ProfileCache::new();
+        let _ = cache.get_or_build(&opts);
+        b.iter(|| {
+            black_box(full_eval_with_mode(
+                &mut cache,
+                &opts,
+                heavy_input,
+                StepsMode::Compact,
+            ))
+        })
+    });
+
+    group.bench_function("heavy/steps_off", |b| {
+        let mut cache = ProfileCache::new();
+        let _ = cache.get_or_build(&opts);
+        b.iter(|| {
+            black_box(full_eval_with_mode(
+                &mut cache,
+                &opts,
+                heavy_input,
+                StepsMode::Off,
+            ))
+        })
+    });
+
+    group.finish();
 }
 
-criterion_group!(benches, bench_repl_end_to_end, bench_steps_overhead);
+criterion_group!(benches, bench_repl_end_to_end, bench_steps_mode_comparison);
 criterion_main!(benches);

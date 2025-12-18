@@ -128,6 +128,8 @@ pub struct Simplifier {
     disabled_rules: HashSet<String>,
     pub enable_polynomial_strategy: bool,
     pub profiler: RuleProfiler,
+    /// Domain warnings from last simplify() call (side-channel for Off mode)
+    last_domain_warnings: Vec<(String, String)>,
 }
 
 impl Default for Simplifier {
@@ -148,6 +150,7 @@ impl Simplifier {
             disabled_rules: HashSet::new(),
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false), // Disabled by default
+            last_domain_warnings: Vec::new(),
         }
     }
 
@@ -219,6 +222,7 @@ impl Simplifier {
             disabled_rules: profile.disabled_rules.clone(),
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false),
+            last_domain_warnings: Vec::new(),
         }
     }
 
@@ -246,6 +250,12 @@ impl Simplifier {
     /// Set the steps collection mode directly
     pub fn set_steps_mode(&mut self, mode: StepsMode) {
         self.steps_mode = mode;
+    }
+
+    /// Take and clear domain warnings from the last simplify() call.
+    /// This is the side-channel to get warnings even in Off mode (when steps is empty).
+    pub fn take_domain_warnings(&mut self) -> Vec<(String, String)> {
+        std::mem::take(&mut self.last_domain_warnings)
     }
 
     pub fn enable_debug(&mut self) {
@@ -431,6 +441,7 @@ impl Simplifier {
             disabled_rules: &self.disabled_rules,
             steps_mode: self.steps_mode,
             steps: Vec::new(),
+            domain_warnings: Vec::new(),
             cache: HashMap::new(),
             current_path: Vec::new(),
             profiler: &mut self.profiler,
@@ -450,6 +461,8 @@ impl Simplifier {
 
         // Extract steps from transformer
         let steps = std::mem::take(&mut local_transformer.steps);
+        // Copy domain_warnings to self (survives even in Off mode)
+        self.last_domain_warnings = std::mem::take(&mut local_transformer.domain_warnings);
         drop(local_transformer);
 
         (new_expr, steps)
@@ -521,6 +534,7 @@ impl Simplifier {
             disabled_rules: &self.disabled_rules,
             steps_mode,
             steps: Vec::new(),
+            domain_warnings: Vec::new(),
             cache: HashMap::new(),
             current_path: Vec::new(),
             profiler: &mut self.profiler,
@@ -540,6 +554,9 @@ impl Simplifier {
 
         // Extract steps from transformer
         let steps = std::mem::take(&mut local_transformer.steps);
+        // Copy domain_warnings to self (survives even in Off mode)
+        self.last_domain_warnings
+            .extend(local_transformer.domain_warnings.drain(..));
         drop(local_transformer);
 
         (new_expr, steps)
@@ -691,6 +708,8 @@ struct LocalSimplificationTransformer<'a> {
     disabled_rules: &'a HashSet<String>,
     steps_mode: StepsMode,
     steps: Vec<Step>,
+    /// Domain warnings collected regardless of steps_mode (for Off mode warning survival)
+    domain_warnings: Vec<(String, String)>, // (message, rule_name)
     cache: HashMap<ExprId, ExprId>,
     current_path: Vec<crate::step::PathStep>,
     profiler: &'a mut RuleProfiler,
@@ -1189,6 +1208,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             expr_id,
                             rewrite.new_expr
                         );
+                        // Always accumulate domain_warnings (survives Off mode)
+                        if let Some(assumption) = rewrite.domain_assumption {
+                            self.domain_warnings
+                                .push((rule.name().to_string(), assumption.to_string()));
+                        }
                         if self.steps_mode != StepsMode::Off {
                             let global_before = self.root_expr;
                             let global_after = self.reconstruct_at_path(rewrite.new_expr);
@@ -1296,6 +1320,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         expr_id,
                         rewrite.new_expr
                     );
+                    // Always accumulate domain_warnings (survives Off mode)
+                    if let Some(assumption) = rewrite.domain_assumption {
+                        self.domain_warnings
+                            .push((rule.name().to_string(), assumption.to_string()));
+                    }
                     if self.steps_mode != StepsMode::Off {
                         let global_before = self.root_expr;
                         let global_after = self.reconstruct_at_path(rewrite.new_expr);
