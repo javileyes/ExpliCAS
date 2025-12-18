@@ -254,8 +254,13 @@ impl Simplifier {
 
     /// Take and clear domain warnings from the last simplify() call.
     /// This is the side-channel to get warnings even in Off mode (when steps is empty).
+    /// Warnings are deduplicated by (rule_name, message), preserving first-occurrence order.
     pub fn take_domain_warnings(&mut self) -> Vec<(String, String)> {
-        std::mem::take(&mut self.last_domain_warnings)
+        let mut warnings = std::mem::take(&mut self.last_domain_warnings);
+        // Dedup preserving first occurrence order
+        let mut seen = std::collections::HashSet::new();
+        warnings.retain(|w| seen.insert((w.0.clone(), w.1.clone())));
+        warnings
     }
 
     pub fn enable_debug(&mut self) {

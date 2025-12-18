@@ -629,7 +629,7 @@ impl Repl {
     /// Build the REPL prompt with mode indicators.
     /// Only shows indicators for non-default modes to keep prompt clean.
     fn build_prompt(&self) -> String {
-        use cas_engine::options::{ContextMode, StepsMode};
+        use cas_engine::options::{BranchMode, ComplexMode, ContextMode, StepsMode};
 
         let mut indicators = Vec::new();
 
@@ -646,6 +646,19 @@ impl Repl {
             ContextMode::Solve => indicators.push("[ctx:solve]"),
             ContextMode::Standard => indicators.push("[ctx:standard]"),
             ContextMode::Auto => {} // Default, no indicator
+        }
+
+        // Show branch mode if not Strict (default)
+        match self.state.options.branch_mode {
+            BranchMode::PrincipalBranch => indicators.push("[branch:principal]"),
+            BranchMode::Strict => {} // Default, no indicator
+        }
+
+        // Show complex mode if not Auto (default)
+        match self.state.options.complex_mode {
+            ComplexMode::On => indicators.push("[cx:on]"),
+            ComplexMode::Off => indicators.push("[cx:off]"),
+            ComplexMode::Auto => {} // Default, no indicator
         }
 
         if indicators.is_empty() {
