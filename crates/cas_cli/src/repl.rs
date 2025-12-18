@@ -626,6 +626,35 @@ impl Repl {
         }
     }
 
+    /// Build the REPL prompt with mode indicators.
+    /// Only shows indicators for non-default modes to keep prompt clean.
+    fn build_prompt(&self) -> String {
+        use cas_engine::options::{ContextMode, StepsMode};
+
+        let mut indicators = Vec::new();
+
+        // Show steps mode if not On (default)
+        match self.state.options.steps_mode {
+            StepsMode::Off => indicators.push("[steps:off]"),
+            StepsMode::Compact => indicators.push("[steps:compact]"),
+            StepsMode::On => {} // Default, no indicator
+        }
+
+        // Show context mode if not Auto (default)
+        match self.state.options.context_mode {
+            ContextMode::IntegratePrep => indicators.push("[ctx:integrate]"),
+            ContextMode::Solve => indicators.push("[ctx:solve]"),
+            ContextMode::Standard => indicators.push("[ctx:standard]"),
+            ContextMode::Auto => {} // Default, no indicator
+        }
+
+        if indicators.is_empty() {
+            "> ".to_string()
+        } else {
+            format!("{} > ", indicators.join(""))
+        }
+    }
+
     pub fn run(&mut self) -> rustyline::Result<()> {
         println!("Rust CAS Step-by-Step Demo");
         println!("Step-by-step output enabled (Normal).");
@@ -639,7 +668,8 @@ impl Repl {
         // Load history if file exists (optional, skipping for simplicity or can add later)
 
         loop {
-            let readline = rl.readline("> ");
+            let prompt = self.build_prompt();
+            let readline = rl.readline(&prompt);
             match readline {
                 Ok(line) => {
                     let line = line.trim();
