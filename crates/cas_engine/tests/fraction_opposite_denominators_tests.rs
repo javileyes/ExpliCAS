@@ -7,7 +7,7 @@ fn simplify_and_display(input: &str) -> String {
     let expr = parse(input, &mut ctx).expect("Parse failed");
     let mut simplifier = Simplifier::with_default_rules();
     simplifier.context = ctx;
-    simplifier.collect_steps = false;
+    simplifier.set_collect_steps(false);
     let (result, _) = simplifier.simplify(expr);
     format!(
         "{}",

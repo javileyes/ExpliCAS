@@ -34,7 +34,7 @@ fn benchmark_collect_steps_impact() {
             let start = Instant::now();
             for _ in 0..iterations {
                 let mut simplifier = cas_engine::Simplifier::with_default_rules();
-                simplifier.collect_steps = true;
+                simplifier.set_collect_steps(true);
                 let expr = parse(expr_str, &mut simplifier.context).unwrap();
                 let _ = simplifier.simplify(expr);
             }
@@ -46,7 +46,7 @@ fn benchmark_collect_steps_impact() {
             let start = Instant::now();
             for _ in 0..iterations {
                 let mut simplifier = cas_engine::Simplifier::with_default_rules();
-                simplifier.collect_steps = false;
+                simplifier.set_collect_steps(false);
                 let expr = parse(expr_str, &mut simplifier.context).unwrap();
                 let _ = simplifier.simplify(expr);
             }
