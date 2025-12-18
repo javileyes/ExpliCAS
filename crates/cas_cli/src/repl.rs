@@ -434,7 +434,7 @@ impl Repl {
     /// Simplify expression using current pipeline options
     fn do_simplify(&mut self, expr: cas_ast::ExprId) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
         let mut opts = self.simplify_options.clone();
-        opts.collect_steps = self.engine.simplifier.collect_steps;
+        opts.collect_steps = self.engine.simplifier.collect_steps();
 
         // Enable health metrics and clear previous run if explain or health mode is on
         if self.explain_mode || self.health_enabled {
@@ -774,6 +774,12 @@ impl Repl {
             return;
         }
 
+        // "steps" - show/switch steps collection mode (on, off, compact)
+        if line == "steps" || line.starts_with("steps ") {
+            self.handle_steps_command(&line);
+            return;
+        }
+
         // "history" or "list" - show session history
         if line == "history" || line == "list" {
             self.handle_history_command();
@@ -801,22 +807,22 @@ impl Repl {
                 match parts[1] {
                     "on" | "normal" => {
                         self.verbosity = Verbosity::Normal;
-                        self.engine.simplifier.collect_steps = true;
+                        self.engine.simplifier.set_collect_steps(true);
                         println!("Step-by-step output enabled (Normal).");
                     }
                     "off" | "none" => {
                         self.verbosity = Verbosity::None;
-                        self.engine.simplifier.collect_steps = false;
+                        self.engine.simplifier.set_collect_steps(false);
                         println!("Step-by-step output disabled.");
                     }
                     "verbose" => {
                         self.verbosity = Verbosity::Verbose;
-                        self.engine.simplifier.collect_steps = true;
+                        self.engine.simplifier.set_collect_steps(true);
                         println!("Step-by-step output enabled (Verbose).");
                     }
                     "succinct" => {
                         self.verbosity = Verbosity::Succinct;
-                        self.engine.simplifier.collect_steps = true;
+                        self.engine.simplifier.set_collect_steps(true);
                         println!("Step-by-step output enabled (Succinct - compact display).");
                     }
                     _ => println!("Usage: steps <on|off|normal|verbose|succinct|none>"),
@@ -1952,7 +1958,7 @@ impl Repl {
         let (steps, expr_id, simplified) = if use_aggressive {
             // Create temporary simplifier with aggressive rules (like handle_full_simplify)
             let mut temp_simplifier = Simplifier::with_default_rules();
-            temp_simplifier.collect_steps = true; // Always collect steps for timeline
+            temp_simplifier.set_collect_steps(true); // Always collect steps for timeline
 
             // Swap context to preserve variables
             std::mem::swap(
@@ -2492,6 +2498,51 @@ impl Repl {
                 println!("  auto - Enable when `i` detected (default)");
                 println!("  on   - Always enable complex rules");
                 println!("  off  - Treat `i` as literal constant");
+            }
+        }
+    }
+
+    /// Handle "steps" command - show or switch steps collection mode
+    fn handle_steps_command(&mut self, line: &str) {
+        use cas_engine::options::StepsMode;
+
+        let args: Vec<&str> = line.split_whitespace().collect();
+
+        match args.get(1) {
+            None => {
+                // Just "steps" - show current mode
+                let mode_str = match self.state.options.steps_mode {
+                    StepsMode::On => "on",
+                    StepsMode::Off => "off",
+                    StepsMode::Compact => "compact",
+                };
+                println!("Current steps mode: {}", mode_str);
+                println!("  (use 'steps on|off|compact' to change)");
+            }
+            Some(&"on") => {
+                self.state.options.steps_mode = StepsMode::On;
+                self.engine.simplifier.set_steps_mode(StepsMode::On);
+                println!("Steps mode: on");
+                println!("  Full step recording with before/after snapshots.");
+            }
+            Some(&"off") => {
+                self.state.options.steps_mode = StepsMode::Off;
+                self.engine.simplifier.set_steps_mode(StepsMode::Off);
+                println!("Steps mode: off");
+                println!("  ⚡ Steps disabled (faster). Warnings still enabled.");
+            }
+            Some(&"compact") => {
+                self.state.options.steps_mode = StepsMode::Compact;
+                self.engine.simplifier.set_steps_mode(StepsMode::Compact);
+                println!("Steps mode: compact");
+                println!("  Compact steps (no before/after snapshots).");
+            }
+            Some(other) => {
+                println!("Unknown steps mode: '{}'", other);
+                println!("Usage: steps [on | off | compact]");
+                println!("  on      - Full steps with snapshots (default)");
+                println!("  off     - No steps (fastest, warnings preserved)");
+                println!("  compact - Minimal steps (no snapshots)");
             }
         }
     }
@@ -3045,7 +3096,7 @@ impl Repl {
         match cas_parser::parse_statement(eq_str, &mut self.engine.simplifier.context) {
             Ok(cas_parser::Statement::Equation(eq)) => {
                 // Call solver with step collection enabled
-                self.engine.simplifier.collect_steps = true;
+                self.engine.simplifier.set_collect_steps(true);
 
                 match cas_engine::solver::solve(&eq, var, &mut self.engine.simplifier) {
                     Ok((solution_set, steps)) => {
@@ -3729,7 +3780,7 @@ impl Repl {
         // Also add DistributeConstantRule just in case (though DistributeRule covers it)
 
         // Set steps mode
-        temp_simplifier.collect_steps = self.verbosity != Verbosity::None;
+        temp_simplifier.set_collect_steps(self.verbosity != Verbosity::None);
 
         match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {

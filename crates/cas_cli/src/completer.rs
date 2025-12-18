@@ -223,6 +223,25 @@ impl Completer for CasHelper {
             }
         }
 
+        // Check for "steps" context
+        if line.starts_with("steps ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let modes = vec!["on", "off", "compact"];
+                for m in modes {
+                    if m.starts_with(word) {
+                        matches.push(Pair {
+                            display: m.to_string(),
+                            replacement: m.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+        }
+
         // Check for "profile" context
         if line.starts_with("profile ") {
             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
