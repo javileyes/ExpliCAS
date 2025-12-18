@@ -210,7 +210,7 @@ fn try_solve_rational_exponent(
         op: cas_ast::RelOp::Eq,
     };
 
-    if simplifier.collect_steps {
+    if simplifier.collect_steps() {
         steps.push(SolveStep {
             description: format!(
                 "Raise both sides to power {} to eliminate rational exponent",
@@ -353,7 +353,7 @@ mod tests {
         // x + 2 = 5 -> x = 3
         let mut simplifier = Simplifier::new();
         let eq = make_eq(&mut simplifier.context, "x + 2", "5");
-        simplifier.collect_steps = true;
+        simplifier.set_collect_steps(true);
         let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
 
         if let SolutionSet::Discrete(solutions) = result {
@@ -376,7 +376,7 @@ mod tests {
         // 2 * x = 6 -> x = 6 / 2
         let mut simplifier = Simplifier::with_default_rules();
         let eq = make_eq(&mut simplifier.context, "2 * x", "6");
-        simplifier.collect_steps = true;
+        simplifier.set_collect_steps(true);
         let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
 
         if let SolutionSet::Discrete(solutions) = result {
@@ -404,7 +404,7 @@ mod tests {
             crate::rules::canonicalization::CanonicalizeNegationRule,
         ));
         simplifier.add_rule(Box::new(crate::rules::arithmetic::CombineConstantsRule));
-        simplifier.collect_steps = true;
+        simplifier.set_collect_steps(true);
         let (result, _) = solve(&eq, "x", &mut simplifier).unwrap();
 
         if let SolutionSet::Discrete(mut solutions) = result {

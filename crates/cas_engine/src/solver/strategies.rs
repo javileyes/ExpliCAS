@@ -225,7 +225,7 @@ impl SolverStrategy for SubstitutionStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         if let Some(sub_var_expr) = detect_substitution(&mut simplifier.context, eq, var) {
             let mut steps = Vec::new();
-            if simplifier.collect_steps {
+            if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!("Detected substitution: u = {:?}", sub_var_expr), // Debug format
                     equation_after: eq.clone(),
@@ -244,7 +244,7 @@ impl SolverStrategy for SubstitutionStrategy {
                 op: eq.op.clone(),
             };
 
-            if simplifier.collect_steps {
+            if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
                         "Substituted equation: {:?} {} {:?}",
@@ -274,7 +274,7 @@ impl SolverStrategy for SubstitutionStrategy {
                             rhs: val,
                             op: RelOp::Eq,
                         };
-                        if simplifier.collect_steps {
+                        if simplifier.collect_steps() {
                             steps.push(SolveStep {
                                 description: format!(
                                     "Back-substitute: {:?} = {:?}",
@@ -471,7 +471,7 @@ impl SolverStrategy for QuadraticStrategy {
 
         if let Some(factors) = split_factors(&simplifier.context, sim_poly_expr) {
             // We found factors.
-            if simplifier.collect_steps {
+            if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
                         "Factorized equation: {} = 0",
@@ -500,7 +500,7 @@ impl SolverStrategy for QuadraticStrategy {
                         continue;
                     }
 
-                    if simplifier.collect_steps {
+                    if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: format!(
                                 "Solve factor: {} = 0",
@@ -570,7 +570,7 @@ impl SolverStrategy for QuadraticStrategy {
                 }
             }
 
-            if simplifier.collect_steps {
+            if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: "Detected quadratic equation. Applying quadratic formula."
                         .to_string(),
@@ -974,7 +974,7 @@ impl SolverStrategy for IsolationStrategy {
                 RelOp::Geq => RelOp::Leq,
             };
             let mut steps = Vec::new();
-            if simplifier.collect_steps {
+            if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: "Swap sides to put variable on LHS".to_string(),
                     equation_after: Equation {
@@ -1206,7 +1206,7 @@ impl SolverStrategy for UnwrapStrategy {
         if lhs_has {
             if let Some((new_eq, desc)) = invert(eq.lhs, eq.rhs, eq.op.clone(), true) {
                 let mut steps = Vec::new();
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: desc,
                         equation_after: new_eq.clone(),
@@ -1226,7 +1226,7 @@ impl SolverStrategy for UnwrapStrategy {
         if rhs_has {
             if let Some((new_eq, desc)) = invert(eq.rhs, eq.lhs, eq.op.clone(), false) {
                 let mut steps = Vec::new();
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: desc,
                         equation_after: new_eq.clone(),
@@ -1289,7 +1289,7 @@ impl SolverStrategy for CollectTermsStrategy {
         let (simp_lhs, _) = simplifier.simplify(new_lhs);
         let (simp_rhs, _) = simplifier.simplify(new_rhs);
 
-        if simplifier.collect_steps {
+        if simplifier.collect_steps() {
             steps.push(SolveStep {
                 description: format!(
                     "Subtract {} from both sides",
@@ -1381,7 +1381,7 @@ impl SolverStrategy for RationalExponentStrategy {
             op: RelOp::Eq,
         };
 
-        if simplifier.collect_steps {
+        if simplifier.collect_steps() {
             steps.push(SolveStep {
                 description: format!(
                     "Raise both sides to power {} to eliminate fractional exponent",

@@ -1,4 +1,5 @@
 use crate::canonical_forms::normalize_core;
+use crate::options::StepsMode;
 use crate::profiler::RuleProfiler;
 use crate::rule::Rule;
 use crate::step::Step;
@@ -120,7 +121,8 @@ pub struct Simplifier {
     pub context: Context,
     rules: HashMap<String, Vec<Arc<dyn Rule>>>,
     global_rules: Vec<Arc<dyn Rule>>,
-    pub collect_steps: bool,
+    /// Steps collection mode (On/Off/Compact)
+    pub steps_mode: StepsMode,
     pub allow_numerical_verification: bool,
     pub debug_mode: bool,
     disabled_rules: HashSet<String>,
@@ -140,7 +142,7 @@ impl Simplifier {
             context: Context::new(),
             rules: HashMap::new(),
             global_rules: Vec::new(),
-            collect_steps: true,
+            steps_mode: StepsMode::On,
             allow_numerical_verification: true,
             debug_mode: false,
             disabled_rules: HashSet::new(),
@@ -211,13 +213,28 @@ impl Simplifier {
             context: Context::new(),
             rules: profile.rules.clone(),
             global_rules: profile.global_rules.clone(),
-            collect_steps: true,
+            steps_mode: StepsMode::On,
             allow_numerical_verification: true,
             debug_mode: false,
             disabled_rules: profile.disabled_rules.clone(),
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false),
         }
+    }
+
+    /// Backward-compatible getter: returns true if steps_mode is not Off
+    #[inline]
+    pub fn collect_steps(&self) -> bool {
+        self.steps_mode != StepsMode::Off
+    }
+
+    /// Backward-compatible setter: sets steps_mode to On or Off
+    pub fn set_collect_steps(&mut self, collect: bool) {
+        self.steps_mode = if collect {
+            StepsMode::On
+        } else {
+            StepsMode::Off
+        };
     }
 
     pub fn enable_debug(&mut self) {
@@ -401,7 +418,7 @@ impl Simplifier {
             rules: &self.rules,
             global_rules: &self.global_rules,
             disabled_rules: &self.disabled_rules,
-            collect_steps: self.collect_steps,
+            steps_mode: self.steps_mode,
             steps: Vec::new(),
             cache: HashMap::new(),
             current_path: Vec::new(),
@@ -450,7 +467,7 @@ impl Simplifier {
         let mut orchestrator = crate::orchestrator::Orchestrator::new();
         orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
         orchestrator.options = options;
-        orchestrator.options.collect_steps = self.collect_steps;
+        orchestrator.options.collect_steps = self.collect_steps();
         orchestrator.simplify_pipeline(expr_id, self)
     }
 
@@ -480,7 +497,7 @@ impl Simplifier {
     ) -> (ExprId, Vec<Step>) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
-        let collect_steps = self.collect_steps;
+        let steps_mode = self.steps_mode;
 
         // Create initial ParentContext with pattern marks
         let initial_parent_ctx =
@@ -491,7 +508,7 @@ impl Simplifier {
             rules,
             global_rules,
             disabled_rules: &self.disabled_rules,
-            collect_steps,
+            steps_mode,
             steps: Vec::new(),
             cache: HashMap::new(),
             current_path: Vec::new(),
@@ -661,7 +678,7 @@ struct LocalSimplificationTransformer<'a> {
     rules: &'a HashMap<String, Vec<Arc<dyn Rule>>>,
     global_rules: &'a Vec<Arc<dyn Rule>>,
     disabled_rules: &'a HashSet<String>,
-    collect_steps: bool,
+    steps_mode: StepsMode,
     steps: Vec<Step>,
     cache: HashMap<ExprId, ExprId>,
     current_path: Vec<crate::step::PathStep>,
@@ -935,7 +952,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                     .add(Expr::Function("abs".to_string(), vec![*inner_base]));
 
                                 // Record the step
-                                if self.collect_steps {
+                                if self.steps_mode != StepsMode::Off {
                                     let step = crate::step::Step::new(
                                         "sqrt(u^2) = |u|",
                                         "Simplify Square Root of Square",
@@ -964,7 +981,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 .add(Expr::Function("abs".to_string(), vec![*left]));
 
                             // Record the step
-                            if self.collect_steps {
+                            if self.steps_mode != StepsMode::Off {
                                 let step = crate::step::Step::new(
                                     "sqrt(u * u) = |u|",
                                     "Simplify Square Root of Product",
@@ -1161,7 +1178,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             expr_id,
                             rewrite.new_expr
                         );
-                        if self.collect_steps {
+                        if self.steps_mode != StepsMode::Off {
                             let global_before = self.root_expr;
                             let global_after = self.reconstruct_at_path(rewrite.new_expr);
                             let mut step = Step::with_snapshots(
@@ -1268,7 +1285,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         expr_id,
                         rewrite.new_expr
                     );
-                    if self.collect_steps {
+                    if self.steps_mode != StepsMode::Off {
                         let global_before = self.root_expr;
                         let global_after = self.reconstruct_at_path(rewrite.new_expr);
                         let mut step = Step::with_snapshots(

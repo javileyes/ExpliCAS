@@ -86,7 +86,7 @@ pub fn isolate(
                     rhs: new_rhs,
                     op: op.clone(),
                 };
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!(
                             "Subtract {} from both sides",
@@ -109,7 +109,7 @@ pub fn isolate(
                     rhs: new_rhs,
                     op: op.clone(),
                 };
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!(
                             "Subtract {} from both sides",
@@ -136,7 +136,7 @@ pub fn isolate(
                     rhs: new_rhs,
                     op: op.clone(),
                 };
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!(
                             "Add {} to both sides",
@@ -161,7 +161,7 @@ pub fn isolate(
                     rhs: new_rhs,
                     op: new_op.clone(),
                 };
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!(
                             "Move {} and multiply by -1 (flips inequality)",
@@ -331,7 +331,7 @@ pub fn isolate(
                     rhs: new_rhs,
                     op: new_op.clone(),
                 };
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!(
                             "Divide both sides by {}",
@@ -358,7 +358,7 @@ pub fn isolate(
                     rhs: new_rhs,
                     op: new_op.clone(),
                 };
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!(
                             "Divide both sides by {}",
@@ -386,7 +386,7 @@ pub fn isolate(
                     let new_rhs = simplifier.context.add(Expr::Mul(rhs, r));
                     let (sim_rhs, _) = simplifier.simplify(new_rhs);
 
-                    if simplifier.collect_steps {
+                    if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: format!(
                                 "Case 1: Assume {} > 0. Multiply by positive denominator.",
@@ -423,7 +423,7 @@ pub fn isolate(
                     let temp_rhs = simplifier.context.add(Expr::Mul(rhs, r));
                     let (sim_rhs, _) = simplifier.simplify(temp_rhs);
 
-                    if simplifier.collect_steps {
+                    if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: format!("Case 2: Assume {} < 0. Multiply by negative denominator (flips inequality).",
                                 cas_ast::DisplayExpr { context: &simplifier.context, id: r }),
@@ -475,7 +475,7 @@ pub fn isolate(
                         rhs: new_rhs,
                         op: new_op.clone(),
                     };
-                    if simplifier.collect_steps {
+                    if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: format!(
                                 "Multiply both sides by {}",
@@ -526,7 +526,7 @@ pub fn isolate(
 
                         // Clone steps BEFORE adding Case 1 step
                         let mut steps_case1 = steps.clone();
-                        if simplifier.collect_steps {
+                        if simplifier.collect_steps() {
                             steps_case1.push(SolveStep {
                                  description: format!("Case 1: Assume {} > 0. Multiply by {} (positive). Inequality direction preserved (flipped from isolation logic).",
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r },
@@ -554,7 +554,7 @@ pub fn isolate(
 
                         // Clone steps BEFORE adding Case 2 step (from original steps, not modified)
                         let mut steps_case2 = steps.clone();
-                        if simplifier.collect_steps {
+                        if simplifier.collect_steps() {
                             steps_case2.push(SolveStep {
                                  description: format!("Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.",
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r },
@@ -596,7 +596,7 @@ pub fn isolate(
                     }
                 }
 
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!(
                             "Isolate denominator {}",
@@ -632,7 +632,7 @@ pub fn isolate(
                             RelOp::Gt | RelOp::Geq | RelOp::Neq => SolutionSet::AllReals,
                             RelOp::Lt | RelOp::Leq => SolutionSet::Empty,
                         };
-                        if simplifier.collect_steps {
+                        if simplifier.collect_steps() {
                             steps.push(SolveStep {
                                 description: format!(
                                     "Even power cannot be negative ({} {} {})",
@@ -667,7 +667,7 @@ pub fn isolate(
                         rhs: new_rhs,
                         op: op.clone(),
                     };
-                    if simplifier.collect_steps {
+                    if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: format!(
                                 "Take {}-th root of both sides (even root implies absolute value)",
@@ -694,7 +694,7 @@ pub fn isolate(
                         rhs: new_rhs,
                         op: op.clone(),
                     };
-                    if simplifier.collect_steps {
+                    if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: format!(
                                 "Take {}-th root of both sides",
@@ -726,7 +726,7 @@ pub fn isolate(
                     rhs: new_rhs,
                     op: op.clone(),
                 };
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!(
                             "Take log base {} of both sides",
@@ -757,7 +757,7 @@ pub fn isolate(
                     op: op.clone(),
                 };
                 let mut steps1 = steps.clone();
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps1.push(SolveStep {
                         description: format!(
                             "Split absolute value (Case 1): {} {} {}",
@@ -798,7 +798,7 @@ pub fn isolate(
                     op: op2.clone(),
                 };
                 let mut steps2 = steps.clone();
-                if simplifier.collect_steps {
+                if simplifier.collect_steps() {
                     steps2.push(SolveStep {
                         description: format!(
                             "Split absolute value (Case 2): {} {} {}",
@@ -847,7 +847,7 @@ pub fn isolate(
                         rhs: new_rhs,
                         op: op.clone(),
                     };
-                    if simplifier.collect_steps {
+                    if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: format!(
                                 "Exponentiate both sides with base {}",
@@ -872,7 +872,7 @@ pub fn isolate(
                         rhs: new_rhs,
                         op: op.clone(),
                     };
-                    if simplifier.collect_steps {
+                    if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: "Isolate base of logarithm".to_string(),
                             equation_after: new_eq,
@@ -898,7 +898,7 @@ pub fn isolate(
                                 rhs: new_rhs,
                                 op: op.clone(),
                             };
-                            if simplifier.collect_steps {
+                            if simplifier.collect_steps() {
                                 steps.push(SolveStep {
                                     description: "Exponentiate both sides with base e".to_string(),
                                     equation_after: new_eq,
@@ -916,7 +916,7 @@ pub fn isolate(
                                 rhs: new_rhs,
                                 op: op.clone(),
                             };
-                            if simplifier.collect_steps {
+                            if simplifier.collect_steps() {
                                 steps.push(SolveStep {
                                     description: "Take natural log of both sides".to_string(),
                                     equation_after: new_eq,
@@ -933,7 +933,7 @@ pub fn isolate(
                                 rhs: new_rhs,
                                 op: op.clone(),
                             };
-                            if simplifier.collect_steps {
+                            if simplifier.collect_steps() {
                                 steps.push(SolveStep {
                                     description: "Square both sides".to_string(),
                                     equation_after: new_eq,
@@ -952,7 +952,7 @@ pub fn isolate(
                                 rhs: new_rhs,
                                 op: op.clone(),
                             };
-                            if simplifier.collect_steps {
+                            if simplifier.collect_steps() {
                                 steps.push(SolveStep {
                                     description: "Take arcsin of both sides".to_string(),
                                     equation_after: new_eq,
@@ -976,7 +976,7 @@ pub fn isolate(
                                 rhs: new_rhs,
                                 op: op.clone(),
                             };
-                            if simplifier.collect_steps {
+                            if simplifier.collect_steps() {
                                 steps.push(SolveStep {
                                     description: "Take arccos of both sides".to_string(),
                                     equation_after: new_eq,
@@ -1000,7 +1000,7 @@ pub fn isolate(
                                 rhs: new_rhs,
                                 op: op.clone(),
                             };
-                            if simplifier.collect_steps {
+                            if simplifier.collect_steps() {
                                 steps.push(SolveStep {
                                     description: "Take arctan of both sides".to_string(),
                                     equation_after: new_eq,
@@ -1042,7 +1042,7 @@ pub fn isolate(
                 op: new_op.clone(),
             };
 
-            if simplifier.collect_steps {
+            if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: "Multiply both sides by -1 (flips inequality)".to_string(),
                     equation_after: new_eq,
@@ -1085,7 +1085,7 @@ pub fn simplify_rhs(
     let (simplified_rhs, sim_steps) = simplifier.simplify(rhs);
     let mut steps = Vec::new();
 
-    if simplifier.collect_steps {
+    if simplifier.collect_steps() {
         for step in sim_steps {
             steps.push(SolveStep {
                 description: step.description,
