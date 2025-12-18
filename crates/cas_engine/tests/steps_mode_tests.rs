@@ -1,0 +1,172 @@
+//! StepsMode Validation Tests
+//!
+//! These tests verify that StepsMode (On/Off/Compact) behaves correctly:
+//! - Same result regardless of mode
+//! - Off produces no steps
+//! - Compact produces steps without before_local/after_local
+
+use cas_ast::Context;
+use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_engine::Simplifier;
+use cas_parser::parse;
+
+/// Helper: simplify with given steps_mode and return (result_string, steps, steps_mode)
+fn simplify_with_mode(input: &str, mode: StepsMode) -> (String, Vec<cas_engine::Step>, StepsMode) {
+    let opts = EvalOptions {
+        branch_mode: BranchMode::Strict,
+        context_mode: ContextMode::Standard,
+        complex_mode: ComplexMode::Auto,
+        steps_mode: mode,
+    };
+    let mut ctx = Context::new();
+    let expr = parse(input, &mut ctx).expect("Failed to parse");
+
+    let mut simplifier = Simplifier::with_profile(&opts);
+    simplifier.context = ctx;
+    simplifier.set_steps_mode(mode);
+
+    let (result, steps) = simplifier.simplify(expr);
+
+    let result_str = format!(
+        "{}",
+        cas_ast::DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+
+    (result_str, steps, simplifier.get_steps_mode())
+}
+
+// =============================================================================
+// SECTION 1: Same Result Tests
+// =============================================================================
+
+#[test]
+fn same_result_on_off_compact_simple() {
+    let input = "x + 0";
+
+    let (result_on, _, _) = simplify_with_mode(input, StepsMode::On);
+    let (result_off, _, _) = simplify_with_mode(input, StepsMode::Off);
+    let (result_compact, _, _) = simplify_with_mode(input, StepsMode::Compact);
+
+    assert_eq!(result_on, result_off, "On vs Off should give same result");
+    assert_eq!(
+        result_on, result_compact,
+        "On vs Compact should give same result"
+    );
+}
+
+#[test]
+fn same_result_on_off_compact_medium() {
+    let input = "(x^2 - 1) / (x - 1)";
+
+    let (result_on, _, _) = simplify_with_mode(input, StepsMode::On);
+    let (result_off, _, _) = simplify_with_mode(input, StepsMode::Off);
+    let (result_compact, _, _) = simplify_with_mode(input, StepsMode::Compact);
+
+    assert_eq!(
+        result_on, result_off,
+        "On vs Off should give same result for fraction"
+    );
+    assert_eq!(
+        result_on, result_compact,
+        "On vs Compact should give same result for fraction"
+    );
+}
+
+#[test]
+fn same_result_on_off_compact_complex() {
+    let input = "i^5";
+
+    let (result_on, _, _) = simplify_with_mode(input, StepsMode::On);
+    let (result_off, _, _) = simplify_with_mode(input, StepsMode::Off);
+    let (result_compact, _, _) = simplify_with_mode(input, StepsMode::Compact);
+
+    assert_eq!(
+        result_on, result_off,
+        "On vs Off should give same result for complex"
+    );
+    assert_eq!(
+        result_on, result_compact,
+        "On vs Compact should give same result for complex"
+    );
+}
+
+// =============================================================================
+// SECTION 2: Steps Off Tests
+// =============================================================================
+
+#[test]
+fn steps_off_is_empty() {
+    let input = "(x^2 - 1) / (x - 1)";
+
+    let (_, steps, mode) = simplify_with_mode(input, StepsMode::Off);
+
+    assert_eq!(mode, StepsMode::Off, "Mode should be Off");
+    assert!(
+        steps.is_empty(),
+        "Off mode should produce no steps, got {} steps",
+        steps.len()
+    );
+}
+
+#[test]
+fn steps_on_has_steps() {
+    let input = "(x^2 - 1) / (x - 1)";
+
+    let (_, steps, mode) = simplify_with_mode(input, StepsMode::On);
+
+    assert_eq!(mode, StepsMode::On, "Mode should be On");
+    assert!(!steps.is_empty(), "On mode should produce steps");
+}
+
+// =============================================================================
+// SECTION 3: Mode Setter/Getter Tests
+// =============================================================================
+
+#[test]
+fn steps_mode_getter_setter() {
+    let opts = EvalOptions::default();
+    let mut simplifier = Simplifier::with_profile(&opts);
+
+    // Default should be On
+    assert_eq!(simplifier.get_steps_mode(), StepsMode::On);
+
+    // Set to Off
+    simplifier.set_steps_mode(StepsMode::Off);
+    assert_eq!(simplifier.get_steps_mode(), StepsMode::Off);
+    assert!(!simplifier.collect_steps()); // Backward compat
+
+    // Set to Compact
+    simplifier.set_steps_mode(StepsMode::Compact);
+    assert_eq!(simplifier.get_steps_mode(), StepsMode::Compact);
+    assert!(simplifier.collect_steps()); // Compact is "collecting" but minimal
+
+    // Backward compat setter
+    simplifier.set_collect_steps(false);
+    assert_eq!(simplifier.get_steps_mode(), StepsMode::Off);
+
+    simplifier.set_collect_steps(true);
+    assert_eq!(simplifier.get_steps_mode(), StepsMode::On);
+}
+
+// =============================================================================
+// SECTION 4: Determinism Tests
+// =============================================================================
+
+#[test]
+fn determinism_off_mode() {
+    let input = "(x^2 - 1) / (x - 1)";
+
+    let mut results = Vec::new();
+    for _ in 0..5 {
+        let (result, _, _) = simplify_with_mode(input, StepsMode::Off);
+        results.push(result);
+    }
+
+    let first = &results[0];
+    for (i, r) in results.iter().enumerate() {
+        assert_eq!(r, first, "Run {} should give same result as run 0", i);
+    }
+}

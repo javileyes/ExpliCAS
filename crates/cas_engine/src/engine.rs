@@ -237,6 +237,17 @@ impl Simplifier {
         };
     }
 
+    /// Get the current steps collection mode
+    #[inline]
+    pub fn get_steps_mode(&self) -> StepsMode {
+        self.steps_mode
+    }
+
+    /// Set the steps collection mode directly
+    pub fn set_steps_mode(&mut self, mode: StepsMode) {
+        self.steps_mode = mode;
+    }
+
     pub fn enable_debug(&mut self) {
         self.debug_mode = true;
     }

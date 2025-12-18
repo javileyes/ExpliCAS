@@ -77,6 +77,24 @@ impl Step {
         }
     }
 
+    /// Create a compact step without display formatting (for StepsMode::Compact).
+    /// Skips the expensive format! call and sets after_str to None.
+    pub fn new_compact(description: &str, rule_name: &str, before: ExprId, after: ExprId) -> Self {
+        Self {
+            description: description.to_string(),
+            rule_name: rule_name.to_string(),
+            before,
+            after,
+            path: Vec::new(),
+            after_str: None,
+            global_before: None,
+            global_after: None,
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        }
+    }
+
     /// Create a step with complete global snapshots before and after transformation
     pub fn with_snapshots(
         description: &str,
