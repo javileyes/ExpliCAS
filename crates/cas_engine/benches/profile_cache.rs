@@ -43,12 +43,21 @@ fn bench_profile_build(c: &mut Criterion) {
 
 fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
     let cases = [
-        // "ligeras": aquí el cache suele notarse mucho
+        // "Light": cache overhead dominates
         ("light/x_plus_1", "x + 1"),
         ("light/pythagorean", "sin(2*x + 1)^2 + cos(1 + 2*x)^2"),
-        // "pesadas": aquí el coste de simplificar domina y el cache se nota menos
+        // "Heavy": simplification cost dominates
         ("heavy/nested_root", "sqrt(12*x^3)"),
         ("heavy/abs_square", "((5*x + 8/3)*(5*x + 8/3))^(1/2)"),
+        // GCD multivar: Layer 1 (monomial+content)
+        ("gcd/layer1_content", "(2*x + 2*y)/(4*x + 4*y)"),
+        // GCD multivar: Layer 2 (difference of squares)
+        ("gcd/layer2_diff_squares", "(x^2 - y^2)/(x - y)"),
+        // GCD multivar: Layer 2.5 candidate (multi-param factor)
+        ("gcd/layer25_multiparam", "((x+y)*(a+b))/((x+y)*(c+d))"),
+        // Complex numbers
+        ("complex/gaussian_div", "(3 + 4*i)/(1 + 2*i)"),
+        ("complex/i_power", "i^5"),
     ];
 
     let opts = EvalOptions {
