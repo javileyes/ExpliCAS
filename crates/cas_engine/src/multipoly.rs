@@ -315,6 +315,60 @@ impl MultiPoly {
 
         Ok(Self::from_map(self.vars.clone(), map))
     }
+
+    /// Fast multiplication using HashMap accumulation.
+    /// Much faster than mul() for large polynomials (O(1) amortized per term vs O(log n)).
+    /// Result is still normalized (sorted, no zero coeffs).
+    pub fn mul_fast(&self, other: &Self, budget: &PolyBudget) -> Result<Self, PolyError> {
+        use std::collections::HashMap;
+
+        if self.vars != other.vars {
+            return Err(PolyError::VarMismatch);
+        }
+        if self.is_zero() || other.is_zero() {
+            return Ok(Self::zero(self.vars.clone()));
+        }
+
+        // Estimate result size and pre-allocate
+        let estimated_terms = self.terms.len() * other.terms.len() / 2;
+        let mut map: HashMap<Monomial, BigRational> = HashMap::with_capacity(estimated_terms);
+
+        for (c1, m1) in &self.terms {
+            for (c2, m2) in &other.terms {
+                let new_coeff = c1 * c2;
+                let new_mono: Monomial = m1.iter().zip(m2.iter()).map(|(a, b)| a + b).collect();
+
+                // Check total degree
+                let td: u32 = new_mono.iter().sum();
+                if td > budget.max_total_degree {
+                    return Err(PolyError::BudgetExceeded);
+                }
+
+                // O(1) amortized insertion
+                map.entry(new_mono)
+                    .and_modify(|c| *c = c.clone() + &new_coeff)
+                    .or_insert(new_coeff);
+
+                // Check term count (less frequently to reduce overhead)
+                if map.len() > budget.max_terms {
+                    return Err(PolyError::BudgetExceeded);
+                }
+            }
+        }
+
+        // Convert to sorted Vec, remove zeros, swap tuple order (HashMap has (mono, coeff), Term is (coeff, mono))
+        let mut terms: Vec<Term> = map
+            .into_iter()
+            .filter(|(_, c)| !c.is_zero())
+            .map(|(mono, coeff)| (coeff, mono))
+            .collect();
+        terms.sort_by(|a, b| a.1.cmp(&b.1)); // Sort by monomial (lex)
+
+        Ok(Self {
+            vars: self.vars.clone(),
+            terms,
+        })
+    }
 }
 
 // =============================================================================

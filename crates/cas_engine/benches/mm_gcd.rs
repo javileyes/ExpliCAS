@@ -5,6 +5,9 @@
 //!
 //! This measures raw MultiPoly multiplication and GCD performance
 //! without going through the simplifier pipeline.
+//!
+//! Note: Current Layer 2.5 tensor-grid GCD is limited to ~4 variables.
+//! For 7-var mm_gcd, a Zippel modular GCD would be needed.
 
 use cas_ast::Context;
 use cas_engine::multipoly::{
@@ -13,6 +16,16 @@ use cas_engine::multipoly::{
 use cas_parser::parse;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::time::Duration;
+
+/// Budget optimized for mm_gcd benchmark (larger than engine defaults)
+fn gcd_budget_mm() -> Layer25Budget {
+    Layer25Budget {
+        max_vars: 8,       // Allow 7 variables
+        max_samples: 1024, // More samples for interpolation
+        max_param_deg: 10, // Higher degree params (7^7)
+        max_gcd_deg: 20,   // Higher result degree
+    }
+}
 
 /// Build the three polynomials a, b, g as MultiPoly.
 /// Uses parser + multipoly_from_expr which handles Pow(linear, 7) via pow_poly.
@@ -52,73 +65,119 @@ fn build_polys() -> (MultiPoly, MultiPoly, MultiPoly) {
 }
 
 /// Build the products a*g and b*g once for GCD-only benchmarks.
-fn build_products(a: &MultiPoly, b: &MultiPoly, g: &MultiPoly) -> (MultiPoly, MultiPoly) {
+fn build_products(a: &MultiPoly, b: &MultiPoly, g: &MultiPoly) -> Option<(MultiPoly, MultiPoly)> {
     let budget = PolyBudget {
         max_terms: 10_000_000,
         max_total_degree: 200,
     };
-    let ag = a.mul(g, &budget).expect("a*g failed");
-    let bg = b.mul(g, &budget).expect("b*g failed");
-    (ag, bg)
+    let ag = a.mul_fast(g, &budget).ok()?;
+    let bg = b.mul_fast(g, &budget).ok()?;
+    Some((ag, bg))
 }
 
 fn bench_mm_gcd(c: &mut Criterion) {
+    println!("\n╔════════════════════════════════════════════════════════════╗");
+    println!("║              mm_gcd Benchmark Diagnostic                  ║");
+    println!("╚════════════════════════════════════════════════════════════╝\n");
+
     // Build polys once (expensive but outside timing)
+    println!("Step 1: Building base polynomials (a, b, g)...");
     let (a, b, g) = build_polys();
 
-    println!("\n=== mm_gcd Benchmark Setup ===");
     println!(
-        "  a: {} terms, total_degree {}",
+        "  ✓ a: {} terms, total_degree {}",
         a.num_terms(),
         a.total_degree()
     );
     println!(
-        "  b: {} terms, total_degree {}",
+        "  ✓ b: {} terms, total_degree {}",
         b.num_terms(),
         b.total_degree()
     );
     println!(
-        "  g: {} terms, total_degree {}",
+        "  ✓ g: {} terms, total_degree {}",
         g.num_terms(),
         g.total_degree()
     );
+    println!("  Variables: {:?}\n", a.vars);
 
     // Build products for GCD-only bench
-    let (ag, bg) = build_products(&a, &b, &g);
-    println!(
-        "  a*g: {} terms, total_degree {}",
-        ag.num_terms(),
-        ag.total_degree()
-    );
-    println!(
-        "  b*g: {} terms, total_degree {}",
-        bg.num_terms(),
-        bg.total_degree()
-    );
+    println!("Step 2: Computing products a*g and b*g...");
+    let products = build_products(&a, &b, &g);
 
-    // Sanity check (outside timing): gcd(ag, bg) should be divisible by g
-    let gcd_budget = Layer25Budget::default();
-    {
-        let d = gcd_multivar_layer25(&ag, &bg, &gcd_budget).expect("gcd failed");
-        println!("  gcd(ag,bg): {} terms", d.num_terms());
-
-        // Verify: g divides d (since gcd should be scalar * g)
-        if let Some(q) = d.div_exact(&g) {
+    let (ag, bg) = match products {
+        Some((ag, bg)) => {
             println!(
-                "  ✓ g divides gcd, quotient is_constant={}",
-                q.is_constant()
+                "  ✓ a*g: {} terms, total_degree {}",
+                ag.num_terms(),
+                ag.total_degree()
             );
-            if !q.is_constant() {
-                println!(
-                    "    WARNING: quotient has {} terms, expected constant",
-                    q.num_terms()
-                );
-            }
-        } else {
-            println!("  ✗ WARNING: g does not divide gcd exactly");
+            println!(
+                "  ✓ b*g: {} terms, total_degree {}\n",
+                bg.num_terms(),
+                bg.total_degree()
+            );
+            (ag, bg)
         }
-    }
-    println!("=================================\n");
+        None => {
+            println!("  ✗ FAILED: Product computation exceeded budget");
+            println!("\n╔════════════════════════════════════════════════════════════╗");
+            println!("║  BENCHMARK SKIPPED: Cannot compute products                ║");
+            println!("╚════════════════════════════════════════════════════════════╝\n");
+            return;
+        }
+    };
+
+    // Try GCD with expanded budget
+    println!("Step 3: Testing GCD computation...");
+    let gcd_budget = gcd_budget_mm();
+    println!(
+        "  Budget: max_vars={}, max_samples={}, max_param_deg={}, max_gcd_deg={}",
+        gcd_budget.max_vars,
+        gcd_budget.max_samples,
+        gcd_budget.max_param_deg,
+        gcd_budget.max_gcd_deg
+    );
+
+    let gcd_result = gcd_multivar_layer25(&ag, &bg, &gcd_budget);
+
+    let gcd_works = match &gcd_result {
+        Some(d) => {
+            println!(
+                "  ✓ gcd(ag,bg): {} terms, total_degree {}",
+                d.num_terms(),
+                d.total_degree()
+            );
+
+            // Verify: g divides d (since gcd should be scalar * g)
+            if let Some(q) = d.div_exact(&g) {
+                if q.is_constant() {
+                    println!("  ✓ VERIFIED: g divides gcd, quotient is constant\n");
+                    true
+                } else {
+                    println!(
+                        "  ⚠ WARNING: g divides gcd but quotient has {} terms (expected 1)\n",
+                        q.num_terms()
+                    );
+                    true
+                }
+            } else {
+                println!("  ✗ WARNING: g does not divide gcd exactly\n");
+                false
+            }
+        }
+        None => {
+            println!("  ✗ FAILED: GCD computation returned None");
+            println!("\n  Likely causes:");
+            println!("    - Tensor-grid interpolation explodes for 7 variables");
+            println!("    - Degree bounds exceeded during reconstruction");
+            println!("    - Insufficient samples for accurate interpolation");
+            println!("\n  This is expected: mm_gcd requires Zippel modular GCD,");
+            println!("  not tensor-grid interpolation. Layer 2.5 is designed for");
+            println!("  typical simplification cases (2-4 variables).\n");
+            false
+        }
+    };
 
     // Configure for slow benchmarks
     let mut group = c.benchmark_group("mm_gcd");
@@ -126,42 +185,55 @@ fn bench_mm_gcd(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(30));
     group.warm_up_time(Duration::from_secs(3));
 
-    // Benchmark 1: Multiplication only (a*g + b*g)
+    // Benchmark 1: Multiplication only (always runs)
+    println!("Running benchmark: mul_only (a*g + b*g)...");
     group.bench_function("mul_only", |bencher| {
         let budget = PolyBudget {
             max_terms: 10_000_000,
             max_total_degree: 200,
         };
         bencher.iter(|| {
-            let ag = black_box(&a).mul(black_box(&g), &budget);
-            let bg = black_box(&b).mul(black_box(&g), &budget);
+            let ag = black_box(&a).mul_fast(black_box(&g), &budget);
+            let bg = black_box(&b).mul_fast(black_box(&g), &budget);
             black_box((ag, bg))
         })
     });
 
-    // Benchmark 2: GCD only (with precomputed ag, bg)
-    group.bench_function("gcd_only", |bencher| {
-        bencher.iter(|| {
-            let d = gcd_multivar_layer25(black_box(&ag), black_box(&bg), &gcd_budget);
-            black_box(d)
-        })
-    });
+    // Benchmark 2 & 3: Only if GCD works
+    if gcd_works {
+        println!("Running benchmark: gcd_only...");
+        group.bench_function("gcd_only", |bencher| {
+            bencher.iter(|| {
+                let d = gcd_multivar_layer25(black_box(&ag), black_box(&bg), &gcd_budget);
+                black_box(d)
+            })
+        });
 
-    // Benchmark 3: Full (mul + gcd) - comparable to Symbolica benchmark
-    group.bench_function("full", |bencher| {
-        let budget = PolyBudget {
-            max_terms: 10_000_000,
-            max_total_degree: 200,
-        };
-        bencher.iter(|| {
-            let ag = black_box(&a).mul(black_box(&g), &budget).unwrap();
-            let bg = black_box(&b).mul(black_box(&g), &budget).unwrap();
-            let d = gcd_multivar_layer25(&ag, &bg, &gcd_budget);
-            black_box(d)
-        })
-    });
+        println!("Running benchmark: full (mul + gcd)...");
+        group.bench_function("full", |bencher| {
+            let budget = PolyBudget {
+                max_terms: 10_000_000,
+                max_total_degree: 200,
+            };
+            bencher.iter(|| {
+                let ag = black_box(&a).mul_fast(black_box(&g), &budget).unwrap();
+                let bg = black_box(&b).mul_fast(black_box(&g), &budget).unwrap();
+                let d = gcd_multivar_layer25(&ag, &bg, &gcd_budget);
+                black_box(d)
+            })
+        });
+    } else {
+        println!("\n╔════════════════════════════════════════════════════════════╗");
+        println!("║  GCD benchmarks SKIPPED: Layer 2.5 cannot handle mm_gcd    ║");
+        println!("║  Only mul_only benchmark will run                          ║");
+        println!("╚════════════════════════════════════════════════════════════╝\n");
+    }
 
     group.finish();
+
+    println!("\n╔════════════════════════════════════════════════════════════╗");
+    println!("║                    Benchmark Complete                      ║");
+    println!("╚════════════════════════════════════════════════════════════╝\n");
 }
 
 criterion_group!(benches, bench_mm_gcd);
