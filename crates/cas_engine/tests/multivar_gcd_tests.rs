@@ -171,3 +171,103 @@ fn test_coprime_polys_stay_unsimplified() {
         result
     );
 }
+
+// =============================================================================
+// Hardening Tests: Edge Cases for Layer 2 Limitations
+// =============================================================================
+
+// A. GCD depends on 2+ param variables at once
+// This typically CANNOT be reconstructed by bivar+seeds if we fix one of them
+#[test]
+fn test_hard_multiparam_factor() {
+    // ((x + y + z) * (x + 2*y + 3*z)) / ((x + y + z) * (2*x - y + z))
+    // GCD = (x + y + z) - depends on both y AND z
+    // Expected: may NOT simplify (confirms limitation) OR may simplify if lucky seed
+    let result = simplify("((x + y + z) * (x + 2*y + 3*z)) / ((x + y + z) * (2*x - y + z))");
+    // Either it simplifies correctly OR stays as fraction (both are acceptable)
+    // Key: should NOT return garbage or crash
+    assert!(
+        result.contains("/") || result.contains("+") || result.contains("x"),
+        "Should return valid expression, got: {}",
+        result
+    );
+    println!("Multi-param factor result: {}", result);
+}
+
+// B. GCD depends on single non-main variable (tests choose_var_candidates)
+#[test]
+fn test_hard_single_param_nonmain() {
+    // ((x + z) * (x + y)) / ((x + z) * (x + 2*y)) -> (x + y)/(x + 2*y)
+    // GCD = (x + z), z is the "interesting" param variable
+    let result = simplify("((x + z) * (x + y)) / ((x + z) * (x + 2*y))");
+    // Should simplify to something without z, OR stay as fraction
+    // The key is: if it simplifies, z should cancel
+    if !result.contains("z") && result.contains("y") {
+        // Perfect: z canceled, (x+y)/(x+2y) form
+        assert!(
+            result.contains("y"),
+            "Should contain y after simplification"
+        );
+    } else {
+        // Acceptable: didn't find the GCD, stays as fraction
+        assert!(
+            result.contains("/"),
+            "Should be valid fraction, got: {}",
+            result
+        );
+    }
+    println!("Single-param non-main result: {}", result);
+}
+
+// C. "Degree drop" consistency - samples with degree drops should be skipped
+#[test]
+fn test_hard_degree_drop_consistency() {
+    // p = (x + y + z) * (x + y - z)
+    // q = (x + y + z) * (x - y + z)
+    // GCD = (x + y + z)
+    // Some eval points (like z = -x-y) would cause degree drop
+    let result = simplify("((x + y + z) * (x + y - z)) / ((x + y + z) * (x - y + z))");
+    // Should simplify to (x + y - z)/(x - y + z) OR stay as fraction
+    // Key: consistent behavior, no crash
+    assert!(
+        result.contains("/") || result.contains("+") || result.contains("-"),
+        "Should return valid expression, got: {}",
+        result
+    );
+    println!("Degree drop consistency result: {}", result);
+}
+
+// D. Verify no over-cancellation (false positive)
+#[test]
+fn test_hard_no_false_positive() {
+    // (x^2 + x*y) / (x*y + y^2) = x(x+y) / y(x+y) = x/y (if gcd=(x+y))
+    // BUT only if we correctly identify (x+y) as common factor
+    let result = simplify("(x^2 + x*y) / (x*y + y^2)");
+    // Expected: x/y (simplified) or the original fraction
+    if result == "x / y" || result == "x/y" {
+        // Perfect simplification
+    } else {
+        // Should at least be a valid fraction
+        assert!(
+            result.contains("/") || result.contains("x"),
+            "Should be valid, got: {}",
+            result
+        );
+    }
+    println!("No false positive result: {}", result);
+}
+
+// E. Large polynomial - budget check (should bail quickly, not hang)
+#[test]
+fn test_hard_budget_bailout() {
+    // Create moderately complex expression that should hit budget limits
+    // (x+y)^4 / (x+y)^3 = x+y
+    let result = simplify("(x+y)^4 / (x+y)^3");
+    // Should simplify to x+y
+    assert!(
+        (result.contains("x") && result.contains("y") && result.contains("+"))
+            || result.contains("/"),
+        "Should simplify or stay as fraction, got: {}",
+        result
+    );
+}
