@@ -3,7 +3,7 @@
 //! Tests for multivariate polynomial GCD in fraction simplification.
 
 use cas_ast::Context;
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions};
+use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_engine::Simplifier;
 use cas_parser::parse;
 
@@ -13,6 +13,7 @@ fn simplify(input: &str) -> String {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
     };
     let mut ctx = Context::new();
     let expr = parse(input, &mut ctx).expect("Failed to parse");

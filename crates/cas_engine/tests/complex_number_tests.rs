@@ -6,7 +6,7 @@
 //! - Mode isolation: ComplexMode::Off should not simplify i
 
 use cas_ast::Context;
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions};
+use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_engine::Simplifier;
 use cas_parser::parse;
 
@@ -33,6 +33,7 @@ fn complex_on_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::On,
+        steps_mode: StepsMode::On,
     }
 }
 
@@ -41,6 +42,7 @@ fn complex_off_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Off,
+        steps_mode: StepsMode::On,
     }
 }
 
@@ -49,6 +51,7 @@ fn complex_auto_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
     }
 }
 

@@ -58,6 +58,7 @@ fn bench_repl_end_to_end(c: &mut Criterion) {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
+            steps_mode: StepsMode::On,
     };
 
     let mut group = c.benchmark_group("repl_full_eval");
@@ -122,6 +123,7 @@ fn bench_steps_overhead(c: &mut Criterion) {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
+            steps_mode: StepsMode::On,
     };
 
     let mut cache = ProfileCache::new();

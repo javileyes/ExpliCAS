@@ -64,6 +64,24 @@ pub enum ComplexMode {
     On,
 }
 
+/// Steps mode controls whether simplification steps are collected.
+///
+/// - `On` (default): Full steps with before/after expressions
+/// - `Off`: No steps (minimal allocations), but domain_warnings preserved
+/// - `Compact`: Only rule_name, description, domain_assumption (no before/after)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StepsMode {
+    /// Full steps with before/after local expressions
+    #[default]
+    On,
+
+    /// No steps collected (fastest), but domain_warnings still computed
+    Off,
+
+    /// Compact steps: rule_name + description only, no before/after
+    Compact,
+}
+
 /// Evaluation options for expression processing.
 ///
 /// Stored in `SessionState` for persistence, but can be overridden per request.
@@ -75,6 +93,8 @@ pub struct EvalOptions {
     pub context_mode: ContextMode,
     /// Whether to apply complex number rules
     pub complex_mode: ComplexMode,
+    /// Whether to collect simplification steps (runtime, not cached)
+    pub steps_mode: StepsMode,
 }
 
 impl EvalOptions {
@@ -84,6 +104,7 @@ impl EvalOptions {
             branch_mode: BranchMode::Strict,
             context_mode: ContextMode::Standard,
             complex_mode: ComplexMode::Auto,
+            steps_mode: StepsMode::On,
         }
     }
 
@@ -93,6 +114,7 @@ impl EvalOptions {
             branch_mode: BranchMode::PrincipalBranch,
             context_mode: ContextMode::Auto,
             complex_mode: ComplexMode::Auto,
+            steps_mode: StepsMode::On,
         }
     }
 
@@ -102,6 +124,7 @@ impl EvalOptions {
             branch_mode: BranchMode::Strict,
             context_mode: ContextMode::IntegratePrep,
             complex_mode: ComplexMode::Auto,
+            steps_mode: StepsMode::On,
         }
     }
 
@@ -111,6 +134,7 @@ impl EvalOptions {
             branch_mode: BranchMode::Strict,
             context_mode: ContextMode::Solve,
             complex_mode: ComplexMode::Auto,
+            steps_mode: StepsMode::On,
         }
     }
 }

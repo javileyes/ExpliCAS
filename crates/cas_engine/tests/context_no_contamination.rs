@@ -4,7 +4,7 @@
 //! do NOT fire outside of their intended context (IntegratePrep).
 
 use cas_ast::Context;
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions};
+use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_engine::Simplifier;
 use cas_engine::Step;
 use cas_parser::parse;
@@ -55,6 +55,7 @@ fn standard_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
     }
 }
 
@@ -63,6 +64,7 @@ fn solve_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Solve,
         complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
     }
 }
 
@@ -71,6 +73,7 @@ fn integrate_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::IntegratePrep,
         complex_mode: ComplexMode::Auto,
+        steps_mode: StepsMode::On,
     }
 }
 
