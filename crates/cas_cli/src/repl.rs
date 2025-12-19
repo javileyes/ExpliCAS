@@ -1659,6 +1659,43 @@ impl Repl {
                 println!("  del #1          → deletes entry #1");
                 println!("  del #2 #3 #5    → deletes entries #2, #3, and #5");
             }
+            "poly_gcd" | "pgcd" => {
+                println!("Command: poly_gcd(expr1, expr2)");
+                println!("Alias: pgcd(expr1, expr2)");
+                println!("Description: Computes the STRUCTURAL GCD of two polynomial expressions.");
+                println!(
+                    "             Finds common factors that appear explicitly as multiplicands."
+                );
+                println!("             Does NOT factor expressions to find hidden common factors.");
+                println!();
+                println!("Examples:");
+                println!("  poly_gcd((x+1)*(y+2), (x+1)*(z+3)) → (x + 1)");
+                println!("  poly_gcd((x+1)^3, (x+1)^2)         → (x + 1)²");
+                println!("  poly_gcd(x*g, y*g)                 → g");
+                println!();
+                println!("See also: poly_gcd_exact for algebraic GCD");
+            }
+            "poly_gcd_exact" | "pgcdx" => {
+                println!("Command: poly_gcd_exact(expr1, expr2)");
+                println!("Alias: pgcdx(expr1, expr2)");
+                println!(
+                    "Description: Computes the ALGEBRAIC GCD of two polynomials over ℚ[x₁,...,xₙ]."
+                );
+                println!(
+                    "             Interprets expressions as polynomials and finds the true GCD."
+                );
+                println!("             Uses Euclidean algorithm for univariate, interpolation for multivariate.");
+                println!();
+                println!("Examples:");
+                println!("  poly_gcd_exact(x^2 - 1, x - 1)         → x - 1");
+                println!("  poly_gcd_exact(x^2 - 1, x^2 - 2*x + 1) → x - 1");
+                println!("  poly_gcd_exact(2*x + 2*y, 4*x + 4*y)   → x + y");
+                println!("  poly_gcd_exact(6, 15)                  → 1 (constants over ℚ)");
+                println!();
+                println!("Result is normalized: primitive (GCD of coefficients = 1), positive leading coefficient.");
+                println!();
+                println!("See also: poly_gcd for structural (visible factor) GCD");
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
@@ -1676,6 +1713,13 @@ impl Repl {
         println!("  expand <expr>           Expand polynomials");
         println!("  factor <expr>           Factor polynomials");
         println!("  collect <expr>, <var>   Group terms by variable");
+        println!();
+
+        println!("Polynomial GCD:");
+        println!("  poly_gcd(a, b)          Structural GCD (visible factors)");
+        println!("  poly_gcd_exact(a, b)    Algebraic GCD over ℚ[x₁,...,xₙ]");
+        println!("  pgcd                    Alias for poly_gcd");
+        println!("  pgcdx                   Alias for poly_gcd_exact");
         println!();
 
         println!("Equation Solving:");

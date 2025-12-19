@@ -64,7 +64,6 @@ impl CasHelper {
                 "tan".to_string(),
                 "ln".to_string(),
                 "sqrt".to_string(),
-                "sqrt".to_string(),
                 "abs".to_string(),
                 "gcd".to_string(),
                 "lcm".to_string(),
@@ -72,6 +71,11 @@ impl CasHelper {
                 "prime_factors".to_string(),
                 "sum".to_string(),
                 "product".to_string(),
+                // Polynomial functions
+                "poly_gcd".to_string(),
+                "poly_gcd_exact".to_string(),
+                "pgcd".to_string(),
+                "pgcdx".to_string(),
             ],
         }
     }
