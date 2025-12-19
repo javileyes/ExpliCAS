@@ -51,6 +51,7 @@
 13. [Number Theory Implementation](#number-theory-implementation)
 14. [Configuración del Repo](#configuración-del-repo)
 15. [7. Optimizaciones](#7-optimizaciones)
+16. [Zippel Modular GCD ★★ (Added 2025-12)](#zippel-modular-gcd--added-2025-12)
 ---
 
 ## Visión General
@@ -4091,3 +4092,79 @@ DEBUG rationalize: auto rationalize rejected reason=BudgetExceeded nodes=45 max=
 - **Policy tests**: Unit tests for `RationalizePolicy` behavior
 - **Guard tests**: Verify multi-surd blocking, budget limits
 
+---
+
+## Zippel Modular GCD ★★ (Added 2025-12)
+
+High-performance **multivariate polynomial GCD** using the Zippel modular algorithm.
+
+### Performance Results
+
+| Benchmark | Time | Comparison |
+|-----------|------|------------|
+| **gcd_only** | **1.08s** | **11.4× faster** than baseline |
+| **full** | **~1.6s** | **2.5× faster than Symbolica** |
+
+### Algorithm Overview
+
+```
+┌─────────────────────────────────────────────┐
+│ Recursive Zippel GCD over Fp                │
+│                                             │
+│ 1. Base case (1 var): Euclidean GCD         │
+│ 2. Recursive: eval → gcd → interpolate     │
+└─────────────────────────────────────────────┘
+
+              Evaluate at 8 points (parallel)
+                        ↓
+         ┌──────┬──────┬──────┬──────┐
+         ▼      ▼      ▼      ▼      ▼
+       gcd₁   gcd₂   gcd₃   ...   gcd₈
+         │      │      │      │      │
+         └──────┴──────┴──────┴──────┘
+                        ↓
+              Lagrange Interpolation
+```
+
+### Key Optimizations
+
+1. **FxHashMap** (~1.6× speedup): Faster hashing for monomials
+2. **pow_table** (~1.2× speedup): Precomputed `val^0, val^1, ... val^d`
+3. **Rayon parallelism** (~7× speedup): 8 points evaluated in parallel at depth 0
+
+### Module Structure
+
+```
+crates/cas_engine/src/
+├── modp.rs          # Fp arithmetic
+├── mono.rs          # Compact monomials [u16; 8]
+├── unipoly_modp.rs  # Univariate GCD (Euclidean)
+├── multipoly_modp.rs # Multivariate polynomials
+│   └── eval_var_fast(), pow_table()
+└── gcd_zippel_modp.rs # Recursive Zippel
+    ├── collect_samples_parallel()  # Rayon
+    └── collect_samples_sequential()
+```
+
+### Running the Benchmark
+
+```bash
+# Standard benchmark
+cargo bench -p cas_engine --bench mm_gcd_modp -- --noplot
+
+# With tracing
+CAS_ZIPPEL_TRACE=1 cargo bench -p cas_engine --bench mm_gcd_modp -- --noplot
+
+# Save to file
+cargo bench -p cas_engine --bench mm_gcd_modp -- --noplot 2>&1 | tee results.txt
+```
+
+### Feature Flags
+
+```toml
+[features]
+default = ["parallel"]
+parallel = ["rayon"]
+```
+
+For detailed documentation, see [docs/ZIPPEL_GCD.md](docs/ZIPPEL_GCD.md).

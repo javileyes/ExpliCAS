@@ -59,6 +59,13 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   Prevents premature conversions (e.g., preserves Pythagorean identities like `sec²(x) - tan²(x) = 1`).
     -   Pattern marks thread through transformations via ParentContext.
     -   See [ARCHITECTURE.md](ARCHITECTURE.md#25-cas_engine---pattern-detection-infrastructure-) for details.
+-   **High-Performance Polynomial GCD** ★★ (2025-12):
+    -   **Zippel modular GCD algorithm** for multivariate polynomials.
+    -   **2.5× faster than Symbolica** on the mm_gcd benchmark (7-variable, degree-7 polynomials).
+    -   Rayon parallelism (8 points in parallel on 16 cores).
+    -   FxHashMap + precomputed power tables for fast evaluation.
+    -   Feature-gated for WASM/no-std compatibility.
+    -   See [docs/ZIPPEL_GCD.md](docs/ZIPPEL_GCD.md) for technical details.
 -   **Development Debug System** (tracing-based):
     -   Parametrizable debug logging with zero overhead when disabled.
     -   See [DEBUG_SYSTEM.md](DEBUG_SYSTEM.md) for usage details.
