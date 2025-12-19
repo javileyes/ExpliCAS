@@ -1,3 +1,15 @@
+# Polynomial GCD Functions
+
+## Quick Reference: When to Use Which?
+
+| Function | Type | Use When | Speed | Example |
+|----------|------|----------|-------|---------|
+| `gcd(12, 18)` | Integer | Both arguments are integers | ⚡ Fast | `→ 6` |
+| `poly_gcd(a*g, b*g)` | Structural | Expressions share **visible** factors | ⚡ Fast | `→ g` |
+| `poly_gcd_exact(x²-1, x-1)` | Algebraic | Need **true** polynomial GCD over ℚ | 🐢 Slower | `→ x-1` |
+
+---
+
 # Polynomial GCD (Structural)
 
 The `poly_gcd` function computes the **structural GCD** of two polynomial expressions directly in the REPL, without expanding them.
