@@ -1,0 +1,178 @@
+warning: unused imports: `div_mod`, `mul_mod`, `neg_mod`, and `pow_mod`
+  --> crates/cas_engine/src/gcd_zippel_modp.rs:10:28
+   |
+10 | use crate::modp::{add_mod, div_mod, inv_mod, mul_mod, neg_mod, pow_mod, sub_mod};
+   |                            ^^^^^^^           ^^^^^^^  ^^^^^^^  ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::collections::HashMap`
+  --> crates/cas_engine/src/gcd_zippel_modp.rs:14:5
+   |
+14 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `sub_mod`
+ --> crates/cas_engine/src/multipoly_modp.rs:6:46
+  |
+6 | use crate::modp::{add_mod, mul_mod, neg_mod, sub_mod};
+  |                                              ^^^^^^^
+
+warning: unused import: `num_bigint::BigInt`
+  --> crates/cas_engine/src/rules/algebra/factoring.rs:67:9
+   |
+67 |     use num_bigint::BigInt;
+   |         ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `num_rational::BigRational`
+  --> crates/cas_engine/src/rules/algebra/factoring.rs:68:9
+   |
+68 |     use num_rational::BigRational;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `num_bigint::BigInt`
+   --> crates/cas_engine/src/rules/algebra/roots.rs:512:9
+    |
+512 |     use num_bigint::BigInt;
+    |         ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `num_traits::Zero`
+   --> crates/cas_engine/src/rules/algebra/roots.rs:938:9
+    |
+938 |     use num_traits::Zero;
+    |         ^^^^^^^^^^^^^^^^
+
+warning: unused doc comment
+    --> crates/cas_engine/src/rules/trigonometry/identities.rs:1215:1
+     |
+1215 | / /// Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
+1216 | | /// This is a performance optimization to avoid recursive expansion via double-angle rules.
+1217 | | /// Reduces ~23 rewrites to ~3-5 for triple angle expressions.
+     | |_-------------------------------------------------------------^
+     |   |
+     |   rustdoc does not generate documentation for macro invocations
+     |
+     = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+     = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `super::*`
+   --> crates/cas_engine/src/session.rs:340:9
+    |
+340 |     use super::*;
+    |         ^^^^^^^^
+
+warning: unused imports: `div_mod` and `neg_mod`
+ --> crates/cas_engine/src/unipoly_modp.rs:5:28
+  |
+5 | use crate::modp::{add_mod, div_mod, mul_mod, neg_mod, sub_mod};
+  |                            ^^^^^^^           ^^^^^^^
+
+warning: unused import: `num_integer::Roots`
+   --> crates/cas_engine/src/rules/algebra/roots.rs:355:9
+    |
+355 |     use num_integer::Roots;
+    |         ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `num_integer::Roots`
+   --> crates/cas_engine/src/rules/algebra/roots.rs:513:9
+    |
+513 |     use num_integer::Roots;
+    |         ^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `max_coeff_deg`
+   --> crates/cas_engine/src/multipoly.rs:806:13
+    |
+806 |         let max_coeff_deg = param_deg_p.min(param_deg_q);
+    |             ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_max_coeff_deg`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `params`
+    --> crates/cas_engine/src/multipoly.rs:1538:5
+     |
+1538 |     params: &[VarIdx],
+     |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_params`
+
+warning: function `collect_mul_factors_int_pow` is never used
+  --> crates/cas_engine/src/rules/algebra/fractions.rs:26:4
+   |
+26 | fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `collect_mul_factors_recursive` is never used
+  --> crates/cas_engine/src/rules/algebra/fractions.rs:32:4
+   |
+32 | fn collect_mul_factors_recursive(
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_integer_exponent_a1` is never used
+  --> crates/cas_engine/src/rules/algebra/fractions.rs:59:4
+   |
+59 | fn get_integer_exponent_a1(ctx: &Context, exp: ExprId) -> Option<i64> {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `cancel_common_factors_structural` is never used
+  --> crates/cas_engine/src/rules/algebra/fractions.rs:75:4
+   |
+75 | fn cancel_common_factors_structural(
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `compare_expr_for_sort_a1` is never used
+   --> crates/cas_engine/src/rules/algebra/fractions.rs:146:4
+    |
+146 | fn compare_expr_for_sort_a1(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `build_mul_from_factors_a1` is never used
+   --> crates/cas_engine/src/rules/algebra/fractions.rs:166:4
+    |
+166 | fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `build_cancel_domain_assumption` is never used
+   --> crates/cas_engine/src/rules/algebra/fractions.rs:199:4
+    |
+199 | fn build_cancel_domain_assumption(ctx: &Context, cancelled: &[ExprId]) -> Option<&'static str> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `cas_engine` (lib) generated 21 warnings (run `cargo fix --lib -p cas_engine` to apply 9 suggestions)
+    Finished `bench` profile [optimized] target(s) in 0.03s
+     Running benches/mm_gcd_modp.rs (target/release/deps/mm_gcd_modp-c467cc66977fa953)
+Gnuplot not found, using plotters backend
+
+╔════════════════════════════════════════════════════════════╗
+║        mm_gcd mod p Benchmark (Zippel GCD)                 ║
+╚════════════════════════════════════════════════════════════╝
+
+Step 1: Building base polynomials (a, b, g) mod p...
+  ✓ a: 3431 terms, total_degree 7
+  ✓ b: 3432 terms, total_degree 7
+  ✓ g: 3432 terms, total_degree 7
+
+Step 2: Computing products a*g and b*g...
+  ✓ a*g: 70660 terms, total_degree 14
+  ✓ b*g: 61918 terms, total_degree 14
+
+Step 3: Testing Zippel GCD...
+  Budget: max_points=12, max_retries=16, verify_trials=8
+  ✓ gcd computed: 3432 terms, total_degree 7
+  ✓ GCD matches g (same degree and term count)
+
+Running benchmark: mul_only (a*g + b*g) mod p...
+Benchmarking mm_gcd_modp/mul_only
+Benchmarking mm_gcd_modp/mul_only: Warming up for 3.0000 s
+
+Warning: Unable to complete 10 samples in 30.0s. You may wish to increase target time to 53.3s or enable flat sampling.
+Benchmarking mm_gcd_modp/mul_only: Collecting 10 samples in estimated 53.297 s (55 iterations)
+Benchmarking mm_gcd_modp/mul_only: Analyzing
+mm_gcd_modp/mul_only    time:   [970.96 ms 978.39 ms 985.16 ms]
+                        change: [−5.0990% −2.5569% +0.1107%] (p = 0.09 > 0.05)
+                        No change in performance detected.
+Running benchmark: gcd_only mod p...
+Benchmarking mm_gcd_modp/gcd_only
+Benchmarking mm_gcd_modp/gcd_only: Warming up for 3.0000 s
+
+Warning: Unable to complete 10 samples in 30.0s. You may wish to increase target time to 1300.3s.
+Benchmarking mm_gcd_modp/gcd_only: Collecting 10 samples in estimated 1300.3 s (10 iterations)

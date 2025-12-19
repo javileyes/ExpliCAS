@@ -37,3 +37,7 @@ harness = false
 [[bench]]
 name = "mm_gcd"
 harness = false
+
+[[bench]]
+name = "mm_gcd_modp"
+harness = false
