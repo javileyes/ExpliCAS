@@ -834,10 +834,15 @@ impl crate::rule::Rule for BinomialExpansionRule {
             if let Expr::Number(n) = exp_data {
                 if n.is_integer() && !n.is_negative() {
                     if let Some(n_val) = n.to_integer().to_u32() {
-                        // Limit expansion to small exponents in Standard mode
-                        // Binomial with n=2 produces 3 terms, n=3 produces 4, n=4 produces 5
-                        // Higher exponents should be opt-in via expand() command
-                        if (2..=4).contains(&n_val) {
+                        // Only expand binomials in explicit expand mode
+                        // In Standard mode, preserve structure like (x+1)^3
+                        // This prevents unwanted expansion when doing poly_gcd(a*g, b*g) - g
+                        if !parent_ctx.is_expand_mode() {
+                            return None;
+                        }
+
+                        // Limit expansion to reasonable exponents even in expand mode
+                        if n_val >= 2 && n_val <= 20 {
                             // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
                             let mut terms = Vec::new();
                             for k in 0..=n_val {

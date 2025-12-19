@@ -8,6 +8,8 @@ pub struct ParentContext {
     pub(crate) ancestors: Vec<ExprId>,
     /// Pre-scanned pattern marks for context-aware guards
     pub(crate) pattern_marks: Option<crate::pattern_marks::PatternMarks>,
+    /// Whether we're in "expand mode" - forces aggressive distribution/expansion
+    pub(crate) expand_mode: bool,
 }
 
 impl ParentContext {
@@ -16,6 +18,7 @@ impl ParentContext {
         Self {
             ancestors: Vec::new(),
             pattern_marks: None,
+            expand_mode: false,
         }
     }
 
@@ -24,6 +27,7 @@ impl ParentContext {
         Self {
             ancestors: vec![parent],
             pattern_marks: None,
+            expand_mode: false,
         }
     }
 
@@ -32,6 +36,19 @@ impl ParentContext {
         Self {
             ancestors: Vec::new(),
             pattern_marks: Some(pattern_marks),
+            expand_mode: false,
+        }
+    }
+
+    /// Create context with expand_mode enabled
+    pub fn with_expand_mode(
+        pattern_marks: crate::pattern_marks::PatternMarks,
+        expand_mode: bool,
+    ) -> Self {
+        Self {
+            ancestors: Vec::new(),
+            pattern_marks: Some(pattern_marks),
+            expand_mode,
         }
     }
 
@@ -43,6 +60,7 @@ impl ParentContext {
         Self {
             ancestors: new_ancestors,
             pattern_marks: self.pattern_marks.clone(),
+            expand_mode: self.expand_mode,
         }
     }
 
@@ -58,6 +76,11 @@ impl ParentContext {
 
     pub fn pattern_marks(&self) -> Option<&crate::pattern_marks::PatternMarks> {
         self.pattern_marks.as_ref()
+    }
+
+    /// Check if we're in expand mode (aggressive distribution/expansion)
+    pub fn is_expand_mode(&self) -> bool {
+        self.expand_mode
     }
 
     /// Get immediate parent, if exists

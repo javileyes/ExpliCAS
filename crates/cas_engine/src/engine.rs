@@ -549,13 +549,27 @@ impl Simplifier {
         pattern_marks: &crate::pattern_marks::PatternMarks,
         phase: crate::phase::SimplifyPhase,
     ) -> (ExprId, Vec<Step>) {
+        // Default: not in expand mode
+        self.apply_rules_loop_with_phase_and_mode(expr_id, pattern_marks, phase, false)
+    }
+
+    /// Apply rules loop with explicit expand_mode control
+    pub fn apply_rules_loop_with_phase_and_mode(
+        &mut self,
+        expr_id: ExprId,
+        pattern_marks: &crate::pattern_marks::PatternMarks,
+        phase: crate::phase::SimplifyPhase,
+        expand_mode: bool,
+    ) -> (ExprId, Vec<Step>) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let steps_mode = self.steps_mode;
 
-        // Create initial ParentContext with pattern marks
-        let initial_parent_ctx =
-            crate::parent_context::ParentContext::with_marks(pattern_marks.clone());
+        // Create initial ParentContext with pattern marks and expand_mode
+        let initial_parent_ctx = crate::parent_context::ParentContext::with_expand_mode(
+            pattern_marks.clone(),
+            expand_mode,
+        );
 
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,

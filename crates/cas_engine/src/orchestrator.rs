@@ -71,8 +71,12 @@ impl Orchestrator {
                 &mut self.pattern_marks,
             );
 
-            let (next, steps) =
-                simplifier.apply_rules_loop_with_phase(current, &self.pattern_marks, phase);
+            let (next, steps) = simplifier.apply_rules_loop_with_phase_and_mode(
+                current,
+                &self.pattern_marks,
+                phase,
+                self.options.expand_mode,
+            );
 
             stats.rewrites_used += steps.len();
             all_steps.extend(steps);

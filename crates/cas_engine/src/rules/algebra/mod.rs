@@ -19,6 +19,9 @@ pub use roots::*;
 pub mod poly_gcd;
 pub use poly_gcd::*;
 
+pub mod gcd_exact;
+pub use gcd_exact::*;
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
@@ -52,5 +55,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(FactorCommonIntegerFromAdd));
     // Polynomial GCD: poly_gcd(a*g, b*g) → g (structural)
     simplifier.add_rule(Box::new(PolyGcdRule));
+    // Polynomial GCD exact: poly_gcd_exact(a, b) → algebraic GCD over ℚ
+    simplifier.add_rule(Box::new(PolyGcdExactRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
