@@ -77,7 +77,38 @@ The result is wrapped in `hold()` internally during simplification to prevent su
 - **Not algebraic GCD**: Does not factor polynomials to find hidden common factors
 - For algebraic GCD of expanded polynomials, use the Zippel algorithm (see `ZIPPEL_GCD.md`)
 
+## Automatic Cancellation
+
+When you subtract `g` from `poly_gcd(a*g, b*g)`, the system will automatically simplify to `0`:
+
+```txt
+cas> let g = (1 + 3*x1 + 5*x2 + 7*x3)^7 + 3
+cas> poly_gcd(a*g, b*g) - g
+Result: 0
+```
+
+This works through the `AnnihilationRule` which detects that `__hold(g) - g = 0` even when the expressions have different structural representations.
+
+### Binomial Expansion Trade-off
+
+For binomials with small exponents (2, 3, or 4), the system may expand the expression outside the `__hold` wrapper, causing the cancellation to fail:
+
+```txt
+cas> let g = (x + y)^3 + 1
+cas> poly_gcd(2*g, 3*g) - g
+Result: __hold((x + y)³ + 1) - x³ - 3x²y - 3xy² - y³ - 1  # Not simplified to 0
+```
+
+For exponents > 4, the binomial is NOT expanded, and cancellation works:
+
+```txt
+cas> let g = (x + y)^5 + 1
+cas> poly_gcd(2*g, 3*g) - g
+Result: 0
+```
+
 ## Implementation Files
 
 - `crates/cas_engine/src/rules/algebra/poly_gcd.rs` - Rule implementation
+- `crates/cas_engine/src/rules/polynomial.rs` - `AnnihilationRule` for `X - X = 0` detection
 - `crates/cas_engine/src/engine.rs` - HoldAll semantics and unwrap logic

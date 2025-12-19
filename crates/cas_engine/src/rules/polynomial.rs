@@ -393,20 +393,327 @@ fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: Expr
     }
 }
 
-define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Sub(l, r) = expr_data {
-        if compare_expr(ctx, l, r) == Ordering::Equal {
-            let zero = ctx.num(0);
-            return Some(Rewrite {
-                new_expr: zero,
-                description: "x - x = 0".to_string(),
-                before_local: None,
-                after_local: None,
-                domain_assumption: None,
-            });
+/// Unwrap __hold(X) to X, otherwise return the expression unchanged
+fn unwrap_hold(ctx: &Context, expr: ExprId) -> ExprId {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "__hold" && args.len() == 1 {
+            return args[0];
         }
     }
+    expr
+}
+
+/// Normalize a term by extracting negation from leading coefficient
+/// For example: (-15)*z with flag false → 15*z with flag true
+/// Returns (normalized_expr, effective_negation_flag)
+fn normalize_term_sign(ctx: &Context, term: ExprId, neg: bool) -> (ExprId, bool) {
+    // Check if it's a Mul with a negative number as first or second operand
+    if let Expr::Mul(l, r) = ctx.get(term) {
+        // Check left operand for negative number
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n.is_negative() {
+                // Flip the sign and negate the coefficient
+                // We can't easily create a new expression here, so we'll compare differently
+                return (term, !neg);
+            }
+        }
+        // Check right operand for negative number
+        if let Expr::Number(n) = ctx.get(*r) {
+            if n.is_negative() {
+                return (term, !neg);
+            }
+        }
+    }
+
+    // Check if it's a negative number itself
+    if let Expr::Number(n) = ctx.get(term) {
+        if n.is_negative() {
+            return (term, !neg);
+        }
+    }
+
+    (term, neg)
+}
+
+/// Check if two expressions are polynomially equal (same after expansion)
+fn poly_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    // Identical IDs
+    if a == b {
+        return true;
+    }
+
+    // First try structural comparison
+    if compare_expr(ctx, a, b) == Ordering::Equal {
+        return true;
+    }
+
+    let expr_a = ctx.get(a);
+    let expr_b = ctx.get(b);
+
+    // Try deep comparison for Pow expressions
+    if let (Expr::Pow(base_a, exp_a), Expr::Pow(base_b, exp_b)) = (expr_a, expr_b) {
+        if poly_equal(ctx, *exp_a, *exp_b) {
+            return poly_equal(ctx, *base_a, *base_b);
+        }
+    }
+
+    // Try deep comparison for Mul expressions (commutative)
+    if let (Expr::Mul(l_a, r_a), Expr::Mul(l_b, r_b)) = (expr_a, expr_b) {
+        // Try both orderings
+        if (poly_equal(ctx, *l_a, *l_b) && poly_equal(ctx, *r_a, *r_b))
+            || (poly_equal(ctx, *l_a, *r_b) && poly_equal(ctx, *r_a, *l_b))
+        {
+            return true;
+        }
+
+        // Also check for opposite coefficients: 15*z vs -15*z
+        // Check if one left operand is the negation of the other
+        if let (Expr::Number(n_a), Expr::Number(n_b)) = (ctx.get(*l_a), ctx.get(*l_b)) {
+            if n_a == &-n_b.clone() && poly_equal(ctx, *r_a, *r_b) {
+                return true; // Same up to sign
+            }
+        }
+        if let (Expr::Number(n_a), Expr::Number(n_b)) = (ctx.get(*r_a), ctx.get(*r_b)) {
+            if n_a == &-n_b.clone() && poly_equal(ctx, *l_a, *l_b) {
+                return true; // Same up to sign
+            }
+        }
+    }
+
+    // Try deep comparison for Neg expressions
+    if let (Expr::Neg(inner_a), Expr::Neg(inner_b)) = (expr_a, expr_b) {
+        return poly_equal(ctx, *inner_a, *inner_b);
+    }
+
+    // For any additive expressions, flatten and compare term sets
+    // This handles Add, Sub, and mixed cases
+    let is_additive_a = matches!(expr_a, Expr::Add(_, _) | Expr::Sub(_, _));
+    let is_additive_b = matches!(expr_b, Expr::Add(_, _) | Expr::Sub(_, _));
+
+    if is_additive_a && is_additive_b {
+        let mut terms_a: Vec<(ExprId, bool)> = Vec::new();
+        let mut terms_b: Vec<(ExprId, bool)> = Vec::new();
+        flatten_additive_terms(ctx, a, false, &mut terms_a);
+        flatten_additive_terms(ctx, b, false, &mut terms_b);
+
+        if terms_a.len() == terms_b.len() {
+            let mut matched = vec![false; terms_b.len()];
+            for (term_a, neg_a) in &terms_a {
+                let mut found = false;
+
+                // Normalize term_a: extract negation from leading coefficient if any
+                let (norm_a, eff_neg_a) = normalize_term_sign(ctx, *term_a, *neg_a);
+
+                for (j, (term_b, neg_b)) in terms_b.iter().enumerate() {
+                    if matched[j] {
+                        continue;
+                    }
+
+                    // Normalize term_b: extract negation from leading coefficient if any
+                    let (norm_b, eff_neg_b) = normalize_term_sign(ctx, *term_b, *neg_b);
+
+                    // Now compare with effective negation
+                    if eff_neg_a != eff_neg_b {
+                        continue;
+                    }
+
+                    // Use poly_equal recursively for term comparison
+                    if poly_equal(ctx, norm_a, norm_b) {
+                        matched[j] = true;
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    return false;
+                }
+            }
+            if matched.iter().all(|&m| m) {
+                return true;
+            }
+        }
+    }
+
+    // Fallback: try polynomial comparison for univariate case
+    let vars_a: Vec<_> = crate::rules::algebra::collect_variables(ctx, a)
+        .into_iter()
+        .collect();
+    let vars_b: Vec<_> = crate::rules::algebra::collect_variables(ctx, b)
+        .into_iter()
+        .collect();
+
+    // Only compare if same single variable
+    if vars_a.len() == 1 && vars_b.len() == 1 && vars_a[0] == vars_b[0] {
+        let var = &vars_a[0];
+        if let (Ok(poly_a), Ok(poly_b)) = (
+            Polynomial::from_expr(ctx, a, var),
+            Polynomial::from_expr(ctx, b, var),
+        ) {
+            return poly_a == poly_b;
+        }
+    }
+
+    false
+}
+
+/// Flatten an additive expression into a list of (term, is_negated) pairs
+fn flatten_additive_terms(
+    ctx: &Context,
+    expr: ExprId,
+    negated: bool,
+    terms: &mut Vec<(ExprId, bool)>,
+) {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            flatten_additive_terms(ctx, *l, negated, terms);
+            flatten_additive_terms(ctx, *r, negated, terms);
+        }
+        Expr::Sub(l, r) => {
+            flatten_additive_terms(ctx, *l, negated, terms);
+            flatten_additive_terms(ctx, *r, !negated, terms);
+        }
+        Expr::Neg(inner) => {
+            flatten_additive_terms(ctx, *inner, !negated, terms);
+        }
+        _ => {
+            terms.push((expr, negated));
+        }
+    }
+}
+
+define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
+    // Only process Add/Sub expressions
+    let expr_data = ctx.get(expr).clone();
+    if !matches!(expr_data, Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    // Flatten all terms
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    flatten_additive_terms(ctx, expr, false, &mut terms);
+
+    if terms.len() < 2 {
+        return None;
+    }
+
+    // CASE 1: Look for simple pairs that cancel (term and its negation)
+    for i in 0..terms.len() {
+        for j in (i + 1)..terms.len() {
+            let (term_i, neg_i) = &terms[i];
+            let (term_j, neg_j) = &terms[j];
+
+            // Only if opposite signs
+            if neg_i == neg_j {
+                continue;
+            }
+
+            // Unwrap __hold for comparison
+            let unwrapped_i = unwrap_hold(ctx, *term_i);
+            let unwrapped_j = unwrap_hold(ctx, *term_j);
+
+            // Check structural or polynomial equality
+            if poly_equal(ctx, unwrapped_i, unwrapped_j) {
+                // These terms cancel. If they're the only 2 terms, result is 0
+                if terms.len() == 2 {
+                    let zero = ctx.num(0);
+                    return Some(Rewrite {
+                        new_expr: zero,
+                        description: "x - x = 0".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // CASE 2: Handle __hold(A+B+...) with distributed -(A) -(B) -(...)
+    // Find __hold terms and check if remaining negated terms sum to their content
+    for (idx, (term, is_neg)) in terms.iter().enumerate() {
+        if *is_neg {
+            continue; // Only check positive __hold terms
+        }
+
+        // Check if this is a __hold
+        if let Expr::Function(name, args) = ctx.get(*term) {
+            if name == "__hold" && args.len() == 1 {
+                let held_content = args[0];
+
+                // Flatten the held content to get its terms
+                let mut held_terms: Vec<(ExprId, bool)> = Vec::new();
+                flatten_additive_terms(ctx, held_content, false, &mut held_terms);
+
+                // Get all other terms (excluding this __hold)
+                let other_terms: Vec<(ExprId, bool)> = terms
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != idx)
+                    .map(|(_, t)| t.clone())
+                    .collect();
+
+                // Check if held_terms and other_terms cancel out
+                // They cancel if for each held term there's an opposite signed other term
+                if held_terms.len() == other_terms.len() {
+                    let mut all_cancel = true;
+                    let mut used = vec![false; other_terms.len()];
+
+                    for (held_term, held_neg) in &held_terms {
+                        let mut found = false;
+
+                        for (j, (other_term, other_neg)) in other_terms.iter().enumerate() {
+                            if used[j] {
+                                continue;
+                            }
+
+                            // Check if terms cancel (one positive, one negative equivalently)
+                            // Case 1: Same term with opposite flags
+                            if *other_neg != *held_neg {
+                                // Use poly_equal for more robust comparison
+                                // This handles cases where expressions are semantically equal
+                                // but structurally different (e.g., Mul(15,x) vs Mul(x,15))
+                                if poly_equal(ctx, *held_term, *other_term) {
+                                    used[j] = true;
+                                    found = true;
+                                    break;
+                                }
+                            }
+
+                            // Case 2: Number with same flag but opposite value (e.g., 1 vs -1)
+                            if *other_neg == *held_neg {
+                                if let (Expr::Number(n1), Expr::Number(n2)) =
+                                    (ctx.get(*held_term), ctx.get(*other_term))
+                                {
+                                    if n1 == &-n2.clone() {
+                                        used[j] = true;
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if !found {
+                            all_cancel = false;
+                            break;
+                        }
+                    }
+
+                    if all_cancel && used.iter().all(|&u| u) {
+                        let zero = ctx.num(0);
+                        return Some(Rewrite {
+                            new_expr: zero,
+                            description: "__hold(sum) - sum = 0".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     None
 });
 
@@ -458,7 +765,21 @@ fn contains_matrix(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// Count the number of terms in a sum/difference expression
+/// Returns the count of additive terms (flattening nested Add/Sub)
+fn count_additive_terms(ctx: &Context, expr: ExprId) -> usize {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => count_additive_terms(ctx, *l) + count_additive_terms(ctx, *r),
+        Expr::Sub(l, r) => count_additive_terms(ctx, *l) + count_additive_terms(ctx, *r),
+        Expr::Neg(inner) => count_additive_terms(ctx, *inner),
+        _ => 1, // A single term (Variable, Number, Mul, Pow, etc.)
+    }
+}
+
 /// BinomialExpansionRule: (a + b)^n → expanded polynomial
+/// ONLY expands true binomials (exactly 2 terms).
+/// Multinomial expansion (>2 terms) is NOT done by default to avoid explosion.
+/// Use explicit expand() mode for multinomial expansion.
 /// Implements Rule directly to access ParentContext
 pub struct BinomialExpansionRule;
 
@@ -487,10 +808,19 @@ impl crate::rule::Rule for BinomialExpansionRule {
             }
         }
 
-        // (a + b)^n
+        // (a + b)^n - ONLY true binomials (exactly 2 terms)
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
             let base_data = ctx.get(base).clone();
+
+            // CRITICAL GUARD: Only expand if base has exactly 2 terms
+            // This prevents multinomial expansion like (1 + x1 + x2 + ... + x7)^7
+            // which would produce thousands of terms
+            let term_count = count_additive_terms(ctx, base);
+            if term_count != 2 {
+                return None; // Not a binomial, skip expansion
+            }
+
             let (a, b) = match base_data {
                 Expr::Add(a, b) => (a, b),
                 Expr::Sub(a, b) => {
@@ -504,8 +834,10 @@ impl crate::rule::Rule for BinomialExpansionRule {
             if let Expr::Number(n) = exp_data {
                 if n.is_integer() && !n.is_negative() {
                     if let Some(n_val) = n.to_integer().to_u32() {
-                        // Limit expansion to reasonable size to prevent explosion
-                        if (2..=10).contains(&n_val) {
+                        // Limit expansion to small exponents in Standard mode
+                        // Binomial with n=2 produces 3 terms, n=3 produces 4, n=4 produces 5
+                        // Higher exponents should be opt-in via expand() command
+                        if (2..=4).contains(&n_val) {
                             // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
                             let mut terms = Vec::new();
                             for k in 0..=n_val {
