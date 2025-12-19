@@ -54,11 +54,18 @@ impl Step {
         context: Option<&cas_ast::Context>,
     ) -> Self {
         let after_str = context.map(|ctx| {
+            // Unwrap __hold for display purposes
+            let display_id = match ctx.get(after) {
+                cas_ast::Expr::Function(name, args) if name == "__hold" && args.len() == 1 => {
+                    args[0]
+                }
+                _ => after,
+            };
             format!(
                 "{}",
                 cas_ast::DisplayExpr {
                     context: ctx,
-                    id: after
+                    id: display_id
                 }
             )
         });

@@ -706,6 +706,17 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 }
             }
             Expr::Function(name, args) => {
+                // __hold is an internal invisible barrier - just display the inner
+                if name == "__hold" && args.len() == 1 {
+                    return write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[0]
+                        }
+                    );
+                }
                 if name == "abs" && args.len() == 1 {
                     write!(
                         f,
@@ -1929,5 +1940,26 @@ impl<'a> DisplayExprStyled<'a> {
 impl<'a> fmt::Display for DisplayExprStyled<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_internal(f, self.id)
+    }
+}
+
+#[cfg(test)]
+mod hold_tests {
+    use super::*;
+    use crate::{Context, Expr};
+
+    #[test]
+    fn test_hold_transparency() {
+        let mut ctx = Context::new();
+        let x = ctx.add(Expr::Variable("x".to_string()));
+        let held = ctx.add(Expr::Function("__hold".to_string(), vec![x]));
+        let display = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: held
+            }
+        );
+        assert_eq!(display, "x", "Expected 'x' but got '{}'", display);
     }
 }

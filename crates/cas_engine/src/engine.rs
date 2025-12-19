@@ -18,17 +18,17 @@ use tracing::debug;
 /// should NOT be simplified before the function rule is applied.
 /// This is crucial for functions like poly_gcd that need to see the raw
 /// multiplicative structure of their arguments.
-/// Also includes 'hold' which is used to protect expressions from simplification.
+/// Also includes '__hold' which is an internal invisible barrier.
 fn is_hold_all_function(name: &str) -> bool {
-    matches!(name, "poly_gcd" | "pgcd" | "hold")
+    matches!(name, "poly_gcd" | "pgcd" | "__hold")
 }
 
-/// Unwrap top-level hold() wrapper after simplification.
+/// Unwrap top-level __hold() wrapper after simplification.
 /// This is called at the end of eval/simplify so the user sees clean results
-/// without the internal hold() protection visible.
+/// without the internal barrier visible.
 fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
     match ctx.get(expr) {
-        Expr::Function(name, args) if name == "hold" && args.len() == 1 => args[0],
+        Expr::Function(name, args) if name == "__hold" && args.len() == 1 => args[0],
         _ => expr,
     }
 }

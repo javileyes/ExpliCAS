@@ -289,39 +289,6 @@ fn poly_gcd_structural(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     let a_factors = collect_mul_factors(ctx, a);
     let b_factors = collect_mul_factors(ctx, b);
 
-    // DEBUG: Print what we're seeing
-    eprintln!("=== poly_gcd DEBUG ===");
-    eprintln!("Arg A factors: {} items", a_factors.len());
-    for (i, (base, exp)) in a_factors.iter().enumerate() {
-        let display = DisplayExpr {
-            context: ctx,
-            id: *base,
-        };
-        let s = format!("{}", display);
-        eprintln!(
-            "  [{}] exp={}, base=({} chars) {}",
-            i,
-            exp,
-            s.len(),
-            if s.len() > 80 { &s[..80] } else { &s }
-        );
-    }
-    eprintln!("Arg B factors: {} items", b_factors.len());
-    for (i, (base, exp)) in b_factors.iter().enumerate() {
-        let display = DisplayExpr {
-            context: ctx,
-            id: *base,
-        };
-        let s = format!("{}", display);
-        eprintln!(
-            "  [{}] exp={}, base=({} chars) {}",
-            i,
-            exp,
-            s.len(),
-            if s.len() > 80 { &s[..80] } else { &s }
-        );
-    }
-
     // Find common factors by AC-canonical key comparison
     let mut gcd_factors: Vec<(ExprId, i64)> = Vec::new();
     let mut used_b: Vec<bool> = vec![false; b_factors.len()];
@@ -331,11 +298,6 @@ fn poly_gcd_structural(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
         for (j, (b_base, b_exp)) in b_factors.iter().enumerate() {
             if !used_b[j] && expr_equal_ac(ctx, *a_base, *b_base) {
                 // Common factor found: take min exponent
-                eprintln!(
-                    "  MATCH found! a[{}] == b[{}]",
-                    a_factors.iter().position(|(b, _)| b == a_base).unwrap_or(0),
-                    j
-                );
                 let min_exp = (*a_exp).min(*b_exp);
                 if min_exp > 0 {
                     gcd_factors.push((*a_base, min_exp));
@@ -345,9 +307,6 @@ fn poly_gcd_structural(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
             }
         }
     }
-
-    eprintln!("GCD factors found: {} items", gcd_factors.len());
-    eprintln!("=== END DEBUG ===");
 
     build_mul_from_factors(ctx, &gcd_factors)
 }
@@ -395,8 +354,8 @@ impl Rule for PolyGcdRule {
 
                 let gcd = poly_gcd_structural(ctx, a, b);
 
-                // Wrap result in hold() to prevent further simplification (especially expansion)
-                let held_gcd = ctx.add(Expr::Function("hold".to_string(), vec![gcd]));
+                // Wrap result in __hold() to prevent further simplification (invisible barrier)
+                let held_gcd = ctx.add(Expr::Function("__hold".to_string(), vec![gcd]));
 
                 return Some(Rewrite::simple(
                     held_gcd,

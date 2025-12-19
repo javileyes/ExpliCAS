@@ -113,6 +113,33 @@ fn clean_display_string(s: &str) -> String {
         changed = before != result;
     }
 
+    // Remove __hold(...) wrapper - it's an internal invisible barrier
+    while let Some(start) = result.find("__hold(") {
+        // Find matching closing paren
+        let content_start = start + 7; // Length of "__hold("
+        let mut depth = 1;
+        let mut end = content_start;
+        for (i, c) in result[content_start..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = content_start + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if depth == 0 {
+            let inner = &result[content_start..end];
+            result = format!("{}{}{}", &result[..start], inner, &result[end + 1..]);
+        } else {
+            break; // Malformed, stop
+        }
+    }
+
     result
 }
 
