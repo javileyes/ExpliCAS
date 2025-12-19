@@ -21,8 +21,12 @@ pub struct ZippelBudget {
     pub max_retries: usize,
     /// Number of random trials for probabilistic verification
     pub verify_trials: usize,
-    /// Enable debug output
-    pub debug: bool,
+}
+
+/// Check if debug tracing is enabled (via CAS_ZIPPEL_TRACE env var)
+#[inline]
+fn is_trace_enabled() -> bool {
+    std::env::var("CAS_ZIPPEL_TRACE").is_ok()
 }
 
 impl Default for ZippelBudget {
@@ -31,7 +35,6 @@ impl Default for ZippelBudget {
             max_points_per_var: 16,
             max_retries: 8,
             verify_trials: 6,
-            debug: false,
         }
     }
 }
@@ -39,10 +42,9 @@ impl Default for ZippelBudget {
 /// Tuned budget for mm_gcd benchmark (7 variables, degree 7)
 pub fn budget_for_mm_gcd() -> ZippelBudget {
     ZippelBudget {
-        max_points_per_var: 9, // deg 7 needs 8 points, +1 margin
-        max_retries: 64,       // Many retries instead of many points
-        verify_trials: 10,     // Thorough verification
-        debug: true,           // See what's happening
+        max_points_per_var: 8, // deg 7 needs exactly 8 points
+        max_retries: 8,        // Log shows 0 skips, so 8 is enough
+        verify_trials: 3,      // Fast verification for benchmark
     }
 }
 
@@ -85,13 +87,13 @@ fn gcd_zippel_modp_impl(
 ) -> Option<MultiPolyModP> {
     // Sanity checks
     if p.p != q.p {
-        if budget.debug {
+        if is_trace_enabled() {
             eprintln!("[Zippel] ERROR: prime mismatch");
         }
         return None;
     }
     if p.num_vars != q.num_vars {
-        if budget.debug {
+        if is_trace_enabled() {
             eprintln!("[Zippel] ERROR: num_vars mismatch");
         }
         return None;
@@ -121,7 +123,7 @@ fn gcd_zippel_modp_impl(
         return Some(MultiPolyModP::constant(1, p.p, num_vars));
     }
 
-    if budget.debug {
+    if is_trace_enabled() {
         eprintln!(
             "[Zippel] Starting: {} active vars, p={} terms, q={} terms",
             active_vars.len(),
@@ -135,7 +137,7 @@ fn gcd_zippel_modp_impl(
     result.make_monic();
 
     // Probabilistic verification
-    if budget.debug {
+    if is_trace_enabled() {
         eprintln!(
             "[Zippel] Verifying result: {} terms, degree {}",
             result.num_terms(),
@@ -144,13 +146,13 @@ fn gcd_zippel_modp_impl(
     }
 
     if !verify_by_univar_evals(&result, p, q, budget) {
-        if budget.debug {
+        if is_trace_enabled() {
             eprintln!("[Zippel] FAILED: verification");
         }
         return None;
     }
 
-    if budget.debug {
+    if is_trace_enabled() {
         eprintln!("[Zippel] SUCCESS");
     }
     Some(result)
@@ -180,7 +182,7 @@ fn gcd_zippel_rec(
         let mut g_uni = p_uni.gcd(&q_uni);
         g_uni.make_monic(); // Ensure monic for consistency
 
-        if budget.debug {
+        if is_trace_enabled() {
             eprintln!(
                 "{}[depth={}] Base case var={}: gcd degree={}",
                 indent,
@@ -216,7 +218,7 @@ fn gcd_zippel_rec(
     let deg_bound = deg_p.min(deg_q);
     let num_points = (deg_bound + 1).min(budget.max_points_per_var);
 
-    if budget.debug {
+    if is_trace_enabled() {
         eprintln!(
             "{}[depth={}] Eval var={}, deg_p={}, deg_q={}, need {} points",
             indent, depth, eval_var, deg_p, deg_q, num_points
@@ -284,7 +286,7 @@ fn gcd_zippel_rec(
                 }
                 if this_deg < exp_deg {
                     // Lower degree - previous samples were unlucky, restart
-                    if budget.debug {
+                    if is_trace_enabled() {
                         eprintln!(
                             "{}  Restarting: got deg {} < expected {}",
                             indent, this_deg, exp_deg
@@ -299,7 +301,7 @@ fn gcd_zippel_rec(
         samples.push((t, g_t));
     }
 
-    if budget.debug {
+    if is_trace_enabled() {
         eprintln!(
             "{}[depth={}] Collected {} samples (skipped: {} zero, {} degree)",
             indent,
@@ -311,7 +313,7 @@ fn gcd_zippel_rec(
     }
 
     if samples.len() < num_points {
-        if budget.debug {
+        if is_trace_enabled() {
             eprintln!(
                 "{}[depth={}] FAILED: not enough samples ({} < {})",
                 indent,
@@ -326,7 +328,7 @@ fn gcd_zippel_rec(
     // Interpolate in eval_var
     let result = lagrange_interpolate_poly(eval_var, &samples, p_mod, num_vars);
 
-    if budget.debug && result.is_some() {
+    if is_trace_enabled() && result.is_some() {
         let r = result.as_ref().unwrap();
         eprintln!(
             "{}[depth={}] Interpolated: {} terms, degree {}",

@@ -160,7 +160,16 @@ fn bench_mm_gcd_modp(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(30));
     group.warm_up_time(Duration::from_secs(3));
 
-    // Benchmark 1: Multiplication only
+    // Benchmark 1: Build polynomials only (using fast multinomial construction)
+    println!("Running benchmark: build_only (construct a, b, g) mod p...");
+    group.bench_function("build_only", |bencher| {
+        bencher.iter(|| {
+            let (a, b, g) = build_polys_modp_fast();
+            black_box((a, b, g))
+        })
+    });
+
+    // Benchmark 2: Multiplication only (prebuilt a, b, g)
     println!("Running benchmark: mul_only (a*g + b*g) mod p...");
     group.bench_function("mul_only", |bencher| {
         bencher.iter(|| {
