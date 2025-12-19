@@ -230,81 +230,35 @@ fn gcd_zippel_rec(
         );
     }
 
-    // Collect samples with degree-stability filter
-    let mut samples: Vec<(u64, MultiPolyModP)> = Vec::new();
-    let mut expected_gcd_deg: Option<u32> = None;
-    let mut seed_idx = 0;
-    let mut retries = 0;
-    let mut skipped_degree = 0;
-    let mut skipped_zero = 0;
+    // Collect samples - use parallel evaluation at depth 0 for large polys
+    let use_parallel = should_use_parallel(depth, p.num_terms(), q.num_terms());
 
-    while samples.len() < num_points && retries < budget.max_retries {
-        if seed_idx >= SEED_POINTS.len() {
-            seed_idx = 0;
-            retries += 1;
-        }
+    let samples = if use_parallel {
+        collect_samples_parallel(
+            p,
+            q,
+            eval_var,
+            &reduced_vars,
+            num_points,
+            budget,
+            p_mod,
+            depth,
+        )?
+    } else {
+        collect_samples_sequential(
+            p,
+            q,
+            eval_var,
+            &reduced_vars,
+            num_points,
+            budget,
+            p_mod,
+            depth,
+        )?
+    };
 
-        let t = SEED_POINTS[seed_idx] % p_mod;
-        seed_idx += 1;
-
-        // Evaluate both polynomials at eval_var = t
-        let p_t = eval_var_at(p, eval_var, t);
-        let q_t = eval_var_at(q, eval_var, t);
-
-        // Skip if evaluation gave zero (unlucky point)
-        if p_t.is_zero() || q_t.is_zero() {
-            skipped_zero += 1;
-            continue;
-        }
-
-        // Degree-stability filter: check that degrees didn't drop unexpectedly
-        // This catches unlucky evaluation points
-        if reduced_vars.len() == 1 {
-            let rv = reduced_vars[0];
-            let p_t_deg = p_t.degree_in(rv);
-            let q_t_deg = q_t.degree_in(rv);
-            let expected_p_deg = p.degree_in(rv);
-            let expected_q_deg = q.degree_in(rv);
-
-            if p_t_deg < expected_p_deg || q_t_deg < expected_q_deg {
-                skipped_degree += 1;
-                continue;
-            }
-        }
-
-        // Recursive GCD on reduced polynomial (no forced main for inner calls)
-        let mut g_t = gcd_zippel_rec(&p_t, &q_t, &reduced_vars, None, depth + 1, budget)?;
-        g_t.make_monic(); // Ensure monic for consistent interpolation
-
-        let this_deg = g_t.total_degree();
-
-        // Check degree consistency
-        match expected_gcd_deg {
-            None => {
-                expected_gcd_deg = Some(this_deg);
-            }
-            Some(exp_deg) => {
-                if this_deg > exp_deg {
-                    // Higher degree - unlucky point, skip
-                    skipped_degree += 1;
-                    continue;
-                }
-                if this_deg < exp_deg {
-                    // Lower degree - previous samples were unlucky, restart
-                    if is_trace_enabled() {
-                        eprintln!(
-                            "{}  Restarting: got deg {} < expected {}",
-                            indent, this_deg, exp_deg
-                        );
-                    }
-                    samples.clear();
-                    expected_gcd_deg = Some(this_deg);
-                }
-            }
-        }
-
-        samples.push((t, g_t));
-    }
+    let skipped_zero = 0; // For trace compatibility
+    let skipped_degree = 0;
 
     if is_trace_enabled() {
         eprintln!(
@@ -345,6 +299,225 @@ fn gcd_zippel_rec(
     }
 
     result
+}
+
+// =============================================================================
+// Parallel sampling configuration
+// =============================================================================
+
+/// Threshold for parallel evaluation
+const PAR_DEPTH: usize = 0; // Only parallelize at depth 0
+const PAR_TERM_THRESHOLD: usize = 20_000; // Minimum combined terms for parallelism
+
+/// Decide whether to use parallel evaluation
+fn should_use_parallel(depth: usize, p_terms: usize, q_terms: usize) -> bool {
+    #[cfg(feature = "parallel")]
+    {
+        depth <= PAR_DEPTH && (p_terms + q_terms) >= PAR_TERM_THRESHOLD
+    }
+    #[cfg(not(feature = "parallel"))]
+    {
+        let _ = (depth, p_terms, q_terms);
+        false
+    }
+}
+
+/// Sample result for parallel collection
+struct Sample {
+    point: u64,
+    gcd: MultiPolyModP,
+    degree: u32,
+}
+
+/// Collect samples using parallel evaluation (deterministic ordering)
+#[cfg(feature = "parallel")]
+fn collect_samples_parallel(
+    p: &MultiPolyModP,
+    q: &MultiPolyModP,
+    eval_var: usize,
+    reduced_vars: &[usize],
+    num_points: usize,
+    budget: &ZippelBudget,
+    p_mod: u64,
+    depth: usize,
+) -> Option<Vec<(u64, MultiPolyModP)>> {
+    use rayon::prelude::*;
+
+    // Prepare batch of points to evaluate
+    let points: Vec<u64> = SEED_POINTS[..num_points.min(SEED_POINTS.len())]
+        .iter()
+        .map(|&pt| pt % p_mod)
+        .collect();
+
+    if is_trace_enabled() {
+        eprintln!(
+            "  [depth={}] Parallel eval of {} points",
+            depth,
+            points.len()
+        );
+    }
+
+    // Parallel evaluation: each thread does eval + recursive gcd
+    let results: Vec<Option<Sample>> = points
+        .par_iter()
+        .map(|&t| {
+            // Evaluate both polynomials at eval_var = t
+            let p_t = eval_var_at(p, eval_var, t);
+            let q_t = eval_var_at(q, eval_var, t);
+
+            // Skip if evaluation gave zero
+            if p_t.is_zero() || q_t.is_zero() {
+                return None;
+            }
+
+            // Degree-stability filter
+            if reduced_vars.len() == 1 {
+                let rv = reduced_vars[0];
+                if p_t.degree_in(rv) < p.degree_in(rv) || q_t.degree_in(rv) < q.degree_in(rv) {
+                    return None;
+                }
+            }
+
+            // Recursive GCD (no forced main for inner, sequential from here)
+            let mut g_t = gcd_zippel_rec(&p_t, &q_t, reduced_vars, None, depth + 1, budget)?;
+            g_t.make_monic();
+
+            let degree = g_t.total_degree();
+            Some(Sample {
+                point: t,
+                gcd: g_t,
+                degree,
+            })
+        })
+        .collect();
+
+    // Process results in deterministic order: take first N valid with consistent degree
+    let mut samples: Vec<(u64, MultiPolyModP)> = Vec::with_capacity(num_points);
+    let mut expected_deg: Option<u32> = None;
+
+    for (pt, maybe_sample) in points.into_iter().zip(results.into_iter()) {
+        if let Some(sample) = maybe_sample {
+            match expected_deg {
+                None => {
+                    expected_deg = Some(sample.degree);
+                    samples.push((pt, sample.gcd));
+                }
+                Some(exp) => {
+                    if sample.degree == exp {
+                        samples.push((pt, sample.gcd));
+                    } else if sample.degree < exp {
+                        // Lower degree is better - restart with this
+                        samples.clear();
+                        expected_deg = Some(sample.degree);
+                        samples.push((pt, sample.gcd));
+                    }
+                    // Higher degree: skip
+                }
+            }
+        }
+        if samples.len() >= num_points {
+            break;
+        }
+    }
+
+    if samples.len() >= num_points {
+        Some(samples)
+    } else {
+        None
+    }
+}
+
+/// Sequential fallback for collect_samples (used when parallel disabled or small polys)
+fn collect_samples_sequential(
+    p: &MultiPolyModP,
+    q: &MultiPolyModP,
+    eval_var: usize,
+    reduced_vars: &[usize],
+    num_points: usize,
+    budget: &ZippelBudget,
+    p_mod: u64,
+    depth: usize,
+) -> Option<Vec<(u64, MultiPolyModP)>> {
+    let mut samples: Vec<(u64, MultiPolyModP)> = Vec::new();
+    let mut expected_gcd_deg: Option<u32> = None;
+    let mut seed_idx = 0;
+    let mut retries = 0;
+
+    while samples.len() < num_points && retries < budget.max_retries {
+        if seed_idx >= SEED_POINTS.len() {
+            seed_idx = 0;
+            retries += 1;
+        }
+
+        let t = SEED_POINTS[seed_idx] % p_mod;
+        seed_idx += 1;
+
+        let p_t = eval_var_at(p, eval_var, t);
+        let q_t = eval_var_at(q, eval_var, t);
+
+        if p_t.is_zero() || q_t.is_zero() {
+            continue;
+        }
+
+        if reduced_vars.len() == 1 {
+            let rv = reduced_vars[0];
+            if p_t.degree_in(rv) < p.degree_in(rv) || q_t.degree_in(rv) < q.degree_in(rv) {
+                continue;
+            }
+        }
+
+        let mut g_t = gcd_zippel_rec(&p_t, &q_t, reduced_vars, None, depth + 1, budget)?;
+        g_t.make_monic();
+
+        let this_deg = g_t.total_degree();
+
+        match expected_gcd_deg {
+            None => {
+                expected_gcd_deg = Some(this_deg);
+            }
+            Some(exp_deg) => {
+                if this_deg > exp_deg {
+                    continue;
+                }
+                if this_deg < exp_deg {
+                    samples.clear();
+                    expected_gcd_deg = Some(this_deg);
+                }
+            }
+        }
+
+        samples.push((t, g_t));
+    }
+
+    if samples.len() >= num_points {
+        Some(samples)
+    } else {
+        None
+    }
+}
+
+/// Fallback for non-parallel feature
+#[cfg(not(feature = "parallel"))]
+fn collect_samples_parallel(
+    p: &MultiPolyModP,
+    q: &MultiPolyModP,
+    eval_var: usize,
+    reduced_vars: &[usize],
+    num_points: usize,
+    budget: &ZippelBudget,
+    p_mod: u64,
+    depth: usize,
+) -> Option<Vec<(u64, MultiPolyModP)>> {
+    collect_samples_sequential(
+        p,
+        q,
+        eval_var,
+        reduced_vars,
+        num_points,
+        budget,
+        p_mod,
+        depth,
+    )
 }
 
 // =============================================================================
