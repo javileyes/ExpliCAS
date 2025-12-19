@@ -6,11 +6,16 @@
 //!    compute GCD recursively on each, then interpolate
 //!
 //! Avoids tensor-grid explosion by processing one variable at a time.
+//!
+//! Optimization: Uses Rayon for parallel point evaluation at top levels.
 
 use crate::modp::{add_mod, inv_mod, sub_mod};
 use crate::mono::Mono;
 use crate::multipoly_modp::MultiPolyModP;
 use crate::unipoly_modp::UniPolyModP;
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Budget for Zippel GCD algorithm
 #[derive(Clone, Debug)]
@@ -361,7 +366,7 @@ fn choose_eval_var(p: &MultiPolyModP, q: &MultiPolyModP, active_vars: &[usize]) 
 // =============================================================================
 
 fn eval_var_at(poly: &MultiPolyModP, var_idx: usize, val: u64) -> MultiPolyModP {
-    poly.eval_vars(&[(var_idx, val)])
+    poly.eval_var_fast(var_idx, val)
 }
 
 fn poly_to_univar(poly: &MultiPolyModP, var_idx: usize) -> UniPolyModP {

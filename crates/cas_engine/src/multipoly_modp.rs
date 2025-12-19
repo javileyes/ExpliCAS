@@ -3,10 +3,10 @@
 //! Uses compact monomials (Mono) for fast hashing.
 //! Designed for Zippel GCD algorithm.
 
-use crate::modp::{add_mod, mul_mod, neg_mod, sub_mod};
+use crate::modp::{add_mod, mul_mod, neg_mod};
 use crate::mono::{Exp, Mono, MAX_VARS};
 use crate::unipoly_modp::UniPolyModP;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 /// Multivariate polynomial mod p
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -90,8 +90,9 @@ impl MultiPolyModP {
             return;
         }
 
-        // Accumulate in HashMap
-        let mut map: HashMap<Mono, u64> = HashMap::with_capacity(self.terms.len());
+        // Accumulate in FxHashMap
+        let mut map: FxHashMap<Mono, u64> = FxHashMap::default();
+        map.reserve(self.terms.len());
         for (mono, coeff) in &self.terms {
             let entry = map.entry(*mono).or_insert(0);
             *entry = add_mod(*entry, *coeff, self.p);
@@ -134,8 +135,8 @@ impl MultiPolyModP {
         debug_assert_eq!(self.p, other.p);
         debug_assert_eq!(self.num_vars, other.num_vars);
 
-        let mut map: HashMap<Mono, u64> =
-            HashMap::with_capacity(self.terms.len() + other.terms.len());
+        let mut map: FxHashMap<Mono, u64> = FxHashMap::default();
+        map.reserve(self.terms.len() + other.terms.len());
 
         for (m, c) in &self.terms {
             *map.entry(*m).or_insert(0) = add_mod(map.get(m).copied().unwrap_or(0), *c, self.p);
@@ -159,7 +160,7 @@ impl MultiPolyModP {
         self.add(&other.neg())
     }
 
-    /// Multiply (fast version using HashMap)
+    /// Multiply (fast version using FxHashMap)
     pub fn mul(&self, other: &Self) -> Self {
         debug_assert_eq!(self.p, other.p);
         debug_assert_eq!(self.num_vars, other.num_vars);
@@ -169,7 +170,8 @@ impl MultiPolyModP {
         }
 
         let capacity = self.terms.len() * other.terms.len() / 2;
-        let mut map: HashMap<Mono, u64> = HashMap::with_capacity(capacity);
+        let mut map: FxHashMap<Mono, u64> = FxHashMap::default();
+        map.reserve(capacity);
 
         for (m1, c1) in &self.terms {
             for (m2, c2) in &other.terms {
@@ -237,7 +239,7 @@ impl MultiPolyModP {
             return self.clone();
         }
 
-        let mut result_map: HashMap<Mono, u64> = HashMap::new();
+        let mut result_map: FxHashMap<Mono, u64> = FxHashMap::default();
 
         for (mono, coeff) in &self.terms {
             let mut new_mono = *mono;
@@ -288,6 +290,43 @@ impl MultiPolyModP {
         let mut result = UniPolyModP { p: self.p, coeffs };
         result.trim();
         result
+    }
+
+    /// Evaluate a single variable at val, returning reduced polynomial.
+    /// Uses precomputed power table for speed (avoids repeated pow_mod).
+    pub fn eval_var_fast(&self, var_idx: usize, val: u64) -> Self {
+        let max_exp = self.degree_in(var_idx) as usize;
+        if max_exp == 0 {
+            return self.clone(); // Variable not present
+        }
+
+        // Precompute val^0, val^1, ..., val^max_exp
+        let pows = pow_table(val, max_exp, self.p);
+
+        let mut result_map: FxHashMap<Mono, u64> = FxHashMap::default();
+        result_map.reserve(self.terms.len());
+
+        for (mono, coeff) in &self.terms {
+            let exp = mono.0[var_idx] as usize;
+            let val_pow = pows[exp];
+            let new_coeff = mul_mod(*coeff, val_pow, self.p);
+
+            if new_coeff != 0 {
+                let mut new_mono = *mono;
+                new_mono.0[var_idx] = 0; // Remove variable
+                let entry = result_map.entry(new_mono).or_insert(0);
+                *entry = add_mod(*entry, new_coeff, self.p);
+            }
+        }
+
+        let mut terms: Vec<_> = result_map.into_iter().filter(|(_, c)| *c != 0).collect();
+        terms.sort_by(|a, b| b.0.cmp(&a.0));
+
+        Self {
+            p: self.p,
+            num_vars: self.num_vars,
+            terms,
+        }
     }
 
     /// Check if other divides self exactly (no remainder)
@@ -384,6 +423,16 @@ pub fn build_linear_pow_direct(coeffs: &[u64], exp: u32, p: u64, num_vars: usize
     terms.sort_by(|a, b| b.0.cmp(&a.0));
 
     MultiPolyModP { p, num_vars, terms }
+}
+
+/// Precompute val^0, val^1, ..., val^max_exp mod p
+#[inline]
+pub fn pow_table(val: u64, max_exp: usize, p: u64) -> Vec<u64> {
+    let mut table = vec![1u64; max_exp + 1];
+    for e in 1..=max_exp {
+        table[e] = mul_mod(table[e - 1], val, p);
+    }
+    table
 }
 
 /// Precompute factorials and their modular inverses up to n.
