@@ -17,9 +17,158 @@ use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_rational::BigRational;
 use std::cmp::Ordering;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 // =============================================================================
-// Factor collection helpers (adapted from fractions.rs)
+// AC-Canonical Key for expression comparison
+// =============================================================================
+
+/// A hash-based key for AC (associative-commutative) comparison of expressions.
+/// Two expressions with the same ExprKey are considered structurally equivalent
+/// even if they have different parenthesization or term ordering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ExprKey(u64);
+
+/// Compute AC-canonical key for an expression.
+/// This flattens Add and Mul chains, sorts children by their keys, and produces
+/// a stable hash that's independent of parenthesization and term order.
+fn expr_key_ac(ctx: &Context, expr: ExprId) -> ExprKey {
+    let mut hasher = DefaultHasher::new();
+    expr_key_hash(ctx, expr, &mut hasher);
+    ExprKey(hasher.finish())
+}
+
+/// Core hashing logic for AC-canonical key
+fn expr_key_hash<H: Hasher>(ctx: &Context, expr: ExprId, hasher: &mut H) {
+    match ctx.get(expr) {
+        Expr::Add(_, _) => {
+            // Flatten and sort by key
+            let mut children = Vec::new();
+            flatten_add(ctx, expr, &mut children);
+            let mut keys: Vec<ExprKey> = children.iter().map(|&e| expr_key_ac(ctx, e)).collect();
+            keys.sort();
+
+            "Add".hash(hasher);
+            keys.len().hash(hasher);
+            for key in keys {
+                key.hash(hasher);
+            }
+        }
+        Expr::Mul(_, _) => {
+            // Flatten and sort by key
+            let mut children = Vec::new();
+            flatten_mul(ctx, expr, &mut children);
+            let mut keys: Vec<ExprKey> = children.iter().map(|&e| expr_key_ac(ctx, e)).collect();
+            keys.sort();
+
+            "Mul".hash(hasher);
+            keys.len().hash(hasher);
+            for key in keys {
+                key.hash(hasher);
+            }
+        }
+        Expr::Pow(base, exp) => {
+            "Pow".hash(hasher);
+            expr_key_ac(ctx, *base).hash(hasher);
+            expr_key_ac(ctx, *exp).hash(hasher);
+        }
+        Expr::Neg(inner) => {
+            "Neg".hash(hasher);
+            expr_key_ac(ctx, *inner).hash(hasher);
+        }
+        Expr::Sub(a, b) => {
+            // Treat as Add(a, Neg(b)) for AC equivalence
+            "Add".hash(hasher);
+            2usize.hash(hasher);
+            let mut keys = vec![expr_key_ac(ctx, *a), expr_key_neg(ctx, *b)];
+            keys.sort();
+            for key in keys {
+                key.hash(hasher);
+            }
+        }
+        Expr::Div(a, b) => {
+            "Div".hash(hasher);
+            expr_key_ac(ctx, *a).hash(hasher);
+            expr_key_ac(ctx, *b).hash(hasher);
+        }
+        Expr::Number(n) => {
+            "Number".hash(hasher);
+            n.numer().hash(hasher);
+            n.denom().hash(hasher);
+        }
+        Expr::Variable(name) => {
+            "Variable".hash(hasher);
+            name.hash(hasher);
+        }
+        Expr::Constant(c) => {
+            "Constant".hash(hasher);
+            format!("{:?}", c).hash(hasher);
+        }
+        Expr::Function(name, args) => {
+            "Function".hash(hasher);
+            name.hash(hasher);
+            args.len().hash(hasher);
+            for arg in args {
+                expr_key_ac(ctx, *arg).hash(hasher);
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            "Matrix".hash(hasher);
+            rows.hash(hasher);
+            cols.hash(hasher);
+            for d in data {
+                expr_key_ac(ctx, *d).hash(hasher);
+            }
+        }
+        Expr::SessionRef(id) => {
+            "SessionRef".hash(hasher);
+            id.hash(hasher);
+        }
+    }
+}
+
+/// Hash for Neg(expr) - used when treating Sub as Add(a, Neg(b))
+fn expr_key_neg(ctx: &Context, expr: ExprId) -> ExprKey {
+    let mut hasher = DefaultHasher::new();
+    "Neg".hash(&mut hasher);
+    expr_key_ac(ctx, expr).hash(&mut hasher);
+    ExprKey(hasher.finish())
+}
+
+/// Flatten Add chain (associative)
+fn flatten_add(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            flatten_add(ctx, *left, out);
+            flatten_add(ctx, *right, out);
+        }
+        _ => {
+            out.push(expr);
+        }
+    }
+}
+
+/// Flatten Mul chain (associative)
+fn flatten_mul(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            flatten_mul(ctx, *left, out);
+            flatten_mul(ctx, *right, out);
+        }
+        _ => {
+            out.push(expr);
+        }
+    }
+}
+
+/// Check if two expressions are AC-equivalent
+fn expr_equal_ac(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    expr_key_ac(ctx, a) == expr_key_ac(ctx, b)
+}
+
+// =============================================================================
+// Factor collection helpers
 // =============================================================================
 
 /// Collect multiplicative factors with integer exponents from an expression.
@@ -76,7 +225,8 @@ fn get_integer_exp(ctx: &Context, exp: ExprId) -> Option<i64> {
     }
 }
 
-/// Compare expressions for sorting (by string representation for stability)
+// Keep for backwards compatibility but now unused
+#[allow(dead_code)]
 fn compare_expr_for_sort(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     let a_str = format!(
         "{}",
@@ -132,41 +282,72 @@ fn build_mul_from_factors(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprI
 
 /// Compute structural GCD by intersecting factor lists.
 /// Returns the GCD expression (or 1 if no common factors).
+///
+/// Uses AC-canonical key for factor matching - handles different parenthesization
+/// and term ordering by flattening Add/Mul chains and sorting by canonical hash.
 fn poly_gcd_structural(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    let mut a_factors = collect_mul_factors(ctx, a);
-    let mut b_factors = collect_mul_factors(ctx, b);
+    let a_factors = collect_mul_factors(ctx, a);
+    let b_factors = collect_mul_factors(ctx, b);
 
-    // Sort by canonical ordering for merge
-    a_factors.sort_by(|(x, _), (y, _)| compare_expr_for_sort(ctx, *x, *y));
-    b_factors.sort_by(|(x, _), (y, _)| compare_expr_for_sort(ctx, *x, *y));
+    // DEBUG: Print what we're seeing
+    eprintln!("=== poly_gcd DEBUG ===");
+    eprintln!("Arg A factors: {} items", a_factors.len());
+    for (i, (base, exp)) in a_factors.iter().enumerate() {
+        let display = DisplayExpr {
+            context: ctx,
+            id: *base,
+        };
+        let s = format!("{}", display);
+        eprintln!(
+            "  [{}] exp={}, base=({} chars) {}",
+            i,
+            exp,
+            s.len(),
+            if s.len() > 80 { &s[..80] } else { &s }
+        );
+    }
+    eprintln!("Arg B factors: {} items", b_factors.len());
+    for (i, (base, exp)) in b_factors.iter().enumerate() {
+        let display = DisplayExpr {
+            context: ctx,
+            id: *base,
+        };
+        let s = format!("{}", display);
+        eprintln!(
+            "  [{}] exp={}, base=({} chars) {}",
+            i,
+            exp,
+            s.len(),
+            if s.len() > 80 { &s[..80] } else { &s }
+        );
+    }
 
-    // Merge factors with min exponent (intersection)
+    // Find common factors by AC-canonical key comparison
     let mut gcd_factors: Vec<(ExprId, i64)> = Vec::new();
-    let mut i = 0;
-    let mut j = 0;
+    let mut used_b: Vec<bool> = vec![false; b_factors.len()];
 
-    while i < a_factors.len() && j < b_factors.len() {
-        let (a_base, a_exp) = a_factors[i];
-        let (b_base, b_exp) = b_factors[j];
-
-        match compare_expr_for_sort(ctx, a_base, b_base) {
-            Ordering::Less => {
-                i += 1;
-            }
-            Ordering::Greater => {
-                j += 1;
-            }
-            Ordering::Equal => {
-                // Common factor: take min exponent
-                let min_exp = a_exp.min(b_exp);
+    for (a_base, a_exp) in &a_factors {
+        // Find matching factor in b_factors (by AC-canonical equality)
+        for (j, (b_base, b_exp)) in b_factors.iter().enumerate() {
+            if !used_b[j] && expr_equal_ac(ctx, *a_base, *b_base) {
+                // Common factor found: take min exponent
+                eprintln!(
+                    "  MATCH found! a[{}] == b[{}]",
+                    a_factors.iter().position(|(b, _)| b == a_base).unwrap_or(0),
+                    j
+                );
+                let min_exp = (*a_exp).min(*b_exp);
                 if min_exp > 0 {
-                    gcd_factors.push((a_base, min_exp));
+                    gcd_factors.push((*a_base, min_exp));
                 }
-                i += 1;
-                j += 1;
+                used_b[j] = true;
+                break;
             }
         }
     }
+
+    eprintln!("GCD factors found: {} items", gcd_factors.len());
+    eprintln!("=== END DEBUG ===");
 
     build_mul_from_factors(ctx, &gcd_factors)
 }
@@ -214,8 +395,11 @@ impl Rule for PolyGcdRule {
 
                 let gcd = poly_gcd_structural(ctx, a, b);
 
+                // Wrap result in hold() to prevent further simplification (especially expansion)
+                let held_gcd = ctx.add(Expr::Function("hold".to_string(), vec![gcd]));
+
                 return Some(Rewrite::simple(
-                    gcd,
+                    held_gcd,
                     format!(
                         "poly_gcd({}, {})",
                         DisplayExpr {

@@ -10,6 +10,29 @@ use std::sync::Arc;
 
 use tracing::debug;
 
+// =============================================================================
+// HoldAll function semantics
+// =============================================================================
+
+/// Returns true if a function has HoldAll semantics, meaning its arguments
+/// should NOT be simplified before the function rule is applied.
+/// This is crucial for functions like poly_gcd that need to see the raw
+/// multiplicative structure of their arguments.
+/// Also includes 'hold' which is used to protect expressions from simplification.
+fn is_hold_all_function(name: &str) -> bool {
+    matches!(name, "poly_gcd" | "pgcd" | "hold")
+}
+
+/// Unwrap top-level hold() wrapper after simplification.
+/// This is called at the end of eval/simplify so the user sees clean results
+/// without the internal hold() protection visible.
+fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr) {
+        Expr::Function(name, args) if name == "hold" && args.len() == 1 => args[0],
+        _ => expr,
+    }
+}
+
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
 /// Returns new ExprId if substitution occurred, otherwise returns original root.
 pub fn substitute_expr_by_id(
@@ -484,7 +507,9 @@ impl Simplifier {
         options: crate::phase::SimplifyOptions,
     ) -> (ExprId, Vec<Step>) {
         let (result, steps, _stats) = self.simplify_with_stats(expr_id, options);
-        (result, steps)
+        // Unwrap any top-level hold() wrapper so user sees clean result
+        let unwrapped = unwrap_hold_top(&self.context, result);
+        (unwrapped, steps)
     }
 
     /// Simplify with options and return pipeline statistics for diagnostics.
@@ -1080,6 +1105,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         self.context.get(id)
                     );
                     id // Return as-is without recursing into children
+                } else if is_hold_all_function(&name) {
+                    // HoldAll semantics: do NOT simplify arguments for these functions
+                    // This allows poly_gcd(a*g, b*g) to see the raw structure
+                    debug!(
+                        "HoldAll function, skipping child simplification: {:?}",
+                        self.context.get(id)
+                    );
+                    id // Return as-is, let the rule handle raw args
                 } else {
                     let mut new_args = Vec::new();
                     let mut changed = false;
