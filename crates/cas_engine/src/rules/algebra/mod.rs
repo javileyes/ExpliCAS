@@ -16,6 +16,9 @@ pub use factoring::*;
 pub mod roots;
 pub use roots::*;
 
+pub mod poly_gcd;
+pub use poly_gcd::*;
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
@@ -47,5 +50,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Factor common integer from sums (POST phase): 2*√2 - 2 → 2*(√2 - 1)
     // Safe because DistributeRule now has PhaseMask excluding POST
     simplifier.add_rule(Box::new(FactorCommonIntegerFromAdd));
+    // Polynomial GCD: poly_gcd(a*g, b*g) → g (structural)
+    simplifier.add_rule(Box::new(PolyGcdRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
