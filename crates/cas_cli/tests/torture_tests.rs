@@ -220,8 +220,9 @@ fn test_algebraic_labyrinth() {
     // - DistributeRule for negative sign
     // - Log/Trig/Poly rules
 
+    // Use expand() method which now correctly propagates expand_mode
     let expr = parse(input, &mut simplifier.context).unwrap();
-    let (simplified, _) = simplifier.simplify(expr);
+    let (simplified, _) = simplifier.expand(expr);
 
     let result_str = format!(
         "{}",
@@ -496,8 +497,9 @@ fn test_zero_equivalence_suite() {
         let mut simplifier = create_full_simplifier();
         // All necessary rules are now in create_full_simplifier
 
+        // Use expand() method which SHOULD expand binomials
         let expr = parse(input, &mut simplifier.context).unwrap();
-        let (simplified, _) = simplifier.simplify(expr);
+        let (simplified, _) = simplifier.expand(expr);
 
         let result_str = format!(
             "{}",
@@ -642,12 +644,10 @@ fn test_torture_24_difference_quotient() {
     let mut simplifier = create_full_simplifier();
     // ((x + h)^3 - x^3) / h - (3*x^2 + 3*x*h + h^2)
     // Should simplify to 0
-    let expr = parse(
-        "((x + h)^3 - x^3) / h - (3*x^2 + 3*x*h + h^2)",
-        &mut simplifier.context,
-    )
-    .unwrap();
-    let (res, _) = simplifier.simplify(expr);
+    // Use expand() method which now correctly propagates expand_mode
+    let input = "((x + h)^3 - x^3) / h - (3*x^2 + 3*x*h + h^2)";
+    let expr = parse(input, &mut simplifier.context).unwrap();
+    let (res, _) = simplifier.expand(expr);
 
     // Check if result is 0
     let out = format!(
@@ -832,9 +832,10 @@ fn test_torture_26_lagrange_identity() {
 fn test_torture_27_hyperbolic_masquerade() {
     let mut simplifier = create_full_simplifier();
     // ((e^x + e^(-x))/2)^2 - ((e^x - e^(-x))/2)^2 - 1
+    // Use expand() method which now correctly propagates expand_mode
     let input = "((e^x + e^(-x))/2)^2 - ((e^x - e^(-x))/2)^2 - 1";
     let expr = parse(input, &mut simplifier.context).unwrap();
-    let (simplified, _) = simplifier.simplify(expr);
+    let (simplified, _) = simplifier.expand(expr);
     let result = format!(
         "{}",
         DisplayExpr {

@@ -83,6 +83,13 @@ impl ParentContext {
         self.expand_mode
     }
 
+    /// Set expand_mode flag, returning a new context
+    /// Used to propagate expand_mode from initial context during rule application
+    pub fn with_expand_mode_flag(mut self, expand_mode: bool) -> Self {
+        self.expand_mode = expand_mode;
+        self
+    }
+
     /// Get immediate parent, if exists
     pub fn immediate_parent(&self) -> Option<ExprId> {
         self.ancestors.last().copied() // Last element is most recent parent

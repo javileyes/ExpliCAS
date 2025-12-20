@@ -1200,12 +1200,17 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             .record_rejected_phase(self.current_phase, rule.name());
                         continue;
                     }
-                    // Build ParentContext with ancestors from traversal stack + pattern marks
+                    // Build ParentContext with ancestors from traversal stack + pattern marks + expand_mode
                     let parent_ctx = {
                         let mut ctx = crate::parent_context::ParentContext::root();
                         // Copy pattern marks from initial context
                         if let Some(marks) = self.initial_parent_ctx.pattern_marks() {
                             ctx = crate::parent_context::ParentContext::with_marks(marks.clone());
+                        }
+                        // CRITICAL: Copy expand_mode from initial context
+                        // This enables BinomialExpansionRule when Simplifier::expand() is called
+                        if self.initial_parent_ctx.is_expand_mode() {
+                            ctx = ctx.with_expand_mode_flag(true);
                         }
                         // Build ancestor chain from stack
                         for &ancestor in &self.ancestor_stack {

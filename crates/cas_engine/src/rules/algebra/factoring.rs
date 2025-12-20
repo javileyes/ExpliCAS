@@ -172,7 +172,6 @@ define_rule!(
     |ctx, expr| {
         // match Expr::Add(l, r)
         let expr_data = ctx.get(expr).clone();
-        println!("FactorDifferenceSquaresRule visiting: {:?}", ctx.get(expr));
         if let Expr::Add(_, _) | Expr::Sub(_, _) = expr_data {
             // Check
         } else {
