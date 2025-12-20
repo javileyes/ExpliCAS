@@ -459,6 +459,7 @@ impl Repl {
     }
 
     /// Simplify expression using current pipeline options
+    #[allow(dead_code)]
     fn do_simplify(&mut self, expr: cas_ast::ExprId) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
         let mut opts = self.simplify_options.clone();
         opts.collect_steps = self.engine.simplifier.collect_steps();
@@ -507,6 +508,7 @@ impl Repl {
     }
 
     /// Print pipeline statistics for diagnostics
+    #[allow(dead_code)]
     fn print_pipeline_stats(&self, stats: &cas_engine::PipelineStats) {
         println!();
         println!("──── Pipeline Diagnostics ────");

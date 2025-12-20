@@ -2,7 +2,7 @@
 //!
 //! Coefficients stored low-to-high: coeffs[i] is coefficient of x^i.
 
-use crate::modp::{add_mod, div_mod, mul_mod, neg_mod, sub_mod};
+use crate::modp::{add_mod, mul_mod, sub_mod};
 
 /// Univariate polynomial mod p
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -803,7 +803,7 @@ pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> 
 
         let param_deg_p = p.degree_in(param_var);
         let param_deg_q = q.degree_in(param_var);
-        let max_coeff_deg = param_deg_p.min(param_deg_q);
+        let _max_coeff_deg = param_deg_p.min(param_deg_q);
 
         // Try different seeds for the extra variables
         for seed in &seed_values {
@@ -1535,7 +1535,7 @@ fn embed_multipoly(p: &MultiPoly, target_vars: &[String]) -> MultiPoly {
 fn build_gcd_multivar(
     all_vars: &[String],
     main_var: VarIdx,
-    params: &[VarIdx],
+    _params: &[VarIdx],
     coeffs: &[MultiPoly],
 ) -> Option<MultiPoly> {
     let mut map = BTreeMap::new();

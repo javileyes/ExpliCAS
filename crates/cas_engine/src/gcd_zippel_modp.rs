@@ -15,6 +15,7 @@ use crate::multipoly_modp::MultiPolyModP;
 use crate::unipoly_modp::UniPolyModP;
 
 #[cfg(feature = "parallel")]
+#[allow(unused_imports)]
 use rayon::prelude::*;
 
 /// Budget for Zippel GCD algorithm
@@ -323,6 +324,7 @@ fn should_use_parallel(depth: usize, p_terms: usize, q_terms: usize) -> bool {
 }
 
 /// Sample result for parallel collection
+#[allow(dead_code)]
 struct Sample {
     point: u64,
     gcd: MultiPolyModP,

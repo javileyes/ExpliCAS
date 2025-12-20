@@ -64,9 +64,6 @@ fn is_conjugate_pair(
 
 /// Check if `b` is the negation of `a` (Neg(a) or Mul(-1, a) or Number(-n) vs Number(n))
 fn is_negation(ctx: &cas_ast::Context, a: cas_ast::ExprId, b: cas_ast::ExprId) -> bool {
-    use num_bigint::BigInt;
-    use num_rational::BigRational;
-
     // Check numeric negation: Number(n) vs Number(-n)
     if let (Expr::Number(n_a), Expr::Number(n_b)) = (ctx.get(a), ctx.get(b)) {
         if n_a == &(-n_b.clone()) {

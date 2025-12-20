@@ -352,7 +352,6 @@ define_rule!(
 /// Try to compute the square root of a rational number.
 /// Returns Some(√r) if both numerator and denominator are perfect squares.
 fn rational_sqrt(r: &num_rational::BigRational) -> Option<num_rational::BigRational> {
-    use num_integer::Roots;
     use num_traits::Signed;
 
     // For negative numbers, no real square root
@@ -509,8 +508,6 @@ fn is_cube_root_pow(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas
 /// Compute cube root of a rational number (real cube root, handles negatives).
 /// Returns Some(result) if input is a perfect cube.
 fn rational_cbrt(r: &num_rational::BigRational) -> Option<num_rational::BigRational> {
-    use num_bigint::BigInt;
-    use num_integer::Roots;
     use num_traits::Signed;
 
     let neg = r.is_negative();
@@ -935,7 +932,6 @@ fn split_linear_surd(
     num_rational::BigRational,
 )> {
     use num_rational::BigRational;
-    use num_traits::Zero;
 
     // Helper to extract coefficient and radicand from a surd term (B*sqrt(n) or sqrt(n))
     fn extract_coef_surd(

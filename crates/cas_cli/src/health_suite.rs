@@ -619,6 +619,7 @@ fn detect_cycle(stats: &PipelineStats) -> Option<(SimplifyPhase, usize)> {
 }
 
 /// Run entire suite and return all results
+#[allow(dead_code)]
 pub fn run_suite(simplifier: &mut Simplifier) -> Vec<HealthCaseResult> {
     let suite = default_suite();
     suite
@@ -628,6 +629,7 @@ pub fn run_suite(simplifier: &mut Simplifier) -> Vec<HealthCaseResult> {
 }
 
 /// Format suite results as a human-readable report
+#[allow(dead_code)]
 pub fn format_report(results: &[HealthCaseResult]) -> String {
     let mut report = String::new();
     report.push_str("Health Status Suite\n");

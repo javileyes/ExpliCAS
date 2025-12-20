@@ -336,6 +336,7 @@ fn resolve_session_id(
     Ok(substitution)
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

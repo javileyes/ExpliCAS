@@ -1212,9 +1212,9 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
     None
 });
 
-/// Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
-/// This is a performance optimization to avoid recursive expansion via double-angle rules.
-/// Reduces ~23 rewrites to ~3-5 for triple angle expressions.
+// Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
+// This is a performance optimization to avoid recursive expansion via double-angle rules.
+// Reduces ~23 rewrites to ~3-5 for triple angle expressions.
 define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {
         if args.len() == 1 {

@@ -23,6 +23,7 @@ use num_rational::BigRational;
 /// - Mul(...) is flattened
 /// - Pow(base, k) with integer k becomes (base, k)
 /// - Everything else becomes (expr, 1)
+#[allow(dead_code)]
 fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
     let mut factors = Vec::new();
     collect_mul_factors_recursive(ctx, expr, 1, &mut factors);
@@ -72,6 +73,7 @@ fn get_integer_exponent_a1(ctx: &Context, exp: ExprId) -> Option<i64> {
 
 /// Cancel common factors between numerator and denominator.
 /// Returns (new_num, new_den, cancelled_factors) if any cancellation happened.
+#[allow(dead_code)]
 fn cancel_common_factors_structural(
     ctx: &mut Context,
     num: ExprId,
@@ -143,6 +145,7 @@ fn cancel_common_factors_structural(
 }
 
 /// Compare expressions for sorting (wrapper for canonical comparison)
+#[allow(dead_code)]
 fn compare_expr_for_sort_a1(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     // Use DisplayExpr for string representation
     let a_str = format!(
@@ -163,6 +166,7 @@ fn compare_expr_for_sort_a1(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
 }
 
 /// Build a product from factors with integer exponents.
+#[allow(dead_code)]
 fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
     if factors.is_empty() {
         return ctx.add(Expr::Number(BigRational::from_integer(1.into())));
@@ -196,6 +200,7 @@ fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> Ex
 
 /// Build domain assumption for cancelled factors.
 /// Returns Some(...) if non-numeric factors were cancelled.
+#[allow(dead_code)]
 fn build_cancel_domain_assumption(ctx: &Context, cancelled: &[ExprId]) -> Option<&'static str> {
     if cancelled.is_empty() {
         return None;
