@@ -152,6 +152,7 @@ impl EvalOptions {
         let mut opts = crate::phase::SimplifyOptions::default();
         opts.expand_policy = self.expand_policy;
         opts.expand_budget = self.expand_budget;
+        opts.context_mode = self.context_mode;
         // Map StepsMode
         opts.collect_steps = !matches!(self.steps_mode, StepsMode::Off);
         opts

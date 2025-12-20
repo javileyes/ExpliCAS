@@ -74,7 +74,9 @@ impl Orchestrator {
             // Auto-expand scanner: mark cancellation contexts (difference quotients)
             // Only scan if ExpandPolicy::Auto is enabled AND we're not in Solve mode
             // (Solve mode should never auto-expand to preserve structure)
-            let auto_expand = self.options.expand_policy == crate::phase::ExpandPolicy::Auto;
+            let is_solve_mode = self.options.context_mode == crate::options::ContextMode::Solve;
+            let auto_expand =
+                self.options.expand_policy == crate::phase::ExpandPolicy::Auto && !is_solve_mode;
             if auto_expand {
                 crate::auto_expand_scan::mark_auto_expand_candidates(
                     &simplifier.context,

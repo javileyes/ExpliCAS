@@ -273,6 +273,9 @@ pub struct SimplifyOptions {
 
     /// Budget limits for auto-expansion (only used when expand_policy=Auto).
     pub expand_budget: ExpandBudget,
+
+    /// Context mode (Standard, Solve, etc.) - Solve mode blocks auto-expand.
+    pub context_mode: crate::options::ContextMode,
 }
 
 impl Default for SimplifyOptions {
@@ -285,6 +288,7 @@ impl Default for SimplifyOptions {
             expand_mode: false,
             expand_policy: ExpandPolicy::default(),
             expand_budget: ExpandBudget::default(),
+            context_mode: crate::options::ContextMode::default(),
         }
     }
 }

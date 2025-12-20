@@ -108,18 +108,21 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   **Domain Warnings Survive**: Even with `steps off`, domain assumptions are preserved.
     -   **Benchmarks**: `off` provides ~9% speedup on batch, ~7% on light expressions.
 -   **Auto-expand Mode** ★ (2025-12):
-    -   Automatically expand cheap polynomial powers within budget limits.
-    -   **Policy**: By default `simplify()` preserves factored forms like `(x+1)^2`. Use `autoexpand on` to automatically expand within budget, or `expand()` for explicit expansion.
+    -   **Intelligent expansion**: Only expands `Pow(Add(..), n)` in contexts where cancellation is likely.
+    -   **Policy**: By default `simplify()` preserves factored forms like `(x+1)^2`. Use `autoexpand on` for intelligent expansion, or `expand()` for explicit expansion.
     -   Switch modes via `autoexpand on|off` in REPL.
     -   **Prompt Indicator**: Shows `[autoexp:on]` when enabled.
+    -   **Context Detection** (marks Div/Sub nodes for expansion):
+        -   Difference quotients: `((x+h)^n - x^n)/h` → expands to simplify
+        -   Standalone `(x+1)^3` → stays factored (no cancellation context)
     -   **Budget Limits** (prevent explosion):
         -   `max_pow_exp: 4` — Maximum exponent (e.g., `(x+1)^4` ok, `^5` not)
         -   `max_base_terms: 4` — Maximum terms in base (binomial, trinomial, tetranomial)
         -   `max_generated_terms: 300` — Maximum terms in result
         -   `max_vars: 4` — Maximum variables in base expression
     -   **Use Cases**:
+        -   Derivative limits: `((x+h)^n - x^n)/h` simplifies automatically
         -   Identity tests: Prove `(1+i)^2 = 2i` automatically
-        -   Normalization: Compare expressions algebraically
     -   **When NOT to use**: Factor preservation, solver-friendly forms, GCD computations
     -   See [POLICY.md](POLICY.md) for the `simplify()` vs `expand()` contract.
 -   **Profile Cache** ★ (2025-12):

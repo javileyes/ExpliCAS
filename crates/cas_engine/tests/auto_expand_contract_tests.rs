@@ -3,9 +3,11 @@
 //! Verifies that:
 //! - Standard (ExpandPolicy::Off): preserves factored forms
 //! - Auto (ExpandPolicy::Auto): only expands in cancellation contexts
+//! - Solve mode: blocks auto-expand even when enabled
 //! - Expand (expand_mode): aggressively expands everything
 
 use cas_ast::{Context, Expr};
+use cas_engine::options::ContextMode;
 use cas_engine::phase::{ExpandPolicy, SimplifyOptions};
 use cas_engine::Simplifier;
 use cas_parser::parse;
@@ -36,6 +38,14 @@ fn simplify_standard(input: &str) -> String {
 fn simplify_auto(input: &str) -> String {
     let mut opts = SimplifyOptions::default();
     opts.expand_policy = ExpandPolicy::Auto;
+    simplify_with_opts(input, &opts)
+}
+
+/// Helper for Solve mode with auto-expand enabled (should still block)
+fn simplify_solve_with_auto(input: &str) -> String {
+    let mut opts = SimplifyOptions::default();
+    opts.expand_policy = ExpandPolicy::Auto;
+    opts.context_mode = ContextMode::Solve;
     simplify_with_opts(input, &opts)
 }
 
@@ -221,5 +231,35 @@ fn scanner_does_not_mark_standalone_pow() {
     assert!(
         !marks.has_auto_expand_contexts(),
         "Scanner should NOT mark standalone Pow"
+    );
+}
+
+// =============================================================================
+// SOLVE MODE TESTS: Solve mode blocks auto-expand
+// =============================================================================
+
+#[test]
+fn solve_blocks_autoexpand_difference_quotient() {
+    // Even with ExpandPolicy::Auto, Solve mode should prevent expansion
+    // This is defense-in-depth: Solve mode preserves structure for solver
+    let result = simplify_solve_with_auto("((x+h)^3 - x^3)/h");
+
+    // In Solve mode, the expression should NOT be expanded
+    // It should still contain the Pow(x+h, 3) form
+    assert!(
+        result.contains("^3") || result.contains("^(3)"),
+        "Solve mode should block auto-expand, got: {}",
+        result
+    );
+}
+
+#[test]
+fn solve_preserves_standalone_binomial() {
+    // Solve mode should preserve factored forms
+    let result = simplify_solve_with_auto("(x+1)^2");
+    assert!(
+        result.contains("^2") || result.contains("^(2)"),
+        "Solve mode should preserve (x+1)^2, got: {}",
+        result
     );
 }

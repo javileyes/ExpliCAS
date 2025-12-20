@@ -37,15 +37,31 @@ Legend: ✅ = reduces/expands, ❌ = preserves structure
 
 ## Auto-expand Mode (★ 2025-12)
 
-Auto-expand provides a middle ground between conservative `simplify()` and aggressive `expand()`.
+Auto-expand provides **intelligent expansion** that detects cancellation contexts.
 
 ### Three-Tier Expansion System
 
 | Mode | Behavior | Use Case |
 |------|----------|----------|
 | `simplify()` | Preserves `(x+1)^n` | Default, solver-friendly |
-| `autoexpand on` | Expands within budget | Identity tests, normalization |
+| `autoexpand on` | Expands only in **cancellation contexts** | Derivative limits, identities |
 | `expand()` | Aggressively expands | Explicit polynomial form |
+
+### Intelligent Context Detection
+
+Auto-expand marks **context nodes** (Div/Sub) where expansion is likely to lead to cancellation:
+
+```
+Pattern: Div(Sub(Pow(Add(..), n), _), _)
+Example: ((x+h)^3 - x^3)/h → marks Div for expansion
+```
+
+**Key insight**: Marking the **context** rather than individual `Pow` nodes is more robust against rewrites that change ExprIds.
+
+| Expression | Standard | Auto |
+|------------|----------|------|
+| `(x+1)^3` | `(x+1)^3` ❌ | `(x+1)^3` ❌ (no context) |
+| `((x+h)^3 - x^3)/h` | Unchanged | `3*x^2 + 3*h*x + h^2` ✅ |
 
 ### Budget Limits
 
