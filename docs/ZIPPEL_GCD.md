@@ -22,6 +22,19 @@ ExpliCAS includes a high-performance **Zippel modular GCD algorithm** for multiv
 | Mathematica | 21.6s |
 | SymPy | >100s |
 
+> [!IMPORTANT]
+> **El benchmark requiere la feature `parallel` (default)**
+> 
+> | Feature | Time (gcd_only) |
+> |---------|-----------------|
+> | `default` (rayon) | **~1.1s** |
+> | `--no-default-features` | ~7.9s (7× más lento) |
+> 
+> Si ves regresión de +600%, probablemente ejecutaste con `--no-default-features`.
+
+> Ejecutar el benchmark:
+> cargo bench -p cas_engine --bench mm_gcd_modp -- --noplot
+
 ## Algorithm
 
 The implementation uses a **recursive Zippel-style GCD** over Fp (finite field):
