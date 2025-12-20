@@ -10,6 +10,10 @@ pub struct ParentContext {
     pub(crate) pattern_marks: Option<crate::pattern_marks::PatternMarks>,
     /// Whether we're in "expand mode" - forces aggressive distribution/expansion
     pub(crate) expand_mode: bool,
+    /// Whether auto-expand is enabled (expand cheap cases within budget)
+    pub(crate) auto_expand: bool,
+    /// Budget for auto-expand (only used when auto_expand=true)
+    pub(crate) auto_expand_budget: Option<crate::phase::ExpandBudget>,
 }
 
 impl ParentContext {
@@ -19,6 +23,8 @@ impl ParentContext {
             ancestors: Vec::new(),
             pattern_marks: None,
             expand_mode: false,
+            auto_expand: false,
+            auto_expand_budget: None,
         }
     }
 
@@ -28,6 +34,8 @@ impl ParentContext {
             ancestors: vec![parent],
             pattern_marks: None,
             expand_mode: false,
+            auto_expand: false,
+            auto_expand_budget: None,
         }
     }
 
@@ -37,6 +45,8 @@ impl ParentContext {
             ancestors: Vec::new(),
             pattern_marks: Some(pattern_marks),
             expand_mode: false,
+            auto_expand: false,
+            auto_expand_budget: None,
         }
     }
 
@@ -49,6 +59,8 @@ impl ParentContext {
             ancestors: Vec::new(),
             pattern_marks: Some(pattern_marks),
             expand_mode,
+            auto_expand: false,
+            auto_expand_budget: None,
         }
     }
 
@@ -61,6 +73,8 @@ impl ParentContext {
             ancestors: new_ancestors,
             pattern_marks: self.pattern_marks.clone(),
             expand_mode: self.expand_mode,
+            auto_expand: self.auto_expand,
+            auto_expand_budget: self.auto_expand_budget,
         }
     }
 
@@ -87,6 +101,34 @@ impl ParentContext {
     /// Used to propagate expand_mode from initial context during rule application
     pub fn with_expand_mode_flag(mut self, expand_mode: bool) -> Self {
         self.expand_mode = expand_mode;
+        self
+    }
+
+    /// Check if auto-expand is enabled
+    pub fn is_auto_expand(&self) -> bool {
+        self.auto_expand
+    }
+
+    /// Get auto-expand budget, if set
+    pub fn auto_expand_budget(&self) -> Option<&crate::phase::ExpandBudget> {
+        self.auto_expand_budget.as_ref()
+    }
+
+    /// Set auto-expand with budget
+    pub fn with_auto_expand(mut self, budget: crate::phase::ExpandBudget) -> Self {
+        self.auto_expand = true;
+        self.auto_expand_budget = Some(budget);
+        self
+    }
+
+    /// Set auto-expand flag only (for propagation)
+    pub fn with_auto_expand_flag(
+        mut self,
+        auto_expand: bool,
+        budget: Option<crate::phase::ExpandBudget>,
+    ) -> Self {
+        self.auto_expand = auto_expand;
+        self.auto_expand_budget = budget;
         self
     }
 

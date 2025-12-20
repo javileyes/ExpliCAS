@@ -71,11 +71,14 @@ impl Orchestrator {
                 &mut self.pattern_marks,
             );
 
+            let auto_expand = self.options.expand_policy == crate::phase::ExpandPolicy::Auto;
             let (next, steps) = simplifier.apply_rules_loop_with_phase_and_mode(
                 current,
                 &self.pattern_marks,
                 phase,
                 self.options.expand_mode,
+                auto_expand,
+                self.options.expand_budget,
             );
 
             stats.rewrites_used += steps.len();

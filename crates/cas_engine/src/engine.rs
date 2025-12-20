@@ -549,26 +549,43 @@ impl Simplifier {
         pattern_marks: &crate::pattern_marks::PatternMarks,
         phase: crate::phase::SimplifyPhase,
     ) -> (ExprId, Vec<Step>) {
-        // Default: not in expand mode
-        self.apply_rules_loop_with_phase_and_mode(expr_id, pattern_marks, phase, false)
+        // Default: not in expand mode, no auto-expand
+        self.apply_rules_loop_with_phase_and_mode(
+            expr_id,
+            pattern_marks,
+            phase,
+            false,
+            false,
+            crate::phase::ExpandBudget::default(),
+        )
     }
 
-    /// Apply rules loop with explicit expand_mode control
+    /// Apply rules loop with explicit expand_mode and auto_expand control
     pub fn apply_rules_loop_with_phase_and_mode(
         &mut self,
         expr_id: ExprId,
         pattern_marks: &crate::pattern_marks::PatternMarks,
         phase: crate::phase::SimplifyPhase,
         expand_mode: bool,
+        auto_expand: bool,
+        expand_budget: crate::phase::ExpandBudget,
     ) -> (ExprId, Vec<Step>) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let steps_mode = self.steps_mode;
 
-        // Create initial ParentContext with pattern marks and expand_mode
+        // Create initial ParentContext with pattern marks, expand_mode, and auto-expand
         let initial_parent_ctx = crate::parent_context::ParentContext::with_expand_mode(
             pattern_marks.clone(),
             expand_mode,
+        )
+        .with_auto_expand_flag(
+            auto_expand,
+            if auto_expand {
+                Some(expand_budget)
+            } else {
+                None
+            },
         );
 
         let mut local_transformer = LocalSimplificationTransformer {
@@ -1200,7 +1217,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             .record_rejected_phase(self.current_phase, rule.name());
                         continue;
                     }
-                    // Build ParentContext with ancestors from traversal stack + pattern marks + expand_mode
+                    // Build ParentContext with ancestors from traversal stack + pattern marks + expand_mode + auto_expand
                     let parent_ctx = {
                         let mut ctx = crate::parent_context::ParentContext::root();
                         // Copy pattern marks from initial context
@@ -1211,6 +1228,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // This enables BinomialExpansionRule when Simplifier::expand() is called
                         if self.initial_parent_ctx.is_expand_mode() {
                             ctx = ctx.with_expand_mode_flag(true);
+                        }
+                        // Copy auto_expand from initial context
+                        // This enables AutoExpandPowSumRule when autoexpand is on
+                        if self.initial_parent_ctx.is_auto_expand() {
+                            ctx = ctx.with_auto_expand_flag(
+                                true,
+                                self.initial_parent_ctx.auto_expand_budget().cloned(),
+                            );
                         }
                         // Build ancestor chain from stack
                         for &ancestor in &self.ancestor_stack {

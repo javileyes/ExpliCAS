@@ -189,6 +189,43 @@ impl PhaseBudgets {
     }
 }
 
+// =============================================================================
+// Auto-expand policy (opt-in expansion for cheap cases)
+// =============================================================================
+
+/// Policy controlling automatic expansion during simplification.
+/// Default is Off (Standard mode preserves structure).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ExpandPolicy {
+    #[default]
+    Off, // Standard: never auto-expand; preserves (x+1)^3
+    Auto, // Automatically expand cheap cases within budget
+}
+
+/// Budget limits for auto-expansion to prevent explosion.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExpandBudget {
+    /// Maximum exponent to auto-expand (e.g., 4 means (x+1)^4 is ok, ^5 is not)
+    pub max_pow_exp: u32,
+    /// Maximum terms in base (e.g., 4 = tetra-nomial max)
+    pub max_base_terms: u32,
+    /// Maximum terms in expanded result (prevents explosion)
+    pub max_generated_terms: u32,
+    /// Maximum number of variables in base expression
+    pub max_vars: u32,
+}
+
+impl Default for ExpandBudget {
+    fn default() -> Self {
+        Self {
+            max_pow_exp: 4,
+            max_base_terms: 4,
+            max_generated_terms: 300,
+            max_vars: 4,
+        }
+    }
+}
+
 /// Options controlling the simplification pipeline.
 #[derive(Debug, Clone)]
 pub struct SimplifyOptions {
@@ -209,6 +246,12 @@ pub struct SimplifyOptions {
     /// Whether we're in "expand mode" - forces aggressive distribution.
     /// When true, bypasses educational guards that preserve factored forms.
     pub expand_mode: bool,
+
+    /// Auto-expand policy: Off (default) or Auto (expand cheap cases).
+    pub expand_policy: ExpandPolicy,
+
+    /// Budget limits for auto-expansion (only used when expand_policy=Auto).
+    pub expand_budget: ExpandBudget,
 }
 
 impl Default for SimplifyOptions {
@@ -219,6 +262,8 @@ impl Default for SimplifyOptions {
             budgets: PhaseBudgets::default(),
             collect_steps: true,
             expand_mode: false,
+            expand_policy: ExpandPolicy::default(),
+            expand_budget: ExpandBudget::default(),
         }
     }
 }
