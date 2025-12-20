@@ -395,3 +395,65 @@ fn auto_sub_cancels_with_reversed_sides() {
         result
     );
 }
+
+// =============================================================================
+// P0 TESTS: Trinomial, Multivar, Edge Cases
+// =============================================================================
+
+#[test]
+fn auto_sub_cancels_trinomial_square() {
+    // (x + y + 1)^2 - (x^2 + y^2 + 1 + 2*x*y + 2*x + 2*y) → 0
+    let result = simplify_auto("(x + y + 1)^2 - (x^2 + y^2 + 1 + 2*x*y + 2*x + 2*y)");
+    assert_eq!(
+        result, "0",
+        "Auto should cancel trinomial square to 0, got: {}",
+        result
+    );
+}
+
+#[test]
+fn auto_sub_cancels_multivar_3vars() {
+    // (x + y + z)^2 - (x^2 + y^2 + z^2 + 2*x*y + 2*x*z + 2*y*z) → 0
+    let result = simplify_auto("(x + y + z)^2 - (x^2 + y^2 + z^2 + 2*x*y + 2*x*z + 2*y*z)");
+    assert_eq!(
+        result, "0",
+        "Auto should cancel 3-var square to 0, got: {}",
+        result
+    );
+}
+
+#[test]
+fn auto_sub_does_not_trigger_on_function_rhs() {
+    // (x+1)^2 - sin(x) → should not change (sin is not polynomial)
+    let result = simplify_auto("(x+1)^2 - sin(x)");
+    // Should contain Pow since no cancellation is possible
+    assert!(
+        result.contains("^2") || result.contains("^(2)"),
+        "Auto should not expand when RHS has functions, got: {}",
+        result
+    );
+}
+
+#[test]
+fn auto_sub_budget_rejects_large_base() {
+    // (a+b+c+d+e)^3 - 1 → too many base terms (5 > max_base_terms=4 for Sub)
+    // Should stay as Pow (not expanded)
+    let result = simplify_auto("(a+b+c+d+e)^3 - 1");
+    assert!(
+        result.contains("^3") || result.contains("^(3)"),
+        "Budget should reject 5-term base, got: {}",
+        result
+    );
+}
+
+#[test]
+fn solve_blocks_auto_sub_cancel() {
+    // Solve mode should block even the zero-shortcut cancellation
+    let result = simplify_solve_with_auto("(x+1)^2 - (x^2 + 2*x + 1)");
+    // In Solve mode, should NOT detect cancellation
+    assert!(
+        result.contains("^2") || result.contains("^(2)") || result != "0",
+        "Solve mode should block zero-shortcut, got: {}",
+        result
+    );
+}

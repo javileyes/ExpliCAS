@@ -158,6 +158,23 @@ impl ParentContext {
             false
         }
     }
+
+    /// Check if the given expr_id or any ancestor is in auto-expand context.
+    /// This is used when the rule is applied directly to the marked node.
+    pub fn in_auto_expand_context_for_expr(&self, expr_id: ExprId) -> bool {
+        if let Some(marks) = &self.pattern_marks {
+            // Check current node
+            if marks.is_auto_expand_context(expr_id) {
+                return true;
+            }
+            // Check ancestors
+            self.ancestors
+                .iter()
+                .any(|id| marks.is_auto_expand_context(*id))
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(test)]

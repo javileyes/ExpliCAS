@@ -1360,14 +1360,21 @@ impl AutoExpandSubCancelRule {
                         if exp_val > budget.max_total_degree {
                             return None;
                         }
+                        // Recursively convert base - this may grow vars
                         let base_poly =
                             Self::expr_to_multipoly_inner(ctx, *base, vars, budget, depth + 1)?;
+
+                        // Handle exp == 0 case
+                        if exp_val == 0 {
+                            return Some(MultiPoly::one(vars.clone()));
+                        }
+
                         // Compute base^exp via repeated multiplication
-                        let mut result = MultiPoly::one(vars.clone());
-                        for _ in 0..exp_val {
-                            result = result
-                                .mul(&Self::align_to_vars(&base_poly, vars), budget)
-                                .ok()?;
+                        // Start with base aligned to current vars
+                        let base_aligned = Self::align_to_vars(&base_poly, vars);
+                        let mut result = base_aligned.clone();
+                        for _ in 1..exp_val {
+                            result = result.mul(&base_aligned, budget).ok()?;
                             if result.num_terms() > budget.max_terms {
                                 return None;
                             }
@@ -1432,22 +1439,14 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         // Only trigger if in auto-expand context (marked by scanner)
-        if !parent_ctx.in_auto_expand_context() {
+        // Use _for_expr to also check if current node is marked (not just ancestors)
+        if !parent_ctx.in_auto_expand_context_for_expr(expr) {
             return None;
         }
 
-        // Get the Sub
-        let Expr::Sub(lhs, rhs) = ctx.get(expr).clone() else {
-            return None;
-        };
-
-        // At least one side should be Pow(Add.., n)
-        let lhs_is_pow_add =
-            matches!(ctx.get(lhs), Expr::Pow(base, _) if matches!(ctx.get(*base), Expr::Add(_, _)));
-        let rhs_is_pow_add =
-            matches!(ctx.get(rhs), Expr::Pow(base, _) if matches!(ctx.get(*base), Expr::Add(_, _)));
-
-        if !lhs_is_pow_add && !rhs_is_pow_add {
+        // Must be Sub or Add to be a cancellation candidate
+        let is_sub_or_add = matches!(ctx.get(expr), Expr::Sub(_, _) | Expr::Add(_, _));
+        if !is_sub_or_add {
             return None;
         }
 
@@ -1457,17 +1456,15 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
             max_total_degree: 8,
         };
 
-        // Convert both sides to MultiPoly
+        // Convert entire expression to MultiPoly
+        // For Sub(a,b) this computes a-b
+        // For Add(a, Neg(b), Neg(c), ...) this computes a + (-b) + (-c) + ...
+        // If the result is 0, we have cancellation
         let mut vars = Vec::new();
-        let p = Self::expr_to_multipoly(ctx, lhs, &mut vars, &budget)?;
-        let q = Self::expr_to_multipoly(ctx, rhs, &mut vars, &budget)?;
+        let poly = Self::expr_to_multipoly(ctx, expr, &mut vars, &budget)?;
 
-        // Align and subtract
-        let (p_aligned, q_aligned) = Self::align_vars(p, q, &vars);
-        let diff = p_aligned.sub(&q_aligned).ok()?;
-
-        // If difference is zero, we have proved cancellation!
-        if diff.is_zero() {
+        // If the result is zero, we have proved cancellation!
+        if poly.is_zero() {
             let zero = ctx.num(0);
             return Some(Rewrite {
                 new_expr: zero,

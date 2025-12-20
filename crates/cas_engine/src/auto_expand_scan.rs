@@ -43,6 +43,10 @@ fn scan_recursive(ctx: &Context, id: ExprId, budget: &ExpandBudget, marks: &mut 
     else if try_mark_sub_cancellation(ctx, id, budget, marks) {
         // Marked as Sub context, continue to recurse
     }
+    // Then try Add(Pow(..), Neg(..), ...) pattern (Sub canonicalized to Add+Neg)
+    else if try_mark_add_neg_cancellation(ctx, id, budget, marks) {
+        // Marked as Add context (trinomial/multivar case), continue to recurse
+    }
 
     // Recurse into children
     match ctx.get(id) {
@@ -102,11 +106,11 @@ fn try_mark_difference_quotient(
 }
 
 /// Try to detect and mark Sub patterns where expansion might cancel.
-/// Pattern: `Sub(Pow(Add(..), n), _)` or `Sub(_, Pow(Add(..), n))`
+/// Pattern: Sub chain containing Pow(Add(..), n) and polynomial terms
 ///
 /// Examples:
 /// - `(x+1)^2 - (x^2 + 2*x + 1)` → after expansion, cancels to 0
-/// - `(x+h)^3 - x^3` → not inside Div, but still a Sub with Pow
+/// - `(x+y+1)^2 - x^2 - y^2 - 1 - 2*x - 2*y - 2*x*y` → nested Sub chain
 ///
 /// Returns `true` if the pattern was detected and marked.
 fn try_mark_sub_cancellation(
@@ -115,39 +119,51 @@ fn try_mark_sub_cancellation(
     budget: &ExpandBudget,
     marks: &mut PatternMarks,
 ) -> bool {
-    if let Expr::Sub(lhs, rhs) = ctx.get(id) {
-        // Check if either side is Pow(Add(..), n) with budget OK
-        let lhs_pow_info = extract_pow_sum_info(ctx, *lhs);
-        let rhs_pow_info = extract_pow_sum_info(ctx, *rhs);
+    // Only process Sub nodes
+    if !matches!(ctx.get(id), Expr::Sub(_, _)) {
+        return false;
+    }
 
-        // At least one side must be Pow(Add(..), n)
-        let pow_info = lhs_pow_info.or(rhs_pow_info);
-        if let Some((base, n)) = pow_info {
-            // Budget checks
-            if !passes_budget_checks(ctx, base, n, budget) {
-                return false;
-            }
+    // Entire expression must be polynomial-like (no functions, etc.)
+    if !looks_polynomial_like(ctx, id) {
+        return false;
+    }
 
-            // For Sub (without Div), use stricter budget (max exp 3 instead of 4)
-            // to avoid expanding too much when there's no denominator to cancel
-            if n > 3 {
-                return false;
-            }
-
-            // Check that the other side looks like it could be the expanded form
-            // (heuristic: should contain Add or be polynomial-like)
-            let other_side = if lhs_pow_info.is_some() { *rhs } else { *lhs };
-            if !looks_polynomial_like(ctx, other_side) {
-                return false;
-            }
-
-            // Pattern matches! Mark the Sub as auto-expand context.
-            marks.mark_auto_expand_context(id);
-            return true;
+    // Search for Pow(Add(..), n) anywhere in this Sub expression
+    if let Some((pow_base, n)) = find_pow_add_in_expr(ctx, id) {
+        // Budget checks
+        if !passes_budget_checks(ctx, pow_base, n, budget) {
+            return false;
         }
+
+        // For Sub, use stricter budget (max exp 3)
+        if n > 3 {
+            return false;
+        }
+
+        // Pattern matches! Mark this Sub node as auto-expand context.
+        marks.mark_auto_expand_context(id);
+        return true;
     }
 
     false
+}
+
+/// Search for Pow(Add(..), n) anywhere in expression tree
+fn find_pow_add_in_expr(ctx: &Context, id: ExprId) -> Option<(ExprId, u32)> {
+    // Check if this node itself is Pow(Add, n)
+    if let Some(info) = extract_pow_sum_info(ctx, id) {
+        return Some(info);
+    }
+
+    // Recurse into children
+    match ctx.get(id) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            find_pow_add_in_expr(ctx, *l).or_else(|| find_pow_add_in_expr(ctx, *r))
+        }
+        Expr::Neg(inner) => find_pow_add_in_expr(ctx, *inner),
+        _ => None,
+    }
 }
 
 /// Heuristic: check if expression looks like an expanded polynomial
@@ -299,6 +315,159 @@ fn collect_variables_recursive(
         }
         _ => {}
     }
+}
+
+// =============================================================================
+// Add+Neg pattern detection (for trinomial/multivar cancellation)
+// =============================================================================
+
+/// Flatten an Add expression into a list of terms.
+/// E.g., Add(Add(a, b), c) → [a, b, c]
+fn flatten_add(ctx: &Context, id: ExprId) -> Vec<ExprId> {
+    let mut terms = Vec::new();
+    flatten_add_recursive(ctx, id, &mut terms);
+    terms
+}
+
+fn flatten_add_recursive(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(id) {
+        Expr::Add(l, r) => {
+            flatten_add_recursive(ctx, *l, terms);
+            flatten_add_recursive(ctx, *r, terms);
+        }
+        _ => {
+            terms.push(id);
+        }
+    }
+}
+
+/// Strip negation from a term in any form.
+/// - `Neg(t)` → Some(t)
+/// - `Mul(-1, t)` or `Mul(t, -1)` → Some(t)
+/// - `Number(-c)` where c > 0 → Some(Number(c))
+/// - `Mul(-c, t)` where c > 0 → Some(Mul(c, t))
+/// - Otherwise → None
+fn strip_any_negative(ctx: &Context, id: ExprId) -> Option<ExprId> {
+    match ctx.get(id) {
+        Expr::Neg(inner) => Some(*inner),
+
+        // Negative number: -1, -2, -5/3 etc.
+        Expr::Number(n) => {
+            use num_traits::Signed;
+            if n.is_negative() {
+                // Return the positive version
+                Some(id) // We just need to know it's negative, caller handles recombination
+            } else {
+                None
+            }
+        }
+
+        Expr::Mul(l, r) => {
+            // Check if left side is a negative number
+            if let Expr::Number(n) = ctx.get(*l) {
+                use num_traits::Signed;
+                if n.is_negative() {
+                    return Some(id); // Negative coefficient on left
+                }
+            }
+            // Check if right side is a negative number
+            if let Expr::Number(n) = ctx.get(*r) {
+                use num_traits::Signed;
+                if n.is_negative() {
+                    return Some(id); // Negative coefficient on right
+                }
+            }
+            None
+        }
+
+        _ => None,
+    }
+}
+
+/// Try to detect and mark Add patterns with Pow and negated polynomial terms.
+/// Pattern: `Add(Pow(Add(..), n), Neg(poly), Neg(poly), ...)`
+///
+/// This handles the case where `Sub(a, b)` has been canonicalized to `Add(a, Neg(b))`.
+///
+/// Returns `true` if pattern detected and marked.
+fn try_mark_add_neg_cancellation(
+    ctx: &Context,
+    id: ExprId,
+    budget: &ExpandBudget,
+    marks: &mut PatternMarks,
+) -> bool {
+    // Only process Add nodes
+    if !matches!(ctx.get(id), Expr::Add(_, _)) {
+        return false;
+    }
+
+    let terms = flatten_add(ctx, id);
+    if terms.len() < 2 {
+        return false;
+    }
+
+    // Find exactly ONE Pow(Add(..), n) term (the "positive" polynomial power)
+    let mut pow_term: Option<(ExprId, ExprId, u32)> = None; // (pow_id, base, exp)
+    let mut neg_terms: Vec<ExprId> = Vec::new();
+    let mut other_positive_terms = 0;
+
+    for term in &terms {
+        if let Some((base, n)) = extract_pow_sum_info(ctx, *term) {
+            if pow_term.is_some() {
+                // More than one Pow term - not our pattern
+                return false;
+            }
+            pow_term = Some((*term, base, n));
+        } else if strip_any_negative(ctx, *term).is_some() {
+            // This is a negated term
+            neg_terms.push(*term);
+        } else {
+            // Positive term that's not a Pow(Add, n)
+            other_positive_terms += 1;
+        }
+    }
+
+    // Must have exactly one Pow term and at least one negated term
+    let Some((pow_id, base, n)) = pow_term else {
+        return false;
+    };
+    if neg_terms.is_empty() {
+        return false;
+    }
+
+    // Allow some positive constant terms (like the constant in the expansion)
+    // but don't allow too many random positive terms
+    if other_positive_terms > 3 {
+        return false;
+    }
+
+    // Budget checks for the Pow
+    if !passes_budget_checks(ctx, base, n, budget) {
+        return false;
+    }
+
+    // Stricter exponent limit for Add+Neg patterns (same as Sub)
+    if n > 3 {
+        return false;
+    }
+
+    // Verify negated terms look polynomial-like
+    for neg_term in &neg_terms {
+        if let Some(_) = strip_any_negative(ctx, *neg_term) {
+            // For negative numbers/terms, check the whole term is still polynomial-like
+            if !looks_polynomial_like(ctx, *neg_term) {
+                return false;
+            }
+        }
+    }
+
+    // Pattern matches! Mark the Add as auto-expand context.
+    marks.mark_auto_expand_context(id);
+
+    // Also mark the Pow term's parent Add for good measure
+    let _ = pow_id; // Silence unused warning
+
+    true
 }
 
 #[cfg(test)]
