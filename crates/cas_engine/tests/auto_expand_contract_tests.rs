@@ -263,3 +263,98 @@ fn solve_preserves_standalone_binomial() {
         result
     );
 }
+
+// =============================================================================
+// SUB CANCELLATION TESTS: Phase 2 - (x+1)^2 - (x^2+2x+1) → 0
+// =============================================================================
+
+#[test]
+fn auto_sub_does_not_expand_standalone() {
+    // Even with Auto ON, standalone (x+1)^3 should NOT expand
+    let result = simplify_auto("(x+1)^3");
+    assert!(
+        result.contains("^3") || result.contains("^(3)"),
+        "Auto should preserve standalone (x+1)^3, got: {}",
+        result
+    );
+}
+
+#[test]
+fn scanner_marks_sub_with_pow_and_polynomial() {
+    use cas_engine::auto_expand_scan::mark_auto_expand_candidates;
+    use cas_engine::pattern_marks::PatternMarks;
+    use cas_engine::phase::ExpandBudget;
+
+    // Build: (x+1)^2 - (x^2 + 2*x + 1)
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+
+    // (x+1)^2
+    let x_plus_one = ctx.add(Expr::Add(x, one));
+    let exp_two = ctx.num(2);
+    let lhs = ctx.add(Expr::Pow(x_plus_one, exp_two));
+
+    // x^2 + 2*x + 1
+    let x_sq = ctx.add(Expr::Pow(x, exp_two));
+    let two_x = ctx.add(Expr::Mul(two, x));
+    let x_sq_plus_2x = ctx.add(Expr::Add(x_sq, two_x));
+    let rhs = ctx.add(Expr::Add(x_sq_plus_2x, one));
+
+    // Sub
+    let sub = ctx.add(Expr::Sub(lhs, rhs));
+
+    let mut marks = PatternMarks::new();
+    let budget = ExpandBudget::default();
+    mark_auto_expand_candidates(&ctx, sub, &budget, &mut marks);
+
+    assert!(
+        marks.is_auto_expand_context(sub),
+        "Scanner should mark Sub(Pow(Add..), polynomial) as auto-expand context"
+    );
+}
+
+#[test]
+fn scanner_does_not_mark_sub_without_polynomial_rhs() {
+    use cas_engine::auto_expand_scan::mark_auto_expand_candidates;
+    use cas_engine::pattern_marks::PatternMarks;
+    use cas_engine::phase::ExpandBudget;
+
+    // Build: (x+1)^2 - sin(x) -- sin(x) is not polynomial-like
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let one = ctx.num(1);
+
+    // (x+1)^2
+    let x_plus_one = ctx.add(Expr::Add(x, one));
+    let two = ctx.num(2);
+    let lhs = ctx.add(Expr::Pow(x_plus_one, two));
+
+    // sin(x)
+    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x]));
+
+    // Sub
+    let sub = ctx.add(Expr::Sub(lhs, sin_x));
+
+    let mut marks = PatternMarks::new();
+    let budget = ExpandBudget::default();
+    mark_auto_expand_candidates(&ctx, sub, &budget, &mut marks);
+
+    assert!(
+        !marks.is_auto_expand_context(sub),
+        "Scanner should NOT mark Sub when rhs is not polynomial-like"
+    );
+}
+
+#[test]
+fn solve_blocks_auto_sub() {
+    // Solve mode blocks Sub auto-expand too
+    let result = simplify_solve_with_auto("(x+1)^2 - (x^2 + 2*x + 1)");
+    // In Solve mode, should NOT auto-expand
+    assert!(
+        result.contains("^2") || result.contains("^(2)"),
+        "Solve mode should block auto-expand in Sub, got: {}",
+        result
+    );
+}

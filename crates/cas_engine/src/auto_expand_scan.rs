@@ -10,7 +10,7 @@
 use crate::pattern_marks::PatternMarks;
 use crate::phase::ExpandBudget;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::ToPrimitive;
+use num_traits::{Signed, ToPrimitive};
 
 /// Scan expression tree and mark auto-expand contexts where expansion is beneficial.
 ///
@@ -34,10 +34,14 @@ pub fn mark_auto_expand_candidates(
 
 /// Recursive scanner that visits all nodes and marks cancellation contexts.
 fn scan_recursive(ctx: &Context, id: ExprId, budget: &ExpandBudget, marks: &mut PatternMarks) {
-    // Try to detect cancellation pattern at this node
+    // Try to detect cancellation patterns at this node
+    // First try Div(Sub(Pow(..), _), _) pattern (difference quotient)
     if try_mark_difference_quotient(ctx, id, budget, marks) {
-        // If we marked this node, don't need to recurse deeper for pattern detection
-        // (but still recurse for children that might have their own patterns)
+        // Marked as Div context, continue to recurse
+    }
+    // Then try Sub(Pow(..), _) pattern (direct subtraction with potential cancellation)
+    else if try_mark_sub_cancellation(ctx, id, budget, marks) {
+        // Marked as Sub context, continue to recurse
     }
 
     // Recurse into children
@@ -95,6 +99,78 @@ fn try_mark_difference_quotient(
     }
 
     false
+}
+
+/// Try to detect and mark Sub patterns where expansion might cancel.
+/// Pattern: `Sub(Pow(Add(..), n), _)` or `Sub(_, Pow(Add(..), n))`
+///
+/// Examples:
+/// - `(x+1)^2 - (x^2 + 2*x + 1)` → after expansion, cancels to 0
+/// - `(x+h)^3 - x^3` → not inside Div, but still a Sub with Pow
+///
+/// Returns `true` if the pattern was detected and marked.
+fn try_mark_sub_cancellation(
+    ctx: &Context,
+    id: ExprId,
+    budget: &ExpandBudget,
+    marks: &mut PatternMarks,
+) -> bool {
+    if let Expr::Sub(lhs, rhs) = ctx.get(id) {
+        // Check if either side is Pow(Add(..), n) with budget OK
+        let lhs_pow_info = extract_pow_sum_info(ctx, *lhs);
+        let rhs_pow_info = extract_pow_sum_info(ctx, *rhs);
+
+        // At least one side must be Pow(Add(..), n)
+        let pow_info = lhs_pow_info.or(rhs_pow_info);
+        if let Some((base, n)) = pow_info {
+            // Budget checks
+            if !passes_budget_checks(ctx, base, n, budget) {
+                return false;
+            }
+
+            // For Sub (without Div), use stricter budget (max exp 3 instead of 4)
+            // to avoid expanding too much when there's no denominator to cancel
+            if n > 3 {
+                return false;
+            }
+
+            // Check that the other side looks like it could be the expanded form
+            // (heuristic: should contain Add or be polynomial-like)
+            let other_side = if lhs_pow_info.is_some() { *rhs } else { *lhs };
+            if !looks_polynomial_like(ctx, other_side) {
+                return false;
+            }
+
+            // Pattern matches! Mark the Sub as auto-expand context.
+            marks.mark_auto_expand_context(id);
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Heuristic: check if expression looks like an expanded polynomial
+/// (contains Add, Mul, Pow with integer exponents, but no functions)
+fn looks_polynomial_like(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => true,
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            looks_polynomial_like(ctx, *l) && looks_polynomial_like(ctx, *r)
+        }
+        Expr::Pow(base, exp) => {
+            // Exponent should be a non-negative integer
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() && !n.is_negative() {
+                    return looks_polynomial_like(ctx, *base);
+                }
+            }
+            false
+        }
+        Expr::Neg(inner) => looks_polynomial_like(ctx, *inner),
+        // Functions, Div, Matrix, SessionRef are not "polynomial-like"
+        _ => false,
+    }
 }
 
 /// Extract (base, exponent) from Pow(base, exp) where base is Add(..) and exp is small positive int.
