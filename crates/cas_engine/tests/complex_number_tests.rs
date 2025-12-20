@@ -7,6 +7,7 @@
 
 use cas_ast::Context;
 use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_engine::phase::ExpandPolicy;
 use cas_engine::Simplifier;
 use cas_parser::parse;
 
@@ -17,7 +18,9 @@ fn simplify_with(input: &str, opts: &EvalOptions) -> String {
 
     let mut simplifier = Simplifier::with_profile(opts);
     simplifier.context = ctx;
-    let (result, _steps) = simplifier.simplify(expr);
+    // Use simplify_with_options to propagate expand_policy from EvalOptions
+    let simplify_opts = opts.to_simplify_options();
+    let (result, _steps) = simplifier.simplify_with_options(expr, simplify_opts);
 
     format!(
         "{}",
@@ -33,7 +36,16 @@ fn complex_on_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::On,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
+    }
+}
+
+/// Complex mode On + Auto-expand: for identity tests that need expansion
+fn complex_on_autoexpand_opts() -> EvalOptions {
+    EvalOptions {
+        expand_policy: ExpandPolicy::Auto,
+        ..complex_on_opts()
     }
 }
 
@@ -42,7 +54,8 @@ fn complex_off_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Off,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
     }
 }
 
@@ -51,7 +64,8 @@ fn complex_auto_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
     }
 }
 
@@ -144,7 +158,8 @@ fn test_gaussian_mul_pure_imaginary() {
 #[test]
 fn test_gaussian_mul_mixed() {
     // (1+i)(1+i) = 1 + 2i + i^2 = 1 + 2i - 1 = 2i
-    let result = simplify_with("(1+i)*(1+i)", &complex_on_opts());
+    // Use auto-expand opts for identity tests that need expansion within budget
+    let result = simplify_with("(1+i)*(1+i)", &complex_on_autoexpand_opts());
     assert_eq!(result, "2 * i", "(1+i)^2 = 2i");
 }
 

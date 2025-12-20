@@ -145,6 +145,17 @@ impl EvalOptions {
             ..Default::default()
         }
     }
+
+    /// Convert to SimplifyOptions for the pipeline.
+    /// This bridges EvalOptions (REPL/Session level) to SimplifyOptions (pipeline level).
+    pub fn to_simplify_options(&self) -> crate::phase::SimplifyOptions {
+        let mut opts = crate::phase::SimplifyOptions::default();
+        opts.expand_policy = self.expand_policy;
+        opts.expand_budget = self.expand_budget;
+        // Map StepsMode
+        opts.collect_steps = !matches!(self.steps_mode, StepsMode::Off);
+        opts
+    }
 }
 
 // Backwards compatibility alias
