@@ -51,6 +51,7 @@ impl CasHelper {
                 "mode".to_string(),
                 "context".to_string(),
                 "complex".to_string(),
+                "autoexpand".to_string(),
                 "history".to_string(),
                 "list".to_string(),
                 "show".to_string(),
@@ -215,6 +216,25 @@ impl Completer for CasHelper {
 
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
                 let modes = vec!["auto", "on", "off"];
+                for m in modes {
+                    if m.starts_with(word) {
+                        matches.push(Pair {
+                            display: m.to_string(),
+                            replacement: m.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+        }
+
+        // Check for "autoexpand" context
+        if line.starts_with("autoexpand ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let modes = vec!["on", "off"];
                 for m in modes {
                     if m.starts_with(word) {
                         matches.push(Pair {

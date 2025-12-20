@@ -688,6 +688,12 @@ impl Repl {
             ComplexMode::Auto => {} // Default, no indicator
         }
 
+        // Show expand_policy if Auto (not default Off)
+        use cas_engine::phase::ExpandPolicy;
+        if self.state.options.expand_policy == ExpandPolicy::Auto {
+            indicators.push("[autoexp:on]");
+        }
+
         if indicators.is_empty() {
             "> ".to_string()
         } else {

@@ -4,6 +4,7 @@
 //! helping prevent UX regressions when multiple modes are active.
 
 use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
+use cas_engine::phase::ExpandPolicy;
 
 /// Build prompt indicators string (pure function for testing).
 /// Mirrors the logic in Repl::build_prompt() without requiring a full Repl instance.
@@ -38,6 +39,11 @@ fn build_prompt_indicators(opts: &EvalOptions) -> String {
         ComplexMode::Auto => {} // Default, no indicator
     }
 
+    // Show expand_policy if Auto (not default Off)
+    if opts.expand_policy == ExpandPolicy::Auto {
+        indicators.push("[autoexp:on]");
+    }
+
     if indicators.is_empty() {
         "> ".to_string()
     } else {
@@ -54,7 +60,7 @@ fn default_options_empty_prompt() {
 #[test]
 fn steps_off_only() {
     let opts = EvalOptions {
-        steps_mode: StepsMode::Off, ..Default::default()
+        steps_mode: StepsMode::Off,
         ..Default::default()
     };
     assert_eq!(build_prompt_indicators(&opts), "[steps:off] > ");
@@ -63,7 +69,7 @@ fn steps_off_only() {
 #[test]
 fn steps_compact_only() {
     let opts = EvalOptions {
-        steps_mode: StepsMode::Compact, ..Default::default()
+        steps_mode: StepsMode::Compact,
         ..Default::default()
     };
     assert_eq!(build_prompt_indicators(&opts), "[steps:compact] > ");
@@ -97,9 +103,18 @@ fn complex_on_only() {
 }
 
 #[test]
+fn autoexpand_on_only() {
+    let opts = EvalOptions {
+        expand_policy: ExpandPolicy::Auto,
+        ..Default::default()
+    };
+    assert_eq!(build_prompt_indicators(&opts), "[autoexp:on] > ");
+}
+
+#[test]
 fn combined_steps_and_context() {
     let opts = EvalOptions {
-        steps_mode: StepsMode::Off, ..Default::default()
+        steps_mode: StepsMode::Off,
         context_mode: ContextMode::IntegratePrep,
         ..Default::default()
     };
@@ -112,31 +127,35 @@ fn combined_steps_and_context() {
 #[test]
 fn combined_all_non_default() {
     let opts = EvalOptions {
-        steps_mode: StepsMode::Off, ..Default::default()
+        steps_mode: StepsMode::Off,
         context_mode: ContextMode::IntegratePrep,
         branch_mode: BranchMode::PrincipalBranch,
         complex_mode: ComplexMode::On,
+        expand_policy: ExpandPolicy::Auto,
+        ..Default::default()
     };
     assert_eq!(
         build_prompt_indicators(&opts),
-        "[steps:off][ctx:integrate][branch:principal][cx:on] > "
+        "[steps:off][ctx:integrate][branch:principal][cx:on][autoexp:on] > "
     );
 }
 
 #[test]
 fn order_is_deterministic() {
-    // Order: steps, context, branch, complex (alphabetical except steps first)
+    // Order: steps, context, branch, complex, autoexp
     let opts = EvalOptions {
-        steps_mode: StepsMode::Compact, ..Default::default()
+        steps_mode: StepsMode::Compact,
         context_mode: ContextMode::Solve,
         branch_mode: BranchMode::PrincipalBranch,
         complex_mode: ComplexMode::Off,
+        expand_policy: ExpandPolicy::Auto,
+        ..Default::default()
     };
     // Run multiple times to ensure determinism
     for _ in 0..10 {
         assert_eq!(
             build_prompt_indicators(&opts),
-            "[steps:compact][ctx:solve][branch:principal][cx:off] > "
+            "[steps:compact][ctx:solve][branch:principal][cx:off][autoexp:on] > "
         );
     }
 }
