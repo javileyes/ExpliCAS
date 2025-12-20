@@ -49,6 +49,16 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
             expand_div(ctx, el, er)
         }
         Expr::Pow(b, e) => {
+            // FAST PATH: Try direct multinomial expansion on ORIGINAL base
+            // before expanding children (which can change structure)
+            let budget = crate::multinomial_expand::MultinomialExpandBudget::default();
+            if let Some(result) =
+                crate::multinomial_expand::try_expand_multinomial_direct(ctx, b, e, &budget)
+            {
+                return result;
+            }
+
+            // Fall back to normal processing
             let eb = expand(ctx, b);
             let ee = expand(ctx, e);
             // Apply binomial expansion if applicable
@@ -127,6 +137,7 @@ pub fn expand_div(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
 }
 
 /// Expands power: (a + b)^n
+/// Note: Fast multinomial expansion is handled in expand() BEFORE children are processed.
 pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     // Logic from BinomialExpansionRule
     let base_data = ctx.get(base).clone();
