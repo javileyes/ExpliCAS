@@ -56,6 +56,19 @@ pub enum GcdExactLayer {
     BudgetExceeded,
 }
 
+/// Strip __hold() wrapper(s) from an expression. __hold is an internal barrier
+/// that should be transparent for algebraic operations like poly_gcd_exact.
+fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
+    loop {
+        match ctx.get(expr) {
+            Expr::Function(name, args) if name == "__hold" && args.len() == 1 => {
+                expr = args[0];
+            }
+            _ => return expr,
+        }
+    }
+}
+
 /// Compute exact polynomial GCD over ℚ[x1,...,xn].
 ///
 /// # Contract
@@ -70,6 +83,10 @@ pub fn gcd_exact(
     b: ExprId,
     budget: &GcdExactBudget,
 ) -> GcdExactResult {
+    // Strip __hold wrappers first (makes expand() output transparent)
+    let a = strip_hold(ctx, a);
+    let b = strip_hold(ctx, b);
+
     let mut warnings = Vec::new();
 
     // Convert to MultiPoly

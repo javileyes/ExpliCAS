@@ -51,7 +51,13 @@ Large expanded expressions are wrapped in `__hold(...)` to prevent the simplifie
 let held = ctx.add(Expr::Function("__hold".to_string(), vec![expanded]));
 ```
 
-This is automatically unwrapped at the eval boundary, so users see clean output.
+`__hold` is **transparent**:
+- **Display**: Invisible - `__hold(1+x)` displays as `1+x`
+- **poly_gcd**: Stripped via `strip_hold()` before factor collection
+- **poly_gcd_exact**: Stripped before converting to MultiPoly
+- **eval boundary**: `unwrap_hold_top()` removes wrapper from final result
+
+This allows `expand()` results to work seamlessly with other operations.
 
 ## Files
 

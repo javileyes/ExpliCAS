@@ -168,14 +168,30 @@ fn expr_equal_ac(ctx: &Context, a: ExprId, b: ExprId) -> bool {
 }
 
 // =============================================================================
-// Factor collection helpers
+// __hold transparency helper
 // =============================================================================
+
+/// Strip __hold() wrapper(s) from an expression. __hold is an internal barrier
+/// that should be transparent for structural operations like poly_gcd.
+fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
+    loop {
+        match ctx.get(expr) {
+            Expr::Function(name, args) if name == "__hold" && args.len() == 1 => {
+                expr = args[0];
+            }
+            _ => return expr,
+        }
+    }
+}
 
 /// Collect multiplicative factors with integer exponents from an expression.
 /// - Mul(...) is flattened
 /// - Pow(base, k) with integer k becomes (base, k)
 /// - Everything else becomes (expr, 1)
+/// - __hold wrappers are stripped transparently
 fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
+    // Strip __hold wrapper first
+    let expr = strip_hold(ctx, expr);
     let mut factors = Vec::new();
     collect_mul_factors_rec(ctx, expr, 1, &mut factors);
     factors
