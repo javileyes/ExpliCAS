@@ -1,0 +1,204 @@
+//! Formatting utilities for JSON CLI.
+//!
+//! Provides truncated expression formatting and AST statistics
+//! to avoid flooding output with huge expressions.
+
+use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+
+use crate::json_types::ExprStatsJson;
+
+/// Format an expression with a character limit.
+///
+/// Returns (formatted_string, was_truncated, original_char_count).
+pub fn format_expr_limited(ctx: &Context, expr: ExprId, max_chars: usize) -> (String, bool, usize) {
+    let full = format!(
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: expr
+        }
+    );
+    let len = full.chars().count();
+
+    if len <= max_chars {
+        return (full, false, len);
+    }
+
+    // Truncate and add indicator
+    let truncated: String = full.chars().take(max_chars).collect();
+    (format!("{truncated} … <truncated>"), true, len)
+}
+
+/// Compute expression statistics (node count and depth).
+pub fn expr_stats(ctx: &Context, expr: ExprId) -> ExprStatsJson {
+    let (node_count, depth) = count_nodes_and_depth(ctx, expr, 0);
+    ExprStatsJson { node_count, depth }
+}
+
+/// Recursively count nodes and compute max depth.
+fn count_nodes_and_depth(ctx: &Context, expr: ExprId, current_depth: usize) -> (usize, usize) {
+    let mut count = 1;
+    let mut max_depth = current_depth;
+
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {
+            // Leaf nodes
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            let (lc, ld) = count_nodes_and_depth(ctx, *l, current_depth + 1);
+            let (rc, rd) = count_nodes_and_depth(ctx, *r, current_depth + 1);
+            count += lc + rc;
+            max_depth = max_depth.max(ld).max(rd);
+        }
+        Expr::Neg(inner) => {
+            let (ic, id) = count_nodes_and_depth(ctx, *inner, current_depth + 1);
+            count += ic;
+            max_depth = max_depth.max(id);
+        }
+        Expr::Function(_, args) => {
+            for arg in args {
+                let (ac, ad) = count_nodes_and_depth(ctx, *arg, current_depth + 1);
+                count += ac;
+                max_depth = max_depth.max(ad);
+            }
+        }
+        Expr::Matrix {
+            rows,
+            cols: _,
+            data,
+        } => {
+            for i in 0..*rows {
+                for elem in data.iter().skip(i) {
+                    let (ec, ed) = count_nodes_and_depth(ctx, *elem, current_depth + 1);
+                    count += ec;
+                    max_depth = max_depth.max(ed);
+                }
+            }
+        }
+    }
+
+    (count, max_depth)
+}
+
+/// Compute a simple hash of an expression for identity comparison.
+///
+/// Uses a fast, non-cryptographic hash based on expression structure.
+pub fn expr_hash(ctx: &Context, expr: ExprId) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+
+    let mut hasher = DefaultHasher::new();
+    hash_expr_recursive(ctx, expr, &mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn hash_expr_recursive<H: std::hash::Hasher>(ctx: &Context, expr: ExprId, hasher: &mut H) {
+    use std::hash::Hash;
+
+    // Hash a tag for each variant type
+    match ctx.get(expr) {
+        Expr::Number(n) => {
+            0u8.hash(hasher);
+            n.numer().to_string().hash(hasher);
+            n.denom().to_string().hash(hasher);
+        }
+        Expr::Variable(name) => {
+            1u8.hash(hasher);
+            name.hash(hasher);
+        }
+        Expr::Constant(c) => {
+            2u8.hash(hasher);
+            format!("{:?}", c).hash(hasher);
+        }
+        Expr::SessionRef(id) => {
+            11u8.hash(hasher);
+            id.hash(hasher);
+        }
+        Expr::Add(l, r) => {
+            3u8.hash(hasher);
+            hash_expr_recursive(ctx, *l, hasher);
+            hash_expr_recursive(ctx, *r, hasher);
+        }
+        Expr::Sub(l, r) => {
+            4u8.hash(hasher);
+            hash_expr_recursive(ctx, *l, hasher);
+            hash_expr_recursive(ctx, *r, hasher);
+        }
+        Expr::Mul(l, r) => {
+            5u8.hash(hasher);
+            hash_expr_recursive(ctx, *l, hasher);
+            hash_expr_recursive(ctx, *r, hasher);
+        }
+        Expr::Div(l, r) => {
+            6u8.hash(hasher);
+            hash_expr_recursive(ctx, *l, hasher);
+            hash_expr_recursive(ctx, *r, hasher);
+        }
+        Expr::Pow(l, r) => {
+            7u8.hash(hasher);
+            hash_expr_recursive(ctx, *l, hasher);
+            hash_expr_recursive(ctx, *r, hasher);
+        }
+        Expr::Neg(inner) => {
+            8u8.hash(hasher);
+            hash_expr_recursive(ctx, *inner, hasher);
+        }
+        Expr::Function(name, args) => {
+            9u8.hash(hasher);
+            name.hash(hasher);
+            for arg in args {
+                hash_expr_recursive(ctx, *arg, hasher);
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            10u8.hash(hasher);
+            rows.hash(hasher);
+            cols.hash(hasher);
+            for elem in data {
+                hash_expr_recursive(ctx, *elem, hasher);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_parser::parse;
+
+    #[test]
+    fn test_format_expr_limited_no_truncate() {
+        let mut ctx = Context::new();
+        let expr = parse("x + 1", &mut ctx).unwrap();
+        let (s, trunc, len) = format_expr_limited(&ctx, expr, 100);
+        assert!(!trunc);
+        assert!(len <= 100);
+        assert!(s.contains("x"));
+    }
+
+    #[test]
+    fn test_format_expr_limited_truncate() {
+        let mut ctx = Context::new();
+        let expr = parse("x + y + z + a + b + c", &mut ctx).unwrap();
+        let (s, trunc, _len) = format_expr_limited(&ctx, expr, 5);
+        assert!(trunc);
+        assert!(s.contains("truncated"));
+    }
+
+    #[test]
+    fn test_expr_stats() {
+        let mut ctx = Context::new();
+        let expr = parse("x + 1", &mut ctx).unwrap();
+        let stats = expr_stats(&ctx, expr);
+        assert!(stats.node_count >= 3); // Add, Var, Num
+        assert!(stats.depth >= 1);
+    }
+
+    #[test]
+    fn test_expr_hash_deterministic() {
+        let mut ctx = Context::new();
+        let e1 = parse("x + 1", &mut ctx).unwrap();
+        let e2 = parse("x + 1", &mut ctx).unwrap();
+        assert_eq!(expr_hash(&ctx, e1), expr_hash(&ctx, e2));
+    }
+}

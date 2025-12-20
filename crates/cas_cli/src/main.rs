@@ -1,30 +1,81 @@
+//! CAS CLI - Computer Algebra System Command Line Interface
+//!
+//! Supports both interactive REPL mode (default) and JSON subcommands for scripting.
+
+mod commands;
 mod completer;
 mod config;
+mod format;
 mod health_suite;
+pub mod json_types;
 pub mod repl;
 
+use clap::{Parser, Subcommand};
 use repl::Repl;
 use std::env;
 
-fn print_help() {
-    println!("Rust CAS - Computer Algebra System");
-    println!();
-    println!("USAGE:");
-    println!("    cas_cli [OPTIONS]");
-    println!();
-    println!("OPTIONS:");
-    println!("    --no-pretty    Use ASCII output (*, ^) instead of Unicode (·, ²)");
-    println!("    --help, -h     Print this help message");
-    println!();
-    println!("EXAMPLES:");
-    println!("    cas_cli              # Start REPL with pretty Unicode output");
-    println!("    cas_cli --no-pretty  # Start REPL with ASCII output");
+/// Rust CAS - Computer Algebra System
+#[derive(Parser, Debug)]
+#[command(name = "cas_cli")]
+#[command(about = "A symbolic mathematics engine with step-by-step explanations")]
+#[command(version)]
+struct Cli {
+    /// Use ASCII output (*, ^) instead of Unicode (·, ²)
+    #[arg(long)]
+    no_pretty: bool,
+
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Evaluate an expression and return JSON output
+    EvalJson(commands::eval_json::EvalJsonArgs),
 }
 
 fn main() -> rustyline::Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    // Parse CLI arguments
+    // Detect if first arg is a known subcommand → use clap
+    // Otherwise → use manual parsing for backwards compatibility
+    let is_subcommand = args.get(1).map_or(false, |arg| {
+        matches!(
+            arg.as_str(),
+            "eval-json" | "script-json" | "mm-gcd-modp-json" | "help" | "--help" | "-h"
+        )
+    });
+
+    if is_subcommand {
+        // Use clap for JSON subcommands
+        let cli = Cli::parse();
+
+        // Configure pretty output
+        if cli.no_pretty {
+            cas_ast::display::disable_pretty_output();
+        } else {
+            cas_ast::display::enable_pretty_output();
+        }
+
+        // Handle subcommand
+        if let Some(cmd) = cli.command {
+            match cmd {
+                Command::EvalJson(args) => {
+                    commands::eval_json::run(args);
+                }
+            }
+        }
+        Ok(())
+    } else {
+        // Legacy manual parsing for REPL mode
+        run_repl_mode()
+    }
+}
+
+/// Run REPL mode with legacy argument parsing
+fn run_repl_mode() -> rustyline::Result<()> {
+    let args: Vec<String> = env::args().collect();
+
     let mut pretty_mode = true;
 
     for arg in &args[1..] {
@@ -62,4 +113,29 @@ fn main() -> rustyline::Result<()> {
 
     let mut repl = Repl::new();
     repl.run()
+}
+
+fn print_help() {
+    println!("Rust CAS - Computer Algebra System");
+    println!();
+    println!("USAGE:");
+    println!("    cas_cli [OPTIONS]                         # Start interactive REPL");
+    println!("    cas_cli eval-json <EXPR> [OPTIONS]        # Evaluate and return JSON");
+    println!();
+    println!("REPL OPTIONS:");
+    println!("    --no-pretty    Use ASCII output (*, ^) instead of Unicode (·, ²)");
+    println!("    --help, -h     Print this help message");
+    println!();
+    println!("JSON SUBCOMMANDS:");
+    println!("    eval-json      Evaluate an expression and return JSON");
+    println!("    script-json    Execute a script from stdin and return JSON");
+    println!("    mm-gcd-modp-json   Run mm_gcd benchmark and return JSON");
+    println!();
+    println!("EXAMPLES:");
+    println!("    cas_cli                                   # Start REPL");
+    println!("    cas_cli eval-json \"x^2 + 1\"               # Evaluate expression");
+    println!("    cas_cli eval-json \"expand((x+1)^5)\" --max-chars 500");
+    println!();
+    println!("For detailed help on subcommands:");
+    println!("    cas_cli eval-json --help");
 }
