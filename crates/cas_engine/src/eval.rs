@@ -18,12 +18,14 @@ impl Engine {
     /// Determine effective options, resolving Auto modes based on expression content.
     /// - ContextMode::Auto → IntegratePrep if contains integrate(), else Standard
     /// - ComplexMode::Auto → On if contains i, else Off
+    /// - expand_policy forced Off in Solve mode (anti-contamination)
     fn effective_options(
         &self,
         opts: &crate::options::EvalOptions,
         expr: ExprId,
     ) -> crate::options::EvalOptions {
         use crate::options::{ComplexMode, ContextMode};
+        use crate::phase::ExpandPolicy;
 
         let mut effective = opts.clone();
 
@@ -43,6 +45,12 @@ impl Engine {
             } else {
                 effective.complex_mode = ComplexMode::Off;
             }
+        }
+
+        // CRITICAL: Force expand_policy Off in Solve mode
+        // Auto-expansion can interfere with equation solving strategies
+        if effective.context_mode == ContextMode::Solve {
+            effective.expand_policy = ExpandPolicy::Off;
         }
 
         effective

@@ -858,6 +858,12 @@ impl Repl {
             return;
         }
 
+        // "autoexpand" - show/switch auto-expand policy (on, off)
+        if line == "autoexpand" || line.starts_with("autoexpand ") {
+            self.handle_autoexpand_command(&line);
+            return;
+        }
+
         // "history" or "list" - show session history
         if line == "history" || line == "list" {
             self.handle_history_command();
@@ -2665,6 +2671,61 @@ impl Repl {
                 println!("  on      - Full steps with snapshots (default)");
                 println!("  off     - No steps (fastest, warnings preserved)");
                 println!("  compact - Minimal steps (no snapshots)");
+            }
+        }
+    }
+
+    /// Handle "autoexpand" command - show or switch auto-expand policy
+    fn handle_autoexpand_command(&mut self, line: &str) {
+        use cas_engine::phase::ExpandPolicy;
+
+        let args: Vec<&str> = line.split_whitespace().collect();
+
+        match args.get(1) {
+            None => {
+                // Just "autoexpand" - show current mode
+                let policy_str = match self.state.options.expand_policy {
+                    ExpandPolicy::Off => "off",
+                    ExpandPolicy::Auto => "on",
+                };
+                println!("Auto-expand: {}", policy_str);
+                let budget = &self.state.options.expand_budget;
+                println!(
+                    "  Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}",
+                    budget.max_pow_exp,
+                    budget.max_base_terms,
+                    budget.max_generated_terms,
+                    budget.max_vars
+                );
+                println!("  (use 'autoexpand on|off' to change)");
+            }
+            Some(&"on") => {
+                self.state.options.expand_policy = ExpandPolicy::Auto;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                let budget = &self.state.options.expand_budget;
+                println!("Auto-expand: on");
+                println!(
+                    "  Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}",
+                    budget.max_pow_exp,
+                    budget.max_base_terms,
+                    budget.max_generated_terms,
+                    budget.max_vars
+                );
+                println!("  ⚠️ Expands small (sum)^n patterns automatically.");
+            }
+            Some(&"off") => {
+                self.state.options.expand_policy = ExpandPolicy::Off;
+                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.sync_config_to_simplifier();
+                println!("Auto-expand: off");
+                println!("  Polynomial expansions require explicit expand().");
+            }
+            Some(other) => {
+                println!("Unknown autoexpand mode: '{}'", other);
+                println!("Usage: autoexpand [on | off]");
+                println!("  on  - Auto-expand cheap polynomial powers");
+                println!("  off - Only expand when explicitly requested (default)");
             }
         }
     }

@@ -54,7 +54,7 @@ fn default_options_empty_prompt() {
 #[test]
 fn steps_off_only() {
     let opts = EvalOptions {
-        steps_mode: StepsMode::Off,
+        steps_mode: StepsMode::Off, ..Default::default()
         ..Default::default()
     };
     assert_eq!(build_prompt_indicators(&opts), "[steps:off] > ");
@@ -63,7 +63,7 @@ fn steps_off_only() {
 #[test]
 fn steps_compact_only() {
     let opts = EvalOptions {
-        steps_mode: StepsMode::Compact,
+        steps_mode: StepsMode::Compact, ..Default::default()
         ..Default::default()
     };
     assert_eq!(build_prompt_indicators(&opts), "[steps:compact] > ");
@@ -99,7 +99,7 @@ fn complex_on_only() {
 #[test]
 fn combined_steps_and_context() {
     let opts = EvalOptions {
-        steps_mode: StepsMode::Off,
+        steps_mode: StepsMode::Off, ..Default::default()
         context_mode: ContextMode::IntegratePrep,
         ..Default::default()
     };
@@ -112,7 +112,7 @@ fn combined_steps_and_context() {
 #[test]
 fn combined_all_non_default() {
     let opts = EvalOptions {
-        steps_mode: StepsMode::Off,
+        steps_mode: StepsMode::Off, ..Default::default()
         context_mode: ContextMode::IntegratePrep,
         branch_mode: BranchMode::PrincipalBranch,
         complex_mode: ComplexMode::On,
@@ -127,7 +127,7 @@ fn combined_all_non_default() {
 fn order_is_deterministic() {
     // Order: steps, context, branch, complex (alphabetical except steps first)
     let opts = EvalOptions {
-        steps_mode: StepsMode::Compact,
+        steps_mode: StepsMode::Compact, ..Default::default()
         context_mode: ContextMode::Solve,
         branch_mode: BranchMode::PrincipalBranch,
         complex_mode: ComplexMode::Off,

@@ -95,6 +95,10 @@ pub struct EvalOptions {
     pub complex_mode: ComplexMode,
     /// Whether to collect simplification steps (runtime, not cached)
     pub steps_mode: StepsMode,
+    /// Auto-expand policy: Off (default) or Auto (expand cheap cases)
+    pub expand_policy: crate::phase::ExpandPolicy,
+    /// Budget for auto-expand (only used when expand_policy=Auto)
+    pub expand_budget: crate::phase::ExpandBudget,
 }
 
 impl EvalOptions {
@@ -105,6 +109,7 @@ impl EvalOptions {
             context_mode: ContextMode::Standard,
             complex_mode: ComplexMode::Auto,
             steps_mode: StepsMode::On,
+            ..Default::default()
         }
     }
 
@@ -115,6 +120,7 @@ impl EvalOptions {
             context_mode: ContextMode::Auto,
             complex_mode: ComplexMode::Auto,
             steps_mode: StepsMode::On,
+            ..Default::default()
         }
     }
 
@@ -125,6 +131,7 @@ impl EvalOptions {
             context_mode: ContextMode::IntegratePrep,
             complex_mode: ComplexMode::Auto,
             steps_mode: StepsMode::On,
+            ..Default::default()
         }
     }
 
@@ -135,6 +142,7 @@ impl EvalOptions {
             context_mode: ContextMode::Solve,
             complex_mode: ComplexMode::Auto,
             steps_mode: StepsMode::On,
+            ..Default::default()
         }
     }
 }

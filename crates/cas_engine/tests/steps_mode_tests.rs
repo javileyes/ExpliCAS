@@ -243,7 +243,7 @@ fn warnings_survive_steps_off() {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::IntegratePrep, // Enables Morrie telescoping
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::Off,
+        steps_mode: StepsMode::Off, ..Default::default()
     };
     let input = "cos(x)*cos(2*x)*cos(4*x)"; // Morrie product - triggers domain_assumption
     let mut ctx = Context::new();
