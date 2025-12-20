@@ -22,7 +22,6 @@ use rustyline::error::ReadlineError;
 
 use crate::completer::CasHelper;
 use crate::config::CasConfig;
-use rustyline::config::Configurer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
@@ -709,11 +708,23 @@ impl Repl {
         println!("Enter an expression (e.g., '2 * 3 + 0'):");
 
         let helper = CasHelper::new();
-        let mut rl = rustyline::Editor::<CasHelper, rustyline::history::DefaultHistory>::new()?;
+        let config = rustyline::Config::builder()
+            .max_history_size(100)?
+            .completion_type(rustyline::CompletionType::List)
+            .build();
+        let mut rl =
+            rustyline::Editor::<CasHelper, rustyline::history::DefaultHistory>::with_config(
+                config,
+            )?;
         rl.set_helper(Some(helper));
-        rl.set_completion_type(rustyline::CompletionType::List);
 
-        // Load history if file exists (optional, skipping for simplicity or can add later)
+        // History file path: ~/.cas_history
+        let history_path = dirs::home_dir()
+            .map(|p| p.join(".cas_history"))
+            .unwrap_or_else(|| std::path::PathBuf::from(".cas_history"));
+
+        // Load history if file exists (errors are silently ignored)
+        let _ = rl.load_history(&history_path);
 
         loop {
             let prompt = self.build_prompt();
@@ -756,6 +767,10 @@ impl Repl {
                 }
             }
         }
+
+        // Save history on exit (errors are silently ignored)
+        let _ = rl.save_history(&history_path);
+
         Ok(())
     }
 
