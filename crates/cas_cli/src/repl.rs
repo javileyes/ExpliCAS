@@ -23,6 +23,16 @@ use rustyline::error::ReadlineError;
 use crate::completer::CasHelper;
 use crate::config::CasConfig;
 
+/// Unwrap top-level __hold() wrapper (used for eager let bindings)
+fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "__hold" && args.len() == 1 {
+            return args[0];
+        }
+    }
+    expr
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
     None,
@@ -822,7 +832,7 @@ impl Repl {
             let name = line[..idx].trim();
             let expr_str = line[idx + 2..].trim();
             if !name.is_empty() && !expr_str.is_empty() {
-                self.handle_assignment(name, expr_str);
+                self.handle_assignment(name, expr_str, true); // := is lazy
                 return;
             }
         }
@@ -2287,21 +2297,28 @@ impl Repl {
 
     // ========== SESSION ENVIRONMENT HANDLERS ==========
 
-    /// Handle "let <name> = <expr>" command
+    /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
     fn handle_let_command(&mut self, rest: &str) {
-        // Parse: <name> = <expr>
-        if let Some(eq_idx) = rest.find('=') {
+        // Detect := (lazy) before = (eager) - order matters!
+        if let Some(idx) = rest.find(":=") {
+            let name = rest[..idx].trim();
+            let expr_str = rest[idx + 2..].trim();
+            self.handle_assignment(name, expr_str, true); // lazy
+        } else if let Some(eq_idx) = rest.find('=') {
             let name = rest[..eq_idx].trim();
             let expr_str = rest[eq_idx + 1..].trim();
-            self.handle_assignment(name, expr_str);
+            self.handle_assignment(name, expr_str, false); // eager
         } else {
-            println!("Usage: let <name> = <expr>");
-            println!("Example: let a = 1 + sqrt(2)");
+            println!("Usage: let <name> = <expr>   (eager - evaluates)");
+            println!("       let <name> := <expr>  (lazy - stores formula)");
+            println!("Example: let a = expand((1+x)^3)");
         }
     }
 
     /// Handle variable assignment (from "let" or ":=")
-    fn handle_assignment(&mut self, name: &str, expr_str: &str) {
+    /// - eager=false (=): evaluate then store (unwrap __hold)
+    /// - eager=true (:=): store formula without evaluating
+    fn handle_assignment(&mut self, name: &str, expr_str: &str, lazy: bool) {
         // Validate name
         if name.is_empty() {
             println!("Error: Variable name cannot be empty");
@@ -2339,15 +2356,30 @@ impl Repl {
                     Err(_) => rhs_expr,
                 };
 
-                // Store the binding
-                self.state.env.set(name.to_string(), rhs_substituted);
+                let result = if lazy {
+                    // LAZY (:=): store the expression without evaluating
+                    rhs_substituted
+                } else {
+                    // EAGER (=): simplify the expression, then unwrap __hold
+                    let (simplified, _steps) = self.engine.simplifier.simplify(rhs_substituted);
 
-                // Display confirmation
+                    // Unwrap top-level __hold to get the actual polynomial
+                    unwrap_hold_top(&self.engine.simplifier.context, simplified)
+                };
+
+                // Store the binding
+                self.state.env.set(name.to_string(), result);
+
+                // Display confirmation (with mode indicator for lazy)
                 let display = cas_ast::DisplayExpr {
                     context: &self.engine.simplifier.context,
-                    id: rhs_substituted,
+                    id: result,
                 };
-                println!("{} = {}", name, display);
+                if lazy {
+                    println!("{} := {}", name, display);
+                } else {
+                    println!("{} = {}", name, display);
+                }
 
                 // Note: we don't restore old_binding - this is an assignment/update
                 let _ = old_binding;
