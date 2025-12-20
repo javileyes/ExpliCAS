@@ -341,46 +341,48 @@ fn flatten_add_recursive(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
     }
 }
 
-/// Strip negation from a term in any form.
-/// - `Neg(t)` → Some(t)
-/// - `Mul(-1, t)` or `Mul(t, -1)` → Some(t)
-/// - `Number(-c)` where c > 0 → Some(Number(c))
-/// - `Mul(-c, t)` where c > 0 → Some(Mul(c, t))
-/// - Otherwise → None
-fn strip_any_negative(ctx: &Context, id: ExprId) -> Option<ExprId> {
+/// Check if a term is "negative" for the purpose of sub-cancellation detection.
+/// Returns true if the term represents a negative value:
+/// - `Neg(t)` → true
+/// - `Number(-c)` where c > 0 → true  
+/// - `Mul` with ODD number of negative factors → true
+/// - Otherwise → false
+///
+/// Note: This is a predicate, not a "strip" function. We don't reconstruct
+/// the positive form - we just detect negativity for pattern matching.
+fn is_negative_term(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
-        Expr::Neg(inner) => Some(*inner),
+        Expr::Neg(_) => true,
 
         // Negative number: -1, -2, -5/3 etc.
         Expr::Number(n) => {
             use num_traits::Signed;
-            if n.is_negative() {
-                // Return the positive version
-                Some(id) // We just need to know it's negative, caller handles recombination
-            } else {
-                None
-            }
+            n.is_negative()
         }
 
         Expr::Mul(l, r) => {
-            // Check if left side is a negative number
-            if let Expr::Number(n) = ctx.get(*l) {
-                use num_traits::Signed;
-                if n.is_negative() {
-                    return Some(id); // Negative coefficient on left
-                }
-            }
-            // Check if right side is a negative number
-            if let Expr::Number(n) = ctx.get(*r) {
-                use num_traits::Signed;
-                if n.is_negative() {
-                    return Some(id); // Negative coefficient on right
-                }
-            }
-            None
+            // Count negative factors using XOR logic:
+            // (-a) * b = negative, (-a) * (-b) = positive
+            let l_neg = is_negative_factor(ctx, *l);
+            let r_neg = is_negative_factor(ctx, *r);
+            l_neg ^ r_neg // XOR: negative only if exactly one is negative
         }
 
-        _ => None,
+        _ => false,
+    }
+}
+
+/// Helper: Check if a factor is negative (for Mul sign calculation)
+fn is_negative_factor(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => {
+            use num_traits::Signed;
+            n.is_negative()
+        }
+        Expr::Neg(_) => true,
+        // Recursively check nested Mul
+        Expr::Mul(l, r) => is_negative_factor(ctx, *l) ^ is_negative_factor(ctx, *r),
+        _ => false,
     }
 }
 
@@ -418,7 +420,7 @@ fn try_mark_add_neg_cancellation(
                 return false;
             }
             pow_term = Some((*term, base, n));
-        } else if strip_any_negative(ctx, *term).is_some() {
+        } else if is_negative_term(ctx, *term) {
             // This is a negated term
             neg_terms.push(*term);
         } else {
@@ -453,11 +455,9 @@ fn try_mark_add_neg_cancellation(
 
     // Verify negated terms look polynomial-like
     for neg_term in &neg_terms {
-        if let Some(_) = strip_any_negative(ctx, *neg_term) {
-            // For negative numbers/terms, check the whole term is still polynomial-like
-            if !looks_polynomial_like(ctx, *neg_term) {
-                return false;
-            }
+        // For negative terms, check they're still polynomial-like
+        if !looks_polynomial_like(ctx, *neg_term) {
+            return false;
         }
     }
 
@@ -551,5 +551,78 @@ mod tests {
         // Trinomial: C(n+2, 2) = (n+1)(n+2)/2
         assert_eq!(estimate_multinomial_terms(3, 2), Some(6)); // (a+b+c)^2 has 6 terms
         assert_eq!(estimate_multinomial_terms(3, 3), Some(10)); // (a+b+c)^3 has 10 terms
+    }
+
+    #[test]
+    fn test_is_negative_term_basic() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let neg_one = ctx.num(-1);
+        let neg_two = ctx.num(-2);
+        let pos_two = ctx.num(2);
+
+        // Neg(x) -> negative
+        let neg_x = ctx.add(Expr::Neg(x));
+        assert!(is_negative_term(&ctx, neg_x), "Neg(x) should be negative");
+
+        // Number(-1) -> negative
+        assert!(
+            is_negative_term(&ctx, neg_one),
+            "Number(-1) should be negative"
+        );
+
+        // Number(-2) -> negative
+        assert!(
+            is_negative_term(&ctx, neg_two),
+            "Number(-2) should be negative"
+        );
+
+        // Number(2) -> not negative
+        assert!(
+            !is_negative_term(&ctx, pos_two),
+            "Number(2) should NOT be negative"
+        );
+
+        // Variable x -> not negative
+        assert!(
+            !is_negative_term(&ctx, x),
+            "Variable should NOT be negative"
+        );
+    }
+
+    #[test]
+    fn test_is_negative_term_mul_single_neg() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let neg_two = ctx.num(-2);
+        let pos_two = ctx.num(2);
+
+        // Mul(-2, x) -> negative (one negative factor)
+        let mul_neg = ctx.add(Expr::Mul(neg_two, x));
+        assert!(
+            is_negative_term(&ctx, mul_neg),
+            "Mul(-2, x) should be negative"
+        );
+
+        // Mul(2, x) -> not negative
+        let mul_pos = ctx.add(Expr::Mul(pos_two, x));
+        assert!(
+            !is_negative_term(&ctx, mul_pos),
+            "Mul(2, x) should NOT be negative"
+        );
+    }
+
+    #[test]
+    fn test_is_negative_term_mul_double_neg() {
+        let mut ctx = Context::new();
+        let neg_two = ctx.num(-2);
+        let neg_three = ctx.num(-3);
+
+        // Mul(-2, -3) -> positive (two negatives cancel out via XOR)
+        let mul_double_neg = ctx.add(Expr::Mul(neg_two, neg_three));
+        assert!(
+            !is_negative_term(&ctx, mul_double_neg),
+            "Mul(-2, -3) should NOT be negative (double negative = positive)"
+        );
     }
 }
