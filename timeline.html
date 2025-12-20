@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \text{arctan}(\tan(x))</title>
+    <title>CAS Steps: \frac{x}{2\cdot (1 + \sqrt[2]{2})}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -222,56 +222,122 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\text{arctan}(\tan(x))\]
+            \[\frac{x}{2\cdot (1 + \sqrt[2]{2})}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Tan to Sin/Cos</h3>
+                    <h3>Distributive Property</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\text{arctan}({\color{red}{\tan(x)}})\]
+                        \[\frac{x}{{\color{red}{2\cdot (1 + \sqrt{2})}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{tan(x) -> sin(x)/cos(x)}\)</div>
+                        <div class="rule-name">\(\text{Distribute}\)</div>
                         <div class="local-change">
-                            \[\tan(x) \rightarrow \frac{\sin(x)}{\cos(x)}\]
+                            \[2\cdot (1 + \sqrt{2}) \rightarrow 2 + 2\cdot \sqrt{2}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\text{arctan}({\color{green}{\frac{\sin(x)}{\cos(x)}}})\]
+                        \[\frac{x}{{\color{green}{2 + 2\cdot \sqrt{2}}}}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Principal Branch Inverse Trig</h3>
+                    <h3>Rationalize Binomial Denominator</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\text{arctan}(\frac{\sin(x)}{\cos(x)})}}\]
+                        \[{\color{red}{\frac{x}{2 + 2\cdot \sqrt{2}}}}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Pasos intermedios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{x}{2 + 2\cdot \sqrt{2}} \rightarrow \text{Conjugado: } a + b \to a - b\]</div></div><div class="substep">
+                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(x) \cdot (a-b)}{(2 + 2\cdot \sqrt{2}) \cdot (a-b)} \rightarrow \frac{x\cdot -2 - (2\cdot \sqrt{2})}{4}\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{arctan(sin(u)/cos(u)) → u (principal branch)}\)</div>
+                        <div class="rule-name">\(\text{x / 2 + 2·2^(1/2) -> x·-(2 - 2·2^(1/2)) / 4}\)</div>
                         <div class="local-change">
-                            \[\text{arctan}(\frac{\sin(x)}{\cos(x)}) \rightarrow x\]
+                            \[\frac{x}{2 + 2\cdot \sqrt{2}} \rightarrow \frac{x\cdot -2 - (2\cdot \sqrt{2})}{4}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{x}}\]
+                        \[{\color{green}{\frac{x\cdot -2 - (2\cdot \sqrt{2})}{4}}}\]
                     </div>
-                    <div class="domain-warning">Domain: Assuming u ∈ (-π/2, π/2) (principal branch)</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Factor Common Integer</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{x\cdot -{\color{red}{2 - 2\cdot \sqrt{2}}}}{4}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Factor out 2}\)</div>
+                        <div class="local-change">
+                            \[2 - 2\cdot \sqrt{2} \rightarrow 2\cdot (1 - \sqrt{2})\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{x\cdot -{\color{green}{(2\cdot (1 - \sqrt{2}))}}}{4}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{x\cdot -(2\cdot (1 - \sqrt{2}))}{4}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Global Combine Like Terms}\)</div>
+                        <div class="local-change">
+                            \[-1\cdot \sqrt{2} \rightarrow -\sqrt{2}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{x\cdot -(2\cdot (1 - \sqrt{2}))}{4}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Flip binomial under negative coefficient</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{x\cdot {\color{red}{-2\cdot (1 - \sqrt{2})}}}{4}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{(-k) * (a-b) → k * (b-a)}\)</div>
+                        <div class="local-change">
+                            \[-2\cdot (1 - \sqrt{2}) \rightarrow 2\cdot (\sqrt{2} - 1)\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{x\cdot {\color{green}{2\cdot (\sqrt{2} - 1)}}}{4}\]
+                    </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[x\]
+            \[\frac{1}{2}\cdot x\cdot (\sqrt{2} - 1)\]
         </div>
     </div>
     <footer>

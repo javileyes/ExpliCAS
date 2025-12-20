@@ -2090,13 +2090,43 @@ impl Repl {
                 }
             }
         } else {
-            // Use normal simplification
+            // Use engine.eval like handle_eval does - this ensures the same pipeline
+            // (Core → Transform → Rationalize → PostCleanup) is used
+            use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
+            use cas_engine::EntryKind;
+
+            // Force collect_steps for timeline
+            let was_collecting = self.engine.simplifier.collect_steps();
+            self.engine.simplifier.set_collect_steps(true);
+
             match cas_parser::parse(expr_str.trim(), &mut self.engine.simplifier.context) {
                 Ok(expr) => {
-                    let (simplified, steps) = self.do_simplify(expr);
-                    (steps, expr, simplified)
+                    let req = EvalRequest {
+                        raw_input: expr_str.to_string(),
+                        parsed: expr,
+                        kind: EntryKind::Expr(expr),
+                        action: EvalAction::Simplify,
+                        auto_store: false, // Don't store in session history for timeline
+                    };
+
+                    match self.engine.eval(&mut self.state, req) {
+                        Ok(output) => {
+                            let simplified = match output.result {
+                                EvalResult::Expr(e) => e,
+                                _ => expr, // Fallback
+                            };
+                            self.engine.simplifier.set_collect_steps(was_collecting);
+                            (output.steps, expr, simplified)
+                        }
+                        Err(e) => {
+                            self.engine.simplifier.set_collect_steps(was_collecting);
+                            println!("Simplification error: {}", e);
+                            return;
+                        }
+                    }
                 }
                 Err(e) => {
+                    self.engine.simplifier.set_collect_steps(was_collecting);
                     println!("Parse error: {}", e);
                     return;
                 }
@@ -2117,11 +2147,8 @@ impl Repl {
         );
 
         // Convert CLI verbosity to timeline verbosity
-        let timeline_verbosity = match self.verbosity {
-            Verbosity::None | Verbosity::Succinct => cas_engine::timeline::VerbosityLevel::Low,
-            Verbosity::Normal => cas_engine::timeline::VerbosityLevel::Normal,
-            Verbosity::Verbose => cas_engine::timeline::VerbosityLevel::Verbose,
-        };
+        // Use Normal level - shows important steps without low-level canonicalization
+        let timeline_verbosity = cas_engine::timeline::VerbosityLevel::Normal;
 
         // Generate HTML timeline with ALL steps and the known simplified result
         let mut timeline = cas_engine::timeline::TimelineHtml::new_with_result(
