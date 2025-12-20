@@ -150,26 +150,6 @@ impl Completer for CasHelper {
             }
         }
 
-        // Check for "steps" context
-        if line.starts_with("steps ") {
-            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
-            let ends_with_space = line[..pos].ends_with(' ');
-
-            // Case: "steps <TAB>" or "steps no<TAB>"
-            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                let levels = vec!["normal", "succinct", "verbose", "none", "on", "off"];
-                for level in levels {
-                    if level.starts_with(word) {
-                        matches.push(Pair {
-                            display: level.to_string(),
-                            replacement: level.to_string(),
-                        });
-                    }
-                }
-                return Ok((start, matches));
-            }
-        }
-
         // Check for "mode" context
         if line.starts_with("mode ") {
             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
@@ -253,7 +233,8 @@ impl Completer for CasHelper {
             let ends_with_space = line[..pos].ends_with(' ');
 
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                let modes = vec!["on", "off", "compact"];
+                // Full list matching handler: on|off|normal|verbose|succinct|none
+                let modes = vec!["on", "off", "normal", "verbose", "succinct", "none"];
                 for m in modes {
                     if m.starts_with(word) {
                         matches.push(Pair {
