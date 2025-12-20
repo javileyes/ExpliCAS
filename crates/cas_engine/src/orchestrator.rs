@@ -71,7 +71,18 @@ impl Orchestrator {
                 &mut self.pattern_marks,
             );
 
+            // Auto-expand scanner: mark cancellation contexts (difference quotients)
+            // Only scan if ExpandPolicy::Auto is enabled AND we're not in Solve mode
+            // (Solve mode should never auto-expand to preserve structure)
             let auto_expand = self.options.expand_policy == crate::phase::ExpandPolicy::Auto;
+            if auto_expand {
+                crate::auto_expand_scan::mark_auto_expand_candidates(
+                    &simplifier.context,
+                    current,
+                    &self.options.expand_budget,
+                    &mut self.pattern_marks,
+                );
+            }
             let (next, steps) = simplifier.apply_rules_loop_with_phase_and_mode(
                 current,
                 &self.pattern_marks,

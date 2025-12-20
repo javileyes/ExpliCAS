@@ -107,6 +107,21 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   **Prompt Indicator**: Shows `[steps:off]` or `[steps:compact]` when not in default mode.
     -   **Domain Warnings Survive**: Even with `steps off`, domain assumptions are preserved.
     -   **Benchmarks**: `off` provides ~9% speedup on batch, ~7% on light expressions.
+-   **Auto-expand Mode** ★ (2025-12):
+    -   Automatically expand cheap polynomial powers within budget limits.
+    -   **Policy**: By default `simplify()` preserves factored forms like `(x+1)^2`. Use `autoexpand on` to automatically expand within budget, or `expand()` for explicit expansion.
+    -   Switch modes via `autoexpand on|off` in REPL.
+    -   **Prompt Indicator**: Shows `[autoexp:on]` when enabled.
+    -   **Budget Limits** (prevent explosion):
+        -   `max_pow_exp: 4` — Maximum exponent (e.g., `(x+1)^4` ok, `^5` not)
+        -   `max_base_terms: 4` — Maximum terms in base (binomial, trinomial, tetranomial)
+        -   `max_generated_terms: 300` — Maximum terms in result
+        -   `max_vars: 4` — Maximum variables in base expression
+    -   **Use Cases**:
+        -   Identity tests: Prove `(1+i)^2 = 2i` automatically
+        -   Normalization: Compare expressions algebraically
+    -   **When NOT to use**: Factor preservation, solver-friendly forms, GCD computations
+    -   See [POLICY.md](POLICY.md) for the `simplify()` vs `expand()` contract.
 -   **Profile Cache** ★ (2025-12):
     -   Rule profiles cached automatically in `SessionState` to avoid rebuilding ~30 rules per evaluation.
     -   First evaluation builds and caches the profile; subsequent evaluations reuse `Arc<RuleProfile>`.

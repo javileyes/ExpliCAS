@@ -993,8 +993,10 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        // Only trigger in auto-expand mode
-        if !parent_ctx.is_auto_expand() {
+        // Expand if: global auto-expand mode OR inside a marked cancellation context
+        // (e.g., difference quotient like ((x+h)^n - x^n)/h)
+        let in_expand_context = parent_ctx.in_auto_expand_context();
+        if !(parent_ctx.is_auto_expand() || in_expand_context) {
             return None;
         }
 

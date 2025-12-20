@@ -14,6 +14,10 @@ pub struct PatternMarks {
     /// ExprIds of sin/cos Function nodes that are part of sin²(u)+cos²(u)=1 patterns
     /// Protected from angle expansion (AngleIdentityRule) to preserve Pythagorean identity
     pub trig_square_protected: HashSet<ExprId>,
+    /// ExprIds of context nodes (Div/Sub) where auto-expand is beneficial.
+    /// When processing is inside one of these contexts, Pow(Add(..), n) will be expanded.
+    /// This is more robust than marking individual Pow nodes, as rewrites may change ExprIds.
+    pub auto_expand_contexts: HashSet<ExprId>,
 }
 
 impl PatternMarks {
@@ -22,6 +26,7 @@ impl PatternMarks {
             pythagorean_protected: HashSet::new(),
             sqrt_square_protected: HashSet::new(),
             trig_square_protected: HashSet::new(),
+            auto_expand_contexts: HashSet::new(),
         }
     }
 
@@ -55,5 +60,22 @@ impl PatternMarks {
     /// Mark a sin/cos function as part of sin²+cos²=1 pattern
     pub fn mark_trig_square(&mut self, expr: ExprId) {
         self.trig_square_protected.insert(expr);
+    }
+
+    /// Check if an expression is marked as an auto-expand context
+    /// (e.g., Div/Sub nodes where expansion helps cancellation)
+    pub fn is_auto_expand_context(&self, expr: ExprId) -> bool {
+        self.auto_expand_contexts.contains(&expr)
+    }
+
+    /// Mark an expression as an auto-expand context
+    /// This should be a Div or Sub node where expanding inner Pow nodes helps cancellation
+    pub fn mark_auto_expand_context(&mut self, expr: ExprId) {
+        self.auto_expand_contexts.insert(expr);
+    }
+
+    /// Check if any auto-expand contexts have been marked
+    pub fn has_auto_expand_contexts(&self) -> bool {
+        !self.auto_expand_contexts.is_empty()
     }
 }

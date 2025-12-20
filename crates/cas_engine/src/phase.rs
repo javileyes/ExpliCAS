@@ -194,12 +194,33 @@ impl PhaseBudgets {
 // =============================================================================
 
 /// Policy controlling automatic expansion during simplification.
-/// Default is Off (Standard mode preserves structure).
+///
+/// This is part of the three-tier expansion system:
+/// - `simplify()` with `Off`: Preserves factored forms like `(x+1)^n`
+/// - `simplify()` with `Auto`: Expands cheap cases within budget limits
+/// - `expand()`: Aggressively expands all polynomial powers
+///
+/// Default is `Off` (structure-preserving) to maintain solver-friendly forms.
+///
+/// # Example
+/// ```text
+/// # With Off (default)
+/// (1+i)^2  →  (1+i)^2  (preserved)
+///
+/// # With Auto
+/// (1+i)^2  →  2*i  (expanded, within budget)
+/// ```
+///
+/// See also: [`ExpandBudget`] for budget configuration.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ExpandPolicy {
+    /// Standard mode: never auto-expand. Preserves `(x+1)^n` forms.
+    /// Use explicit `expand()` for expansion.
     #[default]
-    Off, // Standard: never auto-expand; preserves (x+1)^3
-    Auto, // Automatically expand cheap cases within budget
+    Off,
+    /// Automatically expand cheap polynomial powers within budget limits.
+    /// Useful for identity tests and normalization.
+    Auto,
 }
 
 /// Budget limits for auto-expansion to prevent explosion.

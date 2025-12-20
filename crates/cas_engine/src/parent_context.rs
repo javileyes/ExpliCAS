@@ -146,6 +146,18 @@ impl ParentContext {
     pub fn depth(&self) -> usize {
         self.ancestors.len()
     }
+
+    /// Check if we're inside an auto-expand context (marked Div/Sub where expansion helps)
+    /// This is more robust than checking individual Pow nodes, as those may get rewritten.
+    pub fn in_auto_expand_context(&self) -> bool {
+        if let Some(marks) = &self.pattern_marks {
+            self.ancestors
+                .iter()
+                .any(|id| marks.is_auto_expand_context(*id))
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(test)]

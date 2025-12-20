@@ -1,3 +1,4 @@
+pub mod auto_expand_scan;
 pub mod canonical_forms;
 pub mod collect;
 pub mod cycle_detector;
