@@ -29,7 +29,7 @@ pub struct MultinomialExpandBudget {
 impl Default for MultinomialExpandBudget {
     fn default() -> Self {
         Self {
-            max_exp: 12,
+            max_exp: 100, // High limit - real constraint is max_output_terms
             max_base_terms: 16,
             max_vars: 8,
             max_output_terms: 100_000,
