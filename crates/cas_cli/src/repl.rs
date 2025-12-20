@@ -890,39 +890,6 @@ impl Repl {
 
         // ========== END SESSION ENVIRONMENT COMMANDS ==========
 
-        // Check for "steps" command
-        if line.starts_with("steps ") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                match parts[1] {
-                    "on" | "normal" => {
-                        self.verbosity = Verbosity::Normal;
-                        self.engine.simplifier.set_collect_steps(true);
-                        println!("Step-by-step output enabled (Normal).");
-                    }
-                    "off" | "none" => {
-                        self.verbosity = Verbosity::None;
-                        self.engine.simplifier.set_collect_steps(false);
-                        println!("Step-by-step output disabled.");
-                    }
-                    "verbose" => {
-                        self.verbosity = Verbosity::Verbose;
-                        self.engine.simplifier.set_collect_steps(true);
-                        println!("Step-by-step output enabled (Verbose).");
-                    }
-                    "succinct" => {
-                        self.verbosity = Verbosity::Succinct;
-                        self.engine.simplifier.set_collect_steps(true);
-                        println!("Step-by-step output enabled (Succinct - compact display).");
-                    }
-                    _ => println!("Usage: steps <on|off|normal|verbose|succinct|none>"),
-                }
-            } else {
-                println!("Usage: steps <on|off|normal|verbose|succinct|none>");
-            }
-            return;
-        }
-
         // Check for "set" command (pipeline options)
         if line.starts_with("set ") {
             self.handle_set_command(&line);
@@ -2636,7 +2603,9 @@ impl Repl {
         }
     }
 
-    /// Handle "steps" command - show or switch steps collection mode
+    /// Handle "steps" command - show or switch steps collection mode AND display verbosity
+    /// Collection: on, off, compact (controls StepsMode in engine)
+    /// Display: verbose, succinct, normal, none (controls Verbosity in CLI)
     fn handle_steps_command(&mut self, line: &str) {
         use cas_engine::options::StepsMode;
 
@@ -2650,33 +2619,72 @@ impl Repl {
                     StepsMode::Off => "off",
                     StepsMode::Compact => "compact",
                 };
-                println!("Current steps mode: {}", mode_str);
-                println!("  (use 'steps on|off|compact' to change)");
+                let verbosity_str = match self.verbosity {
+                    Verbosity::None => "none",
+                    Verbosity::Succinct => "succinct",
+                    Verbosity::Normal => "normal",
+                    Verbosity::Verbose => "verbose",
+                };
+                println!("Steps collection: {}", mode_str);
+                println!("Steps display: {}", verbosity_str);
+                println!("  (use 'steps on|off|compact' for collection)");
+                println!("  (use 'steps verbose|succinct|normal|none' for display)");
             }
+            // Collection modes (StepsMode)
             Some(&"on") => {
                 self.state.options.steps_mode = StepsMode::On;
                 self.engine.simplifier.set_steps_mode(StepsMode::On);
-                println!("Steps mode: on");
-                println!("  Full step recording with before/after snapshots.");
+                self.verbosity = Verbosity::Normal;
+                println!("Steps: on (full collection, normal display)");
             }
             Some(&"off") => {
                 self.state.options.steps_mode = StepsMode::Off;
                 self.engine.simplifier.set_steps_mode(StepsMode::Off);
-                println!("Steps mode: off");
+                self.verbosity = Verbosity::None;
+                println!("Steps: off");
                 println!("  ⚡ Steps disabled (faster). Warnings still enabled.");
             }
             Some(&"compact") => {
                 self.state.options.steps_mode = StepsMode::Compact;
                 self.engine.simplifier.set_steps_mode(StepsMode::Compact);
-                println!("Steps mode: compact");
-                println!("  Compact steps (no before/after snapshots).");
+                println!("Steps: compact (no before/after snapshots)");
+            }
+            // Display modes (Verbosity)
+            Some(&"verbose") => {
+                self.state.options.steps_mode = StepsMode::On;
+                self.engine.simplifier.set_steps_mode(StepsMode::On);
+                self.verbosity = Verbosity::Verbose;
+                println!("Steps: verbose (all rules, full detail)");
+            }
+            Some(&"succinct") => {
+                self.state.options.steps_mode = StepsMode::On;
+                self.engine.simplifier.set_steps_mode(StepsMode::On);
+                self.verbosity = Verbosity::Succinct;
+                println!("Steps: succinct (compact 1-line per step)");
+            }
+            Some(&"normal") => {
+                self.state.options.steps_mode = StepsMode::On;
+                self.engine.simplifier.set_steps_mode(StepsMode::On);
+                self.verbosity = Verbosity::Normal;
+                println!("Steps: normal (default display)");
+            }
+            Some(&"none") => {
+                self.verbosity = Verbosity::None;
+                println!("Steps display: none (collection still active)");
+                println!("  Use 'steps off' to also disable collection.");
             }
             Some(other) => {
                 println!("Unknown steps mode: '{}'", other);
-                println!("Usage: steps [on | off | compact]");
-                println!("  on      - Full steps with snapshots (default)");
-                println!("  off     - No steps (fastest, warnings preserved)");
-                println!("  compact - Minimal steps (no snapshots)");
+                println!("Usage: steps [on | off | compact | verbose | succinct | normal | none]");
+                println!("  Collection modes:");
+                println!("    on      - Full steps with snapshots (default)");
+                println!("    off     - No steps (fastest, warnings preserved)");
+                println!("    compact - Minimal steps (no snapshots)");
+                println!("  Display modes:");
+                println!("    verbose - Show all rules, full detail");
+                println!("    succinct- Compact 1-line per step");
+                println!("    normal  - Standard display (default)");
+                println!("    none    - Hide steps output (collection still active)");
             }
         }
     }

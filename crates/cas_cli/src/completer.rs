@@ -233,8 +233,10 @@ impl Completer for CasHelper {
             let ends_with_space = line[..pos].ends_with(' ');
 
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                // Full list matching handler: on|off|normal|verbose|succinct|none
-                let modes = vec!["on", "off", "normal", "verbose", "succinct", "none"];
+                // Full list matching handler: on|off|compact|verbose|succinct|normal|none
+                let modes = vec![
+                    "on", "off", "compact", "verbose", "succinct", "normal", "none",
+                ];
                 for m in modes {
                     if m.starts_with(word) {
                         matches.push(Pair {

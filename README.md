@@ -114,16 +114,16 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   **Prompt Indicator**: Shows `[autoexp:on]` when enabled.
     -   **Context Detection** (marks Div/Sub nodes for expansion):
         -   Difference quotients: `((x+h)^n - x^n)/h` → expands to simplify
+nor        -   **Sub cancellation**: `(x+1)^2 - (x^2+2x+1)` → **detects and returns 0**
         -   Standalone `(x+1)^3` → stays factored (no cancellation context)
+    -   **Zero-Shortcut** (★ Phase 2): Compares expressions as MultiPoly without AST expansion.
+        -   If `P - Q = 0` → returns 0 immediately (no explosion)
+    -   **Solve Mode Firewall**: `ContextMode::Solve` blocks auto-expand for solver-friendly forms.
     -   **Budget Limits** (prevent explosion):
-        -   `max_pow_exp: 4` — Maximum exponent (e.g., `(x+1)^4` ok, `^5` not)
-        -   `max_base_terms: 4` — Maximum terms in base (binomial, trinomial, tetranomial)
+        -   `max_pow_exp: 4` — Maximum exponent
+        -   `max_base_terms: 4` — Maximum terms in base
         -   `max_generated_terms: 300` — Maximum terms in result
-        -   `max_vars: 4` — Maximum variables in base expression
-    -   **Use Cases**:
-        -   Derivative limits: `((x+h)^n - x^n)/h` simplifies automatically
-        -   Identity tests: Prove `(1+i)^2 = 2i` automatically
-    -   **When NOT to use**: Factor preservation, solver-friendly forms, GCD computations
+        -   `max_vars: 4` — Maximum variables
     -   See [POLICY.md](POLICY.md) for the `simplify()` vs `expand()` contract.
 -   **Profile Cache** ★ (2025-12):
     -   Rule profiles cached automatically in `SessionState` to avoid rebuilding ~30 rules per evaluation.

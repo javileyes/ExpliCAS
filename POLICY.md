@@ -52,8 +52,8 @@ Auto-expand provides **intelligent expansion** that detects cancellation context
 Auto-expand marks **context nodes** (Div/Sub) where expansion is likely to lead to cancellation:
 
 ```
-Pattern: Div(Sub(Pow(Add(..), n), _), _)
-Example: ((x+h)^3 - x^3)/h → marks Div for expansion
+Pattern 1: Div(Sub(Pow(Add(..), n), _), _) — Difference quotient
+Pattern 2: Sub(Pow(Add(..), n), polynomial) — Sub cancellation
 ```
 
 **Key insight**: Marking the **context** rather than individual `Pow` nodes is more robust against rewrites that change ExprIds.
@@ -62,6 +62,21 @@ Example: ((x+h)^3 - x^3)/h → marks Div for expansion
 |------------|----------|------|
 | `(x+1)^3` | `(x+1)^3` ❌ | `(x+1)^3` ❌ (no context) |
 | `((x+h)^3 - x^3)/h` | Unchanged | `3*x^2 + 3*h*x + h^2` ✅ |
+| `(x+1)^2 - (x^2+2x+1)` | Unchanged | `0` ✅ (zero-shortcut) |
+
+### Zero-Shortcut (Phase 2)
+
+`AutoExpandSubCancelRule` proves cancellation via MultiPoly comparison:
+
+1. Convert `Pow(Add(..), n)` → `MultiPoly` via repeated multiplication
+2. Convert other side → `MultiPoly`
+3. If `P - Q = 0` → return `0` immediately (NO AST expansion)
+
+### Solve Mode Firewall
+
+`ContextMode::Solve` blocks all auto-expansion for solver-friendly forms:
+- Scanner skips marking contexts in Solve mode
+- Rule guards check `context_mode != Solve`
 
 ### Budget Limits
 
