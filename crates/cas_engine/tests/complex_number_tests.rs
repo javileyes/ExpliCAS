@@ -34,7 +34,6 @@ fn complex_on_opts() -> EvalOptions {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::On,
         steps_mode: StepsMode::On, ..Default::default()
-        ..Default::default()
     }
 }
 
@@ -44,7 +43,6 @@ fn complex_off_opts() -> EvalOptions {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Off,
         steps_mode: StepsMode::On, ..Default::default()
-        ..Default::default()
     }
 }
 
@@ -54,7 +52,6 @@ fn complex_auto_opts() -> EvalOptions {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On, ..Default::default()
-        ..Default::default()
     }
 }
 

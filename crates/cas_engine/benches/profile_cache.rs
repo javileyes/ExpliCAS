@@ -21,7 +21,6 @@ fn bench_profile_build(c: &mut Criterion) {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On, ..Default::default()
-        ..Default::default()
     };
 
     c.bench_function("profile_build/uncached", |b| {
@@ -67,7 +66,6 @@ fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On, ..Default::default()
-        ..Default::default()
     };
 
     // Cached: perfil construido una vez

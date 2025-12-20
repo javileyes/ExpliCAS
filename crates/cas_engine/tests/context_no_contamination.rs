@@ -56,7 +56,6 @@ fn standard_opts() -> EvalOptions {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On, ..Default::default()
-        ..Default::default()
     }
 }
 
@@ -66,7 +65,6 @@ fn solve_opts() -> EvalOptions {
         context_mode: ContextMode::Solve,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On, ..Default::default()
-        ..Default::default()
     }
 }
 
@@ -76,7 +74,6 @@ fn integrate_opts() -> EvalOptions {
         context_mode: ContextMode::IntegratePrep,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On, ..Default::default()
-        ..Default::default()
     }
 }
 

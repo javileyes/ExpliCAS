@@ -17,6 +17,7 @@ fn simplify_with_mode(input: &str, mode: StepsMode) -> (String, Vec<cas_engine::
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: mode,
+        ..Default::default()
     };
     let mut ctx = Context::new();
     let expr = parse(input, &mut ctx).expect("Failed to parse");
@@ -183,6 +184,7 @@ fn simplify_morrie_with_mode(mode: StepsMode) -> (String, Vec<cas_engine::Step>,
         context_mode: ContextMode::IntegratePrep,
         complex_mode: ComplexMode::Auto,
         steps_mode: mode,
+        ..Default::default()
     };
     let input = "cos(x)*cos(2*x)*cos(4*x)"; // Morrie product - triggers domain_assumption
     let mut ctx = Context::new();
@@ -243,7 +245,8 @@ fn warnings_survive_steps_off() {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::IntegratePrep, // Enables Morrie telescoping
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::Off, ..Default::default()
+        steps_mode: StepsMode::Off,
+        ..Default::default()
     };
     let input = "cos(x)*cos(2*x)*cos(4*x)"; // Morrie product - triggers domain_assumption
     let mut ctx = Context::new();
