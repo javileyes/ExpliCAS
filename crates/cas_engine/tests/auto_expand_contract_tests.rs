@@ -358,3 +358,40 @@ fn solve_blocks_auto_sub() {
         result
     );
 }
+
+// =============================================================================
+// ZERO-SHORTCUT CANCELLATION TESTS: (x+1)^2 - (x^2+2x+1) → 0
+// =============================================================================
+
+#[test]
+fn auto_sub_cancels_binomial_square() {
+    // Core win condition: (x+1)^2 - (x^2 + 2*x + 1) should simplify to 0
+    let result = simplify_auto("(x+1)^2 - (x^2 + 2*x + 1)");
+    assert_eq!(
+        result, "0",
+        "Auto should cancel (x+1)^2 - (x^2 + 2*x + 1) to 0, got: {}",
+        result
+    );
+}
+
+#[test]
+fn auto_sub_cancels_binomial_cubed() {
+    // (x+1)^3 - (x^3 + 3*x^2 + 3*x + 1) → 0
+    let result = simplify_auto("(x+1)^3 - (x^3 + 3*x^2 + 3*x + 1)");
+    assert_eq!(
+        result, "0",
+        "Auto should cancel (x+1)^3 - expanded to 0, got: {}",
+        result
+    );
+}
+
+#[test]
+fn auto_sub_cancels_with_reversed_sides() {
+    // (x^2 + 2*x + 1) - (x+1)^2 → 0 (reversed order)
+    let result = simplify_auto("(x^2 + 2*x + 1) - (x+1)^2");
+    assert_eq!(
+        result, "0",
+        "Auto should cancel reversed binomial to 0, got: {}",
+        result
+    );
+}

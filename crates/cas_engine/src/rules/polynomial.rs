@@ -1265,10 +1265,228 @@ mod tests {
     }
 }
 
+// =============================================================================
+// AutoExpandSubCancelRule: Zero-shortcut for Sub(Pow(Add..), polynomial)
+// =============================================================================
+//
+// Detects patterns like `(x+1)^2 - (x^2 + 2*x + 1)` and proves cancellation
+// to 0 via polynomial comparison WITHOUT expanding the AST.
+//
+// Strategy:
+// 1. Detect Sub(lhs, rhs) where one side is Pow(Add.., n)
+// 2. Convert both sides to MultiPoly representation
+// 3. If P - Q = 0, return Rewrite to 0
+
+use crate::multipoly::{MultiPoly, PolyBudget};
+
+/// AutoExpandSubCancelRule: Zero-shortcut for Sub(Pow(Add..), polynomial)
+/// Priority 95 (higher than AutoExpandPowSumRule at 50)
+pub struct AutoExpandSubCancelRule;
+
+impl AutoExpandSubCancelRule {
+    /// Convert expression to MultiPoly (returns None if not polynomial-representable)
+    fn expr_to_multipoly(
+        ctx: &Context,
+        id: ExprId,
+        vars: &mut Vec<String>,
+        budget: &PolyBudget,
+    ) -> Option<MultiPoly> {
+        Self::expr_to_multipoly_inner(ctx, id, vars, budget, 0)
+    }
+
+    fn expr_to_multipoly_inner(
+        ctx: &Context,
+        id: ExprId,
+        vars: &mut Vec<String>,
+        budget: &PolyBudget,
+        depth: usize,
+    ) -> Option<MultiPoly> {
+        // Depth limit to prevent stack overflow
+        if depth > 50 {
+            return None;
+        }
+
+        match ctx.get(id) {
+            Expr::Number(n) => {
+                // Constant polynomial
+                Some(MultiPoly::from_const(n.clone()))
+            }
+            Expr::Variable(name) => {
+                // Variable: ensure it's in our vars list
+                if !vars.contains(name) {
+                    if vars.len() >= 4 {
+                        return None; // Too many variables
+                    }
+                    vars.push(name.clone());
+                }
+                // Create polynomial for this variable
+                let idx = vars.iter().position(|v| v == name)?;
+                let mut mono = vec![0u32; vars.len()];
+                mono[idx] = 1;
+                let terms = vec![(BigRational::one(), mono)];
+                Some(MultiPoly {
+                    vars: vars.clone(),
+                    terms,
+                })
+            }
+            Expr::Add(l, r) => {
+                let p = Self::expr_to_multipoly_inner(ctx, *l, vars, budget, depth + 1)?;
+                let q = Self::expr_to_multipoly_inner(ctx, *r, vars, budget, depth + 1)?;
+                // Align variables
+                let (p, q) = Self::align_vars(p, q, vars);
+                p.add(&q).ok()
+            }
+            Expr::Sub(l, r) => {
+                let p = Self::expr_to_multipoly_inner(ctx, *l, vars, budget, depth + 1)?;
+                let q = Self::expr_to_multipoly_inner(ctx, *r, vars, budget, depth + 1)?;
+                let (p, q) = Self::align_vars(p, q, vars);
+                p.sub(&q).ok()
+            }
+            Expr::Mul(l, r) => {
+                let p = Self::expr_to_multipoly_inner(ctx, *l, vars, budget, depth + 1)?;
+                let q = Self::expr_to_multipoly_inner(ctx, *r, vars, budget, depth + 1)?;
+                let (p, q) = Self::align_vars(p, q, vars);
+                p.mul(&q, budget).ok()
+            }
+            Expr::Neg(inner) => {
+                let p = Self::expr_to_multipoly_inner(ctx, *inner, vars, budget, depth + 1)?;
+                Some(p.neg())
+            }
+            Expr::Pow(base, exp) => {
+                // Only handle integer exponents >= 0
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() && !n.is_negative() {
+                        let exp_val = n.to_integer().to_u32()?;
+                        if exp_val > budget.max_total_degree {
+                            return None;
+                        }
+                        let base_poly =
+                            Self::expr_to_multipoly_inner(ctx, *base, vars, budget, depth + 1)?;
+                        // Compute base^exp via repeated multiplication
+                        let mut result = MultiPoly::one(vars.clone());
+                        for _ in 0..exp_val {
+                            result = result
+                                .mul(&Self::align_to_vars(&base_poly, vars), budget)
+                                .ok()?;
+                            if result.num_terms() > budget.max_terms {
+                                return None;
+                            }
+                        }
+                        return Some(result);
+                    }
+                }
+                None
+            }
+            _ => None, // Not polynomial
+        }
+    }
+
+    /// Align two polynomials to have the same variable set
+    fn align_vars(p: MultiPoly, q: MultiPoly, target_vars: &[String]) -> (MultiPoly, MultiPoly) {
+        (
+            Self::align_to_vars(&p, target_vars),
+            Self::align_to_vars(&q, target_vars),
+        )
+    }
+
+    /// Align a polynomial to the target variable set
+    fn align_to_vars(p: &MultiPoly, target_vars: &[String]) -> MultiPoly {
+        if p.vars == target_vars {
+            return p.clone();
+        }
+        // Reindex monomials to target_vars
+        let mut new_terms = Vec::new();
+        for (coeff, mono) in &p.terms {
+            let mut new_mono = vec![0u32; target_vars.len()];
+            for (i, var) in p.vars.iter().enumerate() {
+                if let Some(target_idx) = target_vars.iter().position(|v| v == var) {
+                    new_mono[target_idx] = mono[i];
+                }
+            }
+            new_terms.push((coeff.clone(), new_mono));
+        }
+        MultiPoly {
+            vars: target_vars.to_vec(),
+            terms: new_terms,
+        }
+    }
+}
+
+impl crate::rule::Rule for AutoExpandSubCancelRule {
+    fn name(&self) -> &str {
+        "AutoExpandSubCancelRule"
+    }
+
+    fn priority(&self) -> i32 {
+        95
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::TRANSFORM
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Only trigger if in auto-expand context (marked by scanner)
+        if !parent_ctx.in_auto_expand_context() {
+            return None;
+        }
+
+        // Get the Sub
+        let Expr::Sub(lhs, rhs) = ctx.get(expr).clone() else {
+            return None;
+        };
+
+        // At least one side should be Pow(Add.., n)
+        let lhs_is_pow_add =
+            matches!(ctx.get(lhs), Expr::Pow(base, _) if matches!(ctx.get(*base), Expr::Add(_, _)));
+        let rhs_is_pow_add =
+            matches!(ctx.get(rhs), Expr::Pow(base, _) if matches!(ctx.get(*base), Expr::Add(_, _)));
+
+        if !lhs_is_pow_add && !rhs_is_pow_add {
+            return None;
+        }
+
+        // Budget for polynomial conversion
+        let budget = PolyBudget {
+            max_terms: 100,
+            max_total_degree: 8,
+        };
+
+        // Convert both sides to MultiPoly
+        let mut vars = Vec::new();
+        let p = Self::expr_to_multipoly(ctx, lhs, &mut vars, &budget)?;
+        let q = Self::expr_to_multipoly(ctx, rhs, &mut vars, &budget)?;
+
+        // Align and subtract
+        let (p_aligned, q_aligned) = Self::align_vars(p, q, &vars);
+        let diff = p_aligned.sub(&q_aligned).ok()?;
+
+        // If difference is zero, we have proved cancellation!
+        if diff.is_zero() {
+            let zero = ctx.num(0);
+            return Some(Rewrite {
+                new_expr: zero,
+                description: "Polynomial equality: expressions cancel to 0".to_string(),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
+        }
+
+        None
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(BinomialExpansionRule));
     simplifier.add_rule(Box::new(AutoExpandPowSumRule));
+    simplifier.add_rule(Box::new(AutoExpandSubCancelRule));
 }
