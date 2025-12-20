@@ -137,25 +137,34 @@ define_rule!(
     }
 );
 
-define_rule!(FactorRule, "Factor Polynomial", |ctx, expr| {
-    if let Expr::Function(name, args) = ctx.get(expr) {
-        if name == "factor" && args.len() == 1 {
-            let arg = args[0];
-            // Use the general factor entry point which tries polynomial then diff squares
-            let new_expr = crate::factor::factor(ctx, arg);
-            if new_expr != arg {
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Factorization".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
+define_rule!(
+    FactorRule,
+    "Factor Polynomial",
+    Some(vec!["Function"]), // Target Function expressions specifically
+    PhaseMask::CORE | PhaseMask::POST,
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "factor" && args.len() == 1 {
+                let arg = args[0];
+                // Use the general factor entry point which tries polynomial then diff squares
+                let new_expr = crate::factor::factor(ctx, arg);
+                if new_expr != arg {
+                    // Wrap in __hold() to prevent other rules from undoing the factorization
+                    // (e.g., DifferenceOfSquaresRule converts (a-b)(a+b) back to a²-b²)
+                    let held = ctx.add(Expr::Function("__hold".to_string(), vec![new_expr]));
+                    return Some(Rewrite {
+                        new_expr: held,
+                        description: "Factorization".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
+                }
             }
         }
+        None
     }
-    None
-});
+);
 
 define_rule!(
     FactorDifferenceSquaresRule,
