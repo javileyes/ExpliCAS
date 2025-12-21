@@ -25,6 +25,9 @@ pub use gcd_exact::*;
 pub mod gcd_modp;
 pub use gcd_modp::*;
 
+pub mod poly_arith_modp;
+pub use poly_arith_modp::*;
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
@@ -64,5 +67,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PolyGcdModpRule));
     // Polynomial equality mod p: poly_eq_modp(a, b) → 1 or 0
     simplifier.add_rule(Box::new(PolyEqModpRule));
+    // Polynomial arithmetic on __hold: __hold(P) - __hold(Q) = 0 if equal mod p
+    simplifier.add_rule(Box::new(PolySubModpRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
