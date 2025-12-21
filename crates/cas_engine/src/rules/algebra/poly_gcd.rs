@@ -12,7 +12,9 @@
 //! This allows Mathematica/Symbolica-style polynomial GCD without expanding.
 
 use crate::build::mul2_raw;
+use crate::engine::Simplifier;
 use crate::gcd_zippel_modp::ZippelPreset;
+use crate::options::EvalOptions;
 use crate::phase::PhaseMask;
 use crate::rule::{Rewrite, Rule};
 use crate::rules::algebra::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
@@ -22,6 +24,27 @@ use num_traits::{One, ToPrimitive};
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+/// Pre-evaluate an expression to resolve functions like expand(), simplify(), etc.
+/// This is needed because poly_gcd has HoldAll semantics but modp/exact need
+/// evaluated polynomial expressions.
+fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
+    // Check if expression contains function calls that need evaluation
+    if let Expr::Function(name, _) = ctx.get(expr) {
+        if matches!(name.as_str(), "expand" | "__hold" | "simplify" | "factor") {
+            // Create a minimal simplifier to evaluate the expression
+            let opts = EvalOptions::default();
+            let mut simplifier = Simplifier::with_profile(&opts);
+            // Transfer context
+            std::mem::swap(&mut simplifier.context, ctx);
+            let (result, _) = simplifier.simplify(expr);
+            // Transfer back
+            std::mem::swap(&mut simplifier.context, ctx);
+            return result;
+        }
+    }
+    expr
+}
 
 // =============================================================================
 // GCD Mode enum for unified API
@@ -420,8 +443,11 @@ fn compute_poly_gcd_unified(
         }
 
         GcdMode::Exact => {
+            // Pre-evaluate arguments to handle expand(), factor(), etc.
+            let eval_a = pre_evaluate_for_gcd(ctx, a);
+            let eval_b = pre_evaluate_for_gcd(ctx, b);
             let budget = GcdExactBudget::default();
-            let result = gcd_exact(ctx, a, b, &budget);
+            let result = gcd_exact(ctx, eval_a, eval_b, &budget);
             let desc = format!(
                 "poly_gcd({}, {}, exact) [{}]",
                 DisplayExpr {
@@ -438,13 +464,16 @@ fn compute_poly_gcd_unified(
         }
 
         GcdMode::Modp => {
+            // Pre-evaluate arguments to handle expand(), factor(), etc.
+            let eval_a = pre_evaluate_for_gcd(ctx, a);
+            let eval_b = pre_evaluate_for_gcd(ctx, b);
             // Call modp through gcd_modp module
             use crate::rules::algebra::gcd_modp::{compute_gcd_modp_with_options, DEFAULT_PRIME};
             let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
             match compute_gcd_modp_with_options(
                 ctx,
-                a,
-                b,
+                eval_a,
+                eval_b,
                 DEFAULT_PRIME,
                 modp_main_var,
                 Some(preset),
@@ -495,9 +524,11 @@ fn compute_poly_gcd_unified(
                 return (structural_gcd, desc);
             }
 
-            // Try exact if within budget
+            // Try exact if within budget - pre-evaluate arguments first
+            let eval_a = pre_evaluate_for_gcd(ctx, a);
+            let eval_b = pre_evaluate_for_gcd(ctx, b);
             let budget = GcdExactBudget::default();
-            let exact_result = gcd_exact(ctx, a, b, &budget);
+            let exact_result = gcd_exact(ctx, eval_a, eval_b, &budget);
 
             if exact_result.layer_used != GcdExactLayer::BudgetExceeded {
                 let desc = format!(
@@ -515,7 +546,7 @@ fn compute_poly_gcd_unified(
                 return (exact_result.gcd, desc);
             }
 
-            // Fallback to modp
+            // Fallback to modp (already have eval_a, eval_b)
             eprintln!(
                 "[poly_gcd:auto] Exact exceeded budget, falling back to modp (probabilistic)"
             );
@@ -523,8 +554,8 @@ fn compute_poly_gcd_unified(
             let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
             match compute_gcd_modp_with_options(
                 ctx,
-                a,
-                b,
+                eval_a,
+                eval_b,
                 DEFAULT_PRIME,
                 modp_main_var,
                 Some(preset),
