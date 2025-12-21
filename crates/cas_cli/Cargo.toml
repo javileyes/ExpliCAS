@@ -3,10 +3,14 @@ name = "cas_cli"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["parallel"]
+parallel = ["cas_engine/parallel"]
+
 [dependencies]
 cas_ast = { path = "../cas_ast" }
 cas_parser = { path = "../cas_parser" }
-cas_engine = { path = "../cas_engine" }
+cas_engine = { path = "../cas_engine", default-features = false }
 cas_format = { path = "../cas_format" }
 rustyline = "12.0"
 num-traits = "0.2"

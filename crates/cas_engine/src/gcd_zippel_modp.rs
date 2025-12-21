@@ -27,6 +27,8 @@ pub struct ZippelBudget {
     pub max_retries: usize,
     /// Number of random trials for probabilistic verification
     pub verify_trials: usize,
+    /// Force a specific main variable (if Some), bypassing auto-selection
+    pub forced_main_var: Option<usize>,
 }
 
 /// Check if debug tracing is enabled (via CAS_ZIPPEL_TRACE env var)
@@ -41,6 +43,7 @@ impl Default for ZippelBudget {
             max_points_per_var: 16,
             max_retries: 8,
             verify_trials: 6,
+            forced_main_var: None,
         }
     }
 }
@@ -51,6 +54,7 @@ pub fn budget_for_mm_gcd() -> ZippelBudget {
         max_points_per_var: 8, // deg 7 needs exactly 8 points
         max_retries: 8,        // Log shows 0 skips, so 8 is enough
         verify_trials: 3,      // Fast verification for benchmark
+        forced_main_var: None, // Benchmark forces main_var externally
     }
 }
 
@@ -67,12 +71,13 @@ const SEED_POINTS: [u64; 48] = [
 
 /// Compute GCD of two multivariate polynomials mod p using Zippel algorithm.
 /// Returns monic GCD (leading coefficient = 1).
+/// Uses budget.forced_main_var if set, otherwise auto-selects main variable.
 pub fn gcd_zippel_modp(
     p: &MultiPolyModP,
     q: &MultiPolyModP,
     budget: &ZippelBudget,
 ) -> Option<MultiPolyModP> {
-    gcd_zippel_modp_impl(p, q, None, budget)
+    gcd_zippel_modp_impl(p, q, budget.forced_main_var, budget)
 }
 
 /// Compute GCD with forced main variable (useful for benchmarks).
@@ -234,6 +239,24 @@ fn gcd_zippel_rec(
     // Collect samples - use parallel evaluation at depth 0 for large polys
     let use_parallel = should_use_parallel(depth, p.num_terms(), q.num_terms());
 
+    if is_trace_enabled() {
+        let compiled_par = cfg!(feature = "parallel");
+        #[cfg(feature = "parallel")]
+        let threads = rayon::current_num_threads();
+        #[cfg(not(feature = "parallel"))]
+        let threads = 1_usize;
+        eprintln!(
+            "{}[depth={}] use_parallel={}, compiled_par={}, threads={}, p_terms={}, q_terms={}",
+            indent,
+            depth,
+            use_parallel,
+            compiled_par,
+            threads,
+            p.num_terms(),
+            q.num_terms()
+        );
+    }
+
     let samples = if use_parallel {
         collect_samples_parallel(
             p,
@@ -307,8 +330,8 @@ fn gcd_zippel_rec(
 // =============================================================================
 
 /// Threshold for parallel evaluation
-const PAR_DEPTH: usize = 0; // Only parallelize at depth 0
-const PAR_TERM_THRESHOLD: usize = 20_000; // Minimum combined terms for parallelism
+const PAR_DEPTH: usize = 2; // Parallelize at depth 0, 1, 2
+const PAR_TERM_THRESHOLD: usize = 5_000; // Minimum combined terms for parallelism
 
 /// Decide whether to use parallel evaluation
 fn should_use_parallel(depth: usize, p_terms: usize, q_terms: usize) -> bool {

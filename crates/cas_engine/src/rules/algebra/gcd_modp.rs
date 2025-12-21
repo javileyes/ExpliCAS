@@ -45,13 +45,15 @@ impl Rule for PolyGcdModpRule {
             if is_gcd_modp && (args.len() == 2 || args.len() == 3) {
                 let a = args[0];
                 let b = args[1];
-                let p = if args.len() == 3 {
-                    extract_prime(ctx, args[2]).unwrap_or(DEFAULT_PRIME)
+
+                // Third argument (if present) is main_var (integer 0-7)
+                let main_var = if args.len() == 3 {
+                    extract_usize(ctx, args[2])
                 } else {
-                    DEFAULT_PRIME
+                    None
                 };
 
-                match compute_gcd_modp(ctx, a, b, p) {
+                match compute_gcd_modp(ctx, a, b, DEFAULT_PRIME, main_var) {
                     Ok(gcd_expr) => {
                         // Wrap in __hold to prevent further simplification
                         let held = ctx.add(Expr::Function("__hold".to_string(), vec![gcd_expr]));
@@ -168,12 +170,24 @@ fn extract_prime(ctx: &Context, expr: ExprId) -> Option<u64> {
     None
 }
 
+/// Extract usize from expression (must be non-negative integer)
+fn extract_usize(ctx: &Context, expr: ExprId) -> Option<usize> {
+    if let Expr::Number(n) = ctx.get(expr) {
+        if n.is_integer() {
+            use num_traits::ToPrimitive;
+            return n.to_integer().to_usize();
+        }
+    }
+    None
+}
+
 /// Compute GCD mod p and return as Expr
 fn compute_gcd_modp(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
     p: u64,
+    main_var: Option<usize>,
 ) -> Result<ExprId, PolyConvError> {
     use std::time::Instant;
 
@@ -198,8 +212,12 @@ fn compute_gcd_modp(
         poly_b.num_terms()
     );
 
-    // Compute GCD using Zippel
-    let zippel_budget = ZippelBudget::default();
+    // Compute GCD using Zippel (use mm_gcd budget for performance)
+    use crate::gcd_zippel_modp::budget_for_mm_gcd;
+    let zippel_budget = ZippelBudget {
+        forced_main_var: main_var,
+        ..budget_for_mm_gcd() // Use optimized budget: max_points=8, verify=3
+    };
     let gcd_opt = gcd_zippel_modp(&poly_a, &poly_b, &zippel_budget);
     let t3 = Instant::now();
     eprintln!("[poly_gcd_modp] Zippel GCD: {:?}", t3 - t2);
