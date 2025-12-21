@@ -188,11 +188,8 @@ fn test_commutativity_mul() {
 /// Check that an expression tree satisfies structural invariants
 fn check_structural_invariants(ctx: &Context, id: ExprId, path: &str) -> Result<(), String> {
     match ctx.get(id) {
-        // No nested Add (should be flattened)
+        // Note: Balanced tree may create Add(Add(..), ..) - this is intentional for O(log n) depth
         Expr::Add(l, r) => {
-            if matches!(ctx.get(*l), Expr::Add(_, _)) {
-                return Err(format!("{}: Add(Add(..), ..) not flattened", path));
-            }
             check_structural_invariants(ctx, *l, &format!("{}.l", path))?;
             check_structural_invariants(ctx, *r, &format!("{}.r", path))?;
         }

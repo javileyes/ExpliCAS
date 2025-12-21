@@ -223,6 +223,50 @@ fn build_cancel_domain_assumption(ctx: &Context, cancelled: &[ExprId]) -> Option
 // Multivariate GCD (Layers 1 + 2 + 2.5)
 // =============================================================================
 
+/// Align MultiPoly to a target variable set by embedding it into the larger space.
+/// For example, a polynomial in [h] can be embedded into [h, x] by adding zero exponents for x.
+fn align_multipoly_vars(p: &MultiPoly, target_vars: &[String]) -> MultiPoly {
+    use std::collections::BTreeMap;
+
+    if p.vars == target_vars {
+        return p.clone();
+    }
+
+    // Map old var indices to new indices
+    let mapping: Vec<Option<usize>> = p
+        .vars
+        .iter()
+        .map(|v| target_vars.iter().position(|tv| tv == v))
+        .collect();
+
+    let mut new_terms: Vec<(num_rational::BigRational, Vec<u32>)> = Vec::new();
+    let mut term_map: BTreeMap<Vec<u32>, num_rational::BigRational> = BTreeMap::new();
+
+    for (coeff, mono) in &p.terms {
+        let mut new_mono = vec![0u32; target_vars.len()];
+        for (old_idx, &exp) in mono.iter().enumerate() {
+            if let Some(Some(new_idx)) = mapping.get(old_idx) {
+                new_mono[*new_idx] = exp;
+            }
+        }
+        let entry = term_map
+            .entry(new_mono)
+            .or_insert_with(num_rational::BigRational::zero);
+        *entry = entry.clone() + coeff.clone();
+    }
+
+    for (mono, coeff) in term_map {
+        if !coeff.is_zero() {
+            new_terms.push((coeff, mono));
+        }
+    }
+
+    MultiPoly {
+        vars: target_vars.to_vec(),
+        terms: new_terms,
+    }
+}
+
 /// Try to compute GCD of two expressions using multivariate polynomial representation.
 /// Returns None if expressions can't be converted to polynomials or if GCD is trivial (1).
 /// Returns Some((quotient_num, quotient_den, gcd_expr, layer)) if non-trivial GCD found.
@@ -242,10 +286,26 @@ fn try_multivar_gcd(
         return None;
     }
 
-    // Align variables if needed
-    if p_num.vars != p_den.vars {
-        return None; // For now, require same vars
-    }
+    // Align variables if needed: embed both into union of variables
+    let (p_num, p_den) = if p_num.vars != p_den.vars {
+        // Compute union of variables (sorted for consistency)
+        let mut all_vars: Vec<String> = p_num
+            .vars
+            .iter()
+            .chain(p_den.vars.iter())
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        all_vars.sort();
+
+        // Embed both polynomials into the shared variable space
+        let p_num_aligned = align_multipoly_vars(&p_num, &all_vars);
+        let p_den_aligned = align_multipoly_vars(&p_den, &all_vars);
+        (p_num_aligned, p_den_aligned)
+    } else {
+        (p_num, p_den)
+    };
 
     // Layer 1: Monomial GCD
     let mono_gcd = p_num.monomial_gcd_with(&p_den).ok()?;

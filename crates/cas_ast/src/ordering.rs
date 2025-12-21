@@ -1,99 +1,120 @@
 use crate::{Constant, Context, Expr, ExprId};
 use std::cmp::Ordering;
 
+/// Iterative expression comparison using explicit stack.
+/// This prevents stack overflow on deeply nested expressions.
 pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
-    if a == b {
-        return Ordering::Equal;
-    }
-
-    let expr_a = context.get(a);
-    let expr_b = context.get(b);
-
     use Expr::*;
 
-    // 1. Hierarchy Check
-    let rank_a = get_rank(expr_a);
-    let rank_b = get_rank(expr_b);
-    if rank_a != rank_b {
-        return rank_a.cmp(&rank_b);
+    let mut stack: Vec<(ExprId, ExprId)> = vec![(a, b)];
+
+    while let Some((x, y)) = stack.pop() {
+        if x == y {
+            continue;
+        }
+
+        let ex = context.get(x);
+        let ey = context.get(y);
+
+        let kx = get_rank(ex);
+        let ky = get_rank(ey);
+        if kx != ky {
+            return kx.cmp(&ky);
+        }
+
+        match (ex, ey) {
+            (Number(n1), Number(n2)) => {
+                let c = n1.cmp(n2);
+                if c != Ordering::Equal {
+                    return c;
+                }
+            }
+            (Constant(c1), Constant(c2)) => {
+                let c = compare_constant(c1, c2);
+                if c != Ordering::Equal {
+                    return c;
+                }
+            }
+            (Variable(v1), Variable(v2)) => {
+                let c = v1.cmp(v2);
+                if c != Ordering::Equal {
+                    return c;
+                }
+            }
+            (SessionRef(s1), SessionRef(s2)) => {
+                let c = s1.cmp(s2);
+                if c != Ordering::Equal {
+                    return c;
+                }
+            }
+            (Function(n1, args1), Function(n2, args2)) => {
+                let c = n1.cmp(n2);
+                if c != Ordering::Equal {
+                    return c;
+                }
+                let c = args1.len().cmp(&args2.len());
+                if c != Ordering::Equal {
+                    return c;
+                }
+                // Push args in reverse order so first arg is compared first
+                for (a1, a2) in args1.iter().zip(args2.iter()).rev() {
+                    stack.push((*a1, *a2));
+                }
+            }
+            (Neg(e1), Neg(e2)) => {
+                stack.push((*e1, *e2));
+            }
+            (Pow(b1, e1), Pow(b2, e2)) => {
+                // Push exponent first (will be popped last, so base compared first)
+                stack.push((*e1, *e2));
+                stack.push((*b1, *b2));
+            }
+            (Add(l1, r1), Add(l2, r2))
+            | (Sub(l1, r1), Sub(l2, r2))
+            | (Mul(l1, r1), Mul(l2, r2))
+            | (Div(l1, r1), Div(l2, r2)) => {
+                // Push right first so left is compared first
+                stack.push((*r1, *r2));
+                stack.push((*l1, *l2));
+            }
+            (
+                Matrix {
+                    rows: r1,
+                    cols: c1,
+                    data: d1,
+                },
+                Matrix {
+                    rows: r2,
+                    cols: c2,
+                    data: d2,
+                },
+            ) => {
+                let c = (r1, c1).cmp(&(r2, c2));
+                if c != Ordering::Equal {
+                    return c;
+                }
+                let c = d1.len().cmp(&d2.len());
+                if c != Ordering::Equal {
+                    return c;
+                }
+                // Compare by ExprId index to avoid deep recursion
+                for (e1, e2) in d1.iter().zip(d2.iter()) {
+                    let c = e1.index().cmp(&e2.index());
+                    if c != Ordering::Equal {
+                        return c;
+                    }
+                }
+            }
+            _ => {
+                // Should be unreachable if ranks are correct
+            }
+        }
     }
 
-    // 2. Same Type Comparison
-    match (expr_a, expr_b) {
-        (Number(n1), Number(n2)) => n1.cmp(n2),
-        (Constant(c1), Constant(c2)) => compare_constant(c1, c2),
-        (Variable(v1), Variable(v2)) => v1.cmp(v2),
-        (Function(n1, args1), Function(n2, args2)) => match n1.cmp(n2) {
-            Ordering::Equal => compare_args(context, args1, args2),
-            ord => ord,
-        },
-        (Pow(b1, e1), Pow(b2, e2)) => match compare_expr(context, *b1, *b2) {
-            Ordering::Equal => compare_expr(context, *e1, *e2),
-            ord => ord,
-        },
-        (Neg(e1), Neg(e2)) => compare_expr(context, *e1, *e2),
-        // Add is commutative: both orderings should be checked
-        (Add(l1, r1), Add(l2, r2)) => {
-            // First try direct comparison
-            let direct = compare_binary(context, *l1, *r1, *l2, *r2);
-            if direct == Ordering::Equal {
-                return Ordering::Equal;
-            }
-            // Try swapped: Add(a,b) == Add(b,a)
-            let swapped = compare_binary(context, *l1, *r1, *r2, *l2);
-            if swapped == Ordering::Equal {
-                return Ordering::Equal;
-            }
-            direct
-        }
-        (Sub(l1, r1), Sub(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
-        // Mul is commutative: both orderings should be checked
-        (Mul(l1, r1), Mul(l2, r2)) => {
-            // First try direct comparison
-            let direct = compare_binary(context, *l1, *r1, *l2, *r2);
-            if direct == Ordering::Equal {
-                return Ordering::Equal;
-            }
-            // Try swapped: Mul(a,b) == Mul(b,a)
-            let swapped = compare_binary(context, *l1, *r1, *r2, *l2);
-            if swapped == Ordering::Equal {
-                return Ordering::Equal;
-            }
-            direct
-        }
-        (Div(l1, r1), Div(l2, r2)) => compare_binary(context, *l1, *r1, *l2, *r2),
-        // Matrix comparison: by dimensions first, then by ExprId of data elements
-        (
-            Matrix {
-                rows: r1,
-                cols: c1,
-                data: d1,
-            },
-            Matrix {
-                rows: r2,
-                cols: c2,
-                data: d2,
-            },
-        ) => {
-            match (r1, c1).cmp(&(r2, c2)) {
-                Ordering::Equal => {
-                    // Compare data elements by ExprId index (avoids deep recursion)
-                    for (e1, e2) in d1.iter().zip(d2.iter()) {
-                        match e1.index().cmp(&e2.index()) {
-                            Ordering::Equal => continue,
-                            ord => return ord,
-                        }
-                    }
-                    d1.len().cmp(&d2.len())
-                }
-                ord => ord,
-            }
-        }
-        _ => Ordering::Equal, // Should be unreachable if ranks are correct
-    }
+    Ordering::Equal
 }
 
-fn get_rank(expr: &Expr) -> u8 {
+pub fn get_rank(expr: &Expr) -> u8 {
     use Expr::*;
     match expr {
         Number(_) => 0,
@@ -129,21 +150,4 @@ fn compare_constant(c1: &Constant, c2: &Constant) -> Ordering {
         I => 4,
     };
     r1.cmp(&r2)
-}
-
-fn compare_args(context: &Context, args1: &[ExprId], args2: &[ExprId]) -> Ordering {
-    for (a1, a2) in args1.iter().zip(args2.iter()) {
-        match compare_expr(context, *a1, *a2) {
-            Ordering::Equal => continue,
-            ord => return ord,
-        }
-    }
-    args1.len().cmp(&args2.len())
-}
-
-fn compare_binary(context: &Context, l1: ExprId, r1: ExprId, l2: ExprId, r2: ExprId) -> Ordering {
-    match compare_expr(context, l1, l2) {
-        Ordering::Equal => compare_expr(context, r1, r2),
-        ord => ord,
-    }
 }

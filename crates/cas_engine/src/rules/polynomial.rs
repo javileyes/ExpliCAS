@@ -1454,6 +1454,7 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
         let budget = PolyBudget {
             max_terms: 100,
             max_total_degree: 8,
+            max_pow_exp: 4, // Small limit for cancellation checks
         };
 
         // Convert entire expression to MultiPoly

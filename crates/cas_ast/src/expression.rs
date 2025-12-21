@@ -157,21 +157,25 @@ impl Context {
                 // Sort terms: positive first, then by compare_expr
                 terms.sort_by(|a, b| self.compare_add_terms(*a, *b));
                 // Build right-associative tree: a + (b + (c + d))
-                self.build_right_assoc_add(&terms)
+                self.build_balanced_add(&terms)
             }
             Expr::Mul(l, r) => {
-                // CRITICAL: Matrix multiplication is NOT commutative
-                let l_is_matrix = matches!(self.get(l), Expr::Matrix { .. });
-                let r_is_matrix = matches!(self.get(r), Expr::Matrix { .. });
-
-                if l_is_matrix && r_is_matrix {
-                    // Non-commutative: preserve order
-                    Expr::Mul(l, r)
-                } else if crate::ordering::compare_expr(self, l, r) == std::cmp::Ordering::Greater {
-                    // Simple swap to canonical order (no flatten - preserves structure for conjugates)
-                    Expr::Mul(r, l)
+                // Check if any factor contains a matrix (non-commutative multiplication)
+                if self.contains_matrix(l) || self.contains_matrix(r) {
+                    // Non-commutative: flatten for associativity but do NOT sort
+                    let mut factors = Vec::new();
+                    self.collect_mul_factors(l, &mut factors);
+                    self.collect_mul_factors(r, &mut factors);
+                    // Rebuild balanced (preserves order)
+                    self.build_balanced_mul(&factors)
                 } else {
-                    Expr::Mul(l, r) // Already canonical
+                    // Commutative: flatten + sort (using order_key to avoid recursive compare)
+                    let mut factors = Vec::new();
+                    self.collect_mul_factors(l, &mut factors);
+                    self.collect_mul_factors(r, &mut factors);
+                    // Sort by structural comparison (balanced tree prevents deep recursion)
+                    factors.sort_by(|a, b| crate::ordering::compare_expr(self, *a, *b));
+                    self.build_balanced_mul(&factors)
                 }
             }
             // Non-commutative operations and atoms: keep as-is
@@ -271,30 +275,122 @@ impl Context {
         id
     }
 
-    /// Collect all additive terms by flattening nested Add
+    /// Collect all additive terms by flattening nested Add (iterative)
     fn collect_add_terms(&self, id: ExprId, terms: &mut Vec<ExprId>) {
-        match self.get(id) {
-            Expr::Add(l, r) => {
-                self.collect_add_terms(*l, terms);
-                self.collect_add_terms(*r, terms);
+        let mut stack = vec![id];
+        while let Some(current) = stack.pop() {
+            match self.get(current) {
+                Expr::Add(l, r) => {
+                    // Push right first so left is processed first
+                    stack.push(*r);
+                    stack.push(*l);
+                }
+                _ => terms.push(current),
             }
-            _ => terms.push(id),
         }
     }
 
-    /// Build right-associative Add tree: [a,b,c] -> Add(a, Add(b, c))
-    fn build_right_assoc_add(&mut self, terms: &[ExprId]) -> Expr {
+    /// Build balanced Add tree iteratively: [a,b,c,d] -> Add(Add(a,b), Add(c,d))
+    fn build_balanced_add(&mut self, terms: &[ExprId]) -> Expr {
         match terms.len() {
             0 => panic!("Cannot build Add from empty terms"),
             1 => return self.get(terms[0]).clone(),
             2 => Expr::Add(terms[0], terms[1]),
             _ => {
-                // Build from right: a + (b + (c + d))
-                let rest = self.build_right_assoc_add(&terms[1..]);
-                let rest_id = self.add_raw(rest);
-                Expr::Add(terms[0], rest_id)
+                // Build pairs bottom-up iteratively
+                let mut current: Vec<ExprId> = terms.to_vec();
+                while current.len() > 2 {
+                    let mut next = Vec::with_capacity((current.len() + 1) / 2);
+                    let mut i = 0;
+                    while i < current.len() {
+                        if i + 1 < current.len() {
+                            let pair = Expr::Add(current[i], current[i + 1]);
+                            next.push(self.add_raw(pair));
+                            i += 2;
+                        } else {
+                            next.push(current[i]);
+                            i += 1;
+                        }
+                    }
+                    current = next;
+                }
+                if current.len() == 2 {
+                    Expr::Add(current[0], current[1])
+                } else {
+                    self.get(current[0]).clone()
+                }
             }
         }
+    }
+
+    /// Collect all multiplicative factors by flattening nested Mul (iterative)
+    fn collect_mul_factors(&self, id: ExprId, factors: &mut Vec<ExprId>) {
+        let mut stack = vec![id];
+        while let Some(current) = stack.pop() {
+            match self.get(current) {
+                Expr::Mul(l, r) => {
+                    // Push right first so left is processed first (maintains order)
+                    stack.push(*r);
+                    stack.push(*l);
+                }
+                _ => factors.push(current),
+            }
+        }
+    }
+
+    /// Build balanced Mul tree iteratively: [a,b,c,d] -> Mul(Mul(a,b), Mul(c,d))
+    fn build_balanced_mul(&mut self, factors: &[ExprId]) -> Expr {
+        match factors.len() {
+            0 => panic!("Cannot build Mul from empty factors"),
+            1 => return self.get(factors[0]).clone(),
+            2 => Expr::Mul(factors[0], factors[1]),
+            _ => {
+                // Build pairs bottom-up iteratively
+                let mut current: Vec<ExprId> = factors.to_vec();
+                while current.len() > 2 {
+                    let mut next = Vec::with_capacity((current.len() + 1) / 2);
+                    let mut i = 0;
+                    while i < current.len() {
+                        if i + 1 < current.len() {
+                            let pair = Expr::Mul(current[i], current[i + 1]);
+                            next.push(self.add_raw(pair));
+                            i += 2;
+                        } else {
+                            next.push(current[i]);
+                            i += 1;
+                        }
+                    }
+                    current = next;
+                }
+                if current.len() == 2 {
+                    Expr::Mul(current[0], current[1])
+                } else {
+                    self.get(current[0]).clone()
+                }
+            }
+        }
+    }
+
+    /// Check if an expression contains a Matrix anywhere in its tree (iterative)
+    fn contains_matrix(&self, id: ExprId) -> bool {
+        let mut stack = vec![id];
+        while let Some(current) = stack.pop() {
+            match self.get(current) {
+                Expr::Matrix { .. } => return true,
+                Expr::Mul(l, r)
+                | Expr::Add(l, r)
+                | Expr::Sub(l, r)
+                | Expr::Div(l, r)
+                | Expr::Pow(l, r) => {
+                    stack.push(*l);
+                    stack.push(*r);
+                }
+                Expr::Neg(inner) => stack.push(*inner),
+                Expr::Function(_, args) => stack.extend(args.iter().copied()),
+                _ => {}
+            }
+        }
+        false
     }
 
     pub fn get(&self, id: ExprId) -> &Expr {

@@ -76,6 +76,30 @@ fn is_atan(name: &str) -> bool {
     name == "atan" || name == "arctan"
 }
 
+/// Check if any reciprocal atan pairs exist in the list of terms
+/// This helps Machin rule avoid combining terms when reciprocal pairs should be matched first
+fn has_reciprocal_atan_pair(ctx: &Context, terms: &[ExprId]) -> bool {
+    // Collect all atan arguments
+    let mut atan_args: Vec<ExprId> = Vec::new();
+    for &term in terms {
+        if let Expr::Function(name, args) = ctx.get(term) {
+            if is_atan(name) && args.len() == 1 {
+                atan_args.push(args[0]);
+            }
+        }
+    }
+
+    // Check if any pair are reciprocals
+    for i in 0..atan_args.len() {
+        for j in (i + 1)..atan_args.len() {
+            if are_reciprocals(ctx, atan_args[i], atan_args[j]) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Build sum of all terms except indices i and j
 /// Returns None if no terms remain, Some(expr) otherwise
 fn build_sum_without(
@@ -107,24 +131,25 @@ fn build_sum_without(
 }
 
 /// Collect all additive terms from an expression (flattens Add tree)
-/// For example: ((a + b) + c) → [a, b, c]
+/// For example: Add(Add(a, b), Add(c, d)) → [a, b, c, d]
+/// Uses iterative stack-based traversal to work with any tree structure (balanced or right-assoc)
 fn collect_add_terms_flat(ctx: &Context, expr_id: ExprId) -> Vec<ExprId> {
     let mut terms = Vec::new();
-    collect_add_terms_recursive(ctx, expr_id, &mut terms);
-    terms
-}
+    let mut stack = vec![expr_id];
 
-/// Recursively collect additive terms
-fn collect_add_terms_recursive(ctx: &Context, expr_id: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr_id) {
-        Expr::Add(l, r) => {
-            collect_add_terms_recursive(ctx, *l, terms);
-            collect_add_terms_recursive(ctx, *r, terms);
-        }
-        _ => {
-            terms.push(expr_id);
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Add(l, r) => {
+                // Push right first so left is processed first (maintains left-to-right order)
+                stack.push(*r);
+                stack.push(*l);
+            }
+            _ => {
+                terms.push(current);
+            }
         }
     }
+    terms
 }
 
 /// Combine optional base with new term
@@ -416,11 +441,33 @@ define_rule!(
 
 // Rule 3: arctan(x) + arctan(1/x) = π/2 (for x > 0)
 // Enhanced to search across all additive terms (n-ary matching)
-define_rule!(
-    InverseTrigAtanRule,
-    "Inverse Tan Relations",
-    Some(vec!["Add"]),
-    |ctx, expr| {
+// Only applies at root Add level (when parent is NOT Add) to ensure all pairs are visible
+pub struct InverseTrigAtanRule;
+
+impl crate::rule::Rule for InverseTrigAtanRule {
+    fn name(&self) -> &str {
+        "Inverse Tan Relations"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        // Only match on Add expressions
+        if !matches!(ctx.get(expr), Expr::Add(_, _)) {
+            return None;
+        }
+
+        // GUARD: Skip if this Add is inside another Add (sub-sum)
+        // This ensures we only process at the root Add level where we can see ALL terms
+        if let Some(parent_id) = parent_ctx.immediate_parent() {
+            if matches!(ctx.get(parent_id), Expr::Add(_, _)) {
+                return None;
+            }
+        }
+
         // Collect all additive terms (flattens nested Add nodes)
         let terms = collect_add_terms_flat(ctx, expr);
 
@@ -477,7 +524,15 @@ define_rule!(
 
         None
     }
-);
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Add"])
+    }
+
+    fn priority(&self) -> i32 {
+        10 // Higher priority than Machin rule (-10) to run first
+    }
+}
 
 // Rule: arctan(a) + arctan(b) = arctan((a+b)/(1-a*b)) when a,b are rational and 1-a*b > 0
 // This is Machin's identity (simplified form) - enables atan(1/2)+atan(1/3) = π/4
@@ -512,6 +567,12 @@ impl crate::rule::Rule for AtanAddRationalRule {
 
         // Need at least 2 terms
         if terms.len() < 2 {
+            return None;
+        }
+
+        // GUARD: Skip if ANY reciprocal pairs exist in the sum
+        // Let InverseTrigAtanRule handle those first
+        if has_reciprocal_atan_pair(ctx, &terms) {
             return None;
         }
 
@@ -587,6 +648,10 @@ impl crate::rule::Rule for AtanAddRationalRule {
 
     fn target_types(&self) -> Option<Vec<&str>> {
         Some(vec!["Add"])
+    }
+
+    fn priority(&self) -> i32 {
+        -10 // Lower priority than reciprocal pair detection (InverseTrigAtanRule)
     }
 }
 

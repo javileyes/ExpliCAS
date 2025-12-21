@@ -31,6 +31,8 @@ pub type Term = (BigRational, Monomial);
 pub struct PolyBudget {
     pub max_terms: usize,
     pub max_total_degree: u32,
+    /// Maximum exponent for Pow(sum, n) conversion. Prevents expensive expansions.
+    pub max_pow_exp: u32,
 }
 
 impl Default for PolyBudget {
@@ -38,6 +40,7 @@ impl Default for PolyBudget {
         Self {
             max_terms: 200,
             max_total_degree: 32,
+            max_pow_exp: 2, // Conservative: only expand x^0, x^1, x^2 during GCD
         }
     }
 }
@@ -1676,14 +1679,23 @@ fn from_expr_recursive(
         }
 
         Expr::Pow(base, exp) => {
-            let pb = from_expr_recursive(ctx, *base, vars, budget)?;
             // Exponent must be non-negative integer constant
             if let Expr::Number(n) = ctx.get(*exp) {
                 if n.is_integer() && *n >= BigRational::zero() {
-                    let e = n
+                    let e: u32 = n
                         .to_integer()
                         .try_into()
                         .map_err(|_| PolyError::BadExponent)?;
+
+                    // Check if exponent exceeds budget for Pow(sum, n) expansion
+                    // Only apply budget check if base is a sum (Add) - constants/vars are cheap
+                    if e > budget.max_pow_exp {
+                        if matches!(ctx.get(*base), Expr::Add(_, _)) {
+                            return Err(PolyError::BudgetExceeded);
+                        }
+                    }
+
+                    let pb = from_expr_recursive(ctx, *base, vars, budget)?;
                     return pow_poly(&pb, e, budget);
                 }
             }
