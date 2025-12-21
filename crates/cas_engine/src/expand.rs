@@ -10,12 +10,10 @@ use num_traits::{Signed, ToPrimitive};
 /// This is the main entry point for expansion.
 /// It recursively expands children and then applies specific expansion rules.
 pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
-    // CRITICAL: Skip expansion for canonical (elegant) forms
-    // e.g., ((x+1)*(x-1))^2 should stay as is, not be expanded
-    // This protects against expand-then-factor cycles at the architectural level
-    if crate::canonical_forms::is_canonical_form(ctx, expr) {
-        return expr;
-    }
+    // NOTE: We previously protected "canonical forms" (like (x+y)*(x-y)) from expansion,
+    // but this was causing incomplete expansion when user explicitly calls expand().
+    // If user calls expand(), they want FULL expansion. Canonical preservation should
+    // only be applied in simplify(), not expand().
 
     // 1. Expand children first (bottom-up)
     // Actually, for expansion, sometimes top-down is better?
