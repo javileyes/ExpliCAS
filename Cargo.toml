@@ -7,6 +7,10 @@ members = [
     "crates/cas_cli",
 ]
 resolver = "2"
+
 [workspace.package]
+edition = "2021"
+rust-version = "1.88"
 license = "MIT"
 authors = ["Javier Gimenez Moya"]
+
