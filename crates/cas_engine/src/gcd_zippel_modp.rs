@@ -31,6 +31,61 @@ pub struct ZippelBudget {
     pub forced_main_var: Option<usize>,
 }
 
+/// Preset configurations for Zippel GCD
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZippelPreset {
+    /// Conservative settings: more points, more verification (reliable)
+    Safe,
+    /// Balanced settings: fewer points, less verification (faster)
+    Aggressive,
+    /// Tuned for mm_gcd benchmark: minimal points for deg 7, fast verify
+    MmGcd,
+}
+
+impl ZippelPreset {
+    /// Parse preset from string (case-insensitive)
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "safe" => Some(Self::Safe),
+            "aggressive" | "fast" => Some(Self::Aggressive),
+            "mm_gcd" | "mmgcd" | "mm" => Some(Self::MmGcd),
+            _ => None,
+        }
+    }
+}
+
+impl ZippelBudget {
+    /// Create budget from preset
+    pub fn for_preset(preset: ZippelPreset) -> Self {
+        match preset {
+            ZippelPreset::Safe => Self {
+                max_points_per_var: 16,
+                max_retries: 32,
+                verify_trials: 6,
+                forced_main_var: None,
+            },
+            ZippelPreset::Aggressive => Self {
+                max_points_per_var: 10,
+                max_retries: 16,
+                verify_trials: 4,
+                forced_main_var: None,
+            },
+            ZippelPreset::MmGcd => Self {
+                max_points_per_var: 8,
+                max_retries: 8,
+                verify_trials: 3,
+                forced_main_var: None,
+            },
+        }
+    }
+
+    /// Apply forced main variable to this budget
+    pub fn with_main_var(mut self, main_var: Option<usize>) -> Self {
+        self.forced_main_var = main_var;
+        self
+    }
+}
+
 /// Check if debug tracing is enabled (via CAS_ZIPPEL_TRACE env var)
 #[inline]
 fn is_trace_enabled() -> bool {
@@ -39,23 +94,14 @@ fn is_trace_enabled() -> bool {
 
 impl Default for ZippelBudget {
     fn default() -> Self {
-        Self {
-            max_points_per_var: 16,
-            max_retries: 8,
-            verify_trials: 6,
-            forced_main_var: None,
-        }
+        Self::for_preset(ZippelPreset::Safe)
     }
 }
 
 /// Tuned budget for mm_gcd benchmark (7 variables, degree 7)
+/// Prefer using ZippelBudget::for_preset(ZippelPreset::MmGcd) instead.
 pub fn budget_for_mm_gcd() -> ZippelBudget {
-    ZippelBudget {
-        max_points_per_var: 8, // deg 7 needs exactly 8 points
-        max_retries: 8,        // Log shows 0 skips, so 8 is enough
-        verify_trials: 3,      // Fast verification for benchmark
-        forced_main_var: None, // Benchmark forces main_var externally
-    }
+    ZippelBudget::for_preset(ZippelPreset::MmGcd)
 }
 
 /// Seed points for evaluation - extended list avoiding 0 and 1
@@ -210,10 +256,10 @@ fn gcd_zippel_rec(
         if active_vars.contains(&main) {
             main
         } else {
-            choose_eval_var(p, q, active_vars)
+            choose_eval_var(p, q, active_vars, budget, depth)
         }
     } else {
-        choose_eval_var(p, q, active_vars)
+        choose_eval_var(p, q, active_vars, budget, depth)
     };
 
     // Reduced active vars (without eval_var)
@@ -546,17 +592,115 @@ fn collect_samples_parallel(
 }
 
 // =============================================================================
-// Variable selection
+// Variable selection with smart scoring
 // =============================================================================
 
-/// Choose which variable to evaluate next.
-/// Strategy: pick the one with smallest min(deg_p, deg_q) to minimize interpolation points.
-fn choose_eval_var(p: &MultiPolyModP, q: &MultiPolyModP, active_vars: &[usize]) -> usize {
-    active_vars
+/// Metrics for evaluating variable selection quality
+#[derive(Debug, Clone)]
+struct VarMetrics {
+    v: usize,
+    deg_min: u32,      // min(deg_p, deg_q) in v
+    points: u32,       // deg_min + 1 (interpolation points needed)
+    lead_support: u32, // min(leading terms in p, leading terms in q)
+    bucket_cost: u64,  // sum of squared bucket sizes (approximates coef complexity)
+}
+
+/// Compute bucket cost for a polynomial on variable v.
+/// This measures how "expensive" it will be to work with univar coefficients.
+/// Lower is better: sparse univariates have lower bucket_cost.
+fn bucket_cost(poly: &MultiPolyModP, v: usize) -> u64 {
+    let deg = poly.degree_in(v) as usize;
+    if deg == 0 {
+        return 1; // Constant in this variable
+    }
+
+    // Count terms per degree bucket
+    let mut counts = vec![0u32; deg + 1];
+    for (mono, _) in &poly.terms {
+        let d = mono.deg_var(v) as usize;
+        if d <= deg {
+            counts[d] += 1;
+        }
+    }
+
+    // Sum of squared counts (penalizes dense buckets)
+    counts.iter().map(|&c| (c as u64) * (c as u64)).sum()
+}
+
+/// Count terms at leading degree for variable v.
+/// Higher is better: more leading support means less likely degree drop.
+fn leading_support(poly: &MultiPolyModP, v: usize) -> u32 {
+    let lead_deg = poly.degree_in(v);
+    if lead_deg == 0 {
+        return poly.num_terms() as u32;
+    }
+
+    poly.terms
+        .iter()
+        .filter(|(mono, _)| mono.deg_var(v) == lead_deg)
+        .count() as u32
+}
+
+/// Choose which variable to evaluate next using smart scoring.
+///
+/// Scoring criteria (in order of priority):
+/// 1. Minimize points needed (deg_min + 1)
+/// 2. Maximize leading support (reduce degree drop risk)
+/// 3. Minimize bucket cost (simpler univar coefficients)
+/// 4. Tie-break by variable index (determinism)
+fn choose_eval_var(
+    p: &MultiPolyModP,
+    q: &MultiPolyModP,
+    active_vars: &[usize],
+    budget: &ZippelBudget,
+    depth: usize,
+) -> usize {
+    use std::cmp::Reverse;
+
+    let metrics: Vec<VarMetrics> = active_vars
         .iter()
         .copied()
-        .min_by_key(|&v| p.degree_in(v).min(q.degree_in(v)))
-        .unwrap_or(active_vars[0])
+        .map(|v| {
+            let deg_p = p.degree_in(v) as u32;
+            let deg_q = q.degree_in(v) as u32;
+            let deg_min = deg_p.min(deg_q);
+            let points = (deg_min + 1).min(budget.max_points_per_var as u32);
+            let lead_sup = leading_support(p, v).min(leading_support(q, v));
+            let bc = bucket_cost(p, v) + bucket_cost(q, v);
+
+            VarMetrics {
+                v,
+                deg_min,
+                points,
+                lead_support: lead_sup,
+                bucket_cost: bc,
+            }
+        })
+        .collect();
+
+    // Log metrics at depth 0 only (for debugging)
+    if is_trace_enabled() && depth == 0 && !metrics.is_empty() {
+        eprintln!("[Zippel] Variable scoring (depth={}):", depth);
+        for m in &metrics {
+            eprintln!(
+                "  var={}: points={}, lead_support={}, bucket_cost={}",
+                m.v, m.points, m.lead_support, m.bucket_cost
+            );
+        }
+    }
+
+    // Sort by: (points ASC, lead_support DESC, bucket_cost ASC, v ASC)
+    let best = metrics
+        .iter()
+        .min_by_key(|m| (m.points, Reverse(m.lead_support), m.bucket_cost, m.v))
+        .map(|m| m.v)
+        .unwrap_or(active_vars[0]);
+
+    if is_trace_enabled() && depth == 0 {
+        eprintln!("[Zippel] Chose main_var={}", best);
+    }
+
+    best
 }
 
 // =============================================================================

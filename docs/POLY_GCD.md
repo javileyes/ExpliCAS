@@ -198,10 +198,83 @@ If limits exceeded, returns `1` with a warning.
 
 ---
 
+# Polynomial GCD Modular (Fast Verification)
+
+The `poly_gcd_modp` function computes GCD using the **Zippel sparse modular algorithm** (mod 10⁹+7). Much faster than exact methods for large polynomials.
+
+## Usage
+
+```txt
+poly_gcd_modp(a, b [, main_var] [, preset])
+pgcdp(a, b [, main_var] [, preset])    # alias
+```
+
+## Arguments
+
+| Arg | Type | Description |
+|-----|------|-------------|
+| `a, b` | expr | Polynomial expressions |
+| `main_var` | int (0-7) | Optional: force main variable selection |
+| `preset` | string | Optional: budget preset name |
+
+## Presets
+
+| Name | Points | Retries | Verify | Use case |
+|------|--------|---------|--------|----------|
+| `mm_gcd` / `mm` | 8 | 8 | 3 | Benchmark tuned **(default)** |
+| `aggressive` / `fast` | 10 | 16 | 4 | General fast |
+| `safe` | 16 | 32 | 6 | Maximum reliability |
+
+## Examples
+
+```txt
+# Basic usage (mm_gcd preset by default)
+poly_gcd_modp(a*g, b*g)
+
+# Force main variable
+poly_gcd_modp(a*g, b*g, 6)
+
+# Explicit preset
+poly_gcd_modp(a*g, b*g, mm_gcd)
+poly_gcd_modp(a*g, b*g, safe)
+
+# Both main_var and preset
+poly_gcd_modp(a*g, b*g, 6, mm_gcd)
+
+# Verification pattern
+poly_eq_modp(poly_gcd_modp(a*g, b*g), g)  # → 1 if equal
+```
+
+## Debugging
+
+Set `CAS_ZIPPEL_TRACE=1` to see variable scoring and algorithm progress:
+
+```bash
+CAS_ZIPPEL_TRACE=1 cargo run -p cas_cli --release
+```
+
+## When to Use
+
+| Scenario | Function | Why |
+|----------|----------|-----|
+| Production simplification | `poly_gcd_exact` | Guaranteed correct |
+| Performance tests | `poly_gcd_modp` | 45× faster |
+| Quick equality check | `poly_eq_modp` | Fastest |
+| Large polys (7+ vars) | `poly_gcd_modp(…, mm_gcd)` | Optimized |
+
+## Correctness
+
+**Probabilistic**: Works for almost all inputs, but may differ from exact GCD in pathological cases (bad primes, degree drops). Use `poly_gcd_exact` when correctness is critical.
+
+---
+
 ## Implementation Files
 
 - `crates/cas_engine/src/rules/algebra/poly_gcd.rs` - Structural GCD rule
 - `crates/cas_engine/src/rules/algebra/gcd_exact.rs` - Algebraic GCD rule
+- `crates/cas_engine/src/rules/algebra/gcd_modp.rs` - Modular GCD rule
+- `crates/cas_engine/src/gcd_zippel_modp.rs` - Zippel algorithm + presets
 - `crates/cas_engine/src/multipoly.rs` - MultiPoly representation and Layer 1/2/2.5
 - `crates/cas_engine/src/rules/polynomial.rs` - `AnnihilationRule` and `BinomialExpansionRule`
 - `crates/cas_engine/src/parent_context.rs` - `expand_mode` context for rules
+

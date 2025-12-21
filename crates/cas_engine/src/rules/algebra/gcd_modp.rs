@@ -2,7 +2,7 @@
 //!
 //! Exposes Zippel mod-p GCD to REPL for fast polynomial verification.
 
-use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget};
+use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use crate::phase::PhaseMask;
 use crate::poly_modp_conv::{
     expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable, DEFAULT_PRIME,
@@ -42,18 +42,29 @@ impl Rule for PolyGcdModpRule {
         if let Expr::Function(name, args) = fn_expr {
             let is_gcd_modp = name == "poly_gcd_modp" || name == "pgcdp";
 
-            if is_gcd_modp && (args.len() == 2 || args.len() == 3) {
+            if is_gcd_modp && args.len() >= 2 && args.len() <= 4 {
                 let a = args[0];
                 let b = args[1];
 
-                // Third argument (if present) is main_var (integer 0-7)
-                let main_var = if args.len() == 3 {
-                    extract_usize(ctx, args[2])
-                } else {
-                    None
-                };
+                // Parse remaining args: main_var (usize) and/or preset (string)
+                let mut main_var: Option<usize> = None;
+                let mut preset_str: Option<String> = None;
 
-                match compute_gcd_modp(ctx, a, b, DEFAULT_PRIME, main_var) {
+                for i in 2..args.len() {
+                    // Try to extract as usize (small number = main_var)
+                    if let Some(v) = extract_usize(ctx, args[i]) {
+                        if v <= 64 {
+                            main_var = Some(v);
+                            continue;
+                        }
+                    }
+                    // Try to extract as string (preset name)
+                    if let Some(s) = extract_string(ctx, args[i]) {
+                        preset_str = Some(s);
+                    }
+                }
+
+                match compute_gcd_modp(ctx, a, b, DEFAULT_PRIME, main_var, preset_str.as_deref()) {
                     Ok(gcd_expr) => {
                         // Wrap in __hold to prevent further simplification
                         let held = ctx.add(Expr::Function("__hold".to_string(), vec![gcd_expr]));
@@ -181,6 +192,15 @@ fn extract_usize(ctx: &Context, expr: ExprId) -> Option<usize> {
     None
 }
 
+/// Extract string from expression (Variable as string literal)
+fn extract_string(ctx: &Context, expr: ExprId) -> Option<String> {
+    // Check for Variable (used as string literal, e.g., "mm_gcd")
+    if let Expr::Variable(s) = ctx.get(expr) {
+        return Some(s.clone());
+    }
+    None
+}
+
 /// Compute GCD mod p and return as Expr
 fn compute_gcd_modp(
     ctx: &mut Context,
@@ -188,6 +208,7 @@ fn compute_gcd_modp(
     b: ExprId,
     p: u64,
     main_var: Option<usize>,
+    preset_str: Option<&str>,
 ) -> Result<ExprId, PolyConvError> {
     use std::time::Instant;
 
@@ -212,12 +233,12 @@ fn compute_gcd_modp(
         poly_b.num_terms()
     );
 
-    // Compute GCD using Zippel (use mm_gcd budget for performance)
-    use crate::gcd_zippel_modp::budget_for_mm_gcd;
-    let zippel_budget = ZippelBudget {
-        forced_main_var: main_var,
-        ..budget_for_mm_gcd() // Use optimized budget: max_points=8, verify=3
-    };
+    // Compute GCD using Zippel
+    // Select budget based on preset (default to MmGcd for performance, use Safe if unknown)
+    let preset = preset_str
+        .and_then(ZippelPreset::from_str)
+        .unwrap_or(ZippelPreset::MmGcd); // Default to MmGcd for performance
+    let zippel_budget = ZippelBudget::for_preset(preset).with_main_var(main_var);
     let gcd_opt = gcd_zippel_modp(&poly_a, &poly_b, &zippel_budget);
     let t3 = Instant::now();
     eprintln!("[poly_gcd_modp] Zippel GCD: {:?}", t3 - t2);
