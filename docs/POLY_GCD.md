@@ -106,9 +106,56 @@ Result: ...                # GCD computed mod p
 
 ---
 
+# Using expand() with poly_gcd
+
+When verifying polynomial identities with large polynomials, use `expand()` inside `poly_gcd`:
+
+```txt
+cas> let g = (1 + 3*x1 + 5*x2 + 7*x3 + 9*x4 + 11*x5 + 13*x6 + 15*x7)^7 + 3
+cas> let a = (1 + x1)^3 - 1
+cas> let b = (1 + x2)^4 + 1
+cas> poly_gcd(expand(a*g), expand(b*g), modp) - expand(g)
+Result: 0
+```
+
+**How it works:**
+1. `expand(...)` returns `__hold(polynomial)` to prevent simplifier explosion
+2. `pre_evaluate_for_gcd()` evaluates `expand()` before passing to GCD algorithms
+3. `PolySubModpRule` handles `__hold(P) - __hold(Q)` in polynomial domain
+
+---
+
+# Polynomial Arithmetic on __hold
+
+The engine automatically handles arithmetic between `__hold`-wrapped polynomials:
+
+```txt
+__hold(P) - __hold(Q) → 0    (if equal mod p, up to scalar)
+```
+
+This enables verification patterns like:
+
+```txt
+cas> poly_gcd(expand(a*g), expand(b*g), modp) - expand(g)
+Result: 0   # GCD matches g
+```
+
+**Key features:**
+- Only activates when at least one operand is `__hold` (doesn't affect normal arithmetic)
+- Normalizes polynomials to monic form before comparison
+- Computes in `MultiPolyModP` domain (fast, mod-p arithmetic)
+
+---
+
 ## Implementation Files
 
-- `crates/cas_engine/src/rules/algebra/poly_gcd.rs` - Unified rule + structural
-- `crates/cas_engine/src/rules/algebra/gcd_exact.rs` - Exact GCD over ℚ
-- `crates/cas_engine/src/rules/algebra/gcd_modp.rs` - Modular GCD (Zippel)
-- `crates/cas_engine/src/gcd_zippel_modp.rs` - Zippel algorithm + presets
+| File | Description |
+|------|-------------|
+| `rules/algebra/poly_gcd.rs` | Unified `poly_gcd` rule + structural algorithm |
+| `rules/algebra/gcd_exact.rs` | Exact GCD over ℚ |
+| `rules/algebra/gcd_modp.rs` | Modular GCD (Zippel) |
+| `rules/algebra/poly_arith_modp.rs` | `PolySubModpRule` for __hold arithmetic |
+| `gcd_zippel_modp.rs` | Zippel algorithm + ZippelPreset |
+| `poly_modp_conv.rs` | Expr ↔ MultiPolyModP conversion |
+| `expand.rs` | Full polynomial expansion |
+
