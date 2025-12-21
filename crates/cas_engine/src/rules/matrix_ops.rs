@@ -32,9 +32,10 @@ impl SimpleRule for MatrixAddRule {
                             "Matrix addition: {}×{} + {}×{}",
                             m1.rows, m1.cols, m2.rows, m2.cols
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -70,9 +71,10 @@ impl SimpleRule for MatrixSubRule {
                             "Matrix subtraction: {}×{} - {}×{}",
                             m1.rows, m1.cols, m2.rows, m2.cols
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -107,9 +109,10 @@ impl SimpleRule for ScalarMatrixRule {
                         "Scalar multiplication: scalar × {}×{} matrix",
                         matrix.rows, matrix.cols
                     ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
             }
 
             // Try matrix * scalar
@@ -122,9 +125,10 @@ impl SimpleRule for ScalarMatrixRule {
                         "Scalar multiplication: {}×{} matrix × scalar",
                         matrix.rows, matrix.cols
                     ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
             }
         }
         None
@@ -163,9 +167,10 @@ impl SimpleRule for MatrixMultiplyRule {
                             "Matrix multiplication: {}×{} × {}×{} = {}×{}",
                             m1.rows, m1.cols, m2.rows, m2.cols, result.rows, result.cols
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -201,9 +206,10 @@ impl SimpleRule for MatrixFunctionRule {
                                         "det({}×{} matrix)",
                                         matrix.rows, matrix.cols
                                     ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                                    before_local: None,
+                                    after_local: None,
+                                    domain_assumption: None,
+                                });
                             }
                         }
                     }
@@ -218,9 +224,10 @@ impl SimpleRule for MatrixFunctionRule {
                                     "transpose({}×{}) = {}×{}",
                                     matrix.rows, matrix.cols, transposed.rows, transposed.cols
                                 ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
                         }
                     }
                 }
@@ -234,9 +241,10 @@ impl SimpleRule for MatrixFunctionRule {
                                         "trace({}×{} matrix)",
                                         matrix.rows, matrix.cols
                                     ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                                    before_local: None,
+                                    after_local: None,
+                                    domain_assumption: None,
+                                });
                             }
                         }
                     }
@@ -267,8 +275,8 @@ mod tests {
         let n7 = ctx.num(7);
         let n8 = ctx.num(8);
 
-        let m1 = ctx.matrix(2, 2, vec![n1, n2, n3, n4]);
-        let m2 = ctx.matrix(2, 2, vec![n5, n6, n7, n8]);
+        let m1 = ctx.matrix(2, 2, vec![n1, n2, n3, n4]).unwrap();
+        let m2 = ctx.matrix(2, 2, vec![n5, n6, n7, n8]).unwrap();
         let add_expr = ctx.add(Expr::Add(m1, m2));
 
         let result = rule.apply_simple(&mut ctx, add_expr);
@@ -287,7 +295,7 @@ mod tests {
         let n3 = ctx.num(3);
         let n4 = ctx.num(4);
 
-        let matrix = ctx.matrix(2, 2, vec![n1, n2, n3, n4]);
+        let matrix = ctx.matrix(2, 2, vec![n1, n2, n3, n4]).unwrap();
         let mul_expr = ctx.add(Expr::Mul(scalar, matrix));
 
         let result = rule.apply_simple(&mut ctx, mul_expr);
@@ -309,8 +317,8 @@ mod tests {
         let n7 = ctx.num(7);
         let n8 = ctx.num(8);
 
-        let m1 = ctx.matrix(2, 2, vec![n1, n2, n3, n4]);
-        let m2 = ctx.matrix(2, 2, vec![n5, n6, n7, n8]);
+        let m1 = ctx.matrix(2, 2, vec![n1, n2, n3, n4]).unwrap();
+        let m2 = ctx.matrix(2, 2, vec![n5, n6, n7, n8]).unwrap();
         let mul_expr = ctx.add(Expr::Mul(m1, m2));
 
         let result = rule.apply_simple(&mut ctx, mul_expr);
@@ -359,9 +367,10 @@ impl SimpleRule for TransposeProductRule {
                         return Some(Rewrite {
                             new_expr: result,
                             description: "(AB)^T = B^T·A^T".to_string(),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
                     }
                 }
             }

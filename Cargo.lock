@@ -121,6 +121,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "regex",
+ "thiserror",
 ]
 
 [[package]]

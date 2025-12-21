@@ -357,15 +357,16 @@ fn gcd_zippel_rec(
     // Interpolate in eval_var
     let result = lagrange_interpolate_poly(eval_var, &samples, p_mod, num_vars);
 
-    if is_trace_enabled() && result.is_some() {
-        let r = result.as_ref().unwrap();
-        eprintln!(
-            "{}[depth={}] Interpolated: {} terms, degree {}",
-            indent,
-            depth,
-            r.num_terms(),
-            r.total_degree()
-        );
+    if is_trace_enabled() {
+        if let Some(ref r) = result {
+            eprintln!(
+                "{}[depth={}] Interpolated: {} terms, degree {}",
+                indent,
+                depth,
+                r.num_terms(),
+                r.total_degree()
+            );
+        }
     }
 
     result

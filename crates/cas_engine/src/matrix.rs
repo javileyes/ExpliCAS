@@ -28,6 +28,7 @@ impl Matrix {
     /// Convert Matrix back to Expr::Matrix
     pub fn to_expr(&self, ctx: &mut Context) -> ExprId {
         ctx.matrix(self.rows, self.cols, self.data.clone())
+            .expect("matrix dimensions should be valid from Matrix struct")
     }
 
     /// Check if dimensions match for addition

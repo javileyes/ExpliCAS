@@ -154,6 +154,7 @@ impl ParseNode {
                 }
 
                 ctx.matrix(num_rows, num_cols, data)
+                    .expect("matrix dimensions should match parsed structure")
             }
             ParseNode::SessionRef(id) => ctx.add(Expr::SessionRef(id)),
         }

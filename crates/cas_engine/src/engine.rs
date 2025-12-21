@@ -111,6 +111,7 @@ pub fn strip_all_holds(ctx: &mut Context, expr: ExprId) -> ExprId {
                 expr
             } else {
                 ctx.matrix(rows, cols, new_data)
+                    .expect("matrix dimensions unchanged from original")
             }
         }
     }

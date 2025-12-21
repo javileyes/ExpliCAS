@@ -37,9 +37,10 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -59,9 +60,10 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -81,9 +83,10 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -99,9 +102,10 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[0]
                             }
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -117,9 +121,10 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[0]
                             }
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -139,9 +144,10 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -161,9 +167,10 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                                 id: args[1]
                             }
                         ),
-                before_local: None,
-                after_local: None, domain_assumption: None,
-            });
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
                 }
             }
         }
@@ -563,8 +570,10 @@ fn verbose_poly_gcd(
             }
         ));
 
-        // División
-        let (_, r) = a.div_rem(&b);
+        // División (b is non-zero from while condition)
+        let (_, r) = a
+            .div_rem(&b)
+            .expect("div_rem should not fail: b is non-zero");
 
         steps.push("Dividimos A entre B.".to_string());
         if r.is_zero() {

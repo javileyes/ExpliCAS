@@ -283,7 +283,8 @@ fn factorial_table(n: u32) -> Vec<BigInt> {
     let mut fact = Vec::with_capacity((n + 1) as usize);
     fact.push(BigInt::one());
     for i in 1..=n {
-        let prev = fact.last().unwrap().clone();
+        // INVARIANT: fact is never empty (initialized with fact.push(BigInt::one()))
+        let prev = fact.last().expect("factorial table is never empty").clone();
         fact.push(prev * BigInt::from(i));
     }
     fact
@@ -303,7 +304,8 @@ fn pow_table_rational(c: &BigRational, n: u32) -> Vec<BigRational> {
     let mut table = Vec::with_capacity((n + 1) as usize);
     table.push(BigRational::one());
     for _ in 1..=n {
-        let prev = table.last().unwrap().clone();
+        // INVARIANT: table is never empty (initialized with table.push(BigRational::one()))
+        let prev = table.last().expect("power table is never empty").clone();
         table.push(prev * c);
     }
     table
@@ -366,7 +368,10 @@ fn emit_polynomial_from_terms(
         exprs = next;
     }
 
-    exprs.pop().unwrap()
+    // INVARIANT: loop reduces exprs until exactly 1 element remains
+    exprs
+        .pop()
+        .expect("balanced tree reduction leaves exactly 1 element")
 }
 
 /// Emit a single term: coeff * x1^e1 * x2^e2 * ...
@@ -423,7 +428,10 @@ fn build_balanced_mul(ctx: &mut Context, mut factors: Vec<ExprId>) -> ExprId {
         }
         factors = next;
     }
-    factors.pop().unwrap()
+    // INVARIANT: loop reduces factors until exactly 1 element remains
+    factors
+        .pop()
+        .expect("balanced tree reduction leaves exactly 1 element")
 }
 
 #[cfg(test)]

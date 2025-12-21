@@ -319,18 +319,25 @@ impl Context {
 
     // Matrix helpers
 
-    /// Create a matrix with given dimensions and data
-    /// Panics if data.len() != rows * cols
-    pub fn matrix(&mut self, rows: usize, cols: usize, data: Vec<ExprId>) -> ExprId {
-        assert_eq!(
-            data.len(),
-            rows * cols,
-            "Matrix data length {} does not match dimensions {}x{}",
-            data.len(),
-            rows,
-            cols
-        );
-        self.add(Expr::Matrix { rows, cols, data })
+    /// Create a matrix with given dimensions and data.
+    /// Returns Err if data.len() != rows * cols.
+    pub fn matrix(
+        &mut self,
+        rows: usize,
+        cols: usize,
+        data: Vec<ExprId>,
+    ) -> Result<ExprId, crate::error::AstError> {
+        if data.len() != rows * cols {
+            return Err(crate::error::AstError::InvalidMatrix {
+                reason: format!(
+                    "data length {} does not match dimensions {}x{}",
+                    data.len(),
+                    rows,
+                    cols
+                ),
+            });
+        }
+        Ok(self.add(Expr::Matrix { rows, cols, data }))
     }
 
     /// Get element at (row, col) from a matrix (0-indexed)

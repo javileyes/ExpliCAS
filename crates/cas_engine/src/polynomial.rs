@@ -243,14 +243,14 @@ impl Polynomial {
         Polynomial::new(new_coeffs, self.var.clone())
     }
 
-    // Returns (quotient, remainder)
-    pub fn div_rem(&self, divisor: &Self) -> (Self, Self) {
+    // Returns (quotient, remainder) or error if divisor is zero
+    pub fn div_rem(&self, divisor: &Self) -> Result<(Self, Self), crate::error::CasError> {
         if divisor.is_zero() {
-            panic!("Division by zero polynomial");
+            return Err(crate::error::CasError::DivisionByZero);
         }
 
         if self.degree() < divisor.degree() {
-            return (Polynomial::zero(self.var.clone()), self.clone());
+            return Ok((Polynomial::zero(self.var.clone()), self.clone()));
         }
 
         let mut quotient = Polynomial::zero(self.var.clone());
@@ -272,7 +272,7 @@ impl Polynomial {
             remainder = remainder.sub(&to_subtract);
         }
 
-        (quotient, remainder)
+        Ok((quotient, remainder))
     }
 
     pub fn gcd(&self, other: &Self) -> Self {
@@ -280,7 +280,10 @@ impl Polynomial {
         let mut b = other.clone();
 
         while !b.is_zero() {
-            let (_, r) = a.div_rem(&b);
+            // div_rem cannot fail here since b is not zero
+            let (_, r) = a
+                .div_rem(&b)
+                .expect("div_rem should not fail: b is not zero");
             a = b;
             b = r;
         }
@@ -414,7 +417,10 @@ impl Polynomial {
                 let factor = Polynomial::new(factor_coeffs, self.var.clone());
 
                 factors.push(factor.clone());
-                let (quotient, _) = current_poly.div_rem(&factor);
+                // factor is never zero (q is non-zero from rational root theorem)
+                let (quotient, _) = current_poly
+                    .div_rem(&factor)
+                    .expect("div_rem should not fail: factor is non-zero");
                 current_poly = quotient;
             } else {
                 // No more rational roots.
@@ -561,7 +567,7 @@ mod tests {
         let expr_den = parse("x + 1", &mut ctx).unwrap();
         let p_den = Polynomial::from_expr(&ctx, expr_den, "x").unwrap();
 
-        let (q, r) = p_num.div_rem(&p_den);
+        let (q, r) = p_num.div_rem(&p_den).unwrap();
         assert!(r.is_zero());
         let q_expr = q.to_expr(&mut ctx);
         assert_eq!(
@@ -591,5 +597,19 @@ mod tests {
         assert_eq!(g.coeffs.len(), 2);
         assert_eq!(g.coeffs[0], BigRational::one());
         assert_eq!(g.coeffs[1], BigRational::one());
+    }
+
+    #[test]
+    fn test_div_rem_division_by_zero() {
+        use crate::error::CasError;
+
+        let p = Polynomial::new(
+            vec![BigRational::one(), BigRational::one()], // x + 1
+            "x".to_string(),
+        );
+        let zero = Polynomial::zero("x".to_string());
+
+        let result = p.div_rem(&zero);
+        assert!(matches!(result, Err(CasError::DivisionByZero)));
     }
 }
