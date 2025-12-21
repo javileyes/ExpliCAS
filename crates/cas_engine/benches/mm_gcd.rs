@@ -34,6 +34,7 @@ fn build_polys() -> (MultiPoly, MultiPoly, MultiPoly) {
     let budget = PolyBudget {
         max_terms: 1_000_000,
         max_total_degree: 100,
+        max_pow_exp: 10, // Allow large exponents for benchmarks
     };
 
     // a = (1 + 3*x1 + 5*x2 + 7*x3 + 9*x4 + 11*x5 + 13*x6 + 15*x7)^7 - 1
@@ -69,6 +70,7 @@ fn build_products(a: &MultiPoly, b: &MultiPoly, g: &MultiPoly) -> Option<(MultiP
     let budget = PolyBudget {
         max_terms: 10_000_000,
         max_total_degree: 200,
+        max_pow_exp: 10,
     };
     let ag = a.mul_fast(g, &budget).ok()?;
     let bg = b.mul_fast(g, &budget).ok()?;
@@ -191,6 +193,7 @@ fn bench_mm_gcd(c: &mut Criterion) {
         let budget = PolyBudget {
             max_terms: 10_000_000,
             max_total_degree: 200,
+            max_pow_exp: 10,
         };
         bencher.iter(|| {
             let ag = black_box(&a).mul_fast(black_box(&g), &budget);
@@ -214,6 +217,7 @@ fn bench_mm_gcd(c: &mut Criterion) {
             let budget = PolyBudget {
                 max_terms: 10_000_000,
                 max_total_degree: 200,
+                max_pow_exp: 10,
             };
             bencher.iter(|| {
                 let ag = black_box(&a).mul_fast(black_box(&g), &budget).unwrap();
