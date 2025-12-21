@@ -12,13 +12,75 @@
 //! This allows Mathematica/Symbolica-style polynomial GCD without expanding.
 
 use crate::build::mul2_raw;
+use crate::gcd_zippel_modp::ZippelPreset;
 use crate::phase::PhaseMask;
 use crate::rule::{Rewrite, Rule};
+use crate::rules::algebra::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_rational::BigRational;
+use num_traits::{One, ToPrimitive};
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+// =============================================================================
+// GCD Mode enum for unified API
+// =============================================================================
+
+/// Mode for poly_gcd computation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GcdMode {
+    /// Structural GCD (HoldAll, no expansion) - default
+    Structural,
+    /// Auto-select: structural → exact → modp
+    Auto,
+    /// Force exact GCD over ℚ[x]
+    Exact,
+    /// Force modular GCD over 𝔽p[x]
+    Modp,
+}
+
+/// Parse GcdMode from expression (Variable token)
+fn parse_gcd_mode(ctx: &Context, expr: ExprId) -> GcdMode {
+    if let Expr::Variable(s) = ctx.get(expr) {
+        match s.to_lowercase().as_str() {
+            "auto" => GcdMode::Auto,
+            "exact" | "rational" | "algebraic" | "q" => GcdMode::Exact,
+            "modp" | "mod_p" | "fast" | "zippel" => GcdMode::Modp,
+            _ => GcdMode::Structural, // Unknown = structural
+        }
+    } else {
+        GcdMode::Structural
+    }
+}
+
+/// Parse modp options (preset symbol and/or main_var int) from remaining args
+fn parse_modp_options(ctx: &Context, args: &[ExprId]) -> (Option<ZippelPreset>, Option<usize>) {
+    let mut preset: Option<ZippelPreset> = None;
+    let mut main_var: Option<usize> = None;
+
+    for &arg in args {
+        // Try as integer (main_var)
+        if let Expr::Number(n) = ctx.get(arg) {
+            if n.is_integer() {
+                if let Some(v) = n.to_integer().to_usize() {
+                    if v <= 64 {
+                        main_var = Some(v);
+                        continue;
+                    }
+                }
+            }
+        }
+        // Try as symbol (preset)
+        if let Expr::Variable(s) = ctx.get(arg) {
+            if let Some(p) = ZippelPreset::from_str(s) {
+                preset = Some(p);
+            }
+        }
+    }
+
+    (preset, main_var)
+}
 
 // =============================================================================
 // AC-Canonical Key for expression comparison
@@ -328,6 +390,171 @@ fn poly_gcd_structural(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
 }
 
 // =============================================================================
+// Unified GCD dispatcher
+// =============================================================================
+
+/// Compute GCD using specified mode, returning (result, description).
+fn compute_poly_gcd_unified(
+    ctx: &mut Context,
+    a: ExprId,
+    b: ExprId,
+    mode: GcdMode,
+    modp_preset: Option<ZippelPreset>,
+    modp_main_var: Option<usize>,
+) -> (ExprId, String) {
+    match mode {
+        GcdMode::Structural => {
+            let gcd = poly_gcd_structural(ctx, a, b);
+            let desc = format!(
+                "poly_gcd({}, {})",
+                DisplayExpr {
+                    context: ctx,
+                    id: a
+                },
+                DisplayExpr {
+                    context: ctx,
+                    id: b
+                }
+            );
+            (gcd, desc)
+        }
+
+        GcdMode::Exact => {
+            let budget = GcdExactBudget::default();
+            let result = gcd_exact(ctx, a, b, &budget);
+            let desc = format!(
+                "poly_gcd({}, {}, exact) [{}]",
+                DisplayExpr {
+                    context: ctx,
+                    id: a
+                },
+                DisplayExpr {
+                    context: ctx,
+                    id: b
+                },
+                format!("{:?}", result.layer_used).to_lowercase()
+            );
+            (result.gcd, desc)
+        }
+
+        GcdMode::Modp => {
+            // Call modp through gcd_modp module
+            use crate::rules::algebra::gcd_modp::{compute_gcd_modp_with_options, DEFAULT_PRIME};
+            let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
+            match compute_gcd_modp_with_options(
+                ctx,
+                a,
+                b,
+                DEFAULT_PRIME,
+                modp_main_var,
+                Some(preset),
+            ) {
+                Ok(result) => {
+                    let desc = format!(
+                        "poly_gcd({}, {}, modp) [{:?}]",
+                        DisplayExpr {
+                            context: ctx,
+                            id: a
+                        },
+                        DisplayExpr {
+                            context: ctx,
+                            id: b
+                        },
+                        preset
+                    );
+                    (result, desc)
+                }
+                Err(e) => {
+                    eprintln!("[poly_gcd:modp] Error: {}", e);
+                    let one = ctx.num(1);
+                    (one, format!("poly_gcd(..., modp) [error: {}]", e))
+                }
+            }
+        }
+
+        GcdMode::Auto => {
+            // Try structural first
+            let structural_gcd = poly_gcd_structural(ctx, a, b);
+
+            // Check if structural found something (not just 1)
+            let is_one = matches!(ctx.get(structural_gcd), Expr::Number(n) if n.is_one());
+
+            if !is_one {
+                // Structural found a non-trivial GCD
+                let desc = format!(
+                    "poly_gcd({}, {}, auto) [structural]",
+                    DisplayExpr {
+                        context: ctx,
+                        id: a
+                    },
+                    DisplayExpr {
+                        context: ctx,
+                        id: b
+                    }
+                );
+                return (structural_gcd, desc);
+            }
+
+            // Try exact if within budget
+            let budget = GcdExactBudget::default();
+            let exact_result = gcd_exact(ctx, a, b, &budget);
+
+            if exact_result.layer_used != GcdExactLayer::BudgetExceeded {
+                let desc = format!(
+                    "poly_gcd({}, {}, auto) [exact:{:?}]",
+                    DisplayExpr {
+                        context: ctx,
+                        id: a
+                    },
+                    DisplayExpr {
+                        context: ctx,
+                        id: b
+                    },
+                    exact_result.layer_used
+                );
+                return (exact_result.gcd, desc);
+            }
+
+            // Fallback to modp
+            eprintln!(
+                "[poly_gcd:auto] Exact exceeded budget, falling back to modp (probabilistic)"
+            );
+            use crate::rules::algebra::gcd_modp::{compute_gcd_modp_with_options, DEFAULT_PRIME};
+            let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
+            match compute_gcd_modp_with_options(
+                ctx,
+                a,
+                b,
+                DEFAULT_PRIME,
+                modp_main_var,
+                Some(preset),
+            ) {
+                Ok(result) => {
+                    let desc = format!(
+                        "poly_gcd({}, {}, auto) [modp:{:?} - probabilistic]",
+                        DisplayExpr {
+                            context: ctx,
+                            id: a
+                        },
+                        DisplayExpr {
+                            context: ctx,
+                            id: b
+                        },
+                        preset
+                    );
+                    (result, desc)
+                }
+                Err(e) => {
+                    eprintln!("[poly_gcd:auto:modp] Error: {}", e);
+                    let one = ctx.num(1);
+                    (one, format!("poly_gcd(..., auto) [modp error: {}]", e))
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
 // REPL function rule
 // =============================================================================
 
@@ -361,32 +588,37 @@ impl Rule for PolyGcdRule {
         let fn_expr = ctx.get(expr).clone();
 
         if let Expr::Function(name, args) = fn_expr {
-            // Match poly_gcd, pgcd with 2 arguments
+            // Match poly_gcd, pgcd with 2-4 arguments
             let is_poly_gcd = name == "poly_gcd" || name == "pgcd";
 
-            if is_poly_gcd && args.len() == 2 {
+            if is_poly_gcd && args.len() >= 2 && args.len() <= 4 {
                 let a = args[0];
                 let b = args[1];
 
-                let gcd = poly_gcd_structural(ctx, a, b);
+                // Parse mode from 3rd argument (or default to Structural)
+                let mode = if args.len() >= 3 {
+                    parse_gcd_mode(ctx, args[2])
+                } else {
+                    GcdMode::Structural
+                };
 
-                // Wrap result in __hold() to prevent further simplification (invisible barrier)
-                let held_gcd = ctx.add(Expr::Function("__hold".to_string(), vec![gcd]));
+                // Parse modp options from remaining args
+                let (modp_preset, modp_main_var) = if args.len() >= 4 {
+                    parse_modp_options(ctx, &args[3..])
+                } else if args.len() == 3 && mode == GcdMode::Modp {
+                    // No extra args for modp, use defaults
+                    (None, None)
+                } else {
+                    (None, None)
+                };
 
-                return Some(Rewrite::simple(
-                    held_gcd,
-                    format!(
-                        "poly_gcd({}, {})",
-                        DisplayExpr {
-                            context: ctx,
-                            id: a
-                        },
-                        DisplayExpr {
-                            context: ctx,
-                            id: b
-                        }
-                    ),
-                ));
+                let (result, description) =
+                    compute_poly_gcd_unified(ctx, a, b, mode, modp_preset, modp_main_var);
+
+                // Wrap result in __hold() to prevent further simplification
+                let held_gcd = ctx.add(Expr::Function("__hold".to_string(), vec![result]));
+
+                return Some(Rewrite::simple(held_gcd, description));
             }
         }
 

@@ -175,7 +175,13 @@ fn test_exponential_expansion() {
         &mut simplifier.context,
     )
     .unwrap();
-    assert_equivalent(&mut simplifier, input, expected);
+
+    // Use expand() since we're testing binomial expansion
+    let (expanded, _) = simplifier.expand(input);
+    assert!(
+        simplifier.are_equivalent(expanded, expected),
+        "Binomial expansion failed: (x+1)^5 should expand to x^5 + 5x^4 + 10x^3 + 10x^2 + 5x + 1"
+    );
 }
 
 #[test]

@@ -5,10 +5,14 @@
 use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use crate::phase::PhaseMask;
 use crate::poly_modp_conv::{
-    expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable, DEFAULT_PRIME,
+    expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable,
+    DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
 use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+
+/// Re-export DEFAULT_PRIME for use by other modules
+pub const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
 
 /// Rule for poly_gcd_modp(a, b [, p]) function.
 /// Computes Zippel GCD of two polynomial expressions mod p.
@@ -64,7 +68,9 @@ impl Rule for PolyGcdModpRule {
                     }
                 }
 
-                match compute_gcd_modp(ctx, a, b, DEFAULT_PRIME, main_var, preset_str.as_deref()) {
+                // Parse preset from string if provided
+                let preset = preset_str.as_deref().and_then(ZippelPreset::from_str);
+                match compute_gcd_modp_with_options(ctx, a, b, DEFAULT_PRIME, main_var, preset) {
                     Ok(gcd_expr) => {
                         // Wrap in __hold to prevent further simplification
                         let held = ctx.add(Expr::Function("__hold".to_string(), vec![gcd_expr]));
@@ -201,14 +207,14 @@ fn extract_string(ctx: &Context, expr: ExprId) -> Option<String> {
     None
 }
 
-/// Compute GCD mod p and return as Expr
-fn compute_gcd_modp(
+/// Compute GCD mod p and return as Expr (public for unified API)
+pub fn compute_gcd_modp_with_options(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
     p: u64,
     main_var: Option<usize>,
-    preset_str: Option<&str>,
+    preset: Option<ZippelPreset>,
 ) -> Result<ExprId, PolyConvError> {
     use std::time::Instant;
 
@@ -234,11 +240,9 @@ fn compute_gcd_modp(
     );
 
     // Compute GCD using Zippel
-    // Select budget based on preset (default to MmGcd for performance, use Safe if unknown)
-    let preset = preset_str
-        .and_then(ZippelPreset::from_str)
-        .unwrap_or(ZippelPreset::MmGcd); // Default to MmGcd for performance
-    let zippel_budget = ZippelBudget::for_preset(preset).with_main_var(main_var);
+    // Select budget based on preset (default to MmGcd for performance)
+    let used_preset = preset.unwrap_or(ZippelPreset::MmGcd);
+    let zippel_budget = ZippelBudget::for_preset(used_preset).with_main_var(main_var);
     let gcd_opt = gcd_zippel_modp(&poly_a, &poly_b, &zippel_budget);
     let t3 = Instant::now();
     eprintln!("[poly_gcd_modp] Zippel GCD: {:?}", t3 - t2);

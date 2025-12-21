@@ -280,12 +280,31 @@ fn parse_session_ref(input: &str) -> IResult<&str, ParseNode> {
     Ok((remaining, ParseNode::SessionRef(id)))
 }
 
-// Parser for constants
+// Parser for constants with word boundary check
+// 'e' and 'pi' should not match prefixes of longer identifiers (e.g., 'exact', 'pivot')
 fn parse_constant(input: &str) -> IResult<&str, ParseNode> {
-    alt((
-        map(tag("pi"), |_| ParseNode::Constant(Constant::Pi)),
-        map(tag("e"), |_| ParseNode::Constant(Constant::E)),
-    ))(input)
+    // Helper: check if next char is alphanumeric (would indicate identifier, not constant)
+    fn is_word_boundary(remaining: &str) -> bool {
+        remaining
+            .chars()
+            .next()
+            .map_or(true, |c| !c.is_ascii_alphanumeric() && c != '_')
+    }
+
+    // Try 'pi' first (longer prefix)
+    if input.starts_with("pi") && is_word_boundary(&input[2..]) {
+        return Ok((&input[2..], ParseNode::Constant(Constant::Pi)));
+    }
+
+    // Try 'e' (must not be followed by alphanumeric)
+    if input.starts_with('e') && is_word_boundary(&input[1..]) {
+        return Ok((&input[1..], ParseNode::Constant(Constant::E)));
+    }
+
+    Err(nom::Err::Error(nom::error::Error::new(
+        input,
+        nom::error::ErrorKind::Tag,
+    )))
 }
 
 // Parser for identifiers (variable/function names)

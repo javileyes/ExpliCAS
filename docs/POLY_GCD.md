@@ -1,280 +1,114 @@
 # Polynomial GCD Functions
 
-## Quick Reference: When to Use Which?
+## Quick Reference
 
-| Function | Type | Use When | Speed | Example |
-|----------|------|----------|-------|---------|
-| `gcd(12, 18)` | Integer | Both arguments are integers | ⚡ Fast | `→ 6` |
-| `poly_gcd(a*g, b*g)` | Structural | Expressions share **visible** factors | ⚡ Fast | `→ g` |
-| `poly_gcd_exact(x²-1, x-1)` | Algebraic | Need **true** polynomial GCD over ℚ | 🐢 Slower | `→ x-1` |
+| Command | Mode | Use When | Speed |
+|---------|------|----------|-------|
+| `poly_gcd(a, b)` | Structural | Expressions share **visible** factors | ⚡ Fast |
+| `poly_gcd(a, b, auto)` | Auto | Let engine choose best method | ⚡→🐢 |
+| `poly_gcd(a, b, exact)` | Algebraic | Need **true** GCD over ℚ | 🐢 Slower |
+| `poly_gcd(a, b, modp)` | Modular | Large polynomials, verification | ⚡⚡ Fastest |
 
 ---
 
-# Polynomial GCD (Structural)
-
-The `poly_gcd` function computes the **structural GCD** of two polynomial expressions directly in the REPL, without expanding them.
-
-## Usage
+# Unified poly_gcd API
 
 ```txt
-poly_gcd(expr1, expr2)
-pgcd(expr1, expr2)      # alias
+poly_gcd(a, b [, mode] [, preset])
+pgcd(a, b [, mode] [, preset])    # alias
 ```
 
-## Example
+## Modes
+
+| Mode | Aliases | Description |
+|------|---------|-------------|
+| (none) | — | Structural: visible factors only |
+| `auto` | — | Structural → exact → modp (auto-select) |
+| `exact` | `rational`, `algebraic`, `q` | Force exact GCD over ℚ[x] |
+| `modp` | `fast`, `zippel`, `mod_p` | Force modular GCD (𝔽p) |
+
+## Examples
+
+### Structural (default)
+Detects **visible** multiplicative factors without expansion:
 
 ```txt
-cas> let g = (1 + 3*x1 + 5*x2 + 7*x3)^5 + 3
-cas> let a = (2 + x1)^3 - 1
-cas> let b = (3 + x2)^4 + 1
+cas> let g = (x+1)^5 + 3
+cas> let a = (y+2)^3
+cas> let b = (z+3)^4
 cas> poly_gcd(a*g, b*g)
-Result: (1 + 3·x1 + 5·x2 + 7·x3)^5 + 3
+Result: (1 + x)^5 + 3      # g detected structurally
 ```
 
-The function detects `g` as a common factor in both `a*g` and `b*g` and returns it **without expanding** the polynomial (which could have thousands of terms).
-
-## How It Works
-
-### 1. HoldAll Semantics
-
-`poly_gcd` has **HoldAll** semantics, meaning its arguments are **not simplified** before the function sees them. This preserves the multiplicative structure:
-
-```
-poly_gcd(a*g, b*g)
-  → sees: Mul(a, g), Mul(b, g)
-  → NOT the expanded forms
-```
-
-### 2. Factor Collection
-
-The function collects multiplicative factors from each argument:
-- `Mul(x, y)` → flatten to factors `[x, y]`
-- `Pow(base, n)` with integer `n` → factor `(base, n)`
-- Everything else → factor with exponent 1
-
-### 3. AC-Canonical Key Comparison
-
-To handle expressions that are mathematically equal but have different tree structures (e.g., different parenthesization or term order), the function uses an **AC-canonical key**:
-
-- **A**ssociative: `(a + b) + c` = `a + (b + c)`
-- **C**ommutative: `a + b` = `b + a`
-
-The key is computed by:
-1. Flattening `Add` and `Mul` chains
-2. Sorting children by their hash
-3. Producing a stable 64-bit hash
-
-Two expressions with the same key are considered structurally equivalent.
-
-### 4. Hold Protection
-
-The result is wrapped in `hold()` internally during simplification to prevent subsequent rules (like Binomial Expansion) from expanding it. The wrapper is removed before displaying to the user.
-
-## Comparison with Integer GCD
-
-| Function | Operands | Result | Example |
-|----------|----------|--------|---------|
-| `gcd(a, b)` | Integers | Integer | `gcd(12, 18) = 6` |
-| `poly_gcd(p, q)` | Expressions | Expression | `poly_gcd(x*g, y*g) = g` |
-
-## When to Use
-
-- **Factored polynomials**: When expressions are products of factors
-- **Avoiding expansion**: When expanding would create too many terms
-- **Symbolic GCD**: When you need the structural common factor
-
-## Limitations
-
-- **Structural only**: Detects factors that appear explicitly as multiplicands
-- **Not algebraic GCD**: Does not factor polynomials to find hidden common factors
-- For algebraic GCD of expanded polynomials, use `poly_gcd_exact` (see below)
-
-## Automatic Cancellation
-
-When you subtract `g` from `poly_gcd(a*g, b*g)`, the system will automatically simplify to `0`:
+### Auto Mode
+Tries structural first, then exact, falls back to modp if too large:
 
 ```txt
-cas> let g = (1 + 3*x1 + 5*x2 + 7*x3)^7 + 3
-cas> poly_gcd(a*g, b*g) - g
-Result: 0
+cas> poly_gcd(x^2-1, x-1, auto)
+Result: x - 1              # exact used (small poly)
+
+cas> poly_gcd(huge_a*g, huge_b*g, auto)
+[poly_gcd:auto] Exact exceeded budget, falling back to modp
+Result: ...                # modp used (large poly)
 ```
 
-This works through the `AnnihilationRule` which detects that `__hold(g) - g = 0` even when the expressions have different structural representations.
-
-### Binomial Preservation
-
-Binomials like `(x+1)^3` are **not expanded automatically** in Standard mode. This ensures consistent cancellation for any exponent:
+### Exact Mode
+Algebraic GCD over rational coefficients:
 
 ```txt
-cas> let g = (x + y)^3 + 1
-cas> poly_gcd(2*g, 3*g) - g
-Result: 0
+cas> poly_gcd(x^2-1, x^2-2*x+1, exact)
+Result: x - 1              # (x-1)(x+1) ∩ (x-1)² = x-1
+
+cas> poly_gcd(6*x^2, 9*x, exact)
+Result: x                  # content normalized
 ```
 
-To explicitly expand a binomial, use the `expand` command:
+### Modp Mode
+Fast modular GCD for large polynomials (probabilistic):
 
 ```txt
-cas> expand (x+1)^3
-Result: 1 + x³ + 3·x + 3·x²
+cas> let g = (1+3*x1+5*x2+7*x3)^7 + 3
+cas> let a = (2+x1)^3 - 1
+cas> let b = (3+x2)^4 + 1
+cas> poly_gcd(a*g, b*g, modp)
+[poly_gcd_modp] Zippel GCD: 800ms
+Result: ...                # GCD computed mod p
 ```
 
 ---
 
-# Polynomial GCD Exact (Algebraic)
+# How Auto Mode Works
 
-The `poly_gcd_exact` function computes the **algebraic GCD** of two polynomials over ℚ[x₁,...,xₙ].
-
-## Usage
-
-```txt
-poly_gcd_exact(expr1, expr2)
-pgcdx(expr1, expr2)      # alias
 ```
+1. STRUCTURAL (HoldAll)
+   → If visible factors found: return immediately ✅
 
-## Examples
+2. EXACT (ℚ[x]) if within budget:
+   - vars ≤ 5
+   - terms ≤ 2000
+   - degree ≤ 30
+   → If succeeds: return exact result ✅
 
-```txt
-cas> poly_gcd_exact(x^2 - 1, x - 1)
-Result: x - 1
-
-cas> poly_gcd_exact(x^2 - 1, x^2 - 2*x + 1)
-Result: x - 1
-
-cas> poly_gcd_exact(2*x + 2*y, 4*x + 4*y)
-Result: x + y
-
-cas> poly_gcd_exact(6, 15)
-Result: 1
+3. MODP (𝔽p) fallback
+   → Warning: "probabilistic"
+   → Return modular result
 ```
-
-## Difference from `poly_gcd`
-
-| Function | Type | Description |
-|----------|------|-------------|
-| `poly_gcd(a, b)` | Structural | Finds common visible factors only |
-| `poly_gcd_exact(a, b)` | Algebraic | Computes actual polynomial GCD over ℚ |
-
-Example where they differ:
-
-```txt
-cas> poly_gcd(x^2 - 1, x - 1)
-Result: 1                    # No visible common factor
-
-cas> poly_gcd_exact(x^2 - 1, x - 1)
-Result: x - 1                # Finds (x-1) as factor of (x-1)(x+1)
-```
-
-## Algorithm
-
-1. Convert expressions to `MultiPoly` (sparse multivariate polynomial)
-2. Try **univariate** Euclidean GCD if single variable
-3. Try **Layer 1**: monomial + content GCD
-4. Try **Layer 2**: heuristic seeds interpolation
-5. Try **Layer 2.5**: tensor grid interpolation
-6. Verify result with exact division
-7. Normalize: primitive part + positive leading coefficient
-
-## Normalization Contract
-
-- **Primitive**: GCD of coefficients = 1
-- **Positive leading coefficient** (in lex monomial order)
-- `gcd(0, p) = normalize(p)`
-- `gcd(c₁, c₂) = 1` for non-zero constants over ℚ
-
-## When to Use
-
-- **Expanded polynomials**: When expressions are sums, not products
-- **Algebraic factorization**: When you need the true polynomial GCD
-- **Fraction simplification**: Underlying algorithm for simplifying rational functions
-
-## Budget Limits
-
-To prevent runaway computation:
-- Max 5 variables
-- Max 500 terms per input
-- Max 50 total degree
-
-If limits exceeded, returns `1` with a warning.
 
 ---
 
-# Polynomial GCD Modular (Fast Verification)
+# Legacy Functions (Still Available)
 
-The `poly_gcd_modp` function computes GCD using the **Zippel sparse modular algorithm** (mod 10⁹+7). Much faster than exact methods for large polynomials.
-
-## Usage
-
-```txt
-poly_gcd_modp(a, b [, main_var] [, preset])
-pgcdp(a, b [, main_var] [, preset])    # alias
-```
-
-## Arguments
-
-| Arg | Type | Description |
-|-----|------|-------------|
-| `a, b` | expr | Polynomial expressions |
-| `main_var` | int (0-7) | Optional: force main variable selection |
-| `preset` | string | Optional: budget preset name |
-
-## Presets
-
-| Name | Points | Retries | Verify | Use case |
-|------|--------|---------|--------|----------|
-| `mm_gcd` / `mm` | 8 | 8 | 3 | Benchmark tuned **(default)** |
-| `aggressive` / `fast` | 10 | 16 | 4 | General fast |
-| `safe` | 16 | 32 | 6 | Maximum reliability |
-
-## Examples
-
-```txt
-# Basic usage (mm_gcd preset by default)
-poly_gcd_modp(a*g, b*g)
-
-# Force main variable
-poly_gcd_modp(a*g, b*g, 6)
-
-# Explicit preset
-poly_gcd_modp(a*g, b*g, mm_gcd)
-poly_gcd_modp(a*g, b*g, safe)
-
-# Both main_var and preset
-poly_gcd_modp(a*g, b*g, 6, mm_gcd)
-
-# Verification pattern
-poly_eq_modp(poly_gcd_modp(a*g, b*g), g)  # → 1 if equal
-```
-
-## Debugging
-
-Set `CAS_ZIPPEL_TRACE=1` to see variable scoring and algorithm progress:
-
-```bash
-CAS_ZIPPEL_TRACE=1 cargo run -p cas_cli --release
-```
-
-## When to Use
-
-| Scenario | Function | Why |
-|----------|----------|-----|
-| Production simplification | `poly_gcd_exact` | Guaranteed correct |
-| Performance tests | `poly_gcd_modp` | 45× faster |
-| Quick equality check | `poly_eq_modp` | Fastest |
-| Large polys (7+ vars) | `poly_gcd_modp(…, mm_gcd)` | Optimized |
-
-## Correctness
-
-**Probabilistic**: Works for almost all inputs, but may differ from exact GCD in pathological cases (bad primes, degree drops). Use `poly_gcd_exact` when correctness is critical.
+| Function | Description |
+|----------|-------------|
+| `poly_gcd_exact(a, b)` | Force exact mode |
+| `poly_gcd_modp(a, b [, main_var] [, preset])` | Force modp with full control |
+| `poly_eq_modp(a, b)` | Fast equality check mod p |
 
 ---
 
 ## Implementation Files
 
-- `crates/cas_engine/src/rules/algebra/poly_gcd.rs` - Structural GCD rule
-- `crates/cas_engine/src/rules/algebra/gcd_exact.rs` - Algebraic GCD rule
-- `crates/cas_engine/src/rules/algebra/gcd_modp.rs` - Modular GCD rule
+- `crates/cas_engine/src/rules/algebra/poly_gcd.rs` - Unified rule + structural
+- `crates/cas_engine/src/rules/algebra/gcd_exact.rs` - Exact GCD over ℚ
+- `crates/cas_engine/src/rules/algebra/gcd_modp.rs` - Modular GCD (Zippel)
 - `crates/cas_engine/src/gcd_zippel_modp.rs` - Zippel algorithm + presets
-- `crates/cas_engine/src/multipoly.rs` - MultiPoly representation and Layer 1/2/2.5
-- `crates/cas_engine/src/rules/polynomial.rs` - `AnnihilationRule` and `BinomialExpansionRule`
-- `crates/cas_engine/src/parent_context.rs` - `expand_mode` context for rules
-
