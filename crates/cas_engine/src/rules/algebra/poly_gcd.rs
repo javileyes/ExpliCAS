@@ -25,22 +25,53 @@ use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-/// Pre-evaluate an expression to resolve functions like expand(), simplify(), etc.
-/// This is needed because poly_gcd has HoldAll semantics but modp/exact need
-/// evaluated polynomial expressions.
+/// Pre-evaluate an expression to resolve specific function wrappers.
+///
+/// SAFETY:
+/// - Only evaluates `expand()` (explicit user intent) and `__hold` (internal wrapper)
+/// - Uses StepsMode::Off and ExpandPolicy::Never to avoid recursive work
+/// - Does NOT evaluate `factor()` or `simplify()` (too expensive for GCD path)
+/// - Avoids recursion: won't trigger poly_gcd from within poly_gcd
 fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
-    // Check if expression contains function calls that need evaluation
-    if let Expr::Function(name, _) = ctx.get(expr) {
-        if matches!(name.as_str(), "expand" | "__hold" | "simplify" | "factor") {
-            // Create a minimal simplifier to evaluate the expression
-            let opts = EvalOptions::default();
-            let mut simplifier = Simplifier::with_profile(&opts);
-            // Transfer context
-            std::mem::swap(&mut simplifier.context, ctx);
-            let (result, _) = simplifier.simplify(expr);
-            // Transfer back
-            std::mem::swap(&mut simplifier.context, ctx);
-            return result;
+    use crate::options::StepsMode;
+    use crate::phase::ExpandPolicy;
+
+    // Only process specific wrappers that need evaluation
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        match name.as_str() {
+            // expand() is explicitly requested by user - evaluate it
+            "expand" => {
+                // Create a minimal, safe simplifier
+                let opts = EvalOptions {
+                    steps_mode: StepsMode::Off,       // No step tracking
+                    expand_policy: ExpandPolicy::Off, // Don't auto-expand other things
+                    ..Default::default()
+                };
+                let mut simplifier = Simplifier::with_profile(&opts);
+                simplifier.set_steps_mode(StepsMode::Off);
+
+                // Transfer context
+                std::mem::swap(&mut simplifier.context, ctx);
+                let (result, _) = simplifier.expand(expr); // Use expand() specifically
+                                                           // Transfer back
+                std::mem::swap(&mut simplifier.context, ctx);
+                return result;
+            }
+
+            // __hold is an internal wrapper - unwrap it
+            "__hold" if !args.is_empty() => {
+                return args[0]; // Just unwrap, don't recurse
+            }
+
+            // factor() and simplify() are TOO EXPENSIVE for GCD path
+            // Leave them as-is and let the converter handle or fail gracefully
+            "factor" | "simplify" => {
+                // Don't pre-evaluate these - they could be O(expensive)
+                // The GCD will fall back to structural if conversion fails
+                return expr;
+            }
+
+            _ => {}
         }
     }
     expr

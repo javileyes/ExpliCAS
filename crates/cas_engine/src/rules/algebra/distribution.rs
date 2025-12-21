@@ -16,20 +16,24 @@ define_rule!(
         if let Expr::Function(name, args) = ctx.get(expr) {
             if name == "expand" && args.len() == 1 {
                 let arg = args[0];
-                let new_expr = crate::expand::expand(ctx, arg);
+                let expanded = crate::expand::expand(ctx, arg);
+                // Strip all nested __hold wrappers so user sees clean result
+                let new_expr = crate::strip_all_holds(ctx, expanded);
                 if new_expr != expr {
                     return Some(Rewrite {
                         new_expr,
                         description: "expand()".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 } else {
                     return Some(Rewrite {
                         new_expr: arg,
                         description: "expand(atom)".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -54,14 +58,16 @@ define_rule!(
                         new_expr,
                         description: "expand()".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 } else {
                     return Some(Rewrite {
                         new_expr: arg,
                         description: "expand(atom)".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -82,7 +88,8 @@ define_rule!(
                     new_expr,
                     description: "Conservative Expansion".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -111,7 +118,8 @@ define_rule!(
                         new_expr,
                         description: "Distribute (RHS)".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -122,7 +130,8 @@ define_rule!(
                         new_expr,
                         description: "Distribute (LHS)".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }

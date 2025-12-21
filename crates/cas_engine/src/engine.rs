@@ -33,6 +33,89 @@ fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
     }
 }
 
+/// Recursively strip ALL __hold() wrappers from an expression tree.
+/// This is needed after expand() because expand may leave __hold wrappers
+/// nested inside Add/Mul/etc, not just at top level.
+pub fn strip_all_holds(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Function(ref name, ref args) if name == "__hold" && args.len() == 1 => {
+            // Unwrap and recurse into contents
+            strip_all_holds(ctx, args[0])
+        }
+        Expr::Add(l, r) => {
+            let new_l = strip_all_holds(ctx, l);
+            let new_r = strip_all_holds(ctx, r);
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Add(new_l, new_r))
+            }
+        }
+        Expr::Sub(l, r) => {
+            let new_l = strip_all_holds(ctx, l);
+            let new_r = strip_all_holds(ctx, r);
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Sub(new_l, new_r))
+            }
+        }
+        Expr::Mul(l, r) => {
+            let new_l = strip_all_holds(ctx, l);
+            let new_r = strip_all_holds(ctx, r);
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Mul(new_l, new_r))
+            }
+        }
+        Expr::Div(l, r) => {
+            let new_l = strip_all_holds(ctx, l);
+            let new_r = strip_all_holds(ctx, r);
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Div(new_l, new_r))
+            }
+        }
+        Expr::Pow(b, e) => {
+            let new_b = strip_all_holds(ctx, b);
+            let new_e = strip_all_holds(ctx, e);
+            if new_b == b && new_e == e {
+                expr
+            } else {
+                ctx.add(Expr::Pow(new_b, new_e))
+            }
+        }
+        Expr::Neg(inner) => {
+            let new_inner = strip_all_holds(ctx, inner);
+            if new_inner == inner {
+                expr
+            } else {
+                ctx.add(Expr::Neg(new_inner))
+            }
+        }
+        Expr::Function(name, args) => {
+            let new_args: Vec<_> = args.iter().map(|a| strip_all_holds(ctx, *a)).collect();
+            if new_args == args {
+                expr
+            } else {
+                ctx.add(Expr::Function(name.clone(), new_args))
+            }
+        }
+        // Leaf nodes - no holds inside
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => expr,
+        Expr::Matrix { rows, cols, data } => {
+            let new_data: Vec<_> = data.iter().map(|a| strip_all_holds(ctx, *a)).collect();
+            if new_data == data {
+                expr
+            } else {
+                ctx.matrix(rows, cols, new_data)
+            }
+        }
+    }
+}
+
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
 /// Returns new ExprId if substitution occurred, otherwise returns original root.
 pub fn substitute_expr_by_id(
@@ -526,8 +609,13 @@ impl Simplifier {
     }
 
     /// Expand without rationalization.
+    /// After expansion, recursively strips all __hold() wrappers so user sees clean result.
     pub fn expand(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
-        self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::for_expand())
+        let (result, steps) =
+            self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::for_expand());
+        // Strip ALL nested __hold wrappers (not just top-level)
+        let clean_result = strip_all_holds(&mut self.context, result);
+        (clean_result, steps)
     }
 
     pub fn apply_rules_loop(
