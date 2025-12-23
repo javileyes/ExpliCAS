@@ -11,13 +11,23 @@ use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult, SessionState};
 use cas_parser::parse;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
-use crate::json_types::{ErrorJsonOutput, EvalJsonOutput, OptionsJson, TimingsJson, WarningJson};
+use crate::json_types::{
+    BudgetJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, TimingsJson, WarningJson,
+};
 
 /// Arguments for eval-json subcommand
 #[derive(Args, Debug)]
 pub struct EvalJsonArgs {
     /// Expression to evaluate
     pub expr: String,
+
+    /// Budget preset: "small", "cli", "unlimited"
+    #[arg(long, default_value = "cli")]
+    pub budget_preset: String,
+
+    /// Strict mode: fail on budget exceeded (default: best-effort)
+    #[arg(long, default_value_t = false)]
+    pub strict: bool,
 
     /// Maximum characters in result output (truncates if larger)
     #[arg(long, default_value_t = 2000)]
@@ -103,6 +113,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         EvalResult::Bool(b) => {
             // For bool results, format specially
             return Ok(EvalJsonOutput {
+                schema_version: 1,
                 ok: true,
                 input: args.expr.clone(),
                 result: b.to_string(),
@@ -111,6 +122,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 steps_mode: args.steps.clone(),
                 steps_count: output.steps.len(),
                 warnings: collect_warnings(&output),
+                budget: build_budget_json(args),
                 stats: Default::default(),
                 hash: None,
                 timings_us: TimingsJson {
@@ -141,6 +153,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     let total_us = total_start.elapsed().as_micros() as u64;
 
     Ok(EvalJsonOutput {
+        schema_version: 1,
         ok: true,
         input: args.expr.clone(),
         result: result_str,
@@ -149,6 +162,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         steps_mode: args.steps.clone(),
         steps_count: output.steps.len(),
         warnings: collect_warnings(&output),
+        budget: build_budget_json(args),
         stats,
         hash,
         timings_us: TimingsJson {
@@ -217,5 +231,17 @@ fn build_options_json(args: &EvalJsonArgs) -> OptionsJson {
         expand_policy: args.autoexpand.clone(),
         complex_mode: args.complex.clone(),
         steps_mode: args.steps.clone(),
+    }
+}
+
+fn build_budget_json(args: &EvalJsonArgs) -> BudgetJson {
+    BudgetJson {
+        preset: args.budget_preset.clone(),
+        mode: if args.strict {
+            "strict".to_string()
+        } else {
+            "best-effort".to_string()
+        },
+        exceeded: None,
     }
 }

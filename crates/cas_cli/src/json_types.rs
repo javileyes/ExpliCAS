@@ -8,6 +8,9 @@ use serde::Serialize;
 /// Result of evaluating a single expression via eval-json
 #[derive(Serialize, Debug)]
 pub struct EvalJsonOutput {
+    /// Schema version for API stability (increment on breaking changes)
+    pub schema_version: u8,
+
     pub ok: bool,
     pub input: String,
 
@@ -23,6 +26,9 @@ pub struct EvalJsonOutput {
     /// Domain warnings from simplification
     pub warnings: Vec<WarningJson>,
 
+    /// Budget information
+    pub budget: BudgetJson,
+
     /// Expression statistics
     pub stats: ExprStatsJson,
 
@@ -35,6 +41,24 @@ pub struct EvalJsonOutput {
 
     /// Options that were used
     pub options: OptionsJson,
+}
+
+/// Budget configuration and status
+#[derive(Serialize, Debug, Default)]
+pub struct BudgetJson {
+    pub preset: String,
+    pub mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exceeded: Option<BudgetExceededJson>,
+}
+
+/// Details when budget was exceeded
+#[derive(Serialize, Debug)]
+pub struct BudgetExceededJson {
+    pub op: String,
+    pub metric: String,
+    pub used: u64,
+    pub limit: u64,
 }
 
 /// An error result
