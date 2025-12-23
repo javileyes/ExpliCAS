@@ -127,3 +127,75 @@ make lint-budget
 | 4 | Polynomial operations | ✅ |
 | 5 | Zippel GCD | ✅ |
 | 6 | CI lint enforcement | ✅ |
+
+## CLI Usage
+
+### Running the CLI
+
+```bash
+# Option 1: With cargo run (development)
+cargo run -p cas_cli --release -- eval "expand((a+b)^5)" --budget small
+
+# Option 2: Run compiled binary directly
+./target/release/cas_cli eval "expand((a+b)^5)" --budget small
+
+# Option 3: Create alias (add to ~/.zshrc or ~/.bashrc)
+alias expli="$HOME/developer/math/target/release/cas_cli"
+expli eval "expand((a+b)^5)" --budget small
+```
+
+### Budget Options
+
+```bash
+# Use conservative limits
+cargo run -p cas_cli --release -- eval "expand((a+b)^200)" --budget small
+
+# Use CLI defaults (larger limits)
+cargo run -p cas_cli --release -- eval "expand((a+b)^10)" --budget cli
+
+# No limits (use with caution)
+cargo run -p cas_cli --release -- eval "expr" --budget unlimited
+
+# Fail-fast mode (error on budget exceeded)
+cargo run -p cas_cli --release -- eval "expand((a+b)^200)" --budget small --strict
+
+# JSON output with budget info
+cargo run -p cas_cli --release -- eval "x+1" --format json
+```
+
+### JSON Output
+
+```json
+{
+  "schema_version": 1,
+  "ok": true,
+  "result": "1 + x",
+  "budget": {
+    "preset": "cli",
+    "mode": "best-effort"
+  }
+}
+```
+
+## Flag Clarification
+
+> [!IMPORTANT]
+> `--strict` (budget) and `--branch strict` (domains) are **different flags**:
+
+| Flag | Purpose | Options |
+|------|---------|---------|
+| `--strict` | Budget enforcement | Flag: fail on budget exceeded (vs best-effort) |
+| `--branch` | Domain handling | `strict` (safe, shows warnings) / `principal` (assumes principal branch) |
+
+### Examples
+
+```bash
+# Budget strict: Fail immediately if limits exceeded
+cargo run -p cas_cli --release -- eval "expand((a+b)^200)" --budget small --strict
+
+# Branch strict: Domain-safe, reports warnings for multi-valued functions
+cargo run -p cas_cli --release -- eval "sqrt(x^2)" --branch strict
+
+# Branch principal: Assumes principal branch (sqrt(x^2) → x)
+cargo run -p cas_cli --release -- eval "sqrt(x^2)" --branch principal
+```

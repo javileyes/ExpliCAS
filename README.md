@@ -165,15 +165,33 @@ cargo build --release -p cas_cli
 ### CLI Options
 
 ```bash
-# Pretty Unicode output (default) - uses ·, ², √
+# Start interactive REPL (default)
 ./target/release/cas_cli
 
-# ASCII output - uses *, ^, sqrt
+# Evaluate a single expression (text output)
+./target/release/cas_cli eval "x^2 + 1"
+
+# Evaluate with JSON output
+./target/release/cas_cli eval "x^2 + 1" --format json
+
+# Use budget presets: small, cli (default), unlimited
+./target/release/cas_cli eval "expand((a+b)^10)" --budget small
+
+# Fail-fast on budget exceeded (vs best-effort default)
+./target/release/cas_cli eval "expand((a+b)^200)" --budget small --strict
+
+# ASCII output (*, ^) instead of Unicode (·, ²)
 ./target/release/cas_cli --no-pretty
 
 # Show help
 ./target/release/cas_cli --help
+./target/release/cas_cli eval --help
 ```
+
+> **Tip**: Use `cargo run -p cas_cli --release --` prefix during development:
+> ```bash
+> cargo run -p cas_cli --release -- eval "x+1" --format json
+> ```
 
 ### Output Examples
 
