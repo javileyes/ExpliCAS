@@ -389,6 +389,28 @@ impl MultiPoly {
             terms,
         })
     }
+
+    /// Multiply two polynomials with budget tracking, returning PassStats.
+    ///
+    /// This is the instrumented version of `mul_fast` for unified budget charging.
+    pub fn mul_with_stats(
+        &self,
+        other: &Self,
+        budget: &PolyBudget,
+    ) -> Result<(Self, crate::budget::PassStats), PolyError> {
+        let result = self.mul_fast(other, budget)?;
+
+        let stats = crate::budget::PassStats {
+            op: crate::budget::Operation::PolyOps,
+            rewrite_count: 0,
+            nodes_delta: 0, // Poly ops don't create AST nodes
+            terms_materialized: result.num_terms() as u64,
+            poly_ops: 1, // Count this as one poly operation
+            stop_reason: None,
+        };
+
+        Ok((result, stats))
+    }
 }
 
 // =============================================================================
