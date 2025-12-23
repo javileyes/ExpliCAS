@@ -105,6 +105,22 @@ impl Orchestrator {
                 );
             }
 
+            // Warn user when budget limit was reached (best-effort mode)
+            if let Some(ref exceeded) = pass_stats.stop_reason {
+                tracing::warn!(
+                    target: "budget",
+                    op = %exceeded.op,
+                    metric = %exceeded.metric,
+                    used = exceeded.used,
+                    limit = exceeded.limit,
+                    "Budget limit reached: {}/{} (used {}, limit {}). Returned partial result.",
+                    exceeded.op,
+                    exceeded.metric,
+                    exceeded.used,
+                    exceeded.limit
+                );
+            }
+
             stats.rewrites_used += steps.len();
             all_steps.extend(steps);
 
