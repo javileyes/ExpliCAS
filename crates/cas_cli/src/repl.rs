@@ -824,8 +824,8 @@ impl Repl {
         // ========== SESSION ENVIRONMENT COMMANDS ==========
 
         // "let <name> = <expr>" - assign variable
-        if line.starts_with("let ") {
-            self.handle_let_command(&line[4..]);
+        if let Some(rest) = line.strip_prefix("let ") {
+            self.handle_let_command(rest);
             return;
         }
 
@@ -906,14 +906,14 @@ impl Repl {
         }
 
         // "show #id" - show a specific session entry
-        if line.starts_with("show ") {
-            self.handle_show_command(&line[5..]);
+        if let Some(rest) = line.strip_prefix("show ") {
+            self.handle_show_command(rest);
             return;
         }
 
         // "del #id [#id...]" - delete session entries
-        if line.starts_with("del ") {
-            self.handle_del_command(&line[4..]);
+        if let Some(rest) = line.strip_prefix("del ") {
+            self.handle_del_command(rest);
             return;
         }
 
@@ -2064,19 +2064,22 @@ impl Repl {
 
         // Check if the user wants to use "solve" within timeline
         // e.g., "timeline solve x + 2 = 5, x"
-        if rest.starts_with("solve ") {
-            self.handle_timeline_solve(&rest[6..]);
+        if let Some(solve_rest) = rest.strip_prefix("solve ") {
+            self.handle_timeline_solve(solve_rest);
             return;
         }
 
         // Check if the user wants to use "simplify" within timeline
         // e.g., "timeline simplify(expr)" or "timeline simplify expr"
-        let (expr_str, use_aggressive) = if rest.starts_with("simplify(") && rest.ends_with(')') {
+        let (expr_str, use_aggressive) = if let Some(inner) = rest
+            .strip_prefix("simplify(")
+            .and_then(|s| s.strip_suffix(')'))
+        {
             // Extract expression from "simplify(expr)"
-            (&rest[9..rest.len() - 1], true)
-        } else if rest.starts_with("simplify ") {
+            (inner, true)
+        } else if let Some(simplify_rest) = rest.strip_prefix("simplify ") {
             // Extract expression from "simplify expr"
-            (&rest[9..], true)
+            (simplify_rest, true)
         } else {
             // No simplify prefix, treat entire rest as expression
             (rest, false)
@@ -2207,12 +2210,11 @@ impl Repl {
     }
 
     fn handle_visualize(&mut self, line: &str) {
-        let rest = if line.starts_with("visualize ") {
-            &line[10..]
-        } else {
-            &line[4..]
-        }
-        .trim();
+        let rest = line
+            .strip_prefix("visualize ")
+            .or_else(|| line.strip_prefix("viz "))
+            .unwrap_or(line)
+            .trim();
 
         match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
             Ok(expr) => {
@@ -2344,7 +2346,7 @@ impl Repl {
         match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
             Ok(rhs_expr) => {
                 // Temporarily remove this binding to prevent self-reference in substitute
-                let old_binding = self.state.env.get(name).map(|id| id);
+                let old_binding = self.state.env.get(name);
                 self.state.env.unset(name);
 
                 // Substitute using current environment and session refs

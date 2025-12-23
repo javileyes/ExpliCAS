@@ -2,10 +2,6 @@
 //!
 //! Supports both interactive REPL mode (default) and JSON subcommands for scripting.
 
-// Clippy allows for patterns that are difficult to refactor without breaking REPL
-#![allow(clippy::manual_strip)] // strip_prefix pattern in command handling
-#![allow(clippy::map_identity)] // .map(|x| x) for Option clone semantics
-
 mod commands;
 mod completer;
 mod config;

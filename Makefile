@@ -36,3 +36,12 @@ clippy:
 
 build-release:
 	./scripts/ci.sh --no-fmt --no-clippy --no-tests --no-lints --release-build
+
+# List remaining local #[allow] attributes (technical debt tracking)
+lint-allowlist:
+	@echo "==> Local #[allow(clippy::...)] in crates:"
+	@grep -rn "#\[allow(clippy::" crates/cas_engine/src crates/cas_ast/src 2>/dev/null || echo "  (none found)"
+	@echo ""
+	@echo "==> Crate-level #![allow] (should be 0):"
+	@grep -rn "#!\[allow" crates/*/src/lib.rs crates/*/src/main.rs 2>/dev/null || echo "  ✓ None (clean)"
+

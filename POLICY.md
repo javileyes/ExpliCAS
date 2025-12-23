@@ -136,3 +136,23 @@ See `crates/cas_cli/tests/policy_tests.rs` for specification tests:
 - `test_simplify_applies_difference_of_squares_*`
 - `test_expand_expands_*`
 - `test_*_idempotence`
+
+## Clippy Allow Policy
+
+### Crate-Level Allows
+- **Prohibited**: `#![allow(...)]` at crate root requires explicit approval
+- Currently: **0** crate-level allows in `cas_engine`
+
+### Local Allows
+- `#[allow(...)]` only on specific items (function/struct) with justifying comment
+- Format: `#[allow(clippy::lint_name)] // why this is necessary`
+- If technical debt: add `// TODO(#issue): refactor to eliminate`
+
+### Current Exceptions (5 total)
+| Lint | Location | Reason |
+|------|----------|--------|
+| `arc_with_non_send_sync` | profile_cache.rs | Arc for shared ownership, not threading |
+| `too_many_arguments` ×4 | inverse_trig.rs, gcd_zippel_modp.rs, step.rs | Math algorithms with distinct params |
+
+### Audit Target
+Run `make lint-allowlist` to list current local allows.
