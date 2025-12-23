@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
 use std::io::Write;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CasConfig {
@@ -21,16 +21,16 @@ pub struct CasConfig {
 impl Default for CasConfig {
     fn default() -> Self {
         Self {
-            distribute: false, // Default: Conservative
-            expand_binomials: true, // Needed for many simplifications
-            distribute_constants: true, // Safe distribution of -1, etc.
+            distribute: false,                // Default: Conservative
+            expand_binomials: true,           // Needed for many simplifications
+            distribute_constants: true,       // Safe distribution of -1, etc.
             factor_difference_squares: false, // Can cause loops if not careful
-            root_denesting: true, // Advanced simplification for nested roots
-            trig_double_angle: true, // sin(2x) -> 2sin(x)cos(x)
-            trig_angle_sum: true, // sin(a+b) -> sin(a)cos(b)...
-            log_split_exponents: true, // ln(x^a) -> a*ln(x)
-            rationalize_denominator: true, // 1/sqrt(2) -> sqrt(2)/2
-            canonicalize_trig_square: false, // cos^2 -> 1-sin^2 (Can prevent simplification)
+            root_denesting: true,             // Advanced simplification for nested roots
+            trig_double_angle: true,          // sin(2x) -> 2sin(x)cos(x)
+            trig_angle_sum: true,             // sin(a+b) -> sin(a)cos(b)...
+            log_split_exponents: true,        // ln(x^a) -> a*ln(x)
+            rationalize_denominator: true,    // 1/sqrt(2) -> sqrt(2)/2
+            canonicalize_trig_square: false,  // cos^2 -> 1-sin^2 (Can prevent simplification)
             auto_factor: false, // Automatically factor polynomials if simpler (disabled by default to avoid loops)
         }
     }
@@ -52,7 +52,7 @@ impl CasConfig {
     }
 
     pub fn save(&self) -> std::io::Result<()> {
-        let content = toml::to_string_pretty(self).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let content = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
         let mut file = fs::File::create("cas_config.toml")?;
         file.write_all(content.as_bytes())?;
         Ok(())

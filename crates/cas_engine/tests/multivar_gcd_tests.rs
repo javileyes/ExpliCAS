@@ -13,7 +13,8 @@ fn simplify(input: &str) -> String {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
     };
     let mut ctx = Context::new();
     let expr = parse(input, &mut ctx).expect("Failed to parse");

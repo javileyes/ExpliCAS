@@ -16,6 +16,12 @@ pub struct LatexVisitor {
     output: String,
 }
 
+impl Default for LatexVisitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LatexVisitor {
     pub fn new() -> Self {
         Self {
@@ -37,10 +43,10 @@ impl Visitor for LatexVisitor {
     fn visit_constant(&mut self, c: &Constant) {
         match c {
             Constant::Pi => self.output.push_str("\\pi"),
-            Constant::E => self.output.push_str("e"),
+            Constant::E => self.output.push('e'),
             Constant::Infinity => self.output.push_str("\\infty"),
             Constant::Undefined => self.output.push_str("\\text{undefined}"),
-            Constant::I => self.output.push_str("i"),
+            Constant::I => self.output.push('i'),
         }
     }
 
@@ -102,7 +108,7 @@ impl Visitor for LatexVisitor {
         self.visit_expr(ctx, l);
         self.output.push_str("}{");
         self.visit_expr(ctx, r);
-        self.output.push_str("}");
+        self.output.push('}');
     }
 
     fn visit_pow(&mut self, ctx: &Context, b: ExprId, e: ExprId) {
@@ -121,7 +127,7 @@ impl Visitor for LatexVisitor {
 
         self.output.push_str("^{");
         self.visit_expr(ctx, e);
-        self.output.push_str("}");
+        self.output.push('}');
     }
 
     fn visit_neg(&mut self, ctx: &Context, e: ExprId) {

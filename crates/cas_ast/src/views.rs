@@ -183,7 +183,7 @@ pub fn count_distinct_numeric_surds(ctx: &Context, id: ExprId, budget: usize) ->
                     if exp_val == half {
                         if let Expr::Number(n) = ctx.get(*base) {
                             if n.is_integer() {
-                                if let Some(radicand) = n.numer().try_into().ok() {
+                                if let Ok(radicand) = n.numer().try_into() {
                                     distinct_radicands.insert(radicand);
                                 }
                             }
@@ -196,10 +196,10 @@ pub fn count_distinct_numeric_surds(ctx: &Context, id: ExprId, budget: usize) ->
 
             // Check for sqrt(Number(n))
             Expr::Function(name, args) => {
-                if name == "sqrt" && args.len() >= 1 {
+                if name == "sqrt" && !args.is_empty() {
                     if let Expr::Number(n) = ctx.get(args[0]) {
                         if n.is_integer() {
-                            if let Some(radicand) = n.numer().try_into().ok() {
+                            if let Ok(radicand) = n.numer().try_into() {
                                 distinct_radicands.insert(radicand);
                             }
                         }
@@ -282,10 +282,8 @@ fn is_negative_term(ctx: &Context, id: ExprId, zero: &num_rational::BigRational)
         Expr::Mul(l, _) => {
             if let Expr::Number(n) = ctx.get(*l) {
                 n < zero
-            } else if let Expr::Neg(_) = ctx.get(*l) {
-                true
             } else {
-                false
+                matches!(ctx.get(*l), Expr::Neg(_))
             }
         }
 
@@ -1294,7 +1292,7 @@ impl SurdSumView {
 
                 // Pure number: add to constant
                 Expr::Number(n) => {
-                    constant = constant + n.clone() * outer_coeff;
+                    constant += n.clone() * outer_coeff;
                 }
 
                 // Potential surd: Pow(n, 1/2)

@@ -1,8 +1,8 @@
+#![allow(clippy::format_in_format_args)]
 //! Test for negated atan pairs - BEATS SYMPY! 🏆
 
 use cas_ast::{DisplayExpr, Expr};
 use cas_engine::Simplifier;
-use cas_parser;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

@@ -12,9 +12,6 @@ use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 use std::cmp::Ordering;
 
-/// Helper: Build a 2-factor product (no normalization).
-#[inline]
-
 // --- Helper Functions (Keep these as they are useful helpers) ---
 
 pub fn detect_substitution(ctx: &mut Context, eq: &Equation, var: &str) -> Option<ExprId> {

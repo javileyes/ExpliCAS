@@ -13,9 +13,6 @@ use num_traits::{One, Zero};
 use num_traits::{Signed, ToPrimitive};
 use std::cmp::Ordering;
 
-/// Helper: Build a simple 2-factor product (no normalization).
-#[inline]
-
 /// Check if an expression is a binomial (sum or difference of exactly 2 terms)
 /// Examples: (a + b), (a - b), (x + (-y))
 fn is_binomial(ctx: &Context, e: ExprId) -> bool {
@@ -650,7 +647,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
                     .iter()
                     .enumerate()
                     .filter(|(i, _)| *i != idx)
-                    .map(|(_, t)| t.clone())
+                    .map(|(_, t)| *t)
                     .collect();
 
                 // Check if held_terms and other_terms cancel out
@@ -830,7 +827,7 @@ impl crate::rule::Rule for BinomialExpansionRule {
                         }
 
                         // Limit expansion to reasonable exponents even in expand mode
-                        if n_val >= 2 && n_val <= 20 {
+                        if (2..=20).contains(&n_val) {
                             // Expand: sum(k=0 to n) (n choose k) * a^(n-k) * b^k
                             let mut terms = Vec::new();
                             for k in 0..=n_val {
@@ -1112,147 +1109,6 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::rule::Rule;
-    use cas_ast::{Context, DisplayExpr};
-
-    #[test]
-    fn test_distribute() {
-        let mut ctx = Context::new();
-        let rule = DistributeRule;
-        // x^2 * (x + 3) - use x^2 (not an integer) so guard doesn't block
-        let x = ctx.var("x");
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-        let x_sq = ctx.add(Expr::Pow(x, two));
-        let add = ctx.add(Expr::Add(x, three));
-        let expr = ctx.add(Expr::Mul(x_sq, add));
-
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
-        // Should be (x^2 * x) + (x^2 * 3) before further simplification
-        // Note: x^2*x -> x^3 happens in a later pass, not in DistributeRule
-        assert_eq!(
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: rewrite.new_expr
-                }
-            ),
-            "x^2 * 3 + x^2 * x" // Exact Distribute output before simplification
-        );
-    }
-
-    #[test]
-    fn test_annihilation() {
-        let mut ctx = Context::new();
-        let rule = AnnihilationRule;
-        let x = ctx.var("x");
-        let expr = ctx.add(Expr::Sub(x, x));
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
-        assert_eq!(
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: rewrite.new_expr
-                }
-            ),
-            "0"
-        );
-    }
-
-    #[test]
-    fn test_combine_like_terms() {
-        let mut ctx = Context::new();
-        let rule = CombineLikeTermsRule;
-
-        // 2x + 3x -> 5x
-        let x = ctx.var("x");
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-        let term1 = ctx.add(Expr::Mul(two, x));
-        let term2 = ctx.add(Expr::Mul(three, x));
-        let expr = ctx.add(Expr::Add(term1, term2));
-
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
-        assert_eq!(
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: rewrite.new_expr
-                }
-            ),
-            "5 * x"
-        );
-
-        // x + 2x -> 3x
-        let term1 = x;
-        let term2 = ctx.add(Expr::Mul(two, x));
-        let expr2 = ctx.add(Expr::Add(term1, term2));
-        let rewrite2 = rule
-            .apply(
-                &mut ctx,
-                expr2,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
-        assert_eq!(
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: rewrite2.new_expr
-                }
-            ),
-            "3 * x"
-        );
-
-        // ln(x) + ln(x) -> 2 * ln(x)
-        let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![x]));
-        let expr3 = ctx.add(Expr::Add(ln_x, ln_x));
-        let rewrite3 = rule
-            .apply(
-                &mut ctx,
-                expr3,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
-        // ln(x) is log(e, x), prints as ln(x)
-        assert_eq!(
-            format!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: rewrite3.new_expr
-                }
-            ),
-            "2 * ln(x)"
-        );
-    }
-}
-
 // =============================================================================
 // AutoExpandSubCancelRule: Zero-shortcut for Sub(Pow(Add..), polynomial)
 // =============================================================================
@@ -1475,4 +1331,145 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(BinomialExpansionRule));
     simplifier.add_rule(Box::new(AutoExpandPowSumRule));
     simplifier.add_rule(Box::new(AutoExpandSubCancelRule));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rule::Rule;
+    use cas_ast::{Context, DisplayExpr};
+
+    #[test]
+    fn test_distribute() {
+        let mut ctx = Context::new();
+        let rule = DistributeRule;
+        // x^2 * (x + 3) - use x^2 (not an integer) so guard doesn't block
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let x_sq = ctx.add(Expr::Pow(x, two));
+        let add = ctx.add(Expr::Add(x, three));
+        let expr = ctx.add(Expr::Mul(x_sq, add));
+
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
+        // Should be (x^2 * x) + (x^2 * 3) before further simplification
+        // Note: x^2*x -> x^3 happens in a later pass, not in DistributeRule
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "x^2 * 3 + x^2 * x" // Exact Distribute output before simplification
+        );
+    }
+
+    #[test]
+    fn test_annihilation() {
+        let mut ctx = Context::new();
+        let rule = AnnihilationRule;
+        let x = ctx.var("x");
+        let expr = ctx.add(Expr::Sub(x, x));
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn test_combine_like_terms() {
+        let mut ctx = Context::new();
+        let rule = CombineLikeTermsRule;
+
+        // 2x + 3x -> 5x
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let term1 = ctx.add(Expr::Mul(two, x));
+        let term2 = ctx.add(Expr::Mul(three, x));
+        let expr = ctx.add(Expr::Add(term1, term2));
+
+        let rewrite = rule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "5 * x"
+        );
+
+        // x + 2x -> 3x
+        let term1 = x;
+        let term2 = ctx.add(Expr::Mul(two, x));
+        let expr2 = ctx.add(Expr::Add(term1, term2));
+        let rewrite2 = rule
+            .apply(
+                &mut ctx,
+                expr2,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite2.new_expr
+                }
+            ),
+            "3 * x"
+        );
+
+        // ln(x) + ln(x) -> 2 * ln(x)
+        let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![x]));
+        let expr3 = ctx.add(Expr::Add(ln_x, ln_x));
+        let rewrite3 = rule
+            .apply(
+                &mut ctx,
+                expr3,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap();
+        // ln(x) is log(e, x), prints as ln(x)
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite3.new_expr
+                }
+            ),
+            "2 * ln(x)"
+        );
+    }
 }

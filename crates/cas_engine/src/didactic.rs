@@ -427,7 +427,7 @@ fn generate_gcd_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
             // Sub-step 1: Factor the expression
             // If the rule display shows factored form like "(x - 2) * (2 + x) / (2 + x)"
             // we can extract the factorization
-            if local_before_str.contains(&gcd_str) && local_before_str.contains('*') {
+            if local_before_str.contains(gcd_str) && local_before_str.contains('*') {
                 sub_steps.push(SubStep {
                     description: format!("Factor: {} contains factor {}", num_str, gcd_str),
                     before_latex: num_str.clone(),

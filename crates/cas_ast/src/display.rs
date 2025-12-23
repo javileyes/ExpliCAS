@@ -321,27 +321,55 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                                 id: *term
                             }
                         )?;
-                    } else {
-                        if is_neg {
-                            // Print " - " then absolute value
-                            write!(f, " - ")?;
+                    } else if is_neg {
+                        // Print " - " then absolute value
+                        write!(f, " - ")?;
 
-                            // Re-check locally to extract positive part
-                            match self.context.get(*term) {
-                                Expr::Neg(inner) => {
-                                    // If inner is Add/Sub, wrap in parentheses to preserve grouping
-                                    // e.g., -(a - b) should display as "-(a - b)" not "-a - b"
-                                    let inner_is_add_sub = matches!(
-                                        self.context.get(*inner),
-                                        Expr::Add(_, _) | Expr::Sub(_, _)
-                                    );
-                                    if inner_is_add_sub {
+                        // Re-check locally to extract positive part
+                        match self.context.get(*term) {
+                            Expr::Neg(inner) => {
+                                // If inner is Add/Sub, wrap in parentheses to preserve grouping
+                                // e.g., -(a - b) should display as "-(a - b)" not "-a - b"
+                                let inner_is_add_sub = matches!(
+                                    self.context.get(*inner),
+                                    Expr::Add(_, _) | Expr::Sub(_, _)
+                                );
+                                if inner_is_add_sub {
+                                    write!(
+                                        f,
+                                        "({})",
+                                        DisplayExpr {
+                                            context: self.context,
+                                            id: *inner
+                                        }
+                                    )?;
+                                } else {
+                                    write!(
+                                        f,
+                                        "{}",
+                                        DisplayExpr {
+                                            context: self.context,
+                                            id: *inner
+                                        }
+                                    )?;
+                                }
+                            }
+                            Expr::Number(n) => {
+                                write!(f, "{}", -n)?;
+                            }
+                            Expr::Mul(a, b) => {
+                                if let Expr::Number(n) = self.context.get(*a) {
+                                    let pos_n = -n;
+                                    // Print pos_n * b
+                                    let b_prec = precedence(self.context, *b);
+                                    write!(f, "{} * ", pos_n)?;
+                                    if b_prec < 2 {
                                         write!(
                                             f,
                                             "({})",
                                             DisplayExpr {
                                                 context: self.context,
-                                                id: *inner
+                                                id: *b
                                             }
                                         )?;
                                     } else {
@@ -350,53 +378,12 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                                             "{}",
                                             DisplayExpr {
                                                 context: self.context,
-                                                id: *inner
+                                                id: *b
                                             }
                                         )?;
                                     }
-                                }
-                                Expr::Number(n) => {
-                                    write!(f, "{}", -n)?;
-                                }
-                                Expr::Mul(a, b) => {
-                                    if let Expr::Number(n) = self.context.get(*a) {
-                                        let pos_n = -n;
-                                        // Print pos_n * b
-                                        let b_prec = precedence(self.context, *b);
-                                        write!(f, "{} * ", pos_n)?;
-                                        if b_prec < 2 {
-                                            write!(
-                                                f,
-                                                "({})",
-                                                DisplayExpr {
-                                                    context: self.context,
-                                                    id: *b
-                                                }
-                                            )?;
-                                        } else {
-                                            write!(
-                                                f,
-                                                "{}",
-                                                DisplayExpr {
-                                                    context: self.context,
-                                                    id: *b
-                                                }
-                                            )?;
-                                        }
-                                    } else {
-                                        // Should not happen if check_negative is correct
-                                        write!(
-                                            f,
-                                            "{}",
-                                            DisplayExpr {
-                                                context: self.context,
-                                                id: *term
-                                            }
-                                        )?;
-                                    }
-                                }
-                                _ => {
-                                    // Should not happen
+                                } else {
+                                    // Should not happen if check_negative is correct
                                     write!(
                                         f,
                                         "{}",
@@ -407,16 +394,27 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                                     )?;
                                 }
                             }
-                        } else {
-                            write!(
-                                f,
-                                " + {}",
-                                DisplayExpr {
-                                    context: self.context,
-                                    id: *term
-                                }
-                            )?;
+                            _ => {
+                                // Should not happen
+                                write!(
+                                    f,
+                                    "{}",
+                                    DisplayExpr {
+                                        context: self.context,
+                                        id: *term
+                                    }
+                                )?;
+                            }
                         }
+                    } else {
+                        write!(
+                            f,
+                            " + {}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *term
+                            }
+                        )?;
                     }
                 }
                 Ok(())
@@ -1191,35 +1189,33 @@ impl<'a> DisplayExprWithHints<'a> {
                     if i == 0 {
                         // First term: print as is
                         self.fmt_internal(f, *term)?;
-                    } else {
-                        if is_neg {
-                            // Print " - " then absolute value
-                            write!(f, " - ")?;
-                            // Extract positive part
-                            match self.context.get(*term) {
-                                Expr::Neg(inner) => {
-                                    self.fmt_internal(f, *inner)?;
-                                }
-                                Expr::Number(n) => {
-                                    write!(f, "{}", -n)?;
-                                }
-                                Expr::Mul(a, b) => {
-                                    if let Expr::Number(n) = self.context.get(*a) {
-                                        let pos_n = -n;
-                                        write!(f, "{} * ", pos_n)?;
-                                        self.fmt_internal(f, *b)?;
-                                    } else {
-                                        self.fmt_internal(f, *term)?;
-                                    }
-                                }
-                                _ => {
+                    } else if is_neg {
+                        // Print " - " then absolute value
+                        write!(f, " - ")?;
+                        // Extract positive part
+                        match self.context.get(*term) {
+                            Expr::Neg(inner) => {
+                                self.fmt_internal(f, *inner)?;
+                            }
+                            Expr::Number(n) => {
+                                write!(f, "{}", -n)?;
+                            }
+                            Expr::Mul(a, b) => {
+                                if let Expr::Number(n) = self.context.get(*a) {
+                                    let pos_n = -n;
+                                    write!(f, "{} * ", pos_n)?;
+                                    self.fmt_internal(f, *b)?;
+                                } else {
                                     self.fmt_internal(f, *term)?;
                                 }
                             }
-                        } else {
-                            write!(f, " + ")?;
-                            self.fmt_internal(f, *term)?;
+                            _ => {
+                                self.fmt_internal(f, *term)?;
+                            }
                         }
+                    } else {
+                        write!(f, " + ")?;
+                        self.fmt_internal(f, *term)?;
                     }
                 }
                 Ok(())
@@ -1385,7 +1381,7 @@ impl<'a> DisplayExprWithHints<'a> {
             }
             Expr::Function(name, args) => {
                 // Special handling for sqrt/root functions - always render as √
-                if name == "sqrt" && args.len() >= 1 {
+                if name == "sqrt" && !args.is_empty() {
                     let index = if args.len() == 2 {
                         if let Expr::Number(n) = self.context.get(args[1]) {
                             n.to_integer().try_into().unwrap_or(2u32)
@@ -1450,7 +1446,7 @@ impl<'a> DisplayExprWithHints<'a> {
         if let Expr::Number(n) = self.context.get(coeff) {
             if !n.is_integer() {
                 // It's a fraction like 1/11 -> display as -(add)/denom
-                let numer = n.numer();
+                let _numer = n.numer();
                 let denom = n.denom();
 
                 // Format the positive Add
@@ -1458,12 +1454,8 @@ impl<'a> DisplayExprWithHints<'a> {
                 self.fmt_positive_add(f, all_neg_add, &zero)?;
                 write!(f, ")/")?;
 
-                // If numerator is 1, just show denominator
-                if *numer == 1.into() {
-                    return write!(f, "{}", denom);
-                } else {
-                    return write!(f, "{}", denom);
-                }
+                // Just show denominator (numer already factored into display)
+                return write!(f, "{}", denom);
             }
         }
 
@@ -1853,7 +1845,7 @@ impl<'a> DisplayExprStyled<'a> {
                 if n.is_integer() {
                     if let Some(exp_i64) = n.to_integer().try_into().ok() as Option<i64> {
                         // Use superscript for positive integers 0-99
-                        if exp_i64 >= 0 && exp_i64 <= 99 {
+                        if (0..=99).contains(&exp_i64) {
                             return write!(f, "{}", number_to_superscript(exp_i64 as u64));
                         }
                     }

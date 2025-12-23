@@ -357,7 +357,7 @@ fn emit_polynomial_from_terms(
 
     // Build balanced Add tree
     while exprs.len() > 1 {
-        let mut next = Vec::with_capacity((exprs.len() + 1) / 2);
+        let mut next = Vec::with_capacity(exprs.len().div_ceil(2));
         for chunk in exprs.chunks(2) {
             if chunk.len() == 2 {
                 next.push(ctx.add(Expr::Add(chunk[0], chunk[1])));
@@ -418,7 +418,7 @@ fn emit_term(ctx: &mut Context, var_ids: &[ExprId], mono: &MonoKey, coeff: BigRa
 /// Build balanced Mul tree from factors
 fn build_balanced_mul(ctx: &mut Context, mut factors: Vec<ExprId>) -> ExprId {
     while factors.len() > 1 {
-        let mut next = Vec::with_capacity((factors.len() + 1) / 2);
+        let mut next = Vec::with_capacity(factors.len().div_ceil(2));
         for chunk in factors.chunks(2) {
             if chunk.len() == 2 {
                 next.push(ctx.add(Expr::Mul(chunk[0], chunk[1])));

@@ -13,7 +13,8 @@ define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
                     new_expr: lhs,
                     description: "x + 0 = x".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -23,7 +24,8 @@ define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
                     new_expr: rhs,
                     description: "0 + x = x".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -43,7 +45,8 @@ define_rule!(
                         new_expr: lhs,
                         description: "x * 1 = x".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -53,7 +56,8 @@ define_rule!(
                         new_expr: rhs,
                         description: "1 * x = x".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -75,7 +79,8 @@ define_rule!(
                         new_expr: zero,
                         description: "x * 0 = 0".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -86,7 +91,8 @@ define_rule!(
                         new_expr: zero,
                         description: "0 * x = 0".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -114,7 +120,8 @@ define_rule!(DivZeroRule, "Zero Property of Division", |ctx, expr| {
                     new_expr: zero,
                     description: "0 / x = 0".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -136,7 +143,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     new_expr,
                     description: format!("{} + {} = {}", n1, n2, sum),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
             // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
@@ -151,7 +159,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             new_expr,
                             description: format!("Combine nested constants: {} + {}", n1, n2),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -167,7 +176,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     new_expr,
                     description: format!("{} * {} = {}", n1, n2, prod),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
             // Handle nested: c1 * (c2 * x) -> (c1*c2) * x
@@ -182,7 +192,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             new_expr,
                             description: format!("Combine nested constants: {} * {}", n1, n2),
                             before_local: None,
-                            after_local: None, domain_assumption: None,
+                            after_local: None,
+                            domain_assumption: None,
                         });
                     }
                 }
@@ -204,7 +215,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                     n1, n2, n1, n2
                                 ),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -221,7 +233,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     new_expr,
                     description: format!("{} - {} = {}", n1, n2, diff),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -236,7 +249,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         new_expr,
                         description: format!("{} / {} = {}", n1, n2, quot),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 } else {
                     let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
@@ -244,7 +258,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         new_expr: undef,
                         description: "Division by zero".to_string(),
                         before_local: None,
-                        after_local: None, domain_assumption: None,
+                        after_local: None,
+                        domain_assumption: None,
                     });
                 }
             }
@@ -265,7 +280,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                 new_expr,
                                 description: format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
 
@@ -278,7 +294,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                 new_expr,
                                 description: format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d),
                                 before_local: None,
-                                after_local: None, domain_assumption: None,
+                                after_local: None,
+                                domain_assumption: None,
                             });
                         }
                     }
@@ -386,7 +403,8 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr| {
                     new_expr: ctx.num(0),
                     description: "a + (-a) = 0".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -397,7 +415,8 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr| {
                     new_expr: ctx.num(0),
                     description: "(-a) + a = 0".to_string(),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }
@@ -480,7 +499,8 @@ define_rule!(
                     new_expr: new_pow,
                     description: format!("{} = {}", addend_strs.join(" + "), sum_str),
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
         }

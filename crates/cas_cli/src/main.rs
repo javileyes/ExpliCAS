@@ -2,6 +2,10 @@
 //!
 //! Supports both interactive REPL mode (default) and JSON subcommands for scripting.
 
+// Clippy allows for patterns that are difficult to refactor without breaking REPL
+#![allow(clippy::manual_strip)] // strip_prefix pattern in command handling
+#![allow(clippy::map_identity)] // .map(|x| x) for Option clone semantics
+
 mod commands;
 mod completer;
 mod config;
@@ -39,7 +43,7 @@ fn main() -> rustyline::Result<()> {
 
     // Detect if first arg is a known subcommand → use clap
     // Otherwise → use manual parsing for backwards compatibility
-    let is_subcommand = args.get(1).map_or(false, |arg| {
+    let is_subcommand = args.get(1).is_some_and(|arg| {
         matches!(
             arg.as_str(),
             "eval-json" | "script-json" | "mm-gcd-modp-json" | "help" | "--help" | "-h"

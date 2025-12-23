@@ -1,3 +1,7 @@
+#![allow(clippy::format_in_format_args)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
 /// Anti-regression tests for the did_rationalize phase control flag
 /// These tests verify that:
 /// 1. Rationalization + other simplifiable parts work together correctly

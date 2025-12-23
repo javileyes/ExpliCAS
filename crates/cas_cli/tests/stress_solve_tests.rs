@@ -209,7 +209,7 @@ fn test_quadratic_one_solution() {
 
     match solution {
         SolutionSet::Discrete(values) => {
-            assert!(values.len() >= 1, "Expected at least 1 solution");
+            assert!(!values.is_empty(), "Expected at least 1 solution");
         }
         _ => panic!("Expected discrete solution"),
     }

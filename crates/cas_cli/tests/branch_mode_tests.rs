@@ -1,9 +1,7 @@
 //! Tests for BranchMode feature (strict vs principal branch)
 
-use cas_ast::{DisplayExpr, Expr};
-use cas_engine::options::{Assumptions, BranchMode};
+use cas_ast::DisplayExpr;
 use cas_engine::Simplifier;
-use cas_parser;
 
 fn simplify_strict(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

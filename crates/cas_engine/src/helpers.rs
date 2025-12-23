@@ -335,10 +335,8 @@ pub fn is_zero(ctx: &Context, expr: ExprId) -> bool {
 pub fn is_negative(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Number(n) = ctx.get(expr) {
         n.is_negative()
-    } else if let Expr::Neg(_) = ctx.get(expr) {
-        true
     } else {
-        false
+        matches!(ctx.get(expr), Expr::Neg(_))
     }
 }
 
@@ -650,6 +648,87 @@ pub fn as_rational_const_depth(
     }
 }
 
+/// Check if an expression contains an integral (for auto-context detection).
+///
+/// Searches the expression tree for `integrate(...)` function calls.
+/// Uses iterative traversal to avoid stack overflow on deep expressions.
+pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Function(name, _) if name == "integrate" || name == "int" => {
+                return true;
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => {
+                stack.push(*inner);
+            }
+            Expr::Function(_, args) => {
+                for arg in args {
+                    stack.push(*arg);
+                }
+            }
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    stack.push(*elem);
+                }
+            }
+            Expr::Div(num, den) => {
+                stack.push(*num);
+                stack.push(*den);
+            }
+            // Leaf nodes: nothing to push
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
+/// Check if an expression contains the imaginary unit `i` anywhere.
+/// Searches the expression tree for `Constant::I`.
+/// Uses iterative traversal to avoid stack overflow on deep expressions.
+pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Constant(c) if *c == cas_ast::Constant::I => {
+                return true;
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => {
+                stack.push(*inner);
+            }
+            Expr::Function(_, args) => {
+                for arg in args {
+                    stack.push(*arg);
+                }
+            }
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    stack.push(*elem);
+                }
+            }
+            Expr::Div(num, den) => {
+                stack.push(*num);
+                stack.push(*den);
+            }
+            // Leaf nodes: nothing to push
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -958,85 +1037,4 @@ mod tests {
             panic!("Expected Mul expression");
         }
     }
-}
-
-/// Check if an expression contains an integral (for auto-context detection).
-///
-/// Searches the expression tree for `integrate(...)` function calls.
-/// Uses iterative traversal to avoid stack overflow on deep expressions.
-pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
-    let mut stack = vec![root];
-
-    while let Some(e) = stack.pop() {
-        match ctx.get(e) {
-            Expr::Function(name, _) if name == "integrate" || name == "int" => {
-                return true;
-            }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(inner) => {
-                stack.push(*inner);
-            }
-            Expr::Function(_, args) => {
-                for arg in args {
-                    stack.push(*arg);
-                }
-            }
-            Expr::Matrix { data, .. } => {
-                for elem in data {
-                    stack.push(*elem);
-                }
-            }
-            Expr::Div(num, den) => {
-                stack.push(*num);
-                stack.push(*den);
-            }
-            // Leaf nodes: nothing to push
-            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-        }
-    }
-
-    false
-}
-
-/// Check if an expression contains the imaginary unit `i` anywhere.
-/// Searches the expression tree for `Constant::I`.
-/// Uses iterative traversal to avoid stack overflow on deep expressions.
-pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
-    let mut stack = vec![root];
-
-    while let Some(e) = stack.pop() {
-        match ctx.get(e) {
-            Expr::Constant(c) if *c == cas_ast::Constant::I => {
-                return true;
-            }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(inner) => {
-                stack.push(*inner);
-            }
-            Expr::Function(_, args) => {
-                for arg in args {
-                    stack.push(*arg);
-                }
-            }
-            Expr::Matrix { data, .. } => {
-                for elem in data {
-                    stack.push(*elem);
-                }
-            }
-            Expr::Div(num, den) => {
-                stack.push(*num);
-                stack.push(*den);
-            }
-            // Leaf nodes: nothing to push
-            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-        }
-    }
-
-    false
 }

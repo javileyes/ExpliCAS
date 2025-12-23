@@ -11,9 +11,6 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
 
-/// Helper: Build a simple 2-factor product (no normalization).
-#[inline]
-
 /// Helper: Add two exponents, folding if both are constants
 /// This prevents ugly exponents like x^(1+2) and produces x^3 instead
 fn add_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {

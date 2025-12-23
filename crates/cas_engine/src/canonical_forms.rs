@@ -3,9 +3,6 @@ use crate::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use tracing::debug;
 
-/// Helper: Build a 2-factor product (no normalization).
-#[inline]
-
 /// Detects if an expression is in a canonical (elegant) form that should not be expanded.
 /// These forms are mathematically clean and expanding them would only create unnecessary complexity.
 pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {

@@ -1,3 +1,7 @@
+#![allow(clippy::format_in_format_args)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
 //! Comprehensive tests for N-ary Pattern Matching (Add Flattening)
 //!
 //! Verifies that rules can find patterns across all additive terms,
@@ -5,7 +9,6 @@
 
 use cas_ast::{DisplayExpr, Expr};
 use cas_engine::Simplifier;
-use cas_parser;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

@@ -55,7 +55,8 @@ fn standard_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
     }
 }
 
@@ -64,7 +65,8 @@ fn solve_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Solve,
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
     }
 }
 
@@ -73,7 +75,8 @@ fn integrate_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::IntegratePrep,
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
     }
 }
 

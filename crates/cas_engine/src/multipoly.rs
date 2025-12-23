@@ -537,7 +537,7 @@ impl MultiPoly {
 
         while !remainder.is_empty() {
             // Get largest remaining term
-            let (r_mono, r_coeff) = remainder.iter().next_back()?.clone();
+            let (r_mono, r_coeff) = remainder.iter().next_back()?;
             let r_mono = r_mono.clone();
             let r_coeff = r_coeff.clone();
 
@@ -604,7 +604,7 @@ impl MultiPoly {
             // Compute val^exp
             let mut val_pow = BigRational::one();
             for _ in 0..exp {
-                val_pow = val_pow * val;
+                val_pow *= val;
             }
             // New coefficient = old_coeff * val^exp
             let new_coeff = coeff * &val_pow;
@@ -633,7 +633,7 @@ impl MultiPoly {
         // Apply all assignments
         let mut p = self.clone();
         // Sort assigns in reverse order so indices don't shift
-        let mut sorted_assigns: Vec<_> = assigns.iter().cloned().collect();
+        let mut sorted_assigns: Vec<_> = assigns.to_vec();
         sorted_assigns.sort_by(|a, b| b.0.cmp(&a.0));
 
         for (var, val) in sorted_assigns {
@@ -877,7 +877,7 @@ impl MultiPoly {
             let exp = mono[var_idx];
             let mut val_pow = BigRational::one();
             for _ in 0..exp {
-                val_pow = val_pow * val;
+                val_pow *= val;
             }
             let new_coeff = coeff * &val_pow;
 
@@ -895,7 +895,7 @@ impl MultiPoly {
 /// Generate seed combinations for fixing extra variables
 fn generate_seed_combinations(n_vars: usize, max_seeds: usize) -> Vec<Vec<BigRational>> {
     // For extra vars, we need n_vars - 2 values per seed
-    let extra_count = if n_vars > 2 { n_vars - 2 } else { 0 };
+    let extra_count = n_vars.saturating_sub(2);
     if extra_count == 0 {
         return vec![vec![]];
     }
@@ -1068,7 +1068,7 @@ fn lift_to_nvar(
     for (coeff, mono) in &gcd.terms {
         let mut new_mono = vec![0u32; n];
         // mono[0] goes to main, mono[1] goes to param
-        if mono.len() >= 1 {
+        if !mono.is_empty() {
             new_mono[main] = mono[0];
         }
         if mono.len() >= 2 {
@@ -1463,7 +1463,7 @@ fn lagrange_interpolate_multipoly(
             if diff.is_zero() {
                 return None;
             }
-            basis_denom = basis_denom * diff;
+            basis_denom *= diff;
         }
 
         // Scale basis by 1/denom
@@ -1689,10 +1689,8 @@ fn from_expr_recursive(
 
                     // Check if exponent exceeds budget for Pow(sum, n) expansion
                     // Only apply budget check if base is a sum (Add) - constants/vars are cheap
-                    if e > budget.max_pow_exp {
-                        if matches!(ctx.get(*base), Expr::Add(_, _)) {
-                            return Err(PolyError::BudgetExceeded);
-                        }
+                    if e > budget.max_pow_exp && matches!(ctx.get(*base), Expr::Add(_, _)) {
+                        return Err(PolyError::BudgetExceeded);
                     }
 
                     let pb = from_expr_recursive(ctx, *base, vars, budget)?;

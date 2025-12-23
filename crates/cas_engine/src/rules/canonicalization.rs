@@ -716,6 +716,21 @@ define_rule!(
     }
 );
 
+pub fn register(simplifier: &mut crate::Simplifier) {
+    // RE-ENABLED: Needed for -0 → 0 normalization
+    // The non-determinism issue with Sub→Add(Neg) is now handled by canonical ordering
+    simplifier.add_rule(Box::new(CanonicalizeNegationRule));
+
+    simplifier.add_rule(Box::new(CanonicalizeAddRule));
+    simplifier.add_rule(Box::new(CanonicalizeMulRule));
+    simplifier.add_rule(Box::new(CanonicalizeDivRule));
+    simplifier.add_rule(Box::new(CanonicalizeRootRule));
+    simplifier.add_rule(Box::new(NormalizeSignsRule));
+    // NormalizeBinomialOrderRule disabled - causes infinite loop with other rules
+    simplifier.add_rule(Box::new(NegSubFlipRule)); // -(a-b) → (b-a) for cleaner display
+    simplifier.add_rule(Box::new(NegCoeffFlipBinomialRule)); // (-k)*(a-b) → k*(b-a)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -821,19 +836,4 @@ mod tests {
             "x^(1 / 4)"
         );
     }
-}
-
-pub fn register(simplifier: &mut crate::Simplifier) {
-    // RE-ENABLED: Needed for -0 → 0 normalization
-    // The non-determinism issue with Sub→Add(Neg) is now handled by canonical ordering
-    simplifier.add_rule(Box::new(CanonicalizeNegationRule));
-
-    simplifier.add_rule(Box::new(CanonicalizeAddRule));
-    simplifier.add_rule(Box::new(CanonicalizeMulRule));
-    simplifier.add_rule(Box::new(CanonicalizeDivRule));
-    simplifier.add_rule(Box::new(CanonicalizeRootRule));
-    simplifier.add_rule(Box::new(NormalizeSignsRule));
-    // NormalizeBinomialOrderRule disabled - causes infinite loop with other rules
-    simplifier.add_rule(Box::new(NegSubFlipRule)); // -(a-b) → (b-a) for cleaner display
-    simplifier.add_rule(Box::new(NegCoeffFlipBinomialRule)); // (-k)*(a-b) → k*(b-a)
 }

@@ -706,7 +706,7 @@ impl Simplifier {
         let steps = std::mem::take(&mut local_transformer.steps);
         // Copy domain_warnings to self (survives even in Off mode)
         self.last_domain_warnings
-            .extend(local_transformer.domain_warnings.drain(..));
+            .append(&mut local_transformer.domain_warnings);
         drop(local_transformer);
 
         (new_expr, steps)

@@ -3,9 +3,10 @@
 //! Verifies that the pattern f(x) + g(x) = V → -f(x) - g(x) = -V
 //! works correctly for all pair-based rules.
 
+#![allow(clippy::format_in_format_args)] // Test assertions need detailed error messages
+
 use cas_ast::{DisplayExpr, Expr};
 use cas_engine::Simplifier;
-use cas_parser;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

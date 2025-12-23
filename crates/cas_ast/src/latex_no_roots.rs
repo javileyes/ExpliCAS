@@ -51,12 +51,10 @@ impl<'a> LatexNoRoots<'a> {
                     } else {
                         format!("{}\\cdot {}", left, right)
                     }
+                } else if parent_needs_parens {
+                    format!("({}{})", left, right)
                 } else {
-                    if parent_needs_parens {
-                        format!("({}{})", left, right)
-                    } else {
-                        format!("{}{}", left, right)
-                    }
+                    format!("{}{}", left, right)
                 }
             }
             Expr::Div(l, r) => {

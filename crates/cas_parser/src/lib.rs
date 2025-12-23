@@ -1,5 +1,5 @@
-pub mod parser;
 pub mod error;
+pub mod parser;
 
-pub use parser::{parse, parse_statement, Statement};
 pub use error::ParseError;
+pub use parser::{parse, parse_statement, Statement};

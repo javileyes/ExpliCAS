@@ -121,32 +121,33 @@ impl Completer for CasHelper {
             // parts=["config", "enable"] (ends with space) -> show rules
             // parts=["config", "enable", "dis"] (!ends with space) -> show rules matching "dis"
 
-            if parts.len() >= 2 && (parts[1] == "enable" || parts[1] == "disable") {
-                if (parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space) {
-                    let rules = vec![
-                        "distribute",
-                        "distribute_constants",
-                        "expand_binomials",
-                        "factor_difference_squares",
-                        "root_denesting",
-                        "trig_double_angle",
-                        "trig_angle_sum",
-                        "log_split_exponents",
-                        "rationalize_denominator",
-                        "canonicalize_trig_square",
-                        "auto_factor",
-                    ];
+            if parts.len() >= 2
+                && (parts[1] == "enable" || parts[1] == "disable")
+                && ((parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space))
+            {
+                let rules = vec![
+                    "distribute",
+                    "distribute_constants",
+                    "expand_binomials",
+                    "factor_difference_squares",
+                    "root_denesting",
+                    "trig_double_angle",
+                    "trig_angle_sum",
+                    "log_split_exponents",
+                    "rationalize_denominator",
+                    "canonicalize_trig_square",
+                    "auto_factor",
+                ];
 
-                    for rule in rules {
-                        if rule.starts_with(word) {
-                            matches.push(Pair {
-                                display: rule.to_string(),
-                                replacement: rule.to_string(),
-                            });
-                        }
+                for rule in rules {
+                    if rule.starts_with(word) {
+                        matches.push(Pair {
+                            display: rule.to_string(),
+                            replacement: rule.to_string(),
+                        });
                     }
-                    return Ok((start, matches));
                 }
+                return Ok((start, matches));
             }
         }
 
@@ -318,32 +319,32 @@ impl Completer for CasHelper {
                 }
 
                 // health status --category <TAB>
-                if parts.len() >= 3 && (parts[2] == "--category" || parts[2] == "-c") {
-                    if (parts.len() == 3 && ends_with_space)
-                        || (parts.len() == 4 && !ends_with_space)
-                    {
-                        let categories = vec![
-                            "transform",
-                            "expansion",
-                            "fractions",
-                            "rationalization",
-                            "mixed",
-                            "baseline",
-                            "roots",
-                            "powers",
-                            "stress",
-                            "all",
-                        ];
-                        for cat in categories {
-                            if cat.starts_with(word) {
-                                matches.push(Pair {
-                                    display: cat.to_string(),
-                                    replacement: cat.to_string(),
-                                });
-                            }
+                if parts.len() >= 3
+                    && (parts[2] == "--category" || parts[2] == "-c")
+                    && ((parts.len() == 3 && ends_with_space)
+                        || (parts.len() == 4 && !ends_with_space))
+                {
+                    let categories = vec![
+                        "transform",
+                        "expansion",
+                        "fractions",
+                        "rationalization",
+                        "mixed",
+                        "baseline",
+                        "roots",
+                        "powers",
+                        "stress",
+                        "all",
+                    ];
+                    for cat in categories {
+                        if cat.starts_with(word) {
+                            matches.push(Pair {
+                                display: cat.to_string(),
+                                replacement: cat.to_string(),
+                            });
                         }
-                        return Ok((start, matches));
                     }
+                    return Ok((start, matches));
                 }
             }
         }
@@ -368,23 +369,23 @@ impl Completer for CasHelper {
             }
 
             // Second argument: value based on option
-            if parts.len() >= 2 {
-                if (parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space) {
-                    let values = match parts[1] {
-                        "explain" | "transform" => vec!["on", "off"],
-                        "rationalize" => vec!["off", "0", "1", "1.5"],
-                        _ => vec![],
-                    };
-                    for val in values {
-                        if val.starts_with(word) {
-                            matches.push(Pair {
-                                display: val.to_string(),
-                                replacement: val.to_string(),
-                            });
-                        }
+            if parts.len() >= 2
+                && ((parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space))
+            {
+                let values = match parts[1] {
+                    "explain" | "transform" => vec!["on", "off"],
+                    "rationalize" => vec!["off", "0", "1", "1.5"],
+                    _ => vec![],
+                };
+                for val in values {
+                    if val.starts_with(word) {
+                        matches.push(Pair {
+                            display: val.to_string(),
+                            replacement: val.to_string(),
+                        });
                     }
-                    return Ok((start, matches));
                 }
+                return Ok((start, matches));
             }
         }
 

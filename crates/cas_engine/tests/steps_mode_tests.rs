@@ -215,7 +215,7 @@ fn warnings_in_steps_on_mode() {
     assert_eq!(mode, StepsMode::On);
 
     // Check if any step has a domain_assumption (Morrie rule should produce one)
-    let has_domain_warning = steps.iter().any(|s| s.domain_assumption.is_some());
+    let _has_domain_warning = steps.iter().any(|s| s.domain_assumption.is_some());
 
     // Note: This depends on whether the Morrie telescoping rule fires
     // If the simplifier applies the rule, we expect a warning
@@ -234,7 +234,7 @@ fn warnings_in_steps_on_mode() {
         );
 
         // This is an informational test - we're checking the mechanism works
-        assert!(steps.len() > 0, "On mode should collect steps");
+        assert!(!steps.is_empty(), "On mode should collect steps");
     }
 }
 
@@ -278,7 +278,7 @@ fn warnings_survive_steps_off() {
         println!("Has sin warning: {}", has_sin_warning);
         // The Morrie rule produces: "Assuming sin(u) ≠ 0 (used for integration transforms)"
         assert!(
-            has_sin_warning || warnings.len() > 0,
+            has_sin_warning || !warnings.is_empty(),
             "Expected sin-related warning, got: {:?}",
             warnings
         );

@@ -1,8 +1,6 @@
 use crate::build::mul2_raw;
 use cas_ast::{Context, Expr, ExprId};
 
-/// Helper: Build a 2-factor product (no normalization).
-
 /// Matrix wrapper for operations
 #[derive(Debug, Clone)]
 pub struct Matrix {

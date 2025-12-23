@@ -3,9 +3,6 @@ use cas_ast::{Context, Expr, ExprId};
 use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
 
-/// Helper: Build a 2-factor product (no normalization).
-#[inline]
-
 /// Expands an expression.
 /// This is the main entry point for expansion.
 /// It recursively expands children and then applies specific expansion rules.

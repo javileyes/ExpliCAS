@@ -1,9 +1,9 @@
-use cas_engine::Simplifier;
-use cas_engine::rules::number_theory::NumberTheoryRule;
+use cas_ast::DisplayExpr;
 use cas_engine::rules::arithmetic::{CombineConstantsRule, MulOneRule};
 use cas_engine::rules::exponents::ProductPowerRule;
+use cas_engine::rules::number_theory::NumberTheoryRule;
+use cas_engine::Simplifier;
 use cas_parser::parse;
-use cas_ast::DisplayExpr;
 
 fn create_nt_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();
@@ -20,7 +20,16 @@ fn test_gcd() {
     // gcd(12, 18) -> 6
     let expr = parse("gcd(12, 18)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "6");
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "6"
+    );
 }
 
 #[test]
@@ -29,7 +38,16 @@ fn test_lcm() {
     // lcm(4, 6) -> 12
     let expr = parse("lcm(4, 6)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "12");
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "12"
+    );
 }
 
 #[test]
@@ -38,12 +56,30 @@ fn test_mod() {
     // mod(10, 3) -> 1
     let expr = parse("mod(10, 3)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
-    
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "1"
+    );
+
     // mod(-10, 3) -> 2 (Euclidean)
     let expr2 = parse("mod(-10, 3)", &mut simplifier.context).unwrap();
     let (res2, _) = simplifier.simplify(expr2);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res2 }), "2");
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res2
+            }
+        ),
+        "2"
+    );
 }
 
 #[test]
@@ -52,7 +88,13 @@ fn test_prime_factors() {
     // factors(12) -> 2^2 * 3
     let expr = parse("factors(12)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    let out = format!("{}", DisplayExpr { context: &simplifier.context, id: res });
+    let out = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
     // Order might vary: 2^2 * 3 or 3 * 2^2
     assert!(out.contains("2^2"));
     assert!(out.contains("3"));
@@ -65,7 +107,13 @@ fn test_prime_factors_large() {
     // factors(100) -> 2^2 * 5^2
     let expr = parse("factors(100)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    let out = format!("{}", DisplayExpr { context: &simplifier.context, id: res });
+    let out = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
     assert!(out.contains("2^2"));
     assert!(out.contains("5^2"));
 }
@@ -76,17 +124,44 @@ fn test_factorial() {
     // fact(5) -> 120
     let expr = parse("fact(5)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "120");
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "120"
+    );
 
     // 5! -> 120
     let expr = parse("5!", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "120");
-    
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "120"
+    );
+
     // 0! -> 1
     let expr = parse("0!", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "1"
+    );
 }
 
 #[test]
@@ -95,40 +170,103 @@ fn test_infix_mod() {
     // 10 mod 3 -> 1
     let expr = parse("10 mod 3", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
-    
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "1"
+    );
+
     // (20 + 5) mod 7 -> 25 mod 7 -> 4
     let expr = parse("(20 + 5) mod 7", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "4");
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "4"
+    );
 }
 
 #[test]
 fn test_combinatorics() {
     let mut simplifier = create_nt_simplifier();
-    
+
     // choose(5, 2) -> 10
     let expr = parse("choose(5, 2)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "10");
-    
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "10"
+    );
+
     // choose(5, 0) -> 1
     let expr = parse("choose(5, 0)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
-    
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "1"
+    );
+
     // choose(5, 5) -> 1
     let expr = parse("choose(5, 5)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "1");
-    
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "1"
+    );
+
     // perm(5, 2) -> 20
     let expr = parse("perm(5, 2)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "20");
-    
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "20"
+    );
+
     // perm(5, 5) -> 120 (5!)
     let expr = parse("perm(5, 5)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
-    assert_eq!(format!("{}", DisplayExpr { context: &simplifier.context, id: res }), "120");
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: res
+            }
+        ),
+        "120"
+    );
 }

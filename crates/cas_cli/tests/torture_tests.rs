@@ -384,8 +384,8 @@ fn test_rational_inequality_signs() {
         assert_eq!(intervals.len(), 2);
         // (-inf, -2)
         let i1 = &intervals[0];
-        let (min1, _) = simplifier.simplify(i1.min.clone());
-        let (max1, _) = simplifier.simplify(i1.max.clone());
+        let (min1, _) = simplifier.simplify(i1.min);
+        let (max1, _) = simplifier.simplify(i1.max);
         assert_eq!(
             format!(
                 "{}",
@@ -410,8 +410,8 @@ fn test_rational_inequality_signs() {
 
         // [1, inf)
         let i2 = &intervals[1];
-        let (min2, _) = simplifier.simplify(i2.min.clone());
-        let (max2, _) = simplifier.simplify(i2.max.clone());
+        let (min2, _) = simplifier.simplify(i2.min);
+        let (max2, _) = simplifier.simplify(i2.max);
         assert_eq!(
             format!(
                 "{}",
@@ -462,8 +462,8 @@ fn test_quadratic_abs_inequality() {
     let (result, _) = solve(&eq, "x", &mut simplifier).expect("Failed to solve");
 
     if let SolutionSet::Continuous(interval) = result {
-        let (min, _) = simplifier.simplify(interval.min.clone());
-        let (max, _) = simplifier.simplify(interval.max.clone());
+        let (min, _) = simplifier.simplify(interval.min);
+        let (max, _) = simplifier.simplify(interval.max);
         assert_eq!(
             format!(
                 "{}",

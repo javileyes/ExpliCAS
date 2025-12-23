@@ -163,15 +163,13 @@ impl<'a> LaTeXRenderer for LaTeXExprHighlightedWithHints<'a> {
                                 } else {
                                     return format!("\\sqrt[{}]{{{}}}", denom, base_str);
                                 }
+                            } else if *denom == 2.into() {
+                                return format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer);
                             } else {
-                                if *denom == 2.into() {
-                                    return format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer);
-                                } else {
-                                    return format!(
-                                        "\\sqrt[{}]{{{{{}}}^{{{}}}}}",
-                                        denom, base_str, numer
-                                    );
-                                }
+                                return format!(
+                                    "\\sqrt[{}]{{{{{}}}^{{{}}}}}",
+                                    denom, base_str, numer
+                                );
                             }
                         }
                     }

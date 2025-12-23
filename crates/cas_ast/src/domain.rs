@@ -17,22 +17,26 @@ pub struct Interval {
 impl Interval {
     pub fn closed(a: ExprId, b: ExprId) -> Self {
         Interval {
-            min: a, min_type: BoundType::Closed,
-            max: b, max_type: BoundType::Closed,
+            min: a,
+            min_type: BoundType::Closed,
+            max: b,
+            max_type: BoundType::Closed,
         }
     }
 
     pub fn open(a: ExprId, b: ExprId) -> Self {
         Interval {
-            min: a, min_type: BoundType::Open,
-            max: b, max_type: BoundType::Open,
+            min: a,
+            min_type: BoundType::Open,
+            max: b,
+            max_type: BoundType::Open,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SolutionSet {
-    Discrete(Vec<ExprId>), 
+    Discrete(Vec<ExprId>),
     Continuous(Interval),
     Union(Vec<Interval>),
     Empty,

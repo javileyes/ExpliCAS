@@ -5,9 +5,6 @@ use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 
-/// Helper: Build a 2-factor product (no normalization).
-#[inline]
-
 /// Collects like terms in an expression.
 /// e.g. 2*x + 3*x -> 5*x
 ///      x + x -> 2*x
@@ -281,7 +278,6 @@ fn try_sum_numeric_fractions(ctx: &Context, exp: ExprId) -> Option<BigRational> 
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use cas_ast::DisplayExpr;

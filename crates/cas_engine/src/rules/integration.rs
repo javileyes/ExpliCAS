@@ -240,7 +240,7 @@ fn extract_multiplier_and_base(ctx: &Context, expr: ExprId) -> (i64, ExprId) {
         // Check if left is a number
         if let Expr::Number(n) = ctx.get(*l) {
             if n.is_integer() {
-                if let Some(k) = n.to_integer().try_into().ok() {
+                if let Ok(k) = n.to_integer().try_into() {
                     return (k, *r);
                 }
             }
@@ -248,7 +248,7 @@ fn extract_multiplier_and_base(ctx: &Context, expr: ExprId) -> (i64, ExprId) {
         // Check if right is a number (canonical form puts numbers first, but be safe)
         if let Expr::Number(n) = ctx.get(*r) {
             if n.is_integer() {
-                if let Some(k) = n.to_integer().try_into().ok() {
+                if let Ok(k) = n.to_integer().try_into() {
                     return (k, *l);
                 }
             }

@@ -238,7 +238,7 @@ define_rule!(
                     if poly.degree() == 2 && poly.coeffs.len() >= 3 {
                         let a = poly.coeffs.get(2).cloned();
                         let b = poly.coeffs.get(1).cloned();
-                        let c = poly.coeffs.get(0).cloned();
+                        let c = poly.coeffs.first().cloned();
 
                         if let (Some(a), Some(b), Some(c)) = (a, b, c) {
                             // Check discriminant: b² - 4ac = 0
@@ -255,7 +255,7 @@ define_rule!(
                                     let two = num_rational::BigRational::from_integer(2.into());
                                     let e = if d.is_zero() {
                                         rational_sqrt(&c)
-                                            .unwrap_or_else(|| num_rational::BigRational::zero())
+                                            .unwrap_or_else(num_rational::BigRational::zero)
                                     } else {
                                         b.clone() / (two * d.clone())
                                     };
@@ -1149,8 +1149,7 @@ define_rule!(
         let result = if y.is_zero() {
             x_expr
         } else if x.is_zero() {
-            let y_sqrt_n = ctx.add(Expr::Mul(y_expr, sqrt_n));
-            y_sqrt_n
+            ctx.add(Expr::Mul(y_expr, sqrt_n))
         } else {
             let y_sqrt_n = ctx.add(Expr::Mul(y_expr, sqrt_n));
             ctx.add(Expr::Add(x_expr, y_sqrt_n))

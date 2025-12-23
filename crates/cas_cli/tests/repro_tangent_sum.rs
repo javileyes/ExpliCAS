@@ -1,3 +1,7 @@
+#![allow(clippy::format_in_format_args)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
 use cas_ast::DisplayExpr;
 use cas_engine::rules::algebra::{
     AddFractionsRule, CancelCommonFactorsRule, SimplifyFractionRule, SimplifyMulDivRule,

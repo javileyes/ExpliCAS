@@ -334,7 +334,7 @@ fn extract_trig_fourth_power(
     for (i, &f) in factors.iter().enumerate() {
         // Check for Number (accumulate into coefficient)
         if let Expr::Number(n) = ctx.get(f) {
-            coef = coef * n.clone();
+            coef *= n.clone();
             continue;
         }
 

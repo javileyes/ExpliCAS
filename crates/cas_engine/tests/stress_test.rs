@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 // Stress test for debugging rule orchestration bottlenecks
 //
 // PURPOSE: This test uses deliberately complex expressions to identify:
@@ -56,7 +57,7 @@ impl TestStats {
         if self
             .max_steps_expr
             .as_ref()
-            .map_or(true, |(_, max)| steps > *max)
+            .is_none_or(|(_, max)| steps > *max)
         {
             self.max_steps_expr = Some((expr_str.to_string(), steps));
         }

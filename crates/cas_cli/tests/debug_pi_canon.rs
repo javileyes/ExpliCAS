@@ -24,7 +24,7 @@ fn debug_pi_forms() {
     println!("Top expr: {:?}", simplifier.context.get(expr3));
     if let Expr::Function(name, args) = simplifier.context.get(expr3) {
         println!("Function: {}", name);
-        if args.len() > 0 {
+        if !args.is_empty() {
             println!("Arg[0]: {:?}", simplifier.context.get(args[0]));
             debug_expr_recursive(&simplifier.context, args[0], 1);
         }

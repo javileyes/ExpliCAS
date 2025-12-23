@@ -10,7 +10,6 @@ use cas_parser::parse;
 
 use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_engine::profile_cache::ProfileCache;
-use cas_engine::session_state::SessionState;
 use cas_engine::Simplifier;
 
 /// Full REPL flow: parse → simplify → format result
@@ -87,7 +86,8 @@ fn bench_repl_end_to_end(c: &mut Criterion) {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
     };
 
     let mut group = c.benchmark_group("repl_full_eval");
@@ -168,7 +168,8 @@ fn bench_steps_mode_comparison(c: &mut Criterion) {
         branch_mode: BranchMode::Strict,
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
-        steps_mode: StepsMode::On, ..Default::default()
+        steps_mode: StepsMode::On,
+        ..Default::default()
     };
 
     let mut group = c.benchmark_group("steps_mode_comparison");

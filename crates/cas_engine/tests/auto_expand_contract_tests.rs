@@ -1,3 +1,7 @@
+#![allow(clippy::format_in_format_args)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
 //! Contract tests for the three-tier expansion system.
 //!
 //! Verifies that:

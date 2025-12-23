@@ -353,6 +353,12 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
     }
 }
 
+impl Default for Repl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Repl {
     pub fn new() -> Self {
         let config = CasConfig::load();
@@ -406,8 +412,6 @@ impl Repl {
         if config.distribute {
             simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
         }
-
-        if config.distribute_constants {}
 
         if config.expand_binomials {
             simplifier.add_rule(Box::new(
@@ -492,15 +496,13 @@ impl Repl {
             self.print_pipeline_stats(&stats);
 
             // Policy A+ hint: when simplify makes minimal changes to a Mul expression
-            if stats.total_rewrites <= 1 {
-                if matches!(
+            if stats.total_rewrites <= 1
+                && matches!(
                     self.engine.simplifier.context.get(result),
                     cas_ast::Expr::Mul(_, _)
-                ) {
-                    println!(
-                        "Note: simplify preserves factored products. Use expand(...) to expand."
-                    );
-                }
+                )
+            {
+                println!("Note: simplify preserves factored products. Use expand(...) to expand.");
             }
 
             // Show health report if significant activity (>= 5 rewrites)
@@ -2027,17 +2029,15 @@ impl Repl {
                                                 );
                                             }
                                         }
+                                    } else if let Some(global_after) = step.global_after {
+                                        current_root = global_after;
                                     } else {
-                                        if let Some(global_after) = step.global_after {
-                                            current_root = global_after;
-                                        } else {
-                                            current_root = substitute_expr_by_id(
-                                                &mut self.engine.simplifier.context,
-                                                current_root,
-                                                step.before,
-                                                step.after,
-                                            );
-                                        }
+                                        current_root = substitute_expr_by_id(
+                                            &mut self.engine.simplifier.context,
+                                            current_root,
+                                            step.before,
+                                            step.after,
+                                        );
                                     }
                                 }
                             }
@@ -2502,7 +2502,7 @@ impl Repl {
     fn handle_cache_command(&mut self, line: &str) {
         let args: Vec<&str> = line.split_whitespace().collect();
 
-        match args.get(1).map(|s| *s) {
+        match args.get(1).copied() {
             None | Some("status") => {
                 // Show cache status
                 let count = self.state.profile_cache.len();
@@ -3872,17 +3872,15 @@ impl Repl {
                             }
                         }
                     }
+                } else if let Some(global_after) = step.global_after {
+                    current_root = global_after;
                 } else {
-                    if let Some(global_after) = step.global_after {
-                        current_root = global_after;
-                    } else {
-                        current_root = reconstruct_global_expr(
-                            &mut self.engine.simplifier.context,
-                            current_root,
-                            &step.path,
-                            step.after,
-                        );
-                    }
+                    current_root = reconstruct_global_expr(
+                        &mut self.engine.simplifier.context,
+                        current_root,
+                        &step.path,
+                        step.after,
+                    );
                 }
             }
         }

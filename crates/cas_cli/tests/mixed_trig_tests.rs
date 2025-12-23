@@ -46,7 +46,7 @@ fn test_52_sec_tan_pythagorean() {
     // TODO: Semantic cycle detection needs more work
     // Currently doesn't detect commutative reordering cycles
     // Requires deeper investigation of hash algorithm
-    assert!(result.len() > 0, "Should produce some result");
+    assert!(!result.is_empty(), "Should produce some result");
 
     // Target: assert_eq!(result, "0", "sec²(x) - tan²(x) - 1 should equal 0");
 }
@@ -93,7 +93,7 @@ fn test_55_mixed_trig_fraction() {
 
     println!("Test 55 result: {}", result);
 
-    assert!(result.len() > 0, "Should produce some result");
+    assert!(!result.is_empty(), "Should produce some result");
 
     // This is the HARDEST test - requires full sin/cos conversion
     // TODO: Implement comprehensive trig-to-sincos conversion
@@ -109,7 +109,7 @@ fn test_tan_as_sin_over_cos() {
     println!("tan(x) - sin(x)/cos(x) = {}", result);
 
     // This would be 0 if we have tan -> sin/cos conversion
-    assert!(result.len() > 0);
+    assert!(!result.is_empty());
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn test_cot_as_cos_over_sin() {
     println!("cot(x) - cos(x)/sin(x) = {}", result);
 
     // This would be 0 if we have cot -> cos/sin conversion
-    assert!(result.len() > 0);
+    assert!(!result.is_empty());
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn test_sec_as_one_over_cos() {
     println!("sec(x) - 1/cos(x) = {}", result);
 
     // This would be 0 if we have sec -> 1/cos conversion
-    assert!(result.len() > 0);
+    assert!(!result.is_empty());
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn test_csc_as_one_over_sin() {
     println!("csc(x) - 1/sin(x) = {}", result);
 
     // This would be 0 if we have csc -> 1/sin conversion
-    assert!(result.len() > 0);
+    assert!(!result.is_empty());
 }
 
 #[test]
@@ -160,7 +160,7 @@ fn test_mixed_basic_and_reciprocal() {
 
     // If csc -> 1/sin, this becomes sin(x) * 1/sin(x) = 1
     // But without that conversion, it stays as is
-    assert!(result.len() > 0);
+    assert!(!result.is_empty());
 }
 
 #[test]
@@ -170,5 +170,5 @@ fn test_tan_cot_product() {
     println!("tan(x) * cot(x) = {}", result);
 
     // Should be 1 if we recognize they're reciprocals
-    assert!(result.len() > 0);
+    assert!(!result.is_empty());
 }

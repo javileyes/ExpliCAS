@@ -2,7 +2,6 @@
 //! Verifies that short/long forms unify to canonical forms
 
 use cas_engine::Simplifier;
-use cas_parser;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

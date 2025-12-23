@@ -570,9 +570,10 @@ pub fn run_case(case: &HealthCase, simplifier: &mut Simplifier) -> HealthCaseRes
     let mut warning = None;
     if failure_reason.is_none() {
         // Warning if cycle detected but not failing (forbid_cycles=false)
-        if !case.limits.forbid_cycles && cycle_detected.is_some() {
-            let (phase, period) = cycle_detected.as_ref().unwrap();
-            warning = Some(format!("cycle (allowed): {:?} period={}", phase, period));
+        if let Some((phase, period)) = cycle_detected.as_ref() {
+            if !case.limits.forbid_cycles {
+                warning = Some(format!("cycle (allowed): {:?} period={}", phase, period));
+            }
         }
         // Warning if near limit (>80% of max)
         let rewrite_pct = (total_rewrites * 100) / case.limits.max_total_rewrites.max(1);

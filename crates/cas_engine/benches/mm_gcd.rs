@@ -14,7 +14,7 @@ use cas_engine::multipoly::{
     gcd_multivar_layer25, multipoly_from_expr, Layer25Budget, MultiPoly, PolyBudget,
 };
 use cas_parser::parse;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use std::time::Duration;
 
 /// Budget optimized for mm_gcd benchmark (larger than engine defaults)
@@ -196,9 +196,9 @@ fn bench_mm_gcd(c: &mut Criterion) {
             max_pow_exp: 10,
         };
         bencher.iter(|| {
-            let ag = black_box(&a).mul_fast(black_box(&g), &budget);
-            let bg = black_box(&b).mul_fast(black_box(&g), &budget);
-            black_box((ag, bg))
+            let ag = std::hint::black_box(&a).mul_fast(std::hint::black_box(&g), &budget);
+            let bg = std::hint::black_box(&b).mul_fast(std::hint::black_box(&g), &budget);
+            std::hint::black_box((ag, bg))
         })
     });
 
@@ -207,8 +207,12 @@ fn bench_mm_gcd(c: &mut Criterion) {
         println!("Running benchmark: gcd_only...");
         group.bench_function("gcd_only", |bencher| {
             bencher.iter(|| {
-                let d = gcd_multivar_layer25(black_box(&ag), black_box(&bg), &gcd_budget);
-                black_box(d)
+                let d = gcd_multivar_layer25(
+                    std::hint::black_box(&ag),
+                    std::hint::black_box(&bg),
+                    &gcd_budget,
+                );
+                std::hint::black_box(d)
             })
         });
 
@@ -220,10 +224,14 @@ fn bench_mm_gcd(c: &mut Criterion) {
                 max_pow_exp: 10,
             };
             bencher.iter(|| {
-                let ag = black_box(&a).mul_fast(black_box(&g), &budget).unwrap();
-                let bg = black_box(&b).mul_fast(black_box(&g), &budget).unwrap();
+                let ag = std::hint::black_box(&a)
+                    .mul_fast(std::hint::black_box(&g), &budget)
+                    .unwrap();
+                let bg = std::hint::black_box(&b)
+                    .mul_fast(std::hint::black_box(&g), &budget)
+                    .unwrap();
                 let d = gcd_multivar_layer25(&ag, &bg, &gcd_budget);
-                black_box(d)
+                std::hint::black_box(d)
             })
         });
     } else {

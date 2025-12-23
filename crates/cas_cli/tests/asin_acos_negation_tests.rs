@@ -1,9 +1,9 @@
+#![allow(clippy::format_in_format_args)]
 //! Tests for InverseTrigSumRule negation pattern
 //! Verifies that asin + acos AND -asin - acos both work
 
 use cas_ast::{DisplayExpr, Expr};
 use cas_engine::Simplifier;
-use cas_parser;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

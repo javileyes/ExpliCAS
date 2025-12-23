@@ -1336,7 +1336,7 @@ fn collect_factors_recursive(ctx: &Context, expr: ExprId, factors: &mut Vec<Expr
 /// Returns (radicand, index) where expr = radicand^(1/index)
 fn extract_root_base(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     match ctx.get(expr).clone() {
-        Expr::Function(name, args) if name == "sqrt" && args.len() >= 1 => {
+        Expr::Function(name, args) if name == "sqrt" && !args.is_empty() => {
             // sqrt(n) = n^(1/2), return (n, 2)
             let two = ctx.num(2);
             Some((args[0], two))
@@ -1641,38 +1641,36 @@ define_rule!(
                                 // Skip fractional exponents - QuotientOfPowersRule handles them
                                 if !n.is_integer() || !m.is_integer() {
                                     // Continue to next factor, don't process this pair
-                                } else {
-                                    if n > m {
-                                        let new_exp = n - m;
-                                        let new_term = if new_exp.is_one() {
-                                            b_n
-                                        } else {
-                                            let exp_node = ctx.add(Expr::Number(new_exp));
-                                            ctx.add(Expr::Pow(b_n, exp_node))
-                                        };
-                                        num_factors[i] = new_term;
-                                        den_factors.remove(j);
-                                        found = false;
-                                        changed = true;
-                                        break;
-                                    } else if m > n {
-                                        let new_exp = m - n;
-                                        let new_term = if new_exp.is_one() {
-                                            b_d
-                                        } else {
-                                            let exp_node = ctx.add(Expr::Number(new_exp));
-                                            ctx.add(Expr::Pow(b_d, exp_node))
-                                        };
-                                        den_factors[j] = new_term;
-                                        found = true;
-                                        changed = true;
-                                        break;
+                                } else if n > m {
+                                    let new_exp = n - m;
+                                    let new_term = if new_exp.is_one() {
+                                        b_n
                                     } else {
-                                        den_factors.remove(j);
-                                        found = true;
-                                        changed = true;
-                                        break;
-                                    }
+                                        let exp_node = ctx.add(Expr::Number(new_exp));
+                                        ctx.add(Expr::Pow(b_n, exp_node))
+                                    };
+                                    num_factors[i] = new_term;
+                                    den_factors.remove(j);
+                                    found = false;
+                                    changed = true;
+                                    break;
+                                } else if m > n {
+                                    let new_exp = m - n;
+                                    let new_term = if new_exp.is_one() {
+                                        b_d
+                                    } else {
+                                        let exp_node = ctx.add(Expr::Number(new_exp));
+                                        ctx.add(Expr::Pow(b_d, exp_node))
+                                    };
+                                    den_factors[j] = new_term;
+                                    found = true;
+                                    changed = true;
+                                    break;
+                                } else {
+                                    den_factors.remove(j);
+                                    found = true;
+                                    changed = true;
+                                    break;
                                 } // end else for integer exponents
                             }
                         }
@@ -2436,7 +2434,7 @@ define_rule!(
                     // Find exactly one binomial factor; others must be surd-free
                     let mut binomial_idx = None;
                     for (i, &factor) in factors.iter().enumerate() {
-                        if let Some(_) = parse_binomial_surd(ctx, factor) {
+                        if parse_binomial_surd(ctx, factor).is_some() {
                             if binomial_idx.is_some() {
                                 // Multiple binomials → not Level 1.5
                                 return None;

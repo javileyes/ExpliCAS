@@ -2491,38 +2491,30 @@ fn extract_pi_half_multiple(ctx: &cas_ast::Context, expr: ExprId) -> Option<i32>
     if let Expr::Mul(l, r) = ctx.get(expr) {
         // Check Mul(Number, π/2)
         if let Expr::Number(n) = ctx.get(*l) {
-            if is_pi_over_n(ctx, *r, 2) {
-                if n.is_integer() {
-                    if let Some(k) = n.to_integer().try_into().ok() {
-                        return Some(k);
-                    }
+            if is_pi_over_n(ctx, *r, 2) && n.is_integer() {
+                if let Ok(k) = n.to_integer().try_into() {
+                    return Some(k);
                 }
             }
             // Check Mul(Number, π) means k = 2*number
-            if is_pi(ctx, *r) {
-                if n.is_integer() {
-                    if let Some(k_half) = n.to_integer().try_into().ok() {
-                        let k: i32 = k_half;
-                        return Some(k * 2);
-                    }
+            if is_pi(ctx, *r) && n.is_integer() {
+                if let Ok(k_half) = n.to_integer().try_into() {
+                    let k: i32 = k_half;
+                    return Some(k * 2);
                 }
             }
         }
         // Check Mul(π/2, Number)
         if let Expr::Number(n) = ctx.get(*r) {
-            if is_pi_over_n(ctx, *l, 2) {
-                if n.is_integer() {
-                    if let Some(k) = n.to_integer().try_into().ok() {
-                        return Some(k);
-                    }
+            if is_pi_over_n(ctx, *l, 2) && n.is_integer() {
+                if let Ok(k) = n.to_integer().try_into() {
+                    return Some(k);
                 }
             }
-            if is_pi(ctx, *l) {
-                if n.is_integer() {
-                    if let Some(k_half) = n.to_integer().try_into().ok() {
-                        let k: i32 = k_half;
-                        return Some(k * 2);
-                    }
+            if is_pi(ctx, *l) && n.is_integer() {
+                if let Ok(k_half) = n.to_integer().try_into() {
+                    let k: i32 = k_half;
+                    return Some(k * 2);
                 }
             }
         }
@@ -2539,14 +2531,14 @@ fn extract_pi_half_multiple(ctx: &cas_ast::Context, expr: ExprId) -> Option<i32>
                 if let Expr::Mul(l, r) = ctx.get(*num) {
                     if let Expr::Number(n) = ctx.get(*l) {
                         if is_pi(ctx, *r) && n.is_integer() {
-                            if let Some(k) = n.to_integer().try_into().ok() {
+                            if let Ok(k) = n.to_integer().try_into() {
                                 return Some(k);
                             }
                         }
                     }
                     if let Expr::Number(n) = ctx.get(*r) {
                         if is_pi(ctx, *l) && n.is_integer() {
-                            if let Some(k) = n.to_integer().try_into().ok() {
+                            if let Ok(k) = n.to_integer().try_into() {
                                 return Some(k);
                             }
                         }

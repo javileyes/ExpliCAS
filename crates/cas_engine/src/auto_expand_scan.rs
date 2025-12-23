@@ -231,7 +231,7 @@ fn passes_budget_checks(ctx: &Context, base: ExprId, n: u32, budget: &ExpandBudg
 
     // Budget check 3: max_generated_terms (multinomial estimate)
     let estimated_terms = estimate_multinomial_terms(num_terms, n);
-    if estimated_terms.map_or(true, |t| t > budget.max_generated_terms) {
+    if estimated_terms.is_none_or(|t| t > budget.max_generated_terms) {
         return false;
     }
 

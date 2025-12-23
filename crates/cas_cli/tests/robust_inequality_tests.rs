@@ -33,8 +33,8 @@ fn test_mixed_abs_linear() {
     let expected_max = "3";
 
     if let SolutionSet::Continuous(interval) = result {
-        let min = simplifier.simplify(interval.min.clone()).0;
-        let max = simplifier.simplify(interval.max.clone()).0;
+        let min = simplifier.simplify(interval.min).0;
+        let max = simplifier.simplify(interval.max).0;
         assert_eq!(
             format!(
                 "{}",
@@ -89,8 +89,8 @@ fn test_nested_abs_simple() {
 
         // Check if we have (-3, -1)
         let has_neg = intervals.iter().any(|i| {
-            let min = simplifier.simplify(i.min.clone()).0;
-            let max = simplifier.simplify(i.max.clone()).0;
+            let min = simplifier.simplify(i.min).0;
+            let max = simplifier.simplify(i.max).0;
             format!(
                 "{}",
                 DisplayExpr {
@@ -109,8 +109,8 @@ fn test_nested_abs_simple() {
 
         // Check if we have (1, 3)
         let has_pos = intervals.iter().any(|i| {
-            let min = simplifier.simplify(i.min.clone()).0;
-            let max = simplifier.simplify(i.max.clone()).0;
+            let min = simplifier.simplify(i.min).0;
+            let max = simplifier.simplify(i.max).0;
             format!(
                 "{}",
                 DisplayExpr {

@@ -431,7 +431,8 @@ mod tests {
     /// Helper: test parsing works and return LaTeX output
     fn test_parse(latex: &str) -> String {
         let mut ctx = Context::new();
-        let expr_id = parse_latex(&mut ctx, latex).expect(&format!("Failed to parse: {}", latex));
+        let expr_id =
+            parse_latex(&mut ctx, latex).unwrap_or_else(|_| panic!("Failed to parse: {}", latex));
         LaTeXExpr {
             context: &ctx,
             id: expr_id,

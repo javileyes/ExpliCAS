@@ -7,9 +7,6 @@ use crate::polynomial::Polynomial;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 
-/// Helper: Build a 2-factor product (no normalization).
-#[inline]
-
 /// Factors an expression.
 /// This is the main entry point for factorization.
 pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {

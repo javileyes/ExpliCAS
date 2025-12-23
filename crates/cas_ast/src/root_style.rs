@@ -266,102 +266,6 @@ impl ParseStyleSignals {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_detect_sqrt_function() {
-        let mut ctx = Context::new();
-        let two = ctx.num(2);
-        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
-
-        assert_eq!(detect_root_style(&ctx, sqrt2), RootStyle::Radical);
-    }
-
-    #[test]
-    fn test_detect_pow_half() {
-        let mut ctx = Context::new();
-        let two = ctx.num(2);
-        let half = ctx.rational(1, 2);
-        let pow_half = ctx.add(Expr::Pow(two, half));
-
-        assert_eq!(detect_root_style(&ctx, pow_half), RootStyle::Exponential);
-    }
-
-    #[test]
-    fn test_detect_mixed_radical_wins() {
-        let mut ctx = Context::new();
-        // sqrt(2) + 3^(1/2)
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
-        let half = ctx.rational(1, 2);
-        let pow3 = ctx.add(Expr::Pow(three, half));
-        let sum = ctx.add(Expr::Add(sqrt2, pow3));
-
-        // Tie goes to Radical
-        assert_eq!(detect_root_style(&ctx, sum), RootStyle::Radical);
-    }
-
-    #[test]
-    fn test_detect_no_roots() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let two = ctx.num(2);
-        let sum = ctx.add(Expr::Add(x, two));
-
-        assert_eq!(detect_root_style(&ctx, sum), RootStyle::Auto);
-    }
-
-    #[test]
-    fn test_style_preferences_default() {
-        let prefs = StylePreferences::default();
-        assert_eq!(prefs.root_style, RootStyle::Auto);
-        assert!(prefs.prefer_division);
-        assert!(prefs.prefer_subtraction);
-    }
-
-    #[test]
-    fn test_style_preferences_from_expression() {
-        let mut ctx = Context::new();
-        let two = ctx.num(2);
-        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
-
-        let prefs = StylePreferences::from_expression(&ctx, sqrt2);
-        assert_eq!(prefs.root_style, RootStyle::Radical);
-    }
-
-    #[test]
-    fn test_parse_style_signals_from_input() {
-        let signals = ParseStyleSignals::from_input_string("sqrt(2) + sqrt(3)");
-        assert_eq!(signals.saw_sqrt_token, 2);
-        assert_eq!(signals.saw_caret_fraction, 0);
-
-        let signals2 = ParseStyleSignals::from_input_string("2^(1/2) + 3^(1/3)");
-        assert_eq!(signals2.saw_sqrt_token, 0);
-        assert_eq!(signals2.saw_caret_fraction, 2);
-    }
-
-    #[test]
-    fn test_style_preferences_with_signals_sqrt_wins() {
-        let mut ctx = Context::new();
-        let two = ctx.num(2);
-        let half = ctx.rational(1, 2);
-        let pow_half = ctx.add(Expr::Pow(two, half)); // AST says exponent
-
-        // But signals say sqrt
-        let signals = ParseStyleSignals {
-            saw_sqrt_token: 3,
-            saw_caret_fraction: 1,
-            ..Default::default()
-        };
-
-        let prefs = StylePreferences::from_expression_with_signals(&ctx, pow_half, Some(&signals));
-        assert_eq!(prefs.root_style, RootStyle::Radical); // Signals override AST
-    }
-}
-
 // ============================================================================
 // StyledExpr: Display Wrapper with Style Context
 // ============================================================================
@@ -702,5 +606,101 @@ impl<'a> StyledExpr<'a> {
 impl<'a> fmt::Display for StyledExpr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_expr(f, self.id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_sqrt_function() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
+
+        assert_eq!(detect_root_style(&ctx, sqrt2), RootStyle::Radical);
+    }
+
+    #[test]
+    fn test_detect_pow_half() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let pow_half = ctx.add(Expr::Pow(two, half));
+
+        assert_eq!(detect_root_style(&ctx, pow_half), RootStyle::Exponential);
+    }
+
+    #[test]
+    fn test_detect_mixed_radical_wins() {
+        let mut ctx = Context::new();
+        // sqrt(2) + 3^(1/2)
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
+        let half = ctx.rational(1, 2);
+        let pow3 = ctx.add(Expr::Pow(three, half));
+        let sum = ctx.add(Expr::Add(sqrt2, pow3));
+
+        // Tie goes to Radical
+        assert_eq!(detect_root_style(&ctx, sum), RootStyle::Radical);
+    }
+
+    #[test]
+    fn test_detect_no_roots() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let sum = ctx.add(Expr::Add(x, two));
+
+        assert_eq!(detect_root_style(&ctx, sum), RootStyle::Auto);
+    }
+
+    #[test]
+    fn test_style_preferences_default() {
+        let prefs = StylePreferences::default();
+        assert_eq!(prefs.root_style, RootStyle::Auto);
+        assert!(prefs.prefer_division);
+        assert!(prefs.prefer_subtraction);
+    }
+
+    #[test]
+    fn test_style_preferences_from_expression() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
+
+        let prefs = StylePreferences::from_expression(&ctx, sqrt2);
+        assert_eq!(prefs.root_style, RootStyle::Radical);
+    }
+
+    #[test]
+    fn test_parse_style_signals_from_input() {
+        let signals = ParseStyleSignals::from_input_string("sqrt(2) + sqrt(3)");
+        assert_eq!(signals.saw_sqrt_token, 2);
+        assert_eq!(signals.saw_caret_fraction, 0);
+
+        let signals2 = ParseStyleSignals::from_input_string("2^(1/2) + 3^(1/3)");
+        assert_eq!(signals2.saw_sqrt_token, 0);
+        assert_eq!(signals2.saw_caret_fraction, 2);
+    }
+
+    #[test]
+    fn test_style_preferences_with_signals_sqrt_wins() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let pow_half = ctx.add(Expr::Pow(two, half)); // AST says exponent
+
+        // But signals say sqrt
+        let signals = ParseStyleSignals {
+            saw_sqrt_token: 3,
+            saw_caret_fraction: 1,
+            ..Default::default()
+        };
+
+        let prefs = StylePreferences::from_expression_with_signals(&ctx, pow_half, Some(&signals));
+        assert_eq!(prefs.root_style, RootStyle::Radical); // Signals override AST
     }
 }

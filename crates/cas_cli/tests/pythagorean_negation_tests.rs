@@ -2,7 +2,6 @@
 //! Verifies that sin²+cos²=1 AND -sin²-cos²=-1 both work
 
 use cas_engine::Simplifier;
-use cas_parser;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

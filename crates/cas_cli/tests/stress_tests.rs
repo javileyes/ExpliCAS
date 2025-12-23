@@ -167,7 +167,7 @@ fn test_quadratic_solver() {
         assert!(!solutions.is_empty());
         assert!(!solutions.is_empty());
         let found = solutions.iter().any(|res_rhs| {
-            let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
+            let (final_rhs, _) = simplifier.simplify(*res_rhs);
             format!(
                 "{}",
                 DisplayExpr {
@@ -200,7 +200,7 @@ fn test_exponential_solver() {
         assert!(!solutions.is_empty());
         assert!(!solutions.is_empty());
         let found = solutions.iter().any(|res_rhs| {
-            let (final_rhs, _) = simplifier.simplify(res_rhs.clone());
+            let (final_rhs, _) = simplifier.simplify(*res_rhs);
             format!(
                 "{}",
                 DisplayExpr {

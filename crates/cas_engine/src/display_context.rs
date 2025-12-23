@@ -403,7 +403,7 @@ mod tests {
         let display_ctx = build_display_context(&ctx, sqrt_x, &[step]);
 
         // Should have 2 hints: one from scanning sqrt_x, one from step
-        assert!(display_ctx.len() >= 1);
+        assert!(!display_ctx.is_empty());
         assert_eq!(
             display_ctx.get(x_half),
             Some(&DisplayHint::AsRoot { index: 2 })

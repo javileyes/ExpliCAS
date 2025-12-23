@@ -1,10 +1,16 @@
+#![allow(clippy::format_in_format_args)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+use cas_ast::DisplayExpr;
+use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
+use cas_engine::rules::canonicalization::{
+    CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule,
+};
+use cas_engine::rules::polynomial::CombineLikeTermsRule;
+use cas_engine::rules::polynomial::DistributeRule;
 use cas_engine::Simplifier;
 use cas_parser::parse;
-use cas_ast::DisplayExpr;
-use cas_engine::rules::polynomial::DistributeRule;
-use cas_engine::rules::polynomial::CombineLikeTermsRule;
-use cas_engine::rules::canonicalization::{CanonicalizeMulRule, CanonicalizeAddRule, CanonicalizeNegationRule};
-use cas_engine::rules::arithmetic::{CombineConstantsRule, AddZeroRule, MulOneRule, MulZeroRule};
 
 #[test]
 fn test_cyclic_identity() {
@@ -22,13 +28,29 @@ fn test_cyclic_identity() {
 
     let input = "x*(y - z) + y*(z - x) + z*(x - y)";
     let expr = parse(input, &mut simplifier.context).expect("Failed to parse");
-    
+
     let (result, steps) = simplifier.simplify(expr);
-    let res_str = format!("{}", DisplayExpr { context: &simplifier.context, id: result });
-    
+    let res_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+
     println!("Result: {}", res_str);
     for step in steps {
-        println!("Step: {} -> {}", step.description, format!("{}", DisplayExpr { context: &simplifier.context, id: step.after }));
+        println!(
+            "Step: {} -> {}",
+            step.description,
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &simplifier.context,
+                    id: step.after
+                }
+            )
+        );
     }
 
     assert_eq!(res_str, "0");

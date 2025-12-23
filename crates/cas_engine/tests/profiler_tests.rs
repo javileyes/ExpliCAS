@@ -1,5 +1,4 @@
 use cas_engine::Simplifier;
-use cas_parser;
 
 #[test]
 fn test_profiler() {

@@ -1,4 +1,4 @@
-use cas_ast::{Context, Expr, DisplayExpr};
+use cas_ast::{Context, DisplayExpr, Expr};
 use cas_engine::collect::collect;
 use cas_parser::parse;
 
@@ -13,7 +13,7 @@ fn test_collect_double_negation() {
     let x = parse("x", &mut ctx).unwrap();
     let neg_x = ctx.add(Expr::Neg(x));
     let neg_neg_x = ctx.add(Expr::Neg(neg_x));
-    
+
     let res = collect(&mut ctx, neg_neg_x);
     assert_eq!(s(&ctx, res), "x");
 }
@@ -74,7 +74,7 @@ fn test_collect_user_repro() {
     let res = collect(&mut ctx, expr);
     let res_str = s(&ctx, res);
     println!("User Repro Result: {}", res_str);
-    
+
     // Should be: -3 + cos(4x) + 4cos(2x) + 8sin^4(x)
     // Or similar. Definitely NOT "- -cos"
     assert!(!res_str.contains("- -cos"));

@@ -152,5 +152,5 @@ fn test_pythagorean_still_works() {
     // The regla may expand this differently now, verify at minimum it's simplified
     // Expected: either "0" or a form that can be verified as equivalent
     // For now, just verify it doesn't throw an error and processes
-    assert!(result.len() > 0, "Result should not be empty");
+    assert!(!result.is_empty(), "Result should not be empty");
 }

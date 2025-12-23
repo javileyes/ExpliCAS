@@ -14,8 +14,6 @@ use crate::nary::{AddView, Sign};
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Zero};
 
-/// Helper: Build a 2-factor product (no normalization).
-
 /// Result of telescoping analysis
 pub struct TelescopingResult {
     pub success: bool,

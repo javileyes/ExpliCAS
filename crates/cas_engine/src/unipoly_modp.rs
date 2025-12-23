@@ -20,7 +20,7 @@ impl UniPolyModP {
 
     /// Create constant polynomial
     pub fn constant(c: u64, p: u64) -> Self {
-        if c % p == 0 {
+        if c.is_multiple_of(p) {
             Self::zero(p)
         } else {
             Self {

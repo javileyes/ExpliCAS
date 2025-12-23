@@ -1,6 +1,6 @@
 use cas_engine::Simplifier;
-use cas_parser::parse;
 use cas_format::Format;
+use cas_parser::parse;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

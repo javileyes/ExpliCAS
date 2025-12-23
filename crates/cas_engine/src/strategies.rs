@@ -11,9 +11,6 @@ use crate::rules::polynomial::CombineLikeTermsRule;
 use crate::step::{PathStep, Step};
 use cas_ast::{Context, DisplayExpr, ExprId};
 
-/// Helper: Build a 2-factor product (no normalization).
-#[inline]
-
 /// Strategy to simplify polynomials by trying expansion and factorization.
 /// Returns the simplest form found.
 pub fn simplify_polynomial(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step>) {

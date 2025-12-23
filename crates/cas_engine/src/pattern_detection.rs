@@ -235,20 +235,26 @@ pub fn should_preserve_trig_function(
                     return true;
                 }
             }
-            if func_name == "sec" && left_id == squared_id
-                && is_tan_squared(ctx, right_id).is_some() {
-                    return true;
-                }
+            if func_name == "sec"
+                && left_id == squared_id
+                && is_tan_squared(ctx, right_id).is_some()
+            {
+                return true;
+            }
 
             // Pattern 2: csc² - cot²
-            if func_name == "cot" && right_id == squared_id
-                && is_csc_squared(ctx, left_id).is_some() {
-                    return true;
-                }
-            if func_name == "csc" && left_id == squared_id
-                && is_cot_squared(ctx, right_id).is_some() {
-                    return true;
-                }
+            if func_name == "cot"
+                && right_id == squared_id
+                && is_csc_squared(ctx, left_id).is_some()
+            {
+                return true;
+            }
+            if func_name == "csc"
+                && left_id == squared_id
+                && is_cot_squared(ctx, right_id).is_some()
+            {
+                return true;
+            }
         }
     }
 

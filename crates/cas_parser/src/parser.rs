@@ -289,7 +289,7 @@ fn parse_constant(input: &str) -> IResult<&str, ParseNode> {
         remaining
             .chars()
             .next()
-            .map_or(true, |c| !c.is_ascii_alphanumeric() && c != '_')
+            .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_')
     }
 
     // Try 'pi' first (longer prefix)
@@ -808,7 +808,7 @@ mod tests {
 
         for (input, expected) in cases {
             let mut ctx = Context::new();
-            let e = parse(input, &mut ctx).expect(&format!("Failed to parse: {}", input));
+            let e = parse(input, &mut ctx).unwrap_or_else(|_| panic!("Failed to parse: {}", input));
             let result = format!(
                 "{}",
                 DisplayExpr {
