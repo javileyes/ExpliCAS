@@ -57,6 +57,24 @@ pub enum Constant {
     I,
 }
 
+/// Check if a function is known to return a commutative (scalar) result.
+///
+/// These functions produce scalar outputs even when given matrix arguments,
+/// so their presence doesn't make surrounding multiplication non-commutative.
+///
+/// # Currently recognized
+/// - `det` - determinant: det(M) → scalar
+/// - `trace` - trace: trace(M) → scalar
+/// - `norm` - matrix/vector norm: norm(M) → scalar
+/// - `rank` - matrix rank: rank(M) → scalar
+///
+/// # Extension point
+/// Add new scalar-returning functions here when implementing matrix operations.
+#[inline]
+fn function_returns_commutative(name: &str) -> bool {
+    matches!(name, "det" | "trace" | "norm" | "rank")
+}
+
 /// Multiplication commutativity kind for an expression.
 ///
 /// Determines whether factors in a `Mul` can be safely reordered.
@@ -434,14 +452,12 @@ impl Context {
                 }
                 Expr::Neg(inner) => stack.push(*inner),
 
-                // Functions: check arguments
-                // TODO: Add function override table for scalar-returning functions
-                // e.g., det(M), trace(M), norm(M) return scalars even with matrix args
-                Expr::Function(_name, args) => {
-                    // Future: check function result type table
-                    // if scalar_result_functions.contains(name) {
-                    //     continue; // Don't check args
-                    // }
+                // Functions: check arguments unless function is known to return scalar
+                Expr::Function(name, args) => {
+                    // Check for functions known to return commutative outputs
+                    if function_returns_commutative(name) {
+                        continue; // Skip checking args - output is scalar
+                    }
                     stack.extend(args.iter().copied());
                 }
 
@@ -609,5 +625,41 @@ mod tests {
         let x = ctx.var("x");
         let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x]));
         assert!(ctx.is_mul_commutative(sin_x));
+    }
+
+    /// Anti-regression test: commutativity guards preserve canonicity correctly.
+    ///
+    /// - Matrices: A*B ≠ B*A (order preserved, not canonicalized to same form)
+    /// - Scalars: x*y = y*x (both canonicalize to same form)
+    #[test]
+    fn test_canonicity_preserved_with_commutativity_guards() {
+        let mut ctx = Context::new();
+
+        // Matrix case: A*B and B*A should NOT be equal after canonicalization
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+        let c = ctx.num(3);
+        let d = ctx.num(4);
+        let mat_a = ctx.matrix(2, 2, vec![a, b, c, d]).unwrap();
+        let mat_b = ctx.matrix(2, 2, vec![d, c, b, a]).unwrap();
+
+        let ab = ctx.add(Expr::Mul(mat_a, mat_b)); // A*B
+        let ba = ctx.add(Expr::Mul(mat_b, mat_a)); // B*A
+
+        // Different ExprIds (order preserved, not sorted)
+        assert_ne!(ab, ba, "Matrix multiplication must preserve order");
+
+        // Scalar case: x*y and y*x should canonicalize to same form
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let xy = ctx.add(Expr::Mul(x, y)); // x*y
+        let yx = ctx.add(Expr::Mul(y, x)); // y*x
+
+        // Same ExprId (canonicalized to same order)
+        assert_eq!(
+            xy, yx,
+            "Scalar multiplication must canonicalize to same form"
+        );
     }
 }

@@ -16,6 +16,7 @@ regex = "1.12.2"
 bitflags = "2"
 anyhow = "1.0.100"
 rustc-hash = "1.1"
+smallvec = "1"
 rayon = { version = "1.10", optional = true }
 
 [features]

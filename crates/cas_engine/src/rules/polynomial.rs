@@ -1,5 +1,6 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
+use crate::nary::{build_balanced_add, AddView, Sign};
 use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
@@ -144,9 +145,8 @@ define_rule!(
         }
 
         // Handle Division Distribution: (a + b) / c -> a/c + b/c
+        // Using AddView for shape-independent n-ary handling
         if let Expr::Div(l, r) = expr_data {
-            let l_data = ctx.get(l).clone();
-
             // Helper to check if division simplifies (shares factors) and return factor size
             let get_simplification_reduction = |ctx: &Context, num: ExprId, den: ExprId| -> usize {
                 if num == den {
@@ -240,47 +240,48 @@ define_rule!(
                 0
             };
 
-            if let Expr::Add(a, b) = l_data {
-                let red_a = get_simplification_reduction(ctx, a, r);
-                let red_b = get_simplification_reduction(ctx, b, r);
+            // N-ARY: Use AddView for shape-independent handling of sums
+            // This correctly handles ((a+b)+c), (a+(b+c)), and balanced trees
+            let num_view = AddView::from_expr(ctx, l);
 
-                // Only distribute if EITHER term simplifies
-                if red_a > 0 || red_b > 0 {
-                    let ac = ctx.add(Expr::Div(a, r));
-                    let bc = ctx.add(Expr::Div(b, r));
-                    let new_expr = ctx.add(Expr::Add(ac, bc));
+            // Check if it's actually a sum (more than 1 term)
+            if num_view.terms.len() > 1 {
+                // Calculate total reduction potential
+                let mut total_reduction: usize = 0;
+                let mut any_simplifies = false;
 
-                    // Check complexity to prevent cycles with AddFractionsRule
-                    let old_complexity = cas_ast::count_nodes(ctx, expr);
-                    let new_complexity = cas_ast::count_nodes(ctx, new_expr);
-
-                    // Allow if predicted complexity (after simplification) is not worse
-                    if new_complexity <= old_complexity + red_a + red_b {
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "Distribute division (simplifying)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                        });
+                for &(term, _sign) in &num_view.terms {
+                    let red = get_simplification_reduction(ctx, term, r);
+                    if red > 0 {
+                        any_simplifies = true;
+                        total_reduction += red;
                     }
                 }
-            }
-            if let Expr::Sub(a, b) = l_data {
-                let red_a = get_simplification_reduction(ctx, a, r);
-                let red_b = get_simplification_reduction(ctx, b, r);
 
-                if red_a > 0 || red_b > 0 {
-                    let ac = ctx.add(Expr::Div(a, r));
-                    let bc = ctx.add(Expr::Div(b, r));
-                    let new_expr = ctx.add(Expr::Sub(ac, bc));
+                // Only distribute if at least one term simplifies
+                if any_simplifies {
+                    // Build new terms: each term divided by denominator
+                    let new_terms: Vec<ExprId> = num_view
+                        .terms
+                        .iter()
+                        .map(|&(term, sign)| {
+                            let div_term = ctx.add(Expr::Div(term, r));
+                            match sign {
+                                Sign::Pos => div_term,
+                                Sign::Neg => ctx.add(Expr::Neg(div_term)),
+                            }
+                        })
+                        .collect();
+
+                    // Rebuild as balanced sum
+                    let new_expr = build_balanced_add(ctx, &new_terms);
 
                     // Check complexity to prevent cycles with AddFractionsRule
                     let old_complexity = cas_ast::count_nodes(ctx, expr);
                     let new_complexity = cas_ast::count_nodes(ctx, new_expr);
 
                     // Allow if predicted complexity (after simplification) is not worse
-                    if new_complexity <= old_complexity + red_a + red_b {
+                    if new_complexity <= old_complexity + total_reduction {
                         return Some(Rewrite {
                             new_expr,
                             description: "Distribute division (simplifying)".to_string(),

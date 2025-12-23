@@ -1,4 +1,5 @@
 use crate::build::mul2_raw;
+use crate::nary::{AddView, Sign};
 // Telescoping Strategy for Dirichlet Kernel and similar identities
 //
 // This module implements a step-by-step proof strategy for telescoping sums
@@ -198,22 +199,19 @@ pub fn telescope(ctx: &mut Context, expr: ExprId) -> TelescopingResult {
 }
 
 /// Find a suitable multiplier to clear denominators (looks for sin(x/2) patterns)
+/// Uses AddView for shape-independent traversal of sum terms.
 fn find_denominator_for_clearing(ctx: &Context, expr: ExprId) -> Option<ExprId> {
-    // Look for Div expressions and extract denominator
-    match ctx.get(expr) {
-        Expr::Add(l, r) | Expr::Sub(l, r) => {
-            // Check both sides for a division
-            if let Some(denom) = extract_denominator(ctx, *r) {
-                return Some(denom);
-            }
-            if let Some(denom) = extract_denominator(ctx, *l) {
-                return Some(denom);
-            }
-            None
+    // Use AddView to traverse all terms regardless of tree shape
+    let view = AddView::from_expr(ctx, expr);
+
+    // Look for any term that has a denominator
+    for &(term, _sign) in &view.terms {
+        if let Some(denom) = extract_denominator(ctx, term) {
+            return Some(denom);
         }
-        Expr::Neg(inner) => find_denominator_for_clearing(ctx, *inner),
-        _ => extract_denominator(ctx, expr),
     }
+
+    None
 }
 
 fn extract_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -246,9 +244,8 @@ pub fn try_dirichlet_kernel_identity_pub(
 
 /// Try to detect Dirichlet kernel identity pattern
 fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<DirichletKernelResult> {
-    // Flatten the sum to get all terms
-    let mut terms = Vec::new();
-    flatten_add_sub(ctx, expr, &mut terms, true);
+    // Use AddView for shape-independent term collection
+    let view = AddView::from_expr(ctx, expr);
 
     // Look for the pattern components:
     // 1. A constant 1
@@ -260,27 +257,28 @@ fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<Dirichle
     let mut sin_ratio: Option<(ExprId, ExprId)> = None; // (numerator arg, denominator arg)
     let mut sin_ratio_is_negative = false;
 
-    for (term, is_positive) in &terms {
-        let term_data = ctx.get(*term).clone();
+    for &(term, sign) in &view.terms {
+        let is_positive = sign == Sign::Pos;
+        let term_data = ctx.get(term).clone();
 
         // Check for constant 1
         if let Expr::Number(n) = &term_data {
-            if n.is_one() && *is_positive {
+            if n.is_one() && is_positive {
                 has_one = true;
                 continue;
             }
         }
 
         // Check for 2*cos(k*x)
-        if let Some((k, base)) = extract_cosine_multiple(ctx, *term) {
-            if *is_positive {
+        if let Some((k, base)) = extract_cosine_multiple(ctx, term) {
+            if is_positive {
                 cosine_multiples.push((k, base));
             }
             continue;
         }
 
         // Check for sin(a)/sin(b) ratio
-        if let Some((num_arg, den_arg)) = extract_sin_ratio(ctx, *term) {
+        if let Some((num_arg, den_arg)) = extract_sin_ratio(ctx, term) {
             sin_ratio = Some((num_arg, den_arg));
             sin_ratio_is_negative = !is_positive; // Should be subtracted (negative)
         }
@@ -321,25 +319,7 @@ fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<Dirichle
     None
 }
 
-/// Flatten Add/Sub into list of (term, is_positive)
-fn flatten_add_sub(ctx: &Context, expr: ExprId, terms: &mut Vec<(ExprId, bool)>, positive: bool) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            flatten_add_sub(ctx, *l, terms, positive);
-            flatten_add_sub(ctx, *r, terms, positive);
-        }
-        Expr::Sub(l, r) => {
-            flatten_add_sub(ctx, *l, terms, positive);
-            flatten_add_sub(ctx, *r, terms, !positive);
-        }
-        Expr::Neg(inner) => {
-            flatten_add_sub(ctx, *inner, terms, !positive);
-        }
-        _ => {
-            terms.push((expr, positive));
-        }
-    }
-}
+// NOTE: flatten_add_sub removed - replaced by AddView::from_expr() for shape-independence
 
 /// Extract (k, base_var) from 2*cos(k*x) pattern
 fn extract_cosine_multiple(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId)> {

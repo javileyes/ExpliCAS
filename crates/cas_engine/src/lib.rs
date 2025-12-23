@@ -48,6 +48,7 @@ pub mod visualizer;
 pub mod build;
 pub mod error;
 pub mod helpers;
+pub mod nary;
 pub mod visitors;
 #[macro_use]
 pub mod macros;
