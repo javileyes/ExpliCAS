@@ -1055,3 +1055,58 @@ Currently `Expr::Mul(l,r)` is **allowed** because many product rules are structu
 - Significant rules migrated to `MulView`
 - Lint has low false-positive rate
 
+## 10. Anti-Explosion Budget Policy ★ (Planned)
+
+### Overview
+
+The engine has **fragmented budget systems** that need unification into a coherent anti-explosion policy. See [docs/BUDGET_POLICY.md](docs/BUDGET_POLICY.md) for full design.
+
+### Current State
+
+| Budget Type | Metrics | Error Type |
+|-------------|---------|------------|
+| `ExpandBudget` | pow_exp, terms | (silent reject) |
+| `PolyBudget` | terms, degree | `PolyError::BudgetExceeded` |
+| `ZippelBudget` | points, retries | — |
+| `PhaseBudgets` | rewrites | Cycle detection |
+
+### Target State
+
+Single unified system:
+- **`BudgetConfig`**: Limits per `(Operation, Metric)`
+- **`BudgetScope`**: RAII tracking of current operation
+- **`BudgetExceeded`**: Uniform error with `{ op, metric, used, limit }`
+
+### Implementation Phases
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 0 | Infrastructure (`budget.rs`) | ⬜ Not started |
+| 1 | Unify error types | ⬜ |
+| 2 | Simplify pipeline | ⬜ |
+| 3 | Expand / multinomial | ⬜ |
+| 4 | Polynomial ops | ⬜ |
+| 5 | Zippel GCD | ⬜ |
+| 6 | CI lint (`lint_budget_enforcement.sh`) | ⬜ |
+
+### Enforcement Layers
+
+```
+Layer A: Central    — NodesCreated in Context::add (always counts)
+Layer B: Hotspot    — TermsMaterialized, RewriteSteps, PolyOps (module-specific)
+Layer C: Estimation — Fail fast before expensive work
+```
+
+### Contract Tests (to add)
+
+```rust
+#[test]
+fn budget_rejects_huge_expansion() {
+    // (a+b)^200 → BudgetExceeded(Expand, TermsMaterialized)
+}
+
+#[test]
+fn budget_stops_runaway_simplify() {
+    // expr with 1000+ rewrites → BudgetExceeded(SimplifyCore, RewriteSteps)
+}
+```

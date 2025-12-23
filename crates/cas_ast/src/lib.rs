@@ -18,7 +18,7 @@ pub use display::{
 };
 pub use display_context::{DisplayContext, DisplayHint};
 pub use domain::{BoundType, Interval, SolutionSet};
-pub use expression::{Constant, Context, Expr, ExprId, MulCommutativity};
+pub use expression::{Constant, Context, ContextStats, Expr, ExprId, MulCommutativity};
 pub use latex::{LaTeXExpr, LaTeXExprWithHints};
 pub use latex_highlight::{
     HighlightColor, HighlightConfig, LaTeXExprHighlighted, LaTeXExprHighlightedWithHints,

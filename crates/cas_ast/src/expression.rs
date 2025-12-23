@@ -116,6 +116,17 @@ pub enum Expr {
     SessionRef(u64),
 }
 
+/// Statistics for tracking Context resource usage.
+///
+/// This is used by the budget system to detect real growth
+/// (not just intern calls, but actual new node creation).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ContextStats {
+    /// Number of nodes actually created (not deduplicated).
+    /// Increments only when `nodes.push` happens, not on cache hits.
+    pub nodes_created: u64,
+}
+
 #[derive(Default, Clone)]
 pub struct Context {
     pub nodes: Vec<Expr>,
@@ -123,6 +134,8 @@ pub struct Context {
     /// Using Vec<ExprId> instead of single ExprId to properly handle hash collisions
     /// without losing deduplication for expressions that share the same hash.
     pub interner: HashMap<u64, Vec<ExprId>>,
+    /// Statistics for budget tracking
+    stats: ContextStats,
 }
 
 impl Context {
@@ -130,7 +143,14 @@ impl Context {
         Self {
             nodes: Vec::new(),
             interner: HashMap::new(),
+            stats: ContextStats::default(),
         }
+    }
+
+    /// Get current statistics (for budget tracking).
+    #[inline]
+    pub fn stats(&self) -> ContextStats {
+        self.stats
     }
 
     /// Check if a term is "negative" for Add ordering purposes
@@ -302,6 +322,7 @@ impl Context {
 
         let id = ExprId::new(index, tag);
         self.nodes.push(expr);
+        self.stats.nodes_created += 1; // Track real creation (not cache hit)
 
         self.interner.entry(hash).or_default().push(id);
         id
