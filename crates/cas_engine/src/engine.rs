@@ -567,6 +567,11 @@ impl Simplifier {
             current_depth: 0,
             depth_overflow_warned: false,
             ancestor_stack: Vec::new(),
+            // Budget tracking (unified)
+            rewrite_count: 0,
+            nodes_snap: 0,
+            budget_op: crate::budget::Operation::SimplifyCore,
+            stop_reason: None,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -677,6 +682,9 @@ impl Simplifier {
             },
         );
 
+        // Capture nodes_created BEFORE creating transformer (can't access while borrowed)
+        let nodes_snap = self.context.stats().nodes_created;
+
         let mut local_transformer = LocalSimplificationTransformer {
             context: &mut self.context,
             rules,
@@ -698,9 +706,28 @@ impl Simplifier {
             current_depth: 0,
             depth_overflow_warned: false,
             ancestor_stack: Vec::new(),
+            // Budget tracking (unified)
+            rewrite_count: 0,
+            nodes_snap,
+            budget_op: match phase {
+                crate::phase::SimplifyPhase::Core | crate::phase::SimplifyPhase::PostCleanup => {
+                    crate::budget::Operation::SimplifyCore
+                }
+                crate::phase::SimplifyPhase::Transform
+                | crate::phase::SimplifyPhase::Rationalize => {
+                    crate::budget::Operation::SimplifyTransform
+                }
+            },
+            stop_reason: None,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
+
+        // Extract budget tracking stats BEFORE dropping transformer
+        let _rewrite_count = local_transformer.rewrite_count;
+        let _budget_op = local_transformer.budget_op;
+        let _nodes_snap = local_transformer.nodes_snap;
+        let _stop_reason = local_transformer.stop_reason.take();
 
         // Extract steps from transformer
         let steps = std::mem::take(&mut local_transformer.steps);
@@ -708,6 +735,20 @@ impl Simplifier {
         self.last_domain_warnings
             .append(&mut local_transformer.domain_warnings);
         drop(local_transformer);
+
+        // Calculate nodes delta AFTER dropping transformer (now we can borrow self.context)
+        let _nodes_delta = self
+            .context
+            .stats()
+            .nodes_created
+            .saturating_sub(_nodes_snap);
+
+        // TODO: caller should use these to charge Budget:
+        // if let Some(budget) = budget {
+        //     let _scope = budget.scope(_budget_op);
+        //     budget.charge(Metric::RewriteSteps, _rewrite_count)?;
+        //     budget.charge(Metric::NodesCreated, _nodes_delta)?;
+        // }
 
         (new_expr, steps)
     }
@@ -882,6 +923,15 @@ struct LocalSimplificationTransformer<'a> {
     depth_overflow_warned: bool,
     /// Stack of ancestor ExprIds for parent context propagation to rules
     ancestor_stack: Vec<ExprId>,
+    // === Budget tracking (Phase 2 unified) ===
+    /// Count of rewrites accepted in this pass (charged to Budget at end of pass)
+    rewrite_count: u64,
+    /// Snapshot of nodes_created at start of pass (for delta charging)
+    nodes_snap: u64,
+    /// Operation type for budget charging (SimplifyCore or SimplifyTransform)
+    budget_op: crate::budget::Operation,
+    /// Set when budget exceeded - contains the error details for the caller
+    stop_reason: Option<crate::budget::BudgetExceeded>,
 }
 
 use cas_ast::visitor::Transformer;
@@ -1406,6 +1456,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             self.steps.push(step);
                         }
                         expr_id = rewrite.new_expr;
+
+                        // Budget tracking: count this rewrite (charged at end of pass)
+                        self.rewrite_count += 1;
+
                         // Note: Rule application tracking for rationalization is now handled by phase, not flag
                         // Apply canonical normalization to prevent loops
                         expr_id = normalize_core(self.context, expr_id);
@@ -1525,6 +1579,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             .record_domain_assumption(self.current_phase, rule.name());
                     }
                     expr_id = rewrite.new_expr;
+
+                    // Budget tracking: count this rewrite (charged at end of pass)
+                    self.rewrite_count += 1;
+
                     // Note: Rule application tracking for rationalization is now handled by phase, not flag
                     // Apply canonical normalization to prevent loops
                     expr_id = normalize_core(self.context, expr_id);
