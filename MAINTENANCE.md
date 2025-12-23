@@ -1083,7 +1083,7 @@ Single unified system:
 |-------|-------------|--------|
 | 0 | Infrastructure (`budget.rs`, `ContextStats`) | ✅ Complete |
 | 1 | Unify error types (`CasError::BudgetExceeded` wraps struct) | ✅ Complete |
-| 2 | Simplify pipeline (`stop_reason: Option<BudgetExceeded>`) | ✅ Unified |
+| 2 | Simplify pipeline (`PassStats` flows to caller) | ✅ Complete |
 | 3 | Expand / multinomial | ⬜ |
 | 4 | Polynomial ops | ⬜ |
 | 5 | Zippel GCD | ⬜ |

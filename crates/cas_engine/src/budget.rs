@@ -38,10 +38,11 @@ use std::fmt;
 /// Operations that consume budget.
 ///
 /// Each operation represents a distinct computational phase that can explode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[repr(u8)]
 pub enum Operation {
     /// Core simplification (rule applications in main loop)
+    #[default]
     SimplifyCore = 0,
     /// Transform phase (distribution, expansion)
     SimplifyTransform = 1,
@@ -157,6 +158,26 @@ impl fmt::Display for BudgetExceeded {
 }
 
 impl std::error::Error for BudgetExceeded {}
+
+// =============================================================================
+// PassStats: budget tracking data from a simplify pass
+// =============================================================================
+
+/// Statistics collected from a single simplify pass for budget charging.
+///
+/// Returned by `apply_rules_loop_*` functions so the caller can charge
+/// the unified Budget at the end of each pass.
+#[derive(Debug, Clone, Default)]
+pub struct PassStats {
+    /// Number of rewrites applied in this pass
+    pub rewrite_count: u64,
+    /// Delta in nodes created during this pass
+    pub nodes_delta: u64,
+    /// The operation type for this pass (Core or Transform)
+    pub op: Operation,
+    /// If set, the pass hit an internal limit and stopped early
+    pub stop_reason: Option<BudgetExceeded>,
+}
 
 // =============================================================================
 // Budget struct (array-indexed for O(1) performance)

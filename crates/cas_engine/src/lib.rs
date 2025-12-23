@@ -58,7 +58,7 @@ pub mod visitors;
 #[macro_use]
 pub mod macros;
 
-pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation};
+pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
 pub use engine::{strip_all_holds, Simplifier};
 pub use error::CasError;
 pub use eval::*;

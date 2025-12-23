@@ -81,7 +81,7 @@ fn debug_sec_tan_limited() {
         println!("\n--- Iteration {} ---", iteration + 1);
         // Apply rules with pattern marks
         let pattern_marks = cas_engine::pattern_marks::PatternMarks::new();
-        let (new_expr, steps) = simplifier.apply_rules_loop(current, &pattern_marks);
+        let (new_expr, steps, _pass_stats) = simplifier.apply_rules_loop(current, &pattern_marks);
 
         if steps.is_empty() {
             println!("No more rules applied. Converged!");

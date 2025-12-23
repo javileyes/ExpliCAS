@@ -85,7 +85,7 @@ impl Orchestrator {
                     &mut self.pattern_marks,
                 );
             }
-            let (next, steps) = simplifier.apply_rules_loop_with_phase_and_mode(
+            let (next, steps, pass_stats) = simplifier.apply_rules_loop_with_phase_and_mode(
                 current,
                 &self.pattern_marks,
                 phase,
@@ -93,6 +93,17 @@ impl Orchestrator {
                 auto_expand,
                 self.options.expand_budget,
             );
+
+            // Log budget stats for this iteration (actual charging done by caller if Budget provided)
+            if pass_stats.rewrite_count > 0 || pass_stats.nodes_delta > 0 {
+                tracing::trace!(
+                    target: "budget",
+                    op = %pass_stats.op,
+                    rewrites = pass_stats.rewrite_count,
+                    nodes_delta = pass_stats.nodes_delta,
+                    "pass_budget_stats"
+                );
+            }
 
             stats.rewrites_used += steps.len();
             all_steps.extend(steps);

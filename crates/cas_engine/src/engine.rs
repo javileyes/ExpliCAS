@@ -628,7 +628,7 @@ impl Simplifier {
         &mut self,
         expr_id: ExprId,
         pattern_marks: &crate::pattern_marks::PatternMarks,
-    ) -> (ExprId, Vec<Step>) {
+    ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         // Default to Transform phase (allows all rules including distribution)
         self.apply_rules_loop_with_phase(
             expr_id,
@@ -642,7 +642,7 @@ impl Simplifier {
         expr_id: ExprId,
         pattern_marks: &crate::pattern_marks::PatternMarks,
         phase: crate::phase::SimplifyPhase,
-    ) -> (ExprId, Vec<Step>) {
+    ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         // Default: not in expand mode, no auto-expand
         self.apply_rules_loop_with_phase_and_mode(
             expr_id,
@@ -654,7 +654,8 @@ impl Simplifier {
         )
     }
 
-    /// Apply rules loop with explicit expand_mode and auto_expand control
+    /// Apply rules loop with explicit expand_mode and auto_expand control.
+    /// Returns PassStats for the caller to charge the Budget.
     pub fn apply_rules_loop_with_phase_and_mode(
         &mut self,
         expr_id: ExprId,
@@ -663,7 +664,7 @@ impl Simplifier {
         expand_mode: bool,
         auto_expand: bool,
         expand_budget: crate::phase::ExpandBudget,
-    ) -> (ExprId, Vec<Step>) {
+    ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let steps_mode = self.steps_mode;
@@ -724,10 +725,10 @@ impl Simplifier {
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 
         // Extract budget tracking stats BEFORE dropping transformer
-        let _rewrite_count = local_transformer.rewrite_count;
-        let _budget_op = local_transformer.budget_op;
-        let _nodes_snap = local_transformer.nodes_snap;
-        let _stop_reason = local_transformer.stop_reason.take();
+        let rewrite_count = local_transformer.rewrite_count;
+        let budget_op = local_transformer.budget_op;
+        let nodes_snap = local_transformer.nodes_snap;
+        let stop_reason = local_transformer.stop_reason.take();
 
         // Extract steps from transformer
         let steps = std::mem::take(&mut local_transformer.steps);
@@ -737,20 +738,21 @@ impl Simplifier {
         drop(local_transformer);
 
         // Calculate nodes delta AFTER dropping transformer (now we can borrow self.context)
-        let _nodes_delta = self
+        let nodes_delta = self
             .context
             .stats()
             .nodes_created
-            .saturating_sub(_nodes_snap);
+            .saturating_sub(nodes_snap);
 
-        // TODO: caller should use these to charge Budget:
-        // if let Some(budget) = budget {
-        //     let _scope = budget.scope(_budget_op);
-        //     budget.charge(Metric::RewriteSteps, _rewrite_count)?;
-        //     budget.charge(Metric::NodesCreated, _nodes_delta)?;
-        // }
+        // Build PassStats for caller to use with Budget.charge()
+        let pass_stats = crate::budget::PassStats {
+            rewrite_count,
+            nodes_delta,
+            op: budget_op,
+            stop_reason,
+        };
 
-        (new_expr, steps)
+        (new_expr, steps, pass_stats)
     }
 
     pub fn are_equivalent(&mut self, a: ExprId, b: ExprId) -> bool {
