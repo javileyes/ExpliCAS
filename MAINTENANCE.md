@@ -1037,3 +1037,21 @@ fn test_my_rule_shape_independent() {
     assert_eq!(simplify(right_assoc), simplify(balanced));
 }
 ```
+
+### Future: MulView Migration Roadmap
+
+Currently `Expr::Mul(l,r)` is **allowed** because many product rules are structurally binary (e.g., detecting `a * a^-1` or `a * (b/c)`). Prohibiting would cause too many false positives.
+
+**Progressive hardening roadmap:**
+
+| Phase | Policy | Trigger |
+|-------|--------|---------|
+| **Current** | ✅ Allowed | — |
+| Phase 2 | ⚠ Allowed + lint warning | When migrating product rules to `MulView` |
+| Phase 3 | ❌ Prohibited in `@nary-product` modules | When MulView coverage is high |
+
+**When to advance:**
+- Regressions appear from product tree shapes
+- Significant rules migrated to `MulView`
+- Lint has low false-positive rate
+

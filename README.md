@@ -114,7 +114,7 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   **Prompt Indicator**: Shows `[autoexp:on]` when enabled.
     -   **Context Detection** (marks Div/Sub nodes for expansion):
         -   Difference quotients: `((x+h)^n - x^n)/h` → expands to simplify
-nor        -   **Sub cancellation**: `(x+1)^2 - (x^2+2x+1)` → **detects and returns 0**
+        -   **Sub cancellation**: `(x+1)^2 - (x^2+2x+1)` → **detects and returns 0**
         -   Standalone `(x+1)^3` → stays factored (no cancellation context)
     -   **Zero-Shortcut** (★ Phase 2): Compares expressions as MultiPoly without AST expansion.
         -   If `P - Q = 0` → returns 0 immediately (no explosion)
@@ -342,7 +342,7 @@ Result: 6
 > explain gcd(2*x^2 + 7*x + 3, 2*x^2 + 5*x + 2)
 ```
 
-**Limitations:** Currently only supports univariate polynomials. Multivariable polynomials will return GCD=1.
+**Multivariate Support:** The engine now supports multivariate polynomial GCD via the Zippel algorithm. See [docs/ZIPPEL_GCD.md](docs/ZIPPEL_GCD.md) for technical details.
 
 #### 9. Matrix Operations
 Perform basic matrix operations including determinant, transpose, and trace.
@@ -783,68 +783,6 @@ Open in browser to view interactive visualization.
   - Global expressions use readable notation (e.g., `√x` for roots)
   - Rule transformations preserve mathematical notation for clarity:
     - Exponent rules show fractional notation: `x^{1/2} → x^{1/2·2}`
-# ExpliCAS - Computer Algebra System with Step-by-Step Explanations
-
-Un sistema de álgebra computacional (CAS) educativo que muestra el proceso paso a paso de simplificación de expresiones matemáticas.
-
-## ✨ Características Principales
-
-### 🔢 Operaciones Matriciales Completas
-- **Suma y resta** de matrices de cualquier tamaño
-- **Multiplicación matricial** y escalar
-- **Determinante** generalizado (cualquier tamaño n×n mediante expansión por cofactores)
-- **Transpuesta** y **traza**
-- Soporte completo en CLI y como funciones: `det()`, `transpose()`, `trace()`
-
-```text
-> [[1, 2], [3, 4]] + [[5, 6], [7, 8]]
-Result: [[6, 8], [10, 12]]
-
-> det [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]
-Result: 0
-
-> transpose [[1, 2, 3], [4, 5, 6]]
-Result: [[1, 4], [2, 5], [3, 6]]
-```
-
-### 📐 GCD Educativo (Enteros y Polinomios)
-Calcula el MCD de enteros y **polinomios univariados** con explicaciones paso a paso del algoritmo de Euclides:
-
-```text
-> explain gcd(48, 18)
-Educational Steps:
-Step 1: gcd(48, 18)
-  48 = 2 × 18 + 12
-Step 2: gcd(18, 12)
-  18 = 1 × 12 + 6
-Step 3: gcd(12, 6)
-  12 = 2 × 6 + 0
-Final: gcd(48, 18) = 6
-
-> explain gcd(x^2 - 1, x^2 - 2*x + 1)
-[Muestra pasos de división polinomial y simplificación]
-Result: x - 1
-```
-
-### 🌐 Timeline - Visualización Web Interactiva
-Genera una página web HTML con **renderizado LaTeX** de todas las transformaciones:
-
-```text
-> timeline
-```
-
-Abre automáticamente una visualización en el navegador mostrando:
-- Cada paso de simplificación en notación matemática LaTeX
-- Descripción de la regla aplicada
-- Navegación interactiva por el historial de transformaciones
-
-## Instalación y Uso
-
-### Requisitos
-- Rust 1.70 o superior
-- Cargo (incluido con Rust)
-
-### Compilar y Ejecutar
     - Other rules use standard notation with roots
 - **Professional Styling**:
   - MathJax-rendered expressions
@@ -857,12 +795,20 @@ Abre automáticamente una visualización en el navegador mostrando:
 - **Medium**: Standard algebraic transforms - always shown
 - **High**: Major transformations (Factor, Expand, Integrate) - always highlighted
 
-**Customization:**
-To add new rules that preserve exponent notation, edit `crates/cas_engine/src/timeline.rs`:
-```rust
-let should_preserve_exponents = step.rule_name.contains("Multiply exponents")
-    || step.rule_name.contains("Power of a Power")
-    || step.rule_name.contains("Your Rule Here");
+## Instalación y Uso
+
+### Requisitos
+- Rust 1.88 o superior (MSRV)
+- Cargo (incluido con Rust)
+
+### Compilar y Ejecutar
+```bash
+# CI completo (recomendado)
+make ci
+
+# Build solo
+cargo build --release -p cas_cli
+./target/release/cas_cli
 ```
 
 
