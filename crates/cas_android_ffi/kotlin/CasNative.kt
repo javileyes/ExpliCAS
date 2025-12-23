@@ -1,4 +1,4 @@
-package com.sigma.cas
+package es.javiergimenez.explicas
 
 /**
  * JNI bridge to ExpliCAS native library.

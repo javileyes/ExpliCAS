@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.sigma.cas"
+    namespace = "es.javiergimenez.explicas"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.sigma.cas"
+        applicationId = "es.javiergimenez.explicas"
         minSdk = 24
         targetSdk = 34
         versionCode = 1

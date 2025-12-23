@@ -16,4 +16,4 @@ cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release -p cas_android_ff
 ```
 
 2. Copy Kotlin files to your Android project
-3. Update package name if different from `com.sigma.cas`
+3. Update package name if different from `es.javiergimenez.explicas`

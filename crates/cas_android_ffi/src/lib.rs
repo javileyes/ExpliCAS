@@ -214,19 +214,19 @@ impl ResponseJson {
 /// ABI version for diagnostics
 const ABI_VERSION: i32 = 1;
 
-/// JNI function: Java_com_sigma_cas_CasNative_abiVersion
+/// JNI function: Java_es_javiergimenez_explicas_CasNative_abiVersion
 ///
 /// Returns the ABI version for diagnostics. Useful for detecting mismatches
 /// between the Kotlin code and the native library.
 #[no_mangle]
-pub extern "system" fn Java_com_sigma_cas_CasNative_abiVersion(
+pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_abiVersion(
     _env: JNIEnv,
     _class: JClass,
 ) -> jni::sys::jint {
     ABI_VERSION
 }
 
-/// JNI function: Java_com_sigma_cas_CasNative_evalJson
+/// JNI function: Java_es_javiergimenez_explicas_CasNative_evalJson
 ///
 /// # Arguments
 /// * `expr` - Expression string (e.g., "2+x^2/(sqrt(2)+3)")
@@ -235,7 +235,7 @@ pub extern "system" fn Java_com_sigma_cas_CasNative_abiVersion(
 /// # Returns
 /// JSON string with schema_version: 1
 #[no_mangle]
-pub extern "system" fn Java_com_sigma_cas_CasNative_evalJson<'local>(
+pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalJson<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     expr: JString<'local>,

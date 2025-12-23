@@ -36,7 +36,7 @@ This produces:
 ### Kotlin usage
 
 ```kotlin
-package com.sigma.cas
+package es.javiergimenez.explicas
 
 object CasNative {
     init {

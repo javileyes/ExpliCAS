@@ -1,4 +1,4 @@
-package com.sigma.cas
+package es.javiergimenez.explicas
 
 import android.os.Bundle
 import android.widget.ArrayAdapter
