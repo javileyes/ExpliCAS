@@ -163,19 +163,23 @@ impl std::error::Error for BudgetExceeded {}
 // PassStats: budget tracking data from a simplify pass
 // =============================================================================
 
-/// Statistics collected from a single simplify pass for budget charging.
+/// Statistics collected from a pass for unified budget charging.
 ///
-/// Returned by `apply_rules_loop_*` functions so the caller can charge
-/// the unified Budget at the end of each pass.
+/// Returned by simplify/expand functions so the caller can charge the Budget.
+/// Fields default to 0, so each operation only fills what's relevant.
 #[derive(Debug, Clone, Default)]
 pub struct PassStats {
-    /// Number of rewrites applied in this pass
-    pub rewrite_count: u64,
-    /// Delta in nodes created during this pass
-    pub nodes_delta: u64,
-    /// The operation type for this pass (Core or Transform)
+    /// The operation type for this pass
     pub op: Operation,
-    /// If set, the pass hit an internal limit and stopped early
+    /// Number of rewrites applied (Simplify phases)
+    pub rewrite_count: u64,
+    /// Delta in nodes created during this pass (all operations)
+    pub nodes_delta: u64,
+    /// Terms materialized during expansion (Expand/Multinomial)
+    pub terms_materialized: u64,
+    /// Expensive polynomial operations (GCD, div, eval - Phase 4/5)
+    pub poly_ops: u64,
+    /// If set, the pass hit a limit and stopped early
     pub stop_reason: Option<BudgetExceeded>,
 }
 

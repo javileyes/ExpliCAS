@@ -746,9 +746,11 @@ impl Simplifier {
 
         // Build PassStats for caller to use with Budget.charge()
         let pass_stats = crate::budget::PassStats {
+            op: budget_op,
             rewrite_count,
             nodes_delta,
-            op: budget_op,
+            terms_materialized: 0, // Simplify doesn't expand terms
+            poly_ops: 0,           // Simplify doesn't do poly ops
             stop_reason,
         };
 

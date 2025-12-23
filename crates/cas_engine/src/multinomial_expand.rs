@@ -261,7 +261,7 @@ fn parse_linear_atom(ctx: &Context, term: ExprId) -> Option<LinearTerm> {
 
 /// Estimate multinomial term count: C(n+k-1, k-1)
 /// Returns None if overflow or exceeds max.
-fn multinomial_term_count(n: u32, k: usize, max: usize) -> Option<usize> {
+pub fn multinomial_term_count(n: u32, k: usize, max: usize) -> Option<usize> {
     // C(n+k-1, k-1) = (n+k-1)! / ((k-1)! * n!)
     // Use iterative calculation to avoid overflow
     let top = (n as usize) + k - 1;

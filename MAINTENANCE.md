@@ -1084,7 +1084,7 @@ Single unified system:
 | 0 | Infrastructure (`budget.rs`, `ContextStats`) | ✅ Complete |
 | 1 | Unify error types (`CasError::BudgetExceeded` wraps struct) | ✅ Complete |
 | 2 | Simplify pipeline (`PassStats` flows to caller) | ✅ Complete |
-| 3 | Expand / multinomial | ⬜ |
+| 3 | Expand / multinomial (`expand_with_stats`) | ✅ Complete |
 | 4 | Polynomial ops | ⬜ |
 | 5 | Zippel GCD | ⬜ |
 | 6 | CI lint (`lint_budget_enforcement.sh`) | ⬜ |
