@@ -103,6 +103,7 @@ impl Step {
     }
 
     /// Create a step with complete global snapshots before and after transformation
+    #[allow(clippy::too_many_arguments)] // All parameters are semantically distinct
     pub fn with_snapshots(
         description: &str,
         rule_name: &str,

@@ -1287,6 +1287,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
     }
 
     fn apply_rules(&mut self, mut expr_id: ExprId) -> ExprId {
+        // Note: This loop pattern with early returns is intentional for structured exit points
+        #[allow(clippy::never_loop)]
         loop {
             let mut changed = false;
             let variant = get_variant_name(self.context.get(expr_id));

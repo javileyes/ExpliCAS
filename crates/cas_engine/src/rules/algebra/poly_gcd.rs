@@ -127,7 +127,7 @@ fn parse_modp_options(ctx: &Context, args: &[ExprId]) -> (Option<ZippelPreset>, 
         }
         // Try as symbol (preset)
         if let Expr::Variable(s) = ctx.get(arg) {
-            if let Some(p) = ZippelPreset::from_str(s) {
+            if let Some(p) = ZippelPreset::parse(s) {
                 preset = Some(p);
             }
         }

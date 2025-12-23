@@ -186,9 +186,8 @@ fn is_pythagorean_style(ctx: &Context, expr: ExprId) -> bool {
             let r_is_one = is_one(ctx, *r);
 
             // Patterns: f²±g², 1±f², f²±1
-            (l_is_squared && r_is_squared)
-                || (l_is_one && r_is_squared)
-                || (l_is_squared && r_is_one)
+            // Simplified: r_is_squared && (l_is_one || l_is_squared), or l_is_squared && r_is_one
+            (r_is_squared && (l_is_one || l_is_squared)) || (l_is_squared && r_is_one)
         }
         _ => false,
     }

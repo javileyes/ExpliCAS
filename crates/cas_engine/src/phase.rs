@@ -305,9 +305,10 @@ impl SimplifyOptions {
 
     /// Options for `simplify --no-transform`
     pub fn no_transform() -> Self {
-        let mut opt = Self::default();
-        opt.enable_transform = false;
-        opt
+        Self {
+            enable_transform: false,
+            ..Default::default()
+        }
     }
 
     /// Options for `simplify --no-rationalize`

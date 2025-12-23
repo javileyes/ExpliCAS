@@ -44,7 +44,7 @@ pub enum ZippelPreset {
 
 impl ZippelPreset {
     /// Parse preset from string (case-insensitive)
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "safe" => Some(Self::Safe),
             "aggressive" | "fast" => Some(Self::Aggressive),
@@ -403,6 +403,7 @@ struct Sample {
 
 /// Collect samples using parallel evaluation (deterministic ordering)
 #[cfg(feature = "parallel")]
+#[allow(clippy::too_many_arguments)] // GCD algorithm requires all these distinct parameters
 fn collect_samples_parallel(
     p: &MultiPolyModP,
     q: &MultiPolyModP,
@@ -500,6 +501,7 @@ fn collect_samples_parallel(
 }
 
 /// Sequential fallback for collect_samples (used when parallel disabled or small polys)
+#[allow(clippy::too_many_arguments)] // GCD algorithm requires all these distinct parameters
 fn collect_samples_sequential(
     p: &MultiPolyModP,
     q: &MultiPolyModP,
@@ -600,7 +602,7 @@ fn collect_samples_parallel(
 #[derive(Debug, Clone)]
 struct VarMetrics {
     v: usize,
-    deg_min: u32,      // min(deg_p, deg_q) in v
+    _deg_min: u32,     // min(deg_p, deg_q) in v - reserved for future heuristics
     points: u32,       // deg_min + 1 (interpolation points needed)
     lead_support: u32, // min(leading terms in p, leading terms in q)
     bucket_cost: u64,  // sum of squared bucket sizes (approximates coef complexity)
@@ -671,7 +673,7 @@ fn choose_eval_var(
 
             VarMetrics {
                 v,
-                deg_min,
+                _deg_min: deg_min,
                 points,
                 lead_support: lead_sup,
                 bucket_cost: bc,

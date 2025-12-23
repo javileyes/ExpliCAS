@@ -29,6 +29,7 @@ impl ProfileKey {
 /// A cached rule profile containing pre-built rules.
 /// Shared via `Arc` between Simplifiers with the same options.
 #[derive(Debug)]
+#[allow(clippy::arc_with_non_send_sync)] // Rules are intentionally not Send+Sync for flexibility
 pub struct RuleProfile {
     /// Rules indexed by target type
     pub rules: HashMap<String, Vec<Arc<dyn Rule>>>,
@@ -55,6 +56,7 @@ impl ProfileCache {
     }
 
     /// Get or build a profile for the given options.
+    #[allow(clippy::arc_with_non_send_sync)] // Rules use Arc for shared ownership, not thread safety
     pub fn get_or_build(&mut self, opts: &EvalOptions) -> Arc<RuleProfile> {
         let key = ProfileKey::from_options(opts);
 

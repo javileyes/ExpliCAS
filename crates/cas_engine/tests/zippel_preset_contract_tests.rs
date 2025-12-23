@@ -69,25 +69,22 @@ fn test_preset_aggressive_contract() {
 #[test]
 fn test_preset_parsing() {
     // Case-insensitive parsing
-    assert_eq!(ZippelPreset::from_str("mm_gcd"), Some(ZippelPreset::MmGcd));
-    assert_eq!(ZippelPreset::from_str("mmgcd"), Some(ZippelPreset::MmGcd));
-    assert_eq!(ZippelPreset::from_str("mm"), Some(ZippelPreset::MmGcd));
-    assert_eq!(ZippelPreset::from_str("MM_GCD"), Some(ZippelPreset::MmGcd));
+    assert_eq!(ZippelPreset::parse("mm_gcd"), Some(ZippelPreset::MmGcd));
+    assert_eq!(ZippelPreset::parse("mmgcd"), Some(ZippelPreset::MmGcd));
+    assert_eq!(ZippelPreset::parse("mm"), Some(ZippelPreset::MmGcd));
+    assert_eq!(ZippelPreset::parse("MM_GCD"), Some(ZippelPreset::MmGcd));
 
-    assert_eq!(ZippelPreset::from_str("safe"), Some(ZippelPreset::Safe));
-    assert_eq!(ZippelPreset::from_str("SAFE"), Some(ZippelPreset::Safe));
+    assert_eq!(ZippelPreset::parse("safe"), Some(ZippelPreset::Safe));
+    assert_eq!(ZippelPreset::parse("SAFE"), Some(ZippelPreset::Safe));
 
     assert_eq!(
-        ZippelPreset::from_str("aggressive"),
+        ZippelPreset::parse("aggressive"),
         Some(ZippelPreset::Aggressive)
     );
-    assert_eq!(
-        ZippelPreset::from_str("fast"),
-        Some(ZippelPreset::Aggressive)
-    );
+    assert_eq!(ZippelPreset::parse("fast"), Some(ZippelPreset::Aggressive));
 
-    assert_eq!(ZippelPreset::from_str("unknown"), None);
-    assert_eq!(ZippelPreset::from_str(""), None);
+    assert_eq!(ZippelPreset::parse("unknown"), None);
+    assert_eq!(ZippelPreset::parse(""), None);
 }
 
 #[test]

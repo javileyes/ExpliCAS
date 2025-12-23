@@ -160,6 +160,7 @@ fn combine_with_term(ctx: &mut Context, base: Option<ExprId>, new_term: ExprId) 
 /// - For negated pairs: returns negated result
 ///
 /// Pattern: If f(x) + g(x) = V, then -f(x) - g(x) = -V
+#[allow(clippy::too_many_arguments)] // All parameters are semantically distinct
 fn check_pair_with_negation<F>(
     ctx: &mut Context,
     term_i: ExprId,

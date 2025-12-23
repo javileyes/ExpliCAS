@@ -16,10 +16,7 @@ use std::cmp::Ordering;
 /// Check if an expression is a binomial (sum or difference of exactly 2 terms)
 /// Examples: (a + b), (a - b), (x + (-y))
 fn is_binomial(ctx: &Context, e: ExprId) -> bool {
-    match ctx.get(e) {
-        Expr::Add(_, _) | Expr::Sub(_, _) => true,
-        _ => false,
-    }
+    matches!(ctx.get(e), Expr::Add(_, _) | Expr::Sub(_, _))
 }
 
 // DistributeRule: Runs in CORE, TRANSFORM, RATIONALIZE but NOT in POST
@@ -718,10 +715,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
 define_rule!(CombineLikeTermsRule, "Combine Like Terms", |ctx, expr| {
     // Only try to collect if it's an Add or Mul, as those are the main things collect handles
     // (and Pow for constant folding, but that's handled elsewhere usually)
-    let is_add_or_mul = match ctx.get(expr) {
-        Expr::Add(_, _) | Expr::Mul(_, _) => true,
-        _ => false,
-    };
+    let is_add_or_mul = matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Mul(_, _));
 
     if is_add_or_mul {
         // CRITICAL: Do NOT apply to non-commutative expressions (e.g., matrices)

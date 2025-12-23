@@ -1,14 +1,8 @@
-// Clippy allows for patterns that are difficult to refactor safely
-// TODO: Progressively fix these and remove allows
-#![allow(clippy::needless_range_loop)] // Many loops index multiple arrays
-#![allow(clippy::too_many_arguments)] // Complex math algorithms need many params
-#![allow(clippy::field_reassign_with_default)] // Used in test setup patterns
-#![allow(clippy::arc_with_non_send_sync)] // Internal threading model is safe
-#![allow(clippy::match_like_matches_macro)] // Some matches are clearer expanded
-#![allow(clippy::nonminimal_bool)] // Mathematical boolean logic can be explicit
-#![allow(clippy::never_loop)] // Some early-return patterns are intentional
-#![allow(clippy::should_implement_trait)] // Custom from_str methods are intentional
-#![allow(dead_code)] // Some fields reserved for future use
+// Clippy allows: Mathematical loops that index multiple arrays simultaneously
+// This pattern is pervasive in polynomial/matrix algorithms and would require
+// extensive refactoring to use .iter().enumerate() patterns.
+#![allow(clippy::needless_range_loop)]
+// Note: too_many_arguments and arc_with_non_send_sync now have local #[allow] attributes
 
 pub mod auto_expand_scan;
 pub mod canonical_forms;

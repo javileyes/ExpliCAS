@@ -69,7 +69,7 @@ impl Rule for PolyGcdModpRule {
                 }
 
                 // Parse preset from string if provided
-                let preset = preset_str.as_deref().and_then(ZippelPreset::from_str);
+                let preset = preset_str.as_deref().and_then(ZippelPreset::parse);
                 match compute_gcd_modp_with_options(ctx, a, b, DEFAULT_PRIME, main_var, preset) {
                     Ok(gcd_expr) => {
                         // Wrap in __hold to prevent further simplification
