@@ -170,11 +170,19 @@ run_ci_for_toolchain() {
   fi
 
   if [[ "$RUN_LINTS" -eq 1 ]]; then
-    if [[ -x "$ROOT_DIR/scripts/lint_nary_shape_independence.sh" ]]; then
-      run "lint n-ary shape independence" "$ROOT_DIR/scripts/lint_nary_shape_independence.sh"
-    fi
-    if [[ -x "$ROOT_DIR/scripts/lint_no_raw_mul.sh" ]]; then
-      run "lint no raw mul" "$ROOT_DIR/scripts/lint_no_raw_mul.sh"
+    # Auto-discover and run all lint scripts matching lint_*.sh
+    shopt -s nullglob
+    LINTS=("$ROOT_DIR"/scripts/lint_*.sh)
+    shopt -u nullglob
+
+    if [[ ${#LINTS[@]} -gt 0 ]]; then
+      for lint in "${LINTS[@]}"; do
+        if [[ -x "$lint" ]]; then
+          run "lint $(basename "${lint%.sh}")" "$lint"
+        else
+          warn "Lint script is not executable, skipping: $(basename "$lint")"
+        fi
+      done
     fi
   fi
 
