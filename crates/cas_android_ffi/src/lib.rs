@@ -25,6 +25,7 @@ use jni::JNIEnv;
 use serde::{Deserialize, Serialize};
 
 use cas_ast::Context;
+use cas_engine::step::ImportanceLevel;
 use cas_engine::{Engine, EvalAction, EvalOutput, EvalRequest, EvalResult, SessionState};
 use cas_parser::parse;
 
@@ -79,6 +80,8 @@ struct ResponseJson {
     result_truncated: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     steps_count: Option<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    steps: Vec<StepJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
     budget: Option<BudgetResponseJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -116,15 +119,38 @@ struct TimingsJson {
     total_us: u64,
 }
 
+/// A simplification step for display
+#[derive(Serialize)]
+struct StepJson {
+    /// Step number (1-indexed)
+    index: usize,
+    /// Rule name (e.g., "Product of Powers")
+    rule: String,
+    /// Description of the transformation
+    description: String,
+    /// Expression before this step (global view)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    before: Option<String>,
+    /// Expression after this step (global view)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after: Option<String>,
+    /// Importance level: "trivial", "low", "medium", "high"
+    importance: String,
+    /// Domain assumption if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    domain_assumption: Option<String>,
+}
+
 impl ResponseJson {
     fn success(
         input: String,
         result: String,
         budget_preset: String,
         budget_mode: String,
-        steps_count: usize,
+        steps: Vec<StepJson>,
         timings: TimingsJson,
     ) -> Self {
+        let steps_count = steps.len();
         Self {
             schema_version: 1,
             ok: true,
@@ -132,6 +158,7 @@ impl ResponseJson {
             result: Some(result),
             result_truncated: Some(false),
             steps_count: Some(steps_count),
+            steps,
             budget: Some(BudgetResponseJson {
                 preset: budget_preset,
                 mode: budget_mode,
@@ -150,6 +177,7 @@ impl ResponseJson {
             result: None,
             result_truncated: None,
             steps_count: None,
+            steps: Vec::new(),
             budget: Some(BudgetResponseJson {
                 preset: "unknown".to_string(),
                 mode: "unknown".to_string(),
@@ -171,6 +199,7 @@ impl ResponseJson {
             result: None,
             result_truncated: None,
             steps_count: None,
+            steps: Vec::new(),
             budget: Some(BudgetResponseJson {
                 preset,
                 mode,
@@ -361,13 +390,43 @@ fn eval_json_inner(env: &mut JNIEnv, expr: JString, opts_json: JString) -> Strin
         _ => "(no result)".to_string(),
     };
 
-    // 8. Build success response
+    // 8. Build steps array
+    let steps: Vec<StepJson> = output
+        .steps
+        .iter()
+        .enumerate()
+        .map(|(i, step)| {
+            let before = step
+                .global_before
+                .map(|id| format_expr(&engine.simplifier.context, id));
+            let after = step
+                .global_after
+                .map(|id| format_expr(&engine.simplifier.context, id));
+            let importance = match step.importance() {
+                ImportanceLevel::Trivial => "trivial",
+                ImportanceLevel::Low => "low",
+                ImportanceLevel::Medium => "medium",
+                ImportanceLevel::High => "high",
+            };
+            StepJson {
+                index: i + 1,
+                rule: step.rule_name.clone(),
+                description: step.description.clone(),
+                before,
+                after,
+                importance: importance.to_string(),
+                domain_assumption: step.domain_assumption.map(|s| s.to_string()),
+            }
+        })
+        .collect();
+
+    // 9. Build success response
     let response = ResponseJson::success(
         expr_str,
         result_str,
         budget_preset,
         budget_mode,
-        output.steps.len(),
+        steps,
         TimingsJson {
             parse_us,
             simplify_us,
@@ -405,7 +464,7 @@ mod tests {
             "4".to_string(),
             "cli".to_string(),
             "best-effort".to_string(),
-            0,
+            Vec::new(),
             TimingsJson {
                 parse_us: 100,
                 simplify_us: 200,

@@ -81,10 +81,20 @@ object CasNative {
 {
   "schema_version": 1,
   "ok": true,
-  "input": "2+x^2/(sqrt(2)+3)",
-  "result": "(x² + 2·√2 + 6) / (3 + √2)",
+  "input": "x^2 + 2*x + 1",
+  "result": "(1 + x)²",
   "result_truncated": false,
-  "steps_count": 3,
+  "steps_count": 2,
+  "steps": [
+    {
+      "index": 1,
+      "rule": "Factor Perfect Square",
+      "description": "x² + 2x + 1 = (x + 1)²",
+      "before": "x² + 2·x + 1",
+      "after": "(1 + x)²",
+      "importance": "high"
+    }
+  ],
   "budget": {
     "preset": "cli",
     "mode": "best-effort"
@@ -96,6 +106,19 @@ object CasNative {
   }
 }
 ```
+
+### Step object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `index` | int | Step number (1-indexed) |
+| `rule` | string | Rule name (e.g., "Product of Powers") |
+| `description` | string | Description of transformation |
+| `before` | string? | Expression before (global view) |
+| `after` | string? | Expression after (global view) |
+| `importance` | string | "trivial", "low", "medium", "high" |
+| `domain_assumption` | string? | Domain assumption if any |
+
 
 ### Error
 
