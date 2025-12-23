@@ -5,9 +5,9 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Spinner
-import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnEvaluate: Button
     private lateinit var txtResult: TextView
     private lateinit var spinnerPreset: Spinner
-    private lateinit var switchStrict: Switch
+    private lateinit var switchStrict: SwitchCompat
     private lateinit var txtAbiVersion: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
