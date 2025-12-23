@@ -31,7 +31,7 @@ This produces:
 - `android/app/src/main/jniLibs/arm64-v8a/libcas_android_ffi.so`
 - `android/app/src/main/jniLibs/x86_64/libcas_android_ffi.so`
 
-## JNI Function
+## JNI Functions
 
 ### Kotlin usage
 
@@ -43,16 +43,17 @@ object CasNative {
         System.loadLibrary("cas_android_ffi")
     }
     
+    external fun abiVersion(): Int
     external fun evalJson(expr: String, optsJson: String): String
 }
 ```
 
-### Parameters
+### Functions
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `expr` | String | Expression to evaluate (e.g., `"2+x^2/(sqrt(2)+3)"`) |
-| `optsJson` | String | Options JSON (see below) |
+| Function | Parameters | Returns |
+|----------|------------|---------|
+| `abiVersion()` | none | `Int` (currently 1) |
+| `evalJson(expr, optsJson)` | expression, options JSON | JSON response |
 
 ### Options JSON
 
@@ -105,6 +106,10 @@ object CasNative {
   "error": {
     "kind": "ParseError",
     "message": "unexpected token at position 5"
+  },
+  "budget": {
+    "preset": "cli",
+    "mode": "best-effort"
   }
 }
 ```
@@ -116,6 +121,15 @@ object CasNative {
 | `ParseError` | Expression syntax error |
 | `EvalError` | Evaluation failed (e.g., budget exceeded) |
 | `InternalError` | Internal error (panic caught) |
+
+## Kotlin Prototype
+
+Complete Kotlin prototype files are in the `kotlin/` directory:
+
+- `CasNative.kt` - JNI bridge class with documentation
+- `MainActivity.kt` - Demo Activity with UI and coroutines
+- `build.gradle.kts` - App module configuration
+- `activity_main.xml` - Layout file
 
 ## Example Kotlin integration
 

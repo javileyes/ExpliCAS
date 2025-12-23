@@ -150,7 +150,11 @@ impl ResponseJson {
             result: None,
             result_truncated: None,
             steps_count: None,
-            budget: None,
+            budget: Some(BudgetResponseJson {
+                preset: "unknown".to_string(),
+                mode: "unknown".to_string(),
+                exceeded: None,
+            }),
             error: Some(ErrorJson {
                 kind: kind.to_string(),
                 message,
@@ -159,12 +163,43 @@ impl ResponseJson {
         }
     }
 
+    fn error_with_budget(kind: &str, message: String, preset: String, mode: String) -> Self {
+        Self {
+            schema_version: 1,
+            ok: false,
+            input: None,
+            result: None,
+            result_truncated: None,
+            steps_count: None,
+            budget: Some(BudgetResponseJson {
+                preset,
+                mode,
+                exceeded: None,
+            }),
+            error: Some(ErrorJson {
+                kind: kind.to_string(),
+                message,
+            }),
+            timings_us: None,
+        }
+    }
+
+    #[allow(dead_code)] // useful fallback when budget info not yet available
     fn parse_error(message: String) -> Self {
         Self::error("ParseError", message)
     }
 
+    fn parse_error_with_budget(message: String, preset: String, mode: String) -> Self {
+        Self::error_with_budget("ParseError", message, preset, mode)
+    }
+
+    #[allow(dead_code)] // useful fallback when budget info not yet available
     fn eval_error(message: String) -> Self {
         Self::error("EvalError", message)
+    }
+
+    fn eval_error_with_budget(message: String, preset: String, mode: String) -> Self {
+        Self::error_with_budget("EvalError", message, preset, mode)
     }
 
     fn internal_error(message: String) -> Self {
@@ -173,8 +208,23 @@ impl ResponseJson {
 }
 
 // ============================================================================
-// JNI Entry Point
+// JNI Entry Points
 // ============================================================================
+
+/// ABI version for diagnostics
+const ABI_VERSION: i32 = 1;
+
+/// JNI function: Java_com_sigma_cas_CasNative_abiVersion
+///
+/// Returns the ABI version for diagnostics. Useful for detecting mismatches
+/// between the Kotlin code and the native library.
+#[no_mangle]
+pub extern "system" fn Java_com_sigma_cas_CasNative_abiVersion(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jni::sys::jint {
+    ABI_VERSION
+}
 
 /// JNI function: Java_com_sigma_cas_CasNative_evalJson
 ///
@@ -268,7 +318,12 @@ fn eval_json_inner(env: &mut JNIEnv, expr: JString, opts_json: JString) -> Strin
     let parsed = match parse(&expr_str, &mut engine.simplifier.context) {
         Ok(id) => id,
         Err(e) => {
-            return serde_json::to_string(&ResponseJson::parse_error(e.to_string())).unwrap();
+            return serde_json::to_string(&ResponseJson::parse_error_with_budget(
+                e.to_string(),
+                budget_preset,
+                budget_mode,
+            ))
+            .unwrap();
         }
     };
     let parse_us = parse_start.elapsed().as_micros() as u64;
@@ -287,7 +342,12 @@ fn eval_json_inner(env: &mut JNIEnv, expr: JString, opts_json: JString) -> Strin
     let output: EvalOutput = match engine.eval(&mut state, req) {
         Ok(o) => o,
         Err(e) => {
-            return serde_json::to_string(&ResponseJson::eval_error(e.to_string())).unwrap();
+            return serde_json::to_string(&ResponseJson::eval_error_with_budget(
+                e.to_string(),
+                budget_preset,
+                budget_mode,
+            ))
+            .unwrap();
         }
     };
     let simplify_us = simplify_start.elapsed().as_micros() as u64;

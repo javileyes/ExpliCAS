@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- ABI Version (debug info) -->
+    <TextView
+        android:id="@+id/txtAbiVersion"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Engine ABI: ?"
+        android:textSize="12sp"
+        android:textColor="#888888" />
+
+    <!-- Expression Input -->
+    <EditText
+        android:id="@+id/editExpression"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="Enter expression (e.g., x^2 + 1)"
+        android:inputType="text"
+        android:textSize="18sp" />
+
+    <!-- Options Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- Budget Preset Spinner -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Budget: "
+            android:textSize="14sp" />
+
+        <Spinner
+            android:id="@+id/spinnerPreset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp" />
+
+        <!-- Strict Mode Switch -->
+        <Switch
+            android:id="@+id/switchStrict"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Strict" />
+    </LinearLayout>
+
+    <!-- Evaluate Button -->
+    <Button
+        android:id="@+id/btnEvaluate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Evaluate"
+        android:textSize="16sp" />
+
+    <!-- Result Display -->
+    <TextView
+        android:id="@+id/txtResult"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="24dp"
+        android:text="Result will appear here"
+        android:textSize="24sp"
+        android:textIsSelectable="true"
+        android:gravity="top"
+        android:padding="8dp"
+        android:background="#F5F5F5" />
+
+</LinearLayout>
