@@ -1110,3 +1110,20 @@ fn budget_stops_runaway_simplify() {
     // expr with 1000+ rewrites → BudgetExceeded(SimplifyCore, RewriteSteps)
 }
 ```
+
+### Implemented Contract Tests
+
+See `tests/budget_contract_tests.rs`:
+
+- `test_expand_fails_fast_without_allocation` — Layer C precheck
+- `test_expand_with_stats_reports_metrics` — PassStats reporting  
+- `test_budget_preset_*` — Preset limit values
+- `test_budget_charge_*` — Charge tracking and limits
+
+### Adding a New Operation (Contributor Guide)
+
+1. Add `Operation` variant in `budget.rs` (if needed)
+2. Create `_with_stats` wrapper returning `PassStats`
+3. Add to `lint_budget_enforcement.sh` hotspots if critical
+4. Add contract test validating PassStats fields
+5. Run `make ci && make lint-budget`
