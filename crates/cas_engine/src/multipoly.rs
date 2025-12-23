@@ -617,6 +617,26 @@ impl MultiPoly {
 
         Some(Self::from_map(self.vars.clone(), quotient))
     }
+
+    /// Exact division with budget tracking, returning PassStats.
+    ///
+    /// This is the instrumented version of `div_exact` for unified budget charging.
+    pub fn div_exact_with_stats(&self, divisor: &Self) -> (Option<Self>, crate::budget::PassStats) {
+        let result = self.div_exact(divisor);
+
+        let terms = result.as_ref().map_or(0, |q| q.num_terms() as u64);
+
+        let stats = crate::budget::PassStats {
+            op: crate::budget::Operation::PolyOps,
+            rewrite_count: 0,
+            nodes_delta: 0,
+            terms_materialized: terms,
+            poly_ops: 1,
+            stop_reason: None,
+        };
+
+        (result, stats)
+    }
 }
 
 // =============================================================================
@@ -888,6 +908,30 @@ pub fn gcd_multivar_layer2(p: &MultiPoly, q: &MultiPoly, budget: &GcdBudget) -> 
     }
 
     None
+}
+
+/// GCD with budget tracking, returning PassStats.
+///
+/// This is the instrumented version of `gcd_multivar_layer2` for unified budget charging.
+pub fn gcd_multivar_layer2_with_stats(
+    p: &MultiPoly,
+    q: &MultiPoly,
+    budget: &GcdBudget,
+) -> (Option<MultiPoly>, crate::budget::PassStats) {
+    let result = gcd_multivar_layer2(p, q, budget);
+
+    let terms = result.as_ref().map_or(0, |g| g.num_terms() as u64);
+
+    let stats = crate::budget::PassStats {
+        op: crate::budget::Operation::PolyOps,
+        rewrite_count: 0,
+        nodes_delta: 0,
+        terms_materialized: terms,
+        poly_ops: 1, // One GCD operation
+        stop_reason: None,
+    };
+
+    (result, stats)
 }
 
 impl MultiPoly {
