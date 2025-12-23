@@ -1081,8 +1081,8 @@ Single unified system:
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 0 | Infrastructure (`budget.rs`) | ⬜ Not started |
-| 1 | Unify error types | ⬜ |
+| 0 | Infrastructure (`budget.rs`, `ContextStats`) | ✅ Complete |
+| 1 | Unify error types (`CasError::BudgetExceeded` wraps struct) | ✅ Complete |
 | 2 | Simplify pipeline | ⬜ |
 | 3 | Expand / multinomial | ⬜ |
 | 4 | Polynomial ops | ⬜ |

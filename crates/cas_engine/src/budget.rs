@@ -325,18 +325,6 @@ impl<'a> Drop for BudgetScope<'a> {
 }
 
 // =============================================================================
-// Conversion to CasError (for integration with existing error handling)
-// =============================================================================
-
-impl From<BudgetExceeded> for crate::error::CasError {
-    fn from(e: BudgetExceeded) -> Self {
-        crate::error::CasError::BudgetExceeded {
-            operation: format!("{}:{}", e.op, e.metric),
-        }
-    }
-}
-
-// =============================================================================
 // Default limits (production-ready values)
 // =============================================================================
 

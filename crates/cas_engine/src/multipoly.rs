@@ -69,6 +69,23 @@ impl std::fmt::Display for PolyError {
 
 impl std::error::Error for PolyError {}
 
+impl From<PolyError> for crate::error::CasError {
+    fn from(e: PolyError) -> Self {
+        match e {
+            PolyError::BudgetExceeded => {
+                use crate::budget::{BudgetExceeded, Metric, Operation};
+                crate::error::CasError::BudgetExceeded(BudgetExceeded {
+                    op: Operation::PolyOps,
+                    metric: Metric::TermsMaterialized,
+                    used: 0,
+                    limit: 0,
+                })
+            }
+            _ => crate::error::CasError::PolynomialError(e.to_string()),
+        }
+    }
+}
+
 // =============================================================================
 // MultiPoly struct
 // =============================================================================
