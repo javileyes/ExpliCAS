@@ -856,8 +856,8 @@ impl crate::rule::Rule for BinomialExpansionRule {
 
                             // Sum up terms
                             let mut expanded = terms[0];
-                            for i in 1..terms.len() {
-                                expanded = ctx.add(Expr::Add(expanded, terms[i]));
+                            for &term in terms.iter().skip(1) {
+                                expanded = ctx.add(Expr::Add(expanded, term));
                             }
 
                             return Some(Rewrite {
@@ -1071,8 +1071,8 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
 
                         // Sum up terms
                         let mut expanded = terms[0];
-                        for i in 1..terms.len() {
-                            expanded = ctx.add(Expr::Add(expanded, terms[i]));
+                        for &term in terms.iter().skip(1) {
+                            expanded = ctx.add(Expr::Add(expanded, term));
                         }
 
                         return Some(Rewrite {

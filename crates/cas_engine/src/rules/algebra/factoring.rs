@@ -226,9 +226,9 @@ define_rule!(
                         // Construct the new expression: Factored + (Terms - {t1, t2})
                         let mut new_terms = Vec::new();
                         new_terms.push(factored);
-                        for k in 0..terms.len() {
+                        for (k, &term) in terms.iter().enumerate() {
                             if k != i && k != j {
-                                new_terms.push(terms[k]);
+                                new_terms.push(term);
                             }
                         }
 

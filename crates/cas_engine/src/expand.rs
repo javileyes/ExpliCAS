@@ -185,8 +185,8 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
 
                         // Sum up terms
                         let mut expanded = terms[0];
-                        for i in 1..terms.len() {
-                            expanded = ctx.add(Expr::Add(expanded, terms[i]));
+                        for &term in terms.iter().skip(1) {
+                            expanded = ctx.add(Expr::Add(expanded, term));
                         }
 
                         return expand(ctx, expanded);

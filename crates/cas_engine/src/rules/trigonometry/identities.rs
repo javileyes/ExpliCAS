@@ -583,9 +583,9 @@ define_rule!(
 
                                     // Construct new expression
                                     let mut new_terms = Vec::new();
-                                    for k in 0..terms.len() {
+                                    for (k, &term) in terms.iter().enumerate() {
                                         if k != t1.index && k != t2.index {
-                                            new_terms.push(terms[k]);
+                                            new_terms.push(term);
                                         }
                                     }
 
@@ -608,8 +608,8 @@ define_rule!(
                                     }
 
                                     let mut new_expr = new_terms[0];
-                                    for k in 1..new_terms.len() {
-                                        new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                                    for &term in new_terms.iter().skip(1) {
+                                        new_expr = ctx.add(Expr::Add(new_expr, term));
                                     }
 
                                     let description = if t1.is_negated {
@@ -2777,8 +2777,8 @@ define_rule!(
                         new_terms.push(final_result);
 
                         let mut new_expr = new_terms[0];
-                        for k in 1..new_terms.len() {
-                            new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                        for &term in new_terms.iter().skip(1) {
+                            new_expr = ctx.add(Expr::Add(new_expr, term));
                         }
 
                         return Some(Rewrite {
@@ -2822,8 +2822,8 @@ define_rule!(
                         new_terms.push(final_result);
 
                         let mut new_expr = new_terms[0];
-                        for k in 1..new_terms.len() {
-                            new_expr = ctx.add(Expr::Add(new_expr, new_terms[k]));
+                        for &term in new_terms.iter().skip(1) {
+                            new_expr = ctx.add(Expr::Add(new_expr, term));
                         }
 
                         return Some(Rewrite {

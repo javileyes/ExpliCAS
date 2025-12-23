@@ -707,10 +707,11 @@ define_rule!(
             return None;
         }
 
-        let mut multiplier = unique_denoms[0];
-        for i in 1..unique_denoms.len() {
-            multiplier = mul2_raw(ctx, multiplier, unique_denoms[i]);
-        }
+        let (&first, rest) = unique_denoms.split_first().unwrap();
+        let multiplier = rest
+            .iter()
+            .copied()
+            .fold(first, |acc, d| mul2_raw(ctx, acc, d));
 
         // Multiply num and den by multiplier
         let new_num = distribute(ctx, num, multiplier);
@@ -2039,11 +2040,10 @@ define_rule!(
         let lcd = if unique_factors.len() == 1 {
             unique_factors[0]
         } else {
-            let mut product = unique_factors[0];
-            for i in 1..unique_factors.len() {
-                product = mul2_raw(ctx, product, unique_factors[i]);
-            }
-            product
+            let (&first, rest) = unique_factors.split_first().unwrap();
+            rest.iter()
+                .copied()
+                .fold(first, |acc, f| mul2_raw(ctx, acc, f))
         };
 
         // For each fraction, compute numerator contribution
@@ -2083,11 +2083,10 @@ define_rule!(
         let total_num = if numerator_terms.len() == 1 {
             numerator_terms[0]
         } else {
-            let mut sum = numerator_terms[0];
-            for i in 1..numerator_terms.len() {
-                sum = ctx.add(Expr::Add(sum, numerator_terms[i]));
-            }
-            sum
+            let (&first, rest) = numerator_terms.split_first().unwrap();
+            rest.iter()
+                .copied()
+                .fold(first, |acc, term| ctx.add(Expr::Add(acc, term)))
         };
 
         // Create the combined fraction

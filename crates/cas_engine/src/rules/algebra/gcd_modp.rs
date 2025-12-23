@@ -54,16 +54,16 @@ impl Rule for PolyGcdModpRule {
                 let mut main_var: Option<usize> = None;
                 let mut preset_str: Option<String> = None;
 
-                for i in 2..args.len() {
+                for &arg in args.iter().skip(2) {
                     // Try to extract as usize (small number = main_var)
-                    if let Some(v) = extract_usize(ctx, args[i]) {
+                    if let Some(v) = extract_usize(ctx, arg) {
                         if v <= 64 {
                             main_var = Some(v);
                             continue;
                         }
                     }
                     // Try to extract as string (preset name)
-                    if let Some(s) = extract_string(ctx, args[i]) {
+                    if let Some(s) = extract_string(ctx, arg) {
                         preset_str = Some(s);
                     }
                 }

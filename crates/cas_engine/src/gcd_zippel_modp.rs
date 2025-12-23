@@ -770,13 +770,11 @@ fn lagrange_interpolate_poly(
         return Some(samples[0].1.clone());
     }
 
-    let k = samples.len();
     let points: Vec<u64> = samples.iter().map(|(t, _)| *t).collect();
 
     let mut result = MultiPolyModP::zero(p_mod, num_vars);
 
-    for j in 0..k {
-        let (t_j, g_j) = &samples[j];
+    for (t_j, g_j) in samples.iter() {
         let l_j = lagrange_basis_poly(eval_var, *t_j, &points, p_mod, num_vars)?;
         let term = g_j.mul(&l_j);
         result = result.add(&term);

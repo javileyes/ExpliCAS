@@ -181,43 +181,41 @@ impl Polynomial {
     }
 
     pub fn add(&self, other: &Self) -> Self {
+        use std::iter;
         let len = max(self.coeffs.len(), other.coeffs.len());
-        let mut new_coeffs = vec![BigRational::zero(); len];
 
-        for i in 0..len {
-            let c1 = self
-                .coeffs
-                .get(i)
-                .cloned()
-                .unwrap_or_else(BigRational::zero);
-            let c2 = other
-                .coeffs
-                .get(i)
-                .cloned()
-                .unwrap_or_else(BigRational::zero);
-            new_coeffs[i] = c1 + c2;
-        }
+        let it1 = self
+            .coeffs
+            .iter()
+            .cloned()
+            .chain(iter::repeat(BigRational::zero()));
+        let it2 = other
+            .coeffs
+            .iter()
+            .cloned()
+            .chain(iter::repeat(BigRational::zero()));
+
+        let new_coeffs: Vec<BigRational> = it1.zip(it2).take(len).map(|(c1, c2)| c1 + c2).collect();
 
         Polynomial::new(new_coeffs, self.var.clone())
     }
 
     pub fn sub(&self, other: &Self) -> Self {
+        use std::iter;
         let len = max(self.coeffs.len(), other.coeffs.len());
-        let mut new_coeffs = vec![BigRational::zero(); len];
 
-        for i in 0..len {
-            let c1 = self
-                .coeffs
-                .get(i)
-                .cloned()
-                .unwrap_or_else(BigRational::zero);
-            let c2 = other
-                .coeffs
-                .get(i)
-                .cloned()
-                .unwrap_or_else(BigRational::zero);
-            new_coeffs[i] = c1 - c2;
-        }
+        let it1 = self
+            .coeffs
+            .iter()
+            .cloned()
+            .chain(iter::repeat(BigRational::zero()));
+        let it2 = other
+            .coeffs
+            .iter()
+            .cloned()
+            .chain(iter::repeat(BigRational::zero()));
+
+        let new_coeffs: Vec<BigRational> = it1.zip(it2).take(len).map(|(c1, c2)| c1 - c2).collect();
 
         Polynomial::new(new_coeffs, self.var.clone())
     }

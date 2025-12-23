@@ -1,8 +1,6 @@
-// Clippy allows: Mathematical loops that index multiple arrays simultaneously
-// This pattern is pervasive in polynomial/matrix algorithms and would require
-// extensive refactoring to use .iter().enumerate() patterns.
-#![allow(clippy::needless_range_loop)]
-// Note: too_many_arguments and arc_with_non_send_sync now have local #[allow] attributes
+// All clippy lints addressed: code fixes or local #[allow] attributes applied.
+// See too_many_arguments allows in: inverse_trig.rs, gcd_zippel_modp.rs (×2), step.rs
+// See arc_with_non_send_sync allows in: profile_cache.rs
 
 pub mod auto_expand_scan;
 pub mod canonical_forms;

@@ -123,8 +123,7 @@ fn find_expand_factor_cycle(steps: &[Step], start: usize) -> Option<usize> {
     let start_before = steps[start].before;
 
     // Look for a Factor step within reasonable window (e.g., 5 steps)
-    for j in (start + 1)..std::cmp::min(start + 6, steps.len()) {
-        let step = &steps[j];
+    for (j, step) in steps.iter().enumerate().skip(start + 1).take(5) {
         if step.rule_name == "Factor" && step.after == start_before {
             return Some(j);
         }

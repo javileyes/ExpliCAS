@@ -34,8 +34,8 @@ impl Mono {
     #[inline]
     pub fn add(&self, other: &Self) -> Self {
         let mut result = [0; MAX_VARS];
-        for i in 0..MAX_VARS {
-            result[i] = self.0[i] + other.0[i];
+        for (dst, (&a, &b)) in result.iter_mut().zip(self.0.iter().zip(other.0.iter())) {
+            *dst = a + b;
         }
         Mono(result)
     }

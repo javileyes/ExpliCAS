@@ -728,20 +728,16 @@ fn interpolate_lagrange(points: &[(BigRational, BigRational)], var: &str) -> Opt
         return Some(Polynomial::new(vec![points[0].1.clone()], var.to_string()));
     }
 
-    let n = points.len();
     let mut result = Polynomial::zero(var.to_string());
 
-    for i in 0..n {
-        let (xi, yi) = &points[i];
-
+    for (i, (xi, yi)) in points.iter().enumerate() {
         // Build Lagrange basis polynomial L_i(x) = prod_{j!=i} (x - x_j) / (x_i - x_j)
         let mut basis = Polynomial::one(var.to_string());
 
-        for j in 0..n {
+        for (j, (xj, _)) in points.iter().enumerate() {
             if i == j {
                 continue;
             }
-            let (xj, _) = &points[j];
 
             // (x - x_j)
             let linear = Polynomial::new(vec![-xj.clone(), BigRational::one()], var.to_string());
@@ -1437,21 +1433,17 @@ fn lagrange_interpolate_multipoly(
     let mut all_vars = vec![var.to_string()];
     all_vars.extend(other_vars.iter().cloned());
 
-    let n = points.len();
     let mut result = MultiPoly::zero(all_vars.clone());
 
-    for i in 0..n {
-        let (xi, yi) = &points[i];
-
+    for (i, (xi, yi)) in points.iter().enumerate() {
         // Build Lagrange basis L_i = prod_{j≠i} (var - x_j) / (x_i - x_j)
         let mut basis_numer = MultiPoly::one(all_vars.clone());
         let mut basis_denom = BigRational::one();
 
-        for j in 0..n {
+        for (j, (xj, _)) in points.iter().enumerate() {
             if i == j {
                 continue;
             }
-            let (xj, _) = &points[j];
 
             // Numerator: multiply by (var - x_j)
             // Create (var - x_j) as MultiPoly
