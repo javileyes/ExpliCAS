@@ -846,3 +846,81 @@ Health smoke tests run on every CI build. If a test fails:
 3. If intentional improvement, update thresholds with a comment
 4. If regression, investigate the top rules for churn
 
+## 8. N-ary Shape Independence Policy ★ (Added 2025-12)
+
+### Overview
+
+Rules that process sums (Add/Sub chains) must use **shape-independent** traversal to avoid regressions caused by tree parentization differences like `((a+b)+c)` vs `(a+(b+c))`.
+
+### Policy
+
+| Pattern | Policy |
+|---------|--------|
+| `Expr::Add(l, r)` | ❌ **Prohibited** in n-ary sum modules → use `AddView::from_expr()` |
+| `Expr::Mul(l, r)` | ✅ Allowed for structural patterns (e.g., `2*cos(kx)` detection) |
+
+### N-ary API (`nary.rs`)
+
+```rust
+use crate::nary::{AddView, MulView, Sign, build_balanced_add, build_balanced_mul};
+
+// Flatten any sum tree (handles Add/Sub/Neg chains)
+let view = AddView::from_expr(ctx, root);
+for &(term, sign) in &view.terms {
+    let is_positive = sign == Sign::Pos;
+    // Process each term...
+}
+
+// Rebuild as balanced tree
+let result = build_balanced_add(ctx, &terms);
+```
+
+### Monitored Modules
+
+The lint script checks these files for binary `Expr::Add` patterns:
+
+- `telescoping.rs` ← migrated to AddView
+- (Add more as migrated)
+
+### Lint Script
+
+```bash
+# Run manually
+./scripts/lint_nary_shape_independence.sh
+
+# Should pass:
+✅ N-ary shape independence: no binary Expr::Add in n-ary sum modules.
+```
+
+### Extending the Policy
+
+To add a new file to n-ary enforcement:
+
+1. Migrate the file to use `AddView` for sum traversal
+2. Add the file path to `NARY_SUM_FILES` in the lint script
+3. Run the lint to verify no violations
+
+To add an exemption for a specific structural pattern:
+
+```rust
+// nary-lint: allow-binary (structural pattern match for half-angle)
+if let Expr::Mul(l, r) = ctx.get(expr) { ... }
+```
+
+### Testing After Migration
+
+Verify shape-independence with these test patterns:
+
+```rust
+#[test]
+fn test_my_rule_shape_independent() {
+    // Same expression with different tree shapes
+    let left_assoc = parse("((a+b)+c)+d");  // left-associative
+    let right_assoc = parse("a+(b+(c+d))"); // right-associative
+    let balanced = parse("(a+b)+(c+d)");    // balanced
+    
+    // All three must simplify to identical result
+    assert_eq!(simplify(left_assoc), simplify(right_assoc));
+    assert_eq!(simplify(right_assoc), simplify(balanced));
+}
+```
