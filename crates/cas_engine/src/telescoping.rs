@@ -214,6 +214,7 @@ fn find_denominator_for_clearing(ctx: &Context, expr: ExprId) -> Option<ExprId> 
     None
 }
 
+// nary-lint: allow-binary (structural, not n-ary sum traversal)
 fn extract_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Div(_, denom) => Some(*denom),
@@ -321,6 +322,7 @@ fn try_dirichlet_kernel_identity(ctx: &Context, expr: ExprId) -> Option<Dirichle
 
 // NOTE: flatten_add_sub removed - replaced by AddView::from_expr() for shape-independence
 
+// nary-lint: allow-binary (structural pattern match for 2*cos(k*x))
 /// Extract (k, base_var) from 2*cos(k*x) pattern
 fn extract_cosine_multiple(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId)> {
     // Pattern: 2 * cos(k * x) or cos(...) * 2
@@ -362,6 +364,7 @@ fn extract_sin_ratio(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     None
 }
 
+// nary-lint: allow-binary (structural pattern match for half-angle)
 /// Check if expr equals x/2 where x is base_var
 fn is_half_angle(ctx: &Context, expr: ExprId, base_var: ExprId) -> bool {
     match ctx.get(expr) {
@@ -374,6 +377,7 @@ fn is_half_angle(ctx: &Context, expr: ExprId, base_var: ExprId) -> bool {
     }
 }
 
+// nary-lint: allow-binary (structural pattern match for half-integer multiples)
 /// Check if expr equals (n+1/2)*x = (2n+1)*x/2
 fn is_half_integer_multiple(ctx: &Context, expr: ExprId, base_var: ExprId, n: usize) -> bool {
     let expected_num = 2 * n + 1; // (n+1/2) = (2n+1)/2
@@ -411,6 +415,7 @@ fn is_half_integer_multiple(ctx: &Context, expr: ExprId, base_var: ExprId, n: us
     }
 }
 
+// nary-lint: allow-binary (structural pattern match for k*x extraction)
 /// Extract (multiple, base_var) from k*x expression
 fn extract_multiple_of_var(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId)> {
     match ctx.get(expr) {

@@ -1,5 +1,6 @@
 use crate::define_rule;
 use crate::helpers::is_one;
+use crate::nary::build_balanced_add;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::One;
@@ -102,31 +103,23 @@ fn has_reciprocal_atan_pair(ctx: &Context, terms: &[ExprId]) -> bool {
 
 /// Build sum of all terms except indices i and j
 /// Returns None if no terms remain, Some(expr) otherwise
+/// Uses build_balanced_add for consistent balanced tree construction.
 fn build_sum_without(
     ctx: &mut Context,
     terms: &[ExprId],
     skip_i: usize,
     skip_j: usize,
 ) -> Option<ExprId> {
-    let mut remaining: Vec<ExprId> = Vec::new();
-
-    for (idx, &term) in terms.iter().enumerate() {
-        if idx != skip_i && idx != skip_j {
-            remaining.push(term);
-        }
-    }
+    let remaining: Vec<ExprId> = terms
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| *idx != skip_i && *idx != skip_j)
+        .map(|(_, &term)| term)
+        .collect();
 
     match remaining.len() {
-        0 => None,               // No remaining terms
-        1 => Some(remaining[0]), // Single term
-        _ => {
-            // Build Add tree from remaining terms
-            let mut result = remaining[0];
-            for &term in &remaining[1..] {
-                result = ctx.add(Expr::Add(result, term));
-            }
-            Some(result)
-        }
+        0 => None,
+        _ => Some(build_balanced_add(ctx, &remaining)),
     }
 }
 
