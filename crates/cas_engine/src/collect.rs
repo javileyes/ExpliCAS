@@ -13,10 +13,10 @@ use num_traits::{One, Zero};
 ///      x + x -> 2*x
 ///      x^2 + 2*x^2 -> 3*x^2
 pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
-    // CRITICAL: Do NOT collect matrix expressions
+    // CRITICAL: Do NOT collect non-commutative expressions (e.g., matrices)
     // Matrix addition/subtraction has dedicated rules (MatrixAddRule, MatrixSubRule)
     // Collecting M + M would incorrectly produce 2*M
-    if contains_matrix(ctx, expr) {
+    if !ctx.is_mul_commutative(expr) {
         return expr;
     }
 
@@ -148,19 +148,6 @@ fn is_one_term(ctx: &Context, expr: ExprId) -> bool {
         n.is_one()
     } else {
         false
-    }
-}
-
-/// Helper function to check if an expression contains a matrix
-fn contains_matrix(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Matrix { .. } => true,
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            contains_matrix(ctx, *l) || contains_matrix(ctx, *r)
-        }
-        Expr::Neg(e) => contains_matrix(ctx, *e),
-        Expr::Function(_, args) => args.iter().any(|arg| contains_matrix(ctx, *arg)),
-        _ => false,
     }
 }
 

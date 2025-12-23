@@ -57,6 +57,20 @@ pub enum Constant {
     I,
 }
 
+/// Multiplication commutativity kind for an expression.
+///
+/// Determines whether factors in a `Mul` can be safely reordered.
+/// Used by canonicalization to decide sorting strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MulCommutativity {
+    /// Commutative multiplication: a*b = b*a
+    /// (numbers, polynomials, scalars)
+    Commutative,
+    /// Non-commutative multiplication: a*b ≠ b*a
+    /// (matrices, operators, quaternions)
+    NonCommutative,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr {
     Number(BigRational),
@@ -160,8 +174,8 @@ impl Context {
                 self.build_balanced_add(&terms)
             }
             Expr::Mul(l, r) => {
-                // Check if any factor contains a matrix (non-commutative multiplication)
-                if self.contains_matrix(l) || self.contains_matrix(r) {
+                // Check if multiplication is non-commutative (e.g., contains matrices)
+                if !self.is_mul_commutative_pair(l, r) {
                     // Non-commutative: flatten for associativity but do NOT sort
                     let mut factors = Vec::new();
                     self.collect_mul_factors(l, &mut factors);
@@ -371,12 +385,45 @@ impl Context {
         }
     }
 
-    /// Check if an expression contains a Matrix anywhere in its tree (iterative)
-    fn contains_matrix(&self, id: ExprId) -> bool {
+    /// Multiplication commutativity for an expression subtree.
+    ///
+    /// # Purpose
+    /// Determines whether it is safe to **reorder factors** in a `Mul` containing
+    /// this expression without changing the result.
+    ///
+    /// # Returns
+    /// - `Commutative`: factors can be sorted (a*b = b*a)
+    /// - `NonCommutative`: factor order matters (a*b ≠ b*a)
+    ///
+    /// # Semantics
+    /// - **Conservative**: if uncertain, returns `NonCommutative`
+    /// - Does NOT indicate "scalar" vs "matrix" type
+    /// - Only concerns multiplication ordering
+    ///
+    /// # When to use
+    /// Call this before any `sort_by` on Mul factors. If NonCommutative,
+    /// preserve the original factor order.
+    ///
+    /// # Performance
+    /// O(n) traversal where n = subtree size. Called from few places during
+    /// canonicalization. If profiling shows hotspot, add cache by ExprId.
+    ///
+    /// # Future extensions
+    /// - Functions like `det(M)` or `trace(M)` return scalars even with matrix args
+    /// - Could add function table to override (TODO: function result type overrides)
+    pub fn mul_commutativity(&self, id: ExprId) -> MulCommutativity {
+        // Iterative traversal - stack-safe for deep expressions
         let mut stack = vec![id];
         while let Some(current) = stack.pop() {
             match self.get(current) {
-                Expr::Matrix { .. } => return true,
+                // Explicitly non-commutative types
+                Expr::Matrix { .. } => return MulCommutativity::NonCommutative,
+
+                // Future: add more non-commutative types here
+                // Expr::Operator(_) => return MulCommutativity::NonCommutative,
+                // Expr::Quaternion(_) => return MulCommutativity::NonCommutative,
+
+                // Binary ops: check children
                 Expr::Mul(l, r)
                 | Expr::Add(l, r)
                 | Expr::Sub(l, r)
@@ -386,11 +433,38 @@ impl Context {
                     stack.push(*r);
                 }
                 Expr::Neg(inner) => stack.push(*inner),
-                Expr::Function(_, args) => stack.extend(args.iter().copied()),
-                _ => {}
+
+                // Functions: check arguments
+                // TODO: Add function override table for scalar-returning functions
+                // e.g., det(M), trace(M), norm(M) return scalars even with matrix args
+                Expr::Function(_name, args) => {
+                    // Future: check function result type table
+                    // if scalar_result_functions.contains(name) {
+                    //     continue; // Don't check args
+                    // }
+                    stack.extend(args.iter().copied());
+                }
+
+                // Scalars are commutative
+                Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
             }
         }
-        false
+        MulCommutativity::Commutative
+    }
+
+    /// Convenience: check if Mul is commutative for this expression
+    #[inline]
+    pub fn is_mul_commutative(&self, id: ExprId) -> bool {
+        self.mul_commutativity(id) == MulCommutativity::Commutative
+    }
+
+    /// Check if a pair of expressions can be reordered in multiplication.
+    ///
+    /// This is useful during construction of Mul nodes, where we don't
+    /// yet have the combined ExprId.
+    #[inline]
+    pub fn is_mul_commutative_pair(&self, l: ExprId, r: ExprId) -> bool {
+        self.is_mul_commutative(l) && self.is_mul_commutative(r)
     }
 
     pub fn get(&self, id: ExprId) -> &Expr {
@@ -456,5 +530,84 @@ impl Context {
 impl fmt::Display for ExprId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Expr#{}", self.index())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mul_commutativity_scalar() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let num = ctx.num(42);
+        let pi = ctx.add(Expr::Constant(Constant::Pi));
+
+        assert_eq!(ctx.mul_commutativity(x), MulCommutativity::Commutative);
+        assert_eq!(ctx.mul_commutativity(y), MulCommutativity::Commutative);
+        assert_eq!(ctx.mul_commutativity(num), MulCommutativity::Commutative);
+        assert_eq!(ctx.mul_commutativity(pi), MulCommutativity::Commutative);
+
+        // Mul of scalars is commutative
+        let xy = ctx.add(Expr::Mul(x, y));
+        assert!(ctx.is_mul_commutative(xy));
+    }
+
+    #[test]
+    fn test_mul_commutativity_matrix() {
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+        let c = ctx.num(3);
+        let d = ctx.num(4);
+
+        let matrix = ctx.matrix(2, 2, vec![a, b, c, d]).unwrap();
+
+        assert_eq!(
+            ctx.mul_commutativity(matrix),
+            MulCommutativity::NonCommutative
+        );
+        assert!(!ctx.is_mul_commutative(matrix));
+    }
+
+    #[test]
+    fn test_mul_commutativity_mixed() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+        let c = ctx.num(3);
+        let d = ctx.num(4);
+        let matrix = ctx.matrix(2, 2, vec![a, b, c, d]).unwrap();
+
+        // x * M should be non-commutative
+        let xm = ctx.add(Expr::Mul(x, matrix));
+        assert!(!ctx.is_mul_commutative(xm));
+
+        // Pair check
+        assert!(ctx.is_mul_commutative_pair(x, x));
+        assert!(!ctx.is_mul_commutative_pair(x, matrix));
+        assert!(!ctx.is_mul_commutative_pair(matrix, matrix));
+    }
+
+    #[test]
+    fn test_mul_commutativity_function_with_matrix() {
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+        let c = ctx.num(3);
+        let d = ctx.num(4);
+        let matrix = ctx.matrix(2, 2, vec![a, b, c, d]).unwrap();
+
+        // sin(M) should be non-commutative (contains matrix)
+        let sin_m = ctx.add(Expr::Function("sin".to_string(), vec![matrix]));
+        assert!(!ctx.is_mul_commutative(sin_m));
+
+        // sin(x) should be commutative
+        let x = ctx.var("x");
+        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x]));
+        assert!(ctx.is_mul_commutative(sin_x));
     }
 }

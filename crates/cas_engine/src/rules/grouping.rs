@@ -93,7 +93,8 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                     new_expr: zero,
                     description: format!("collect({}, {})", target_expr, var_name), // Debug format,
                     before_local: None,
-                    after_local: None, domain_assumption: None,
+                    after_local: None,
+                    domain_assumption: None,
                 });
             }
 
@@ -106,7 +107,8 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                 new_expr: result,
                 description: format!("collect({}, {})", target_expr, var_name),
                 before_local: None,
-                after_local: None, domain_assumption: None,
+                after_local: None,
+                domain_assumption: None,
             });
         }
     }
@@ -267,9 +269,9 @@ define_rule!(CollectLikeTermsRule, "Collect Like Terms", |ctx, expr| {
         _ => return None,
     }
 
-    // CRITICAL: Do NOT apply to expressions containing matrices
+    // CRITICAL: Do NOT apply to non-commutative expressions (e.g., matrices)
     // Matrix addition/subtraction has dedicated rules
-    if contains_matrix(ctx, expr) {
+    if !ctx.is_mul_commutative(expr) {
         return None;
     }
 
@@ -283,22 +285,10 @@ define_rule!(CollectLikeTermsRule, "Collect Like Terms", |ctx, expr| {
             new_expr,
             description: "Collect like terms".to_string(),
             before_local: None,
-            after_local: None, domain_assumption: None,
+            after_local: None,
+            domain_assumption: None,
         })
     } else {
         None
     }
 });
-
-/// Helper function to check if an expression contains a matrix
-fn contains_matrix(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Matrix { .. } => true,
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            contains_matrix(ctx, *l) || contains_matrix(ctx, *r)
-        }
-        Expr::Neg(e) => contains_matrix(ctx, *e),
-        Expr::Function(_, args) => args.iter().any(|arg| contains_matrix(ctx, *arg)),
-        _ => false,
-    }
-}

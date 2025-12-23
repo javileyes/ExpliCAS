@@ -352,12 +352,9 @@ define_rule!(
                 }
             }
 
-            // CRITICAL: Skip canonicalization if any factor is a Matrix
+            // CRITICAL: Skip canonicalization if any factor is non-commutative
             // Matrix multiplication is non-commutative: A*B ≠ B*A
-            if factors
-                .iter()
-                .any(|f| matches!(ctx.get(*f), Expr::Matrix { .. }))
-            {
+            if factors.iter().any(|f| !ctx.is_mul_commutative(*f)) {
                 return None;
             }
 
