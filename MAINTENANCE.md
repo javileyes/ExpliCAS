@@ -846,7 +846,120 @@ Health smoke tests run on every CI build. If a test fails:
 3. If intentional improvement, update thresholds with a comment
 4. If regression, investigate the top rules for churn
 
-## 8. N-ary Shape Independence Policy ★ (Added 2025-12)
+## 8. CI System and Zero-Warning Policy ★ (Added 2025-12)
+
+### Overview
+
+The project follows a **Zero-Warning CI Policy** with all warnings treated as errors (`-D warnings`). There are **no crate-level `#![allow]`** suppressions in source code.
+
+### Running CI
+
+```bash
+# Full CI suite (recommended)
+make ci                    # fmt + lints + clippy + tests + build --release
+
+# Variants
+make ci-release            # + test --release
+make ci-quick              # skip clippy (faster)
+make lint                  # fmt + lints + clippy only
+make test                  # tests only
+```
+
+### CI Pipeline (`scripts/ci.sh`)
+
+The CI pipeline runs these steps in order:
+
+| Step | Command | Description |
+|------|---------|-------------|
+| 1. Format | `cargo fmt --check` | Enforce consistent formatting |
+| 2. Lints | `scripts/lint_*.sh` | Auto-discovered custom lint scripts |
+| 3. Clippy | `cargo clippy -D warnings` | All warnings as errors |
+| 4. Tests | `cargo test` | Full test suite |
+| 5. Release | `cargo build --release` | Verify release build |
+
+### Custom Lint Scripts
+
+Lint scripts are **auto-discovered** by pattern `scripts/lint_*.sh`:
+
+```bash
+# Current scripts
+scripts/lint_nary_shape_independence.sh   # Enforce AddView usage
+scripts/lint_no_raw_mul.sh                # Prevent raw Mul construction
+
+# Add new lint: just create script and make executable
+chmod +x scripts/lint_my_check.sh         # Auto-runs in next CI
+```
+
+### Clippy Allow Policy
+
+**Crate-Level `#![allow]`**:
+- **Prohibited** in `src/` code (requires explicit approval)
+- Currently: **0** crate-level allows in `cas_engine` and `cas_cli`
+- Test files may have allows for `format_in_format_args`, `dead_code`, etc.
+
+**Local `#[allow]`**:
+- Allowed on specific items with justifying comment
+- Format: `#[allow(clippy::lint_name)] // why this is necessary`
+
+**Current Local Exceptions** (7 total in `cas_engine`):
+
+| Lint | Location | Reason |
+|------|----------|--------|
+| `arc_with_non_send_sync` | profile_cache.rs ×2 | Arc for shared ownership, not threading |
+| `too_many_arguments` | gcd_zippel_modp.rs ×2, inverse_trig.rs, step.rs | Math algorithms with distinct params |
+| `never_loop` | engine.rs | Intentional loop structure with early returns |
+
+### Tracking Technical Debt
+
+```bash
+# List all local #[allow] in source code
+make lint-allowlist
+
+# Output example:
+==> Local #[allow(clippy::...)] in crates:
+crates/cas_engine/src/profile_cache.rs:32:#[allow(clippy::arc_with_non_send_sync)]
+...
+
+==> Crate-level #![allow] (should be 0):
+  ✓ None (clean)
+```
+
+### Adding New Lint Scripts
+
+1. Create `scripts/lint_mycheck.sh`
+2. Make executable: `chmod +x scripts/lint_mycheck.sh`
+3. Script must exit 0 on success, non-zero on failure
+4. CI auto-discovers and runs it
+
+Example lint script structure:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "🔍 Running my custom check..."
+
+# Your check logic here
+if grep -r "bad_pattern" crates/; then
+    echo "❌ Found violations"
+    exit 1
+fi
+
+echo "✅ Check passed"
+exit 0
+```
+
+### MSRV (Minimum Supported Rust Version)
+
+```bash
+# Run CI on both pinned toolchain and MSRV
+make ci-msrv
+
+# MSRV is read from root Cargo.toml:
+# rust-version = "1.88"
+```
+
+## 9. N-ary Shape Independence Policy ★ (Added 2025-12)
 
 ### Overview
 

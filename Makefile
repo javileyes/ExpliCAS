@@ -1,14 +1,15 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist help
 
 help:
 	@echo "Targets:"
-	@echo "  make ci          -> fmt + lints + clippy + tests + build --release"
-	@echo "  make ci-release  -> ci + test --release"
-	@echo "  make ci-msrv     -> ci + MSRV (if rust-version set)"
-	@echo "  make ci-quick    -> fmt + lints + tests + build --release (no clippy)"
-	@echo "  make lint        -> fmt + lints + clippy"
-	@echo "  make test        -> cargo test (debug) only"
+	@echo "  make ci            -> fmt + lints + clippy + tests + build --release"
+	@echo "  make ci-release    -> ci + test --release"
+	@echo "  make ci-msrv       -> ci + MSRV (if rust-version set)"
+	@echo "  make ci-quick      -> fmt + lints + tests + build --release (no clippy)"
+	@echo "  make lint          -> fmt + lints + clippy"
+	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
+	@echo "  make lint-allowlist-> list remaining #[allow] attributes"
 
 ci:
 	./scripts/ci.sh --release-build
