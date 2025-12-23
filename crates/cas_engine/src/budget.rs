@@ -228,6 +228,45 @@ impl Budget {
         }
     }
 
+    /// Preset: conservative limits for resource-constrained environments.
+    ///
+    /// - RewriteSteps: 5,000
+    /// - NodesCreated: 25,000
+    /// - TermsMaterialized: 10,000
+    /// - PolyOps: 500
+    pub fn preset_small() -> Self {
+        let mut b = Self::with_strict(true);
+        for op_idx in 0..Operation::COUNT {
+            b.limits[op_idx][Metric::RewriteSteps.index()] = 5_000;
+            b.limits[op_idx][Metric::NodesCreated.index()] = 25_000;
+            b.limits[op_idx][Metric::TermsMaterialized.index()] = 10_000;
+            b.limits[op_idx][Metric::PolyOps.index()] = 500;
+        }
+        b
+    }
+
+    /// Preset: balanced limits for CLI / interactive use.
+    ///
+    /// - RewriteSteps: 50,000
+    /// - NodesCreated: 250,000
+    /// - TermsMaterialized: 100,000
+    /// - PolyOps: 5,000
+    pub fn preset_cli() -> Self {
+        let mut b = Self::with_strict(false); // Best-effort for CLI
+        for op_idx in 0..Operation::COUNT {
+            b.limits[op_idx][Metric::RewriteSteps.index()] = 50_000;
+            b.limits[op_idx][Metric::NodesCreated.index()] = 250_000;
+            b.limits[op_idx][Metric::TermsMaterialized.index()] = 100_000;
+            b.limits[op_idx][Metric::PolyOps.index()] = 5_000;
+        }
+        b
+    }
+
+    /// Preset: no limits (all zeros = unlimited). Use with caution.
+    pub fn preset_unlimited() -> Self {
+        Self::with_strict(false)
+    }
+
     /// Set a limit for a specific (operation, metric) pair.
     ///
     /// A limit of 0 means unlimited.
