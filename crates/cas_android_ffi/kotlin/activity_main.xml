@@ -19,7 +19,7 @@
         android:id="@+id/editExpression"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="8dp"
         android:hint="Enter expression (e.g., x^2 + 1)"
         android:inputType="text"
         android:textSize="18sp" />
@@ -46,7 +46,7 @@
             android:layout_marginEnd="16dp" />
 
         <!-- Strict Mode Switch -->
-        <Switch
+        <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchStrict"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -58,22 +58,67 @@
         android:id="@+id/btnEvaluate"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:text="Evaluate"
         android:textSize="16sp" />
 
-    <!-- Result Display -->
-    <TextView
-        android:id="@+id/txtResult"
+    <!-- Result Section -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/txtResult"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Result"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textIsSelectable="true" />
+
+        <TextView
+            android:id="@+id/txtTimings"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#888888" />
+    </LinearLayout>
+
+    <!-- Steps Header Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Steps"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchShowAllSteps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Show all"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Steps List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerSteps"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="24dp"
-        android:text="Result will appear here"
-        android:textSize="24sp"
-        android:textIsSelectable="true"
-        android:gravity="top"
-        android:padding="8dp"
-        android:background="#F5F5F5" />
+        android:layout_marginTop="8dp"
+        android:background="#FAFAFA" />
 
 </LinearLayout>
