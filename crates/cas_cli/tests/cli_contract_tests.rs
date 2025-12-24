@@ -40,7 +40,7 @@ fn test_eval_help_shows_budget_options() {
         .stdout(predicate::str::contains("--strict"))
         .stdout(predicate::str::contains("--format"))
         .stdout(predicate::str::contains("small"))
-        .stdout(predicate::str::contains("cli"))
+        .stdout(predicate::str::contains("standard"))
         .stdout(predicate::str::contains("unlimited"));
 }
 
@@ -60,7 +60,7 @@ fn test_eval_json_output_has_schema_version() {
     assert_eq!(json["schema_version"], 1);
     assert_eq!(json["ok"], true);
     assert!(json["budget"].is_object());
-    assert_eq!(json["budget"]["preset"], "cli");
+    assert_eq!(json["budget"]["preset"], "standard");
     assert_eq!(json["budget"]["mode"], "best-effort");
 }
 
@@ -121,4 +121,72 @@ fn test_eval_text_format() {
         .assert()
         .success()
         .stdout(predicate::str::contains("4"));
+}
+
+/// Test that budget exceeded with --strict causes failure or returns unexpanded.
+/// expand((a+b)^200) with small budget should either fail or return unexpanded.
+#[test]
+fn test_eval_budget_exceeded_strict() {
+    let output = cli()
+        .args([
+            "eval",
+            "expand((a+b)^200)",
+            "--format",
+            "json",
+            "--budget",
+            "small",
+            "--strict",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let json: Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+
+    // Either ok=false (error) OR result is unexpanded (didn't actually expand)
+    let ok = json["ok"].as_bool().unwrap_or(true);
+    let result = json["result"].as_str().unwrap_or("");
+    let exceeded = json["budget"]["exceeded"].is_object();
+
+    // Budget enforcement: either fails (ok=false), reports exceeded, or returns unexpanded
+    let unexpanded = result.contains("^200") || result.contains("(a + b)^200");
+
+    assert!(
+        !ok || exceeded || unexpanded,
+        "Expected ok=false, budget.exceeded, or unexpanded result, got: {}",
+        stdout
+    );
+
+    // Verify mode is strict in response
+    assert_eq!(json["budget"]["mode"], "strict");
+}
+
+/// Test that budget exceeded with best-effort returns partial result.
+#[test]
+fn test_eval_budget_exceeded_best_effort() {
+    let output = cli()
+        .args([
+            "eval",
+            "expand((a+b)^200)",
+            "--format",
+            "json",
+            "--budget",
+            "small",
+            // No --strict, so best-effort mode
+        ])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let json: Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+
+    // Should succeed (ok=true) even if budget was reached
+    assert_eq!(json["ok"], true);
+    // Result should be non-empty (partial or unexpanded)
+    assert!(json["result"]
+        .as_str()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false));
 }

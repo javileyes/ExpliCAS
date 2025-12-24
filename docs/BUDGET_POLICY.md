@@ -53,13 +53,40 @@ budget.set_limit(Operation::Expand, Metric::TermsMaterialized, 10_000);
 budget.set_limit(Operation::SimplifyCore, Metric::RewriteSteps, 5_000);
 ```
 
-## Presets
+## Two Orthogonal Dimensions
 
-| Preset | RewriteSteps | NodesCreated | TermsMaterialized | PolyOps | Mode |
-|--------|-------------|--------------|-------------------|---------|------|
-| `preset_small()` | 5,000 | 25,000 | 10,000 | 500 | Strict |
-| `preset_cli()` | 50,000 | 250,000 | 100,000 | 5,000 | Best-effort |
-| `preset_unlimited()` | 0 | 0 | 0 | 0 | Best-effort |
+The budget system has **two independent dimensions**:
+
+### Dimension 1: Limits (via `--budget`)
+
+Controls **numeric thresholds** for resource consumption:
+
+| Preset | RewriteSteps | NodesCreated | TermsMaterialized | PolyOps | Use Case |
+|--------|-------------|--------------|-------------------|---------|----------|
+| `small` | 5,000 | 25,000 | 10,000 | 500 | Teaching, REPL |
+| `standard` | 50,000 | 250,000 | 100,000 | 5,000 | Interactive use |
+| `unlimited` | ∞ | ∞ | ∞ | ∞ | Scripts, CI |
+
+### Dimension 2: Error Mode (via `--strict`)
+
+Controls **what happens when limits are exceeded**:
+
+| Flag | Behavior | Exit Code |
+|------|----------|-----------|
+| (default) | **Best-effort**: return partial/unexpanded result | 0 |
+| `--strict` | **Fail**: return error, stop processing | non-zero |
+
+> [!IMPORTANT]
+> Presets only set limits, NOT the error mode.
+> Use `--strict` separately to control error handling.
+
+### Rust Presets (Library)
+
+```rust
+let budget = Budget::preset_small();     // Conservative limits
+let budget = Budget::preset_standard();  // Standard limits (was preset_cli)
+let budget = Budget::preset_unlimited(); // No limits
+```
 
 ## Architecture
 
@@ -142,6 +169,49 @@ cargo run -p cas_cli --release -- eval "expand((a+b)^5)" --budget small
 # Option 3: Create alias (add to ~/.zshrc or ~/.bashrc)
 alias expli="$HOME/developer/math/target/release/cas_cli"
 expli eval "expand((a+b)^5)" --budget small
+```
+
+### Budget Presets (--budget)
+
+Presets only set **numeric limits**, not the error mode:
+
+| Preset | Rewrites | Nodes | Terms | Use Case |
+|--------|----------|-------|-------|----------|
+| `small` | 5,000 | 25,000 | 10,000 | Teaching, REPL |
+| `standard` (default) | 50,000 | 250,000 | 100,000 | Interactive |
+| `unlimited` | ∞ | ∞ | ∞ | Scripts, CI |
+
+### Error Mode (--strict)
+
+| Flag | Behavior on Budget Exceeded |
+|------|------------------------------|
+| (default) | **Best-effort**: return partial result, exit 0 |
+| `--strict` | **Fail**: return error, non-zero exit code |
+
+### Combining Preset and Mode
+
+```bash
+# Teaching mode: small limits, no errors
+expli eval "expand((a+b)^10)" --budget small
+
+# CI mode: standard limits, strict errors  
+expli eval "simplify(huge_expr)" --budget standard --strict
+
+# Interactive: large limits, best-effort
+expli eval "expand((a+b)^50)" --budget unlimited
+```
+
+### Reading from stdin
+
+```bash
+# Use "-" as expression to read from stdin
+echo "x+1" | expli eval "-" --format json
+
+# Or omit expression entirely
+echo "x+1" | expli eval --format json
+
+# Pipe from file
+cat expressions.txt | expli eval --format json
 ```
 
 ### Budget Options

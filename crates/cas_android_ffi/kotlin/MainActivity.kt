@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
         recyclerSteps.adapter = stepsAdapter
 
         // Setup preset spinner
-        val presets = arrayOf("cli", "small", "unlimited")
+        val presets = arrayOf("standard", "small", "unlimited")
         spinnerPreset.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, presets)
 
         // Show ABI version

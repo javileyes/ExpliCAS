@@ -60,7 +60,7 @@ object CasNative {
 ```json
 {
   "budget": {
-    "preset": "cli",
+    "preset": "standard",
     "mode": "best-effort"
   },
   "pretty": true
@@ -69,7 +69,7 @@ object CasNative {
 
 | Field | Values | Default |
 |-------|--------|---------|
-| `budget.preset` | `small`, `cli`, `unlimited` | `cli` |
+| `budget.preset` | `small`, `standard`, `unlimited` | `standard` |
 | `budget.mode` | `strict`, `best-effort` | `best-effort` |
 | `pretty` | boolean | `true` |
 
@@ -96,7 +96,7 @@ object CasNative {
     }
   ],
   "budget": {
-    "preset": "cli",
+    "preset": "standard",
     "mode": "best-effort"
   },
   "timings_us": {
@@ -131,7 +131,7 @@ object CasNative {
     "message": "unexpected token at position 5"
   },
   "budget": {
-    "preset": "cli",
+    "preset": "standard",
     "mode": "best-effort"
   }
 }

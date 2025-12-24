@@ -21,8 +21,8 @@ pub struct EvalJsonArgs {
     /// Expression to evaluate
     pub expr: String,
 
-    /// Budget preset: "small", "cli", "unlimited"
-    #[arg(long, default_value = "cli")]
+    /// Budget preset: "small", "standard", "unlimited"
+    #[arg(long, default_value = "standard")]
     pub budget_preset: String,
 
     /// Strict mode: fail on budget exceeded (default: best-effort)

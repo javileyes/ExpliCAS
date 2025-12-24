@@ -54,12 +54,18 @@ pub enum OutputFormat {
 }
 
 /// Budget preset for resource limits
+///
+/// Presets only control numeric limits, NOT error handling mode.
+/// Use `--strict` to control what happens when limits are exceeded.
 #[derive(ValueEnum, Debug, Clone, Copy, Default)]
 pub enum BudgetPreset {
-    /// Conservative limits (5k rewrites, 25k nodes)
+    /// Conservative limits (5k rewrites, 25k nodes) - for teaching/REPL
     Small,
-    /// Balanced limits for interactive use (50k rewrites, 250k nodes)
+    /// Standard limits for interactive use (50k rewrites, 250k nodes)
     #[default]
+    Standard,
+    /// Alias for 'standard' (deprecated, use --budget standard)
+    #[value(hide = true)]
     Cli,
     /// No limits (use with caution)
     Unlimited,
@@ -68,7 +74,8 @@ pub enum BudgetPreset {
 /// Arguments for eval subcommand
 #[derive(clap::Args, Debug)]
 pub struct EvalArgs {
-    /// Expression to evaluate
+    /// Expression to evaluate (use "-" or omit to read from stdin)
+    #[arg(default_value = "-")]
     pub expr: String,
 
     /// Output format
@@ -172,7 +179,7 @@ fn main() -> rustyline::Result<()> {
             // Legacy: convert to new format and run as JSON
             let eval_args = commands::eval_json::EvalJsonArgs {
                 expr: args.expr,
-                budget_preset: "cli".to_string(),
+                budget_preset: "standard".to_string(),
                 strict: false,
                 max_chars: args.max_chars,
                 steps: args.steps,
@@ -195,6 +202,13 @@ fn main() -> rustyline::Result<()> {
 
 /// Run eval command with format and budget support
 fn run_eval(args: EvalArgs) {
+    // Read expression from stdin if needed
+    let expr = read_expr_or_stdin(&args.expr);
+    if expr.is_empty() {
+        eprintln!("Error: No expression provided");
+        std::process::exit(1);
+    }
+
     // Set thread count if specified
     if let Some(n) = args.threads {
         std::env::set_var("RAYON_NUM_THREADS", n.to_string());
@@ -211,7 +225,7 @@ fn run_eval(args: EvalArgs) {
         OutputFormat::Json => {
             // Delegate to existing JSON handler
             let json_args = commands::eval_json::EvalJsonArgs {
-                expr: args.expr,
+                expr: expr.clone(),
                 budget_preset: budget_preset_to_string(args.budget),
                 strict: args.strict,
                 max_chars: args.max_chars,
@@ -225,9 +239,28 @@ fn run_eval(args: EvalArgs) {
             commands::eval_json::run(json_args);
         }
         OutputFormat::Text => {
-            // Simple text output
-            run_eval_text(&args);
+            // Simple text output - create modified args with resolved expr
+            let text_args = EvalArgs { expr, ..args };
+            run_eval_text(&text_args);
         }
+    }
+}
+
+/// Read expression from argument or stdin if "-"
+fn read_expr_or_stdin(expr: &str) -> String {
+    if expr == "-" {
+        use std::io::{self, BufRead};
+        let stdin = io::stdin();
+        let mut lines = Vec::new();
+        for line in stdin.lock().lines() {
+            match line {
+                Ok(l) => lines.push(l),
+                Err(_) => break,
+            }
+        }
+        lines.join("\n").trim().to_string()
+    } else {
+        expr.to_string()
     }
 }
 
@@ -296,7 +329,7 @@ fn run_eval_text(args: &EvalArgs) {
 fn budget_preset_to_string(preset: BudgetPreset) -> String {
     match preset {
         BudgetPreset::Small => "small".to_string(),
-        BudgetPreset::Cli => "cli".to_string(),
+        BudgetPreset::Standard | BudgetPreset::Cli => "standard".to_string(),
         BudgetPreset::Unlimited => "unlimited".to_string(),
     }
 }

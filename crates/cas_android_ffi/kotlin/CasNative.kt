@@ -5,7 +5,7 @@ package es.javiergimenez.explicas
  *
  * Usage:
  * ```kotlin
- * val result = CasNative.evalJson("x^2+1", """{"budget":{"preset":"cli"}}""")
+ * val result = CasNative.evalJson("x^2+1", """{"budget":{"preset":"standard"}}""")
  * val version = CasNative.abiVersion()
  * ```
  */
@@ -33,7 +33,7 @@ object CasNative {
      * ```json
      * {
      *   "budget": {
-     *     "preset": "cli",     // "small", "cli", or "unlimited"
+     *     "preset": "standard",     // "small", "standard", or "unlimited"
      *     "mode": "best-effort" // "strict" or "best-effort"
      *   },
      *   "pretty": true
@@ -47,7 +47,7 @@ object CasNative {
      *   "ok": true,
      *   "input": "x^2+1",
      *   "result": "1 + x²",
-     *   "budget": { "preset": "cli", "mode": "best-effort" },
+     *   "budget": { "preset": "standard", "mode": "best-effort" },
      *   "timings_us": { "parse_us": 100, "simplify_us": 500, "total_us": 600 }
      * }
      * ```
@@ -58,7 +58,7 @@ object CasNative {
      *   "schema_version": 1,
      *   "ok": false,
      *   "error": { "kind": "ParseError", "message": "..." },
-     *   "budget": { "preset": "cli", "mode": "best-effort" }
+     *   "budget": { "preset": "standard", "mode": "best-effort" }
      * }
      * ```
      */
