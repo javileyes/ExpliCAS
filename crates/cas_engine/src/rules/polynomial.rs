@@ -1099,7 +1099,11 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {
-        crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::TRANSFORM
+        // Include RATIONALIZE so auto-expand can clean up after rationalization
+        // e.g., 1/(1+√2+√3) → ... → (1+√2)² - 3 → needs auto-expand to become 2√2
+        crate::phase::PhaseMask::CORE
+            | crate::phase::PhaseMask::TRANSFORM
+            | crate::phase::PhaseMask::RATIONALIZE
     }
 }
 

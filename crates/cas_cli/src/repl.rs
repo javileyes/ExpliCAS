@@ -474,7 +474,9 @@ impl Repl {
     /// Simplify expression using current pipeline options
     #[allow(dead_code)]
     fn do_simplify(&mut self, expr: cas_ast::ExprId) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
-        let mut opts = self.simplify_options.clone();
+        // Use state.options.to_simplify_options() to get correct expand_policy, context_mode, etc.
+        // (self.simplify_options is legacy and doesn't sync expand_policy)
+        let mut opts = self.state.options.to_simplify_options();
         opts.collect_steps = self.engine.simplifier.collect_steps();
 
         // Enable health metrics and clear previous run if explain or health mode is on
@@ -4093,7 +4095,11 @@ impl Repl {
                         id: resolved_expr
                     }
                 );
-                let (simplified, steps) = temp_simplifier.simplify(resolved_expr);
+                // Use session options (expand_policy, context_mode, etc.) for simplification
+                let mut opts = self.state.options.to_simplify_options();
+                opts.collect_steps = self.verbosity != Verbosity::None;
+                let (simplified, steps, _stats) =
+                    temp_simplifier.simplify_with_stats(resolved_expr, opts);
 
                 if self.verbosity != Verbosity::None {
                     if steps.is_empty() {
