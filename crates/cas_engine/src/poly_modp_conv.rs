@@ -88,15 +88,15 @@ impl std::fmt::Display for PolyConvError {
     }
 }
 
-/// Strip __hold() wrappers from expression
+/// Strip __hold() wrappers from expression (multi-level)
+/// Uses canonical implementation from cas_ast::hold
 pub fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
-        match ctx.get(expr) {
-            Expr::Function(name, args) if name == "__hold" && args.len() == 1 => {
-                expr = args[0];
-            }
-            _ => return expr,
+        let unwrapped = cas_ast::hold::unwrap_hold(ctx, expr);
+        if unwrapped == expr {
+            return expr;
         }
+        expr = unwrapped;
     }
 }
 

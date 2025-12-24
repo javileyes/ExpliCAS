@@ -58,14 +58,14 @@ pub enum GcdExactLayer {
 
 /// Strip __hold() wrapper(s) from an expression. __hold is an internal barrier
 /// that should be transparent for algebraic operations like poly_gcd_exact.
+/// Uses canonical implementation from cas_ast::hold
 fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
-        match ctx.get(expr) {
-            Expr::Function(name, args) if name == "__hold" && args.len() == 1 => {
-                expr = args[0];
-            }
-            _ => return expr,
+        let unwrapped = cas_ast::hold::unwrap_hold(ctx, expr);
+        if unwrapped == expr {
+            return expr;
         }
+        expr = unwrapped;
     }
 }
 

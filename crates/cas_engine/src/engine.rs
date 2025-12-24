@@ -27,94 +27,15 @@ fn is_hold_all_function(name: &str) -> bool {
 /// This is called at the end of eval/simplify so the user sees clean results
 /// without the internal barrier visible.
 fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
-    match ctx.get(expr) {
-        Expr::Function(name, args) if name == "__hold" && args.len() == 1 => args[0],
-        _ => expr,
-    }
+    cas_ast::hold::unwrap_hold(ctx, expr)
 }
 
-/// Recursively strip ALL __hold() wrappers from an expression tree.
-/// This is needed after expand() because expand may leave __hold wrappers
-/// nested inside Add/Mul/etc, not just at top level.
+/// Re-export strip_all_holds from cas_ast for use by rules.
+///
+/// This is the CANONICAL implementation - see cas_ast::hold for the contract.
+/// Do NOT duplicate this function elsewhere.
 pub fn strip_all_holds(ctx: &mut Context, expr: ExprId) -> ExprId {
-    match ctx.get(expr).clone() {
-        Expr::Function(ref name, ref args) if name == "__hold" && args.len() == 1 => {
-            // Unwrap and recurse into contents
-            strip_all_holds(ctx, args[0])
-        }
-        Expr::Add(l, r) => {
-            let new_l = strip_all_holds(ctx, l);
-            let new_r = strip_all_holds(ctx, r);
-            if new_l == l && new_r == r {
-                expr
-            } else {
-                ctx.add(Expr::Add(new_l, new_r))
-            }
-        }
-        Expr::Sub(l, r) => {
-            let new_l = strip_all_holds(ctx, l);
-            let new_r = strip_all_holds(ctx, r);
-            if new_l == l && new_r == r {
-                expr
-            } else {
-                ctx.add(Expr::Sub(new_l, new_r))
-            }
-        }
-        Expr::Mul(l, r) => {
-            let new_l = strip_all_holds(ctx, l);
-            let new_r = strip_all_holds(ctx, r);
-            if new_l == l && new_r == r {
-                expr
-            } else {
-                ctx.add(Expr::Mul(new_l, new_r))
-            }
-        }
-        Expr::Div(l, r) => {
-            let new_l = strip_all_holds(ctx, l);
-            let new_r = strip_all_holds(ctx, r);
-            if new_l == l && new_r == r {
-                expr
-            } else {
-                ctx.add(Expr::Div(new_l, new_r))
-            }
-        }
-        Expr::Pow(b, e) => {
-            let new_b = strip_all_holds(ctx, b);
-            let new_e = strip_all_holds(ctx, e);
-            if new_b == b && new_e == e {
-                expr
-            } else {
-                ctx.add(Expr::Pow(new_b, new_e))
-            }
-        }
-        Expr::Neg(inner) => {
-            let new_inner = strip_all_holds(ctx, inner);
-            if new_inner == inner {
-                expr
-            } else {
-                ctx.add(Expr::Neg(new_inner))
-            }
-        }
-        Expr::Function(name, args) => {
-            let new_args: Vec<_> = args.iter().map(|a| strip_all_holds(ctx, *a)).collect();
-            if new_args == args {
-                expr
-            } else {
-                ctx.add(Expr::Function(name.clone(), new_args))
-            }
-        }
-        // Leaf nodes - no holds inside
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => expr,
-        Expr::Matrix { rows, cols, data } => {
-            let new_data: Vec<_> = data.iter().map(|a| strip_all_holds(ctx, *a)).collect();
-            if new_data == data {
-                expr
-            } else {
-                ctx.matrix(rows, cols, new_data)
-                    .expect("matrix dimensions unchanged from original")
-            }
-        }
-    }
+    cas_ast::hold::strip_all_holds(ctx, expr)
 }
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.

@@ -259,7 +259,11 @@ pub fn has_all_negative_terms(ctx: &Context, id: ExprId) -> bool {
 }
 
 /// Collect all terms in an Add chain (flattening nested Adds).
+///
+/// __hold wrappers are transparent: collects terms from inside __hold.
 fn collect_add_terms(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
+    // Unwrap __hold for transparency (algebra sees through holds)
+    let id = crate::hold::unwrap_hold(ctx, id);
     match ctx.get(id) {
         Expr::Add(l, r) => {
             collect_add_terms(ctx, *l, terms);
@@ -450,6 +454,8 @@ impl MulChainView {
     }
 
     fn collect_factors(ctx: &Context, id: ExprId, out: &mut Vec<ExprId>) {
+        // Unwrap __hold for transparency (algebra sees through holds)
+        let id = crate::hold::unwrap_hold(ctx, id);
         match ctx.get(id) {
             Expr::Mul(l, r) => {
                 Self::collect_factors(ctx, *l, out);
@@ -482,7 +488,11 @@ impl MulChainView {
 }
 
 /// Recursively collect multiplicative factors.
+///
+/// __hold wrappers are transparent: collects factors from inside __hold.
 fn collect_mul(ctx: &Context, id: ExprId, mult: i32, out: &mut MulParts) {
+    // Unwrap __hold for transparency (algebra sees through holds)
+    let id = crate::hold::unwrap_hold(ctx, id);
     match ctx.get(id) {
         Expr::Mul(l, r) => {
             collect_mul(ctx, *l, mult, out);

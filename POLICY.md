@@ -156,3 +156,47 @@ See `crates/cas_cli/tests/policy_tests.rs` for specification tests:
 
 ### Audit Target
 Run `make lint-allowlist` to list current local allows.
+
+## Hold Contract (`__hold()`)
+
+### Purpose
+
+`__hold(expr)` is an internal wrapper that blocks expansive/structural rules but is **transparent to basic algebra**.
+
+### Semantics
+
+| Behavior | Description |
+|----------|-------------|
+| **Blocks** | Autoexpand, distribute, factor-undo rules |
+| **Transparent to** | AddView, MulView, cancellation, combine-like-terms |
+| **MUST strip before** | User-facing output (Display, JSON, FFI) |
+
+### Canonical Implementation
+
+**Single source of truth**: `cas_ast::hold` module
+
+```rust
+// In cas_ast/src/hold.rs
+pub fn is_hold(ctx: &Context, id: ExprId) -> bool;
+pub fn unwrap_hold(ctx: &Context, id: ExprId) -> ExprId;
+pub fn strip_all_holds(ctx: &mut Context, id: ExprId) -> ExprId;
+```
+
+**Do NOT duplicate** these functions elsewhere. Use `crate::strip_all_holds` (re-export in engine.rs).
+
+### Contribution Rules
+
+1. **Never duplicate strip_hold** - use `cas_ast::hold::strip_all_holds`
+2. **Never return __hold to users** - all output boundaries must strip
+3. **Views unwrap __hold** - AddView/MulView call `unwrap_hold` when collecting
+4. **HoldAll functions skip simplification** - poly_gcd, pgcd, __hold
+
+### Current Usage
+
+| Location | Purpose |
+|----------|---------|
+| `multinomial_expand.rs` | Prevent O(n²) post-expand traversal |
+| `factoring.rs::FactorRule` | Prevent DifferenceOfSquaresRule undo |
+| `gcd_modp.rs` | Preserve GCD structure |
+| `poly_arith_modp.rs` | Detect `__hold(P) - __hold(Q) = 0` |
+

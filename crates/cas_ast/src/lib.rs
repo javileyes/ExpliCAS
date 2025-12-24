@@ -3,6 +3,7 @@ pub mod display_context;
 pub mod domain;
 pub mod error; // Error types for AST operations
 pub mod expression;
+pub mod hold; // __hold barrier utilities (canonical implementation)
 pub mod latex;
 pub mod latex_core;
 pub mod latex_highlight;
