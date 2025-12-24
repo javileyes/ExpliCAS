@@ -52,7 +52,9 @@ define_rule!(
         if let Expr::Function(name, args) = ctx.get(expr) {
             if name == "expand" && args.len() == 1 {
                 let arg = args[0];
-                let new_expr = crate::expand::expand(ctx, arg);
+                let expanded = crate::expand::expand(ctx, arg);
+                // Strip all nested __hold wrappers so user sees clean result
+                let new_expr = crate::strip_all_holds(ctx, expanded);
                 if new_expr != expr {
                     return Some(Rewrite {
                         new_expr,
@@ -75,7 +77,9 @@ define_rule!(
 
         // Implicit expansion (e.g. (x+1)^2)
         // Only expand if complexity does not increase
-        let new_expr = crate::expand::expand(ctx, expr);
+        let expanded_raw = crate::expand::expand(ctx, expr);
+        // Strip all nested __hold wrappers
+        let new_expr = crate::strip_all_holds(ctx, expanded_raw);
         if new_expr != expr {
             let old_count = count_nodes(ctx, expr);
             let new_count = count_nodes(ctx, new_expr);

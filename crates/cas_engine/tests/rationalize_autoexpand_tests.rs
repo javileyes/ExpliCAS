@@ -18,8 +18,10 @@ fn test_rationalize_with_autoexpand_expands_subexpressions() {
     let mut engine = Engine::new();
 
     // Setup: enable auto-expand
-    let mut opts = EvalOptions::default();
-    opts.expand_policy = ExpandPolicy::Auto;
+    let opts = EvalOptions {
+        expand_policy: ExpandPolicy::Auto,
+        ..Default::default()
+    };
 
     // Parse the problematic expression
     let expr_str = "1/(1+sqrt(2)+sqrt(3))";
@@ -97,8 +99,10 @@ fn test_rationalize_respects_autoexpand_budget() {
     let mut engine = Engine::new();
 
     // Setup: auto-expand with restrictive budget
-    let mut opts = EvalOptions::default();
-    opts.expand_policy = ExpandPolicy::Auto;
+    let mut opts = EvalOptions {
+        expand_policy: ExpandPolicy::Auto,
+        ..Default::default()
+    };
     opts.expand_budget.max_pow_exp = 2; // Only allow exponent ≤ 2
 
     // Expression (1+√2)² should still expand (exponent = 2, within budget)

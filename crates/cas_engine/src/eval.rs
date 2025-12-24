@@ -171,7 +171,10 @@ impl Engine {
                 // Transfer the context (expressions)
                 ctx_simplifier.context = std::mem::take(&mut self.simplifier.context);
 
-                let (res, steps) = ctx_simplifier.simplify(resolved);
+                // Use simplify_with_stats to respect expand_policy and other options
+                let simplify_opts = effective_opts.to_simplify_options();
+                let (res, steps, _stats) =
+                    ctx_simplifier.simplify_with_stats(resolved, simplify_opts);
 
                 // Transfer context back
                 self.simplifier.context = ctx_simplifier.context;
