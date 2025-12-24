@@ -135,6 +135,17 @@ let budget = Budget::preset_unlimited(); // No limits
 | multipoly.rs | `div_exact_with_stats` | poly_ops, terms_materialized |
 | multipoly.rs | `gcd_multivar_layer2_with_stats` | poly_ops, terms_materialized |
 
+## Phase Rules for Auto-Expand
+
+> [!IMPORTANT]
+> Auto-expand rules like `AutoExpandPowSumRule` must include `RATIONALIZE` in their `allowed_phases()`.
+> This ensures expressions like `(1+√2)²` created during rationalization are expanded to complete the simplification.
+
+| Rule | Allowed Phases | Reason |
+|------|----------------|--------|
+| `AutoExpandPowSumRule` | CORE, TRANSFORM, **RATIONALIZE** | Close rationalizations that create Pow(Add, n) |
+| `AutoExpandSubCancelRule` | TRANSFORM | Zero-shortcut for cancellation patterns |
+
 ## CI Enforcement
 
 `scripts/lint_budget_enforcement.sh` verifies all hotspot modules contain budget instrumentation:
