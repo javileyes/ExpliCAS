@@ -733,6 +733,28 @@ fn parse_equation(input: &str) -> IResult<&str, (ParseNode, RelOp, ParseNode)> {
 
 use crate::error::ParseError;
 
+/// Parse an expression string into an ExprId.
+///
+/// # Example
+///
+/// ```
+/// use cas_ast::Context;
+/// use cas_parser::parse;
+///
+/// let mut ctx = Context::new();
+/// let expr = parse("2 + 3 * x", &mut ctx).unwrap();
+///
+/// // Expression is stored in context
+/// use cas_ast::Expr;
+/// match ctx.get(expr) {
+///     Expr::Add(_, _) => { /* top level is Add */ }
+///     _ => panic!("Expected Add"),
+/// }
+/// ```
+///
+/// # Errors
+///
+/// Returns `ParseError` if parsing fails.
 pub fn parse(input: &str, ctx: &mut Context) -> Result<ExprId, ParseError> {
     let (remaining, expr_node) =
         parse_expr(input).map_err(|e| ParseError::from_nom_error(format!("{}", e)))?;

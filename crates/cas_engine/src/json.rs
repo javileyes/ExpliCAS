@@ -85,6 +85,18 @@ pub struct EngineJsonResponse {
 
 impl EngineJsonResponse {
     /// Create a success response.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cas_engine::{EngineJsonResponse, BudgetJsonInfo};
+    ///
+    /// let budget = BudgetJsonInfo::cli(true);
+    /// let resp = EngineJsonResponse::ok("2*x".into(), budget);
+    ///
+    /// assert!(resp.ok);
+    /// assert_eq!(resp.result, Some("2*x".into()));
+    /// ```
     pub fn ok(result: String, budget: BudgetJsonInfo) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
@@ -98,6 +110,24 @@ impl EngineJsonResponse {
     }
 
     /// Create a success response with steps.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cas_engine::{EngineJsonResponse, EngineJsonStep, BudgetJsonInfo};
+    ///
+    /// let step = EngineJsonStep {
+    ///     phase: "Simplify".into(),
+    ///     rule: "Combine".into(),
+    ///     before: "x+x".into(),
+    ///     after: "2*x".into(),
+    /// };
+    /// let budget = BudgetJsonInfo::cli(false);
+    /// let resp = EngineJsonResponse::ok_with_steps("2*x".into(), vec![step], budget);
+    ///
+    /// assert!(resp.ok);
+    /// assert_eq!(resp.steps.len(), 1);
+    /// ```
     pub fn ok_with_steps(
         result: String,
         steps: Vec<EngineJsonStep>,

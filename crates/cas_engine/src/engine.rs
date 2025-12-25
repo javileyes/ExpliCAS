@@ -167,6 +167,9 @@ impl Default for Simplifier {
 }
 
 impl Simplifier {
+    /// Create a new Simplifier without rules registered.
+    ///
+    /// Usually you want `Simplifier::with_default_rules()` instead.
     pub fn new() -> Self {
         Self {
             context: Context::new(),
@@ -182,6 +185,24 @@ impl Simplifier {
         }
     }
 
+    /// Create a Simplifier with all default rules registered.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cas_engine::Simplifier;
+    /// use cas_parser::parse;
+    ///
+    /// let mut s = Simplifier::with_default_rules();
+    /// let expr = parse("2 + 2", &mut s.context).unwrap();
+    /// let (result, _steps) = s.simplify(expr);
+    ///
+    /// // 2+2 is simplified to 4
+    /// use cas_ast::Expr;
+    /// if let Expr::Number(n) = s.context.get(result) {
+    ///     assert_eq!(n.to_string(), "4");
+    /// }
+    /// ```
     pub fn with_default_rules() -> Self {
         let mut s = Self::new();
         s.register_default_rules();

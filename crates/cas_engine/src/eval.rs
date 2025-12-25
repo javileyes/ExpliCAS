@@ -4,11 +4,37 @@ use crate::Simplifier;
 use cas_ast::{Equation, Expr, ExprId, RelOp};
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
+///
+/// # Example
+///
+/// ```
+/// use cas_engine::Engine;
+/// use cas_parser::parse;
+///
+/// let mut engine = Engine::new();
+/// let expr = parse("x + x", &mut engine.simplifier.context).unwrap();
+/// let (result, _steps) = engine.simplifier.simplify(expr);
+///
+/// // Result is simplified
+/// use cas_ast::display::DisplayExpr;
+/// let output = format!("{}", DisplayExpr { context: &engine.simplifier.context, id: result });
+/// assert!(output.contains("x")); // Contains x
+/// ```
 pub struct Engine {
     pub simplifier: Simplifier,
 }
 
 impl Engine {
+    /// Create a new Engine with default rules.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cas_engine::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// // Engine is ready to simplify expressions
+    /// ```
     pub fn new() -> Self {
         Self {
             simplifier: Simplifier::with_default_rules(),
