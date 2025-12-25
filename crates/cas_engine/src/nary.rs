@@ -161,6 +161,10 @@ impl AddView {
     }
 
     /// Iterative term collector (stack-safe for deep expressions).
+    ///
+    /// NOTE: This collector unwraps __hold barriers per the Hold Contract
+    /// (see ARCHITECTURE.md "Canonical Utilities Registry"). This makes
+    /// AddView transparent to internal barriers used by autoexpand.
     fn collect_terms(
         ctx: &Context,
         root: ExprId,
@@ -171,6 +175,9 @@ impl AddView {
         let mut stack = vec![(root, initial_sign)];
 
         while let Some((id, sign)) = stack.pop() {
+            // Unwrap __hold barrier per Hold Contract (transparency for algebra)
+            let id = cas_ast::hold::unwrap_hold(ctx, id);
+
             match ctx.get(id) {
                 Expr::Add(l, r) => {
                     stack.push((*r, sign));
@@ -295,10 +302,15 @@ impl MulView {
     }
 
     /// Iterative factor collector (stack-safe for deep expressions).
+    ///
+    /// NOTE: This collector unwraps __hold barriers per the Hold Contract.
     fn collect_factors(ctx: &Context, root: ExprId, out: &mut SmallVec<[ExprId; 8]>) {
         let mut stack = vec![root];
 
         while let Some(id) = stack.pop() {
+            // Unwrap __hold barrier per Hold Contract (transparency for algebra)
+            let id = cas_ast::hold::unwrap_hold(ctx, id);
+
             match ctx.get(id) {
                 Expr::Mul(l, r) => {
                     // Push right first so left is processed first (preserves order)
@@ -398,6 +410,50 @@ impl MulView {
     {
         self.factors.retain(|factor| pred(*factor));
     }
+}
+
+// ============================================================================
+// Convenience Helpers (for migrating from flatten_add*/flatten_mul*)
+// ============================================================================
+
+/// Flatten an Add chain into terms, ignoring signs.
+///
+/// This is a drop-in replacement for local `flatten_add()` functions.
+/// Uses `AddView` internally for shape-independence and __hold transparency.
+///
+/// # Example
+/// ```ignore
+/// let terms = add_terms_no_sign(ctx, expr);
+/// for term in terms { ... }
+/// ```
+pub fn add_terms_no_sign(ctx: &Context, root: ExprId) -> SmallVec<[ExprId; 8]> {
+    AddView::from_expr(ctx, root)
+        .terms
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect()
+}
+
+/// Flatten an Add/Sub/Neg chain into signed terms.
+///
+/// This is a drop-in replacement for `flatten_add_sub_chain()` and
+/// `flatten_add_signed()` functions.
+///
+/// # Example
+/// ```ignore
+/// let terms = add_terms_signed(ctx, expr);
+/// for (term, sign) in terms { ... }
+/// ```
+pub fn add_terms_signed(ctx: &Context, root: ExprId) -> SmallVec<[(ExprId, Sign); 8]> {
+    AddView::from_expr(ctx, root).terms
+}
+
+/// Flatten a Mul chain into factors.
+///
+/// This is a drop-in replacement for local `flatten_mul()` functions.
+/// Uses `MulView` internally for shape-independence and __hold transparency.
+pub fn mul_factors(ctx: &Context, root: ExprId) -> SmallVec<[ExprId; 8]> {
+    MulView::from_expr(ctx, root).factors
 }
 
 // ============================================================================

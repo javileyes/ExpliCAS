@@ -552,27 +552,27 @@ fn poly_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
 }
 
 /// Flatten an additive expression into a list of (term, is_negated) pairs
+///
+/// Uses canonical AddView from nary.rs for shape-independence and __hold transparency.
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 fn flatten_additive_terms(
     ctx: &Context,
     expr: ExprId,
     negated: bool,
     terms: &mut Vec<(ExprId, bool)>,
 ) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            flatten_additive_terms(ctx, *l, negated, terms);
-            flatten_additive_terms(ctx, *r, negated, terms);
-        }
-        Expr::Sub(l, r) => {
-            flatten_additive_terms(ctx, *l, negated, terms);
-            flatten_additive_terms(ctx, *r, !negated, terms);
-        }
-        Expr::Neg(inner) => {
-            flatten_additive_terms(ctx, *inner, !negated, terms);
-        }
-        _ => {
-            terms.push((expr, negated));
-        }
+    use crate::nary::{add_terms_signed, Sign};
+
+    // Use canonical AddView
+    let signed_terms = add_terms_signed(ctx, expr);
+
+    for (term, sign) in signed_terms {
+        // XOR the incoming negation with the sign from AddView
+        let is_negated = match sign {
+            Sign::Pos => negated,
+            Sign::Neg => !negated,
+        };
+        terms.push((term, is_negated));
     }
 }
 

@@ -371,29 +371,23 @@ fn try_extract_linear(
     Some(coeffs)
 }
 
-/// Flatten Add/Sub tree with sign tracking (iterative to avoid stack overflow)
+/// Flatten Add/Sub tree with sign tracking.
+///
+/// Uses canonical AddView from nary.rs for shape-independence and __hold transparency.
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 fn flatten_add(ctx: &Context, expr: ExprId, initial_sign: i8, out: &mut Vec<(ExprId, i8)>) {
-    // Use explicit work stack instead of recursion for large trees
-    let mut work: Vec<(ExprId, i8)> = vec![(strip_hold(ctx, expr), initial_sign)];
+    use crate::nary::{add_terms_signed, Sign};
 
-    while let Some((curr_expr, sign)) = work.pop() {
-        match ctx.get(curr_expr) {
-            Expr::Add(l, r) => {
-                // Push right first so left is processed first (LIFO)
-                work.push((strip_hold(ctx, *r), sign));
-                work.push((strip_hold(ctx, *l), sign));
-            }
-            Expr::Sub(l, r) => {
-                work.push((strip_hold(ctx, *r), -sign));
-                work.push((strip_hold(ctx, *l), sign));
-            }
-            Expr::Neg(inner) => {
-                work.push((strip_hold(ctx, *inner), -sign));
-            }
-            _ => {
-                out.push((curr_expr, sign));
-            }
-        }
+    // Use canonical AddView (which handles __hold transparency)
+    let terms = add_terms_signed(ctx, expr);
+
+    for (term, sign) in terms {
+        // Convert Sign enum to i8, applying initial_sign
+        let final_sign = match sign {
+            Sign::Pos => initial_sign,
+            Sign::Neg => -initial_sign,
+        };
+        out.push((term, final_sign));
     }
 }
 

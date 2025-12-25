@@ -3593,6 +3593,113 @@ define_rule!(
 
 ---
 
+## Canonical Utilities Registry ★★★ (Added 2025-12)
+
+Esta sección documenta las ubicaciones canónicas de utilidades compartidas para evitar duplicación.
+
+### Principio
+
+**Cada utilidad con más de 2 implementaciones debe tener:**
+
+1. **Un sitio canónico** (módulo + API)
+2. **Contrato escrito** (docstring + POLICY.md)
+3. **Delegación** (las copias llaman al canónico)
+4. **Lint** (`scripts/lint_no_duplicate_utils.sh`)
+5. **Tests contractuales**
+
+### Registry
+
+| Utilidad | Canónica | Prohibido duplicar | Contrato |
+|----------|----------|-------------------|----------|
+| `__hold` helpers | `cas_ast::hold` | `fn strip_hold` locales | Strip en boundaries |
+| Add flattening | `cas_engine::nary::AddView` | `fn flatten_add*` locales | Shape-independent |
+| Mul flattening | `cas_ast::views::MulChainView` | `fn flatten_mul*` locales | Order-preserving |
+| Predicates | `cas_engine::helpers` | `fn is_zero/is_one/is_negative` | Semántica exacta |
+| Integer extract | `cas_engine::helpers::get_integer` | `fn get_integer` locales | Returns `Option<i64>` |
+| Product builders | `cas_ast::views::MulBuilder` | `fn build_mul_from_factors` | Unified edge cases |
+| Node counting | `cas_ast::display::count_nodes` | — | Budget traversals |
+
+### Canonical APIs
+
+#### `cas_ast::hold` - Hold Barrier Utilities
+
+```rust
+/// Check if expression is __hold(...)
+pub fn is_hold(ctx: &Context, id: ExprId) -> bool;
+
+/// Unwrap ONE level of __hold (returns id if not held)
+pub fn unwrap_hold(ctx: &Context, id: ExprId) -> ExprId;
+
+/// Recursively strip ALL __hold wrappers
+pub fn strip_all_holds(ctx: &mut Context, id: ExprId) -> ExprId;
+```
+
+**Contract**: 
+- `__hold` blocks expansive rules (autoexpand, distribute)
+- `__hold` is transparent to algebra (AddView/MulView unwrap it)
+- `strip_all_holds` MUST be called at output boundaries
+
+#### `cas_engine::nary::AddView` - Shape-Independent Sum Traversal
+
+```rust
+/// Flatten Add/Sub/Neg chain with signed terms
+let view = AddView::from_expr(ctx, expr);
+// Returns (term, Sign::Pos|Sign::Neg) pairs
+for (term, sign) in &view.terms { ... }
+```
+
+**Contract**:
+- Shape-independent: `(a+b)+c` and `a+(b+c)` give same terms
+- Handles Sub as `Add(a, Neg(b))`
+- Calls `unwrap_hold` internally (transparent to barriers)
+
+#### `cas_ast::views::MulChainView` - Order-Preserving Mul Traversal
+
+```rust
+/// Linearize Mul chain preserving order
+let view = MulChainView::from(ctx, expr);
+// factors: [a, b, c] for a*(b*c)
+```
+
+**Contract**:
+- Order-preserving (safe for non-commutative operations)
+- Use `MulParts` for commutative compression with exponents
+
+#### `cas_engine::helpers` - Common Predicates
+
+```rust
+pub fn is_zero(ctx: &Context, expr: ExprId) -> bool;  // Number(0)
+pub fn is_one(ctx: &Context, expr: ExprId) -> bool;   // Number(1)
+pub fn is_negative(ctx: &Context, expr: ExprId) -> bool;
+pub fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64>;
+```
+
+**Contract**:
+- `is_zero/is_one`: Only match literal `Number` nodes
+- `get_integer`: Returns `None` if not integer or doesn't fit i64
+
+### Lint Enforcement
+
+```bash
+# Run lint to detect violations
+bash scripts/lint_no_duplicate_utils.sh
+
+# Will be integrated into CI
+make lint  # Includes duplicate detection
+```
+
+### Migration Status
+
+| Pattern | Status | Target PR |
+|---------|--------|-----------|
+| `strip_hold` | ✅ Migrated | — |
+| `flatten_add` | 🔸 In progress | PR2 |
+| `flatten_mul` | 🔸 Planned | PR3 |
+| Predicates | 🔸 Planned | PR4 |
+| Builders | 🔸 Planned | PR5 |
+
+---
+
 ## Conclusión
 
 ### Fortalezas del Diseño

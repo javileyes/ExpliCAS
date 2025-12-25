@@ -169,20 +169,22 @@ pub fn try_expand_multinomial_direct(
 }
 
 /// Flatten Add tree into a vector of (summand, sign) pairs
+///
+/// Uses canonical AddView from nary.rs for shape-independence and __hold transparency.
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 fn flatten_add_signed(ctx: &Context, id: ExprId, sign: i8, out: &mut Vec<(ExprId, i8)>) {
-    match ctx.get(id) {
-        Expr::Add(l, r) => {
-            flatten_add_signed(ctx, *l, sign, out);
-            flatten_add_signed(ctx, *r, sign, out);
-        }
-        Expr::Sub(l, r) => {
-            flatten_add_signed(ctx, *l, sign, out);
-            flatten_add_signed(ctx, *r, -sign, out);
-        }
-        Expr::Neg(inner) => {
-            flatten_add_signed(ctx, *inner, -sign, out);
-        }
-        _ => out.push((id, sign)),
+    use crate::nary::{add_terms_signed, Sign};
+
+    // Use canonical AddView
+    let terms = add_terms_signed(ctx, id);
+
+    for (term, term_sign) in terms {
+        // Apply incoming sign
+        let final_sign = match term_sign {
+            Sign::Pos => sign,
+            Sign::Neg => -sign,
+        };
+        out.push((term, final_sign));
     }
 }
 

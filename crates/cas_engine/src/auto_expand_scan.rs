@@ -321,25 +321,8 @@ fn collect_variables_recursive(
 // Add+Neg pattern detection (for trinomial/multivar cancellation)
 // =============================================================================
 
-/// Flatten an Add expression into a list of terms.
-/// E.g., Add(Add(a, b), c) → [a, b, c]
-fn flatten_add(ctx: &Context, id: ExprId) -> Vec<ExprId> {
-    let mut terms = Vec::new();
-    flatten_add_recursive(ctx, id, &mut terms);
-    terms
-}
-
-fn flatten_add_recursive(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(id) {
-        Expr::Add(l, r) => {
-            flatten_add_recursive(ctx, *l, terms);
-            flatten_add_recursive(ctx, *r, terms);
-        }
-        _ => {
-            terms.push(id);
-        }
-    }
-}
+// NOTE: Local flatten_add REMOVED - use crate::nary::add_terms_no_sign instead
+// (see ARCHITECTURE.md "Canonical Utilities Registry")
 
 /// Check if a term is "negative" for the purpose of sub-cancellation detection.
 /// Returns true if the term represents a negative value:
@@ -403,7 +386,7 @@ fn try_mark_add_neg_cancellation(
         return false;
     }
 
-    let terms = flatten_add(ctx, id);
+    let terms = crate::nary::add_terms_no_sign(ctx, id);
     if terms.len() < 2 {
         return false;
     }

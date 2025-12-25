@@ -253,29 +253,21 @@ fn expr_key_neg(ctx: &Context, expr: ExprId) -> ExprKey {
 }
 
 /// Flatten Add chain (associative)
+///
+/// Uses canonical AddView from nary.rs for shape-independence and __hold transparency.
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 fn flatten_add(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(left, right) => {
-            flatten_add(ctx, *left, out);
-            flatten_add(ctx, *right, out);
-        }
-        _ => {
-            out.push(expr);
-        }
-    }
+    // Note: add_terms_no_sign ignores signs - for AC-key hashing this is fine
+    // since we only care about term multiset equality
+    out.extend(crate::nary::add_terms_no_sign(ctx, expr));
 }
 
 /// Flatten Mul chain (associative)
+///
+/// Uses canonical MulView from nary.rs for shape-independence and __hold transparency.
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 fn flatten_mul(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Mul(left, right) => {
-            flatten_mul(ctx, *left, out);
-            flatten_mul(ctx, *right, out);
-        }
-        _ => {
-            out.push(expr);
-        }
-    }
+    out.extend(crate::nary::mul_factors(ctx, expr));
 }
 
 /// Check if two expressions are AC-equivalent
