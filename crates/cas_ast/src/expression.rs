@@ -218,8 +218,8 @@ impl Context {
                     let mut factors = Vec::new();
                     self.collect_mul_factors(l, &mut factors);
                     self.collect_mul_factors(r, &mut factors);
-                    // Rebuild balanced (preserves order)
-                    self.build_balanced_mul(&factors)
+                    // Rebuild balanced (preserves order) - returns ExprId directly
+                    return self.build_balanced_mul(&factors);
                 } else {
                     // Commutative: flatten + sort (using order_key to avoid recursive compare)
                     let mut factors = Vec::new();
@@ -227,7 +227,8 @@ impl Context {
                     self.collect_mul_factors(r, &mut factors);
                     // Sort by structural comparison (balanced tree prevents deep recursion)
                     factors.sort_by(|a, b| crate::ordering::compare_expr(self, *a, *b));
-                    self.build_balanced_mul(&factors)
+                    // Returns ExprId directly
+                    return self.build_balanced_mul(&factors);
                 }
             }
             // Non-commutative operations and atoms: keep as-is
@@ -391,12 +392,32 @@ impl Context {
         }
     }
 
-    /// Build balanced Mul tree iteratively: [a,b,c,d] -> Mul(Mul(a,b), Mul(c,d))
-    fn build_balanced_mul(&mut self, factors: &[ExprId]) -> Expr {
+    /// Build balanced Mul tree from factors: [a,b,c,d] → Mul(Mul(a,b), Mul(c,d))
+    ///
+    /// **CANONICAL balanced multiplication builder.**
+    ///
+    /// # When to use
+    /// - Expansion/collection passes with many factors (O(log n) depth)
+    /// - Multinomial expansion, polynomial operations
+    /// - Any context where tree depth matters more than shape stability
+    ///
+    /// # For pattern matching / didactic transformations
+    /// Use `MulBuilder` (right-fold) instead - it produces stable shape `a*(b*(c*d))`
+    ///
+    /// # Edge cases
+    /// - `[]` → panics (empty product undefined at this level)
+    /// - `[x]` → returns `x` directly (no wrapper)
+    /// - `[a,b]` → `Mul(a, b)`
+    /// - `[a,b,c,d]` → `Mul(Mul(a,b), Mul(c,d))` (balanced)
+    ///
+    /// # See also
+    /// - `cas_ast::views::MulBuilder` for right-fold construction
+    /// - POLICY.md "Builders Contract" for contribution rules
+    pub fn build_balanced_mul(&mut self, factors: &[ExprId]) -> ExprId {
         match factors.len() {
             0 => panic!("Cannot build Mul from empty factors"),
-            1 => self.get(factors[0]).clone(),
-            2 => Expr::Mul(factors[0], factors[1]),
+            1 => factors[0],
+            2 => self.add_raw(Expr::Mul(factors[0], factors[1])),
             _ => {
                 // Build pairs bottom-up iteratively
                 let mut current: Vec<ExprId> = factors.to_vec();
@@ -416,9 +437,9 @@ impl Context {
                     current = next;
                 }
                 if current.len() == 2 {
-                    Expr::Mul(current[0], current[1])
+                    self.add_raw(Expr::Mul(current[0], current[1]))
                 } else {
-                    self.get(current[0]).clone()
+                    current[0]
                 }
             }
         }

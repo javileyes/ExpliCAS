@@ -90,21 +90,20 @@ pub fn build_balanced_add(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
 
 /// Build a balanced Mul tree from a slice of factors.
 ///
-/// This is useful for rules that need to reconstruct n-ary products from a list of factors.
-/// - Empty slice → 1
+/// Wrapper around `Context::build_balanced_mul` with handling for empty case.
+///
+/// # Edge cases
+/// - Empty slice → 1 (multiplicative identity)
 /// - Single factor → that factor
 /// - Multiple factors → balanced binary Mul tree
+///
+/// # See also
+/// - `Context::build_balanced_mul` (canonical implementation)
+/// - `MulBuilder` for right-fold construction with exponents
 pub fn build_balanced_mul(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
     match factors.len() {
-        0 => ctx.num(1),
-        1 => factors[0],
-        2 => ctx.add(Expr::Mul(factors[0], factors[1])),
-        n => {
-            let mid = n / 2;
-            let left = build_balanced_mul(ctx, &factors[..mid]);
-            let right = build_balanced_mul(ctx, &factors[mid..]);
-            ctx.add(Expr::Mul(left, right))
-        }
+        0 => ctx.num(1), // Multiplicative identity (not handled by Context)
+        _ => ctx.build_balanced_mul(factors),
     }
 }
 

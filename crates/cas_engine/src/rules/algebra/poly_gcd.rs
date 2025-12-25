@@ -11,7 +11,6 @@
 //!
 //! This allows Mathematica/Symbolica-style polynomial GCD without expanding.
 
-use crate::build::mul2_raw;
 use crate::engine::Simplifier;
 use crate::gcd_zippel_modp::ZippelPreset;
 use crate::options::EvalOptions;
@@ -19,7 +18,6 @@ use crate::phase::PhaseMask;
 use crate::rule::{Rewrite, Rule};
 use crate::rules::algebra::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
-use num_rational::BigRational;
 use num_traits::{One, ToPrimitive};
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
@@ -369,35 +367,21 @@ fn compare_expr_for_sort(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     a_str.cmp(&b_str)
 }
 
-/// Build a product from factors with positive exponents.
+/// Build a product from factors with exponents.
+///
+/// Uses canonical `MulBuilder` (right-fold with exponents).
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 fn build_mul_from_factors(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
-    if factors.is_empty() {
-        return ctx.add(Expr::Number(BigRational::from_integer(1.into())));
-    }
+    use cas_ast::views::MulBuilder;
 
-    let mut terms: Vec<ExprId> = Vec::new();
-
+    let mut builder = MulBuilder::new_simple();
     for &(base, exp) in factors {
-        if exp == 0 {
-            continue;
-        } else if exp == 1 {
-            terms.push(base);
-        } else if exp > 1 {
-            let exp_expr = ctx.add(Expr::Number(BigRational::from_integer(exp.into())));
-            terms.push(ctx.add(Expr::Pow(base, exp_expr)));
+        if exp > 0 {
+            builder.push_pow(base, exp);
         }
         // Negative exponents shouldn't appear in GCD factors
     }
-
-    if terms.is_empty() {
-        ctx.add(Expr::Number(BigRational::from_integer(1.into())))
-    } else if terms.len() == 1 {
-        terms[0]
-    } else {
-        let mut iter = terms.into_iter();
-        let first = iter.next().unwrap();
-        iter.fold(first, |acc, t| mul2_raw(ctx, acc, t))
-    }
+    builder.build(ctx)
 }
 
 // =============================================================================
@@ -770,7 +754,7 @@ mod tests {
 
         // Should be 1
         if let Expr::Number(n) = ctx.get(gcd) {
-            assert_eq!(*n, BigRational::from_integer(BigInt::from(1)));
+            assert_eq!(*n, num_rational::BigRational::from_integer(BigInt::from(1)));
         } else {
             panic!("Expected number 1");
         }

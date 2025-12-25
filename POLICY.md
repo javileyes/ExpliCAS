@@ -265,4 +265,35 @@ pub fn get_integer_exact(ctx, expr) -> Option<BigInt>;  // BigInt + Neg handling
 
 ### Lint Enforcement
 
-The CI lint allows wrappers that call `crate::helpers::` for these predicates.
+The CI lint `scripts/lint_no_duplicate_utils.sh` will **FAIL** if:
+- A file defines `fn is_zero/is_one/is_negative/get_integer` without using `crate::helpers::`
+- Exception: struct methods with `&self` signature are allowed (different scope)
+
+---
+
+## Builders Contract (Added 2025-12)
+
+### Purpose
+
+Product builders construct multiplication trees with consistent structure.
+Two canonical builders serve different use cases.
+
+### Canonical Implementations
+
+| Builder | Location | Shape | Use Case |
+|---------|----------|-------|----------|
+| `MulBuilder` | `cas_ast::views` | Right-fold `a*(b*(c*d))` | Pattern matching, rules |
+| `Context::build_balanced_mul` | `cas_ast::expression` | Balanced `(a*b)*(c*d)` | Expansion, long products |
+
+### Contribution Rules
+
+1. **For rules/transforms**: Use `MulBuilder::new_simple()` + `push_pow()`
+2. **For expansion/collection**: Use `Context::build_balanced_mul()` or `nary::build_balanced_mul()`
+3. **Wrappers must call canonical** - local functions must delegate to one of the above
+4. **No new `build_mul_from_factors`** - use `MulBuilder` instead
+
+### Lint Enforcement
+
+The CI lint `scripts/lint_no_duplicate_utils.sh` will **FAIL** if:
+- A file defines `fn build_mul_from_factors*` without using `MulBuilder`
+- A file defines `fn build_balanced_mul` without delegating to canonical

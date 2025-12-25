@@ -13,7 +13,6 @@ use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 
 use super::helpers::*;
-use num_rational::BigRational;
 
 // =============================================================================
 // A1: Structural Factor Cancellation (without polynomial expansion)
@@ -166,36 +165,21 @@ fn compare_expr_for_sort_a1(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
 }
 
 /// Build a product from factors with integer exponents.
+///
+/// Uses canonical `MulBuilder` (right-fold with exponents).
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 #[allow(dead_code)]
 fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
-    if factors.is_empty() {
-        return ctx.add(Expr::Number(BigRational::from_integer(1.into())));
-    }
+    use cas_ast::views::MulBuilder;
 
-    let mut terms: Vec<ExprId> = Vec::new();
-
+    let mut builder = MulBuilder::new_simple();
     for &(base, exp) in factors {
-        if exp == 0 {
-            continue;
-        } else if exp == 1 {
-            terms.push(base);
-        } else if exp > 1 {
-            let exp_expr = ctx.add(Expr::Number(BigRational::from_integer(exp.into())));
-            terms.push(ctx.add(Expr::Pow(base, exp_expr)));
+        if exp > 0 {
+            builder.push_pow(base, exp);
         }
         // Negative exponents shouldn't appear in numerator/denominator factors
     }
-
-    if terms.is_empty() {
-        ctx.add(Expr::Number(BigRational::from_integer(1.into())))
-    } else if terms.len() == 1 {
-        terms[0]
-    } else {
-        // Build multiplication from terms using fold
-        let mut iter = terms.into_iter();
-        let first = iter.next().unwrap();
-        iter.fold(first, |acc, t| mul2_raw(ctx, acc, t))
-    }
+    builder.build(ctx)
 }
 
 /// Build domain assumption for cancelled factors.

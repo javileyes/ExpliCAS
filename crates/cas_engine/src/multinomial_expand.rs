@@ -417,23 +417,12 @@ fn emit_term(ctx: &mut Context, var_ids: &[ExprId], mono: &MonoKey, coeff: BigRa
     }
 }
 
-/// Build balanced Mul tree from factors
-fn build_balanced_mul(ctx: &mut Context, mut factors: Vec<ExprId>) -> ExprId {
-    while factors.len() > 1 {
-        let mut next = Vec::with_capacity(factors.len().div_ceil(2));
-        for chunk in factors.chunks(2) {
-            if chunk.len() == 2 {
-                next.push(ctx.add(Expr::Mul(chunk[0], chunk[1])));
-            } else {
-                next.push(chunk[0]);
-            }
-        }
-        factors = next;
-    }
-    // INVARIANT: loop reduces factors until exactly 1 element remains
-    factors
-        .pop()
-        .expect("balanced tree reduction leaves exactly 1 element")
+/// Build balanced Mul tree from factors.
+///
+/// Wrapper calling canonical `crate::nary::build_balanced_mul`.
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
+fn build_balanced_mul(ctx: &mut Context, factors: Vec<ExprId>) -> ExprId {
+    crate::nary::build_balanced_mul(ctx, &factors)
 }
 
 #[cfg(test)]

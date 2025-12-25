@@ -110,9 +110,10 @@ for file in $(grep -rln "fn flatten_mul" "$ROOT_DIR/crates" --include="*.rs" 2>/
 done
 
 # -----------------------------------------------------------------------------
-# CHECK 4: Predicate duplicates (WARNING)
+# CHECK 4: Predicate duplicates (HARD FAIL - migration complete)
 # Canonical: cas_engine/src/helpers.rs
 # Matches EXACT function names only (not is_one_term, is_negative_factor, etc.)
+# Allowed: canonical module or files that wrap canonical functions
 # -----------------------------------------------------------------------------
 echo "  [4/5] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
 
@@ -148,8 +149,9 @@ for pattern in "fn is_zero(" "fn is_one(" "fn is_negative(" "fn get_integer("; d
                 :
             else
                 pattern_name=$(echo "$pattern" | sed 's/($//')
-                echo -e "  ${YELLOW}WARNING${NC}: $file defines $pattern_name (should use helpers.rs canonical)"
-                ((WARNINGS++))
+                echo -e "  ${RED}ERROR${NC}: $file defines $pattern_name without using helpers.rs canonical"
+                echo -e "         Fix: Use crate::helpers::$pattern_name or wrap canonical"
+                ((ERRORS++))
             fi
         fi
     done
@@ -158,13 +160,47 @@ done
 # -----------------------------------------------------------------------------
 # CHECK 5: __hold in output boundaries (HARD FAIL if in production JSON)
 # -----------------------------------------------------------------------------
-echo "  [5/5] Checking __hold doesn't leak to JSON output..."
+echo "  [5/6] Checking __hold doesn't leak to JSON output..."
 
 # Check test assertions to ensure we have contract tests
 if ! grep -rq "contains.*__hold" "$ROOT_DIR/crates/cas_engine/tests" 2>/dev/null; then
     echo -e "  ${YELLOW}WARNING${NC}: No contract tests found for __hold leak prevention"
     ((WARNINGS++))
 fi
+
+# -----------------------------------------------------------------------------
+# CHECK 6: Builder duplicates (HARD FAIL - migration complete)
+# Canonical: MulBuilder (right-fold), Context::build_balanced_mul (balanced)
+# -----------------------------------------------------------------------------
+echo "  [6/6] Checking builders (build_mul_from_factors)..."
+
+BUILDER_ALLOWED=(
+    "views.rs"       # MulBuilder canonical
+    "expression.rs"  # Context::build_balanced_mul canonical
+    "nary.rs"        # Wrapper (allowed)
+)
+
+for pattern in "fn build_mul_from_factors" "fn build_balanced_mul"; do
+    for file in $(grep -rln "$pattern" "$ROOT_DIR/crates/cas_engine/src" --include="*.rs" 2>/dev/null || true); do
+        basename_file=$(basename "$file")
+        is_allowed=false
+        for allowed in "${BUILDER_ALLOWED[@]}"; do
+            if [[ "$basename_file" == "$allowed" ]]; then
+                is_allowed=true
+                break
+            fi
+        done
+        # Also allow files that use canonical builders (wrappers)
+        if [ "$is_allowed" = false ] && grep -qE "(MulBuilder|crate::nary::build_balanced_mul|ctx\.build_balanced_mul)" "$file"; then
+            is_allowed=true
+        fi
+        if [ "$is_allowed" = false ]; then
+            echo -e "  ${RED}ERROR${NC}: $file defines $pattern without using canonical builder"
+            echo -e "         Fix: Use MulBuilder or Context::build_balanced_mul"
+            ((ERRORS++))
+        fi
+    done
+done
 
 # -----------------------------------------------------------------------------
 # SUMMARY
