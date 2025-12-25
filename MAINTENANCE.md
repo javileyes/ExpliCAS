@@ -82,6 +82,22 @@ pub fn my_function() {
 
 The project is organized as a workspace with several crates:
 
+### Canonical Utilities ⚠️ (IMPORTANT)
+
+**If you need flatten/predicates/builders/traversal, use the canonical implementation. The CI will fail if you duplicate them.**
+
+| Category | Canonical Location | Don't Redefine |
+|----------|-------------------|----------------|
+| **hold** | `cas_ast::hold` | `strip_hold`, `unwrap_hold` |
+| **flatten** | `cas_ast::views` | `flatten_add`, `flatten_mul` |
+| **predicates** | `cas_engine::helpers` | `is_zero`, `is_one`, `is_negative`, `get_integer` |
+| **builders** | `cas_ast::views::MulBuilder`, `Context::build_balanced_mul` | `build_mul_from_factors`, `build_balanced_mul` |
+| **traversal** | `cas_ast::traversal` | `count_nodes`, `count_nodes_matching` |
+
+Run `make audit-utils` to see the full registry and verify compliance.
+
+See [POLICY.md](POLICY.md) for detailed contracts.
+
 ### `crates/cas_ast`
 Defines the core data structures for symbolic expressions.
 -   **`Expr`**: Enum representing expression nodes (Add, Mul, Var, etc.).

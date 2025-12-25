@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget audit-utils help
 
 help:
 	@echo "Targets:"
@@ -8,6 +8,7 @@ help:
 	@echo "  make ci-quick      -> fmt + lints + tests + build --release (no clippy)"
 	@echo "  make lint          -> fmt + lints + clippy"
 	@echo "  make lint-budget   -> check budget instrumentation in hotspots"
+	@echo "  make audit-utils   -> show canonical utilities registry + lint check"
 	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
 	@echo "  make lint-allowlist-> list remaining #[allow] attributes"
@@ -51,3 +52,15 @@ lint-allowlist:
 lint-budget:
 	./scripts/lint_budget_enforcement.sh
 
+# Audit canonical utilities (hold, flatten, predicates, builders, traversal)
+audit-utils:
+	@echo "==> Canonical Utilities Registry"
+	@echo ""
+	@echo "  hold      : cas_ast::hold::{strip_hold, unwrap_hold, wrap_hold}"
+	@echo "  flatten   : cas_ast::views::{AddView, MulView}"
+	@echo "  predicates: cas_engine::helpers::{is_zero, is_one, is_negative, get_integer*}"
+	@echo "  builders  : cas_ast::views::MulBuilder, Context::build_balanced_mul"
+	@echo "  traversal : cas_ast::traversal::{count_all_nodes, count_nodes_matching, count_nodes_and_max_depth}"
+	@echo ""
+	@echo "==> Running lint check..."
+	@./scripts/lint_no_duplicate_utils.sh
