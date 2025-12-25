@@ -458,9 +458,15 @@ Result: x = pi / 6
 
 #### 7. Variable Substitution
 ```text
-> subst x^2 + x, x=3
+> subst x^2 + x, x, 3
 ```
 **Output:** `12`
+
+**Power-aware Substitution:**
+```text
+> subst x^4 + x^2 + 1, x^2, y
+```
+**Output:** `y² + y + 1`
 
 ### Advanced Examples
 
