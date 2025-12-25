@@ -915,14 +915,12 @@ fn extract_linear_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> 
     }
 }
 
-/// Get integer value from expression
+/// Get integer value from expression.
+///
+/// Uses canonical implementation from helpers.rs.
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
-    if let Expr::Number(n) = ctx.get(expr) {
-        if n.is_integer() {
-            return n.numer().try_into().ok();
-        }
-    }
-    None
+    crate::helpers::get_integer(ctx, expr)
 }
 
 /// Substitute variable with value in expression

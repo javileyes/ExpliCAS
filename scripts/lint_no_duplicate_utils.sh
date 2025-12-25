@@ -112,6 +112,7 @@ done
 # -----------------------------------------------------------------------------
 # CHECK 4: Predicate duplicates (WARNING)
 # Canonical: cas_engine/src/helpers.rs
+# Matches EXACT function names only (not is_one_term, is_negative_factor, etc.)
 # -----------------------------------------------------------------------------
 echo "  [4/5] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
 
@@ -124,7 +125,8 @@ PREDICATE_ALLOWED=(
     "didactic.rs"       # Trait method
 )
 
-for pattern in "fn is_zero" "fn is_one" "fn is_negative" "fn get_integer"; do
+# Use exact word boundary matching to avoid false positives like is_one_term
+for pattern in "fn is_zero(" "fn is_one(" "fn is_negative(" "fn get_integer("; do
     for file in $(grep -rln "$pattern" "$ROOT_DIR/crates/cas_engine/src" --include="*.rs" 2>/dev/null || true); do
         basename_file=$(basename "$file")
         is_allowed=false
@@ -134,15 +136,19 @@ for pattern in "fn is_zero" "fn is_one" "fn is_negative" "fn get_integer"; do
                 break
             fi
         done
-        # Check if it's a method (pub fn is_zero(&self)) vs standalone
+        # Also allow files that use the canonical helpers module (they are wrappers)
+        if [ "$is_allowed" = false ] && grep -q "crate::helpers::" "$file"; then
+            is_allowed=true
+        fi
+        # Check if it's a method (&self) or a commented line
         if [ "$is_allowed" = false ]; then
-            # Check if it's a method (has &self)
             line=$(grep -n "$pattern" "$file" | head -1)
-            if echo "$line" | grep -q "&self"; then
-                # It's a method, allowed
+            # Skip if it's a method (has &self) or commented out
+            if echo "$line" | grep -qE "(&self|// fn)"; then
                 :
             else
-                echo -e "  ${YELLOW}WARNING${NC}: $file defines $pattern (should use helpers.rs canonical)"
+                pattern_name=$(echo "$pattern" | sed 's/($//')
+                echo -e "  ${YELLOW}WARNING${NC}: $file defines $pattern_name (should use helpers.rs canonical)"
                 ((WARNINGS++))
             fi
         fi

@@ -464,18 +464,12 @@ fn compute_perm(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
 }
 
+/// Get integer value from expression as BigInt.
+///
+/// Uses canonical implementation from helpers.rs.
+/// (See ARCHITECTURE.md "Canonical Utilities Registry")
 fn get_integer(ctx: &Context, expr: ExprId) -> Option<BigInt> {
-    match ctx.get(expr) {
-        Expr::Number(n) => {
-            if n.is_integer() {
-                Some(n.to_integer())
-            } else {
-                None
-            }
-        }
-        Expr::Neg(e) => get_integer(ctx, *e).map(|n| -n),
-        _ => None,
-    }
+    crate::helpers::get_integer_exact(ctx, expr)
 }
 
 /// Compute GCD of two integers with educational step-by-step explanation

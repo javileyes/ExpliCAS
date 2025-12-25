@@ -321,7 +321,7 @@ pub fn isolate(
                 // A = RHS / B
                 // Check if B is negative constant to flip inequality
                 let mut new_op = op;
-                if is_negative(&simplifier.context, r) {
+                if is_known_negative(&simplifier.context, r) {
                     new_op = flip_inequality(new_op);
                 }
 
@@ -348,7 +348,7 @@ pub fn isolate(
             } else {
                 // B = RHS / A
                 let mut new_op = op;
-                if is_negative(&simplifier.context, l) {
+                if is_known_negative(&simplifier.context, l) {
                     new_op = flip_inequality(new_op);
                 }
 
@@ -465,7 +465,7 @@ pub fn isolate(
                     // A = RHS * B
                     // Check if B is negative constant to flip inequality
                     let mut new_op = op;
-                    if is_negative(&simplifier.context, r) {
+                    if is_known_negative(&simplifier.context, r) {
                         new_op = flip_inequality(new_op);
                     }
 
@@ -626,7 +626,7 @@ pub fn isolate(
 
                 if is_even {
                     // Check if RHS is negative
-                    if is_negative(&simplifier.context, rhs) {
+                    if is_known_negative(&simplifier.context, rhs) {
                         let result = match op {
                             RelOp::Eq => SolutionSet::Empty,
                             RelOp::Gt | RelOp::Geq | RelOp::Neq => SolutionSet::AllReals,
@@ -709,7 +709,7 @@ pub fn isolate(
 
                     // Check if exponent is negative to flip inequality
                     let mut new_op = op;
-                    if is_negative(&simplifier.context, e) {
+                    if is_known_negative(&simplifier.context, e) {
                         new_op = flip_inequality(new_op);
                     }
 
@@ -1067,11 +1067,18 @@ pub fn prepend_steps(
     Ok((set, steps))
 }
 
-pub fn is_negative(ctx: &Context, expr: ExprId) -> bool {
+/// Check if an expression is known to be negative (extended version).
+///
+/// Unlike `helpers::is_negative`, this also recursively analyzes Mul products
+/// using XOR logic: (-a) * b = negative, (-a) * (-b) = positive.
+///
+/// This is specific to solver isolation logic where we need to determine
+/// sign to correctly flip inequalities when multiplying/dividing.
+pub fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => *n < num_rational::BigRational::from_integer(0.into()),
         Expr::Neg(_) => true, // Simple check, might be Neg(Neg(x))
-        Expr::Mul(l, r) => is_negative(ctx, *l) ^ is_negative(ctx, *r),
+        Expr::Mul(l, r) => is_known_negative(ctx, *l) ^ is_known_negative(ctx, *r),
         _ => false, // Conservative
     }
 }

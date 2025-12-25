@@ -234,3 +234,35 @@ pub fn mul_factors(ctx, root) -> SmallVec<[ExprId; 8]>;
 The CI lint `scripts/lint_no_duplicate_utils.sh` will **FAIL** if:
 - A file defines `fn flatten_add*` without calling `crate::nary::`
 - A file defines `fn flatten_mul*` without calling `crate::nary::`
+
+---
+
+## Predicates Contract (Added 2025-12)
+
+### Purpose
+
+Expression predicates (`is_zero`, `is_one`, `is_negative`, `get_integer`) provide
+consistent value extraction and type checking across the engine.
+
+### Canonical Implementation
+
+**Location**: `crates/cas_engine/src/helpers.rs`
+
+```rust
+pub fn is_zero(ctx, expr) -> bool;      // Number(0) literal
+pub fn is_one(ctx, expr) -> bool;       // Number(1) literal  
+pub fn is_negative(ctx, expr) -> bool;  // Negative number OR Neg(_) wrapper
+pub fn get_integer(ctx, expr) -> Option<i64>;      // i64 extraction
+pub fn get_integer_exact(ctx, expr) -> Option<BigInt>;  // BigInt + Neg handling
+```
+
+### Contribution Rules
+
+1. **For i64 integers**: Use `crate::helpers::get_integer`
+2. **For BigInt integers**: Use `crate::helpers::get_integer_exact`
+3. **Wrappers must call canonical** - if you need a local function, it must delegate to helpers
+4. **Extended semantics need new names** - e.g., `is_known_negative` for Mul analysis
+
+### Lint Enforcement
+
+The CI lint allows wrappers that call `crate::helpers::` for these predicates.
