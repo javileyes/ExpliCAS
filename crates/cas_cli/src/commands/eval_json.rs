@@ -70,7 +70,13 @@ pub fn run(args: EvalJsonArgs) {
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
         }
         Err(e) => {
-            let err_output = ErrorJsonOutput::with_input(e.to_string(), &args.expr);
+            // Classify error type based on message prefix
+            let err_str = e.to_string();
+            let err_output = if err_str.starts_with("Parse error:") {
+                ErrorJsonOutput::parse_error(&err_str, Some(args.expr.clone()))
+            } else {
+                ErrorJsonOutput::with_input(&err_str, &args.expr)
+            };
             println!("{}", serde_json::to_string_pretty(&err_output).unwrap());
         }
     }

@@ -53,6 +53,7 @@ pub mod visualizer;
 pub mod build;
 pub mod error;
 pub mod helpers;
+pub mod json; // Canonical JSON API types (PR-B)
 pub mod nary;
 pub mod visitors;
 #[macro_use]
@@ -62,6 +63,12 @@ pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassSta
 pub use engine::{strip_all_holds, Simplifier};
 pub use error::CasError;
 pub use eval::*;
+// JSON API exports (canonical for CLI/FFI)
+pub use json::{
+    eval_str_to_json, BudgetExceededJson, BudgetJsonInfo, BudgetOpts, EngineJsonError,
+    EngineJsonResponse, EngineJsonStep, EngineJsonWarning, JsonRunOptions, SpanJson,
+    SCHEMA_VERSION,
+};
 pub use phase::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions,
     SimplifyPhase,

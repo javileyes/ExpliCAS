@@ -61,11 +61,26 @@ pub struct BudgetExceededJson {
     pub limit: u64,
 }
 
-/// An error result
+/// An error result with stable kind/code for API consumers.
+///
+/// The `kind` and `code` fields are stable and should not change between versions.
+/// See POLICY.md "Error API Stability Contract".
 #[derive(Serialize, Debug)]
 pub struct ErrorJsonOutput {
+    /// Schema version
+    pub schema_version: u8,
+
     pub ok: bool,
+
+    /// Stable error kind for routing (ParseError, DomainError, etc.)
+    pub kind: String,
+
+    /// Stable error code for UI mapping (E_PARSE, E_DIV_ZERO, etc.)
+    pub code: String,
+
+    /// Human-readable error message
     pub error: String,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input: Option<String>,
 }
@@ -73,7 +88,10 @@ pub struct ErrorJsonOutput {
 impl ErrorJsonOutput {
     pub fn new(error: impl Into<String>) -> Self {
         Self {
+            schema_version: 1,
             ok: false,
+            kind: "InternalError".into(),
+            code: "E_INTERNAL".into(),
             error: error.into(),
             input: None,
         }
@@ -81,9 +99,36 @@ impl ErrorJsonOutput {
 
     pub fn with_input(error: impl Into<String>, input: impl Into<String>) -> Self {
         Self {
+            schema_version: 1,
             ok: false,
+            kind: "InternalError".into(),
+            code: "E_INTERNAL".into(),
             error: error.into(),
             input: Some(input.into()),
+        }
+    }
+
+    /// Create from a CasError with stable kind/code.
+    pub fn from_cas_error(e: &cas_engine::CasError, input: Option<String>) -> Self {
+        Self {
+            schema_version: 1,
+            ok: false,
+            kind: e.kind().to_string(),
+            code: e.code().to_string(),
+            error: e.to_string(),
+            input,
+        }
+    }
+
+    /// Create a parse error.
+    pub fn parse_error(message: impl Into<String>, input: Option<String>) -> Self {
+        Self {
+            schema_version: 1,
+            ok: false,
+            kind: "ParseError".into(),
+            code: "E_PARSE".into(),
+            error: message.into(),
+            input,
         }
     }
 }
