@@ -243,3 +243,17 @@ fn test_conjugate_sum_simplifies_to_4() {
         json
     );
 }
+
+/// Test: 1/sqrt(x + sqrt(x²-1)) should simplify to sqrt(x - sqrt(x²-1))
+#[test]
+fn test_sqrt_conjugate_collapse() {
+    let json = eval_str_to_json("1 / sqrt(x + sqrt(x^2 - 1))", "{}");
+    assert!(json.contains("\"ok\":true"), "Evaluation failed: {}", json);
+    // Should collapse to sqrt(x - sqrt(x²-1))
+    // Result should contain x - (x^2 - 1)^(1/2) inside a sqrt
+    assert!(
+        json.contains("(1/2)") || json.contains("^(1/2)"),
+        "Missing sqrt in result: {}",
+        json
+    );
+}

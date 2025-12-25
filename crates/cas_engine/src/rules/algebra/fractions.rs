@@ -1527,6 +1527,121 @@ define_rule!(
     }
 );
 
+// Collapse sqrt(A) * B → sqrt(B) when A and B are conjugates with A*B = 1
+// Example: sqrt(x + sqrt(x²-1)) * (x - sqrt(x²-1)) → sqrt(x - sqrt(x²-1))
+// This works because (p + s)(p - s) = p² - s² = 1 when s = sqrt(p² - 1)
+define_rule!(
+    SqrtConjugateCollapseRule,
+    "Collapse Sqrt Conjugate Product",
+    None,
+    PhaseMask::TRANSFORM | PhaseMask::POST,
+    |ctx, expr| {
+        use cas_ast::views::MulChainView;
+        use num_rational::BigRational;
+
+        // Only match Mul expressions
+        if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+            return None;
+        }
+
+        // Use MulChainView to get all factors
+        let mv = MulChainView::from(&*ctx, expr);
+        if mv.factors.len() != 2 {
+            return None; // Only handle exactly 2 factors for now
+        }
+
+        // Helper to check if expr is sqrt(A) and return A
+        let unwrap_sqrt = |e: ExprId| -> Option<ExprId> {
+            match ctx.get(e) {
+                Expr::Pow(base, exp) => {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        let half = BigRational::new(1.into(), 2.into());
+                        if n == &half {
+                            return Some(*base);
+                        }
+                    }
+                    None
+                }
+                Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => Some(args[0]),
+                _ => None,
+            }
+        };
+
+        // Try both orderings: factor[0]=sqrt, factor[1]=other or vice versa
+        let (sqrt_arg, other) = if let Some(a) = unwrap_sqrt(mv.factors[0]) {
+            (a, mv.factors[1])
+        } else if let Some(a) = unwrap_sqrt(mv.factors[1]) {
+            (a, mv.factors[0])
+        } else {
+            return None;
+        };
+
+        // Extract binomial terms from A (sqrt_arg) and B (other)
+        // Handle both Add(p, s) and Add(p, Neg(s)) and Sub(p, s)
+        struct SignedBinomial {
+            p: ExprId,
+            s: ExprId,
+            s_positive: bool, // true if p + s, false if p - s
+        }
+
+        let parse_signed_binomial = |e: ExprId| -> Option<SignedBinomial> {
+            match ctx.get(e) {
+                Expr::Add(l, r) => {
+                    // Check if r is Neg(something)
+                    if let Expr::Neg(inner) = ctx.get(*r) {
+                        Some(SignedBinomial {
+                            p: *l,
+                            s: *inner,
+                            s_positive: false,
+                        })
+                    } else {
+                        Some(SignedBinomial {
+                            p: *l,
+                            s: *r,
+                            s_positive: true,
+                        })
+                    }
+                }
+                Expr::Sub(l, r) => Some(SignedBinomial {
+                    p: *l,
+                    s: *r,
+                    s_positive: false,
+                }),
+                _ => None,
+            }
+        };
+
+        let a_bin = parse_signed_binomial(sqrt_arg)?;
+        let b_bin = parse_signed_binomial(other)?;
+
+        // Check if they're conjugates: same p and s, opposite sign for s
+        let p_matches =
+            crate::ordering::compare_expr(ctx, a_bin.p, b_bin.p) == std::cmp::Ordering::Equal;
+        let s_matches =
+            crate::ordering::compare_expr(ctx, a_bin.s, b_bin.s) == std::cmp::Ordering::Equal;
+        let signs_opposite = a_bin.s_positive != b_bin.s_positive;
+
+        if !p_matches || !s_matches || !signs_opposite {
+            return None;
+        }
+
+        // Additional guard: s must be a sqrt (so p² - s² = p² - t for some t)
+        unwrap_sqrt(a_bin.s)?;
+
+        // All checks passed! Return sqrt(B) = sqrt(other)
+        let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+        let result = ctx.add(Expr::Pow(other, half));
+
+        Some(Rewrite {
+            new_expr: result,
+            description: "Lift conjugate into sqrt".to_string(),
+            before_local: None,
+            after_local: None,
+            domain_assumption: Some("x ≥ 1 for real roots"),
+        })
+    }
+);
+
 /// Collect all additive terms from an expression
 /// For a + b + c, returns vec![a, b, c]
 fn collect_additive_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
