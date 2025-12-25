@@ -1283,7 +1283,11 @@ define_rule!(
         let last_sq = ctx.add(Expr::Pow(last_term, two));
         let new_den = ctx.add(Expr::Sub(group_sq, last_sq));
 
-        let new_expr = ctx.add(Expr::Div(new_num, new_den));
+        // Post-pass: expand the denominator to simplify (1+√2)² → 3+2√2
+        // This ensures rationalization results don't leave unexpanded pow-sums
+        let new_den_expanded = crate::expand::expand(ctx, new_den);
+
+        let new_expr = ctx.add(Expr::Div(new_num, new_den_expanded));
 
         Some(Rewrite {
             new_expr,

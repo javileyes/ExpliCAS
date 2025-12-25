@@ -68,3 +68,28 @@ fn test_sqrt_squared_simplifies() {
         json
     );
 }
+
+/// Test: Generalized rationalization with 3+ terms should expand the denominator
+/// 1/(1 + sqrt(2) + sqrt(3)) should NOT leave unexpanded (1+√2)² in result
+#[test]
+fn test_generalized_rationalization_expands_denominator() {
+    let json = eval_str_to_json("1/(1 + sqrt(2) + sqrt(3))", "{}");
+
+    // Should evaluate successfully
+    assert!(json.contains("\"ok\":true"), "Evaluation failed: {}", json);
+
+    // Must NOT contain unexpanded (1+√2)² pattern
+    assert!(
+        !json.contains("(1 + √(2))²") && !json.contains("(1 + 2^(1/2))^2"),
+        "Result contains unexpanded pow-sum: {}",
+        json
+    );
+
+    // Denominator should be simplified (should be a number like 4, not containing √2²)
+    // The expected result has denominator 4 (from 2√2 after expansion and simplification)
+    assert!(
+        json.contains("/4") || json.contains("1/4"),
+        "Denominator not simplified to 4: {}",
+        json
+    );
+}
