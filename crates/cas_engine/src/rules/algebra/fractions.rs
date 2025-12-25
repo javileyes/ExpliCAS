@@ -1564,34 +1564,45 @@ define_rule!(
                 }
 
                 // Check power cancellation: nf = x^n, df = x^m
-                // Case 1: nf = base^n, df = base. (n > 1)
+                // Case 1: nf = base^n, df = base. (integer n only to preserve rationalized forms)
                 let nf_pow = if let Expr::Pow(b, e) = ctx.get(nf) {
                     Some((*b, *e))
                 } else {
                     None
                 };
                 if let Some((b, e)) = nf_pow {
-                    // println!("Checking power cancellation: nf={:?} df={:?}", ctx.get(nf), ctx.get(df));
                     if crate::ordering::compare_expr(ctx, b, df) == std::cmp::Ordering::Equal {
-                        // println!("  Base matches!");
                         if let Expr::Number(n) = ctx.get(e) {
-                            let new_exp = n - num_rational::BigRational::one();
-                            let new_term = if new_exp.is_one() {
-                                b
+                            // Guard: only integer exponents - skip fractional to preserve rationalized forms
+                            // E.g., sqrt(x)/x should NOT become x^(-1/2) as this undoes rationalization
+                            if !n.is_integer() {
+                                // Skip this pair, continue to next
                             } else {
-                                let exp_node = ctx.add(Expr::Number(new_exp));
-                                ctx.add(Expr::Pow(b, exp_node))
-                            };
-                            num_factors[i] = new_term;
-                            den_factors.remove(j);
-                            found = false; // Modified num factor
-                            changed = true;
-                            break;
+                                let new_exp = n - num_rational::BigRational::one();
+                                if new_exp.is_zero() {
+                                    // x^1 / x = 1, remove both factors
+                                    den_factors.remove(j);
+                                    found = true; // Remove num factor too
+                                    changed = true;
+                                    break;
+                                }
+                                let new_term = if new_exp.is_one() {
+                                    b
+                                } else {
+                                    let exp_node = ctx.add(Expr::Number(new_exp));
+                                    ctx.add(Expr::Pow(b, exp_node))
+                                };
+                                num_factors[i] = new_term;
+                                den_factors.remove(j);
+                                found = false; // Modified num factor
+                                changed = true;
+                                break;
+                            }
                         }
                     }
                 }
 
-                // Case 2: nf = base, df = base^m. (m > 1)
+                // Case 2: nf = base, df = base^m. (integer m only to preserve rationalized forms)
                 let df_pow = if let Expr::Pow(b, e) = ctx.get(df) {
                     Some((*b, *e))
                 } else {
@@ -1599,18 +1610,31 @@ define_rule!(
                 };
                 if let Some((b, e)) = df_pow {
                     if crate::ordering::compare_expr(ctx, nf, b) == std::cmp::Ordering::Equal {
-                        if let Expr::Number(n) = ctx.get(e) {
-                            let new_exp = n - num_rational::BigRational::one();
-                            let new_term = if new_exp.is_one() {
-                                b
+                        if let Expr::Number(m) = ctx.get(e) {
+                            // Guard: only integer exponents - skip fractional to preserve rationalized forms
+                            // E.g., x/sqrt(x) with fractional exp handled by QuotientOfPowersRule
+                            if !m.is_integer() {
+                                // Skip this pair, continue to next
                             } else {
-                                let exp_node = ctx.add(Expr::Number(new_exp));
-                                ctx.add(Expr::Pow(b, exp_node))
-                            };
-                            den_factors[j] = new_term;
-                            found = true; // Remove num factor
-                            changed = true;
-                            break;
+                                let new_exp = m - num_rational::BigRational::one();
+                                if new_exp.is_zero() {
+                                    // x / x^1 = 1, remove both factors
+                                    den_factors.remove(j);
+                                    found = true; // Remove num factor too
+                                    changed = true;
+                                    break;
+                                }
+                                let new_term = if new_exp.is_one() {
+                                    b
+                                } else {
+                                    let exp_node = ctx.add(Expr::Number(new_exp));
+                                    ctx.add(Expr::Pow(b, exp_node))
+                                };
+                                den_factors[j] = new_term;
+                                found = true; // Remove num factor
+                                changed = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -1749,6 +1773,11 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                         domain_assumption: None,
                     });
                 } else {
+                    // Guard: Don't produce negative fractional exponents (anti-pattern for rationalization)
+                    // E.g., sqrt(x)/x should NOT become x^(-1/2) as it undoes rationalization
+                    if diff < num_rational::BigRational::zero() && !diff.is_integer() {
+                        return None;
+                    }
                     let new_exp = ctx.add(Expr::Number(diff));
                     let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
                     return Some(Rewrite {
@@ -1769,6 +1798,10 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
             if let Expr::Number(n) = ctx.get(*e_n) {
                 if !n.is_integer() {
                     let new_exp_val = n - num_rational::BigRational::one();
+                    // Guard: Don't produce negative fractional exponents
+                    if new_exp_val < num_rational::BigRational::zero() {
+                        return None;
+                    }
                     if new_exp_val.is_one() {
                         return Some(Rewrite {
                             new_expr: *b_n,
@@ -1799,6 +1832,11 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
             if let Expr::Number(m) = ctx.get(*e_d) {
                 if !m.is_integer() {
                     let new_exp_val = num_rational::BigRational::one() - m;
+                    // Guard: Don't produce negative fractional exponents
+                    // This would undo rationalization: sqrt(x)/x should stay as-is, NOT become x^(-1/2)
+                    if new_exp_val < num_rational::BigRational::zero() {
+                        return None;
+                    }
                     let new_exp = ctx.add(Expr::Number(new_exp_val));
                     let new_expr = ctx.add(Expr::Pow(num, new_exp));
                     return Some(Rewrite {
