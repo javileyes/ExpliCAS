@@ -37,7 +37,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RationalizeSingleSurdRule));
     simplifier.add_rule(Box::new(RationalizeBinomialSurdRule));
     // General rationalization rules (Level 2) - fallback for complex cases
-    simplifier.add_rule(Box::new(RationalizeDenominatorRule));
+    simplifier.add_rule(Box::new(RationalizeDenominatorRule)); // sqrt only (diff squares)
+    simplifier.add_rule(Box::new(RationalizeNthRootBinomialRule)); // cube root and higher (geometric sum)
     simplifier.add_rule(Box::new(GeneralizedRationalizationRule));
     simplifier.add_rule(Box::new(RationalizeProductDenominatorRule));
     simplifier.add_rule(Box::new(FactorRule));

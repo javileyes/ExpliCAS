@@ -1137,25 +1137,30 @@ define_rule!(
             _ => return None,
         };
 
-        // Check for roots
-        let has_root = |e: ExprId| -> bool {
+        // Check for sqrt roots (degree 2 only - diff squares only works for sqrt)
+        // For nth roots (n >= 3), use RationalizeNthRootBinomialRule instead
+        let is_sqrt_root = |e: ExprId| -> bool {
             match ctx.get(e) {
                 Expr::Pow(_, exp) => {
                     if let Expr::Number(n) = ctx.get(*exp) {
-                        !n.is_integer()
-                    } else {
-                        false
+                        // Must be 1/2 for diff squares to work
+                        if !n.is_integer() && n.denom() == &num_bigint::BigInt::from(2) {
+                            return true;
+                        }
                     }
+                    false
                 }
                 Expr::Function(name, _) => name == "sqrt",
                 _ => false,
             }
         };
 
-        let l_root = has_root(l);
-        let r_root = has_root(r);
+        let l_sqrt = is_sqrt_root(l);
+        let r_sqrt = is_sqrt_root(r);
 
-        if !l_root && !r_root {
+        // Only apply if at least one term is a sqrt (degree 2)
+        // For cube roots and higher, skip - they need geometric sum, not conjugate
+        if !l_sqrt && !r_sqrt {
             return None;
         }
 
@@ -1185,6 +1190,161 @@ define_rule!(
         });
     }
 );
+
+// Rationalize binomial denominators with nth roots (n >= 3) using geometric sum.
+// For a^(1/n) - r, multiply by sum_{k=0}^{n-1} a^((n-1-k)/n) * r^k
+// This gives denominator a - r^n
+define_rule!(
+    RationalizeNthRootBinomialRule,
+    "Rationalize Nth Root Binomial",
+    None,
+    PhaseMask::RATIONALIZE,
+    |ctx, expr| {
+        use cas_ast::views::FractionParts;
+        use num_traits::ToPrimitive;
+
+        // Use FractionParts to detect fraction
+        let fp = FractionParts::from(&*ctx, expr);
+        if !fp.is_fraction() {
+            return None;
+        }
+
+        let (num, den, _) = fp.to_num_den(ctx);
+
+        // Match den = t ± r where t = base^(1/n) with n >= 3
+        let den_data = ctx.get(den).clone();
+        let (t, r, is_sub) = match den_data {
+            Expr::Add(l, r) => (l, r, false),
+            Expr::Sub(l, r) => (l, r, true),
+            _ => return None,
+        };
+
+        // Check if t is a^(1/n) with n >= 3
+        let (base, n) = match ctx.get(t) {
+            Expr::Pow(b, exp) => {
+                if let Expr::Number(e) = ctx.get(*exp) {
+                    // e must be 1/n with n >= 3
+                    if e.numer() == &num_bigint::BigInt::from(1) {
+                        if let Some(denom) = e.denom().to_u32() {
+                            if denom >= 3 {
+                                (*b, denom)
+                            } else {
+                                return None; // degree 2 handled by diff squares
+                            }
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None; // numerator must be 1
+                    }
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // Limit n to prevent explosion (max 8 terms)
+        if n > 8 {
+            return None;
+        }
+
+        // Build multiplier M = sum_{k=0}^{n-1} t^(n-1-k) * r^k
+        // For t - r: M = t^(n-1) + t^(n-2)*r + ... + r^(n-1)
+        // For t + r: need alternating signs for sum formula to work
+        //   (t + r)(t^(n-1) - t^(n-2)*r + ... + (-1)^(n-1)*r^(n-1)) = t^n - (-r)^n = t^n - (-1)^n * r^n
+
+        let mut m_terms: Vec<ExprId> = Vec::new();
+
+        for k in 0..n {
+            let exp_t = n - 1 - k; // exponent for t
+            let exp_r = k; // exponent for r
+
+            // Build t^exp_t = base^((n-1-k)/n)
+            let t_part = if exp_t == 0 {
+                ctx.num(1)
+            } else if exp_t == 1 {
+                t
+            } else {
+                let exp_val = num_rational::BigRational::new(
+                    num_bigint::BigInt::from(exp_t),
+                    num_bigint::BigInt::from(n),
+                );
+                let exp_node = ctx.add(Expr::Number(exp_val));
+                ctx.add(Expr::Pow(base, exp_node))
+            };
+
+            // Build r^exp_r
+            let r_part = if exp_r == 0 {
+                ctx.num(1)
+            } else if exp_r == 1 {
+                r
+            } else {
+                let exp_node = ctx.num(exp_r as i64);
+                ctx.add(Expr::Pow(r, exp_node))
+            };
+
+            // Combine t_part * r_part
+            let mut term = mul2_raw(ctx, t_part, r_part);
+
+            // For t + r case, alternate signs: (-1)^k
+            if !is_sub && k % 2 == 1 {
+                term = ctx.add(Expr::Neg(term));
+            }
+
+            m_terms.push(term);
+        }
+
+        // Build M as sum of terms
+        let multiplier = build_sum(ctx, &m_terms);
+
+        // New numerator: num * M
+        let new_num = mul2_raw(ctx, num, multiplier);
+
+        // New denominator: base - r^n (for t - r) or base - (-1)^n * r^n (for t + r)
+        let r_to_n = {
+            let exp_node = ctx.num(n as i64);
+            ctx.add(Expr::Pow(r, exp_node))
+        };
+
+        let new_den = if is_sub {
+            // (t - r) * M = t^n - r^n = base - r^n
+            ctx.add(Expr::Sub(base, r_to_n))
+        } else {
+            // (t + r) * M = t^n - (-r)^n = base - (-1)^n * r^n
+            if n % 2 == 0 {
+                // Even n: base - r^n
+                ctx.add(Expr::Sub(base, r_to_n))
+            } else {
+                // Odd n: base + r^n (since (-r)^n = -r^n)
+                ctx.add(Expr::Add(base, r_to_n))
+            }
+        };
+
+        let new_expr = ctx.add(Expr::Div(new_num, new_den));
+
+        Some(Rewrite {
+            new_expr,
+            description: format!("Rationalize {} root binomial (geometric sum)", ordinal(n)),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        })
+    }
+);
+
+/// Helper to get ordinal string for small numbers
+fn ordinal(n: u32) -> &'static str {
+    match n {
+        3 => "cube",
+        4 => "4th",
+        5 => "5th",
+        6 => "6th",
+        7 => "7th",
+        8 => "8th",
+        _ => "nth",
+    }
+}
 
 /// Collect all additive terms from an expression
 /// For a + b + c, returns vec![a, b, c]

@@ -93,3 +93,43 @@ fn test_generalized_rationalization_expands_denominator() {
         json
     );
 }
+
+/// Test: Cube root binomial should use geometric sum, not diff squares
+/// 1/(2^(1/3) - 1) should give 2^(2/3) + 2^(1/3) + 1
+#[test]
+fn test_cube_root_binomial_rationalization() {
+    let json = eval_str_to_json("1/(2^(1/3) - 1)", "{}");
+
+    // Should succeed
+    assert!(json.contains("\"ok\":true"), "Evaluation failed: {}", json);
+
+    // Must NOT leave denominator with (2^(2/3) - 1) - should be fully rationalized to 1
+    assert!(
+        !json.contains("2^(2/3) - 1") && !json.contains("- 1\""),
+        "Cube root not fully rationalized: {}",
+        json
+    );
+
+    // Should contain all three terms of the geometric sum
+    assert!(
+        json.contains("2^(1/3)") && json.contains("2^(2/3)"),
+        "Missing expected terms in result: {}",
+        json
+    );
+}
+
+/// Test: 4th root binomial rationalization  
+#[test]
+fn test_4th_root_binomial_rationalization() {
+    let json = eval_str_to_json("1/(x^(1/4) - 1)", "{}");
+
+    assert!(json.contains("\"ok\":true"), "Evaluation failed: {}", json);
+
+    // Denominator should be (x - 1), not (x^(3/4) - 1) etc
+    // The multiplier should be x^(3/4) + x^(2/4) + x^(1/4) + 1
+    assert!(
+        json.contains("x^(3/4)") || json.contains("x^(1/2)"),
+        "4th root rationalization missing expected terms: {}",
+        json
+    );
+}
