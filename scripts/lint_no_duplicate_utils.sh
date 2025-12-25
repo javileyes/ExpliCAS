@@ -35,7 +35,7 @@ WARNINGS=0
 # Canonical: cas_ast/src/hold.rs
 # Allowed: files that reference cas_ast::hold
 # -----------------------------------------------------------------------------
-echo "  [1/5] Checking strip_hold..."
+echo "  [1/7] Checking strip_hold..."
 
 for file in $(grep -rl "fn strip.*hold" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null | grep -v "cas_ast/src/hold.rs" || true); do
     if ! grep -q "cas_ast::hold::" "$file"; then
@@ -49,7 +49,7 @@ done
 # Canonical: cas_engine/src/nary.rs (AddView, add_terms_no_sign, add_terms_signed)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [2/5] Checking flatten_add..."
+echo "  [2/7] Checking flatten_add..."
 
 FLATTEN_ADD_ALLOWED=(
     "nary.rs"           # Canonical: AddView
@@ -81,7 +81,7 @@ done
 # Canonical: cas_engine/src/nary.rs (MulView, mul_factors)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [3/5] Checking flatten_mul..."
+echo "  [3/7] Checking flatten_mul..."
 
 FLATTEN_MUL_ALLOWED=(
     "views.rs"          # Canonical: MulChainView
@@ -115,7 +115,7 @@ done
 # Matches EXACT function names only (not is_one_term, is_negative_factor, etc.)
 # Allowed: canonical module or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [4/5] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
+echo "  [4/7] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
 
 PREDICATE_ALLOWED=(
     "helpers.rs"        # Canonical
@@ -160,7 +160,7 @@ done
 # -----------------------------------------------------------------------------
 # CHECK 5: __hold in output boundaries (HARD FAIL if in production JSON)
 # -----------------------------------------------------------------------------
-echo "  [5/6] Checking __hold doesn't leak to JSON output..."
+echo "  [5/7] Checking __hold doesn't leak to JSON output..."
 
 # Check test assertions to ensure we have contract tests
 if ! grep -rq "contains.*__hold" "$ROOT_DIR/crates/cas_engine/tests" 2>/dev/null; then
@@ -172,7 +172,7 @@ fi
 # CHECK 6: Builder duplicates (HARD FAIL - migration complete)
 # Canonical: MulBuilder (right-fold), Context::build_balanced_mul (balanced)
 # -----------------------------------------------------------------------------
-echo "  [6/6] Checking builders (build_mul_from_factors)..."
+echo "  [6/7] Checking builders (build_mul_from_factors)..."
 
 BUILDER_ALLOWED=(
     "views.rs"       # MulBuilder canonical
@@ -197,6 +197,38 @@ for pattern in "fn build_mul_from_factors" "fn build_balanced_mul"; do
         if [ "$is_allowed" = false ]; then
             echo -e "  ${RED}ERROR${NC}: $file defines $pattern without using canonical builder"
             echo -e "         Fix: Use MulBuilder or Context::build_balanced_mul"
+            ((ERRORS++))
+        fi
+    done
+done
+
+# -----------------------------------------------------------------------------
+# CHECK 7: Traversal duplicates (HARD FAIL - migration complete)
+# Canonical: cas_ast::traversal::{count_all_nodes, count_nodes_matching, count_nodes_and_max_depth}
+# -----------------------------------------------------------------------------
+echo "  [7/7] Checking traversal (count_nodes*)..."
+
+TRAVERSAL_ALLOWED=(
+    "traversal.rs"  # Canonical module
+)
+
+for pattern in "fn count_nodes\>" "fn count_nodes_matching" "fn count_nodes_and_depth" "fn count_nodes_and_max_depth"; do
+    for file in $(grep -rln "$pattern" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null || true); do
+        basename_file=$(basename "$file")
+        is_allowed=false
+        for allowed in "${TRAVERSAL_ALLOWED[@]}"; do
+            if [[ "$basename_file" == "$allowed" ]]; then
+                is_allowed=true
+                break
+            fi
+        done
+        # Allow files that use canonical traversal (wrappers)
+        if [ "$is_allowed" = false ] && grep -qE "(cas_ast::traversal::|crate::traversal::)" "$file"; then
+            is_allowed=true
+        fi
+        if [ "$is_allowed" = false ]; then
+            echo -e "  ${RED}ERROR${NC}: $file defines $pattern without using canonical traversal"
+            echo -e "         Fix: Use cas_ast::traversal::count_all_nodes or count_nodes_matching"
             ((ERRORS++))
         fi
     done

@@ -11,12 +11,11 @@ pub mod latex_no_roots;
 pub mod latex_parser;
 pub mod ordering; // Canonical ordering utilities
 pub mod root_style; // Style Sniffing for root notation
+pub mod traversal; // Canonical traversal utilities (count_nodes, etc.)
 pub mod views; // Unified views for pattern matching
 pub mod visitor;
 
-pub use display::{
-    count_nodes, DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr,
-};
+pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
 pub use display_context::{DisplayContext, DisplayHint};
 pub use domain::{BoundType, Interval, SolutionSet};
 pub use expression::{Constant, Context, ContextStats, Expr, ExprId, MulCommutativity};
@@ -29,6 +28,10 @@ pub use latex_parser::parse_latex;
 pub use root_style::{
     detect_root_style, ParseStyleSignals, RootStyle, StylePreferences, StyledExpr,
 };
+// Traversal re-exports (canonical implementations)
+pub use traversal::{count_all_nodes, count_nodes_and_max_depth, count_nodes_matching};
+// Legacy alias for backward compatibility
+pub use traversal::count_all_nodes as count_nodes;
 pub use visitor::{Transformer, Visitor};
 
 // use std::rc::Rc; // Removed Rc usage

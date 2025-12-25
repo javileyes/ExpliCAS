@@ -17,29 +17,12 @@ pub fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
     BigRational::one()
 }
 
+/// Count nodes of a specific variant type.
+///
+/// Uses canonical `cas_ast::traversal::count_nodes_matching` with variant name predicate.
+/// (See POLICY.md "Traversal Contract")
 pub fn count_nodes_of_type(ctx: &Context, expr: ExprId, variant: &str) -> usize {
-    let mut count = 0;
-    let mut stack = vec![expr];
-    while let Some(id) = stack.pop() {
-        let node = ctx.get(id);
-        if get_variant_name(node) == variant {
-            count += 1;
-        }
-        match node {
-            Expr::Add(l, r)
-            | Expr::Sub(l, r)
-            | Expr::Mul(l, r)
-            | Expr::Div(l, r)
-            | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(e) => stack.push(*e),
-            Expr::Function(_, args) => stack.extend(args),
-            _ => {}
-        }
-    }
-    count
+    cas_ast::traversal::count_nodes_matching(ctx, expr, |node| get_variant_name(node) == variant)
 }
 
 /// Create a Mul but avoid trivial 1*x or x*1.

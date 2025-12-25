@@ -297,3 +297,32 @@ Two canonical builders serve different use cases.
 The CI lint `scripts/lint_no_duplicate_utils.sh` will **FAIL** if:
 - A file defines `fn build_mul_from_factors*` without using `MulBuilder`
 - A file defines `fn build_balanced_mul` without delegating to canonical
+
+---
+
+## Traversal Contract (Added 2025-12)
+
+### Purpose
+
+Traversal utilities for counting nodes and computing metrics.
+Stack-safe (iterative) implementations prevent stack overflow on deep trees.
+
+### Canonical Implementations
+
+| Function | Location | Use Case |
+|----------|----------|----------|
+| `count_all_nodes` | `cas_ast::traversal` | Simple node count |
+| `count_nodes_matching` | `cas_ast::traversal` | Count with predicate |
+| `count_nodes_and_max_depth` | `cas_ast::traversal` | Count + depth metrics |
+
+### Contribution Rules
+
+1. **For simple counting**: Use `count_all_nodes(ctx, root)`
+2. **For filtered counting**: Use `count_nodes_matching(ctx, root, |e| predicate)`
+3. **For complexity metrics**: Use `count_nodes_and_max_depth(ctx, root)`
+4. **Wrappers must call canonical** - local functions must delegate
+
+### Lint Enforcement
+
+The CI lint `scripts/lint_no_duplicate_utils.sh` will **FAIL** if:
+- A file defines `fn count_nodes*` without using `cas_ast::traversal::`

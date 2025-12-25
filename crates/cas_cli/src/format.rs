@@ -35,49 +35,12 @@ pub fn expr_stats(ctx: &Context, expr: ExprId) -> ExprStatsJson {
     ExprStatsJson { node_count, depth }
 }
 
-/// Recursively count nodes and compute max depth.
-fn count_nodes_and_depth(ctx: &Context, expr: ExprId, current_depth: usize) -> (usize, usize) {
-    let mut count = 1;
-    let mut max_depth = current_depth;
-
-    match ctx.get(expr) {
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {
-            // Leaf nodes
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            let (lc, ld) = count_nodes_and_depth(ctx, *l, current_depth + 1);
-            let (rc, rd) = count_nodes_and_depth(ctx, *r, current_depth + 1);
-            count += lc + rc;
-            max_depth = max_depth.max(ld).max(rd);
-        }
-        Expr::Neg(inner) => {
-            let (ic, id) = count_nodes_and_depth(ctx, *inner, current_depth + 1);
-            count += ic;
-            max_depth = max_depth.max(id);
-        }
-        Expr::Function(_, args) => {
-            for arg in args {
-                let (ac, ad) = count_nodes_and_depth(ctx, *arg, current_depth + 1);
-                count += ac;
-                max_depth = max_depth.max(ad);
-            }
-        }
-        Expr::Matrix {
-            rows,
-            cols: _,
-            data,
-        } => {
-            for i in 0..*rows {
-                for elem in data.iter().skip(i) {
-                    let (ec, ed) = count_nodes_and_depth(ctx, *elem, current_depth + 1);
-                    count += ec;
-                    max_depth = max_depth.max(ed);
-                }
-            }
-        }
-    }
-
-    (count, max_depth)
+/// Compute nodes and max depth.
+///
+/// Wrapper calling canonical `cas_ast::traversal::count_nodes_and_max_depth`.
+/// (See POLICY.md "Traversal Contract")
+fn count_nodes_and_depth(ctx: &Context, expr: ExprId, _current_depth: usize) -> (usize, usize) {
+    cas_ast::traversal::count_nodes_and_max_depth(ctx, expr)
 }
 
 /// Compute a simple hash of an expression for identity comparison.

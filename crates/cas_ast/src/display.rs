@@ -964,18 +964,16 @@ fn polynomial_degree(ctx: &Context, id: ExprId) -> i32 {
     }
 }
 
+/// Count all nodes in an expression tree.
+///
+/// Wrapper calling canonical `crate::traversal::count_all_nodes`.
+/// (See POLICY.md "Traversal Contract")
+#[deprecated(
+    since = "0.1.0",
+    note = "Use crate::traversal::count_all_nodes instead"
+)]
 pub fn count_nodes(context: &Context, id: ExprId) -> usize {
-    match context.get(id) {
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            1 + count_nodes(context, *l) + count_nodes(context, *r)
-        }
-        Expr::Neg(e) => 1 + count_nodes(context, *e),
-        Expr::Function(_, args) => 1 + args.iter().map(|a| count_nodes(context, *a)).sum::<usize>(),
-        Expr::Matrix { data, .. } => {
-            1 + data.iter().map(|e| count_nodes(context, *e)).sum::<usize>()
-        }
-        _ => 1,
-    }
+    crate::traversal::count_all_nodes(context, id)
 }
 
 pub struct RawDisplayExpr<'a> {

@@ -425,34 +425,15 @@ pub fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
     count
 }
 
-/// Count nodes matching a predicate
+/// Count nodes matching a predicate.
+///
+/// Wrapper calling canonical `cas_ast::traversal::count_nodes_matching`.
+/// (See POLICY.md "Traversal Contract")
 pub fn count_nodes_matching<F>(ctx: &Context, expr: ExprId, pred: F) -> usize
 where
-    F: Fn(&Expr) -> bool,
+    F: FnMut(&Expr) -> bool,
 {
-    let mut count = 0;
-    let mut stack = vec![expr];
-    while let Some(id) = stack.pop() {
-        let node = ctx.get(id);
-        if pred(node) {
-            count += 1;
-        }
-        match node {
-            Expr::Add(l, r)
-            | Expr::Sub(l, r)
-            | Expr::Mul(l, r)
-            | Expr::Div(l, r)
-            | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(e) => stack.push(*e),
-            Expr::Function(_, args) => stack.extend(args),
-            Expr::Matrix { data, .. } => stack.extend(data),
-            _ => {}
-        }
-    }
-    count
+    cas_ast::traversal::count_nodes_matching(ctx, expr, pred)
 }
 
 /// Score expression for normal form quality (lower is better).
