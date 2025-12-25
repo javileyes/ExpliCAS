@@ -735,11 +735,11 @@ use crate::error::ParseError;
 
 pub fn parse(input: &str, ctx: &mut Context) -> Result<ExprId, ParseError> {
     let (remaining, expr_node) =
-        parse_expr(input).map_err(|e| ParseError::NomError(format!("{}", e)))?;
+        parse_expr(input).map_err(|e| ParseError::from_nom_error(format!("{}", e)))?;
 
     let remaining = remaining.trim();
     if !remaining.is_empty() {
-        return Err(ParseError::UnconsumedInput(remaining.to_string()));
+        return Err(ParseError::unconsumed(remaining));
     }
 
     Ok(expr_node.lower(ctx))
@@ -765,10 +765,10 @@ pub fn parse_statement(input: &str, ctx: &mut Context) -> Result<Statement, Pars
             if remaining.trim().is_empty() {
                 Ok(Statement::Expression(expr_node.lower(ctx)))
             } else {
-                Err(ParseError::UnconsumedInput(remaining.to_string()))
+                Err(ParseError::unconsumed(remaining))
             }
         }
-        Err(e) => Err(ParseError::NomError(format!("{}", e))),
+        Err(e) => Err(ParseError::from_nom_error(format!("{}", e))),
     }
 }
 

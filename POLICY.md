@@ -326,3 +326,72 @@ Stack-safe (iterative) implementations prevent stack overflow on deep trees.
 
 The CI lint `scripts/lint_no_duplicate_utils.sh` will **FAIL** if:
 - A file defines `fn count_nodes*` without using `cas_ast::traversal::`
+
+---
+
+## Error API Stability Contract (Added 2025-12)
+
+### Purpose
+
+Unified error handling for engine, CLI, and FFI with stable codes for UI routing.
+
+### Canonical Types
+
+| Type | Location | Purpose |
+|------|----------|---------|
+| `Span` | `cas_ast::Span` | Source location (byte offsets) |
+| `ParseError` | `cas_parser::ParseError` | Parse failures with span |
+| `CasError` | `cas_engine::CasError` | Unified engine error |
+
+### Stable API Methods
+
+All `CasError` instances provide:
+
+| Method | Returns | Stability |
+|--------|---------|-----------|
+| `kind()` | `&'static str` | **STABLE** - do not change |
+| `code()` | `&'static str` | **STABLE** - do not change |
+| `budget_details()` | `Option<&BudgetExceeded>` | Stable |
+
+### Error Kinds (Stable)
+
+| Kind | Description |
+|------|-------------|
+| `ParseError` | Input parsing failed |
+| `DomainError` | Mathematical domain violation |
+| `SolverError` | Equation solving failed |
+| `BudgetExceeded` | Resource limit hit |
+| `NotImplemented` | Feature not available |
+| `InternalError` | Bug in the engine |
+
+### Error Codes (Stable)
+
+All codes start with `E_`:
+
+| Code | Meaning |
+|------|---------|
+| `E_PARSE` | Parse error |
+| `E_DIV_ZERO` | Division by zero |
+| `E_VAR_NOT_FOUND` | Variable not found |
+| `E_BUDGET` | Budget exceeded |
+| `E_NOT_IMPL` | Not implemented |
+| `E_INTERNAL` | Internal error |
+
+### JSON Contract
+
+When serializing errors to JSON:
+
+```json
+{
+  "ok": false,
+  "kind": "DomainError",
+  "code": "E_DIV_ZERO",
+  "message": "division by zero",
+  "span": { "start": 5, "end": 10 },
+  "details": null
+}
+```
+
+- `kind` and `code` are stable and must not change
+- `message` is human-readable and may change
+- `details` is extensible (new keys may be added)

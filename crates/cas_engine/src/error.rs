@@ -46,6 +46,12 @@ impl From<budget::BudgetExceeded> for CasError {
     }
 }
 
+impl From<cas_parser::ParseError> for CasError {
+    fn from(e: cas_parser::ParseError) -> Self {
+        CasError::ParseError(e.to_string())
+    }
+}
+
 impl CasError {
     /// Create a BudgetExceeded error from operation and metric with default usage info.
     /// Convenience for migration from old code.
@@ -56,6 +62,69 @@ impl CasError {
             used: 0,
             limit: 0,
         })
+    }
+
+    // =========================================================================
+    // Stable Error API (kind/code/span)
+    // See POLICY.md "Error API Stability Contract"
+    // =========================================================================
+
+    /// Stable error kind for JSON/UI routing.
+    ///
+    /// # Stability Contract
+    ///
+    /// These values are **stable** and will not change between minor versions:
+    /// - `ParseError` - Input parsing failed
+    /// - `DomainError` - Mathematical domain violation
+    /// - `SolverError` - Equation solving failed
+    /// - `BudgetExceeded` - Resource limit hit
+    /// - `NotImplemented` - Feature not available
+    /// - `InternalError` - Bug in the engine
+    pub fn kind(&self) -> &'static str {
+        match self {
+            CasError::ParseError(_) => "ParseError",
+            CasError::VariableNotFound(_) => "DomainError",
+            CasError::IsolationError(_, _) => "SolverError",
+            CasError::UnknownFunction(_) => "DomainError",
+            CasError::SolverError(_) => "SolverError",
+            CasError::PolynomialError(_) => "DomainError",
+            CasError::DivisionByZero => "DomainError",
+            CasError::InvalidMatrix { .. } => "DomainError",
+            CasError::ConversionFailed { .. } => "DomainError",
+            CasError::BudgetExceeded(_) => "BudgetExceeded",
+            CasError::NotImplemented { .. } => "NotImplemented",
+            CasError::InternalError(_) => "InternalError",
+        }
+    }
+
+    /// Stable error code for UI mapping.
+    ///
+    /// # Stability Contract
+    ///
+    /// Codes start with `E_` and are **stable** between minor versions.
+    pub fn code(&self) -> &'static str {
+        match self {
+            CasError::ParseError(_) => "E_PARSE",
+            CasError::VariableNotFound(_) => "E_VAR_NOT_FOUND",
+            CasError::IsolationError(_, _) => "E_ISOLATION",
+            CasError::UnknownFunction(_) => "E_UNKNOWN_FUNC",
+            CasError::SolverError(_) => "E_SOLVER",
+            CasError::PolynomialError(_) => "E_POLYNOMIAL",
+            CasError::DivisionByZero => "E_DIV_ZERO",
+            CasError::InvalidMatrix { .. } => "E_MATRIX",
+            CasError::ConversionFailed { .. } => "E_CONVERSION",
+            CasError::BudgetExceeded(_) => "E_BUDGET",
+            CasError::NotImplemented { .. } => "E_NOT_IMPL",
+            CasError::InternalError(_) => "E_INTERNAL",
+        }
+    }
+
+    /// Get budget details if this is a BudgetExceeded error.
+    pub fn budget_details(&self) -> Option<&budget::BudgetExceeded> {
+        match self {
+            CasError::BudgetExceeded(b) => Some(b),
+            _ => None,
+        }
     }
 }
 
@@ -146,5 +215,135 @@ mod tests {
             }
             _ => panic!("Expected BudgetExceeded, got: {:?}", cas_err),
         }
+    }
+
+    // =========================================================================
+    // Stability tests for kind/code API (Error API Stability Contract)
+    // =========================================================================
+
+    #[test]
+    fn test_error_kind_stable() {
+        // These kind values are STABLE and must not change
+        assert_eq!(CasError::ParseError("x".into()).kind(), "ParseError");
+        assert_eq!(CasError::DivisionByZero.kind(), "DomainError");
+        assert_eq!(CasError::VariableNotFound("x".into()).kind(), "DomainError");
+        assert_eq!(CasError::SolverError("x".into()).kind(), "SolverError");
+        assert_eq!(
+            CasError::NotImplemented {
+                feature: "x".into()
+            }
+            .kind(),
+            "NotImplemented"
+        );
+        assert_eq!(CasError::InternalError("x".into()).kind(), "InternalError");
+
+        let budget_err = CasError::BudgetExceeded(BudgetExceeded {
+            op: Operation::Expand,
+            metric: Metric::TermsMaterialized,
+            used: 0,
+            limit: 0,
+        });
+        assert_eq!(budget_err.kind(), "BudgetExceeded");
+    }
+
+    #[test]
+    fn test_error_code_stable() {
+        // These code values are STABLE and must not change
+        assert_eq!(CasError::ParseError("x".into()).code(), "E_PARSE");
+        assert_eq!(CasError::DivisionByZero.code(), "E_DIV_ZERO");
+        assert_eq!(
+            CasError::VariableNotFound("x".into()).code(),
+            "E_VAR_NOT_FOUND"
+        );
+        assert_eq!(CasError::SolverError("x".into()).code(), "E_SOLVER");
+        assert_eq!(
+            CasError::NotImplemented {
+                feature: "x".into()
+            }
+            .code(),
+            "E_NOT_IMPL"
+        );
+        assert_eq!(CasError::InternalError("x".into()).code(), "E_INTERNAL");
+
+        let budget_err = CasError::BudgetExceeded(BudgetExceeded {
+            op: Operation::Expand,
+            metric: Metric::TermsMaterialized,
+            used: 0,
+            limit: 0,
+        });
+        assert_eq!(budget_err.code(), "E_BUDGET");
+    }
+
+    #[test]
+    fn test_error_code_prefix() {
+        // All codes must start with E_
+        let errors: Vec<CasError> = vec![
+            CasError::ParseError("x".into()),
+            CasError::DivisionByZero,
+            CasError::VariableNotFound("x".into()),
+            CasError::InternalError("x".into()),
+        ];
+
+        for e in errors {
+            assert!(
+                e.code().starts_with("E_"),
+                "Code {} must start with E_",
+                e.code()
+            );
+        }
+    }
+
+    #[test]
+    fn test_error_kind_known_set() {
+        // kind() must return one of the known values
+        let valid_kinds = [
+            "ParseError",
+            "DomainError",
+            "SolverError",
+            "BudgetExceeded",
+            "NotImplemented",
+            "InternalError",
+        ];
+
+        let errors: Vec<CasError> = vec![
+            CasError::ParseError("x".into()),
+            CasError::DivisionByZero,
+            CasError::VariableNotFound("x".into()),
+            CasError::InternalError("x".into()),
+        ];
+
+        for e in errors {
+            assert!(
+                valid_kinds.contains(&e.kind()),
+                "Unknown kind: {}",
+                e.kind()
+            );
+        }
+    }
+
+    #[test]
+    fn test_budget_details_accessor() {
+        let budget_err = CasError::BudgetExceeded(BudgetExceeded {
+            op: Operation::Expand,
+            metric: Metric::TermsMaterialized,
+            used: 100,
+            limit: 50,
+        });
+
+        let details = budget_err.budget_details().unwrap();
+        assert_eq!(details.used, 100);
+        assert_eq!(details.limit, 50);
+
+        // Non-budget errors should return None
+        assert!(CasError::DivisionByZero.budget_details().is_none());
+    }
+
+    #[test]
+    fn test_parse_error_conversion() {
+        let parse_err = cas_parser::ParseError::syntax("unexpected token");
+        let cas_err: CasError = parse_err.into();
+
+        assert_eq!(cas_err.kind(), "ParseError");
+        assert_eq!(cas_err.code(), "E_PARSE");
     }
 }
