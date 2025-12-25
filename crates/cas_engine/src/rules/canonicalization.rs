@@ -1,6 +1,7 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::ordering::compare_expr;
+use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::Expr;
@@ -585,35 +586,49 @@ define_rule!(
     }
 );
 
-// Rule: -(a - b) → (b - a) for cleaner display
-// This is the flip of negative binomials: when we have Neg(Add(a, Neg(b)))
-// which represents -(a - b), convert it to (b - a) = Add(b, Neg(a))
-// This produces cleaner output like "√2 - 1" instead of "-(1 - √2)"
-define_rule!(NegSubFlipRule, "Flip Negative Subtraction", |ctx, expr| {
-    // Pattern: Neg(Add(a, Neg(b))) → Add(b, Neg(a))
-    // This represents -(a - b) → (b - a)
-    if let Expr::Neg(inner) = ctx.get(expr) {
+// Rule: -(a - b) → (b - a) ONLY when inner is non-canonical (a > b)
+// This prevents the 2-cycle with NormalizeBinomialOrderRule:
+// - Normalize: (a-b) → -(b-a) when a > b (produces canonical inner with b < a)
+// - Flip: -(a-b) → (b-a) ONLY when a > b (inner is non-canonical)
+// Since a > b and b < a are mutually exclusive, no cycle can occur.
+define_rule!(
+    NegSubFlipRule,
+    "Flip Negative Subtraction",
+    None,
+    PhaseMask::CORE | PhaseMask::TRANSFORM,
+    importance: crate::step::ImportanceLevel::Low,
+    |ctx, expr| {
+        use std::cmp::Ordering;
+
+        let Expr::Neg(inner) = ctx.get(expr) else { return None; };
         let inner_id = *inner;
-        if let Expr::Add(a, neg_b_wrapped) = ctx.get(inner_id) {
-            if let Expr::Neg(b) = ctx.get(*neg_b_wrapped) {
-                // We have -(a + (-b)) = -(a - b)
-                // Convert to: b + (-a) = b - a
-                let a_id = *a;
-                let b_id = *b;
-                let neg_a = ctx.add(Expr::Neg(a_id));
-                let new_expr = ctx.add(Expr::Add(b_id, neg_a));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "-(a - b) → (b - a)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
-            }
+
+        // Use as_sub_like to handle both Sub(a,b) and Add(a, Neg(b))
+        // Note: can't use `?` operator inside define_rule! closure
+        #[allow(clippy::question_mark)]
+        let (a, b) = match as_sub_like(ctx, inner_id) {
+            Some(pair) => pair,
+            None => return None,
+        };
+
+        // Guard: only flip if the inner subtraction is NON-canonical (a > b)
+        // If a <= b, the inner is already canonical, so don't flip
+        if crate::ordering::compare_expr(ctx, a, b) != Ordering::Greater {
+            return None;
         }
+
+        // -(a-b) where a > b => (b-a) which is canonical form
+        let new_expr = build_sub_like(ctx, b, a);
+
+        Some(Rewrite {
+            new_expr,
+            description: "-(a - b) → (b - a) (canonical orientation)".to_string(),
+            before_local: Some(inner_id),
+            after_local: Some(new_expr),
+            domain_assumption: None,
+        })
     }
-    None
-});
+);
 
 /// Detect (a - b) represented as Sub(a,b) or Add(a, Neg(b)) or Add(Neg(b), a)
 /// Returns Some((a, b)) where the expression represents a - b
@@ -638,6 +653,16 @@ fn as_sub_like(
     }
 }
 
+/// Build (a - b) in the canonical sub-like form: Add(a, Neg(b))
+/// This ensures all rules construct subtraction consistently
+fn build_sub_like(
+    ctx: &mut cas_ast::Context,
+    a: cas_ast::ExprId,
+    b: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let neg_b = ctx.add(Expr::Neg(b));
+    ctx.add(Expr::Add(a, neg_b))
+}
 // Rule: (-k) * (...) * (a - b) → k * (...) * (b - a) when k > 0
 // This produces cleaner output like "1/2 * x * (√2 - 1)" instead of "-1/2 * x * (1 - √2)"
 // No loop risk: produces positive coefficient which won't match again
@@ -726,7 +751,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CanonicalizeDivRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(NormalizeSignsRule));
-    // NormalizeBinomialOrderRule disabled - still causes loop even with guard
+    // NormalizeBinomialOrderRule DISABLED - causes stack overflow in asin_acos tests
+    // even with guarded NegSubFlipRule. The cycle likely involves other rules.
+    // EvenPowSubSwapRule handles the specific (x-y)^2 - (y-x)^2 = 0 case safely.
     // simplifier.add_rule(Box::new(NormalizeBinomialOrderRule));
     simplifier.add_rule(Box::new(NegSubFlipRule)); // -(a-b) → (b-a) only when a > b
     simplifier.add_rule(Box::new(NegCoeffFlipBinomialRule)); // (-k)*(a-b) → k*(b-a)
