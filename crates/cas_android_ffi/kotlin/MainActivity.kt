@@ -22,17 +22,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Demo Activity for ExpliCAS engine integration with steps display.
+ * Demo Activity for ExpliCAS engine integration.
+ * 
+ * Uses JSON schema v1 from cas_engine::json.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var editExpression: EditText
     private lateinit var btnEvaluate: Button
     private lateinit var txtResult: TextView
-    private lateinit var txtTimings: TextView
+    private lateinit var txtStatus: TextView
     private lateinit var spinnerPreset: Spinner
     private lateinit var switchStrict: SwitchCompat
-    private lateinit var switchShowAllSteps: SwitchCompat
+    private lateinit var switchShowSteps: SwitchCompat
     private lateinit var txtAbiVersion: TextView
     private lateinit var recyclerSteps: RecyclerView
     private lateinit var stepsAdapter: StepsAdapter
@@ -45,10 +47,10 @@ class MainActivity : AppCompatActivity() {
         editExpression = findViewById(R.id.editExpression)
         btnEvaluate = findViewById(R.id.btnEvaluate)
         txtResult = findViewById(R.id.txtResult)
-        txtTimings = findViewById(R.id.txtTimings)
+        txtStatus = findViewById(R.id.txtTimings) // Reusing as status
         spinnerPreset = findViewById(R.id.spinnerPreset)
         switchStrict = findViewById(R.id.switchStrict)
-        switchShowAllSteps = findViewById(R.id.switchShowAllSteps)
+        switchShowSteps = findViewById(R.id.switchShowAllSteps)
         txtAbiVersion = findViewById(R.id.txtAbiVersion)
         recyclerSteps = findViewById(R.id.recyclerSteps)
 
@@ -58,7 +60,7 @@ class MainActivity : AppCompatActivity() {
         recyclerSteps.adapter = stepsAdapter
 
         // Setup preset spinner
-        val presets = arrayOf("standard", "small", "unlimited")
+        val presets = arrayOf("cli", "small", "unlimited")
         spinnerPreset.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, presets)
 
         // Show ABI version
@@ -74,11 +76,6 @@ class MainActivity : AppCompatActivity() {
             evaluate(expr)
         }
 
-        // Toggle steps filter
-        switchShowAllSteps.setOnCheckedChangeListener { _, _ ->
-            stepsAdapter.notifyDataSetChanged()
-        }
-
         // Set default expression for testing
         editExpression.setText("x^2 + 2*x + 1")
     }
@@ -86,29 +83,30 @@ class MainActivity : AppCompatActivity() {
     private fun evaluate(expr: String) {
         val preset = spinnerPreset.selectedItem.toString()
         val mode = if (switchStrict.isChecked) "strict" else "best-effort"
+        val includeSteps = switchShowSteps.isChecked
 
         txtResult.text = "Evaluating..."
-        txtTimings.text = ""
+        txtStatus.text = ""
         stepsAdapter.setSteps(emptyList())
         btnEvaluate.isEnabled = false
 
         lifecycleScope.launch(Dispatchers.Default) {
             val evalResult = try {
-                evalAndParse(expr, preset, mode)
+                evalAndParse(expr, preset, mode, includeSteps)
             } catch (e: Exception) {
-                EvalResult.Error("Exception: ${e.message}")
+                EvalResult.Error("E_INTERNAL", "Exception: ${e.message}")
             }
 
             withContext(Dispatchers.Main) {
                 when (evalResult) {
                     is EvalResult.Success -> {
                         txtResult.text = evalResult.result
-                        txtTimings.text = "(${evalResult.totalUs}µs)"
-                        stepsAdapter.setSteps(evalResult.steps, switchShowAllSteps.isChecked)
+                        txtStatus.text = if (evalResult.isPartial) "⚠️ Partial result" else ""
+                        stepsAdapter.setSteps(evalResult.steps)
                     }
                     is EvalResult.Error -> {
-                        txtResult.text = evalResult.message
-                        txtTimings.text = ""
+                        txtResult.text = "${evalResult.code}: ${evalResult.message}"
+                        txtStatus.text = ""
                         stepsAdapter.setSteps(emptyList())
                     }
                 }
@@ -118,88 +116,91 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Parse JSON response into structured result
+     * Parse JSON response into structured result.
+     * Uses schema v1 from cas_engine::json.
      */
-    private fun evalAndParse(expr: String, preset: String, mode: String): EvalResult {
-        val optsJson = """{"budget":{"preset":"$preset","mode":"$mode"}}"""
+    private fun evalAndParse(expr: String, preset: String, mode: String, steps: Boolean): EvalResult {
+        val optsJson = """{"budget":{"preset":"$preset","mode":"$mode"},"steps":$steps}"""
         val json = CasNative.evalJson(expr, optsJson)
         val obj = JSONObject(json)
 
-        if (obj.optInt("schema_version", 0) != 1) {
-            return EvalResult.Error("Unexpected schema version")
+        val schemaVersion = obj.optInt("schema_version", 0)
+        if (schemaVersion != 1) {
+            return EvalResult.Error("E_SCHEMA", "Unexpected schema version: $schemaVersion")
         }
 
-        val ok = obj.optBoolean("ok", true)
+        val ok = obj.optBoolean("ok", false)
 
         return if (ok) {
-            val result = obj.optString("result", "NO_RESULT")
-            val timings = obj.optJSONObject("timings_us")
-            val totalUs = timings?.optLong("total_us", 0) ?: 0
+            val result = obj.optString("result", "")
             val stepsArray = obj.optJSONArray("steps") ?: JSONArray()
-            val steps = parseSteps(stepsArray)
-            EvalResult.Success(result, totalUs, steps)
+            val stepsList = parseSteps(stepsArray)
+            
+            // Check for partial result (budget exceeded in best-effort)
+            val budget = obj.optJSONObject("budget")
+            val isPartial = budget?.has("exceeded") == true && budget.optJSONObject("exceeded") != null
+            
+            EvalResult.Success(result, stepsList, isPartial)
         } else {
             val error = obj.optJSONObject("error")
-            val kind = error?.optString("kind", "Unknown") ?: "Unknown"
-            val message = error?.optString("message", "No message") ?: "No message"
-            EvalResult.Error("ERROR ($kind): $message")
+            val code = error?.optString("code", "E_UNKNOWN") ?: "E_UNKNOWN"
+            val message = error?.optString("message", "Unknown error") ?: "Unknown error"
+            EvalResult.Error(code, message)
         }
     }
 
+    /**
+     * Parse steps array from new schema (phase/rule/before/after).
+     */
     private fun parseSteps(array: JSONArray): List<Step> {
         val steps = mutableListOf<Step>()
         for (i in 0 until array.length()) {
             val obj = array.getJSONObject(i)
             steps.add(Step(
-                index = obj.optInt("index", i + 1),
+                index = i + 1,
+                phase = obj.optString("phase", ""),
                 rule = obj.optString("rule", ""),
-                description = obj.optString("description", ""),
-                before = obj.optString("before", null),
-                after = obj.optString("after", null),
-                importance = obj.optString("importance", "medium"),
-                domainAssumption = obj.optString("domain_assumption", null)
+                before = obj.optString("before", ""),
+                after = obj.optString("after", "")
             ))
         }
         return steps
     }
 
     // ========================================================================
-    // Data classes
+    // Data classes (matching schema v1)
     // ========================================================================
 
     sealed class EvalResult {
-        data class Success(val result: String, val totalUs: Long, val steps: List<Step>) : EvalResult()
-        data class Error(val message: String) : EvalResult()
+        data class Success(
+            val result: String,
+            val steps: List<Step>,
+            val isPartial: Boolean = false
+        ) : EvalResult()
+        
+        data class Error(
+            val code: String,
+            val message: String
+        ) : EvalResult()
     }
 
     data class Step(
         val index: Int,
+        val phase: String,
         val rule: String,
-        val description: String,
-        val before: String?,
-        val after: String?,
-        val importance: String,
-        val domainAssumption: String?
-    ) {
-        fun shouldShow(showAll: Boolean): Boolean {
-            return showAll || importance in listOf("medium", "high")
-        }
-    }
+        val before: String,
+        val after: String
+    )
 
     // ========================================================================
     // RecyclerView Adapter
     // ========================================================================
 
     inner class StepsAdapter : RecyclerView.Adapter<StepsAdapter.StepViewHolder>() {
-        private var allSteps: List<Step> = emptyList()
-        private var showAll: Boolean = false
+        private var steps: List<Step> = emptyList()
 
-        private val filteredSteps: List<Step>
-            get() = allSteps.filter { it.shouldShow(showAll) }
-
-        fun setSteps(steps: List<Step>, showAllSteps: Boolean = false) {
-            allSteps = steps
-            showAll = showAllSteps
+        fun setSteps(newSteps: List<Step>) {
+            steps = newSteps
             notifyDataSetChanged()
         }
 
@@ -210,10 +211,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onBindViewHolder(holder: StepViewHolder, position: Int) {
-            holder.bind(filteredSteps[position])
+            holder.bind(steps[position])
         }
 
-        override fun getItemCount(): Int = filteredSteps.size
+        override fun getItemCount(): Int = steps.size
 
         inner class StepViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
             private val txtStepIndex: TextView = itemView.findViewById(R.id.txtStepIndex)
@@ -226,19 +227,10 @@ class MainActivity : AppCompatActivity() {
             fun bind(step: Step) {
                 txtStepIndex.text = step.index.toString()
                 txtRule.text = step.rule
-                txtDescription.text = step.description
-
-                // Color by importance
-                val color = when (step.importance) {
-                    "high" -> ContextCompat.getColor(itemView.context, android.R.color.holo_blue_dark)
-                    "medium" -> ContextCompat.getColor(itemView.context, android.R.color.holo_green_dark)
-                    "low" -> ContextCompat.getColor(itemView.context, android.R.color.darker_gray)
-                    else -> ContextCompat.getColor(itemView.context, android.R.color.tertiary_text_light)
-                }
-                txtStepIndex.setTextColor(color)
-
+                txtDescription.text = step.phase
+                
                 // Before/After
-                if (step.before != null && step.after != null) {
+                if (step.before.isNotEmpty() && step.after.isNotEmpty()) {
                     txtBefore.text = step.before
                     txtAfter.text = step.after
                     txtBefore.visibility = View.VISIBLE
@@ -248,13 +240,8 @@ class MainActivity : AppCompatActivity() {
                     txtAfter.visibility = View.GONE
                 }
 
-                // Domain assumption
-                if (step.domainAssumption != null) {
-                    txtDomainAssumption.text = "⚠️ ${step.domainAssumption}"
-                    txtDomainAssumption.visibility = View.VISIBLE
-                } else {
-                    txtDomainAssumption.visibility = View.GONE
-                }
+                // Hide domain assumption (not in new schema)
+                txtDomainAssumption.visibility = View.GONE
             }
         }
     }

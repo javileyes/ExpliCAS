@@ -3,9 +3,12 @@ package es.javiergimenez.explicas
 /**
  * JNI bridge to ExpliCAS native library.
  *
+ * Schema version: 1
+ * ABI version: 2
+ *
  * Usage:
  * ```kotlin
- * val result = CasNative.evalJson("x^2+1", """{"budget":{"preset":"standard"}}""")
+ * val result = CasNative.evalJson("x^2+1", """{"budget":{"preset":"cli"}}""")
  * val version = CasNative.abiVersion()
  * ```
  */
@@ -18,7 +21,7 @@ object CasNative {
      * Returns the ABI version of the native library.
      * Use for diagnostics and version mismatch detection.
      *
-     * @return ABI version (currently 1)
+     * @return ABI version (currently 2)
      */
     external fun abiVersion(): Int
 
@@ -33,10 +36,11 @@ object CasNative {
      * ```json
      * {
      *   "budget": {
-     *     "preset": "standard",     // "small", "standard", or "unlimited"
-     *     "mode": "best-effort" // "strict" or "best-effort"
+     *     "preset": "cli",        // "small", "cli", "unlimited"
+     *     "mode": "best-effort"   // "strict" or "best-effort"
      *   },
-     *   "pretty": true
+     *   "steps": false,
+     *   "pretty": false
      * }
      * ```
      *
@@ -45,10 +49,10 @@ object CasNative {
      * {
      *   "schema_version": 1,
      *   "ok": true,
-     *   "input": "x^2+1",
-     *   "result": "1 + x²",
-     *   "budget": { "preset": "standard", "mode": "best-effort" },
-     *   "timings_us": { "parse_us": 100, "simplify_us": 500, "total_us": 600 }
+     *   "result": "x² + 1",
+     *   "budget": { "preset": "cli", "mode": "best-effort" },
+     *   "steps": [],
+     *   "warnings": []
      * }
      * ```
      *
@@ -57,10 +61,16 @@ object CasNative {
      * {
      *   "schema_version": 1,
      *   "ok": false,
-     *   "error": { "kind": "ParseError", "message": "..." },
-     *   "budget": { "preset": "standard", "mode": "best-effort" }
+     *   "error": {
+     *     "kind": "ParseError",
+     *     "code": "E_PARSE",
+     *     "message": "unexpected token"
+     *   },
+     *   "budget": { "preset": "cli", "mode": "best-effort" }
      * }
      * ```
+     *
+     * See docs/JSON_API_SPEC.md for full schema.
      */
     external fun evalJson(expr: String, optsJson: String): String
 }
