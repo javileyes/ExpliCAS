@@ -726,8 +726,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CanonicalizeDivRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(NormalizeSignsRule));
-    // NormalizeBinomialOrderRule disabled - causes infinite loop with other rules
-    simplifier.add_rule(Box::new(NegSubFlipRule)); // -(a-b) → (b-a) for cleaner display
+    // NormalizeBinomialOrderRule disabled - still causes loop even with guard
+    // simplifier.add_rule(Box::new(NormalizeBinomialOrderRule));
+    simplifier.add_rule(Box::new(NegSubFlipRule)); // -(a-b) → (b-a) only when a > b
     simplifier.add_rule(Box::new(NegCoeffFlipBinomialRule)); // (-k)*(a-b) → k*(b-a)
 }
 

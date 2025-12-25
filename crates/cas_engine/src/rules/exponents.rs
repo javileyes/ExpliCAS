@@ -790,6 +790,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PowerProductRule));
     simplifier.add_rule(Box::new(PowerQuotientRule));
     simplifier.add_rule(Box::new(NegativeBasePowerRule));
+    simplifier.add_rule(Box::new(EvenPowSubSwapRule)); // (b-a)^even → (a-b)^even
 }
 
 define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
@@ -829,6 +830,73 @@ define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
     }
     None
 });
+
+// Canonicalize bases in even powers: (b-a)^even → (a-b)^even when a < b
+// This allows (x-y)^2 - (y-x)^2 to simplify to 0
+// IMPORTANT: Does NOT introduce Neg - just swaps the subtraction order
+define_rule!(
+    EvenPowSubSwapRule,
+    "Canonicalize Even Power Base",
+    None,
+    PhaseMask::CORE | PhaseMask::TRANSFORM,
+    |ctx, expr| {
+        use crate::ordering::compare_expr;
+        use std::cmp::Ordering;
+
+        // Match Pow(base, exp) where exp is even integer
+        let (base, exp) = match ctx.get(expr) {
+            Expr::Pow(b, e) => (*b, *e),
+            _ => return None,
+        };
+
+        // Check if exponent is even integer
+        let is_even = match ctx.get(exp) {
+            Expr::Number(n) => n.is_integer() && n.to_integer().is_even(),
+            _ => false,
+        };
+        if !is_even {
+            return None;
+        }
+
+        // Parse base as a binomial subtraction (a - b) in various forms
+        // Handle: Sub(a, b), Add(a, Neg(b)), Add(Neg(b), a)
+        let (pos_term, neg_term) = match ctx.get(base) {
+            Expr::Sub(a, b) => (*a, *b),
+            Expr::Add(l, r) => {
+                // Check Add(a, Neg(b))
+                if let Expr::Neg(inner) = ctx.get(*r) {
+                    (*l, *inner)
+                } else if let Expr::Neg(inner) = ctx.get(*l) {
+                    // Check Add(Neg(b), a) - means a - b
+                    (*r, *inner)
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // Base represents pos_term - neg_term
+        // Canonical form: smaller term first
+        // If neg_term < pos_term, swap to (neg_term - pos_term)
+        if compare_expr(ctx, neg_term, pos_term) != Ordering::Less {
+            return None; // Already canonical or equal
+        }
+
+        // Swap: build (neg_term - pos_term)^exp
+        // Use Sub for cleaner structure
+        let new_base = ctx.add(Expr::Sub(neg_term, pos_term));
+        let new_expr = ctx.add(Expr::Pow(new_base, exp));
+
+        Some(Rewrite {
+            new_expr,
+            description: "(b-a)^even → (a-b)^even".to_string(),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        })
+    }
+);
 
 fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
     if n.is_zero() {
