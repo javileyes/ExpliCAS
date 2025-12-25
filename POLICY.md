@@ -200,3 +200,37 @@ pub fn strip_all_holds(ctx: &mut Context, id: ExprId) -> ExprId;
 | `gcd_modp.rs` | Preserve GCD structure |
 | `poly_arith_modp.rs` | Detect `__hold(P) - __hold(Q) = 0` |
 
+---
+
+## N-ary Views Contract (`AddView`/`MulView`) (Added 2025-12)
+
+### Purpose
+
+`AddView` and `MulView` provide **shape-independent** iteration over Add/Mul chains.
+They are the canonical API for flattening additive/multiplicative expressions.
+
+### Canonical Implementation
+
+**Location**: `crates/cas_engine/src/nary.rs`
+
+```rust
+// Shape-independent sum traversal with signed terms
+pub fn add_terms_no_sign(ctx, root) -> SmallVec<[ExprId; 8]>;
+pub fn add_terms_signed(ctx, root) -> SmallVec<[(ExprId, Sign); 8]>;
+
+// Shape-independent product traversal
+pub fn mul_factors(ctx, root) -> SmallVec<[ExprId; 8]>;
+```
+
+### Contribution Rules
+
+1. **Never create local `fn flatten_add*`** - use `crate::nary::add_terms_*`
+2. **Never create local `fn flatten_mul*`** - use `crate::nary::mul_factors`
+3. **Wrappers must call canonical** - if you need a local function, it must delegate to nary
+4. **AddView/MulView are __hold-transparent** - collectors call `unwrap_hold`
+
+### Lint Enforcement
+
+The CI lint `scripts/lint_no_duplicate_utils.sh` will **FAIL** if:
+- A file defines `fn flatten_add*` without calling `crate::nary::`
+- A file defines `fn flatten_mul*` without calling `crate::nary::`

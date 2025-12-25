@@ -45,9 +45,9 @@ for file in $(grep -rl "fn strip.*hold" "$ROOT_DIR/crates" --include="*.rs" 2>/d
 done
 
 # -----------------------------------------------------------------------------
-# CHECK 2: flatten_add definitions (WARNING - migration in progress)
-# Canonical: cas_engine/src/nary.rs (AddView)
-# Allowed: files that reference crate::nary:: (they are wrappers)
+# CHECK 2: flatten_add definitions (HARD FAIL - migration complete)
+# Canonical: cas_engine/src/nary.rs (AddView, add_terms_no_sign, add_terms_signed)
+# Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
 echo "  [2/5] Checking flatten_add..."
 
@@ -70,15 +70,16 @@ for file in $(grep -rln "fn flatten_add" "$ROOT_DIR/crates" --include="*.rs" 2>/
         is_allowed=true
     fi
     if [ "$is_allowed" = false ]; then
-        echo -e "  ${YELLOW}WARNING${NC}: $file defines flatten_add (should use AddView from nary.rs)"
-        ((WARNINGS++))
+        echo -e "  ${RED}ERROR${NC}: $file defines flatten_add without using nary.rs canonical"
+        echo -e "         Fix: Use crate::nary::add_terms_no_sign or crate::nary::add_terms_signed"
+        ((ERRORS++))
     fi
 done
 
 # -----------------------------------------------------------------------------
-# CHECK 3: flatten_mul definitions (WARNING - migration in progress)
-# Canonical: cas_ast/src/views.rs (MulChainView, MulParts)
-# Allowed: files that reference crate::nary:: (they are wrappers)
+# CHECK 3: flatten_mul definitions (HARD FAIL - migration complete)
+# Canonical: cas_engine/src/nary.rs (MulView, mul_factors)
+# Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
 echo "  [3/5] Checking flatten_mul..."
 
@@ -102,8 +103,9 @@ for file in $(grep -rln "fn flatten_mul" "$ROOT_DIR/crates" --include="*.rs" 2>/
         is_allowed=true
     fi
     if [ "$is_allowed" = false ]; then
-        echo -e "  ${YELLOW}WARNING${NC}: $file defines flatten_mul (should use MulChainView from views.rs)"
-        ((WARNINGS++))
+        echo -e "  ${RED}ERROR${NC}: $file defines flatten_mul without using nary.rs canonical"
+        echo -e "         Fix: Use crate::nary::mul_factors"
+        ((ERRORS++))
     fi
 done
 
