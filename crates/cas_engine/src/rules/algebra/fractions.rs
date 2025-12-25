@@ -2702,22 +2702,30 @@ define_rule!(
                 }
             }
 
-            // Helper to parse B*√n or √n (B=1)
+            // Helper to parse B*√n or √n (B=1), handling negation
+            // Returns (signed_coefficient, radicand)
             fn parse_surd_term(ctx: &Context, id: ExprId) -> Option<(BigRational, i64)> {
+                // Handle Neg(surd) → -(surd) with negated coefficient
+                if let Expr::Neg(inner) = ctx.get(id) {
+                    let (b, n) = parse_surd_term(ctx, *inner)?;
+                    return Some((-b, n));
+                }
+
                 // Try √n directly (B=1)
                 if let Some(n) = is_numeric_sqrt(ctx, id) {
                     return Some((BigRational::from_integer(1.into()), n));
                 }
-                // Try B * √n
+
+                // Try B * √n (including negative B)
                 if let Expr::Mul(l, r) = ctx.get(id) {
                     if let Some(n) = is_numeric_sqrt(ctx, *r) {
                         if let Some(b) = as_rational_const(ctx, *l, 8) {
-                            return Some((b, n));
+                            return Some((b, n)); // b is already signed
                         }
                     }
                     if let Some(n) = is_numeric_sqrt(ctx, *l) {
                         if let Some(b) = as_rational_const(ctx, *r, 8) {
-                            return Some((b, n));
+                            return Some((b, n)); // b is already signed
                         }
                     }
                 }
@@ -2751,8 +2759,9 @@ define_rule!(
                     }
                     None
                 }
-                // A - surd_term
+                // A - surd_term (or surd_term - A which is -(A - surd_term) with negated a)
                 Expr::Sub(l, r) => {
+                    // Try l=A (rational), r=B√n
                     if let Some(a) = as_rational_const(ctx, *l, 8) {
                         if let Some((b, n)) = parse_surd_term(ctx, *r) {
                             return Some(BinomialSurd {
@@ -2760,6 +2769,18 @@ define_rule!(
                                 b,
                                 n,
                                 is_sub: true,
+                            });
+                        }
+                    }
+                    // Try l=B√n, r=A (symmetric case: surd - rational)
+                    // This represents -A + B√n, so we negate a and use is_sub: false
+                    if let Some(a) = as_rational_const(ctx, *r, 8) {
+                        if let Some((b, n)) = parse_surd_term(ctx, *l) {
+                            return Some(BinomialSurd {
+                                a: -a, // negate since it's B√n - A = -A + B√n
+                                b,
+                                n,
+                                is_sub: false, // After negation, this is -A + B√n
                             });
                         }
                     }

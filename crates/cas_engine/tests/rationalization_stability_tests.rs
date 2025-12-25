@@ -217,3 +217,29 @@ fn test_no_negative_fractional_exponents() {
         json
     );
 }
+
+/// Test: 1/(2 - sqrt(3)) should rationalize to 2 + sqrt(3)
+#[test]
+fn test_rationalize_binomial_minus_case() {
+    let json = eval_str_to_json("1/(2 - sqrt(3))", "{}");
+    assert!(json.contains("\"ok\":true"));
+    // Should produce 2 + sqrt(3)
+    assert!(
+        json.contains("3^(1/2)") || json.contains("√(3)"),
+        "Missing sqrt(3) in result: {}",
+        json
+    );
+}
+
+/// Test: 1/(2+sqrt(3)) + 1/(2-sqrt(3)) should equal 4
+#[test]
+fn test_conjugate_sum_simplifies_to_4() {
+    let json = eval_str_to_json("1/(2 + sqrt(3)) + 1/(2 - sqrt(3))", "{}");
+    assert!(json.contains("\"ok\":true"));
+    // Should simplify to 4
+    assert!(
+        json.contains("\"result\":\"4\""),
+        "Expected 4 but got: {}",
+        json
+    );
+}
