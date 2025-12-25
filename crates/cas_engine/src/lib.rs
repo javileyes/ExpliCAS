@@ -44,6 +44,7 @@ pub mod solver;
 pub mod step;
 pub mod step_optimization;
 pub mod strategies;
+pub mod substitute;
 pub mod telescoping;
 pub mod timeline;
 pub mod timeline_templates;

@@ -173,6 +173,7 @@ pub struct Repl {
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
 /// This is more robust than path-based reconstruction because it finds by identity, not position.
+#[allow(dead_code)]
 fn substitute_expr_by_id(
     context: &mut Context,
     root: ExprId,
@@ -1467,9 +1468,16 @@ impl Repl {
                 println!("  factor_difference_squares Factor difference of squares (a^2-b^2 -> (a-b)(a+b))");
             }
             "subst" => {
-                println!("Command: subst <expr>, <var>=<val>");
-                println!("Description: Substitutes a variable with a value (or another expression) and simplifies.");
-                println!("Example: subst x^2 + x, x=3 -> 12");
+                println!("Command: subst <expr>, <target>, <replacement>");
+                println!("Description: Substitutes a pattern with a replacement and simplifies.");
+                println!();
+                println!("Variable substitution:");
+                println!("  subst x^2 + x, x, 3           → 12");
+                println!();
+                println!("Power-aware expression substitution:");
+                println!("  subst x^4 + x^2 + 1, x^2, y   → y² + y + 1");
+                println!("  subst x^3, x^2, y             → y·x (with remainder)");
+                println!("  subst x^6, x^2, y             → y³");
             }
             "expand" => {
                 println!("Command: expand <expr>");
@@ -1864,201 +1872,120 @@ impl Repl {
     }
 
     fn handle_subst(&mut self, line: &str) {
-        // Format: subst <expr>, <var>=<val>
-        // Example: subst x+1, x=2
+        // Format: subst <expr>, <target>, <replacement>
+        // Examples:
+        //   subst x^4 + x^2 + 1, x^2, y   → y² + y + 1 (power-aware)
+        //   subst x^2 + x, x, 3          → 12 (variable substitution)
         let rest = line[6..].trim();
 
-        // Try splitting by comma first (preferred)
-        let (expr_str, assign_str) = if let Some((e, a)) = rsplit_ignoring_parens(rest, ',') {
-            (e.trim(), a.trim())
-        } else if let Some((e, a)) = rsplit_ignoring_parens(rest, ' ') {
-            // Fallback to last space
-            (e.trim(), a.trim())
-        } else {
-            println!("Usage: subst <expression>, <var>=<value>");
-            return;
-        };
+        // Split by commas (respecting parentheses)
+        let parts: Vec<&str> = split_by_comma_ignoring_parens(rest);
 
-        if let Some((var, val_str)) = assign_str.split_once('=') {
-            let var = var.trim();
-            let val_str = val_str.trim();
-
-            // Parse expr first
-            match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
-                Ok(expr) => {
-                    // Parse val
-                    match cas_parser::parse(val_str, &mut self.engine.simplifier.context) {
-                        Ok(val_expr) => {
-                            if self.verbosity != Verbosity::None {
-                                println!("Substituting {} = {} into {}", var, val_str, expr_str);
-                            }
-                            // Substitute
-                            let target_var = self.engine.simplifier.context.var(var);
-                            let subbed = cas_engine::solver::strategies::substitute_expr(
-                                &mut self.engine.simplifier.context,
-                                expr,
-                                target_var,
-                                val_expr,
-                            );
-
-                            let (result, steps) = self.engine.simplifier.simplify(subbed);
-                            if self.verbosity != Verbosity::None {
-                                if self.verbosity != Verbosity::Succinct {
-                                    println!("Steps:");
-                                }
-                                let mut current_root = subbed;
-                                let mut step_count = 0;
-                                for step in steps.iter() {
-                                    if should_show_step(step, self.verbosity) {
-                                        step_count += 1;
-
-                                        if self.verbosity == Verbosity::Succinct {
-                                            // Low mode: just global state
-                                            current_root = reconstruct_global_expr(
-                                                &mut self.engine.simplifier.context,
-                                                current_root,
-                                                &step.path,
-                                                step.after,
-                                            );
-                                            println!(
-                                                "-> {}",
-                                                DisplayExpr {
-                                                    context: &self.engine.simplifier.context,
-                                                    id: current_root
-                                                }
-                                            );
-                                        } else {
-                                            // Normal/Verbose
-                                            println!(
-                                                "{}. {}  [{}]",
-                                                step_count, step.description, step.rule_name
-                                            );
-
-                                            if self.verbosity == Verbosity::Verbose
-                                                || self.verbosity == Verbosity::Normal
-                                            {
-                                                // Show Before: global expression before this step
-                                                if let Some(global_before) = step.global_before {
-                                                    println!(
-                                                        "   Before: {}",
-                                                        clean_display_string(&format!(
-                                                            "{}",
-                                                            DisplayExpr {
-                                                                context: &self
-                                                                    .engine
-                                                                    .simplifier
-                                                                    .context,
-                                                                id: global_before,
-                                                            }
-                                                        ))
-                                                    );
-                                                } else {
-                                                    println!(
-                                                        "   Before: {}",
-                                                        clean_display_string(&format!(
-                                                            "{}",
-                                                            DisplayExpr {
-                                                                context: &self
-                                                                    .engine
-                                                                    .simplifier
-                                                                    .context,
-                                                                id: current_root,
-                                                            }
-                                                        ))
-                                                    );
-                                                }
-
-                                                // Show Rule: local transformation
-                                                let after_disp = if let Some(s) = &step.after_str {
-                                                    s.clone()
-                                                } else {
-                                                    format!(
-                                                        "{}",
-                                                        DisplayExpr {
-                                                            context: &self
-                                                                .engine
-                                                                .simplifier
-                                                                .context,
-                                                            id: step.after
-                                                        }
-                                                    )
-                                                };
-                                                println!(
-                                                    "   Rule: {} -> {}",
-                                                    clean_display_string(&format!(
-                                                        "{}",
-                                                        DisplayExpr {
-                                                            context: &self
-                                                                .engine
-                                                                .simplifier
-                                                                .context,
-                                                            id: step.before
-                                                        }
-                                                    )),
-                                                    clean_display_string(&after_disp)
-                                                );
-                                            }
-
-                                            // Use precomputed global_after if available, fall back to ExprId-based substitution
-                                            if let Some(global_after) = step.global_after {
-                                                current_root = global_after;
-                                            } else {
-                                                // Use identity-based substitution instead of path-based reconstruction
-                                                current_root = substitute_expr_by_id(
-                                                    &mut self.engine.simplifier.context,
-                                                    current_root,
-                                                    step.before,
-                                                    step.after,
-                                                );
-                                            }
-
-                                            // Show After: global expression after this step
-                                            if self.verbosity == Verbosity::Verbose
-                                                || self.verbosity == Verbosity::Normal
-                                            {
-                                                println!(
-                                                    "   After: {}",
-                                                    clean_display_string(&format!(
-                                                        "{}",
-                                                        DisplayExpr {
-                                                            context: &self
-                                                                .engine
-                                                                .simplifier
-                                                                .context,
-                                                            id: current_root,
-                                                        }
-                                                    ))
-                                                );
-                                            }
-                                        }
-                                    } else if let Some(global_after) = step.global_after {
-                                        current_root = global_after;
-                                    } else {
-                                        current_root = substitute_expr_by_id(
-                                            &mut self.engine.simplifier.context,
-                                            current_root,
-                                            step.before,
-                                            step.after,
-                                        );
-                                    }
-                                }
-                            }
-                            println!(
-                                "Result: {}",
-                                DisplayExpr {
-                                    context: &self.engine.simplifier.context,
-                                    id: result
-                                }
-                            );
-                        }
-                        Err(e) => println!("Error parsing value: {}", e),
-                    }
-                }
-                Err(e) => println!("Error parsing expression: {}", e),
-            }
+        if parts.len() != 3 {
+            println!("Usage: subst <expr>, <target>, <replacement>");
+            println!();
+            println!("Examples:");
+            println!("  subst x^2 + x, x, 3              → 12");
+            println!("  subst x^4 + x^2 + 1, x^2, y      → y² + y + 1");
+            println!("  subst x^3, x^2, y                → y·x");
             return;
         }
-        println!("Usage: subst <expression>, <var>=<value>");
+
+        let expr_str = parts[0].trim();
+        let target_str = parts[1].trim();
+        let replacement_str = parts[2].trim();
+
+        // Parse the main expression
+        let expr = match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
+            Ok(e) => e,
+            Err(e) => {
+                println!("Error parsing expression: {}", e);
+                return;
+            }
+        };
+
+        // Parse target
+        let target_expr = match cas_parser::parse(target_str, &mut self.engine.simplifier.context) {
+            Ok(e) => e,
+            Err(e) => {
+                println!("Error parsing target: {}", e);
+                return;
+            }
+        };
+
+        // Parse replacement
+        let replacement_expr =
+            match cas_parser::parse(replacement_str, &mut self.engine.simplifier.context) {
+                Ok(e) => e,
+                Err(e) => {
+                    println!("Error parsing replacement: {}", e);
+                    return;
+                }
+            };
+
+        // Detect if target is a simple variable or an expression
+        let is_simple_var = target_str.chars().all(|c| c.is_alphanumeric() || c == '_');
+
+        let subbed = if is_simple_var {
+            // Variable substitution
+            if self.verbosity != Verbosity::None {
+                println!(
+                    "Variable substitution: {} → {} in {}",
+                    target_str, replacement_str, expr_str
+                );
+            }
+            let target_var = self.engine.simplifier.context.var(target_str);
+            cas_engine::solver::strategies::substitute_expr(
+                &mut self.engine.simplifier.context,
+                expr,
+                target_var,
+                replacement_expr,
+            )
+        } else {
+            // Expression substitution (power-aware)
+            if self.verbosity != Verbosity::None {
+                println!(
+                    "Expression substitution: {} → {} in {}",
+                    target_str, replacement_str, expr_str
+                );
+            }
+            cas_engine::substitute::substitute_power_aware(
+                &mut self.engine.simplifier.context,
+                expr,
+                target_expr,
+                replacement_expr,
+                cas_engine::substitute::SubstituteOptions::default(),
+            )
+        };
+
+        let (result, steps) = self.engine.simplifier.simplify(subbed);
+        if self.verbosity != Verbosity::None && !steps.is_empty() {
+            if self.verbosity != Verbosity::Succinct {
+                println!("Steps:");
+            }
+            for step in steps.iter() {
+                if should_show_step(step, self.verbosity) {
+                    if self.verbosity == Verbosity::Succinct {
+                        println!(
+                            "-> {}",
+                            DisplayExpr {
+                                context: &self.engine.simplifier.context,
+                                id: step.global_after.unwrap_or(step.after)
+                            }
+                        );
+                    } else {
+                        println!("  {}  [{}]", step.description, step.rule_name);
+                    }
+                }
+            }
+        }
+        println!(
+            "Result: {}",
+            DisplayExpr {
+                context: &self.engine.simplifier.context,
+                id: result
+            }
+        );
     }
 
     fn handle_timeline(&mut self, line: &str) {
@@ -4352,6 +4279,31 @@ fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
     } else {
         None
     }
+}
+
+/// Split string by commas, respecting parentheses nesting.
+/// Returns a Vec of the split parts.
+fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut balance = 0;
+    let mut start = 0;
+
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' | '[' => balance += 1,
+            ')' | ']' => balance -= 1,
+            ',' if balance == 0 => {
+                parts.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    // Add the last part
+    if start < s.len() {
+        parts.push(&s[start..]);
+    }
+    parts
 }
 
 fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> String {
