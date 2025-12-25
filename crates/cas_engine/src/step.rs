@@ -169,6 +169,12 @@ impl Step {
         }
 
         // Low importance - internal reorganizations, not pedagogically valuable
+        // EXCEPTION: "Canonicalize Even Power Base" is pedagogically valuable
+        // because it explains why (y-x)² = (x-y)² for cancellation
+        if self.rule_name == "Canonicalize Even Power Base" {
+            return ImportanceLevel::Medium;
+        }
+
         if self.rule_name.contains("Combine Constants")
             || self.rule_name.contains("Evaluate")
             || self.rule_name.contains("Canonicalize")

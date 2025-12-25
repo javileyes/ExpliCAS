@@ -890,9 +890,10 @@ define_rule!(
 
         Some(Rewrite {
             new_expr,
-            description: "(b-a)^even → (a-b)^even".to_string(),
-            before_local: None,
-            after_local: None,
+            description: "For even exponent: (a-b)² = (b-a)², normalize for cancellation"
+                .to_string(),
+            before_local: Some(base),
+            after_local: Some(new_base),
             domain_assumption: None,
         })
     }

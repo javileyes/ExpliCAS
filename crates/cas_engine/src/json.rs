@@ -121,6 +121,7 @@ impl EngineJsonResponse {
     ///     rule: "Combine".into(),
     ///     before: "x+x".into(),
     ///     after: "2*x".into(),
+    ///     substeps: vec![],
     /// };
     /// let budget = BudgetJsonInfo::cli(false);
     /// let resp = EngineJsonResponse::ok_with_steps("2*x".into(), vec![step], budget);
@@ -339,6 +340,28 @@ pub struct EngineJsonStep {
 
     /// Expression after (must NOT contain __hold)
     pub after: String,
+
+    /// Sub-steps that occurred in subexpressions before this step
+    /// (e.g., EvenPowSubSwapRule rewriting (y-x)^2 → (x-y)^2 before cancellation)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub substeps: Vec<EngineJsonSubstep>,
+}
+
+/// A sub-step representing a rewrite in a subexpression.
+#[derive(Serialize, Debug, Clone)]
+pub struct EngineJsonSubstep {
+    /// Rule that was applied
+    pub rule: String,
+
+    /// Local expression before (the subexpression, not full expression)
+    pub before: String,
+
+    /// Local expression after
+    pub after: String,
+
+    /// Optional note explaining the transformation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// A warning in JSON response.
@@ -600,6 +623,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                     rule: s.rule_name.clone(),
                     before: before_str.unwrap_or_default(),
                     after: after_str.unwrap_or_default(),
+                    substeps: vec![],
                 }
             })
             .collect()
