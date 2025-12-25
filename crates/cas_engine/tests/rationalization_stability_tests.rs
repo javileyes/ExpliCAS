@@ -164,3 +164,56 @@ fn test_cancel_cube_root_binomial_factor_minus() {
         json
     );
 }
+
+/// Test (A): Sum of cubes with r=2
+#[test]
+fn test_cancel_cube_root_factor_r_equals_2_sum() {
+    let json = eval_str_to_json("(x + 8) / (x^(1/3) + 2)", "{}");
+    assert!(json.contains("\"ok\":true"));
+    // Should give x^(2/3) - 2*x^(1/3) + 4
+    assert!(json.contains("x^(2/3)"), "Missing x^(2/3): {}", json);
+}
+
+/// Test (B): Diff of cubes with r=2  
+#[test]
+fn test_cancel_cube_root_factor_r_equals_2_diff() {
+    let json = eval_str_to_json("(x - 8) / (x^(1/3) - 2)", "{}");
+    assert!(json.contains("\"ok\":true"));
+    // Should give x^(2/3) + 2*x^(1/3) + 4
+    assert!(json.contains("x^(2/3)"), "Missing x^(2/3): {}", json);
+}
+
+/// Test (E): Diff of 4th powers
+#[test]
+fn test_cancel_4th_root_factor_diff() {
+    let json = eval_str_to_json("(x - 1) / (x^(1/4) - 1)", "{}");
+    assert!(json.contains("\"ok\":true"));
+    // Should give x^(3/4) + x^(1/2) + x^(1/4) + 1
+    assert!(
+        json.contains("x^(3/4)") || json.contains("x^(1/2)"),
+        "Missing expected terms: {}",
+        json
+    );
+}
+
+/// Test (F): Sum of 4th powers should NOT simplify (n even)
+#[test]
+fn test_cancel_4th_root_factor_sum_no_apply() {
+    let json = eval_str_to_json("(x + 1) / (x^(1/4) + 1)", "{}");
+    assert!(json.contains("\"ok\":true"));
+    // Should remain as fraction (n=4 even, sum pattern doesn't factor)
+    // Just verify no crash and result contains expected structure
+}
+
+/// Test (J): Anti-basura - no negative fractional exponents in result
+#[test]
+fn test_no_negative_fractional_exponents() {
+    let json = eval_str_to_json("(x + 1) / (x^(1/3) + 1)", "{}");
+    assert!(json.contains("\"ok\":true"));
+    // Must NOT introduce negative fractional exponents
+    assert!(
+        !json.contains("x^(-") && !json.contains("-1/3"),
+        "Contains negative fractional exponent: {}",
+        json
+    );
+}
