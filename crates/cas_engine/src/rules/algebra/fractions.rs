@@ -1346,6 +1346,187 @@ fn ordinal(n: u32) -> &'static str {
     }
 }
 
+// Cancel nth root binomial factors: (u ± r^n) / (u^(1/n) ± r) = geometric series
+// Example: (x + 1) / (x^(1/3) + 1) = x^(2/3) - x^(1/3) + 1
+// Uses identity: a^n - b^n = (a-b)(a^(n-1) + a^(n-2)b + ... + b^(n-1))
+//            and: a^n + b^n = (a+b)(a^(n-1) - a^(n-2)b + ... ± b^(n-1)) for odd n
+define_rule!(
+    CancelNthRootBinomialFactorRule,
+    "Cancel Nth Root Binomial Factor",
+    None,
+    PhaseMask::TRANSFORM | PhaseMask::POST,
+    |ctx, expr| {
+        use cas_ast::views::FractionParts;
+        use num_traits::ToPrimitive;
+
+        // Use FractionParts to detect fraction
+        let fp = FractionParts::from(&*ctx, expr);
+        if !fp.is_fraction() {
+            return None;
+        }
+
+        let (num, den, _) = fp.to_num_den(ctx);
+
+        // Match den = t ± r where t = u^(1/n)
+        let den_data = ctx.get(den).clone();
+        let (left, right, den_is_add) = match den_data {
+            Expr::Add(l, r) => (l, r, true),
+            Expr::Sub(l, r) => (l, r, false),
+            _ => return None,
+        };
+
+        // Helper to extract (base, n) from u^(1/n)
+        let extract_nth_root = |e: ExprId| -> Option<(ExprId, u32)> {
+            if let Expr::Pow(base, exp) = ctx.get(e) {
+                if let Expr::Number(ev) = ctx.get(*exp) {
+                    if ev.numer() == &num_bigint::BigInt::from(1) {
+                        if let Some(denom) = ev.denom().to_u32() {
+                            if denom >= 2 {
+                                return Some((*base, denom));
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        };
+
+        // Try both orderings: left is Pow or right is Pow
+        let (t, r, u, n) = if let Some((base, denom)) = extract_nth_root(left) {
+            // left = u^(1/n), right = r
+            (left, right, base, denom)
+        } else if let Some((base, denom)) = extract_nth_root(right) {
+            // right = u^(1/n), left = r
+            (right, left, base, denom)
+        } else {
+            return None;
+        };
+
+        // r must be a number (start with integer support)
+        let r_val = match ctx.get(r) {
+            Expr::Number(rv) => rv.clone(),
+            _ => return None,
+        };
+
+        // Limit n to prevent explosion
+        if n > 8 {
+            return None;
+        }
+
+        // Compute r^n
+        let r_to_n = r_val.pow(n as i32);
+
+        // Determine expected numerator based on sign pattern
+        // For den = t + r (t = u^(1/n)):
+        //   If n is odd: num should be u + r^n (sum of odd powers)
+        //   If n is even: num should be u - r^n (?)
+        // For den = t - r:
+        //   num should be u - r^n (diff of powers)
+
+        let (expected_num_is_add, expected_r_val) = if den_is_add {
+            // t + r: for sum pattern a^n + b^n with odd n
+            if n % 2 == 1 {
+                (true, r_to_n.clone()) // expect u + r^n
+            } else {
+                return None; // Even n: a^n + b^n doesn't factor nicely over reals
+            }
+        } else {
+            // t - r: for diff pattern a^n - b^n
+            (false, r_to_n.clone()) // expect u - r^n
+        };
+
+        // Check if numerator matches expected pattern
+        let num_data = ctx.get(num).clone();
+        let (num_left, num_right, num_is_add) = match num_data {
+            Expr::Add(l, rr) => (l, rr, true),
+            Expr::Sub(l, rr) => (l, rr, false),
+            _ => return None,
+        };
+
+        if num_is_add != expected_num_is_add {
+            return None;
+        }
+
+        // Check if num_left = u (structurally equal)
+        // or num_right = u (commutative)
+        let (actual_u, actual_r_n) = if crate::ordering::compare_expr(ctx, num_left, u)
+            == std::cmp::Ordering::Equal
+        {
+            (num_left, num_right)
+        } else if crate::ordering::compare_expr(ctx, num_right, u) == std::cmp::Ordering::Equal {
+            (num_right, num_left)
+        } else {
+            return None;
+        };
+
+        let _ = actual_u; // used for verification above
+
+        // Check if actual_r_n = expected_r_val (as number)
+        let actual_r_n_val = match ctx.get(actual_r_n) {
+            Expr::Number(v) => v.clone(),
+            _ => return None,
+        };
+
+        if actual_r_n_val != expected_r_val {
+            return None;
+        }
+
+        // Match confirmed! Build the quotient as geometric series
+        // For t - r: Q = t^(n-1) + t^(n-2)*r + ... + r^(n-1)
+        // For t + r: Q = t^(n-1) - t^(n-2)*r + t^(n-3)*r^2 - ... (alternating)
+
+        let mut terms: Vec<ExprId> = Vec::new();
+
+        for k in 0..n {
+            let exp_t = n - 1 - k;
+            let exp_r = k;
+
+            // Build t^exp_t = u^((n-1-k)/n)
+            let t_part = if exp_t == 0 {
+                ctx.num(1)
+            } else if exp_t == 1 {
+                t // u^(1/n)
+            } else {
+                let exp_val = num_rational::BigRational::new(
+                    num_bigint::BigInt::from(exp_t),
+                    num_bigint::BigInt::from(n),
+                );
+                let exp_node = ctx.add(Expr::Number(exp_val));
+                ctx.add(Expr::Pow(u, exp_node))
+            };
+
+            // Build r^exp_r
+            let r_part = if exp_r == 0 {
+                ctx.num(1)
+            } else {
+                let r_pow_k = r_val.pow(exp_r as i32);
+                ctx.add(Expr::Number(r_pow_k))
+            };
+
+            // Combine t_part * r_part
+            let mut term = mul2_raw(ctx, t_part, r_part);
+
+            // For t + r case, alternate signs
+            if den_is_add && k % 2 == 1 {
+                term = ctx.add(Expr::Neg(term));
+            }
+
+            terms.push(term);
+        }
+
+        // Build result as sum
+        let result = build_sum(ctx, &terms);
+
+        Some(Rewrite {
+            new_expr: result,
+            description: format!("Cancel {} root binomial factor", ordinal(n)),
+            before_local: None,
+            after_local: None,
+            domain_assumption: None,
+        })
+    }
+);
+
 /// Collect all additive terms from an expression
 /// For a + b + c, returns vec![a, b, c]
 fn collect_additive_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {

@@ -133,3 +133,34 @@ fn test_4th_root_binomial_rationalization() {
         json
     );
 }
+
+/// Test: (x+1)/(x^(1/3)+1) should simplify using sum of cubes identity
+#[test]
+fn test_cancel_cube_root_binomial_factor() {
+    let json = eval_str_to_json("(x + 1) / (x^(1/3) + 1)", "{}");
+
+    assert!(json.contains("\"ok\":true"), "Evaluation failed: {}", json);
+
+    // Should not contain division in result - fully cancelled
+    // Result should be x^(2/3) - x^(1/3) + 1 (or reordered)
+    assert!(
+        json.contains("x^(2/3)") && json.contains("x^(1/3)"),
+        "Missing expected power terms in result: {}",
+        json
+    );
+}
+
+/// Test: (x-1)/(x^(1/3)-1) should give x^(2/3)+x^(1/3)+1
+#[test]
+fn test_cancel_cube_root_binomial_factor_minus() {
+    let json = eval_str_to_json("(x - 1) / (x^(1/3) - 1)", "{}");
+
+    assert!(json.contains("\"ok\":true"), "Evaluation failed: {}", json);
+
+    // Result should contain the geometric series terms
+    assert!(
+        json.contains("x^(2/3)") && json.contains("x^(1/3)"),
+        "Missing expected power terms in result: {}",
+        json
+    );
+}
