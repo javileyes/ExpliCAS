@@ -395,3 +395,55 @@ When serializing errors to JSON:
 - `kind` and `code` are stable and must not change
 - `message` is human-readable and may change
 - `details` is extensible (new keys may be added)
+
+---
+
+## Step Visibility Contract (Added 2025-12)
+
+### Purpose
+
+Step importance determines which steps are visible in different verbosity modes.
+Importance is **declared by each Rule**, not inferred from names.
+
+### Importance Levels
+
+| Level | Visibility | Use Case |
+|-------|------------|----------|
+| `Trivial` | Never shown | No-op steps (before == after) |
+| `Low` | Verbose only | Internal canonicalizations, trivial evaluations |
+| `Medium` | Normal + Verbose | Pedagogically valuable transformations |
+| `High` | All modes | Major transforms (Factor, Expand, Integrate) |
+
+### Canonical Implementation
+
+**Default**: `ImportanceLevel::Low` (conservative - hidden by default)
+
+**Override via macro**:
+```rust
+define_rule!(RuleName, "Name", None, PhaseMask::X,
+    importance: ImportanceLevel::Medium,  // ← Declarative
+    |ctx, expr| { ... }
+);
+```
+
+### Contribution Rules
+
+1. **Importance is declared in the Rule** - use `importance: Level` in define_rule!
+2. **Default is Low** - visible only in verbose mode
+3. **Medium for cancellation-enabling rules** - e.g., EvenPowSubSwapRule
+4. **High for major transforms** - Factor, Expand, Integrate
+5. **NEVER infer from rule name** - no string matching in step.rs
+
+### Special Cases (in `Step::get_importance()`)
+
+| Condition | Override |
+|-----------|----------|
+| `before == after` | → `Trivial` (no-op) |
+| `domain_assumption.is_some()` | → `Medium` (user awareness) |
+
+### Lint Enforcement
+
+The CI lint `scripts/lint_no_step_name_matching.sh` will **FAIL** if:
+- `step.rs` contains `contains("Canonicalize")` or similar string matching
+- `step.rs` contains `TEMPORARY` exception comments
+
