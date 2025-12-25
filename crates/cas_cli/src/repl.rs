@@ -337,7 +337,7 @@ fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool
         Verbosity::Verbose => true,
         // Succinct and Normal both show Medium+ importance, just different display
         Verbosity::Succinct | Verbosity::Normal => {
-            if step.importance() < ImportanceLevel::Medium {
+            if step.get_importance() < ImportanceLevel::Medium {
                 return false;
             }
 

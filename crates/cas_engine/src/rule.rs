@@ -1,5 +1,6 @@
 use crate::parent_context::ParentContext;
 use crate::phase::PhaseMask;
+use crate::step::ImportanceLevel;
 use cas_ast::{Context, ExprId};
 
 /// Result of a rule application containing the new expression and metadata
@@ -80,6 +81,12 @@ pub trait SimpleRule {
     fn priority(&self) -> i32 {
         0
     }
+
+    /// Step importance level for this rule. Default: Low (hidden in normal mode)
+    /// Override to Medium for pedagogically valuable transformations
+    fn importance(&self) -> ImportanceLevel {
+        ImportanceLevel::Low
+    }
 }
 
 /// Main Rule trait with parent-context awareness
@@ -114,6 +121,11 @@ pub trait Rule {
     fn priority(&self) -> i32 {
         0
     }
+
+    /// Step importance level for this rule. Default: Low
+    fn importance(&self) -> ImportanceLevel {
+        ImportanceLevel::Low
+    }
 }
 
 /// Auto-implement Rule for any SimpleRule
@@ -142,5 +154,9 @@ impl<T: SimpleRule> Rule for T {
 
     fn priority(&self) -> i32 {
         SimpleRule::priority(self)
+    }
+
+    fn importance(&self) -> ImportanceLevel {
+        SimpleRule::importance(self)
     }
 }

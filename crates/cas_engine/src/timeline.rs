@@ -24,14 +24,14 @@ pub enum VerbosityLevel {
 
 impl VerbosityLevel {
     /// Check if a step should be shown at this verbosity level
-    /// Uses step.importance() as the single source of truth
+    /// Uses step.get_importance() as the single source of truth
     fn should_show_step(&self, step: &Step) -> bool {
         use crate::step::ImportanceLevel;
 
         match self {
             VerbosityLevel::Verbose => true,
-            VerbosityLevel::Low => step.importance() >= ImportanceLevel::High,
-            VerbosityLevel::Normal => step.importance() >= ImportanceLevel::Medium,
+            VerbosityLevel::Low => step.get_importance() >= ImportanceLevel::High,
+            VerbosityLevel::Normal => step.get_importance() >= ImportanceLevel::Medium,
         }
     }
 }

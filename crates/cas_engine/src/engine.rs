@@ -1399,6 +1399,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             step.before_local = rewrite.before_local;
                             step.after_local = rewrite.after_local;
                             step.domain_assumption = rewrite.domain_assumption;
+                            // Use declarative importance from the Rule
+                            step.importance = rule.importance();
                             self.steps.push(step);
                         }
                         expr_id = rewrite.new_expr;
@@ -1516,6 +1518,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         step.after_local = rewrite.after_local;
                         // Propagate domain assumption from Rewrite to Step
                         step.domain_assumption = rewrite.domain_assumption;
+                        // Use declarative importance from the Rule
+                        step.importance = rule.importance();
                         self.steps.push(step);
                     }
 

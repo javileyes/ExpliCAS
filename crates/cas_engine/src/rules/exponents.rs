@@ -839,6 +839,7 @@ define_rule!(
     "Canonicalize Even Power Base",
     None,
     PhaseMask::CORE | PhaseMask::TRANSFORM,
+    importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
         use crate::ordering::compare_expr;
         use std::cmp::Ordering;

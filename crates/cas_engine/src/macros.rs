@@ -30,6 +30,41 @@ macro_rules! define_rule {
             }
         }
     };
+    // Full form with targets, phase, AND importance
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        $targets:expr, // Option<Vec<&str>>
+        $phase:expr,   // PhaseMask
+        importance: $importance:expr,
+        | $ctx:ident, $arg:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, $ctx: &mut cas_ast::Context, $arg: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn target_types(&self) -> Option<Vec<&str>> {
+                $targets
+            }
+
+            fn allowed_phases(&self) -> $crate::phase::PhaseMask {
+                $phase
+            }
+
+            fn importance(&self) -> $crate::step::ImportanceLevel {
+                $importance
+            }
+        }
+    };
     // Form with phase but no targets
     (
         $(#[$meta:meta])*

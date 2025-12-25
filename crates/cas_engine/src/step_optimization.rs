@@ -95,6 +95,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    importance: crate::step::ImportanceLevel::Low, // Coalesced canonicalization is low
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;

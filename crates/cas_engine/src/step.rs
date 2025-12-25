@@ -42,6 +42,8 @@ pub struct Step {
     pub after_local: Option<ExprId>,
     /// Optional domain assumption used by the rule (e.g., "x > 0" assumed)
     pub domain_assumption: Option<&'static str>,
+    /// Importance level for step filtering (from Rule::importance())
+    pub importance: ImportanceLevel,
 }
 
 impl Step {
@@ -81,6 +83,7 @@ impl Step {
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            importance: ImportanceLevel::Low, // Default, will be overwritten by caller
         }
     }
 
@@ -99,6 +102,7 @@ impl Step {
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            importance: ImportanceLevel::Low, // Default, will be overwritten by caller
         }
     }
 
@@ -120,9 +124,10 @@ impl Step {
         step
     }
 
-    /// Classify the importance/significance of this step
-    /// This is the SINGLE SOURCE OF TRUTH for step filtering in both CLI and timeline
-    pub fn importance(&self) -> ImportanceLevel {
+    /// Get the importance/significance of this step
+    /// Uses the declarative importance set when the Step was created (from Rule::importance())
+    /// With overrides for special cases (no-op, domain assumptions)
+    pub fn get_importance(&self) -> ImportanceLevel {
         // No-op steps are always trivial (before == after means no visible change)
         if self.before == self.after {
             return ImportanceLevel::Trivial;
@@ -133,72 +138,8 @@ impl Step {
             return ImportanceLevel::Medium;
         }
 
-        // Trivial steps - identity operations that don't teach anything
-        if self.rule_name.contains("Add Zero")
-            || self.rule_name.contains("Mul By One")
-            || self.rule_name.contains("Sub Zero")
-            || self.rule_name.contains("Identity Property")
-        {
-            return ImportanceLevel::Trivial;
-        }
-
-        // EXCEPTION: Evaluate Numeric Power - distinguish trivial from non-trivial
-        // Non-trivial (show):
-        //   - "Simplify root: 12^1/2" → 2*√3 (root simplification)
-        //   - "Evaluate power: 1/3^3" → 1/27 (fraction bases are pedagogically valuable)
-        // Trivial (hide):
-        //   - "Evaluate power: 2^3" → 8 (simple integer power)
-        //   - "Evaluate perfect root: 8^1/3" → 2
-        if self.rule_name == "Evaluate Numeric Power" {
-            if self.description.starts_with("Simplify root:") {
-                return ImportanceLevel::Medium; // Show - root simplification
-            }
-            // Check for fraction base: "Evaluate power: X/Y^Z" or "Evaluate power: -X/Y^Z"
-            if self.description.starts_with("Evaluate power:") {
-                // Extract the part after "Evaluate power: " and before "^"
-                let after_prefix = &self.description["Evaluate power: ".len()..];
-                if let Some(caret_pos) = after_prefix.find('^') {
-                    let base_part = &after_prefix[..caret_pos];
-                    // If base contains "/" it's a fraction - show it
-                    if base_part.contains('/') {
-                        return ImportanceLevel::Medium;
-                    }
-                }
-            }
-            return ImportanceLevel::Low; // Hide trivial evaluations
-        }
-
-        // Low importance - internal reorganizations, not pedagogically valuable
-        // EXCEPTION: "Canonicalize Even Power Base" is pedagogically valuable
-        // because it explains why (y-x)² = (x-y)² for cancellation
-        if self.rule_name == "Canonicalize Even Power Base" {
-            return ImportanceLevel::Medium;
-        }
-
-        if self.rule_name.contains("Combine Constants")
-            || self.rule_name.contains("Evaluate")
-            || self.rule_name.contains("Canonicalize")
-            || self.rule_name.contains("Sort")
-            || self.rule_name.contains("Identity Power")
-            || self.rule_name.contains("Collect")  // Moved from High - internal grouping
-            || self.rule_name.starts_with("Identity")
-        // All identity rules
-        {
-            return ImportanceLevel::Low;
-        }
-
-        // High importance - major transformations students should see
-        if self.rule_name.contains("Factor")
-            || self.rule_name.contains("Expand")
-            || self.rule_name.contains("Integrate")
-            || self.rule_name.contains("Differentiate")
-            || self.rule_name.contains("Simplify Fraction")
-        {
-            return ImportanceLevel::High;
-        }
-
-        // Default: Medium importance - most algebraic steps
-        ImportanceLevel::Medium
+        // Use the declarative importance from the Rule
+        self.importance
     }
 }
 
@@ -212,20 +153,26 @@ mod tests {
         let x = ctx.var("x");
         let y = ctx.var("y");
 
-        // Trivial (identity rule name takes precedence even with different before/after)
-        let step = Step::new("x + 0 = x", "Add Zero", x, y, vec![], Some(&ctx));
-        assert_eq!(step.importance(), ImportanceLevel::Trivial);
+        // Test 1: Default importance is Low (from Step::new)
+        let step = Step::new("Some rule", "Some Rule", x, y, vec![], Some(&ctx));
+        assert_eq!(step.get_importance(), ImportanceLevel::Low);
 
-        // Low (needs different before/after to avoid no-op shortcut)
-        let step = Step::new("2 + 3 = 5", "Combine Constants", x, y, vec![], Some(&ctx));
-        assert_eq!(step.importance(), ImportanceLevel::Low);
+        // Test 2: No-op steps (same before/after) are always Trivial
+        let step = Step::new("No change", "Any Rule", x, x, vec![], Some(&ctx));
+        assert_eq!(step.get_importance(), ImportanceLevel::Trivial);
 
-        // High
-        let step = Step::new("Factor polynomial", "Factor", x, y, vec![], Some(&ctx));
-        assert_eq!(step.importance(), ImportanceLevel::High);
+        // Test 3: Steps with domain assumption are bumped to Medium
+        let mut step = Step::new("Rule with assumption", "Rule", x, y, vec![], Some(&ctx));
+        step.domain_assumption = Some("x > 0");
+        assert_eq!(step.get_importance(), ImportanceLevel::Medium);
 
-        // Medium (default)
-        let step = Step::new("Some transform", "Unknown Rule", x, y, vec![], Some(&ctx));
-        assert_eq!(step.importance(), ImportanceLevel::Medium);
+        // Test 4: Declaratively set importance is respected
+        let mut step = Step::new("Medium rule", "Important Rule", x, y, vec![], Some(&ctx));
+        step.importance = ImportanceLevel::Medium;
+        assert_eq!(step.get_importance(), ImportanceLevel::Medium);
+
+        let mut step = Step::new("High rule", "Major Transform", x, y, vec![], Some(&ctx));
+        step.importance = ImportanceLevel::High;
+        assert_eq!(step.get_importance(), ImportanceLevel::High);
     }
 }
