@@ -68,7 +68,38 @@ impl Rewrite {
 /// Most rules should implement this for simplicity
 pub trait SimpleRule {
     fn name(&self) -> &str;
+
+    /// Apply rule without parent context (legacy API).
+    /// Most rules implement only this method.
     fn apply_simple(&self, context: &mut Context, expr: ExprId) -> Option<Rewrite>;
+
+    /// Apply rule with parent context for domain-aware rules.
+    ///
+    /// Override this method in rules that need access to `DomainMode` or other
+    /// context from `ParentContext`. Default implementation ignores parent_ctx
+    /// and calls `apply_simple()`.
+    ///
+    /// # Example
+    /// ```ignore
+    /// fn apply_with_context(
+    ///     &self,
+    ///     ctx: &mut Context,
+    ///     expr: ExprId,
+    ///     parent_ctx: &ParentContext,
+    /// ) -> Option<Rewrite> {
+    ///     let mode = parent_ctx.domain_mode();
+    ///     // ... domain-aware logic ...
+    /// }
+    /// ```
+    fn apply_with_context(
+        &self,
+        context: &mut Context,
+        expr: ExprId,
+        _parent_ctx: &ParentContext,
+    ) -> Option<Rewrite> {
+        self.apply_simple(context, expr)
+    }
+
     fn target_types(&self) -> Option<Vec<&str>> {
         None
     }
@@ -139,9 +170,10 @@ impl<T: SimpleRule> Rule for T {
         &self,
         context: &mut Context,
         expr: ExprId,
-        _parent_ctx: &ParentContext,
+        parent_ctx: &ParentContext,
     ) -> Option<Rewrite> {
-        self.apply_simple(context, expr)
+        // Call apply_with_context to enable domain-aware rules
+        self.apply_with_context(context, expr, parent_ctx)
     }
 
     fn target_types(&self) -> Option<Vec<&str>> {

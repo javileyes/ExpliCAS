@@ -1946,7 +1946,13 @@ define_rule!(
 define_rule!(
     CancelCommonFactorsRule,
     "Cancel Common Factors",
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        use crate::domain::{DomainMode, Proof};
+        use crate::helpers::prove_nonzero;
+
+        // Capture domain mode once at start
+        let domain_mode = parent_ctx.domain_mode();
+
         let expr_data = ctx.get(expr).clone();
 
         // Helper to collect factors
@@ -2017,6 +2023,16 @@ define_rule!(
 
                 // Check exact match
                 if crate::ordering::compare_expr(ctx, nf, df) == std::cmp::Ordering::Equal {
+                    // DOMAIN GATE: only cancel if allowed by current mode
+                    let allow_cancel = match domain_mode {
+                        DomainMode::Generic => true,
+                        DomainMode::Strict | DomainMode::Assume => {
+                            prove_nonzero(ctx, nf) == Proof::Proven
+                        }
+                    };
+                    if !allow_cancel {
+                        continue; // Skip this pair in strict/assume mode
+                    }
                     den_factors.remove(j);
                     found = true;
                     changed = true;
