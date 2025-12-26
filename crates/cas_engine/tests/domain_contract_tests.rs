@@ -83,11 +83,10 @@ fn test_generic_pi_div_pi_simplifies_to_1() {
 // =============================================================================
 
 #[test]
-#[ignore = "pending: gate CancelCommonFactorsRule for domain mode"]
 fn test_strict_x_div_x_stays_unchanged() {
     // Strict mode: x/x should NOT simplify (x could be 0)
     let result = simplify_strict("x/x");
-    assert_eq!(result, "x/x", "Strict mode should NOT simplify x/x");
+    assert_eq!(result, "x / x", "Strict mode should NOT simplify x/x");
 }
 
 #[test]
@@ -112,7 +111,6 @@ fn test_strict_pi_div_pi_simplifies_to_1() {
 }
 
 #[test]
-#[ignore = "pending: gate CancelCommonFactorsRule for domain mode"]
 fn test_strict_2x_div_2x_stays_unchanged() {
     // Strict mode: (2*x)/(2*x) should NOT simplify to 1 (x could be 0)
     // It might partially simplify but shouldn't collapse to 1
@@ -126,7 +124,6 @@ fn test_strict_2x_div_2x_stays_unchanged() {
 }
 
 #[test]
-#[ignore = "pending: gate CancelCommonFactorsRule for domain mode"]
 fn test_strict_x_squared_div_x_squared_stays_unchanged() {
     // Strict mode: x²/x² should NOT simplify (x could be 0)
     let result = simplify_strict("x^2/x^2");

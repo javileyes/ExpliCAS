@@ -92,6 +92,7 @@ impl Orchestrator {
                 self.options.expand_mode,
                 auto_expand,
                 self.options.expand_budget,
+                self.options.domain,
             );
 
             // Log budget stats for this iteration (actual charging done by caller if Budget provided)

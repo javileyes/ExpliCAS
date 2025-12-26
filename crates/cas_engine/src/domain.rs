@@ -101,6 +101,103 @@ impl Proof {
     }
 }
 
+// =============================================================================
+// Canonical Domain Gate Helper
+// =============================================================================
+
+/// Result of a domain-aware cancellation decision.
+///
+/// Used by cancellation rules to determine whether a factor can be cancelled
+/// and whether to record a domain assumption.
+#[derive(Debug, Clone)]
+pub struct CancelDecision {
+    /// Whether the cancellation is allowed.
+    pub allow: bool,
+    /// Optional domain assumption message for steps/warnings.
+    /// Set when cancellation is allowed but based on unproven assumption.
+    pub assumption: Option<&'static str>,
+}
+
+impl CancelDecision {
+    /// Create a decision that allows cancellation with no assumption.
+    pub fn allow() -> Self {
+        Self {
+            allow: true,
+            assumption: None,
+        }
+    }
+
+    /// Create a decision that blocks cancellation.
+    pub fn deny() -> Self {
+        Self {
+            allow: false,
+            assumption: None,
+        }
+    }
+
+    /// Create a decision that allows with a domain assumption warning.
+    pub fn allow_with_assumption(msg: &'static str) -> Self {
+        Self {
+            allow: true,
+            assumption: Some(msg),
+        }
+    }
+}
+
+/// Canonical helper: Decide whether to cancel a factor based on domain mode.
+///
+/// This is the single point of truth for all cancellation rules.
+/// Call this before any `a/a → 1` or similar cancellation.
+///
+/// # Returns
+///
+/// - `allow: true` with no assumption for proven factors (e.g., `2/2 → 1`)
+/// - `allow: false` in Strict mode for unproven factors (e.g., `x/x` stays)
+/// - `allow: true` with assumption in Generic/Assume for unproven factors
+///
+/// # Example
+///
+/// ```ignore
+/// let proof = prove_nonzero(ctx, factor);
+/// let decision = can_cancel_factor(mode, proof);
+/// if !decision.allow {
+///     return None; // Don't cancel in Strict mode
+/// }
+/// // Apply rewrite, use decision.assumption if present
+/// ```
+pub fn can_cancel_factor(mode: DomainMode, proof: Proof) -> CancelDecision {
+    match mode {
+        // Strict: only cancel if factor is provably non-zero
+        DomainMode::Strict => {
+            if proof == Proof::Proven {
+                CancelDecision::allow()
+            } else {
+                CancelDecision::deny()
+            }
+        }
+
+        // Generic: always allow for backward compatibility
+        // but mark assumption if not proven (for future auditing)
+        DomainMode::Generic => {
+            if proof == Proof::Proven {
+                CancelDecision::allow()
+            } else {
+                // Allow but note the assumption (optional warning)
+                CancelDecision::allow_with_assumption("cancelled factor assumed nonzero")
+            }
+        }
+
+        // Assume: like Generic for now (will use explicit assumptions later)
+        DomainMode::Assume => {
+            if proof == Proof::Proven {
+                CancelDecision::allow()
+            } else {
+                CancelDecision::allow_with_assumption("cancelled factor assumed nonzero")
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

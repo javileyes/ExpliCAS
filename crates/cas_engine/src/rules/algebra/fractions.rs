@@ -480,8 +480,13 @@ fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool
 define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        use crate::domain::can_cancel_factor;
+        use crate::helpers::prove_nonzero;
         use cas_ast::views::RationalFnView;
+
+        // Capture domain mode for cancellation decisions
+        let domain_mode = parent_ctx.domain_mode();
 
         // Use RationalFnView to detect any fraction form while preserving structure
         let view = RationalFnView::from(ctx, expr)?;
@@ -491,6 +496,15 @@ define_rule!(
         let vars = collect_variables(ctx, expr);
         if vars.len() > 1 {
             if let Some((new_num, new_den, gcd_expr, layer)) = try_multivar_gcd(ctx, num, den) {
+                // DOMAIN GATE: Check if we can cancel by this GCD
+                // In Strict mode, only allow if GCD is provably non-zero
+                let gcd_proof = prove_nonzero(ctx, gcd_expr);
+                let decision = can_cancel_factor(domain_mode, gcd_proof);
+                if !decision.allow {
+                    // Strict mode + Unknown proof: don't simplify (e.g., x/x stays)
+                    return None;
+                }
+
                 // Build factored form for display
                 let factored_num = mul2_raw(ctx, new_num, gcd_expr);
                 let factored_den = if let Expr::Number(n) = ctx.get(new_den) {
@@ -600,6 +614,15 @@ define_rule!(
         let new_num = new_num_poly.to_expr(ctx);
         let new_den = new_den_poly.to_expr(ctx);
         let gcd_expr = full_gcd.to_expr(ctx);
+
+        // DOMAIN GATE: Check if we can cancel by this GCD
+        // In Strict mode, only allow if GCD is provably non-zero
+        let gcd_proof = prove_nonzero(ctx, gcd_expr);
+        let decision = can_cancel_factor(domain_mode, gcd_proof);
+        if !decision.allow {
+            // Strict mode + Unknown proof: don't simplify (e.g., x/x stays)
+            return None;
+        }
 
         // Build factored form for "Rule:" display: (new_num * gcd) / (new_den * gcd)
         // This shows the factorization step more clearly
@@ -1947,7 +1970,6 @@ define_rule!(
     CancelCommonFactorsRule,
     "Cancel Common Factors",
     |ctx, expr, parent_ctx| {
-        use crate::domain::{DomainMode, Proof};
         use crate::helpers::prove_nonzero;
 
         // Capture domain mode once at start
@@ -2023,15 +2045,11 @@ define_rule!(
 
                 // Check exact match
                 if crate::ordering::compare_expr(ctx, nf, df) == std::cmp::Ordering::Equal {
-                    // DOMAIN GATE: only cancel if allowed by current mode
-                    let allow_cancel = match domain_mode {
-                        DomainMode::Generic => true,
-                        DomainMode::Strict | DomainMode::Assume => {
-                            prove_nonzero(ctx, nf) == Proof::Proven
-                        }
-                    };
-                    if !allow_cancel {
-                        continue; // Skip this pair in strict/assume mode
+                    // DOMAIN GATE: use canonical helper
+                    let proof = prove_nonzero(ctx, nf);
+                    let decision = crate::domain::can_cancel_factor(domain_mode, proof);
+                    if !decision.allow {
+                        continue; // Skip this pair in strict mode
                     }
                     den_factors.remove(j);
                     found = true;
@@ -2057,6 +2075,13 @@ define_rule!(
                                 let new_exp = n - num_rational::BigRational::one();
                                 if new_exp.is_zero() {
                                     // x^1 / x = 1, remove both factors
+                                    // DOMAIN GATE: check base is provably non-zero
+                                    let proof = prove_nonzero(ctx, b);
+                                    let decision =
+                                        crate::domain::can_cancel_factor(domain_mode, proof);
+                                    if !decision.allow {
+                                        continue; // Skip in strict mode
+                                    }
                                     den_factors.remove(j);
                                     found = true; // Remove num factor too
                                     changed = true;
@@ -2095,6 +2120,13 @@ define_rule!(
                                 let new_exp = m - num_rational::BigRational::one();
                                 if new_exp.is_zero() {
                                     // x / x^1 = 1, remove both factors
+                                    // DOMAIN GATE: check base is provably non-zero
+                                    let proof = prove_nonzero(ctx, b);
+                                    let decision =
+                                        crate::domain::can_cancel_factor(domain_mode, proof);
+                                    if !decision.allow {
+                                        continue; // Skip in strict mode
+                                    }
                                     den_factors.remove(j);
                                     found = true; // Remove num factor too
                                     changed = true;
@@ -2152,6 +2184,14 @@ define_rule!(
                                     changed = true;
                                     break;
                                 } else {
+                                    // x^n / x^n (n == m), remove both factors
+                                    // DOMAIN GATE: check base is provably non-zero
+                                    let proof = prove_nonzero(ctx, b_n);
+                                    let decision =
+                                        crate::domain::can_cancel_factor(domain_mode, proof);
+                                    if !decision.allow {
+                                        continue; // Skip in strict mode
+                                    }
                                     den_factors.remove(j);
                                     found = true;
                                     changed = true;
@@ -2206,92 +2246,72 @@ define_rule!(
 
 // Atomized rule for quotient of powers: a^n / a^m = a^(n-m)
 // This is separated from CancelCommonFactorsRule for pedagogical clarity
-define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
-    use cas_ast::views::FractionParts;
+define_rule!(
+    QuotientOfPowersRule,
+    "Quotient of Powers",
+    |ctx, expr, parent_ctx| {
+        use crate::helpers::prove_nonzero;
+        use cas_ast::views::FractionParts;
 
-    let fp = FractionParts::from(&*ctx, expr);
-    if !fp.is_fraction() {
-        return None;
-    }
+        // Capture domain mode for cancellation decisions
+        let domain_mode = parent_ctx.domain_mode();
 
-    let (num, den, _) = fp.to_num_den(ctx);
-    let num_data = ctx.get(num).clone();
-    let den_data = ctx.get(den).clone();
-
-    // Case 1: a^n / a^m where both are Pow
-    if let (Expr::Pow(b_n, e_n), Expr::Pow(b_d, e_d)) = (&num_data, &den_data) {
-        // Check same base
-        if crate::ordering::compare_expr(ctx, *b_n, *b_d) == std::cmp::Ordering::Equal {
-            // Check if exponents are numeric (so we can subtract)
-            if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(*e_n), ctx.get(*e_d)) {
-                // Only handle fractional exponents here - integer case is in CancelCommonFactors
-                if n.is_integer() && m.is_integer() {
-                    return None;
-                }
-
-                let diff = n - m;
-                if diff.is_zero() {
-                    // a^n / a^n = 1
-                    return Some(Rewrite {
-                        new_expr: ctx.num(1),
-                        description: "a^n / a^n = 1".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                    });
-                } else if diff.is_one() {
-                    // Result is just the base
-                    return Some(Rewrite {
-                        new_expr: *b_n,
-                        description: "a^n / a^m = a^(n-m)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                    });
-                } else {
-                    // Guard: Don't produce negative fractional exponents (anti-pattern for rationalization)
-                    // E.g., sqrt(x)/x should NOT become x^(-1/2) as it undoes rationalization
-                    if diff < num_rational::BigRational::zero() && !diff.is_integer() {
-                        return None;
-                    }
-                    let new_exp = ctx.add(Expr::Number(diff));
-                    let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "a^n / a^m = a^(n-m)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                    });
-                }
-            }
+        let fp = FractionParts::from(&*ctx, expr);
+        if !fp.is_fraction() {
+            return None;
         }
-    }
 
-    // Case 2: a^n / a (denominator has implicit exponent 1)
-    if let Expr::Pow(b_n, e_n) = &num_data {
-        if crate::ordering::compare_expr(ctx, *b_n, den) == std::cmp::Ordering::Equal {
-            if let Expr::Number(n) = ctx.get(*e_n) {
-                if !n.is_integer() {
-                    let new_exp_val = n - num_rational::BigRational::one();
-                    // Guard: Don't produce negative fractional exponents
-                    if new_exp_val < num_rational::BigRational::zero() {
+        let (num, den, _) = fp.to_num_den(ctx);
+        let num_data = ctx.get(num).clone();
+        let den_data = ctx.get(den).clone();
+
+        // Case 1: a^n / a^m where both are Pow
+        if let (Expr::Pow(b_n, e_n), Expr::Pow(b_d, e_d)) = (&num_data, &den_data) {
+            // Check same base
+            if crate::ordering::compare_expr(ctx, *b_n, *b_d) == std::cmp::Ordering::Equal {
+                // Check if exponents are numeric (so we can subtract)
+                if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(*e_n), ctx.get(*e_d)) {
+                    // Only handle fractional exponents here - integer case is in CancelCommonFactors
+                    if n.is_integer() && m.is_integer() {
                         return None;
                     }
-                    if new_exp_val.is_one() {
+
+                    let diff = n - m;
+                    if diff.is_zero() {
+                        // a^n / a^n = 1
+                        // DOMAIN GATE: check if base is provably non-zero
+                        let proof = prove_nonzero(ctx, *b_n);
+                        let decision = crate::domain::can_cancel_factor(domain_mode, proof);
+                        if !decision.allow {
+                            return None; // In Strict mode, don't cancel unknown factors
+                        }
+                        return Some(Rewrite {
+                            new_expr: ctx.num(1),
+                            description: "a^n / a^n = 1".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: decision.assumption,
+                        });
+                    } else if diff.is_one() {
+                        // Result is just the base
                         return Some(Rewrite {
                             new_expr: *b_n,
-                            description: "a^n / a = a^(n-1)".to_string(),
+                            description: "a^n / a^m = a^(n-m)".to_string(),
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
                         });
                     } else {
-                        let new_exp = ctx.add(Expr::Number(new_exp_val));
+                        // Guard: Don't produce negative fractional exponents (anti-pattern for rationalization)
+                        // E.g., sqrt(x)/x should NOT become x^(-1/2) as it undoes rationalization
+                        if diff < num_rational::BigRational::zero() && !diff.is_integer() {
+                            return None;
+                        }
+                        let new_exp = ctx.add(Expr::Number(diff));
                         let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
                         return Some(Rewrite {
                             new_expr,
-                            description: "a^n / a = a^(n-1)".to_string(),
+                            description: "a^n / a^m = a^(n-m)".to_string(),
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
@@ -2300,35 +2320,69 @@ define_rule!(QuotientOfPowersRule, "Quotient of Powers", |ctx, expr| {
                 }
             }
         }
-    }
 
-    // Case 3: a / a^m (numerator has implicit exponent 1)
-    if let Expr::Pow(b_d, e_d) = &den_data {
-        if crate::ordering::compare_expr(ctx, num, *b_d) == std::cmp::Ordering::Equal {
-            if let Expr::Number(m) = ctx.get(*e_d) {
-                if !m.is_integer() {
-                    let new_exp_val = num_rational::BigRational::one() - m;
-                    // Guard: Don't produce negative fractional exponents
-                    // This would undo rationalization: sqrt(x)/x should stay as-is, NOT become x^(-1/2)
-                    if new_exp_val < num_rational::BigRational::zero() {
-                        return None;
+        // Case 2: a^n / a (denominator has implicit exponent 1)
+        if let Expr::Pow(b_n, e_n) = &num_data {
+            if crate::ordering::compare_expr(ctx, *b_n, den) == std::cmp::Ordering::Equal {
+                if let Expr::Number(n) = ctx.get(*e_n) {
+                    if !n.is_integer() {
+                        let new_exp_val = n - num_rational::BigRational::one();
+                        // Guard: Don't produce negative fractional exponents
+                        if new_exp_val < num_rational::BigRational::zero() {
+                            return None;
+                        }
+                        if new_exp_val.is_one() {
+                            return Some(Rewrite {
+                                new_expr: *b_n,
+                                description: "a^n / a = a^(n-1)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        } else {
+                            let new_exp = ctx.add(Expr::Number(new_exp_val));
+                            let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
+                            return Some(Rewrite {
+                                new_expr,
+                                description: "a^n / a = a^(n-1)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        }
                     }
-                    let new_exp = ctx.add(Expr::Number(new_exp_val));
-                    let new_expr = ctx.add(Expr::Pow(num, new_exp));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "a / a^m = a^(1-m)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                    });
                 }
             }
         }
-    }
 
-    None
-});
+        // Case 3: a / a^m (numerator has implicit exponent 1)
+        if let Expr::Pow(b_d, e_d) = &den_data {
+            if crate::ordering::compare_expr(ctx, num, *b_d) == std::cmp::Ordering::Equal {
+                if let Expr::Number(m) = ctx.get(*e_d) {
+                    if !m.is_integer() {
+                        let new_exp_val = num_rational::BigRational::one() - m;
+                        // Guard: Don't produce negative fractional exponents
+                        // This would undo rationalization: sqrt(x)/x should stay as-is, NOT become x^(-1/2)
+                        if new_exp_val < num_rational::BigRational::zero() {
+                            return None;
+                        }
+                        let new_exp = ctx.add(Expr::Number(new_exp_val));
+                        let new_expr = ctx.add(Expr::Pow(num, new_exp));
+                        return Some(Rewrite {
+                            new_expr,
+                            description: "a / a^m = a^(1-m)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        None
+    }
+);
 
 define_rule!(
     PullConstantFromFractionRule,

@@ -665,46 +665,98 @@ mod tests {
     }
 }
 
-define_rule!(IdentityPowerRule, "Identity Power", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Pow(base, exp) = expr_data {
-        // x^1 -> x
-        if let Expr::Number(n) = ctx.get(exp) {
-            if n.is_one() {
-                return Some(Rewrite {
-                    new_expr: base,
-                    description: "x^1 -> x".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
+define_rule!(
+    IdentityPowerRule,
+    "Identity Power",
+    |ctx, expr, parent_ctx| {
+        use crate::domain::{DomainMode, Proof};
+        use crate::helpers::prove_nonzero;
+
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            // x^1 -> x (always safe)
+            if let Expr::Number(n) = ctx.get(exp) {
+                if n.is_one() {
+                    return Some(Rewrite {
+                        new_expr: base,
+                        description: "x^1 -> x".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
+                }
+                if n.is_zero() {
+                    // x^0 -> 1 REQUIRES x ≠ 0 (because 0^0 is undefined)
+                    let mode = parent_ctx.domain_mode();
+                    let proof = prove_nonzero(ctx, base);
+
+                    // Check if base is literal 0 -> 0^0 = undefined
+                    if let Expr::Number(b) = ctx.get(base) {
+                        if b.is_zero() {
+                            return Some(Rewrite {
+                                new_expr: ctx.add(Expr::Constant(cas_ast::Constant::Undefined)),
+                                description: "0^0 -> undefined".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        }
+                    }
+
+                    match mode {
+                        DomainMode::Generic => {
+                            // Legacy: always simplify x^0 -> 1
+                            return Some(Rewrite {
+                                new_expr: ctx.num(1),
+                                description: "x^0 -> 1".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        }
+                        DomainMode::Strict => {
+                            // Only simplify if base is provably non-zero
+                            if proof == Proof::Proven {
+                                return Some(Rewrite {
+                                    new_expr: ctx.num(1),
+                                    description: "x^0 -> 1 (x ≠ 0 proven)".to_string(),
+                                    before_local: None,
+                                    after_local: None,
+                                    domain_assumption: None,
+                                });
+                            }
+                            // Unknown or Disproven: don't simplify in Strict mode
+                            return None;
+                        }
+                        DomainMode::Assume => {
+                            // Simplify with assumption warning
+                            return Some(Rewrite {
+                                new_expr: ctx.num(1),
+                                description: "x^0 -> 1 (assuming x ≠ 0)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: Some("assumed x ≠ 0 for x^0 -> 1"),
+                            });
+                        }
+                    }
+                }
             }
-            if n.is_zero() {
-                // x^0 -> 1
-                return Some(Rewrite {
-                    new_expr: ctx.num(1),
-                    description: "x^0 -> 1".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
+            // 1^x -> 1 (always safe - 1 raised to any power is 1)
+            if let Expr::Number(n) = ctx.get(base) {
+                if n.is_one() {
+                    return Some(Rewrite {
+                        new_expr: ctx.num(1),
+                        description: "1^x -> 1".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
+                }
             }
         }
-        // 1^x -> 1
-        if let Expr::Number(n) = ctx.get(base) {
-            if n.is_one() {
-                return Some(Rewrite {
-                    new_expr: ctx.num(1),
-                    description: "1^x -> 1".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
-            }
-        }
+        None
     }
-    None
-});
+);
 
 define_rule!(
     PowerProductRule,

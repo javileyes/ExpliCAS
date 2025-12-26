@@ -586,7 +586,7 @@ impl Simplifier {
         pattern_marks: &crate::pattern_marks::PatternMarks,
         phase: crate::phase::SimplifyPhase,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
-        // Default: not in expand mode, no auto-expand
+        // Default: not in expand mode, no auto-expand, Generic domain mode
         self.apply_rules_loop_with_phase_and_mode(
             expr_id,
             pattern_marks,
@@ -594,11 +594,13 @@ impl Simplifier {
             false,
             false,
             crate::phase::ExpandBudget::default(),
+            crate::domain::DomainMode::default(),
         )
     }
 
     /// Apply rules loop with explicit expand_mode and auto_expand control.
     /// Returns PassStats for the caller to charge the Budget.
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_rules_loop_with_phase_and_mode(
         &mut self,
         expr_id: ExprId,
@@ -607,12 +609,13 @@ impl Simplifier {
         expand_mode: bool,
         auto_expand: bool,
         expand_budget: crate::phase::ExpandBudget,
+        domain_mode: crate::domain::DomainMode,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let steps_mode = self.steps_mode;
 
-        // Create initial ParentContext with pattern marks, expand_mode, and auto-expand
+        // Create initial ParentContext with pattern marks, expand_mode, auto-expand, and domain_mode
         let initial_parent_ctx = crate::parent_context::ParentContext::with_expand_mode(
             pattern_marks.clone(),
             expand_mode,
@@ -624,7 +627,8 @@ impl Simplifier {
             } else {
                 None
             },
-        );
+        )
+        .with_domain_mode(domain_mode);
 
         // Capture nodes_created BEFORE creating transformer (can't access while borrowed)
         let nodes_snap = self.context.stats().nodes_created;
