@@ -7,6 +7,7 @@ pub mod exponents;
 pub mod functions;
 pub mod grouping;
 pub mod hyperbolic;
+pub mod infinity;
 pub mod integration;
 pub mod inverse_trig;
 pub mod logarithms;

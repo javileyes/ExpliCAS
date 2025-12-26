@@ -282,7 +282,7 @@ fn parse_session_ref(input: &str) -> IResult<&str, ParseNode> {
 }
 
 // Parser for constants with word boundary check
-// 'e' and 'pi' should not match prefixes of longer identifiers (e.g., 'exact', 'pivot')
+// 'e', 'pi', 'infinity', 'undefined' should not match prefixes of longer identifiers
 fn parse_constant(input: &str) -> IResult<&str, ParseNode> {
     // Helper: check if next char is alphanumeric (would indicate identifier, not constant)
     fn is_word_boundary(remaining: &str) -> bool {
@@ -292,7 +292,17 @@ fn parse_constant(input: &str) -> IResult<&str, ParseNode> {
             .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_')
     }
 
-    // Try 'pi' first (longer prefix)
+    // Try 'infinity' first (longest match)
+    if input.starts_with("infinity") && is_word_boundary(&input[8..]) {
+        return Ok((&input[8..], ParseNode::Constant(Constant::Infinity)));
+    }
+
+    // Try 'undefined'
+    if input.starts_with("undefined") && is_word_boundary(&input[9..]) {
+        return Ok((&input[9..], ParseNode::Constant(Constant::Undefined)));
+    }
+
+    // Try 'pi'
     if input.starts_with("pi") && is_word_boundary(&input[2..]) {
         return Ok((&input[2..], ParseNode::Constant(Constant::Pi)));
     }

@@ -341,6 +341,7 @@ impl Simplifier {
         use crate::rules::*;
 
         arithmetic::register(self);
+        infinity::register(self); // Infinity arithmetic (∞ absorption, indeterminates)
         canonicalization::register(self);
         exponents::register(self);
         logarithms::register(self);
