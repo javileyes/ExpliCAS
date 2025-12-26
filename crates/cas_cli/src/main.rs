@@ -22,7 +22,8 @@ use repl::Repl;
     expli                                   Start interactive REPL
     expli eval \"x^2 + 1\"                    Evaluate expression (text output)
     expli eval \"x^2 + 1\" --format json      Evaluate expression (JSON output)
-    expli eval \"expand((x+1)^5)\" --budget small --format json")]
+    expli eval \"expand((x+1)^5)\" --budget small --format json
+    expli limit \"(x^2+1)/(2*x^2-3)\" --var x --to infinity  Compute limit")]
 struct Cli {
     /// Use ASCII output (*, ^) instead of Unicode (·, ²)
     #[arg(long, global = true)]
@@ -40,6 +41,9 @@ enum Command {
     /// Evaluate an expression and return JSON output (alias for: eval --format json)
     #[command(name = "eval-json", hide = true)]
     EvalJson(EvalJsonLegacyArgs),
+
+    /// Compute the limit of an expression
+    Limit(LimitArgs),
 
     /// Start interactive REPL (default if no subcommand given)
     Repl,
@@ -69,6 +73,40 @@ pub enum BudgetPreset {
     Cli,
     /// No limits (use with caution)
     Unlimited,
+}
+
+/// Approach direction for limits
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum ApproachArg {
+    /// x → +∞
+    #[default]
+    Infinity,
+    /// x → -∞
+    #[value(name = "-infinity")]
+    NegInfinity,
+}
+
+/// Arguments for limit subcommand
+#[derive(clap::Args, Debug)]
+pub struct LimitArgs {
+    /// Expression to compute limit of
+    pub expr: String,
+
+    /// Variable approaching the limit point
+    #[arg(long, default_value = "x")]
+    pub var: String,
+
+    /// Direction of approach
+    #[arg(long, value_enum, default_value_t = ApproachArg::Infinity)]
+    pub to: ApproachArg,
+
+    /// Output format
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    pub format: OutputFormat,
+
+    /// Budget preset for resource limits
+    #[arg(long, value_enum, default_value_t = BudgetPreset::Standard)]
+    pub budget: BudgetPreset,
 }
 
 /// Arguments for eval subcommand
@@ -190,6 +228,10 @@ fn main() -> rustyline::Result<()> {
                 threads: args.threads,
             };
             commands::eval_json::run(eval_args);
+            Ok(())
+        }
+        Some(Command::Limit(args)) => {
+            run_limit(args);
             Ok(())
         }
         Some(Command::Repl) | None => {
@@ -331,5 +373,95 @@ fn budget_preset_to_string(preset: BudgetPreset) -> String {
         BudgetPreset::Small => "small".to_string(),
         BudgetPreset::Standard | BudgetPreset::Cli => "standard".to_string(),
         BudgetPreset::Unlimited => "unlimited".to_string(),
+    }
+}
+
+/// Run limit command
+fn run_limit(args: LimitArgs) {
+    use cas_ast::DisplayExpr;
+    use cas_engine::limits::{limit, Approach, LimitOptions};
+    use cas_engine::Budget;
+    use cas_parser::parse;
+
+    let mut ctx = cas_ast::Context::new();
+
+    // Parse expression
+    let expr = match parse(&args.expr, &mut ctx) {
+        Ok(e) => e,
+        Err(e) => {
+            match args.format {
+                OutputFormat::Json => {
+                    let json = serde_json::json!({
+                        "ok": false,
+                        "error": format!("Parse error: {}", e),
+                        "code": "PARSE_ERROR"
+                    });
+                    println!("{}", json);
+                }
+                OutputFormat::Text => {
+                    eprintln!("Parse error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+    };
+
+    // Parse variable
+    let var = ctx.var(&args.var);
+
+    // Convert approach
+    let approach = match args.to {
+        ApproachArg::Infinity => Approach::PosInfinity,
+        ApproachArg::NegInfinity => Approach::NegInfinity,
+    };
+
+    // Run limit
+    let mut budget = Budget::new();
+    let opts = LimitOptions::default();
+
+    let result = limit(&mut ctx, expr, var, approach, &opts, &mut budget);
+
+    match result {
+        Ok(limit_result) => {
+            let result_str = DisplayExpr {
+                context: &ctx,
+                id: limit_result.expr,
+            }
+            .to_string();
+
+            match args.format {
+                OutputFormat::Json => {
+                    let mut json = serde_json::json!({
+                        "ok": true,
+                        "result": result_str,
+                    });
+                    if let Some(warning) = &limit_result.warning {
+                        json["warning"] = serde_json::Value::String(warning.clone());
+                    }
+                    println!("{}", json);
+                }
+                OutputFormat::Text => {
+                    println!("{}", result_str);
+                    if let Some(warning) = &limit_result.warning {
+                        eprintln!("Warning: {}", warning);
+                    }
+                }
+            }
+        }
+        Err(e) => match args.format {
+            OutputFormat::Json => {
+                let json = serde_json::json!({
+                    "ok": false,
+                    "error": format!("{}", e),
+                    "code": "LIMIT_ERROR"
+                });
+                println!("{}", json);
+            }
+            OutputFormat::Text => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        },
     }
 }

@@ -1024,6 +1024,12 @@ impl Repl {
             return;
         }
 
+        // Check for "limit" command - compute limits at infinity
+        if line.starts_with("limit ") {
+            self.handle_limit(&line);
+            return;
+        }
+
         // Check for "profile" commands
         if line.starts_with("profile") {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -1714,6 +1720,34 @@ impl Repl {
                 println!();
                 println!("See also: poly_gcd for structural (visible factor) GCD");
             }
+            "limit" => {
+                println!("Command: limit <expr> [, <var> [, <direction>]]");
+                println!();
+                println!("Description: Compute the limit of an expression as a variable approaches infinity.");
+                println!("             Uses polynomial degree comparison for rational functions P(x)/Q(x).");
+                println!();
+                println!("Arguments:");
+                println!("  <expr>       Expression to evaluate the limit of");
+                println!("  <var>        Variable approaching the limit (default: x)");
+                println!("  <direction>  Direction: infinity or -infinity (default: infinity)");
+                println!();
+                println!("Examples:");
+                println!("  limit x^2                      → infinity");
+                println!("  limit (x^2+1)/(2*x^2-3), x     → 1/2");
+                println!("  limit x^3/x^2, x, -infinity    → -infinity");
+                println!("  limit x^2/x^3                  → 0");
+                println!();
+                println!("Behavior:");
+                println!("  - deg(P) < deg(Q): limit = 0");
+                println!("  - deg(P) = deg(Q): limit = leading_coeff(P) / leading_coeff(Q)");
+                println!(
+                    "  - deg(P) > deg(Q): limit = ±∞ (sign depends on coefficients and approach)"
+                );
+                println!();
+                println!("Residuals:");
+                println!("  If the limit cannot be determined (e.g., sin(x)/x, non-polynomial expressions),");
+                println!("  returns limit(...) as a symbolic residual with a warning.");
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
@@ -1748,6 +1782,7 @@ impl Repl {
 
         println!("Calculus:");
         println!("  diff <expr>, <var>      Compute symbolic derivative");
+        println!("  limit <expr>            Compute limit at ±∞ (CLI: expli limit)");
         println!("  sum(e, v, a, b)         Finite summation: Σ(v=a to b) e");
         println!("  product(e, v, a, b)     Finite product: Π(v=a to b) e");
         println!();
@@ -4254,6 +4289,83 @@ impl Repl {
                 }
             }
             Err(e) => println!("Parse error: {:?}", e),
+        }
+    }
+
+    /// Handle the limit command: compute limit at ±∞
+    fn handle_limit(&mut self, line: &str) {
+        use cas_engine::limits::{limit, Approach, LimitOptions};
+        use cas_engine::Budget;
+
+        let rest = line.strip_prefix("limit").unwrap_or(line).trim();
+        if rest.is_empty() {
+            println!("Usage: limit <expr> [, <var> [, <direction>]]");
+            println!("Examples:");
+            println!("  limit x^2                     → infinity (default: x → +∞)");
+            println!("  limit (x^2+1)/(2*x^2-3), x    → 1/2");
+            println!("  limit x^3/x^2, x, -infinity   → -infinity");
+            return;
+        }
+
+        // Parse: expr [, var [, direction]]
+        // Split by comma, respecting parentheses
+        let parts: Vec<&str> = rest.split(',').map(|s| s.trim()).collect();
+
+        let expr_str = parts.first().unwrap_or(&"");
+        let var_str = parts.get(1).copied().unwrap_or("x");
+        let dir_str = parts.get(2).copied().unwrap_or("infinity");
+
+        // Parse expression
+        let expr = match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
+            Ok(e) => e,
+            Err(e) => {
+                println!("Parse error: {:?}", e);
+                return;
+            }
+        };
+
+        // Get variable
+        let var = self.engine.simplifier.context.var(var_str);
+
+        // Parse direction
+        let approach = if dir_str.contains("-infinity") || dir_str.contains("-inf") {
+            Approach::NegInfinity
+        } else {
+            Approach::PosInfinity
+        };
+
+        // Compute limit
+        let mut budget = Budget::new();
+        let opts = LimitOptions::default();
+
+        match limit(
+            &mut self.engine.simplifier.context,
+            expr,
+            var,
+            approach,
+            &opts,
+            &mut budget,
+        ) {
+            Ok(result) => {
+                let result_disp = cas_ast::DisplayExpr {
+                    context: &self.engine.simplifier.context,
+                    id: result.expr,
+                };
+
+                let dir_disp = match approach {
+                    Approach::PosInfinity => "+∞",
+                    Approach::NegInfinity => "-∞",
+                };
+
+                println!("lim_{{{}→{}}} = {}", var_str, dir_disp, result_disp);
+
+                if let Some(warning) = result.warning {
+                    println!("Warning: {}", warning);
+                }
+            }
+            Err(e) => {
+                println!("Error computing limit: {}", e);
+            }
         }
     }
 }

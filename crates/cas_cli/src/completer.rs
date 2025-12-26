@@ -52,6 +52,7 @@ impl CasHelper {
                 "context".to_string(),
                 "complex".to_string(),
                 "autoexpand".to_string(),
+                "limit".to_string(),
                 "history".to_string(),
                 "list".to_string(),
                 "show".to_string(),
