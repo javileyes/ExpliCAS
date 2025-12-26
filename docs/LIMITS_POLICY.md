@@ -48,6 +48,17 @@ Single point of entry ensures auditability and test coverage concentration.
 | Polynomial ops | `gcd_*`, `poly_*` | Out of scope |
 | General simplify | `simplify()`, `apply_rules_loop` | Bypass |
 
+### 2.4 Non-goals (What PreSimplify Safe Does NOT Do)
+
+> [!IMPORTANT]
+> PRs attempting to add these capabilities to `presimplify_safe` should be rejected.
+
+- **No rationalization**: Does not conjugate or clear radicals in denominators
+- **No domain assumptions**: Does not assume `x ≠ 0` for cancellations like `x/x → 1`
+- **No new canonical forms**: Only eliminates structural noise (`+0`, `*1`, `-a+a`)
+- **No term expansion**: Does not expand `(a+b)^n` or distribute multiplication
+- **No general simplification**: Does not call into the main simplifier pipeline
+
 ---
 
 ## 3. Enforcement
@@ -129,3 +140,19 @@ Candidates for similar treatment:
 - Limits V2 (x→a point limits)
 - Rationalization layer
 - Algebraic cancellation (`x/x`, `(x²-1)/(x-1)`)
+
+---
+
+## 6. PR Checklist
+
+Before merging changes to `limits/presimplify.rs`:
+
+- [ ] **Allowlist check**: Is the new transform in the allowlist table (§2.2)?
+- [ ] **Domain neutral**: Does it assume any domain constraints (e.g., `x ≠ 0`)?
+  - If yes → **REJECT** or move to a different mode
+- [ ] **Contract test**: Is there a new contract test if behavior changes?
+- [ ] **Lint passes**: Does `./scripts/lint_limit_presimplify.sh` pass?
+- [ ] **Denylist untouched**: Was the lint denylist modified to "make it pass"?
+  - If yes → **REJECT** (unless documented escalation)
+- [ ] **LIMITS_POLICY.md updated**: Is this doc updated if allowlist/denylist changes?
+
