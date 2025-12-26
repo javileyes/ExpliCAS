@@ -2511,6 +2511,8 @@ impl Repl {
             }
             Some(&"strict") => {
                 self.state.options.branch_mode = BranchMode::Strict;
+                // Reset inv_trig to Strict (PrincipalBranchInverseTrigRule is self-gated)
+                self.state.options.inv_trig = cas_engine::InverseTrigPolicy::Strict;
                 self.engine.simplifier = cas_engine::Simplifier::with_default_rules();
                 self.sync_config_to_simplifier();
                 println!("Switched to strict mode.");
@@ -2518,7 +2520,9 @@ impl Repl {
             }
             Some(&"principal") => {
                 self.state.options.branch_mode = BranchMode::PrincipalBranch;
-                self.engine.simplifier = cas_engine::Simplifier::with_principal_branch_rules();
+                // PrincipalBranchInverseTrigRule is now self-gated by inv_trig policy
+                self.state.options.inv_trig = cas_engine::InverseTrigPolicy::PrincipalValue;
+                self.engine.simplifier = cas_engine::Simplifier::with_default_rules();
                 self.sync_config_to_simplifier();
                 println!("Switched to principal branch mode.");
                 println!("  ⚠️ Simplifications assume principal domain for inverse trig.");

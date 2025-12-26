@@ -209,26 +209,16 @@ impl Simplifier {
         s
     }
 
-    /// Create simplifier with principal branch rules enabled.
-    /// This includes `PrincipalBranchInverseTrigRule` which simplifies
-    /// compositions like `arctan(tan(u)) → u` with domain warnings.
-    pub fn with_principal_branch_rules() -> Self {
-        let mut s = Self::with_default_rules();
-        crate::rules::inverse_trig::register_principal_branch(&mut s);
-        s
-    }
-
     /// Create a simplifier based on evaluation options.
     /// This is the main entry point for context-aware simplification.
+    ///
+    /// NOTE: PrincipalBranchInverseTrigRule is now self-gated by inv_trig_policy().
+    /// It is always registered but only applies when inv_trig == PrincipalValue.
+    /// The branch_mode check below is for backward compatibility until fully migrated.
     pub fn with_profile(opts: &crate::options::EvalOptions) -> Self {
-        use crate::options::{BranchMode, ContextMode};
+        use crate::options::ContextMode;
 
         let mut s = Self::with_default_rules();
-
-        // Apply branch mode rules
-        if opts.branch_mode == BranchMode::PrincipalBranch {
-            crate::rules::inverse_trig::register_principal_branch(&mut s);
-        }
 
         // Apply context mode rules (placeholder for future rule bundles)
         match opts.context_mode {
@@ -586,7 +576,7 @@ impl Simplifier {
         pattern_marks: &crate::pattern_marks::PatternMarks,
         phase: crate::phase::SimplifyPhase,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
-        // Default: not in expand mode, no auto-expand, Generic domain mode
+        // Default: not in expand mode, no auto-expand, Generic domain mode, Strict inv_trig
         self.apply_rules_loop_with_phase_and_mode(
             expr_id,
             pattern_marks,
@@ -595,6 +585,7 @@ impl Simplifier {
             false,
             crate::phase::ExpandBudget::default(),
             crate::domain::DomainMode::default(),
+            crate::semantics::InverseTrigPolicy::default(),
         )
     }
 
@@ -610,12 +601,13 @@ impl Simplifier {
         auto_expand: bool,
         expand_budget: crate::phase::ExpandBudget,
         domain_mode: crate::domain::DomainMode,
+        inv_trig: crate::semantics::InverseTrigPolicy,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let steps_mode = self.steps_mode;
 
-        // Create initial ParentContext with pattern marks, expand_mode, auto-expand, and domain_mode
+        // Create initial ParentContext with pattern marks, expand_mode, auto-expand, domain_mode, and inv_trig
         let initial_parent_ctx = crate::parent_context::ParentContext::with_expand_mode(
             pattern_marks.clone(),
             expand_mode,
@@ -628,7 +620,8 @@ impl Simplifier {
                 None
             },
         )
-        .with_domain_mode(domain_mode);
+        .with_domain_mode(domain_mode)
+        .with_inv_trig(inv_trig);
 
         // Capture nodes_created BEFORE creating transformer (can't access while borrowed)
         let nodes_snap = self.context.stats().nodes_created;

@@ -840,24 +840,44 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ArcsecToArccosRule));
     simplifier.add_rule(Box::new(ArccscToArcsinRule));
     simplifier.add_rule(Box::new(ArccotToArctanRule));
+    // PrincipalBranchInverseTrigRule: Self-gated by parent_ctx.inv_trig_policy().
+    // Always registered; only applies when inv_trig == PrincipalValue.
+    simplifier.add_rule(Box::new(PrincipalBranchInverseTrigRule));
 }
 
-/// Register additional rules for principal branch mode (educational).
-/// These rules are ONLY safe when assuming inputs are in principal domain.
-pub fn register_principal_branch(simplifier: &mut crate::Simplifier) {
-    simplifier.add_rule(Box::new(PrincipalBranchInverseTrigRule));
+/// Deprecated: PrincipalBranchInverseTrigRule is now self-gated and always registered.
+/// This function is kept for backward compatibility but does nothing.
+#[deprecated(note = "PrincipalBranchInverseTrigRule is now self-gated; use register() instead")]
+pub fn register_principal_branch(_simplifier: &mut crate::Simplifier) {
+    // No-op: rule is already registered in register() and self-gated
 }
 
 // ==================== Principal Branch Rules (Educational) ====================
 //
 // These rules simplify inverse∘function compositions like arctan(tan(u)) → u.
 // They are ONLY valid when u is in the principal domain, so they emit warnings.
+//
+// GATED BY: parent_ctx.inv_trig_policy() == InverseTrigPolicy::PrincipalValue
+// This ensures these rules only fire when explicitly enabled via --inv-trig=principal
 
-define_rule!(
-    PrincipalBranchInverseTrigRule,
-    "Principal Branch Inverse Trig",
-    Some(vec!["Function"]),
-    |ctx, expr| {
+pub struct PrincipalBranchInverseTrigRule;
+
+impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
+    fn name(&self) -> &str {
+        "Principal Branch Inverse Trig"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        // GATE: Only apply when inv_trig policy is PrincipalValue
+        if parent_ctx.inv_trig_policy() != crate::semantics::InverseTrigPolicy::PrincipalValue {
+            return None;
+        }
+
         if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
             if outer_args.len() != 1 {
                 return None;
@@ -925,7 +945,9 @@ define_rule!(
                             && d_name == "cos"
                             && n_args.len() == 1
                             && d_args.len() == 1
-                            && n_args[0] == d_args[0]
+                            && (n_args[0] == d_args[0]
+                                || crate::ordering::compare_expr(ctx, n_args[0], d_args[0])
+                                    == std::cmp::Ordering::Equal)
                         {
                             let u = n_args[0];
                             return Some(Rewrite {
@@ -945,4 +967,12 @@ define_rule!(
         }
         None
     }
-);
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn priority(&self) -> i32 {
+        0 // Default priority
+    }
+}
