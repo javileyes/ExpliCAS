@@ -198,6 +198,52 @@ impl MultiPoly {
     pub fn num_terms(&self) -> usize {
         self.terms.len()
     }
+
+    /// Get variable index by name.
+    ///
+    /// Returns `Some(idx)` if the variable exists in this polynomial's variable list.
+    pub fn var_index(&self, name: &str) -> Option<VarIdx> {
+        self.vars.iter().position(|v| v == name)
+    }
+
+    /// Leading coefficient in a specific variable.
+    ///
+    /// Returns a new polynomial containing the sum of all terms with max degree in `v`,
+    /// with the variable `v` factored out (set to degree 0).
+    ///
+    /// # Example
+    /// For `P(x,y) = (2y+1)*x^3 + x^2 + y`, the leading coefficient in `x` is `2y+1`.
+    ///
+    /// # Returns
+    /// - If `max_deg == 0`, returns the full polynomial (constant wrt var)
+    /// - If polynomial is zero, returns zero
+    pub fn leading_coeff_in(&self, v: VarIdx) -> Self {
+        if self.is_zero() {
+            return Self::zero(self.vars.clone());
+        }
+        if v >= self.vars.len() {
+            return self.clone(); // var not in this poly → return self
+        }
+
+        let max_deg = self.degree_in(v);
+
+        let mut map: std::collections::BTreeMap<Monomial, BigRational> =
+            std::collections::BTreeMap::new();
+
+        for (coeff, mono) in &self.terms {
+            if mono.get(v).copied().unwrap_or(0) == max_deg {
+                // Create new monomial with v's exponent set to 0
+                let mut new_mono = mono.clone();
+                new_mono[v] = 0;
+
+                // Accumulate coefficient
+                let entry = map.entry(new_mono).or_insert_with(BigRational::zero);
+                *entry = entry.clone() + coeff.clone();
+            }
+        }
+
+        Self::from_map(self.vars.clone(), map)
+    }
 }
 
 // =============================================================================
