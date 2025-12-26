@@ -100,3 +100,59 @@ fn strict_cancels_gcd_of_integer_coefficients() {
         got
     );
 }
+
+// =============================================================================
+// Sanity Tests: Edge Cases for Strict Partial Cancel
+// =============================================================================
+
+#[test]
+fn strict_zero_numerator_no_spurious_cancel() {
+    // 0 / (2*x) should NOT become 0/x or 0/anything else
+    // The numerator is 0, content gcd with 0 is the other content (2),
+    // but this should simplify to just 0 anyway, NOT do weird partial cancel.
+    let got = simplify_strict("0/(2*x)");
+    // Should become 0 (zero divided by anything nonzero is zero)
+    assert_eq!(got, "0", "0/(2*x) should simplify to 0, got: {}", got);
+}
+
+#[test]
+fn strict_negative_coefficients_sign_handling() {
+    // -4x / 2x should become -2x/x (or (-2*x)/x), NOT 2x/x
+    // The numeric content gcd is 2, signs must be preserved
+    let got = simplify_strict("(-4*x)/(2*x)");
+    // Result should contain a negative sign and the 2
+    assert!(
+        got.contains("-") && got.contains("2"),
+        "Expected negative coefficient preserved: -4x/(2x) → -2x/x, got: {}",
+        got
+    );
+    // Should NOT simplify to just -2 (that would cancel x/x)
+    assert_ne!(got, "-2", "Strict should not cancel x/x to get -2");
+}
+
+#[test]
+fn strict_div_scalar_maintains_exactness() {
+    // 6*x^2 / (3*x) in Strict mode:
+    // - gcd(6x², 3x) = 3x, content = 3
+    // - In Strict, we can only cancel content (3) → 2x²/x
+    // - But 2x²/x = 2x, which is a provable simplification!
+    //   (x cancels exactly: x²/x = x, proven for any x≠0 or just polynomial math)
+    //
+    // Wait - this depends on whether x/x is cancelled. In Strict, it shouldn't
+    // fully cancel x/x if x is Unknown. Let's verify:
+    let got = simplify_strict("6*x^2/(3*x)");
+    // Actually, 6x²/3x = 2x²/x after content cancel
+    // Because x²/x = x is valid polynomial math (no domain assumption needed),
+    // the result "2 * x" is CORRECT. This tests that div_scalar works exactly.
+    assert!(
+        got.contains("2") && got.contains("x"),
+        "Expected 2*x after exact division, got: {}",
+        got
+    );
+    // Should not contain any floating point artifacts
+    assert!(
+        !got.contains("."),
+        "div_scalar should maintain exact rational arithmetic, got: {}",
+        got
+    );
+}

@@ -40,7 +40,6 @@ fn simplify_assume_with_steps(input: &str) -> (String, Vec<Step>) {
 // =============================================================================
 
 #[test]
-#[ignore = "pending: implement Assume mode assumption emission"]
 fn assume_x_div_x_simplifies_but_emits_assumption() {
     let (got, steps) = simplify_assume_with_steps("x/x");
     assert_eq!(got, "1", "Assume mode should simplify x/x to 1");
@@ -56,7 +55,6 @@ fn assume_x_div_x_simplifies_but_emits_assumption() {
 
 #[test]
 #[allow(clippy::needless_option_as_deref)]
-#[ignore = "pending: implement Assume mode assumption emission"]
 fn assume_2x_div_2x_simplifies_and_assumption_mentions_symbolic_part() {
     let (got, steps) = simplify_assume_with_steps("(2*x)/(2*x)");
     assert_eq!(got, "1", "Assume mode should simplify (2*x)/(2*x) to 1");
@@ -85,7 +83,6 @@ fn assume_2x_div_2x_simplifies_and_assumption_mentions_symbolic_part() {
 }
 
 #[test]
-#[ignore = "pending: implement Assume mode assumption emission"]
 fn assume_power_cancellation_emits_assumption() {
     let (got, steps) = simplify_assume_with_steps("x^2/x^2");
     assert_eq!(got, "1", "Assume mode should simplify x^2/x^2 to 1");
@@ -98,7 +95,6 @@ fn assume_power_cancellation_emits_assumption() {
 }
 
 #[test]
-#[ignore = "pending: implement Assume mode for x^0"]
 fn assume_x_pow_0_simplifies_with_assumption() {
     let (got, steps) = simplify_assume_with_steps("x^0");
     assert_eq!(got, "1", "Assume mode should simplify x^0 to 1");

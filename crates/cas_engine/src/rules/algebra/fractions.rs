@@ -540,7 +540,7 @@ define_rule!(
                             ),
                             before_local: Some(factored_form),
                             after_local: Some(new_num),
-                            domain_assumption: None,
+                            domain_assumption: decision.assumption,
                         });
                     }
                 }
@@ -558,7 +558,7 @@ define_rule!(
                     ),
                     before_local: Some(factored_form),
                     after_local: Some(result),
-                    domain_assumption: None,
+                    domain_assumption: decision.assumption,
                 });
             }
         }
@@ -674,7 +674,7 @@ define_rule!(
                     ),
                     before_local: Some(factored_form),
                     after_local: Some(new_num),
-                    domain_assumption: None,
+                    domain_assumption: decision.assumption,
                 });
             }
         }
@@ -691,7 +691,7 @@ define_rule!(
             ),
             before_local: Some(factored_form),
             after_local: Some(result),
-            domain_assumption: None,
+            domain_assumption: decision.assumption,
         });
     }
 );
