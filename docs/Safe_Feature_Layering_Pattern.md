@@ -257,6 +257,20 @@ Especialmente importante cuando hay:
 **Problema:** errores sin `kind/code`, difícil routing en UI, parse sin span.  
 **Solución:** `CasError.kind/code`, spans canónicos, schema v1, contract tests y wiring CLI/FFI.
 
+### 6.4 Limits Presimplify Safe (V1.3)
+**Problema:** mejorar resolución de límites sin inventar resultados ni asumir dominios.  
+**Solución:** capa safe con allowlist-only, lint denylist, contract tests.
+
+- **Canonical**: `limits::presimplify_safe`
+- **Policy**: `docs/LIMITS_POLICY.md`
+- **Enforcement**: `scripts/lint_limit_presimplify.sh`
+- **Contract tests**: `presimplify_contract_tests.rs` (8 tests)
+- **Modes**: `--presimplify off|safe` (default: off)
+
+> [!NOTE]
+> **Stability contract**: BUDGET_POLICY.md y LIMITS_POLICY.md son documentos normativos.
+> Cualquier cambio a allowlist/denylist/enforcement requiere: actualizar doc + tests contractuales.
+
 ---
 
 ## 7. Checklist rápido (para PRs futuros)

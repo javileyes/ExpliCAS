@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget audit-utils help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils help
 
 help:
 	@echo "Targets:"
@@ -8,6 +8,7 @@ help:
 	@echo "  make ci-quick      -> fmt + lints + tests + build --release (no clippy)"
 	@echo "  make lint          -> fmt + lints + clippy"
 	@echo "  make lint-budget   -> check budget instrumentation in hotspots"
+	@echo "  make lint-limits   -> check presimplify_safe isolation"
 	@echo "  make audit-utils   -> show canonical utilities registry + lint check"
 	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
@@ -51,6 +52,10 @@ lint-allowlist:
 # Ensure hotspot modules have budget instrumentation (Phase 6)
 lint-budget:
 	./scripts/lint_budget_enforcement.sh
+
+# Ensure presimplify_safe remains isolated (V1.3)
+lint-limits:
+	./scripts/lint_limit_presimplify.sh
 
 # Audit canonical utilities (hold, flatten, predicates, builders, traversal)
 audit-utils:
