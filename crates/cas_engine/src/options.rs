@@ -99,6 +99,8 @@ pub struct EvalOptions {
     pub expand_policy: crate::phase::ExpandPolicy,
     /// Budget for auto-expand (only used when expand_policy=Auto)
     pub expand_budget: crate::phase::ExpandBudget,
+    /// Domain mode for cancellation rules (Strict, Generic, Assume)
+    pub domain_mode: crate::DomainMode,
 }
 
 impl EvalOptions {
@@ -154,6 +156,7 @@ impl EvalOptions {
             expand_budget: self.expand_budget,
             context_mode: self.context_mode,
             collect_steps: !matches!(self.steps_mode, StepsMode::Off),
+            domain: self.domain_mode,
             ..Default::default()
         }
     }

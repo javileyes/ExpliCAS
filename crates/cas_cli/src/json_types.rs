@@ -29,6 +29,9 @@ pub struct EvalJsonOutput {
     /// Budget information
     pub budget: BudgetJson,
 
+    /// Domain mode information
+    pub domain: DomainJson,
+
     /// Expression statistics
     pub stats: ExprStatsJson,
 
@@ -59,6 +62,13 @@ pub struct BudgetExceededJson {
     pub metric: String,
     pub used: u64,
     pub limit: u64,
+}
+
+/// Domain mode information
+#[derive(Serialize, Debug, Default)]
+pub struct DomainJson {
+    /// Current domain mode: "strict", "generic", or "assume"
+    pub mode: String,
 }
 
 /// An error result with stable kind/code for API consumers.
@@ -163,6 +173,7 @@ pub struct OptionsJson {
     pub expand_policy: String,
     pub complex_mode: String,
     pub steps_mode: String,
+    pub domain_mode: String,
 }
 
 // ============================================================================

@@ -35,7 +35,6 @@ fn parse_json(s: &str) -> Value {
 // =============================================================================
 
 #[test]
-#[ignore = "pending: implement --domain CLI flag"]
 fn cli_domain_generic_x_div_x_simplifies_to_1() {
     // Generic (default) => x/x -> 1
     let (output, _code) = run_cli(&["eval-json", "x/x"]);
@@ -46,7 +45,6 @@ fn cli_domain_generic_x_div_x_simplifies_to_1() {
 }
 
 #[test]
-#[ignore = "pending: implement --domain CLI flag"]
 fn cli_domain_strict_x_div_x_stays_unchanged() {
     // Strict => x/x stays as x/x
     let (output, _code) = run_cli(&["eval-json", "x/x", "--domain", "strict"]);
@@ -62,7 +60,6 @@ fn cli_domain_strict_x_div_x_stays_unchanged() {
 }
 
 #[test]
-#[ignore = "pending: implement --domain CLI flag"]
 fn cli_domain_strict_partial_cancel_contract() {
     // Strict with partial cancellation: 4x/(2x) → 2x/x (cancel only numeric content)
     let (output, _code) = run_cli(&["eval-json", "4*x/(2*x)", "--domain", "strict"]);
@@ -80,7 +77,6 @@ fn cli_domain_strict_partial_cancel_contract() {
 }
 
 #[test]
-#[ignore = "pending: implement --domain CLI flag and assume mode warnings"]
 fn cli_domain_assume_emits_warning() {
     // Assume => x/x -> 1 WITH warning
     let (output, _code) = run_cli(&["eval-json", "x/x", "--domain", "assume"]);
@@ -101,7 +97,6 @@ fn cli_domain_assume_emits_warning() {
 }
 
 #[test]
-#[ignore = "pending: implement --domain CLI flag"]
 fn cli_domain_strict_numeric_still_works() {
     // Strict: 2/2 -> 1 (numeric is provably nonzero)
     let (output, _code) = run_cli(&["eval-json", "2/2", "--domain", "strict"]);
@@ -116,7 +111,6 @@ fn cli_domain_strict_numeric_still_works() {
 // =============================================================================
 
 #[test]
-#[ignore = "pending: implement --domain CLI flag with JSON reflection"]
 fn cli_json_includes_domain_mode() {
     let (output, _code) = run_cli(&["eval-json", "x+x", "--domain", "strict"]);
     let json = parse_json(&output);
@@ -133,7 +127,6 @@ fn cli_json_includes_domain_mode() {
 }
 
 #[test]
-#[ignore = "pending: implement --domain CLI flag"]
 fn cli_domain_default_is_generic() {
     // Without --domain flag, should use generic
     let (output, _code) = run_cli(&["eval-json", "x/x"]);

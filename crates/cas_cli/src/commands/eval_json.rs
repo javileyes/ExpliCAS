@@ -12,7 +12,7 @@ use cas_parser::parse;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{
-    BudgetJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, TimingsJson, WarningJson,
+    BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, TimingsJson, WarningJson,
 };
 
 /// Arguments for eval-json subcommand
@@ -56,6 +56,10 @@ pub struct EvalJsonArgs {
     /// Number of threads for parallel processing (sets RAYON_NUM_THREADS)
     #[arg(long)]
     pub threads: Option<usize>,
+
+    /// Domain mode: strict, generic, assume
+    #[arg(long, default_value = "generic")]
+    pub domain: String,
 }
 
 /// Run the eval-json command
@@ -129,6 +133,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 steps_count: output.steps.len(),
                 warnings: collect_warnings(&output),
                 budget: build_budget_json(args),
+                domain: build_domain_json(args),
                 stats: Default::default(),
                 hash: None,
                 timings_us: TimingsJson {
@@ -169,6 +174,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         steps_count: output.steps.len(),
         warnings: collect_warnings(&output),
         budget: build_budget_json(args),
+        domain: build_domain_json(args),
         stats,
         hash,
         timings_us: TimingsJson {
@@ -217,6 +223,13 @@ fn configure_options(opts: &mut cas_engine::options::EvalOptions, args: &EvalJso
         "auto" => ExpandPolicy::Auto,
         _ => ExpandPolicy::Off,
     };
+
+    // Domain mode
+    opts.domain_mode = match args.domain.as_str() {
+        "strict" => cas_engine::DomainMode::Strict,
+        "assume" => cas_engine::DomainMode::Assume,
+        _ => cas_engine::DomainMode::Generic,
+    };
 }
 
 fn collect_warnings(output: &cas_engine::EvalOutput) -> Vec<WarningJson> {
@@ -237,6 +250,7 @@ fn build_options_json(args: &EvalJsonArgs) -> OptionsJson {
         expand_policy: args.autoexpand.clone(),
         complex_mode: args.complex.clone(),
         steps_mode: args.steps.clone(),
+        domain_mode: args.domain.clone(),
     }
 }
 
@@ -249,5 +263,11 @@ fn build_budget_json(args: &EvalJsonArgs) -> BudgetJson {
             "best-effort".to_string()
         },
         exceeded: None,
+    }
+}
+
+fn build_domain_json(args: &EvalJsonArgs) -> DomainJson {
+    DomainJson {
+        mode: args.domain.clone(),
     }
 }

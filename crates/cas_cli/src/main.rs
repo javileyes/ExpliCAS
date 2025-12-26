@@ -96,6 +96,18 @@ pub enum PreSimplifyArg {
     Safe,
 }
 
+/// Domain mode for cancellation rules
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum DomainArg {
+    /// Only cancel factors provably non-zero (safest)
+    Strict,
+    /// Always cancel, silently (legacy behavior)
+    #[default]
+    Generic,
+    /// Cancel and emit warnings/assumptions
+    Assume,
+}
+
 /// Arguments for limit subcommand
 #[derive(clap::Args, Debug)]
 pub struct LimitArgs {
@@ -169,6 +181,10 @@ pub struct EvalArgs {
     /// Number of threads for parallel processing
     #[arg(long)]
     pub threads: Option<usize>,
+
+    /// Domain mode for cancellation rules (strict, generic, assume)
+    #[arg(long, value_enum, default_value_t = DomainArg::Generic)]
+    pub domain: DomainArg,
 }
 
 /// Legacy eval-json arguments (hidden, for backward compatibility)
@@ -197,6 +213,9 @@ pub struct EvalJsonLegacyArgs {
 
     #[arg(long)]
     pub threads: Option<usize>,
+
+    #[arg(long, value_enum, default_value_t = DomainArg::Generic)]
+    pub domain: DomainArg,
 }
 
 fn main() -> rustyline::Result<()> {
@@ -240,6 +259,7 @@ fn main() -> rustyline::Result<()> {
                 complex: args.complex,
                 autoexpand: args.autoexpand,
                 threads: args.threads,
+                domain: domain_arg_to_string(args.domain),
             };
             commands::eval_json::run(eval_args);
             Ok(())
@@ -291,6 +311,7 @@ fn run_eval(args: EvalArgs) {
                 complex: args.complex,
                 autoexpand: args.autoexpand,
                 threads: args.threads,
+                domain: domain_arg_to_string(args.domain),
             };
             commands::eval_json::run(json_args);
         }
@@ -387,6 +408,15 @@ fn budget_preset_to_string(preset: BudgetPreset) -> String {
         BudgetPreset::Small => "small".to_string(),
         BudgetPreset::Standard | BudgetPreset::Cli => "standard".to_string(),
         BudgetPreset::Unlimited => "unlimited".to_string(),
+    }
+}
+
+/// Convert DomainArg enum to string for JSON args
+fn domain_arg_to_string(domain: DomainArg) -> String {
+    match domain {
+        DomainArg::Strict => "strict".to_string(),
+        DomainArg::Generic => "generic".to_string(),
+        DomainArg::Assume => "assume".to_string(),
     }
 }
 
