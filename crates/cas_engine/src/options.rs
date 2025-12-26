@@ -101,6 +101,12 @@ pub struct EvalOptions {
     pub expand_budget: crate::phase::ExpandBudget,
     /// Domain mode for cancellation rules (Strict, Generic, Assume)
     pub domain_mode: crate::DomainMode,
+    /// Inverse trig composition policy
+    pub inv_trig: crate::semantics::InverseTrigPolicy,
+    /// Value domain for constants (RealOnly, ComplexEnabled)
+    pub value_domain: crate::semantics::ValueDomain,
+    /// Branch policy for multi-valued functions
+    pub branch: crate::semantics::BranchPolicy,
 }
 
 impl EvalOptions {
@@ -157,6 +163,9 @@ impl EvalOptions {
             context_mode: self.context_mode,
             collect_steps: !matches!(self.steps_mode, StepsMode::Off),
             domain: self.domain_mode,
+            inv_trig: self.inv_trig,
+            value_domain: self.value_domain,
+            branch: self.branch,
             ..Default::default()
         }
     }

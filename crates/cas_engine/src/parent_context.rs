@@ -16,6 +16,12 @@ pub struct ParentContext {
     pub(crate) auto_expand_budget: Option<crate::phase::ExpandBudget>,
     /// Domain assumption mode for factor cancellation
     pub(crate) domain_mode: crate::domain::DomainMode,
+    /// Inverse trig composition policy
+    pub(crate) inv_trig: crate::semantics::InverseTrigPolicy,
+    /// Value domain for constants (RealOnly, ComplexEnabled)
+    pub(crate) value_domain: crate::semantics::ValueDomain,
+    /// Branch policy for multi-valued functions
+    pub(crate) branch: crate::semantics::BranchPolicy,
 }
 
 impl ParentContext {
@@ -28,6 +34,9 @@ impl ParentContext {
             auto_expand: false,
             auto_expand_budget: None,
             domain_mode: crate::domain::DomainMode::default(),
+            inv_trig: crate::semantics::InverseTrigPolicy::default(),
+            value_domain: crate::semantics::ValueDomain::default(),
+            branch: crate::semantics::BranchPolicy::default(),
         }
     }
 
@@ -40,6 +49,9 @@ impl ParentContext {
             auto_expand: false,
             auto_expand_budget: None,
             domain_mode: crate::domain::DomainMode::default(),
+            inv_trig: crate::semantics::InverseTrigPolicy::default(),
+            value_domain: crate::semantics::ValueDomain::default(),
+            branch: crate::semantics::BranchPolicy::default(),
         }
     }
 
@@ -52,6 +64,9 @@ impl ParentContext {
             auto_expand: false,
             auto_expand_budget: None,
             domain_mode: crate::domain::DomainMode::default(),
+            inv_trig: crate::semantics::InverseTrigPolicy::default(),
+            value_domain: crate::semantics::ValueDomain::default(),
+            branch: crate::semantics::BranchPolicy::default(),
         }
     }
 
@@ -67,6 +82,9 @@ impl ParentContext {
             auto_expand: false,
             auto_expand_budget: None,
             domain_mode: crate::domain::DomainMode::default(),
+            inv_trig: crate::semantics::InverseTrigPolicy::default(),
+            value_domain: crate::semantics::ValueDomain::default(),
+            branch: crate::semantics::BranchPolicy::default(),
         }
     }
 
@@ -82,6 +100,9 @@ impl ParentContext {
             auto_expand: self.auto_expand,
             auto_expand_budget: self.auto_expand_budget,
             domain_mode: self.domain_mode,
+            inv_trig: self.inv_trig,
+            value_domain: self.value_domain,
+            branch: self.branch,
         }
     }
 
@@ -113,6 +134,27 @@ impl ParentContext {
     pub fn with_domain_mode(mut self, mode: crate::domain::DomainMode) -> Self {
         self.domain_mode = mode;
         self
+    }
+
+    /// Get inverse trig policy
+    pub fn inv_trig_policy(&self) -> crate::semantics::InverseTrigPolicy {
+        self.inv_trig
+    }
+
+    /// Set inverse trig policy, returning a new context
+    pub fn with_inv_trig(mut self, policy: crate::semantics::InverseTrigPolicy) -> Self {
+        self.inv_trig = policy;
+        self
+    }
+
+    /// Get value domain
+    pub fn value_domain(&self) -> crate::semantics::ValueDomain {
+        self.value_domain
+    }
+
+    /// Get branch policy
+    pub fn branch_policy(&self) -> crate::semantics::BranchPolicy {
+        self.branch
     }
 
     /// Set expand_mode flag, returning a new context

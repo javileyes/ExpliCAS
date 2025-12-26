@@ -40,6 +40,7 @@ pub mod rationalize_policy;
 pub mod rule;
 pub mod rules;
 pub mod semantic_equality;
+pub mod semantics;
 pub mod session;
 pub mod session_state;
 pub mod solver;
@@ -79,6 +80,7 @@ pub use phase::{
 };
 pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
 pub use rule::Rule;
+pub use semantics::{BranchPolicy, EvalConfig, InverseTrigPolicy, ValueDomain};
 pub use session::{resolve_session_refs, Entry, EntryId, EntryKind, ResolveError, SessionStore};
 pub use session_state::SessionState;
 pub use step::Step;

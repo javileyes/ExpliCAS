@@ -283,6 +283,18 @@ pub struct SimplifyOptions {
     /// - Assume: Use user-provided assumptions (future)
     /// - Generic: Classic CAS behavior, "almost everywhere" algebra (default)
     pub domain: crate::domain::DomainMode,
+
+    /// Inverse trig composition policy (arctan(tan(x)), etc.).
+    ///
+    /// - Strict: Do not simplify inverse compositions
+    /// - PrincipalValue: Simplify with principal domain warning
+    pub inv_trig: crate::semantics::InverseTrigPolicy,
+
+    /// Value domain for constant evaluation (ℝ vs ℂ).
+    pub value_domain: crate::semantics::ValueDomain,
+
+    /// Branch policy for multi-valued functions (only if ComplexEnabled).
+    pub branch: crate::semantics::BranchPolicy,
 }
 
 impl Default for SimplifyOptions {
@@ -297,6 +309,9 @@ impl Default for SimplifyOptions {
             expand_budget: ExpandBudget::default(),
             context_mode: crate::options::ContextMode::default(),
             domain: crate::domain::DomainMode::default(), // Generic
+            inv_trig: crate::semantics::InverseTrigPolicy::default(), // Strict
+            value_domain: crate::semantics::ValueDomain::default(), // RealOnly
+            branch: crate::semantics::BranchPolicy::default(), // Principal
         }
     }
 }
