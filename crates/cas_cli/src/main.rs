@@ -235,6 +235,10 @@ pub struct EvalArgs {
     /// Branch policy for multi-valued functions (if complex)
     #[arg(long, value_enum, default_value_t = BranchArg::Principal)]
     pub complex_branch: BranchArg,
+
+    /// Constant folding mode
+    #[arg(long, value_enum, default_value_t = ConstFoldArg::Off)]
+    pub const_fold: ConstFoldArg,
 }
 
 /// Legacy eval-json arguments (hidden, for backward compatibility)
@@ -275,6 +279,9 @@ pub struct EvalJsonLegacyArgs {
 
     #[arg(long, value_enum, default_value_t = BranchArg::Principal)]
     pub branch_policy: BranchArg,
+
+    #[arg(long, value_enum, default_value_t = ConstFoldArg::Off)]
+    pub const_fold: ConstFoldArg,
 }
 
 fn main() -> rustyline::Result<()> {
@@ -322,6 +329,7 @@ fn main() -> rustyline::Result<()> {
                 value_domain: value_domain_arg_to_string(args.value_domain),
                 inv_trig: inv_trig_arg_to_string(args.inv_trig),
                 complex_branch: branch_arg_to_string(args.branch_policy),
+                const_fold: const_fold_arg_to_string(args.const_fold),
             };
             commands::eval_json::run(eval_args);
             Ok(())
@@ -377,6 +385,7 @@ fn run_eval(args: EvalArgs) {
                 value_domain: value_domain_arg_to_string(args.value_domain),
                 inv_trig: inv_trig_arg_to_string(args.inv_trig),
                 complex_branch: branch_arg_to_string(args.complex_branch),
+                const_fold: const_fold_arg_to_string(args.const_fold),
             };
             commands::eval_json::run(json_args);
         }
@@ -505,6 +514,14 @@ fn inv_trig_arg_to_string(it: InvTrigArg) -> String {
 fn branch_arg_to_string(b: BranchArg) -> String {
     match b {
         BranchArg::Principal => "principal".to_string(),
+    }
+}
+
+/// Convert ConstFoldArg enum to string for JSON args
+fn const_fold_arg_to_string(cf: ConstFoldArg) -> String {
+    match cf {
+        ConstFoldArg::Off => "off".to_string(),
+        ConstFoldArg::Safe => "safe".to_string(),
     }
 }
 

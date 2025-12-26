@@ -190,6 +190,7 @@ pub struct OptionsJson {
     pub complex_mode: String,
     pub steps_mode: String,
     pub domain_mode: String,
+    pub const_fold: String,
 }
 
 // ============================================================================

@@ -73,6 +73,10 @@ pub struct EvalJsonArgs {
     /// Branch policy for multi-valued functions
     #[arg(long, default_value = "principal")]
     pub complex_branch: String,
+
+    /// Constant folding mode: off, safe
+    #[arg(long, default_value = "off")]
+    pub const_fold: String,
 }
 
 /// Run the eval-json command
@@ -282,6 +286,7 @@ fn build_options_json(args: &EvalJsonArgs) -> OptionsJson {
         complex_mode: args.complex.clone(),
         steps_mode: args.steps.clone(),
         domain_mode: args.domain.clone(),
+        const_fold: args.const_fold.clone(),
     }
 }
 
