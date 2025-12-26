@@ -15,6 +15,7 @@ pub mod eval;
 pub mod expand;
 pub mod factor;
 pub mod gcd_zippel_modp;
+pub mod limits;
 pub mod matrix;
 pub mod modp;
 pub mod mono;
