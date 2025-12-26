@@ -108,6 +108,34 @@ pub enum DomainArg {
     Assume,
 }
 
+/// Value domain for constant evaluation
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum ValueDomainArg {
+    /// Real numbers extended with ±∞ (sqrt(-1) → undefined)
+    #[default]
+    Real,
+    /// Complex numbers with principal branch (sqrt(-1) → i)
+    Complex,
+}
+
+/// Inverse trig composition policy
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum InvTrigArg {
+    /// Do not simplify arctan(tan(x)) etc.
+    #[default]
+    Strict,
+    /// Simplify with principal domain assumption + warning
+    Principal,
+}
+
+/// Branch policy for multi-valued functions (only if complex)
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum BranchArg {
+    /// Use principal branch
+    #[default]
+    Principal,
+}
+
 /// Arguments for limit subcommand
 #[derive(clap::Args, Debug)]
 pub struct LimitArgs {
@@ -185,6 +213,18 @@ pub struct EvalArgs {
     /// Domain mode for cancellation rules (strict, generic, assume)
     #[arg(long, value_enum, default_value_t = DomainArg::Generic)]
     pub domain: DomainArg,
+
+    /// Value domain: real or complex
+    #[arg(long, value_enum, default_value_t = ValueDomainArg::Real)]
+    pub value_domain: ValueDomainArg,
+
+    /// Inverse trig composition policy: strict or principal
+    #[arg(long, value_enum, default_value_t = InvTrigArg::Strict)]
+    pub inv_trig: InvTrigArg,
+
+    /// Branch policy for multi-valued functions (if complex)
+    #[arg(long, value_enum, default_value_t = BranchArg::Principal)]
+    pub complex_branch: BranchArg,
 }
 
 /// Legacy eval-json arguments (hidden, for backward compatibility)
@@ -216,6 +256,15 @@ pub struct EvalJsonLegacyArgs {
 
     #[arg(long, value_enum, default_value_t = DomainArg::Generic)]
     pub domain: DomainArg,
+
+    #[arg(long, value_enum, default_value_t = ValueDomainArg::Real)]
+    pub value_domain: ValueDomainArg,
+
+    #[arg(long, value_enum, default_value_t = InvTrigArg::Strict)]
+    pub inv_trig: InvTrigArg,
+
+    #[arg(long, value_enum, default_value_t = BranchArg::Principal)]
+    pub branch_policy: BranchArg,
 }
 
 fn main() -> rustyline::Result<()> {
@@ -260,6 +309,9 @@ fn main() -> rustyline::Result<()> {
                 autoexpand: args.autoexpand,
                 threads: args.threads,
                 domain: domain_arg_to_string(args.domain),
+                value_domain: value_domain_arg_to_string(args.value_domain),
+                inv_trig: inv_trig_arg_to_string(args.inv_trig),
+                complex_branch: branch_arg_to_string(args.branch_policy),
             };
             commands::eval_json::run(eval_args);
             Ok(())
@@ -312,6 +364,9 @@ fn run_eval(args: EvalArgs) {
                 autoexpand: args.autoexpand,
                 threads: args.threads,
                 domain: domain_arg_to_string(args.domain),
+                value_domain: value_domain_arg_to_string(args.value_domain),
+                inv_trig: inv_trig_arg_to_string(args.inv_trig),
+                complex_branch: branch_arg_to_string(args.complex_branch),
             };
             commands::eval_json::run(json_args);
         }
@@ -420,7 +475,29 @@ fn domain_arg_to_string(domain: DomainArg) -> String {
     }
 }
 
-/// Run limit command
+/// Convert ValueDomainArg enum to string for JSON args
+fn value_domain_arg_to_string(vd: ValueDomainArg) -> String {
+    match vd {
+        ValueDomainArg::Real => "real".to_string(),
+        ValueDomainArg::Complex => "complex".to_string(),
+    }
+}
+
+/// Convert InvTrigArg enum to string for JSON args
+fn inv_trig_arg_to_string(it: InvTrigArg) -> String {
+    match it {
+        InvTrigArg::Strict => "strict".to_string(),
+        InvTrigArg::Principal => "principal".to_string(),
+    }
+}
+
+/// Convert BranchArg enum to string for JSON args
+fn branch_arg_to_string(b: BranchArg) -> String {
+    match b {
+        BranchArg::Principal => "principal".to_string(),
+    }
+}
+
 fn run_limit(args: LimitArgs) {
     use cas_ast::DisplayExpr;
     use cas_engine::limits::{limit, Approach, LimitOptions, PreSimplifyMode};

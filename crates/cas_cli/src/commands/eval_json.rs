@@ -12,7 +12,8 @@ use cas_parser::parse;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{
-    BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, TimingsJson, WarningJson,
+    BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, SemanticsJson,
+    TimingsJson, WarningJson,
 };
 
 /// Arguments for eval-json subcommand
@@ -60,6 +61,18 @@ pub struct EvalJsonArgs {
     /// Domain mode: strict, generic, assume
     #[arg(long, default_value = "generic")]
     pub domain: String,
+
+    /// Value domain: real, complex
+    #[arg(long, default_value = "real")]
+    pub value_domain: String,
+
+    /// Inverse trig policy: strict, principal
+    #[arg(long, default_value = "strict")]
+    pub inv_trig: String,
+
+    /// Branch policy for multi-valued functions
+    #[arg(long, default_value = "principal")]
+    pub complex_branch: String,
 }
 
 /// Run the eval-json command
@@ -142,6 +155,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                     total_us: total_start.elapsed().as_micros() as u64,
                 },
                 options: build_options_json(args),
+                semantics: build_semantics_json(args),
             });
         }
         _ => {
@@ -183,6 +197,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
             total_us,
         },
         options: build_options_json(args),
+        semantics: build_semantics_json(args),
     })
 }
 
@@ -230,6 +245,22 @@ fn configure_options(opts: &mut cas_engine::options::EvalOptions, args: &EvalJso
         "assume" => cas_engine::DomainMode::Assume,
         _ => cas_engine::DomainMode::Generic,
     };
+
+    // Inverse trig policy
+    opts.inv_trig = match args.inv_trig.as_str() {
+        "principal" => cas_engine::InverseTrigPolicy::PrincipalValue,
+        _ => cas_engine::InverseTrigPolicy::Strict,
+    };
+
+    // Value domain
+    opts.value_domain = match args.value_domain.as_str() {
+        "complex" => cas_engine::ValueDomain::ComplexEnabled,
+        _ => cas_engine::ValueDomain::RealOnly,
+    };
+
+    // Branch policy (only Principal for now)
+    let _ = args.complex_branch.as_str(); // Parse but only one option
+    opts.branch = cas_engine::BranchPolicy::Principal;
 }
 
 fn collect_warnings(output: &cas_engine::EvalOutput) -> Vec<WarningJson> {
@@ -269,5 +300,14 @@ fn build_budget_json(args: &EvalJsonArgs) -> BudgetJson {
 fn build_domain_json(args: &EvalJsonArgs) -> DomainJson {
     DomainJson {
         mode: args.domain.clone(),
+    }
+}
+
+fn build_semantics_json(args: &EvalJsonArgs) -> SemanticsJson {
+    SemanticsJson {
+        domain_mode: args.domain.clone(),
+        value_domain: args.value_domain.clone(),
+        branch: args.complex_branch.clone(),
+        inv_trig: args.inv_trig.clone(),
     }
 }

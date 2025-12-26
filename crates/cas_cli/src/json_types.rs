@@ -44,6 +44,9 @@ pub struct EvalJsonOutput {
 
     /// Options that were used
     pub options: OptionsJson,
+
+    /// Complete semantics configuration
+    pub semantics: SemanticsJson,
 }
 
 /// Budget configuration and status
@@ -69,6 +72,19 @@ pub struct BudgetExceededJson {
 pub struct DomainJson {
     /// Current domain mode: "strict", "generic", or "assume"
     pub mode: String,
+}
+
+/// Complete semantics configuration in JSON output
+#[derive(Serialize, Debug, Default)]
+pub struct SemanticsJson {
+    /// Domain assumption mode
+    pub domain_mode: String,
+    /// Value domain (real/complex)
+    pub value_domain: String,
+    /// Branch policy for multi-valued functions
+    pub branch: String,
+    /// Inverse trig composition policy
+    pub inv_trig: String,
 }
 
 /// An error result with stable kind/code for API consumers.
