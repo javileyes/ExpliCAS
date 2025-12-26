@@ -837,6 +837,22 @@ impl crate::rule::Rule for TanToSinCosRule {
             }
         }
 
+        // GUARD: Protect inverse trig composition when inv_trig=PrincipalValue.
+        // Don't expand tan(x) → sin(x)/cos(x) if parent is arctan/arcsin/arccos,
+        // so PrincipalBranchInverseTrigRule can match arctan(tan(x)) → x.
+        if parent_ctx.inv_trig_policy() == crate::semantics::InverseTrigPolicy::PrincipalValue {
+            if let Some(parent_id) = parent_ctx.immediate_parent() {
+                if let Expr::Function(name, _) = ctx.get(parent_id) {
+                    if matches!(
+                        name.as_str(),
+                        "arctan" | "arcsin" | "arccos" | "atan" | "asin" | "acos"
+                    ) {
+                        return None; // Protect arctan(tan(x)) pattern
+                    }
+                }
+            }
+        }
+
         // Original conversion logic
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(name, args) = expr_data {

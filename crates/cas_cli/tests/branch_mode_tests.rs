@@ -84,12 +84,9 @@ fn test_strict_arccos_cos_x_unchanged() {
 
 // ============================================================================
 // Principal Branch Mode Tests (Educational)
-// NOTE: These tests may not pass until rule ordering issues are resolved
-// (tan->sin/cos expansion may fire before principal branch rule).
 // ============================================================================
 
 #[test]
-#[ignore = "Pending rule ordering fix: tan->sin/cos fires before principal rule"]
 fn test_principal_arctan_tan_x_simplifies() {
     // In principal branch mode, arctan(tan(x)) → x
     let (result, assumptions) = simplify_principal_branch("arctan(tan(x))");
@@ -104,7 +101,6 @@ fn test_principal_arctan_tan_x_simplifies() {
 }
 
 #[test]
-#[ignore = "Pending rule ordering fix: tan->sin/cos fires before principal rule"]
 fn test_principal_arcsin_sin_x_simplifies() {
     // In principal branch mode, arcsin(sin(x)) → x
     let (result, assumptions) = simplify_principal_branch("arcsin(sin(x))");
@@ -119,7 +115,6 @@ fn test_principal_arcsin_sin_x_simplifies() {
 }
 
 #[test]
-#[ignore = "Pending rule ordering fix: tan->sin/cos fires before principal rule"]
 fn test_principal_arccos_cos_x_simplifies() {
     // In principal branch mode, arccos(cos(x)) → x
     let (result, assumptions) = simplify_principal_branch("arccos(cos(x))");
@@ -150,7 +145,6 @@ fn test_principal_arctan_tan_pi_evaluates_correctly() {
 }
 
 #[test]
-#[ignore = "Pending rule ordering fix: tan->sin/cos fires before principal rule"]
 fn test_principal_arctan_tan_y_with_warning() {
     // arctan(tan(y)) → y in principal mode with warning
     // This demonstrates the educational point: y may exceed (-π/2, π/2)

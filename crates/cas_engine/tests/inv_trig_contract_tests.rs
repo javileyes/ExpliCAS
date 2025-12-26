@@ -92,7 +92,6 @@ fn strict_arccos_cos_unchanged() {
 // ============================================================================
 
 #[test]
-#[ignore = "Pending rule ordering fix: tan→sin/cos expansion fires before principal rule"]
 fn principal_arctan_tan_simplifies() {
     let (result, warnings) =
         simplify_with_inv_trig("arctan(tan(x))", InverseTrigPolicy::PrincipalValue);
@@ -105,7 +104,6 @@ fn principal_arctan_tan_simplifies() {
 }
 
 #[test]
-#[ignore = "Pending rule ordering fix"]
 fn principal_arcsin_sin_simplifies() {
     let (result, warnings) =
         simplify_with_inv_trig("arcsin(sin(x))", InverseTrigPolicy::PrincipalValue);
@@ -115,7 +113,6 @@ fn principal_arcsin_sin_simplifies() {
 }
 
 #[test]
-#[ignore = "Pending rule ordering fix"]
 fn principal_arccos_cos_simplifies() {
     let (result, warnings) =
         simplify_with_inv_trig("arccos(cos(x))", InverseTrigPolicy::PrincipalValue);
@@ -169,7 +166,6 @@ fn strict_independent_of_domain_assume() {
 /// Verify that InverseTrigPolicy::PrincipalValue simplifies
 /// even when DomainMode is Strict (most restrictive).
 #[test]
-#[ignore = "Pending rule ordering fix"]
 fn principal_independent_of_domain_strict() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();

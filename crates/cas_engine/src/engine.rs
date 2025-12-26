@@ -1324,6 +1324,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         }
                         // Copy domain_mode from initial context for factor cancellation
                         ctx = ctx.with_domain_mode(self.initial_parent_ctx.domain_mode());
+                        // Copy inv_trig from initial context for inverse trig simplification
+                        ctx = ctx.with_inv_trig(self.initial_parent_ctx.inv_trig_policy());
                         // Build ancestor chain from stack
                         for &ancestor in &self.ancestor_stack {
                             ctx = ctx.extend(ancestor);
