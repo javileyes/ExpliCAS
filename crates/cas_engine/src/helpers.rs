@@ -340,6 +340,64 @@ pub fn is_negative(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// Check if an expression can be proven to be non-zero.
+///
+/// This is used by domain-aware simplification to gate operations like
+/// `x/x → 1` which require the denominator to be non-zero.
+///
+/// Returns `true` only for expressions that are **provably** non-zero:
+/// - Non-zero numeric constants (2, -3, 1/2, etc.)
+/// - Known non-zero constants (π, e)
+/// - Negation of provably non-zero expressions
+/// - Product of provably non-zero expressions
+/// - Powers with positive integer exponent and provably non-zero base
+///
+/// Returns `false` for variables, functions, and anything uncertain.
+/// This is intentionally conservative: `false` means "unknown", not "is zero".
+///
+/// # Examples
+///
+/// ```ignore
+/// can_prove_nonzero(ctx, ctx.num(2))      // true
+/// can_prove_nonzero(ctx, ctx.num(0))      // false
+/// can_prove_nonzero(ctx, ctx.var("x"))    // false (unknown)
+/// can_prove_nonzero(ctx, ctx.pi())        // true
+/// ```
+pub fn can_prove_nonzero(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::Zero;
+
+    match ctx.get(expr) {
+        // Numbers: check if not zero
+        Expr::Number(n) => !n.is_zero(),
+
+        // Constants: π, e are non-zero
+        Expr::Constant(c) => matches!(
+            c,
+            cas_ast::Constant::Pi | cas_ast::Constant::E | cas_ast::Constant::I
+        ),
+
+        // Neg: -a ≠ 0 iff a ≠ 0
+        Expr::Neg(a) => can_prove_nonzero(ctx, *a),
+
+        // Mul: a*b ≠ 0 iff a ≠ 0 AND b ≠ 0
+        Expr::Mul(a, b) => can_prove_nonzero(ctx, *a) && can_prove_nonzero(ctx, *b),
+
+        // Pow with positive integer exponent: a^n ≠ 0 iff a ≠ 0
+        Expr::Pow(base, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                // Only for positive exponents (negative would require non-zero for a different reason)
+                if n.is_integer() && n > &num_rational::BigRational::zero() {
+                    return can_prove_nonzero(ctx, *base);
+                }
+            }
+            false
+        }
+
+        // Variables, functions, etc: UNKNOWN → false (conservative)
+        _ => false,
+    }
+}
+
 /// Try to extract an integer value from an expression.
 ///
 /// Returns `None` if:

@@ -14,6 +14,8 @@ pub struct ParentContext {
     pub(crate) auto_expand: bool,
     /// Budget for auto-expand (only used when auto_expand=true)
     pub(crate) auto_expand_budget: Option<crate::phase::ExpandBudget>,
+    /// Domain assumption mode for factor cancellation
+    pub(crate) domain_mode: crate::domain::DomainMode,
 }
 
 impl ParentContext {
@@ -25,6 +27,7 @@ impl ParentContext {
             expand_mode: false,
             auto_expand: false,
             auto_expand_budget: None,
+            domain_mode: crate::domain::DomainMode::default(),
         }
     }
 
@@ -36,6 +39,7 @@ impl ParentContext {
             expand_mode: false,
             auto_expand: false,
             auto_expand_budget: None,
+            domain_mode: crate::domain::DomainMode::default(),
         }
     }
 
@@ -47,6 +51,7 @@ impl ParentContext {
             expand_mode: false,
             auto_expand: false,
             auto_expand_budget: None,
+            domain_mode: crate::domain::DomainMode::default(),
         }
     }
 
@@ -61,6 +66,7 @@ impl ParentContext {
             expand_mode,
             auto_expand: false,
             auto_expand_budget: None,
+            domain_mode: crate::domain::DomainMode::default(),
         }
     }
 
@@ -75,6 +81,7 @@ impl ParentContext {
             expand_mode: self.expand_mode,
             auto_expand: self.auto_expand,
             auto_expand_budget: self.auto_expand_budget,
+            domain_mode: self.domain_mode,
         }
     }
 
@@ -95,6 +102,17 @@ impl ParentContext {
     /// Check if we're in expand mode (aggressive distribution/expansion)
     pub fn is_expand_mode(&self) -> bool {
         self.expand_mode
+    }
+
+    /// Get the domain assumption mode
+    pub fn domain_mode(&self) -> crate::domain::DomainMode {
+        self.domain_mode
+    }
+
+    /// Set domain_mode flag, returning a new context
+    pub fn with_domain_mode(mut self, mode: crate::domain::DomainMode) -> Self {
+        self.domain_mode = mode;
+        self
     }
 
     /// Set expand_mode flag, returning a new context

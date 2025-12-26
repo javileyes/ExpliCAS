@@ -276,6 +276,13 @@ pub struct SimplifyOptions {
 
     /// Context mode (Standard, Solve, etc.) - Solve mode blocks auto-expand.
     pub context_mode: crate::options::ContextMode,
+
+    /// Domain assumption mode: Strict, Assume, or Generic (default).
+    ///
+    /// - Strict: No domain assumptions, only proven-safe simplifications
+    /// - Assume: Use user-provided assumptions (future)
+    /// - Generic: Classic CAS behavior, "almost everywhere" algebra (default)
+    pub domain: crate::domain::DomainMode,
 }
 
 impl Default for SimplifyOptions {
@@ -289,6 +296,7 @@ impl Default for SimplifyOptions {
             expand_policy: ExpandPolicy::default(),
             expand_budget: ExpandBudget::default(),
             context_mode: crate::options::ContextMode::default(),
+            domain: crate::domain::DomainMode::default(), // Generic
         }
     }
 }

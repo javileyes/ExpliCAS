@@ -9,6 +9,7 @@ pub mod collect;
 pub mod cycle_detector;
 pub mod didactic;
 pub mod display_context;
+pub mod domain;
 pub mod engine;
 pub mod env;
 pub mod eval;
@@ -66,6 +67,7 @@ pub use engine::{strip_all_holds, Simplifier};
 pub use error::CasError;
 pub use eval::*;
 // JSON API exports (canonical for CLI/FFI)
+pub use domain::DomainMode;
 pub use json::{
     eval_str_to_json, BudgetExceededJson, BudgetJsonInfo, BudgetOpts, EngineJsonError,
     EngineJsonResponse, EngineJsonStep, EngineJsonWarning, JsonRunOptions, SpanJson,

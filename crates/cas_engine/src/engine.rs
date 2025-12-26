@@ -1325,6 +1325,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 self.initial_parent_ctx.auto_expand_budget().cloned(),
                             );
                         }
+                        // Copy domain_mode from initial context for factor cancellation
+                        ctx = ctx.with_domain_mode(self.initial_parent_ctx.domain_mode());
                         // Build ancestor chain from stack
                         for &ancestor in &self.ancestor_stack {
                             ctx = ctx.extend(ancestor);
