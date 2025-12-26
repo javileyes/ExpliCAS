@@ -340,62 +340,90 @@ pub fn is_negative(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if an expression can be proven to be non-zero.
+/// Attempt to prove whether an expression is non-zero.
 ///
 /// This is used by domain-aware simplification to gate operations like
 /// `x/x → 1` which require the denominator to be non-zero.
 ///
-/// Returns `true` only for expressions that are **provably** non-zero:
-/// - Non-zero numeric constants (2, -3, 1/2, etc.)
-/// - Known non-zero constants (π, e)
-/// - Negation of provably non-zero expressions
-/// - Product of provably non-zero expressions
-/// - Powers with positive integer exponent and provably non-zero base
+/// Returns:
+/// - `Proof::Proven` for expressions **provably** non-zero (2, π, -3, etc.)
+/// - `Proof::Disproven` for expressions **provably** zero (0, 0/1, etc.)
+/// - `Proof::Unknown` for variables, functions, and anything uncertain
 ///
-/// Returns `false` for variables, functions, and anything uncertain.
-/// This is intentionally conservative: `false` means "unknown", not "is zero".
+/// This is intentionally conservative. `Unknown` means "we cannot prove it",
+/// not "it might be zero".
 ///
 /// # Examples
 ///
 /// ```ignore
-/// can_prove_nonzero(ctx, ctx.num(2))      // true
-/// can_prove_nonzero(ctx, ctx.num(0))      // false
-/// can_prove_nonzero(ctx, ctx.var("x"))    // false (unknown)
-/// can_prove_nonzero(ctx, ctx.pi())        // true
+/// prove_nonzero(ctx, ctx.num(2))      // Proof::Proven
+/// prove_nonzero(ctx, ctx.num(0))      // Proof::Disproven
+/// prove_nonzero(ctx, ctx.var("x"))    // Proof::Unknown
+/// prove_nonzero(ctx, ctx.pi())        // Proof::Proven
 /// ```
-pub fn can_prove_nonzero(ctx: &Context, expr: ExprId) -> bool {
+pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
+    use crate::domain::Proof;
     use num_traits::Zero;
 
     match ctx.get(expr) {
-        // Numbers: check if not zero
-        Expr::Number(n) => !n.is_zero(),
+        // Numbers: check if zero
+        Expr::Number(n) => {
+            if n.is_zero() {
+                Proof::Disproven
+            } else {
+                Proof::Proven
+            }
+        }
 
-        // Constants: π, e are non-zero
-        Expr::Constant(c) => matches!(
-            c,
-            cas_ast::Constant::Pi | cas_ast::Constant::E | cas_ast::Constant::I
-        ),
+        // Constants: π, e, i are non-zero
+        Expr::Constant(c) => {
+            if matches!(
+                c,
+                cas_ast::Constant::Pi | cas_ast::Constant::E | cas_ast::Constant::I
+            ) {
+                Proof::Proven
+            } else {
+                Proof::Unknown
+            }
+        }
 
         // Neg: -a ≠ 0 iff a ≠ 0
-        Expr::Neg(a) => can_prove_nonzero(ctx, *a),
+        Expr::Neg(a) => prove_nonzero(ctx, *a),
 
         // Mul: a*b ≠ 0 iff a ≠ 0 AND b ≠ 0
-        Expr::Mul(a, b) => can_prove_nonzero(ctx, *a) && can_prove_nonzero(ctx, *b),
+        Expr::Mul(a, b) => {
+            let proof_a = prove_nonzero(ctx, *a);
+            let proof_b = prove_nonzero(ctx, *b);
+
+            match (proof_a, proof_b) {
+                (Proof::Disproven, _) | (_, Proof::Disproven) => Proof::Disproven,
+                (Proof::Proven, Proof::Proven) => Proof::Proven,
+                _ => Proof::Unknown,
+            }
+        }
 
         // Pow with positive integer exponent: a^n ≠ 0 iff a ≠ 0
         Expr::Pow(base, exp) => {
             if let Expr::Number(n) = ctx.get(*exp) {
-                // Only for positive exponents (negative would require non-zero for a different reason)
+                // Only for positive exponents
                 if n.is_integer() && n > &num_rational::BigRational::zero() {
-                    return can_prove_nonzero(ctx, *base);
+                    return prove_nonzero(ctx, *base);
                 }
             }
-            false
+            Proof::Unknown
         }
 
-        // Variables, functions, etc: UNKNOWN → false (conservative)
-        _ => false,
+        // Variables, functions, etc: UNKNOWN (conservative)
+        _ => Proof::Unknown,
     }
+}
+
+/// Check if an expression can be proven to be non-zero (convenience wrapper).
+///
+/// Returns `true` only for `Proof::Proven`. Use `prove_nonzero()` directly
+/// for more fine-grained control.
+pub fn can_prove_nonzero(ctx: &Context, expr: ExprId) -> bool {
+    prove_nonzero(ctx, expr).is_proven()
 }
 
 /// Try to extract an integer value from an expression.

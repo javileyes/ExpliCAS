@@ -67,7 +67,7 @@ pub use engine::{strip_all_holds, Simplifier};
 pub use error::CasError;
 pub use eval::*;
 // JSON API exports (canonical for CLI/FFI)
-pub use domain::DomainMode;
+pub use domain::{DomainMode, Proof};
 pub use json::{
     eval_str_to_json, BudgetExceededJson, BudgetJsonInfo, BudgetOpts, EngineJsonError,
     EngineJsonResponse, EngineJsonStep, EngineJsonWarning, JsonRunOptions, SpanJson,
