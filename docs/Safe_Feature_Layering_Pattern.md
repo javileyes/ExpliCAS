@@ -147,7 +147,87 @@ Ejemplos ya implementados:
 - no duplicar `strip_hold`, flatten/predicates/builders/traversal.
 - no string-matching para step importance.
 
-### 5.3 Contract tests como “garantía externa”
+### 5.3 Lint como “auditor” del contrato (imprescindible)
+
+La parte *difícil* de un refactor no es llegar a una versión limpia; es **evitar que el proyecto vuelva a ensuciarse** seis meses después.  
+Para eso, el lint funciona como un “auditor automático” del contrato: cada PR lo ejecuta y **bloquea** las reintroducciones.
+
+#### 5.3.1 Qué problemas resuelve el lint
+
+- **Consistencia**: garantiza que todos los módulos usan *la misma* API canónica (p. ej. `AddView`, `strip_all_holds`, `Budget::charge()`).
+- **Cobertura**: detecta “agujeros” (hotspots sin checks) aunque el test suite no los ejercite.
+- **Velocidad de revisión**: evita revisiones humanas repetitivas (“¿otra vez un flatten_add local?”).
+- **Deuda visible**: permite mantener *warnings* temporales durante migraciones y convertirlos en *hard fail* cuando se completa.
+
+#### 5.3.2 Tipos de lint útiles (por orden de impacto/coste)
+
+1. **Hard fail de patrones prohibidos** (rápido, robusto)  
+   Ej.: “prohibido declarar `fn flatten_add` fuera de `nary.rs`”, “prohibido `ctx.add(Expr::Mul...)` salvo allowlist”.
+
+2. **Hard fail de patrones requeridos en hotspots** (auditable)  
+   Ej.: “en `expand.rs` debe aparecer `budget.charge(...TermsMaterialized...)`”, “en `limits/*` no se permite `Rationalize`”.
+
+3. **Allowlist tracking** (deuda explícita)  
+   Ej.: `make lint-allowlist` que lista `#[allow(..)]` locales vs crate-level.
+
+4. **Contract tests de invariantes** (cuando el lint no basta)  
+   Ej.: “ningún JSON contiene `__hold`”, “budget precheck fail-fast no aloca”.
+
+> Regla de oro: **si un bug volvió a aparecer 2 veces, merece lint**.
+
+#### 5.3.3 Cómo diseñar un lint que no moleste
+
+Un lint es bueno si cumple estas propiedades:
+
+- **Rápido** (< 1s, grep-based) → se ejecuta siempre.
+- **Accionable** → imprime *archivo + línea + patrón* y “cómo arreglarlo”.
+- **Pocas falsas alarmas** → si hay ruido, la gente lo ignora.
+- **Modo migración** → primero WARNING (no bloquea), luego HARD FAIL.
+
+Patrón recomendado: *warning → hard fail* con fecha/PR objetivo en `POLICY.md`.
+
+#### 5.3.4 Plantilla de script (bash) recomendada
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+fail() { echo "❌ $1" >&2; exit 1; }
+warn() { echo "⚠️  $1" >&2; }
+
+# Helper: ripgrep with sane defaults
+rg0() { rg --no-heading --line-number "$@" "$ROOT"; }
+
+# Example: forbid local flatten_add definitions
+matches="$(rg0 "fn\s+flatten_add\b" crates | rg -v "cas_engine/src/nary\.rs" || true)"
+if [[ -n "${matches}" ]]; then
+  fail "Duplicate flatten_add detected. Use AddView/MulView in cas_engine/src/nary.rs.
+${matches}"
+fi
+
+echo "✔ lint ok"
+```
+
+Notas:
+- Usa `rg` (ripgrep) y **excluye** rutas canónicas por whitelist explícita.
+- Si un caso legítimo existe (infraestructura), **documenta** la excepción en el propio script.
+
+#### 5.3.5 Integración “para que nunca se olvide”
+
+- `Makefile`: `make lint` y `make ci` **deben** invocar todos los lints.  
+- CI: un job dedicado (“N-ary lint”, “Budget enforcement lint”, “No duplicate utils”) para logs claros.
+- Política: en `POLICY.md` anota *qué lint protege qué contrato*.
+
+Checklist mínimo por lint nuevo:
+- [ ] Nombre descriptivo: `lint_budget_enforcement.sh`
+- [ ] Output claro y estable
+- [ ] Ejecutable localmente (`./scripts/...`)
+- [ ] Conectado a `make ci`
+- [ ] Documentado el “por qué” en `POLICY.md`
+
+### 5.4 Contract tests como “garantía externa”
 Especialmente importante cuando hay:
 - JSON API, FFI, CLI.
 - Semánticas sensibles (budgets, `undefined`, `infinity`).

@@ -130,3 +130,31 @@ fn test_presimplify_stability() {
         stdout
     );
 }
+
+// T7: No expand/rationalize on irrational expressions
+#[test]
+fn test_presimplify_no_expand_irrationals() {
+    // sqrt(x) + 1 should not be expanded or rationalized
+    let (success, stdout) = run_limit("sqrt(x)+1", "x", "infinity", "safe", "json");
+    assert!(success, "Command should succeed");
+    // Result should contain infinity (sqrt(x) → ∞ as x → ∞)
+    assert!(
+        stdout.contains("infinity") || stdout.contains("\"warning\""),
+        "sqrt(x)+1 should be infinity or residual, got: {}",
+        stdout
+    );
+}
+
+// T8: Nested add_zero transforms correctly
+#[test]
+fn test_presimplify_nested_add_zero() {
+    // ((x + 0) + 0) / x → x/x → 1 (by limit rule, not presimplify)
+    let (success, stdout) = run_limit("((x+0)+0)/x", "x", "infinity", "safe", "json");
+    assert!(success, "Command should succeed");
+    // Presimplify removes +0, leaving x/x, RationalPolyRule gives 1
+    assert!(
+        stdout.contains("\"result\":\"1\""),
+        "((x+0)+0)/x = 1, got: {}",
+        stdout
+    );
+}
