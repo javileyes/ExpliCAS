@@ -60,11 +60,13 @@ pub enum Operation {
     GcdZippel = 7,
     /// Rationalization
     Rationalize = 8,
+    /// Constant folding
+    ConstFold = 9,
 }
 
 impl Operation {
     /// Number of operation variants (for array sizing)
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 10;
 
     /// Get index for array access
     #[inline]
@@ -85,6 +87,7 @@ impl fmt::Display for Operation {
             Self::PolyModpConv => write!(f, "PolyModpConv"),
             Self::GcdZippel => write!(f, "GcdZippel"),
             Self::Rationalize => write!(f, "Rationalize"),
+            Self::ConstFold => write!(f, "ConstFold"),
         }
     }
 }
@@ -106,11 +109,13 @@ pub enum Metric {
     TermsMaterialized = 2,
     /// Expensive polynomial operations (div, gcd, eval, interpolation)
     PolyOps = 3,
+    /// Iteration count (for const_fold, limits, etc.)
+    Iterations = 4,
 }
 
 impl Metric {
     /// Number of metric variants (for array sizing)
-    pub const COUNT: usize = 4;
+    pub const COUNT: usize = 5;
 
     /// Get index for array access
     #[inline]
@@ -126,6 +131,7 @@ impl fmt::Display for Metric {
             Self::RewriteSteps => write!(f, "RewriteSteps"),
             Self::TermsMaterialized => write!(f, "TermsMaterialized"),
             Self::PolyOps => write!(f, "PolyOps"),
+            Self::Iterations => write!(f, "Iterations"),
         }
     }
 }

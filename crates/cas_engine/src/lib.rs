@@ -6,6 +6,7 @@ pub mod auto_expand_scan;
 pub mod budget;
 pub mod canonical_forms;
 pub mod collect;
+pub mod const_fold;
 pub mod cycle_detector;
 pub mod didactic;
 pub mod display_context;

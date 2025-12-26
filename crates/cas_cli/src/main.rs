@@ -136,6 +136,16 @@ pub enum BranchArg {
     Principal,
 }
 
+/// Constant folding mode
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum ConstFoldArg {
+    /// No constant folding (default)
+    #[default]
+    Off,
+    /// Safe constant folding (allowlist only)
+    Safe,
+}
+
 /// Arguments for limit subcommand
 #[derive(clap::Args, Debug)]
 pub struct LimitArgs {
