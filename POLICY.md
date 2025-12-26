@@ -447,3 +447,86 @@ The CI lint `scripts/lint_no_step_name_matching.sh` will **FAIL** if:
 - `step.rs` contains `contains("Canonicalize")` or similar string matching
 - `step.rs` contains `TEMPORARY` exception comments
 
+---
+
+## Infinity Arithmetic Contract (Added 2025-12)
+
+### Purpose
+
+Extended real line ℝ ∪ {+∞, −∞} with safe, conservative rules for limits and improper integrals.
+
+### Core Semantics
+
+| Constant | Representation | Meaning |
+|----------|----------------|---------|
+| `infinity` | `Constant::Infinity` | Positive infinity (+∞) |
+| `-infinity` | `Neg(Constant::Infinity)` | Negative infinity (−∞) |
+| `undefined` | `Constant::Undefined` | Indeterminate form |
+
+### Conservative Policy
+
+**Only collapse when ALL non-infinity terms are "finite literal".**
+
+Finite literals:
+- `Number(n)` — any rational
+- `Constant::Pi`, `Constant::E`, `Constant::I`
+
+**NOT finite literal**:
+- Variables (`x`, `y`)
+- Functions (`f(x)`, `sin(x)`)
+- `Constant::Infinity`, `Constant::Undefined`
+
+This prevents `x + infinity → infinity` which would be incorrect if `x = -infinity` in a limit context.
+
+### Rules (in `rules/infinity.rs`)
+
+| Rule | Pattern | Result | Condition |
+|------|---------|--------|-----------|
+| `AddInfinityRule` | `finite + ∞` | `∞` | all other terms finite |
+| `AddInfinityRule` | `∞ + (-∞)` | `undefined` | indeterminate |
+| `DivByInfinityRule` | `finite / ∞` | `0` | numerator finite |
+| `MulZeroInfinityRule` | `0 * ∞` | `undefined` | indeterminate |
+| `MulInfinityRule` | `finite * ∞` | `±∞` | finite ≠ 0 |
+| `InfDivFiniteRule` | `∞ / finite` | `±∞` | finite ≠ 0 |
+
+### JSON Output
+
+`undefined` is treated as **successful result** (not error):
+
+```json
+{
+  "ok": true,
+  "result": "undefined"
+}
+```
+
+For domain errors (e.g., division by zero), use `ok: false` with `kind: "DomainError"`.
+
+### Contribution Rules
+
+1. **Never collapse `variable + infinity`** — use `is_finite_literal()` check
+2. **Handle sign propagation** — `(-2) * infinity → -infinity`
+3. **Test symmetric cases** — `∞ * 0` and `0 * ∞` both covered
+4. **Indeterminate forms** — return `Constant::Undefined`, not error
+
+### Helpers (in `rules/infinity.rs`)
+
+```rust
+pub enum InfSign { Pos, Neg }
+pub fn inf_sign(ctx, id) -> Option<InfSign>;    // Detect ±∞
+pub fn mk_infinity(ctx, sign) -> ExprId;         // Construct ±∞
+pub fn mk_undefined(ctx) -> ExprId;              // Construct Undefined
+pub fn is_finite_literal(ctx, id) -> bool;       // Conservative check
+```
+
+### Future: `classify_finiteness`
+
+For limit support, add:
+
+```rust
+pub enum Finiteness { FiniteLiteral, Infinity(InfSign), Unknown }
+pub fn classify_finiteness(ctx, id) -> Finiteness;
+```
+
+This enables propagation rules without unsafe assumptions.
+

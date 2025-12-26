@@ -70,6 +70,61 @@ pub fn is_finite_literal(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
+// ============================================================
+// FINITENESS CLASSIFICATION (for limit support)
+// ============================================================
+
+/// Classification of an expression's finiteness.
+///
+/// This is a conservative classification:
+/// - `FiniteLiteral`: We KNOW the expression is a finite value
+/// - `Infinity(sign)`: We KNOW the expression is ±∞
+/// - `Unknown`: Expression could be finite, infinite, or undefined
+///
+/// Example usage for limits:
+/// ```ignore
+/// match classify_finiteness(ctx, expr) {
+///     Finiteness::FiniteLiteral => { /* can safely absorb into infinity */ },
+///     Finiteness::Infinity(sign) => { /* propagate infinity with sign */ },
+///     Finiteness::Unknown => { /* cannot simplify - may need limit rules */ },
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Finiteness {
+    /// Expression is a known finite value (number, π, e, i)
+    FiniteLiteral,
+    /// Expression is ±∞ with known sign
+    Infinity(InfSign),
+    /// Unknown finiteness - could be finite, infinite, or undefined
+    /// This includes: variables, functions, complex expressions
+    Unknown,
+}
+
+/// Classify an expression's finiteness.
+///
+/// Returns:
+/// - `FiniteLiteral`: Numbers and finite constants (π, e, i)
+/// - `Infinity(Pos)`: Expression is +∞
+/// - `Infinity(Neg)`: Expression is -∞
+/// - `Unknown`: Variables, functions, or complex expressions
+///
+/// Note: `Undefined` is classified as `Unknown` since it represents
+/// an indeterminate form, not a known value.
+pub fn classify_finiteness(ctx: &Context, id: ExprId) -> Finiteness {
+    // Check for infinity first
+    if let Some(sign) = inf_sign(ctx, id) {
+        return Finiteness::Infinity(sign);
+    }
+
+    // Check for finite literals
+    if is_finite_literal(ctx, id) {
+        return Finiteness::FiniteLiteral;
+    }
+
+    // Everything else is unknown (conservative)
+    Finiteness::Unknown
+}
+
 /// Check if expression is zero - uses the canonical helper.
 fn is_zero(ctx: &Context, id: ExprId) -> bool {
     crate::helpers::is_zero(ctx, id)
@@ -216,6 +271,125 @@ pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     None
 }
 
+/// Check if expression is a positive finite literal (for sign determination).
+fn is_positive_literal(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => {
+            use num_traits::Signed;
+            n.is_positive()
+        }
+        Expr::Constant(c) => matches!(c, Constant::Pi | Constant::E), // π and e are positive
+        _ => false,
+    }
+}
+
+/// Check if expression is a negative finite literal.
+fn is_negative_literal(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => {
+            use num_traits::Signed;
+            n.is_negative()
+        }
+        Expr::Neg(inner) => is_positive_literal(ctx, *inner),
+        _ => false,
+    }
+}
+
+/// Rule: Finite (non-zero) times infinity.
+///
+/// `finite * ∞ → ±∞` (sign depends on finite's sign)
+/// - `3 * infinity → infinity`
+/// - `(-2) * infinity → -infinity`
+/// - `x * infinity → no simplification` (conservative)
+pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    let Expr::Mul(a, b) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    // Case 1: a is inf, b is finite non-zero literal
+    if let Some(inf_s) = inf_sign(ctx, a) {
+        if is_finite_literal(ctx, b) && !is_zero(ctx, b) {
+            let b_negative = is_negative_literal(ctx, b);
+            let result_sign = if b_negative {
+                match inf_s {
+                    InfSign::Pos => InfSign::Neg,
+                    InfSign::Neg => InfSign::Pos,
+                }
+            } else {
+                inf_s
+            };
+            return Some(Rewrite {
+                new_expr: mk_infinity(ctx, result_sign),
+                description: format!("finite * ∞ → {:?}∞", result_sign),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
+        }
+    }
+
+    // Case 2: b is inf, a is finite non-zero literal
+    if let Some(inf_s) = inf_sign(ctx, b) {
+        if is_finite_literal(ctx, a) && !is_zero(ctx, a) {
+            let a_negative = is_negative_literal(ctx, a);
+            let result_sign = if a_negative {
+                match inf_s {
+                    InfSign::Pos => InfSign::Neg,
+                    InfSign::Neg => InfSign::Pos,
+                }
+            } else {
+                inf_s
+            };
+            return Some(Rewrite {
+                new_expr: mk_infinity(ctx, result_sign),
+                description: format!("finite * ∞ → {:?}∞", result_sign),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
+        }
+    }
+
+    None
+}
+
+/// Rule: Infinity divided by finite (non-zero).
+///
+/// `∞ / finite → ±∞` (sign depends on finite's sign)
+/// - `infinity / 2 → infinity`
+/// - `infinity / (-3) → -infinity`
+/// - `-infinity / 2 → -infinity`
+pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let inf_s = inf_sign(ctx, num)?;
+
+    // Denominator must be finite non-zero literal
+    if !is_finite_literal(ctx, den) || is_zero(ctx, den) {
+        return None;
+    }
+
+    let den_negative = is_negative_literal(ctx, den);
+    let result_sign = if den_negative {
+        match inf_s {
+            InfSign::Pos => InfSign::Neg,
+            InfSign::Neg => InfSign::Pos,
+        }
+    } else {
+        inf_s
+    };
+
+    Some(Rewrite {
+        new_expr: mk_infinity(ctx, result_sign),
+        description: format!("∞ / finite → {:?}∞", result_sign),
+        before_local: None,
+        after_local: None,
+        domain_assumption: None,
+    })
+}
+
 // ============================================================
 // RULE STRUCTS (for pipeline registration)
 // ============================================================
@@ -225,17 +399,36 @@ use crate::define_rule;
 define_rule!(
     AddInfinityRule,
     "Infinity Absorption in Addition",
+    Some(vec!["Add"]),
     |ctx, expr| { add_infinity_absorption(ctx, expr) }
 );
 
-define_rule!(DivByInfinityRule, "Division by Infinity", |ctx, expr| {
-    div_by_infinity(ctx, expr)
-});
+define_rule!(
+    DivByInfinityRule,
+    "Division by Infinity",
+    Some(vec!["Div"]),
+    |ctx, expr| { div_by_infinity(ctx, expr) }
+);
 
 define_rule!(
     MulZeroInfinityRule,
     "Zero Times Infinity Indeterminate",
+    Some(vec!["Mul"]),
     |ctx, expr| { mul_zero_infinity(ctx, expr) }
+);
+
+define_rule!(
+    MulInfinityRule,
+    "Finite Times Infinity",
+    Some(vec!["Mul"]),
+    |ctx, expr| { mul_finite_infinity(ctx, expr) }
+);
+
+define_rule!(
+    InfDivFiniteRule,
+    "Infinity Divided by Finite",
+    Some(vec!["Div"]),
+    |ctx, expr| { inf_div_finite(ctx, expr) }
 );
 
 /// Register infinity arithmetic rules with the simplifier.
@@ -245,9 +438,11 @@ define_rule!(
 pub fn register(simplifier: &mut crate::Simplifier) {
     // Indeterminate forms first (highest priority)
     simplifier.add_rule(Box::new(MulZeroInfinityRule));
-    // Then absorption rules
+    // Then absorption/computation rules
+    simplifier.add_rule(Box::new(MulInfinityRule));
     simplifier.add_rule(Box::new(AddInfinityRule));
     simplifier.add_rule(Box::new(DivByInfinityRule));
+    simplifier.add_rule(Box::new(InfDivFiniteRule));
 }
 
 // ============================================================
@@ -433,6 +628,226 @@ mod tests {
         assert!(
             result.is_none(),
             "Conservative: x + ∞ should NOT simplify (x could be -∞)"
+        );
+    }
+
+    // ========== EXTENDED RULES TESTS ==========
+
+    /// Test: Finite times infinity
+    /// 3 * infinity → infinity
+    #[test]
+    fn test_finite_times_infinity() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "3 * infinity");
+
+        let result = mul_finite_infinity(&mut ctx, expr);
+        assert!(result.is_some(), "Should simplify 3 * ∞ → ∞");
+
+        let new_expr = result.unwrap().new_expr;
+        assert!(
+            matches!(ctx.get(new_expr), Expr::Constant(Constant::Infinity)),
+            "Result should be infinity"
+        );
+    }
+
+    /// Test: Negative finite times infinity
+    /// (-2) * infinity → -infinity
+    #[test]
+    fn test_negative_finite_times_infinity() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "(-2) * infinity");
+
+        let result = mul_finite_infinity(&mut ctx, expr);
+        assert!(result.is_some(), "Should simplify (-2) * ∞ → -∞");
+
+        let new_expr = result.unwrap().new_expr;
+        // Should be Neg(Infinity)
+        if let Expr::Neg(inner) = ctx.get(new_expr) {
+            assert!(
+                matches!(ctx.get(*inner), Expr::Constant(Constant::Infinity)),
+                "Result should be -infinity"
+            );
+        } else {
+            panic!("Result should be Neg(Infinity)");
+        }
+    }
+
+    /// Test: Infinity times finite (commutative)
+    /// infinity * 5 → infinity
+    #[test]
+    fn test_infinity_times_finite() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "infinity * 5");
+
+        let result = mul_finite_infinity(&mut ctx, expr);
+        assert!(result.is_some(), "Should simplify ∞ * 5 → ∞");
+
+        let new_expr = result.unwrap().new_expr;
+        assert!(
+            matches!(ctx.get(new_expr), Expr::Constant(Constant::Infinity)),
+            "Result should be infinity"
+        );
+    }
+
+    /// Test: Infinity divided by finite
+    /// infinity / 2 → infinity
+    #[test]
+    fn test_infinity_div_finite() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "infinity / 2");
+
+        let result = inf_div_finite(&mut ctx, expr);
+        assert!(result.is_some(), "Should simplify ∞ / 2 → ∞");
+
+        let new_expr = result.unwrap().new_expr;
+        assert!(
+            matches!(ctx.get(new_expr), Expr::Constant(Constant::Infinity)),
+            "Result should be infinity"
+        );
+    }
+
+    /// Test: Infinity divided by negative finite
+    /// infinity / (-3) → -infinity
+    #[test]
+    fn test_infinity_div_negative_finite() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "infinity / (-3)");
+
+        let result = inf_div_finite(&mut ctx, expr);
+        assert!(result.is_some(), "Should simplify ∞ / (-3) → -∞");
+
+        let new_expr = result.unwrap().new_expr;
+        // Should be Neg(Infinity)
+        if let Expr::Neg(inner) = ctx.get(new_expr) {
+            assert!(
+                matches!(ctx.get(*inner), Expr::Constant(Constant::Infinity)),
+                "Result should be -infinity"
+            );
+        } else {
+            panic!("Result should be Neg(Infinity)");
+        }
+    }
+
+    /// Test: Negative infinity divided by negative finite
+    /// -infinity / (-2) → infinity (negative * negative = positive)
+    #[test]
+    fn test_neg_infinity_div_neg_finite() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "-infinity / (-2)");
+
+        let result = inf_div_finite(&mut ctx, expr);
+        assert!(result.is_some(), "Should simplify -∞ / (-2) → ∞");
+
+        let new_expr = result.unwrap().new_expr;
+        assert!(
+            matches!(ctx.get(new_expr), Expr::Constant(Constant::Infinity)),
+            "Result should be positive infinity"
+        );
+    }
+
+    /// Test: Symmetric - (-infinity) - (-infinity) is indeterminate
+    #[test]
+    fn test_neg_inf_minus_neg_inf_indeterminate() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "-infinity - (-infinity)");
+
+        let result = add_infinity_absorption(&mut ctx, expr);
+        assert!(result.is_some(), "Should detect -∞ - (-∞) indeterminate");
+
+        let new_expr = result.unwrap().new_expr;
+        assert!(
+            matches!(ctx.get(new_expr), Expr::Constant(Constant::Undefined)),
+            "Result should be Undefined"
+        );
+    }
+
+    /// Test: Conservative policy - variable * infinity should NOT simplify
+    #[test]
+    fn test_conservative_variable_times_infinity() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "x * infinity");
+
+        let result = mul_finite_infinity(&mut ctx, expr);
+        assert!(result.is_none(), "Conservative: x * ∞ should NOT simplify");
+    }
+
+    // ========== CLASSIFY_FINITENESS TESTS ==========
+
+    /// Test: classify_finiteness for numbers
+    #[test]
+    fn test_classify_number_is_finite() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "42");
+
+        assert_eq!(
+            classify_finiteness(&ctx, expr),
+            Finiteness::FiniteLiteral,
+            "Numbers should be FiniteLiteral"
+        );
+    }
+
+    /// Test: classify_finiteness for pi
+    #[test]
+    fn test_classify_pi_is_finite() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "pi");
+
+        assert_eq!(
+            classify_finiteness(&ctx, expr),
+            Finiteness::FiniteLiteral,
+            "Pi should be FiniteLiteral"
+        );
+    }
+
+    /// Test: classify_finiteness for infinity
+    #[test]
+    fn test_classify_infinity() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "infinity");
+
+        assert_eq!(
+            classify_finiteness(&ctx, expr),
+            Finiteness::Infinity(InfSign::Pos),
+            "infinity should be Infinity(Pos)"
+        );
+    }
+
+    /// Test: classify_finiteness for negative infinity
+    #[test]
+    fn test_classify_neg_infinity() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "-infinity");
+
+        assert_eq!(
+            classify_finiteness(&ctx, expr),
+            Finiteness::Infinity(InfSign::Neg),
+            "-infinity should be Infinity(Neg)"
+        );
+    }
+
+    /// Test: classify_finiteness for variables is Unknown
+    #[test]
+    fn test_classify_variable_is_unknown() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "x");
+
+        assert_eq!(
+            classify_finiteness(&ctx, expr),
+            Finiteness::Unknown,
+            "Variables should be Unknown"
+        );
+    }
+
+    /// Test: classify_finiteness for undefined is Unknown
+    #[test]
+    fn test_classify_undefined_is_unknown() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "undefined");
+
+        assert_eq!(
+            classify_finiteness(&ctx, expr),
+            Finiteness::Unknown,
+            "Undefined should be Unknown (not a known value)"
         );
     }
 }
