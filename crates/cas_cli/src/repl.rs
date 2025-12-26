@@ -4299,21 +4299,23 @@ impl Repl {
 
         let rest = line.strip_prefix("limit").unwrap_or(line).trim();
         if rest.is_empty() {
-            println!("Usage: limit <expr> [, <var> [, <direction>]]");
+            println!("Usage: limit <expr> [, <var> [, <direction> [, safe]]]");
             println!("Examples:");
-            println!("  limit x^2                     → infinity (default: x → +∞)");
-            println!("  limit (x^2+1)/(2*x^2-3), x    → 1/2");
-            println!("  limit x^3/x^2, x, -infinity   → -infinity");
+            println!("  limit x^2                      → infinity (default: x → +∞)");
+            println!("  limit (x^2+1)/(2*x^2-3), x     → 1/2");
+            println!("  limit x^3/x^2, x, -infinity    → -infinity");
+            println!("  limit (x-x)/x, x, infinity, safe → 0 (with pre-simplify)");
             return;
         }
 
-        // Parse: expr [, var [, direction]]
+        // Parse: expr [, var [, direction [, mode]]]
         // Split by comma, respecting parentheses
         let parts: Vec<&str> = rest.split(',').map(|s| s.trim()).collect();
 
         let expr_str = parts.first().unwrap_or(&"");
         let var_str = parts.get(1).copied().unwrap_or("x");
         let dir_str = parts.get(2).copied().unwrap_or("infinity");
+        let mode_str = parts.get(3).copied().unwrap_or("off");
 
         // Parse expression
         let expr = match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
@@ -4334,9 +4336,19 @@ impl Repl {
             Approach::PosInfinity
         };
 
+        // Parse presimplify mode
+        let presimplify = if mode_str.eq_ignore_ascii_case("safe") {
+            cas_engine::limits::PreSimplifyMode::Safe
+        } else {
+            cas_engine::limits::PreSimplifyMode::Off
+        };
+
         // Compute limit
         let mut budget = Budget::new();
-        let opts = LimitOptions::default();
+        let opts = LimitOptions {
+            presimplify,
+            ..Default::default()
+        };
 
         match limit(
             &mut self.engine.simplifier.context,

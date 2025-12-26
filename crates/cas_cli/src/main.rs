@@ -86,6 +86,16 @@ pub enum ApproachArg {
     NegInfinity,
 }
 
+/// Pre-simplification mode for limits
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum PreSimplifyArg {
+    /// No pre-simplification (most conservative)
+    #[default]
+    Off,
+    /// Safe pre-simplification (allowlist only, no domain assumptions)
+    Safe,
+}
+
 /// Arguments for limit subcommand
 #[derive(clap::Args, Debug)]
 pub struct LimitArgs {
@@ -99,6 +109,10 @@ pub struct LimitArgs {
     /// Direction of approach
     #[arg(long, value_enum, default_value_t = ApproachArg::Infinity)]
     pub to: ApproachArg,
+
+    /// Pre-simplification mode (off = conservative, safe = allowlist transforms)
+    #[arg(long, value_enum, default_value_t = PreSimplifyArg::Off)]
+    pub presimplify: PreSimplifyArg,
 
     /// Output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -379,7 +393,7 @@ fn budget_preset_to_string(preset: BudgetPreset) -> String {
 /// Run limit command
 fn run_limit(args: LimitArgs) {
     use cas_ast::DisplayExpr;
-    use cas_engine::limits::{limit, Approach, LimitOptions};
+    use cas_engine::limits::{limit, Approach, LimitOptions, PreSimplifyMode};
     use cas_engine::Budget;
     use cas_parser::parse;
 
@@ -416,9 +430,18 @@ fn run_limit(args: LimitArgs) {
         ApproachArg::NegInfinity => Approach::NegInfinity,
     };
 
+    // Convert presimplify mode
+    let presimplify = match args.presimplify {
+        PreSimplifyArg::Off => PreSimplifyMode::Off,
+        PreSimplifyArg::Safe => PreSimplifyMode::Safe,
+    };
+
     // Run limit
     let mut budget = Budget::new();
-    let opts = LimitOptions::default();
+    let opts = LimitOptions {
+        presimplify,
+        ..Default::default()
+    };
 
     let result = limit(&mut ctx, expr, var, approach, &opts, &mut budget);
 

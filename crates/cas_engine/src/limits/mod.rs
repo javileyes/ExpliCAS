@@ -14,8 +14,10 @@
 
 mod engine;
 mod helpers;
+mod presimplify;
 mod rules;
 mod types;
 
 pub use engine::limit;
-pub use types::{Approach, LimitOptions, LimitResult};
+pub use presimplify::presimplify_safe;
+pub use types::{Approach, LimitOptions, LimitResult, PreSimplifyMode};

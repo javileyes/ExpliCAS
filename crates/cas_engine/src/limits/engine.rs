@@ -7,8 +7,9 @@ use cas_ast::{Context, ExprId};
 use crate::{Budget, CasError};
 
 use super::helpers::mk_limit;
+use super::presimplify::presimplify_safe;
 use super::rules::try_limit_rules;
-use super::types::{Approach, LimitOptions, LimitResult};
+use super::types::{Approach, LimitOptions, LimitResult, PreSimplifyMode};
 
 /// Compute the limit of an expression.
 ///
@@ -32,17 +33,15 @@ pub fn limit(
     expr: ExprId,
     var: ExprId,
     approach: Approach,
-    _opts: &LimitOptions,
+    opts: &LimitOptions,
     budget: &mut Budget,
 ) -> Result<LimitResult, CasError> {
     let steps = Vec::new();
 
-    // Step 1: Pre-simplify the expression
-    // (Use existing simplifier with budgets)
-    let simplified_expr = {
-        // For V1, we use the expression as-is
-        // TODO: integrate with simplifier for pre-simplification
-        expr
+    // Step 1: Pre-simplify the expression (if enabled)
+    let simplified_expr = match opts.presimplify {
+        PreSimplifyMode::Off => expr,
+        PreSimplifyMode::Safe => presimplify_safe(ctx, expr, budget)?,
     };
 
     // Step 2: Try limit rules

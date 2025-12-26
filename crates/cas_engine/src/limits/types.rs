@@ -13,6 +13,20 @@ pub enum Approach {
     // V3 future: Point(ExprId) for x → a
 }
 
+/// Pre-simplification mode for limits.
+///
+/// Controls whether expressions are pre-processed before limit rules.
+/// Default is Off for maximum conservatism and reproducibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PreSimplifyMode {
+    /// No pre-simplification (most conservative).
+    #[default]
+    Off,
+    /// Safe pre-simplification using allowlist-only transforms.
+    /// Does NOT: rationalize, introduce domain assumptions, expand aggressively.
+    Safe,
+}
+
 /// Options for limit computation.
 #[derive(Debug, Clone, Default)]
 pub struct LimitOptions {
@@ -20,6 +34,8 @@ pub struct LimitOptions {
     pub steps: bool,
     /// Whether to use more aggressive (but still safe) rules.
     pub aggressive: bool,
+    /// Pre-simplification mode (default: Off).
+    pub presimplify: PreSimplifyMode,
 }
 
 /// Result of limit computation.
