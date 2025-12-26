@@ -590,7 +590,7 @@ define_rule!(
 
         // 5. Combine
         // full_gcd = poly_gcd * numeric_gcd
-        let scalar = Polynomial::new(vec![numeric_gcd], var.to_string());
+        let scalar = Polynomial::new(vec![numeric_gcd.clone()], var.to_string());
         let full_gcd = poly_gcd.mul(&scalar);
 
         // 6. Check if GCD is non-trivial
@@ -620,7 +620,29 @@ define_rule!(
         let gcd_proof = prove_nonzero(ctx, gcd_expr);
         let decision = can_cancel_factor(domain_mode, gcd_proof);
         if !decision.allow {
-            // Strict mode + Unknown proof: don't simplify (e.g., x/x stays)
+            // STRICT PARTIAL CANCEL: Try to cancel only numeric content
+            // The numeric_gcd is always provably nonzero (it's a rational ≠ 0)
+            if !numeric_gcd.is_one() && !numeric_gcd.is_zero() {
+                // Divide both polys by numeric content only (safe in Strict)
+                let new_num_partial = p_num.div_scalar(&numeric_gcd);
+                let new_den_partial = p_den.div_scalar(&numeric_gcd);
+
+                let new_num_expr = new_num_partial.to_expr(ctx);
+                let new_den_expr = new_den_partial.to_expr(ctx);
+                let result = ctx.add(Expr::Div(new_num_expr, new_den_expr));
+
+                return Some(Rewrite {
+                    new_expr: result,
+                    description: format!(
+                        "Reduced numeric content by gcd {} (strict-safe)",
+                        numeric_gcd
+                    ),
+                    before_local: Some(expr),
+                    after_local: Some(result),
+                    domain_assumption: None, // No assumption needed for numeric cancel
+                });
+            }
+            // No numeric content to cancel, don't simplify
             return None;
         }
 

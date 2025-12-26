@@ -241,6 +241,16 @@ impl Polynomial {
         Polynomial::new(new_coeffs, self.var.clone())
     }
 
+    /// Divide all coefficients by a scalar (exact division)
+    pub fn div_scalar(&self, k: &BigRational) -> Self {
+        if k.is_zero() {
+            // Return zero poly to avoid panic (caller should check)
+            return Polynomial::zero(self.var.clone());
+        }
+        let new_coeffs = self.coeffs.iter().map(|c| c / k).collect();
+        Polynomial::new(new_coeffs, self.var.clone())
+    }
+
     // Returns (quotient, remainder) or error if divisor is zero
     pub fn div_rem(&self, divisor: &Self) -> Result<(Self, Self), crate::error::CasError> {
         if divisor.is_zero() {
