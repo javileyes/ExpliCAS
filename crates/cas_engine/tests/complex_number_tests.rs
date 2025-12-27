@@ -37,6 +37,7 @@ fn complex_on_opts() -> EvalOptions {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::On,
         steps_mode: StepsMode::On,
+        value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
         ..Default::default()
     }
 }
@@ -55,6 +56,7 @@ fn complex_off_opts() -> EvalOptions {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Off,
         steps_mode: StepsMode::On,
+        value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
         ..Default::default()
     }
 }
@@ -65,6 +67,7 @@ fn complex_auto_opts() -> EvalOptions {
         context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
+        value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
         ..Default::default()
     }
 }
@@ -243,7 +246,9 @@ fn simplify_with_steps(input: &str, opts: &EvalOptions) -> (String, usize) {
 
     let mut simplifier = Simplifier::with_profile(opts);
     simplifier.context = ctx;
-    let (result, steps) = simplifier.simplify(expr);
+    // Use simplify_with_options for proper value_domain propagation
+    let simplify_opts = opts.to_simplify_options();
+    let (result, steps) = simplifier.simplify_with_options(expr, simplify_opts);
 
     let result_str = format!(
         "{}",

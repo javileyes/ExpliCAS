@@ -907,7 +907,8 @@ pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
 }
 
 /// Check if an expression contains the imaginary unit `i` anywhere.
-/// Searches the expression tree for `Constant::I`.
+/// Check if an expression contains the imaginary unit `i` or imaginary-producing expressions.
+/// Detects: Constant::I, sqrt(-1), (-1)^(1/2), and similar patterns.
 /// Uses iterative traversal to avoid stack overflow on deep expressions.
 pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
     let mut stack = vec![root];
@@ -917,7 +918,23 @@ pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
             Expr::Constant(c) if *c == cas_ast::Constant::I => {
                 return true;
             }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+            // Check for sqrt(-1) pattern
+            Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+                if is_negative_one(ctx, args[0]) {
+                    return true;
+                }
+                // Still need to traverse the arg for nested i
+                stack.push(args[0]);
+            }
+            // Check for (-1)^(1/2) pattern
+            Expr::Pow(base, exp) => {
+                if is_negative_one(ctx, *base) && is_one_half(ctx, *exp) {
+                    return true;
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
                 stack.push(*l);
                 stack.push(*r);
             }
@@ -944,6 +961,33 @@ pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
     }
 
     false
+}
+
+/// Check if an expression represents -1
+fn is_negative_one(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(n) => *n == num_rational::BigRational::from_integer((-1).into()),
+        Expr::Neg(inner) => {
+            matches!(ctx.get(*inner), Expr::Number(n) 
+                if *n == num_rational::BigRational::from_integer(1.into()))
+        }
+        _ => false,
+    }
+}
+
+/// Check if an expression represents 1/2
+fn is_one_half(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(n) => *n == num_rational::BigRational::new(1.into(), 2.into()),
+        Expr::Div(num, den) => {
+            matches!((ctx.get(*num), ctx.get(*den)),
+                (Expr::Number(n), Expr::Number(d))
+                if *n == num_rational::BigRational::from_integer(1.into())
+                && *d == num_rational::BigRational::from_integer(2.into())
+            )
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]

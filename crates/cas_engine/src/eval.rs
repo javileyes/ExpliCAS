@@ -220,7 +220,24 @@ impl Engine {
                 self.simplifier.context = ctx_simplifier.context;
 
                 // Collect domain assumptions from steps with deduplication
-                let warnings = collect_domain_warnings(&steps);
+                let mut warnings = collect_domain_warnings(&steps);
+
+                // Add warning if i is used in RealOnly mode
+                if effective_opts.value_domain == crate::semantics::ValueDomain::RealOnly
+                    && crate::helpers::contains_i(&self.simplifier.context, resolved)
+                {
+                    let i_warning = DomainWarning {
+                        message:
+                            "To use complex arithmetic (i² = -1), run: semantics set value complex"
+                                .to_string(),
+                        rule_name: "Imaginary Usage Warning".to_string(),
+                    };
+                    // Only add if not already present
+                    if !warnings.iter().any(|w| w.message == i_warning.message) {
+                        warnings.push(i_warning);
+                    }
+                }
+
                 (EvalResult::Expr(res), warnings, steps, vec![])
             }
             EvalAction::Expand => {

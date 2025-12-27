@@ -174,74 +174,88 @@ pub fn extract_gaussian(ctx: &Context, expr: ExprId) -> Option<GaussianRational>
 // ImaginaryPowerRule: i^n → {1, i, -1, -i}
 // ============================================================================
 
-define_rule!(ImaginaryPowerRule, "Imaginary Power", |ctx, expr| {
-    // i^n where n is integer → 1, i, -1, or -i based on n mod 4
-    if let Expr::Pow(base, exp) = ctx.get(expr) {
-        let base = *base;
-        let exp = *exp;
-
-        // Check if base is i
-        if !matches!(ctx.get(base), Expr::Constant(Constant::I)) {
+define_rule!(
+    ImaginaryPowerRule,
+    "Imaginary Power",
+    |ctx, expr, parent_ctx| {
+        // Gate: only in ComplexEnabled mode (in RealOnly, i is just a symbol)
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
             return None;
         }
 
-        // Check if exponent is integer
-        if let Expr::Number(n) = ctx.get(exp) {
-            if !n.is_integer() {
+        // i^n where n is integer → 1, i, -1, or -i based on n mod 4
+        if let Expr::Pow(base, exp) = ctx.get(expr) {
+            let base = *base;
+            let exp = *exp;
+
+            // Check if base is i
+            if !matches!(ctx.get(base), Expr::Constant(Constant::I)) {
                 return None;
             }
 
-            // Get n mod 4 - simpler calculation
-            let n_int = n.to_integer();
-            // Use rem_euclid equivalent: ((n % 4) + 4) % 4 gives 0..3
-            use num_bigint::BigInt;
-            let four = BigInt::from(4);
-            let remainder = ((&n_int % &four) + &four) % &four;
-            // Convert to i32 - safe since result is 0..3
-            use num_traits::ToPrimitive;
-            let normalized = remainder.to_i32().unwrap_or(0) as usize;
-
-            let new_expr = match normalized {
-                0 => ctx.num(1),                           // i^0 = 1
-                1 => ctx.add(Expr::Constant(Constant::I)), // i^1 = i
-                2 => ctx.num(-1),                          // i^2 = -1
-                3 => {
-                    // i^3 = -i
-                    let i = ctx.add(Expr::Constant(Constant::I));
-                    ctx.add(Expr::Neg(i))
+            // Check if exponent is integer
+            if let Expr::Number(n) = ctx.get(exp) {
+                if !n.is_integer() {
+                    return None;
                 }
-                _ => unreachable!(),
-            };
 
-            let desc = format!(
-                "i^{} = {} (using i⁴ = 1)",
-                n_int,
-                match normalized {
-                    0 => "1",
-                    1 => "i",
-                    2 => "-1",
-                    3 => "-i",
+                // Get n mod 4 - simpler calculation
+                let n_int = n.to_integer();
+                // Use rem_euclid equivalent: ((n % 4) + 4) % 4 gives 0..3
+                use num_bigint::BigInt;
+                let four = BigInt::from(4);
+                let remainder = ((&n_int % &four) + &four) % &four;
+                // Convert to i32 - safe since result is 0..3
+                use num_traits::ToPrimitive;
+                let normalized = remainder.to_i32().unwrap_or(0) as usize;
+
+                let new_expr = match normalized {
+                    0 => ctx.num(1),                           // i^0 = 1
+                    1 => ctx.add(Expr::Constant(Constant::I)), // i^1 = i
+                    2 => ctx.num(-1),                          // i^2 = -1
+                    3 => {
+                        // i^3 = -i
+                        let i = ctx.add(Expr::Constant(Constant::I));
+                        ctx.add(Expr::Neg(i))
+                    }
                     _ => unreachable!(),
-                }
-            );
+                };
 
-            return Some(Rewrite {
-                new_expr,
-                description: desc,
-                before_local: None,
-                after_local: None,
-                domain_assumption: None,
-            });
+                let desc = format!(
+                    "i^{} = {} (using i⁴ = 1)",
+                    n_int,
+                    match normalized {
+                        0 => "1",
+                        1 => "i",
+                        2 => "-1",
+                        3 => "-i",
+                        _ => unreachable!(),
+                    }
+                );
+
+                return Some(Rewrite {
+                    new_expr,
+                    description: desc,
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: None,
+                });
+            }
         }
+        None
     }
-    None
-});
+);
 
 // ============================================================================
 // ISquaredMulRule: i * i → -1 (handles Mul case, not Pow)
 // ============================================================================
 
-define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr| {
+define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr, parent_ctx| {
+    // Gate: only in ComplexEnabled mode
+    if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+        return None;
+    }
+
     // i * i → -1
     if let Expr::Mul(l, r) = ctx.get(expr) {
         let l = *l;
@@ -268,157 +282,185 @@ define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr| {
 // GaussianMulRule: (a + bi)(c + di) → (ac - bd) + (ad + bc)i
 // ============================================================================
 
-define_rule!(GaussianMulRule, "Gaussian Multiplication", |ctx, expr| {
-    // (a + bi) * (c + di) → (ac - bd) + (ad + bc)i
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        let l = *l;
-        let r = *r;
-
-        // Try to extract gaussian rationals from both sides
-        let left = extract_gaussian(ctx, l)?;
-        let right = extract_gaussian(ctx, r)?;
-
-        // Skip if both are pure real (regular multiplication handles it)
-        if left.is_real() && right.is_real() {
+define_rule!(
+    GaussianMulRule,
+    "Gaussian Multiplication",
+    |ctx, expr, parent_ctx| {
+        // Gate: only in ComplexEnabled mode
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
             return None;
         }
 
-        // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
-        let ac = &left.real * &right.real;
-        let bd = &left.imag * &right.imag;
-        let ad = &left.real * &right.imag;
-        let bc = &left.imag * &right.real;
+        // (a + bi) * (c + di) → (ac - bd) + (ad + bc)i
+        if let Expr::Mul(l, r) = ctx.get(expr) {
+            let l = *l;
+            let r = *r;
 
-        let real_part = ac - bd;
-        let imag_part = ad + bc;
+            // Try to extract gaussian rationals from both sides
+            let left = extract_gaussian(ctx, l)?;
+            let right = extract_gaussian(ctx, r)?;
 
-        let result = GaussianRational::new(real_part, imag_part);
-        let new_expr = result.to_expr(ctx);
+            // Skip if both are pure real (regular multiplication handles it)
+            if left.is_real() && right.is_real() {
+                return None;
+            }
 
-        return Some(Rewrite {
-            new_expr,
-            description: "Gaussian multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i".to_string(),
-            before_local: None,
-            after_local: None,
-            domain_assumption: None,
-        });
+            // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+            let ac = &left.real * &right.real;
+            let bd = &left.imag * &right.imag;
+            let ad = &left.real * &right.imag;
+            let bc = &left.imag * &right.real;
+
+            let real_part = ac - bd;
+            let imag_part = ad + bc;
+
+            let result = GaussianRational::new(real_part, imag_part);
+            let new_expr = result.to_expr(ctx);
+
+            return Some(Rewrite {
+                new_expr,
+                description: "Gaussian multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i"
+                    .to_string(),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
+        }
+        None
     }
-    None
-});
+);
 
 // ============================================================================
 // GaussianAddRule: (a + bi) + (c + di) → (a + c) + (b + d)i
 // Only fires when combining two non-trivial gaussian expressions
 // ============================================================================
 
-define_rule!(GaussianAddRule, "Gaussian Addition", |ctx, expr| {
-    // (a + bi) + (c + di) → (a + c) + (b + d)i
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        let l = *l;
-        let r = *r;
-
-        // Try to extract gaussian rationals from both sides
-        let left = extract_gaussian(ctx, l)?;
-        let right = extract_gaussian(ctx, r)?;
-
-        // Skip if both are pure real (regular addition handles it)
-        if left.is_real() && right.is_real() {
+define_rule!(
+    GaussianAddRule,
+    "Gaussian Addition",
+    |ctx, expr, parent_ctx| {
+        // Gate: only in ComplexEnabled mode
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
             return None;
         }
 
-        // Skip if one side is already a + b*i form and the other is just a number
-        // This prevents rewriting "a + b*i" to "a + b*i" (no-op)
-        // Only combine when BOTH sides have imaginary components OR
-        // when we're genuinely combining separate complex numbers
-        if (left.is_real() && !right.is_real()) || (!left.is_real() && right.is_real()) {
-            // One is real, one is complex - this is already canonical form a + bi
-            // Check if this is exactly (real) + (imag*i) pattern
-            if left.is_real() && right.is_pure_imag() {
-                return None; // Already in a + bi form
+        // (a + bi) + (c + di) → (a + c) + (b + d)i
+        if let Expr::Add(l, r) = ctx.get(expr) {
+            let l = *l;
+            let r = *r;
+
+            // Try to extract gaussian rationals from both sides
+            let left = extract_gaussian(ctx, l)?;
+            let right = extract_gaussian(ctx, r)?;
+
+            // Skip if both are pure real (regular addition handles it)
+            if left.is_real() && right.is_real() {
+                return None;
             }
-            if right.is_real() && left.is_pure_imag() {
-                return None; // Already in bi + a form (unusual but valid)
+
+            // Skip if one side is already a + b*i form and the other is just a number
+            // This prevents rewriting "a + b*i" to "a + b*i" (no-op)
+            // Only combine when BOTH sides have imaginary components OR
+            // when we're genuinely combining separate complex numbers
+            if (left.is_real() && !right.is_real()) || (!left.is_real() && right.is_real()) {
+                // One is real, one is complex - this is already canonical form a + bi
+                // Check if this is exactly (real) + (imag*i) pattern
+                if left.is_real() && right.is_pure_imag() {
+                    return None; // Already in a + bi form
+                }
+                if right.is_real() && left.is_pure_imag() {
+                    return None; // Already in bi + a form (unusual but valid)
+                }
             }
+
+            // (a + bi) + (c + di) = (a + c) + (b + d)i
+            let real_part = &left.real + &right.real;
+            let imag_part = &left.imag + &right.imag;
+
+            let result = GaussianRational::new(real_part, imag_part);
+            let new_expr = result.to_expr(ctx);
+
+            return Some(Rewrite {
+                new_expr,
+                description: "Gaussian addition: (a+bi) + (c+di) = (a+c) + (b+d)i".to_string(),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
         }
-
-        // (a + bi) + (c + di) = (a + c) + (b + d)i
-        let real_part = &left.real + &right.real;
-        let imag_part = &left.imag + &right.imag;
-
-        let result = GaussianRational::new(real_part, imag_part);
-        let new_expr = result.to_expr(ctx);
-
-        return Some(Rewrite {
-            new_expr,
-            description: "Gaussian addition: (a+bi) + (c+di) = (a+c) + (b+d)i".to_string(),
-            before_local: None,
-            after_local: None,
-            domain_assumption: None,
-        });
+        None
     }
-    None
-});
+);
 
 // ============================================================================
 // GaussianDivRule: (a + bi) / (c + di) → conjugate method
 // (a+bi)/(c+di) = (a+bi)(c-di) / (c+di)(c-di) = (ac+bd + (bc-ad)i) / (c²+d²)
 // ============================================================================
 
-define_rule!(GaussianDivRule, "Gaussian Division", |ctx, expr| {
-    // (a + bi) / (c + di) → using conjugate method
-    if let Expr::Div(num, den) = ctx.get(expr) {
-        let num = *num;
-        let den = *den;
-
-        // Try to extract gaussian rationals from both sides
-        let numerator = extract_gaussian(ctx, num)?;
-        let denominator = extract_gaussian(ctx, den)?;
-
-        // Skip if denominator is pure real (regular division handles it)
-        if denominator.is_real() {
+define_rule!(
+    GaussianDivRule,
+    "Gaussian Division",
+    |ctx, expr, parent_ctx| {
+        // Gate: only in ComplexEnabled mode
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
             return None;
         }
 
-        // Skip if numerator is pure real and denominator is pure real
-        if numerator.is_real() && denominator.is_real() {
-            return None;
+        // (a + bi) / (c + di) → using conjugate method
+        if let Expr::Div(num, den) = ctx.get(expr) {
+            let num = *num;
+            let den = *den;
+
+            // Try to extract gaussian rationals from both sides
+            let numerator = extract_gaussian(ctx, num)?;
+            let denominator = extract_gaussian(ctx, den)?;
+
+            // Skip if denominator is pure real (regular division handles it)
+            if denominator.is_real() {
+                return None;
+            }
+
+            // Skip if numerator is pure real and denominator is pure real
+            if numerator.is_real() && denominator.is_real() {
+                return None;
+            }
+
+            // (a + bi) / (c + di) = (ac + bd) / (c² + d²) + (bc - ad) / (c² + d²) · i
+            let a = &numerator.real;
+            let b = &numerator.imag;
+            let c = &denominator.real;
+            let d = &denominator.imag;
+
+            // Denominator magnitude squared: c² + d²
+            let denom_sq = c * c + d * d;
+
+            // Check for division by zero
+            if denom_sq.is_zero() {
+                return None; // Let other rules handle undefined
+            }
+
+            // Real part: (ac + bd) / (c² + d²)
+            let real_num = a * c + b * d;
+            let real_part = &real_num / &denom_sq;
+
+            // Imaginary part: (bc - ad) / (c² + d²)
+            let imag_num = b * c - a * d;
+            let imag_part = &imag_num / &denom_sq;
+
+            let result = GaussianRational::new(real_part, imag_part);
+            let new_expr = result.to_expr(ctx);
+
+            return Some(Rewrite {
+                new_expr,
+                description: "Gaussian division: (a+bi)/(c+di) using conjugate".to_string(),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
         }
-
-        // (a + bi) / (c + di) = (ac + bd) / (c² + d²) + (bc - ad) / (c² + d²) · i
-        let a = &numerator.real;
-        let b = &numerator.imag;
-        let c = &denominator.real;
-        let d = &denominator.imag;
-
-        // Denominator magnitude squared: c² + d²
-        let denom_sq = c * c + d * d;
-
-        // Check for division by zero
-        if denom_sq.is_zero() {
-            return None; // Let other rules handle undefined
-        }
-
-        // Real part: (ac + bd) / (c² + d²)
-        let real_num = a * c + b * d;
-        let real_part = &real_num / &denom_sq;
-
-        // Imaginary part: (bc - ad) / (c² + d²)
-        let imag_num = b * c - a * d;
-        let imag_part = &imag_num / &denom_sq;
-
-        let result = GaussianRational::new(real_part, imag_part);
-        let new_expr = result.to_expr(ctx);
-
-        return Some(Rewrite {
-            new_expr,
-            description: "Gaussian division: (a+bi)/(c+di) using conjugate".to_string(),
-            before_local: None,
-            after_local: None,
-            domain_assumption: None,
-        });
+        None
     }
-    None
-});
+);
 
 // ============================================================================
 // Registration
@@ -442,6 +484,12 @@ mod tests {
     use crate::rule::Rule;
     use cas_ast::{Context, DisplayExpr};
 
+    // Helper: create ParentContext with ComplexEnabled (rules require this)
+    fn complex_ctx() -> crate::parent_context::ParentContext {
+        crate::parent_context::ParentContext::root()
+            .with_value_domain(crate::semantics::ValueDomain::ComplexEnabled)
+    }
+
     #[test]
     fn test_i_squared() {
         let mut ctx = Context::new();
@@ -452,13 +500,7 @@ mod tests {
         let two = ctx.num(2);
         let i_squared = ctx.add(Expr::Pow(i, two));
 
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                i_squared,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, i_squared, &complex_ctx()).unwrap();
 
         assert_eq!(
             format!(
@@ -482,13 +524,7 @@ mod tests {
         let three = ctx.num(3);
         let i_cubed = ctx.add(Expr::Pow(i, three));
 
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                i_cubed,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, i_cubed, &complex_ctx()).unwrap();
 
         assert_eq!(
             format!(
@@ -512,13 +548,7 @@ mod tests {
         let four = ctx.num(4);
         let i_fourth = ctx.add(Expr::Pow(i, four));
 
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                i_fourth,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, i_fourth, &complex_ctx()).unwrap();
 
         assert_eq!(
             format!(
@@ -542,13 +572,7 @@ mod tests {
         let seventeen = ctx.num(17);
         let i_17 = ctx.add(Expr::Pow(i, seventeen));
 
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                i_17,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, i_17, &complex_ctx()).unwrap();
 
         assert_eq!(
             format!(

@@ -131,9 +131,41 @@ fn test_no_false_positive_sum_of_squares() {
 // A3.4: Complex number non-contamination
 // =============================================================================
 
+/// Helper: simplify with ComplexEnabled value_domain (for tests involving i)
+/// Uses Engine.eval to ensure value_domain propagates correctly
+fn simplify_complex(input: &str) -> String {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Set ComplexEnabled for these tests
+    state.options.value_domain = cas_engine::semantics::ValueDomain::ComplexEnabled;
+
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    match &output.result {
+        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    }
+}
+
 #[test]
 fn test_complex_division() {
-    let result = simplify("(3 + 4*i)/(1 + 2*i)");
+    let result = simplify_complex("(3 + 4*i)/(1 + 2*i)");
     // (3+4i)/(1+2i) = (3+4i)(1-2i)/((1+2i)(1-2i)) = (3-6i+4i+8)/(1+4) = (11-2i)/5
     assert!(
         result.contains("11") && result.contains("5"),
@@ -145,7 +177,7 @@ fn test_complex_division() {
 #[test]
 fn test_i_powers() {
     // i^3 = -i
-    let result = simplify("i^3");
+    let result = simplify_complex("i^3");
     assert!(
         result.contains("-") && result.contains("i"),
         "i^3 should be -i, got: {}",
@@ -156,7 +188,7 @@ fn test_i_powers() {
 #[test]
 fn test_i_squared() {
     // i^2 = -1
-    let result = simplify("i^2");
+    let result = simplify_complex("i^2");
     assert!(
         result == "-1" || result.contains("-1"),
         "i^2 should be -1, got: {}",

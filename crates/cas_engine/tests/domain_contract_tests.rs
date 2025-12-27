@@ -604,3 +604,119 @@ fn same_denom_mixed_cancellation() {
         result
     );
 }
+
+// =============================================================================
+// ValueDomain Complex Rules Tests
+// =============================================================================
+
+/// CONTRACT: In RealOnly mode, 10/(3+4i) does NOT get Gaussian rationalized
+/// (i is treated as an ordinary symbol, not the imaginary unit)
+#[test]
+fn value_domain_real_no_gaussian_division() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, _) = simplify_with_domain_value(
+        "10/(3+4*i)",
+        cas_engine::DomainMode::Generic,
+        ValueDomain::RealOnly,
+    );
+
+    // Should NOT be rationalized - i is just a symbol
+    // Result should still contain division by expression with i
+    assert!(
+        result.contains("/") && result.contains("i"),
+        "Expected 10/(3+4i) to remain unchanged in RealOnly mode, got: {}",
+        result
+    );
+}
+
+/// CONTRACT: In ComplexEnabled mode, 10/(3+4i) IS Gaussian rationalized
+#[test]
+fn value_domain_complex_gaussian_division() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, _) = simplify_with_domain_value(
+        "10/(3+4*i)",
+        cas_engine::DomainMode::Generic,
+        ValueDomain::ComplexEnabled,
+    );
+
+    // Should be rationalized to 6/5 - 8/5*i or equivalent
+    // Key check: no longer has denominator with i
+    let has_complex_denom = result.contains("/(") && result.contains("i)");
+    assert!(
+        !has_complex_denom,
+        "Expected 10/(3+4i) to be Gaussian rationalized in ComplexEnabled mode, got: {}",
+        result
+    );
+}
+
+/// CONTRACT: In RealOnly mode, i*i does NOT simplify to -1
+#[test]
+fn value_domain_real_no_i_squared() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, _) = simplify_with_domain_value(
+        "i*i",
+        cas_engine::DomainMode::Generic,
+        ValueDomain::RealOnly,
+    );
+
+    // Should NOT simplify to -1 (i is just a symbol)
+    assert_ne!(
+        result, "-1",
+        "Expected i*i to remain unchanged in RealOnly mode, got: {}",
+        result
+    );
+}
+
+/// CONTRACT: In ComplexEnabled mode, i*i simplifies to -1
+#[test]
+fn value_domain_complex_i_squared() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, _) = simplify_with_domain_value(
+        "i*i",
+        cas_engine::DomainMode::Generic,
+        ValueDomain::ComplexEnabled,
+    );
+
+    // Should simplify to -1
+    assert_eq!(
+        result, "-1",
+        "Expected i*i to simplify to -1 in ComplexEnabled mode, got: {}",
+        result
+    );
+}
+
+/// CONTRACT: In RealOnly mode, i^2 does NOT simplify to -1
+#[test]
+fn value_domain_real_no_i_power() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, _) = simplify_with_domain_value(
+        "i^2",
+        cas_engine::DomainMode::Generic,
+        ValueDomain::RealOnly,
+    );
+
+    // Should NOT simplify to -1
+    assert_ne!(
+        result, "-1",
+        "Expected i^2 to remain unchanged in RealOnly mode, got: {}",
+        result
+    );
+}
+
+/// CONTRACT: In ComplexEnabled mode, i^4 simplifies to 1
+#[test]
+fn value_domain_complex_i_fourth() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, _) = simplify_with_domain_value(
+        "i^4",
+        cas_engine::DomainMode::Generic,
+        ValueDomain::ComplexEnabled,
+    );
+
+    // Should simplify to 1
+    assert_eq!(
+        result, "1",
+        "Expected i^4 to simplify to 1 in ComplexEnabled mode, got: {}",
+        result
+    );
+}
