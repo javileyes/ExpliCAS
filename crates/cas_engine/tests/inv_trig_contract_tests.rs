@@ -279,42 +279,78 @@ fn principal_nested_tan_outside_arctan_can_rewrite() {
 }
 
 // ============================================================================
-// Log-Exp policy tests (analogous to inverse trig)
+// Log-Exp domain tests (controlled by domain_mode, NOT inv_trig)
 // ============================================================================
 
+/// Helper: simplify with given DomainMode using Engine API
+fn simplify_with_domain(input: &str, domain: DomainMode) -> (String, Vec<String>) {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Configure domain_mode
+    state.options.domain_mode = domain;
+
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    let result_str = match &output.result {
+        EvalResult::Expr(e) => DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+
+    let warnings: Vec<String> = output
+        .domain_warnings
+        .iter()
+        .map(|w| w.message.clone())
+        .collect();
+
+    (result_str, warnings)
+}
+
 #[test]
-fn strict_ln_exp_unchanged() {
-    let (result, _) = simplify_with_inv_trig("ln(exp(x))", InverseTrigPolicy::Strict);
+fn domain_strict_ln_exp_unchanged() {
+    let (result, _) = simplify_with_domain("ln(exp(x))", DomainMode::Strict);
 
     // Strict mode: ln(e^x) should remain unchanged (not simplify to x)
     assert!(
         result.contains("log") || result.contains("ln"),
-        "Expected ln(exp(x)) unchanged in strict mode, got: {}",
+        "Expected ln(exp(x)) unchanged in strict domain mode, got: {}",
         result
     );
 }
 
 #[test]
-fn strict_ln_exp_no_principal_warning() {
-    let (_, warnings) = simplify_with_inv_trig("ln(exp(x))", InverseTrigPolicy::Strict);
+fn domain_strict_ln_exp_no_warning() {
+    let (_, warnings) = simplify_with_domain("ln(exp(x))", DomainMode::Strict);
 
-    // In strict mode, no warning about "assuming x is real" should appear
+    // In strict domain mode, no warning about "assuming x is real" should appear
     let has_assumption_warning = warnings
         .iter()
-        .any(|w| w.to_lowercase().contains("assuming") || w.to_lowercase().contains("principal"));
+        .any(|w| w.to_lowercase().contains("assuming"));
     assert!(
         !has_assumption_warning,
-        "Strict mode should NOT emit assumption warning for ln(exp(x)), got: {:?}",
+        "Strict domain mode should NOT emit assumption warning for ln(exp(x)), got: {:?}",
         warnings
     );
 }
 
 #[test]
-fn principal_ln_exp_simplifies() {
-    let (result, warnings) =
-        simplify_with_inv_trig("ln(exp(x))", InverseTrigPolicy::PrincipalValue);
+fn domain_generic_ln_exp_simplifies() {
+    let (result, warnings) = simplify_with_domain("ln(exp(x))", DomainMode::Generic);
 
-    // Principal mode: ln(e^x) should simplify to x
+    // Generic mode: ln(e^x) should simplify to x (we assume x is real)
     assert_eq!(result, "x", "Expected x, got: {}", result);
 
     // Should emit warning about assumption
@@ -325,11 +361,18 @@ fn principal_ln_exp_simplifies() {
 }
 
 #[test]
+fn domain_assume_ln_exp_simplifies() {
+    let (result, _) = simplify_with_domain("ln(exp(x))", DomainMode::Assume);
+
+    // Assume mode: ln(e^x) should simplify to x
+    assert_eq!(result, "x", "Expected x in assume mode, got: {}", result);
+}
+
+#[test]
 fn log_numeric_exponent_always_simplifies() {
-    // log(x, x^2) = 2 should ALWAYS work (numeric exponent), regardless of policy
-    let (result_strict, _) = simplify_with_inv_trig("log(x, x^2)", InverseTrigPolicy::Strict);
-    let (result_principal, _) =
-        simplify_with_inv_trig("log(x, x^2)", InverseTrigPolicy::PrincipalValue);
+    // log(x, x^2) = 2 should ALWAYS work (numeric exponent), regardless of domain mode
+    let (result_strict, _) = simplify_with_domain("log(x, x^2)", DomainMode::Strict);
+    let (result_generic, _) = simplify_with_domain("log(x, x^2)", DomainMode::Generic);
 
     assert_eq!(
         result_strict, "2",
@@ -337,18 +380,17 @@ fn log_numeric_exponent_always_simplifies() {
         result_strict
     );
     assert_eq!(
-        result_principal, "2",
-        "Expected log(x, x^2) = 2 in principal mode, got: {}",
-        result_principal
+        result_generic, "2",
+        "Expected log(x, x^2) = 2 in generic mode, got: {}",
+        result_generic
     );
 }
 
 #[test]
 fn ln_e_to_numeric_always_simplifies() {
-    // ln(e^3) = 3 should ALWAYS work (numeric exponent), regardless of policy
-    let (result_strict, _) = simplify_with_inv_trig("ln(exp(3))", InverseTrigPolicy::Strict);
-    let (result_principal, _) =
-        simplify_with_inv_trig("ln(exp(3))", InverseTrigPolicy::PrincipalValue);
+    // ln(e^3) = 3 should ALWAYS work (numeric exponent), regardless of domain mode
+    let (result_strict, _) = simplify_with_domain("ln(exp(3))", DomainMode::Strict);
+    let (result_generic, _) = simplify_with_domain("ln(exp(3))", DomainMode::Generic);
 
     assert_eq!(
         result_strict, "3",
@@ -356,8 +398,8 @@ fn ln_e_to_numeric_always_simplifies() {
         result_strict
     );
     assert_eq!(
-        result_principal, "3",
-        "Expected ln(e^3) = 3 in principal mode, got: {}",
-        result_principal
+        result_generic, "3",
+        "Expected ln(e^3) = 3 in generic mode, got: {}",
+        result_generic
     );
 }

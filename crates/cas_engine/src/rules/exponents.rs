@@ -721,6 +721,50 @@ define_rule!(
                         domain_assumption: None,
                     });
                 }
+                // 0^x -> 0 REQUIRES x > 0 (because 0^0 is undefined, 0^(-n) is undefined)
+                if n.is_zero() {
+                    // If exponent is a literal positive number, always safe
+                    if let Expr::Number(e) = ctx.get(exp) {
+                        if *e > num_rational::BigRational::zero() {
+                            return Some(Rewrite {
+                                new_expr: ctx.num(0),
+                                description: "0^n -> 0 (n > 0)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        }
+                        // 0^0 and 0^(-n) are handled elsewhere as undefined
+                        return None;
+                    }
+                    // Exponent is variable - check domain_mode
+                    let mode = parent_ctx.domain_mode();
+                    match mode {
+                        DomainMode::Generic => {
+                            // Assume x > 0
+                            return Some(Rewrite {
+                                new_expr: ctx.num(0),
+                                description: "0^x -> 0".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: None,
+                            });
+                        }
+                        DomainMode::Assume => {
+                            return Some(Rewrite {
+                                new_expr: ctx.num(0),
+                                description: "0^x -> 0 (assuming x > 0)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: Some("Assuming x > 0"),
+                            });
+                        }
+                        DomainMode::Strict => {
+                            // Don't simplify - can't assume x > 0
+                            return None;
+                        }
+                    }
+                }
             }
         }
         None

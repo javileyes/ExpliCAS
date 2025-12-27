@@ -595,9 +595,11 @@ define_rule!(LogInversePowerRule, "Log Inverse Power", |ctx, expr| {
     None
 });
 
-/// Policy-aware rule for log(b, b^x) → x.
-/// Like arctan(tan(x)) → x, variable exponents only apply when inv_trig=principal.
+/// Domain-aware rule for log(b, b^x) → x.
+/// Variable exponents only simplify when domain_mode is NOT strict.
 /// Numeric exponents (like log(x, x^2) → 2) always apply.
+/// This is controlled by domain_mode because it's a domain assumption (x is real),
+/// not an inverse trig composition.
 pub struct LogExpInverseRule;
 
 impl crate::rule::Rule for LogExpInverseRule {
@@ -641,16 +643,15 @@ impl crate::rule::Rule for LogExpInverseRule {
                             domain_assumption: None,
                         });
                     } else {
-                        // For variable exponents like log(e, e^x) → x, require inv_trig=principal
-                        // This treats it like arctan(tan(x)) → x
-                        if parent_ctx.inv_trig_policy()
-                            != crate::semantics::InverseTrigPolicy::PrincipalValue
-                        {
+                        // For variable exponents like log(e, e^x) → x, check domain_mode
+                        // Strict mode: preserve composition (no assumptions)
+                        // Generic/Assume mode: simplify (assume x is real)
+                        if parent_ctx.domain_mode() == crate::domain::DomainMode::Strict {
                             return None; // Preserve composition in strict mode
                         }
                         return Some(crate::rule::Rewrite {
                             new_expr: p_exp,
-                            description: "log(b, b^x) → x (principal branch)".to_string(),
+                            description: "log(b, b^x) → x".to_string(),
                             before_local: None,
                             after_local: None,
                             domain_assumption: Some("Assuming x is real"),

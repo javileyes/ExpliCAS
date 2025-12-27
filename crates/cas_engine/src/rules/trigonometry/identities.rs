@@ -835,27 +835,23 @@ impl crate::rule::Rule for TanToSinCosRule {
             if marks.is_pythagorean_protected(expr) {
                 return None; // Skip conversion - part of Pythagorean identity
             }
-            // Also check for inverse trig pattern (arctan(tan(x)) etc.)
-            // ONLY when inv_trig=principal, otherwise let the conversion happen
-            if parent_ctx.inv_trig_policy() == crate::semantics::InverseTrigPolicy::PrincipalValue
-                && marks.is_inverse_trig_protected(expr)
-            {
-                return None; // Skip conversion - preserve arctan(tan(x)) → x
+            // Inverse trig pattern protection is UNCONDITIONAL.
+            // We always preserve arctan(tan(x)), arcsin(sin(x)), etc.
+            // The policy only controls whether it SIMPLIFIES to x, not whether we expand it.
+            if marks.is_inverse_trig_protected(expr) {
+                return None; // Preserve pattern: arctan(tan(x)) stays as-is
             }
         }
 
-        // GUARD: Protect inverse trig composition when inv_trig=PrincipalValue.
-        // Don't expand tan(x) → sin(x)/cos(x) if parent is arctan/arcsin/arccos,
-        // so PrincipalBranchInverseTrigRule can match arctan(tan(x)) → x.
-        if parent_ctx.inv_trig_policy() == crate::semantics::InverseTrigPolicy::PrincipalValue {
-            if let Some(parent_id) = parent_ctx.immediate_parent() {
-                if let Expr::Function(name, _) = ctx.get(parent_id) {
-                    if matches!(
-                        name.as_str(),
-                        "arctan" | "arcsin" | "arccos" | "atan" | "asin" | "acos"
-                    ) {
-                        return None; // Protect arctan(tan(x)) pattern
-                    }
+        // GUARD: Also check immediate parent for inverse trig composition.
+        // This is a fallback in case pattern_marks wasn't pre-scanned.
+        if let Some(parent_id) = parent_ctx.immediate_parent() {
+            if let Expr::Function(name, _) = ctx.get(parent_id) {
+                if matches!(
+                    name.as_str(),
+                    "arctan" | "arcsin" | "arccos" | "atan" | "asin" | "acos"
+                ) {
+                    return None; // Preserve arctan(tan(x)) pattern
                 }
             }
         }
