@@ -250,10 +250,24 @@ impl<'a> IterativeFolder<'a> {
                 }
             }
 
-            // Pow: propagate folded children
+            // Pow: try fold literal^literal, else propagate
             Expr::Pow(base, exp) => {
                 let base_f = self.get_folded(*base);
                 let exp_f = self.get_folded(*exp);
+
+                // Try fold if both are constant literals (or Neg of literal)
+                if let Some(result) = helpers::fold_pow(
+                    self.ctx,
+                    base_f,
+                    exp_f,
+                    self.cfg.value_domain,
+                    self.cfg.branch,
+                ) {
+                    self.nodes_created += 1;
+                    return result;
+                }
+
+                // Rebuild if children changed
                 if base_f != *base || exp_f != *exp {
                     self.nodes_created += 1;
                     self.ctx.add(Expr::Pow(base_f, exp_f))

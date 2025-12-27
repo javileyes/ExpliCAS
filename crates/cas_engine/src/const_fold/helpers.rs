@@ -168,6 +168,152 @@ fn is_neg_of_i(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
+// =============================================================================
+// Literal extraction helpers for fold_pow
+// =============================================================================
+
+/// Extract integer from a Number literal.
+/// Also handles Neg(Number) for cases like `-1`.
+#[allow(dead_code)] // Reserved for PR2.2: negative exponents
+pub fn literal_int(ctx: &Context, id: ExprId) -> Option<num_bigint::BigInt> {
+    match ctx.get(id) {
+        Expr::Number(n) if n.is_integer() => Some(n.numer().clone()),
+        Expr::Neg(inner) => {
+            // Handle Neg(n) as -n
+            if let Expr::Number(n) = ctx.get(*inner) {
+                if n.is_integer() {
+                    return Some(-n.numer().clone());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Extract rational from a Number literal.
+/// Also handles Neg(Number) for cases like `-1/2`.
+pub fn literal_rat(ctx: &Context, id: ExprId) -> Option<BigRational> {
+    match ctx.get(id) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Neg(inner) => {
+            // Handle Neg(n) as -n
+            if let Expr::Number(n) = ctx.get(*inner) {
+                return Some(-n.clone());
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Fold power of literal constants.
+///
+/// # Allowlist (V1):
+/// - integer ^ integer (n≥0): compute a^n
+/// - 0^0 → undefined
+/// - a^0 (a≠0) → 1
+/// - 0^n (n>0) → 0
+/// - (-1)^(1/2): RealOnly→undefined, ComplexEnabled+Principal→i
+///
+/// Returns None if:
+/// - Either operand is not a constant literal
+/// - Exponent is negative (PR2.2)
+/// - Exponent is non-trivial rational (PR2.2+)
+pub fn fold_pow(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    value_domain: ValueDomain,
+    _branch: crate::semantics::BranchPolicy, // Wired for future use
+) -> Option<ExprId> {
+    // Extract base as rational
+    let base_rat = literal_rat(ctx, base)?;
+
+    // Extract exponent as rational
+    let exp_rat = literal_rat(ctx, exp)?;
+
+    // Normalize exponent: ensure denominator is positive
+    let exp_rat = if exp_rat.denom().is_negative() {
+        BigRational::new(-exp_rat.numer().clone(), -exp_rat.denom().clone())
+    } else {
+        exp_rat
+    };
+
+    // Get numerator and denominator
+    let exp_numer = exp_rat.numer();
+    let exp_denom = exp_rat.denom();
+
+    // Case: exponent is integer
+    if exp_denom == &num_bigint::BigInt::from(1) {
+        let exp_int = exp_numer;
+
+        // 0^0 → undefined
+        if base_rat.is_zero() && exp_int.is_zero() {
+            return Some(ctx.add(Expr::Constant(cas_ast::Constant::Undefined)));
+        }
+
+        // a^0 → 1 (for a ≠ 0)
+        if exp_int.is_zero() {
+            return Some(ctx.num(1));
+        }
+
+        // 0^n → 0 (for n > 0)
+        if base_rat.is_zero() && exp_int > &num_bigint::BigInt::from(0) {
+            return Some(ctx.num(0));
+        }
+
+        // Negative exponent: not in PR2.1 scope
+        if exp_int < &num_bigint::BigInt::from(0) {
+            return None;
+        }
+
+        // Integer exponent: compute a^n for reasonable n
+        // Limit to avoid overflow/timeout on large exponents
+        let exp_u32: u32 = exp_int.try_into().ok()?;
+        if exp_u32 > 1000 {
+            return None; // Too large, leave residual
+        }
+
+        let result = pow_rational(&base_rat, exp_u32);
+        return Some(ctx.add(Expr::Number(result)));
+    }
+
+    // Case: exponent is rational p/q (non-integer)
+    // Only handle special case: (-1)^(1/2)
+    if exp_numer == &num_bigint::BigInt::from(1) && exp_denom == &num_bigint::BigInt::from(2) {
+        // Check if base is exactly -1
+        if base_rat == BigRational::from_integer((-1).into()) {
+            match value_domain {
+                ValueDomain::RealOnly => {
+                    // sqrt(-1) undefined in reals
+                    return Some(ctx.add(Expr::Constant(cas_ast::Constant::Undefined)));
+                }
+                ValueDomain::ComplexEnabled => {
+                    // sqrt(-1) = i in complex (principal branch)
+                    return Some(ctx.add(Expr::Constant(cas_ast::Constant::I)));
+                }
+            }
+        }
+    }
+
+    // All other cases: leave residual (not in allowlist)
+    None
+}
+
+/// Compute a^n for rational a and non-negative integer n.
+fn pow_rational(base: &BigRational, exp: u32) -> BigRational {
+    if exp == 0 {
+        return BigRational::from_integer(1.into());
+    }
+
+    let mut result = base.clone();
+    for _ in 1..exp {
+        result = &result * base;
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -11,6 +11,7 @@ use cas_engine::budget::Budget;
 use cas_engine::const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 use cas_engine::semantics::{EvalConfig, ValueDomain};
 use num_rational::BigRational;
+use num_traits::Zero;
 
 /// Helper to fold with given mode and value_domain
 fn fold(
@@ -197,4 +198,271 @@ fn safe_preserves_non_perfect_sqrt() {
 
     // sqrt(2) is not a perfect square, should not fold
     assert!(matches!(ctx.get(result.expr), Expr::Function(name, _) if name == "sqrt"));
+}
+
+// ============================================================================
+// PR2.1: Pow folding tests
+// ============================================================================
+
+#[test]
+fn pow_off_mode_noop() {
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    let pow_expr = ctx.add(Expr::Pow(two, three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Off,
+        ValueDomain::RealOnly,
+    );
+
+    // Should not change in Off mode
+    assert_eq!(result.expr, pow_expr);
+    assert_eq!(result.folds_performed, 0);
+}
+
+#[test]
+fn real_pow_int() {
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    let pow_expr = ctx.add(Expr::Pow(two, three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // 2^3 = 8
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer(8.into())
+    ));
+}
+
+#[test]
+fn real_pow_neg_base_odd() {
+    let mut ctx = Context::new();
+    let neg_two = ctx.num(-2);
+    let three = ctx.num(3);
+    let pow_expr = ctx.add(Expr::Pow(neg_two, three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // (-2)^3 = -8
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer((-8).into())
+    ));
+}
+
+#[test]
+fn real_pow_neg_base_even() {
+    let mut ctx = Context::new();
+    let neg_two = ctx.num(-2);
+    let four = ctx.num(4);
+    let pow_expr = ctx.add(Expr::Pow(neg_two, four));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // (-2)^4 = 16
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer(16.into())
+    ));
+}
+
+#[test]
+fn real_pow_zero_exp() {
+    let mut ctx = Context::new();
+    let five = ctx.num(5);
+    let zero = ctx.num(0);
+    let pow_expr = ctx.add(Expr::Pow(five, zero));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // 5^0 = 1
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer(1.into())
+    ));
+}
+
+#[test]
+fn real_pow_zero_zero_undefined() {
+    let mut ctx = Context::new();
+    let zero1 = ctx.num(0);
+    let zero2 = ctx.num(0);
+    let pow_expr = ctx.add(Expr::Pow(zero1, zero2));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // 0^0 = undefined
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Constant(cas_ast::Constant::Undefined)
+    ));
+}
+
+#[test]
+fn real_pow_zero_positive() {
+    let mut ctx = Context::new();
+    let zero = ctx.num(0);
+    let five = ctx.num(5);
+    let pow_expr = ctx.add(Expr::Pow(zero, five));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // 0^5 = 0
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n.is_zero()
+    ));
+}
+
+#[test]
+fn real_pow_neg_half_undefined() {
+    let mut ctx = Context::new();
+    let neg_one = ctx.num(-1);
+    // Create 1/2 as rational
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let pow_expr = ctx.add(Expr::Pow(neg_one, half));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // (-1)^(1/2) = undefined in RealOnly
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Constant(cas_ast::Constant::Undefined)
+    ));
+}
+
+#[test]
+fn complex_pow_neg_half_is_i() {
+    let mut ctx = Context::new();
+    let neg_one = ctx.num(-1);
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let pow_expr = ctx.add(Expr::Pow(neg_one, half));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::ComplexEnabled,
+    );
+
+    // (-1)^(1/2) = i in ComplexEnabled
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Constant(cas_ast::Constant::I)
+    ));
+}
+
+#[test]
+fn complex_pow_int_still_works() {
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    let pow_expr = ctx.add(Expr::Pow(two, three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::ComplexEnabled,
+    );
+
+    // 2^3 = 8 (same in complex mode)
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer(8.into())
+    ));
+}
+
+#[test]
+fn no_fold_symbolic_pow() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let two = ctx.num(2);
+    let pow_expr = ctx.add(Expr::Pow(x, two));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // x^2 should not change (x is not constant)
+    assert_eq!(result.expr, pow_expr);
+}
+
+#[test]
+fn no_fold_nontrivial_root() {
+    let mut ctx = Context::new();
+    let neg_two = ctx.num(-2);
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let pow_expr = ctx.add(Expr::Pow(neg_two, half));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::ComplexEnabled,
+    );
+
+    // (-2)^(1/2) is not in allowlist, should not fold
+    assert!(matches!(ctx.get(result.expr), Expr::Pow(_, _)));
+}
+
+#[test]
+fn no_fold_general_rational_exp() {
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let third = ctx.add(Expr::Number(BigRational::new(1.into(), 3.into())));
+    let pow_expr = ctx.add(Expr::Pow(two, third));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // 2^(1/3) is not in allowlist, should not fold
+    assert!(matches!(ctx.get(result.expr), Expr::Pow(_, _)));
 }

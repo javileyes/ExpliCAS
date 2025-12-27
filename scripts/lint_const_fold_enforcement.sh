@@ -4,11 +4,17 @@
 # This script ensures const_fold stays isolated from the simplification pipeline.
 # It HARD FAILs if any prohibited patterns are found in actual code (not comments).
 #
+# ALLOWLIST (canonical helpers in const_fold):
+# - is_constant_literal, is_imaginary_unit, is_neg_of_i
+# - fold_neg, fold_sqrt, fold_mul_imaginary
+# - fold_pow, literal_int, literal_rat, pow_rational (PR2.1)
+#
 # DENYLIST: const_fold must NOT call these functions
 # - simplify_with_stats, Simplifier::new, apply_rules_loop → avoid simplify pipeline
 # - rationalize(, expand_pow(, multinomial_expand( → avoid structural transforms
 # - poly_add(, poly_mul(, poly_div(, gcd_poly(, gcd_zippel( → avoid poly ops
 # - domain_assumption, prove_nonzero → no domain assumptions
+# - DomainMode → const_fold depends only on ValueDomain/BranchPolicy
 
 set -euo pipefail
 
@@ -39,6 +45,7 @@ deny_patterns=(
     "div_exact("
     "domain_assumption("
     "prove_nonzero("
+    "DomainMode"
 )
 
 for pat in "${deny_patterns[@]}"; do
