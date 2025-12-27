@@ -152,6 +152,12 @@ impl ParentContext {
         self.value_domain
     }
 
+    /// Set value domain, returning a new context
+    pub fn with_value_domain(mut self, domain: crate::semantics::ValueDomain) -> Self {
+        self.value_domain = domain;
+        self
+    }
+
     /// Get branch policy
     pub fn branch_policy(&self) -> crate::semantics::BranchPolicy {
         self.branch

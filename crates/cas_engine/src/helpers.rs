@@ -426,6 +426,128 @@ pub fn can_prove_nonzero(ctx: &Context, expr: ExprId) -> bool {
     prove_nonzero(ctx, expr).is_proven()
 }
 
+/// Attempt to prove whether an expression is strictly positive (> 0).
+///
+/// This is used by domain-aware simplification to gate operations like
+/// `log(x*y) → log(x) + log(y)` which require both operands to be positive.
+///
+/// Returns:
+/// - `Proof::Proven` for expressions **provably** > 0 (2, π, e, |x|^2, etc.)
+/// - `Proof::Disproven` for expressions **provably** ≤ 0 (-3, 0, etc.)
+/// - `Proof::Unknown` for variables, functions, and anything uncertain
+///
+/// This is intentionally conservative. `Unknown` means "we cannot prove it > 0".
+///
+/// # Examples
+///
+/// ```ignore
+/// prove_positive(ctx, ctx.num(2))      // Proof::Proven
+/// prove_positive(ctx, ctx.num(0))      // Proof::Disproven
+/// prove_positive(ctx, ctx.num(-3))     // Proof::Disproven
+/// prove_positive(ctx, ctx.var("x"))    // Proof::Unknown
+/// prove_positive(ctx, ctx.pi())        // Proof::Proven
+/// prove_positive(ctx, ctx.e())         // Proof::Proven
+/// ```
+pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
+    use crate::domain::Proof;
+    use num_traits::Zero;
+
+    match ctx.get(expr) {
+        // Numbers: check if > 0
+        Expr::Number(n) => {
+            if *n > num_rational::BigRational::zero() {
+                Proof::Proven
+            } else {
+                Proof::Disproven // 0 or negative
+            }
+        }
+
+        // Constants: π, e are positive; i is not (complex)
+        Expr::Constant(c) => {
+            if matches!(c, cas_ast::Constant::Pi | cas_ast::Constant::E) {
+                Proof::Proven
+            } else {
+                Proof::Unknown // i, undefined, etc.
+            }
+        }
+
+        // Mul: a*b > 0 if (a>0 AND b>0) OR (a<0 AND b<0)
+        // For simplicity, we only prove the (a>0 AND b>0) case
+        Expr::Mul(a, b) => {
+            let proof_a = prove_positive(ctx, *a);
+            let proof_b = prove_positive(ctx, *b);
+
+            match (proof_a, proof_b) {
+                (Proof::Proven, Proof::Proven) => Proof::Proven,
+                // If either is ≤ 0, we can't easily conclude
+                (Proof::Disproven, _) | (_, Proof::Disproven) => Proof::Unknown, // Could be positive if both negative
+                _ => Proof::Unknown,
+            }
+        }
+
+        // Pow with positive base: a^n > 0 if a > 0 and n is any real
+        // Pow with even exponent: a^(2k) > 0 if a ≠ 0
+        Expr::Pow(base, exp) => {
+            let base_positive = prove_positive(ctx, *base);
+            if base_positive == Proof::Proven {
+                return Proof::Proven; // positive^anything = positive
+            }
+
+            // Check for even power (makes result positive if base ≠ 0)
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() {
+                    let int_val = n.to_integer();
+                    // Check if int_val is even using modulo (avoid is_even trait dependency)
+                    let two: num_bigint::BigInt = 2.into();
+                    if &int_val % &two == 0.into() {
+                        // a^(even) > 0 if a ≠ 0
+                        let base_nonzero = prove_nonzero(ctx, *base);
+                        if base_nonzero == Proof::Proven {
+                            return Proof::Proven;
+                        }
+                    }
+                }
+            }
+            Proof::Unknown
+        }
+
+        // abs(x)^2 or |x|: always ≥ 0, but only > 0 if x ≠ 0
+        // We handle abs(anything) as positive if the argument is nonzero
+        Expr::Function(name, args) if name == "abs" && args.len() == 1 => {
+            let inner_nonzero = prove_nonzero(ctx, args[0]);
+            if inner_nonzero == Proof::Proven {
+                Proof::Proven
+            } else if inner_nonzero == Proof::Disproven {
+                Proof::Disproven // |0| = 0
+            } else {
+                Proof::Unknown
+            }
+        }
+
+        // exp(x) > 0 for all real x
+        Expr::Function(name, _) if name == "exp" => Proof::Proven,
+
+        // sqrt(x) with x > 0 gives positive result
+        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+            prove_positive(ctx, args[0])
+        }
+
+        // Neg: -x > 0 iff x < 0 - too complex to prove, return Unknown
+        Expr::Neg(_) => Proof::Unknown,
+
+        // Variables, other functions: UNKNOWN (conservative)
+        _ => Proof::Unknown,
+    }
+}
+
+/// Check if an expression can be proven to be positive (convenience wrapper).
+///
+/// Returns `true` only for `Proof::Proven`. Use `prove_positive()` directly
+/// for more fine-grained control.
+pub fn can_prove_positive(ctx: &Context, expr: ExprId) -> bool {
+    prove_positive(ctx, expr).is_proven()
+}
+
 /// Try to extract an integer value from an expression.
 ///
 /// Returns `None` if:

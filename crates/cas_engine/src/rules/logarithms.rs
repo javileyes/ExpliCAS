@@ -136,52 +136,147 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
             }
         }
 
-        // 5. Product: log(b, x*y) = log(b, x) + log(b, y)
-        if let Expr::Mul(lhs, rhs) = arg_data {
-            let log_lhs = ctx.add(Expr::Function("log".to_string(), vec![base, lhs]));
-            let log_rhs = ctx.add(Expr::Function("log".to_string(), vec![base, rhs]));
-            let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
-            return Some(Rewrite {
-                new_expr,
-                description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
-                before_local: None,
-                after_local: None,
-                domain_assumption: Some("Assuming x > 0 and y > 0"),
-            });
-        }
-
-        // 6. Quotient: log(b, x/y) = log(b, x) - log(b, y)
-        if let Expr::Div(num, den) = arg_data {
-            let log_num = ctx.add(Expr::Function("log".to_string(), vec![base, num]));
-            let log_den = ctx.add(Expr::Function("log".to_string(), vec![base, den]));
-            let new_expr = ctx.add(Expr::Sub(log_num, log_den));
-            return Some(Rewrite {
-                new_expr,
-                description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
-                before_local: None,
-                after_local: None,
-                domain_assumption: Some("Assuming x > 0 and y > 0"),
-            });
-        }
-        // 7. log(b, |x|) -> log(b, x)
-        // We assume x is in the domain of log (x > 0) if this simplification is requested,
-        // similar to how we handle log(b, x^y) -> y*log(b, x).
-        if let Expr::Function(fname, fargs) = &arg_data {
-            if fname == "abs" && fargs.len() == 1 {
-                let abs_arg = fargs[0];
-                let new_expr = ctx.add(Expr::Function("log".to_string(), vec![base, abs_arg]));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "log(b, |x|) -> log(b, x)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: Some("Assuming x > 0"),
-                });
-            }
-        }
+        // NOTE: Product/quotient expansions (log(xy) = log(x)+log(y), log(x/y) = log(x)-log(y))
+        // are moved to LogExpansionRule which has domain_mode + value_domain gates.
+        // These expansions require x > 0 and y > 0, and are NOT valid in complex domain with principal branch.
     }
     None
 });
+
+/// Domain-aware expansion rule for log products/quotients.
+///
+/// log(b, x*y) → log(b, x) + log(b, y) and log(b, x/y) → log(b, x) - log(b, y)
+///
+/// These expansions require:
+/// - RealOnly value_domain (complex domain with principal branch: NEVER expand)
+/// - Strict: only if prove_positive(x) && prove_positive(y)
+/// - Assume: expand with warning if not Disproven
+/// - Generic: same as Strict (conservative - no silent assumptions)
+pub struct LogExpansionRule;
+
+impl crate::rule::Rule for LogExpansionRule {
+    fn name(&self) -> &str {
+        "Log Expansion"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::domain::{DomainMode, Proof};
+        use crate::helpers::prove_positive;
+        use crate::semantics::ValueDomain;
+
+        // GATE 1: Never expand in complex domain (principal branch causes 2πi jumps)
+        if parent_ctx.value_domain() == ValueDomain::ComplexEnabled {
+            return None;
+        }
+
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(name, args) = expr_data {
+            // Handle ln(x) as log(e, x), or log(b, x)
+            let (base, arg) = if name == "ln" && args.len() == 1 {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                (e, args[0])
+            } else if name == "log" && args.len() == 2 {
+                (args[0], args[1])
+            } else {
+                return None;
+            };
+
+            let arg_data = ctx.get(arg).clone();
+            let mode = parent_ctx.domain_mode();
+
+            // log(b, x*y) → log(b, x) + log(b, y)
+            if let Expr::Mul(lhs, rhs) = arg_data {
+                let lhs_positive = prove_positive(ctx, lhs);
+                let rhs_positive = prove_positive(ctx, rhs);
+
+                // GATE 2: Check domain_mode with prove_positive
+                match mode {
+                    DomainMode::Strict | DomainMode::Generic => {
+                        // Only expand if BOTH factors are provably positive
+                        if lhs_positive != Proof::Proven || rhs_positive != Proof::Proven {
+                            return None;
+                        }
+                        let log_lhs = ctx.add(Expr::Function("log".to_string(), vec![base, lhs]));
+                        let log_rhs = ctx.add(Expr::Function("log".to_string(), vec![base, rhs]));
+                        let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
+                        return Some(crate::rule::Rewrite {
+                            new_expr,
+                            description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    }
+                    DomainMode::Assume => {
+                        // Expand unless one factor is Disproven (provably ≤ 0)
+                        if lhs_positive == Proof::Disproven || rhs_positive == Proof::Disproven {
+                            return None;
+                        }
+                        let log_lhs = ctx.add(Expr::Function("log".to_string(), vec![base, lhs]));
+                        let log_rhs = ctx.add(Expr::Function("log".to_string(), vec![base, rhs]));
+                        let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
+                        return Some(crate::rule::Rewrite {
+                            new_expr,
+                            description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: Some("Assuming x > 0 and y > 0"),
+                        });
+                    }
+                }
+            }
+
+            // log(b, x/y) → log(b, x) - log(b, y)
+            if let Expr::Div(num, den) = arg_data {
+                let num_positive = prove_positive(ctx, num);
+                let den_positive = prove_positive(ctx, den);
+
+                match mode {
+                    DomainMode::Strict | DomainMode::Generic => {
+                        if num_positive != Proof::Proven || den_positive != Proof::Proven {
+                            return None;
+                        }
+                        let log_num = ctx.add(Expr::Function("log".to_string(), vec![base, num]));
+                        let log_den = ctx.add(Expr::Function("log".to_string(), vec![base, den]));
+                        let new_expr = ctx.add(Expr::Sub(log_num, log_den));
+                        return Some(crate::rule::Rewrite {
+                            new_expr,
+                            description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    }
+                    DomainMode::Assume => {
+                        if num_positive == Proof::Disproven || den_positive == Proof::Disproven {
+                            return None;
+                        }
+                        let log_num = ctx.add(Expr::Function("log".to_string(), vec![base, num]));
+                        let log_den = ctx.add(Expr::Function("log".to_string(), vec![base, den]));
+                        let new_expr = ctx.add(Expr::Sub(log_num, log_den));
+                        return Some(crate::rule::Rewrite {
+                            new_expr,
+                            description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: Some("Assuming x > 0 and y > 0"),
+                        });
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+}
 /// Domain-aware rule for b^log(b, x) → x.
 /// Requires x > 0 (domain of log). Respects domain_mode.
 pub struct ExponentialLogRule;
@@ -500,16 +595,13 @@ mod tests {
     #[test]
     fn test_log_product() {
         let mut ctx = Context::new();
-        let rule = EvaluateLogRule;
-        // log(b, x*y) -> log(b, x) + log(b, y)
+        let rule = LogExpansionRule;
+        // log(b, x*y) -> log(b, x) + log(b, y) (requires Assume mode for variables)
         let expr = parse("log(2, x * y)", &mut ctx).unwrap();
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        // Create parent context with Assume mode (allows expansion with warning)
+        let parent_ctx = crate::parent_context::ParentContext::root()
+            .with_domain_mode(crate::domain::DomainMode::Assume);
+        let rewrite = rule.apply(&mut ctx, expr, &parent_ctx).unwrap();
         let res = format!(
             "{}",
             DisplayExpr {
@@ -525,16 +617,13 @@ mod tests {
     #[test]
     fn test_log_quotient() {
         let mut ctx = Context::new();
-        let rule = EvaluateLogRule;
-        // log(b, x/y) -> log(b, x) - log(b, y)
+        let rule = LogExpansionRule;
+        // log(b, x/y) -> log(b, x) - log(b, y) (requires Assume mode for variables)
         let expr = parse("log(2, x / y)", &mut ctx).unwrap();
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        // Create parent context with Assume mode (allows expansion with warning)
+        let parent_ctx = crate::parent_context::ParentContext::root()
+            .with_domain_mode(crate::domain::DomainMode::Assume);
+        let rewrite = rule.apply(&mut ctx, expr, &parent_ctx).unwrap();
         let res = format!(
             "{}",
             DisplayExpr {
@@ -754,6 +843,7 @@ impl crate::rule::Rule for LogExpInverseRule {
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateLogRule));
+    simplifier.add_rule(Box::new(LogExpansionRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(LogInversePowerRule));
