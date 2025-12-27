@@ -263,12 +263,28 @@ pub fn fold_pow(
             return Some(ctx.num(0));
         }
 
-        // Negative exponent: not in PR2.1 scope
+        // PR2.2: Negative integer exponent
         if exp_int < &num_bigint::BigInt::from(0) {
-            return None;
+            // 0^(-n) → undefined (division by zero)
+            if base_rat.is_zero() {
+                return Some(ctx.add(Expr::Constant(cas_ast::Constant::Undefined)));
+            }
+
+            // Safety limit: prevent huge exponents
+            const MAX_NEG_POW: u32 = 1000;
+            let abs_exp: u32 = match (-exp_int).try_into() {
+                Ok(v) if v <= MAX_NEG_POW => v,
+                _ => return None, // Too large, leave residual
+            };
+
+            // Compute base^|n| then return 1/(base^|n|)
+            let pow_result = pow_rational(&base_rat, abs_exp);
+            // Result is 1/pow_result = inverse rational
+            let inverted = BigRational::new(pow_result.denom().clone(), pow_result.numer().clone());
+            return Some(ctx.add(Expr::Number(inverted)));
         }
 
-        // Integer exponent: compute a^n for reasonable n
+        // Positive integer exponent: compute a^n for reasonable n
         // Limit to avoid overflow/timeout on large exponents
         let exp_u32: u32 = exp_int.try_into().ok()?;
         if exp_u32 > 1000 {

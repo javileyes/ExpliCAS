@@ -466,3 +466,184 @@ fn no_fold_general_rational_exp() {
     // 2^(1/3) is not in allowlist, should not fold
     assert!(matches!(ctx.get(result.expr), Expr::Pow(_, _)));
 }
+
+// ============================================================================
+// PR2.2: Negative integer exponent tests
+// ============================================================================
+
+#[test]
+fn pow_neg_int_off_noop() {
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let neg_three = ctx.num(-3);
+    let pow_expr = ctx.add(Expr::Pow(two, neg_three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Off,
+        ValueDomain::RealOnly,
+    );
+
+    assert_eq!(result.expr, pow_expr);
+    assert_eq!(result.folds_performed, 0);
+}
+
+#[test]
+fn real_pow_neg_int() {
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let neg_three = ctx.num(-3);
+    let pow_expr = ctx.add(Expr::Pow(two, neg_three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // 2^(-3) = 1/8
+    let expected = BigRational::new(1.into(), 8.into());
+    assert!(matches!(ctx.get(result.expr), Expr::Number(n) if n == &expected));
+}
+
+#[test]
+fn real_pow_neg_int_neg_base_odd() {
+    let mut ctx = Context::new();
+    let neg_two = ctx.num(-2);
+    let neg_three = ctx.num(-3);
+    let pow_expr = ctx.add(Expr::Pow(neg_two, neg_three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // (-2)^(-3) = -1/8
+    let expected = BigRational::new((-1).into(), 8.into());
+    assert!(matches!(ctx.get(result.expr), Expr::Number(n) if n == &expected));
+}
+
+#[test]
+fn real_pow_neg_int_neg_base_even() {
+    let mut ctx = Context::new();
+    let neg_two = ctx.num(-2);
+    let neg_four = ctx.num(-4);
+    let pow_expr = ctx.add(Expr::Pow(neg_two, neg_four));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // (-2)^(-4) = 1/16
+    let expected = BigRational::new(1.into(), 16.into());
+    assert!(matches!(ctx.get(result.expr), Expr::Number(n) if n == &expected));
+}
+
+#[test]
+fn real_pow_zero_neg_undefined() {
+    let mut ctx = Context::new();
+    let zero = ctx.num(0);
+    let neg_three = ctx.num(-3);
+    let pow_expr = ctx.add(Expr::Pow(zero, neg_three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // 0^(-3) = undefined
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Constant(cas_ast::Constant::Undefined)
+    ));
+}
+
+#[test]
+fn real_pow_one_neg() {
+    let mut ctx = Context::new();
+    let one = ctx.num(1);
+    let neg_999 = ctx.num(-999);
+    let pow_expr = ctx.add(Expr::Pow(one, neg_999));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // 1^(-999) = 1
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer(1.into())
+    ));
+}
+
+#[test]
+fn real_pow_minus_one_neg_odd() {
+    let mut ctx = Context::new();
+    let neg_one = ctx.num(-1);
+    let neg_three = ctx.num(-3);
+    let pow_expr = ctx.add(Expr::Pow(neg_one, neg_three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // (-1)^(-3) = -1
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer((-1).into())
+    ));
+}
+
+#[test]
+fn real_pow_minus_one_neg_even() {
+    let mut ctx = Context::new();
+    let neg_one = ctx.num(-1);
+    let neg_four = ctx.num(-4);
+    let pow_expr = ctx.add(Expr::Pow(neg_one, neg_four));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // (-1)^(-4) = 1
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer(1.into())
+    ));
+}
+
+#[test]
+fn no_fold_symbolic_neg_pow() {
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let neg_three = ctx.num(-3);
+    let pow_expr = ctx.add(Expr::Pow(x, neg_three));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // x^(-3) should not fold
+    assert_eq!(result.expr, pow_expr);
+}
