@@ -62,6 +62,26 @@ fn off_mode_preserves_sqrt_negative() {
     assert_eq!(result.folds_performed, 0);
 }
 
+#[test]
+fn off_mode_complex_preserves_sqrt_negative() {
+    // KEY CONTRACT: off mode is noop even when complex is enabled
+    // ValueDomain defines available semantics, but const_fold(off) doesn't apply them
+    let mut ctx = Context::new();
+    let neg_one = ctx.num(-1);
+    let sqrt_neg_one = ctx.add(Expr::Function("sqrt".to_string(), vec![neg_one]));
+
+    let result = fold(
+        &mut ctx,
+        sqrt_neg_one,
+        ConstFoldMode::Off,
+        ValueDomain::ComplexEnabled, // Complex enabled but fold is OFF
+    );
+
+    // Should not change - off means no folding regardless of ValueDomain
+    assert_eq!(result.expr, sqrt_neg_one);
+    assert_eq!(result.folds_performed, 0);
+}
+
 // ============================================================================
 // Safe mode - RealOnly tests
 // ============================================================================

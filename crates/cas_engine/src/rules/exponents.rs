@@ -424,52 +424,24 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {
+        // Delegate literal integer power to canonical const_eval helper
+        // This covers: b^n for ℚ base and ℤ exponent, including edge cases (0^0, 0^-n)
+        if let Some(result) = crate::const_eval::try_eval_pow_literal(ctx, base, exp) {
+            return Some(Rewrite {
+                new_expr: result,
+                description: "Evaluate literal power".to_string(),
+                before_local: None,
+                after_local: None,
+                domain_assumption: None,
+            });
+        }
+
         let base_data = ctx.get(base).clone();
         let exp_data = ctx.get(exp).clone();
 
+        // Case 2: Fractional Exponent (Roots) - only when not handled by const_eval
         if let (Expr::Number(b), Expr::Number(e)) = (base_data, exp_data) {
-            // Case 1: Integer Exponent
-            if e.is_integer() {
-                // We need to be careful with large exponents, but BigInt handles arbitrary size.
-                // However, BigRational::pow takes i32.
-                // If exponent is too large for i32, we might skip or use BigInt pow if base is integer.
-                // num_rational 0.4 BigRational doesn't have a generic pow that takes BigInt.
-                // It has `pow(i32)`.
-                // Let's check if e fits in i32.
-                if let Some(e_i32) = e
-                    .to_integer()
-                    .to_u32()
-                    .map(|x| x as i32)
-                    .or_else(|| e.to_integer().to_i32())
-                {
-                    // Check for 0^-n
-                    if b.is_zero() && e_i32 < 0 {
-                        let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                        return Some(Rewrite {
-                            new_expr: undef,
-                            description: "Division by zero".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                        });
-                    }
-
-                    // b^e_i32
-                    // BigRational::pow takes i32.
-                    let res = b.pow(e_i32);
-                    let new_expr = ctx.add(Expr::Number(res));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: format!("Evaluate power: {}^{}", b, e),
-                        before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                    });
-                }
-            }
-
-            // Case 2: Fractional Exponent (Roots)
-            // e = num / den.
+            // Fractional exponents: e = num / den (not handled by const_eval which only does ℤ exp)
             let numer = e.numer();
             let denom = e.denom();
 
@@ -477,18 +449,15 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                 let b_num = b.numer();
                 let b_den = b.denom();
 
-                // println!("Checking root: base={}/{}, n={}", b_num, b_den, n);
                 let (out_n, in_n) = extract_root_factor(b_num, n);
                 let (out_d, in_d) = extract_root_factor(b_den, n);
-                // println!("Extracted: num=({},{}), den=({},{})", out_n, in_n, out_d, in_d);
 
                 // If we extracted anything (outside parts are not 1)
                 if !out_n.is_one() || !out_d.is_one() {
-                    // b^(num/den) = ( (out_n^n * in_n) / (out_d^n * in_d) ) ^ (num/n)
-                    //             = (out_n/out_d)^num * (in_n/in_d)^(num/n)
+                    // b^(num/den) = (out_n/out_d)^num * (in_n/in_d)^(num/den)
 
                     if let Some(pow_num) = numer.to_i32() {
-                        let coeff_num = out_n.pow(pow_num as u32); // BigInt pow takes u32
+                        let coeff_num = out_n.pow(pow_num as u32);
                         let coeff_den = out_d.pow(pow_num as u32);
                         let coeff = BigRational::new(coeff_num, coeff_den);
 
@@ -508,7 +477,7 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                         } else {
                             // Partial root
                             let new_base = ctx.add(Expr::Number(new_base_val));
-                            let new_pow = ctx.add(Expr::Pow(new_base, exp)); // Keep original exponent for the remainder
+                            let new_pow = ctx.add(Expr::Pow(new_base, exp));
                             let new_expr = mul2_raw(ctx, coeff_expr, new_pow);
                             return Some(Rewrite {
                                 new_expr,

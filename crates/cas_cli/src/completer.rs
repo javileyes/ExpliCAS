@@ -156,9 +156,17 @@ impl Completer for CasHelper {
             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
             let ends_with_space = line[..pos].ends_with(' ');
 
-            // Case: "semantics <TAB>" - suggest subcommands
+            // Case: "semantics <TAB>" - suggest subcommands and axis names
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                let subcommands = vec!["set", "help"];
+                let subcommands = vec![
+                    "set",
+                    "help",
+                    "domain",
+                    "value",
+                    "branch",
+                    "inv_trig",
+                    "const_fold",
+                ];
                 for sub in subcommands {
                     if sub.starts_with(word) {
                         matches.push(Pair {

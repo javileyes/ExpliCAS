@@ -7,6 +7,28 @@
 | **simplify()** | Does NOT expand binomial×binomial. Only applies structural identity reductions (e.g., difference of squares). Avoids complexity explosion. |
 | **expand()** | Aggressively distributes and expands. Uses budgets to avoid explosion. Goal is expanded polynomial form. |
 
+---
+
+## Semantic Axes
+
+The engine supports 5 semantic axes that control evaluation behavior:
+
+| Axis | Values | Purpose |
+|------|--------|---------|
+| `DomainMode` | strict, generic, assume | Variable domain assumptions |
+| `ValueDomain` | real, complex | ℝ vs ℂ semantics |
+| `BranchPolicy` | principal | Complex branch cuts |
+| `InverseTrigPolicy` | strict, principal | Inverse function behavior |
+| `ConstFoldMode` | off, safe | Constant folding activation |
+
+**Rules depending on these axes MUST follow the checklist in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).**
+
+See also:
+- [docs/SEMANTICS_POLICY.md](docs/SEMANTICS_POLICY.md) — Normative definitions
+- [docs/CONST_FOLD_POLICY.md](docs/CONST_FOLD_POLICY.md) — const_eval/const_fold architecture
+
+---
+
 ## Examples
 
 | Input | `simplify()` | `expand()` |

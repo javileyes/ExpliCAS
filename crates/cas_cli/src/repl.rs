@@ -2516,12 +2516,28 @@ impl Repl {
                 // Parse remaining args as axis=value pairs or axis value pairs
                 self.parse_semantics_set(&args[2..]);
             }
+            Some(&"domain") => {
+                self.print_axis_status("domain");
+            }
+            Some(&"value") => {
+                self.print_axis_status("value");
+            }
+            Some(&"branch") => {
+                self.print_axis_status("branch");
+            }
+            Some(&"inv_trig") => {
+                self.print_axis_status("inv_trig");
+            }
+            Some(&"const_fold") => {
+                self.print_axis_status("const_fold");
+            }
             Some(other) => {
                 println!("Unknown semantics subcommand: '{}'", other);
-                println!("Usage: semantics [set|help]");
-                println!("  semantics          Show current settings");
-                println!("  semantics help     Show help");
-                println!("  semantics set ...  Change settings");
+                println!("Usage: semantics [set|help|<axis>]");
+                println!("  semantics            Show all settings");
+                println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold)");
+                println!("  semantics help       Show help");
+                println!("  semantics set ...    Change settings");
             }
         }
     }
@@ -2568,6 +2584,76 @@ impl Repl {
             cas_engine::const_fold::ConstFoldMode::Safe => "safe",
         };
         println!("  const_fold: {}", const_fold);
+    }
+
+    /// Print status for a single semantic axis with current value and available options
+    fn print_axis_status(&self, axis: &str) {
+        use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
+        use cas_engine::DomainMode;
+
+        match axis {
+            "domain" => {
+                let current = match self.simplify_options.domain {
+                    DomainMode::Strict => "strict",
+                    DomainMode::Assume => "assume",
+                    DomainMode::Generic => "generic",
+                };
+                println!("domain: {}", current);
+                println!("  Values: strict | generic | assume");
+                println!("  strict:  No domain assumptions (x/x stays x/x)");
+                println!("  generic: Classic CAS 'almost everywhere' algebra");
+                println!("  assume:  Use assumptions with warnings");
+            }
+            "value" => {
+                let current = match self.simplify_options.value_domain {
+                    ValueDomain::RealOnly => "real",
+                    ValueDomain::ComplexEnabled => "complex",
+                };
+                println!("value: {}", current);
+                println!("  Values: real | complex");
+                println!("  real:    ℝ only (sqrt(-1) undefined)");
+                println!("  complex: ℂ enabled (sqrt(-1) = i)");
+            }
+            "branch" => {
+                let current = match self.simplify_options.branch {
+                    BranchPolicy::Principal => "principal",
+                };
+                let inactive = self.simplify_options.value_domain == ValueDomain::RealOnly;
+                if inactive {
+                    println!("branch: {} (inactive: value=real)", current);
+                } else {
+                    println!("branch: {}", current);
+                }
+                println!("  Values: principal");
+                println!("  principal: Use principal branch for multi-valued functions");
+                if inactive {
+                    println!("  Note: Only active when value=complex");
+                }
+            }
+            "inv_trig" => {
+                let current = match self.simplify_options.inv_trig {
+                    InverseTrigPolicy::Strict => "strict",
+                    InverseTrigPolicy::PrincipalValue => "principal",
+                };
+                println!("inv_trig: {}", current);
+                println!("  Values: strict | principal");
+                println!("  strict:    arctan(tan(x)) unchanged");
+                println!("  principal: arctan(tan(x)) → x with warning");
+            }
+            "const_fold" => {
+                let current = match self.state.options.const_fold {
+                    cas_engine::const_fold::ConstFoldMode::Off => "off",
+                    cas_engine::const_fold::ConstFoldMode::Safe => "safe",
+                };
+                println!("const_fold: {}", current);
+                println!("  Values: off | safe");
+                println!("  off:  No constant folding (defer semantic decisions)");
+                println!("  safe: Fold literals (2^3 → 8, sqrt(-1) → i if complex)");
+            }
+            _ => {
+                println!("Unknown axis: {}", axis);
+            }
+        }
     }
 
     fn print_semantics_help(&self) {

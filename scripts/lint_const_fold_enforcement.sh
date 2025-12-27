@@ -72,5 +72,29 @@ if grep -rn "fn\s*is_one\s*(" "$DIR" 2>/dev/null; then
     exit 1
 fi
 
+echo "==> Checking const_eval delegation..."
+
+# Enforce that EvaluatePowerRule delegates to const_eval
+EXPONENTS="$ROOT/crates/cas_engine/src/rules/exponents.rs"
+if [ -f "$EXPONENTS" ]; then
+    if ! grep -n "const_eval::try_eval_pow_literal" "$EXPONENTS" >/dev/null 2>&1; then
+        echo ""
+        echo "ERROR: exponents.rs must delegate to const_eval::try_eval_pow_literal"
+        echo "       EvaluatePowerRule should not implement literal pow locally."
+        exit 1
+    fi
+fi
+
+# Enforce that const_fold/helpers.rs delegates to const_eval
+HELPERS="$DIR/helpers.rs"
+if [ -f "$HELPERS" ]; then
+    if ! grep -n "const_eval::try_eval_pow_literal" "$HELPERS" >/dev/null 2>&1; then
+        echo ""
+        echo "ERROR: const_fold/helpers.rs must delegate to const_eval::try_eval_pow_literal"
+        echo "       fold_pow should not re-implement literal pow locally."
+        exit 1
+    fi
+fi
+
 echo ""
 echo "✔ const_fold enforcement passed"

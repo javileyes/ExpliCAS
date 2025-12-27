@@ -227,10 +227,15 @@ pub fn fold_pow(
     value_domain: ValueDomain,
     _branch: crate::semantics::BranchPolicy, // Wired for future use
 ) -> Option<ExprId> {
-    // Extract base as rational
-    let base_rat = literal_rat(ctx, base)?;
+    // First: delegate integer exponent case to canonical const_eval helper
+    // This covers: b^n for ℚ base and ℤ exponent, including edge cases (0^0, 0^-n)
+    if let Some(result) = crate::const_eval::try_eval_pow_literal(ctx, base, exp) {
+        return Some(result);
+    }
 
-    // Extract exponent as rational
+    // Case: semantic evaluation (depends on ValueDomain)
+    // Handle sqrt(-1) which const_eval doesn't cover
+    let base_rat = literal_rat(ctx, base)?;
     let exp_rat = literal_rat(ctx, exp)?;
 
     // Normalize exponent: ensure denominator is positive
@@ -240,63 +245,10 @@ pub fn fold_pow(
         exp_rat
     };
 
-    // Get numerator and denominator
     let exp_numer = exp_rat.numer();
     let exp_denom = exp_rat.denom();
 
-    // Case: exponent is integer
-    if exp_denom == &num_bigint::BigInt::from(1) {
-        let exp_int = exp_numer;
-
-        // 0^0 → undefined
-        if base_rat.is_zero() && exp_int.is_zero() {
-            return Some(ctx.add(Expr::Constant(cas_ast::Constant::Undefined)));
-        }
-
-        // a^0 → 1 (for a ≠ 0)
-        if exp_int.is_zero() {
-            return Some(ctx.num(1));
-        }
-
-        // 0^n → 0 (for n > 0)
-        if base_rat.is_zero() && exp_int > &num_bigint::BigInt::from(0) {
-            return Some(ctx.num(0));
-        }
-
-        // PR2.2: Negative integer exponent
-        if exp_int < &num_bigint::BigInt::from(0) {
-            // 0^(-n) → undefined (division by zero)
-            if base_rat.is_zero() {
-                return Some(ctx.add(Expr::Constant(cas_ast::Constant::Undefined)));
-            }
-
-            // Safety limit: prevent huge exponents
-            const MAX_NEG_POW: u32 = 1000;
-            let abs_exp: u32 = match (-exp_int).try_into() {
-                Ok(v) if v <= MAX_NEG_POW => v,
-                _ => return None, // Too large, leave residual
-            };
-
-            // Compute base^|n| then return 1/(base^|n|)
-            let pow_result = pow_rational(&base_rat, abs_exp);
-            // Result is 1/pow_result = inverse rational
-            let inverted = BigRational::new(pow_result.denom().clone(), pow_result.numer().clone());
-            return Some(ctx.add(Expr::Number(inverted)));
-        }
-
-        // Positive integer exponent: compute a^n for reasonable n
-        // Limit to avoid overflow/timeout on large exponents
-        let exp_u32: u32 = exp_int.try_into().ok()?;
-        if exp_u32 > 1000 {
-            return None; // Too large, leave residual
-        }
-
-        let result = pow_rational(&base_rat, exp_u32);
-        return Some(ctx.add(Expr::Number(result)));
-    }
-
-    // Case: exponent is rational p/q (non-integer)
-    // Only handle special case: (-1)^(1/2)
+    // Special case: (-1)^(1/2) - depends on ValueDomain
     if exp_numer == &num_bigint::BigInt::from(1) && exp_denom == &num_bigint::BigInt::from(2) {
         // Check if base is exactly -1
         if base_rat == BigRational::from_integer((-1).into()) {
@@ -315,19 +267,6 @@ pub fn fold_pow(
 
     // All other cases: leave residual (not in allowlist)
     None
-}
-
-/// Compute a^n for rational a and non-negative integer n.
-fn pow_rational(base: &BigRational, exp: u32) -> BigRational {
-    if exp == 0 {
-        return BigRational::from_integer(1.into());
-    }
-
-    let mut result = base.clone();
-    for _ in 1..exp {
-        result = &result * base;
-    }
-    result
 }
 
 #[cfg(test)]
