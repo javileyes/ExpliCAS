@@ -178,10 +178,32 @@ impl Completer for CasHelper {
                 return Ok((start, matches));
             }
 
-            // Case: "semantics set <TAB>" - suggest axes
+            // Case: "semantics set <axis> <TAB>" - suggest values for axis
+            if parts.len() >= 3 && parts[1] == "set" && ends_with_space {
+                let axis = parts[2];
+                let values = match axis {
+                    "domain" => vec!["strict", "generic", "assume"],
+                    "value" => vec!["real", "complex"],
+                    "branch" => vec!["principal"],
+                    "inv_trig" => vec!["strict", "principal"],
+                    "const_fold" => vec!["off", "safe"],
+                    _ => vec![],
+                };
+                for v in values {
+                    if v.starts_with(word) {
+                        matches.push(Pair {
+                            display: v.to_string(),
+                            replacement: v.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+
+            // Case: "semantics set <TAB>" or "semantics set <partial>" - suggest axes
             if parts.len() >= 2
                 && parts[1] == "set"
-                && ((parts.len() == 2 && ends_with_space) || (parts.len() >= 3 && !ends_with_space))
+                && ((parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space))
             {
                 let axes = vec!["domain", "value", "branch", "inv_trig", "const_fold"];
                 for axis in axes {
@@ -189,6 +211,28 @@ impl Completer for CasHelper {
                         matches.push(Pair {
                             display: axis.to_string(),
                             replacement: axis.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+
+            // Case: "semantics set <axis> <partial_value>" - suggest axis values
+            if parts.len() >= 4 && parts[1] == "set" && !ends_with_space {
+                let axis = parts[2];
+                let values = match axis {
+                    "domain" => vec!["strict", "generic", "assume"],
+                    "value" => vec!["real", "complex"],
+                    "branch" => vec!["principal"],
+                    "inv_trig" => vec!["strict", "principal"],
+                    "const_fold" => vec!["off", "safe"],
+                    _ => vec![],
+                };
+                for v in values {
+                    if v.starts_with(word) {
+                        matches.push(Pair {
+                            display: v.to_string(),
+                            replacement: v.to_string(),
                         });
                     }
                 }
