@@ -277,11 +277,21 @@ where
 // ==================== Inverse Trig Identity Rules ====================
 
 // Rule 1: Composition Identities - sin(arcsin(x)) = x, etc.
-define_rule!(
-    InverseTrigCompositionRule,
-    "Inverse Trig Composition",
-    Some(vec!["Function"]),
-    |ctx, expr| {
+// sin(arcsin(x)) and cos(arccos(x)) require x ∈ [-1, 1] (domain of inverse)
+// tan(arctan(x)) is always valid (arctan has domain R)
+pub struct InverseTrigCompositionRule;
+
+impl crate::rule::Rule for InverseTrigCompositionRule {
+    fn name(&self) -> &str {
+        "Inverse Trig Composition"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
         if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
             if outer_args.len() == 1 {
                 let inner_expr = outer_args[0];
@@ -291,29 +301,94 @@ define_rule!(
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
 
-                        // sin(arcsin(x)) = x (also handles asin variant)
+                        // sin(arcsin(x)) = x (requires x ∈ [-1, 1])
                         if outer_name == "sin" && (inner_name == "arcsin" || inner_name == "asin") {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "sin(arcsin(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                            });
+                            // Check domain_mode: sin(arcsin(x)) requires x ∈ [-1,1]
+                            let mode = parent_ctx.domain_mode();
+                            match mode {
+                                crate::domain::DomainMode::Strict => {
+                                    // Check if x is a literal number in [-1, 1]
+                                    if let Expr::Number(n) = ctx.get(x) {
+                                        let one = num_rational::BigRational::one();
+                                        let neg_one = -one.clone();
+                                        if *n >= neg_one && *n <= one {
+                                            return Some(Rewrite {
+                                                new_expr: x,
+                                                description: "sin(arcsin(x)) = x".to_string(),
+                                                before_local: None,
+                                                after_local: None,
+                                                domain_assumption: None,
+                                            });
+                                        }
+                                    }
+                                    // Variable: don't simplify in strict mode
+                                    return None;
+                                }
+                                crate::domain::DomainMode::Generic => {
+                                    return Some(Rewrite {
+                                        new_expr: x,
+                                        description: "sin(arcsin(x)) = x".to_string(),
+                                        before_local: None,
+                                        after_local: None,
+                                        domain_assumption: None,
+                                    });
+                                }
+                                crate::domain::DomainMode::Assume => {
+                                    return Some(Rewrite {
+                                        new_expr: x,
+                                        description: "sin(arcsin(x)) = x (assuming x ∈ [-1, 1])"
+                                            .to_string(),
+                                        before_local: None,
+                                        after_local: None,
+                                        domain_assumption: Some("Assuming x ∈ [-1, 1]"),
+                                    });
+                                }
+                            }
                         }
 
-                        // cos(arccos(x)) = x (also handles acos variant)
+                        // cos(arccos(x)) = x (requires x ∈ [-1, 1])
                         if outer_name == "cos" && (inner_name == "arccos" || inner_name == "acos") {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "cos(arccos(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                            });
+                            let mode = parent_ctx.domain_mode();
+                            match mode {
+                                crate::domain::DomainMode::Strict => {
+                                    if let Expr::Number(n) = ctx.get(x) {
+                                        let one = num_rational::BigRational::one();
+                                        let neg_one = -one.clone();
+                                        if *n >= neg_one && *n <= one {
+                                            return Some(Rewrite {
+                                                new_expr: x,
+                                                description: "cos(arccos(x)) = x".to_string(),
+                                                before_local: None,
+                                                after_local: None,
+                                                domain_assumption: None,
+                                            });
+                                        }
+                                    }
+                                    return None;
+                                }
+                                crate::domain::DomainMode::Generic => {
+                                    return Some(Rewrite {
+                                        new_expr: x,
+                                        description: "cos(arccos(x)) = x".to_string(),
+                                        before_local: None,
+                                        after_local: None,
+                                        domain_assumption: None,
+                                    });
+                                }
+                                crate::domain::DomainMode::Assume => {
+                                    return Some(Rewrite {
+                                        new_expr: x,
+                                        description: "cos(arccos(x)) = x (assuming x ∈ [-1, 1])"
+                                            .to_string(),
+                                        before_local: None,
+                                        after_local: None,
+                                        domain_assumption: Some("Assuming x ∈ [-1, 1]"),
+                                    });
+                                }
+                            }
                         }
 
-                        // tan(arctan(x)) = x (also handles atan variant)
+                        // tan(arctan(x)) = x (always safe - arctan has domain R)
                         if outer_name == "tan" && (inner_name == "arctan" || inner_name == "atan") {
                             return Some(Rewrite {
                                 new_expr: x,
@@ -351,14 +426,18 @@ define_rule!(
                         // - arcsin(sin(x)) → x  (unsafe: fails outside [-π/2, π/2])
                         // - arccos(cos(x)) → x  (unsafe: fails outside [0, π])
                         // - arctan(tan(x)) → x  (unsafe: fails outside (-π/2, π/2))
-                        // These would require domain knowledge to be correct.
+                        // These are handled by PrincipalBranchInverseTrigRule when inv_trig=principal
                     }
                 }
             }
         }
         None
     }
-);
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+}
 
 // Rule 2: arcsin(x) + arccos(x) = π/2
 // Enhanced to search across all additive terms (n-ary matching)
