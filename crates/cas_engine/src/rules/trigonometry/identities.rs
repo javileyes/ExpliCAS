@@ -835,6 +835,13 @@ impl crate::rule::Rule for TanToSinCosRule {
             if marks.is_pythagorean_protected(expr) {
                 return None; // Skip conversion - part of Pythagorean identity
             }
+            // Also check for inverse trig pattern (arctan(tan(x)) etc.)
+            // ONLY when inv_trig=principal, otherwise let the conversion happen
+            if parent_ctx.inv_trig_policy() == crate::semantics::InverseTrigPolicy::PrincipalValue
+                && marks.is_inverse_trig_protected(expr)
+            {
+                return None; // Skip conversion - preserve arctan(tan(x)) → x
+            }
         }
 
         // GUARD: Protect inverse trig composition when inv_trig=PrincipalValue.

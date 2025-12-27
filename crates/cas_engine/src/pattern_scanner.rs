@@ -35,6 +35,7 @@ fn scan_recursive(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
     check_and_mark_pythagorean_pattern(ctx, expr_id, marks);
     check_and_mark_sqrt_square_pattern(ctx, expr_id, marks);
     check_and_mark_trig_square_pattern(ctx, expr_id, marks);
+    check_and_mark_inverse_trig_pattern(ctx, expr_id, marks);
 }
 
 fn check_and_mark_pythagorean_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
@@ -205,6 +206,37 @@ fn check_and_mark_trig_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
     }
 }
 
+/// Detect arctan(tan(x)), arcsin(sin(x)), arccos(cos(x)) patterns.
+/// Mark the inner trig function (tan, sin, cos) for protection so it won't
+/// be converted to sin/cos before the inverse-trig simplification can fire.
+fn check_and_mark_inverse_trig_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
+    // Only check Function nodes
+    if let Expr::Function(outer_name, outer_args) = ctx.get(expr_id) {
+        if outer_args.len() != 1 {
+            return;
+        }
+        let inner_id = outer_args[0];
+
+        // Check if outer is an inverse trig function
+        let inverse_inner_pair = match outer_name.as_str() {
+            "arctan" | "atan" => Some("tan"),
+            "arcsin" | "asin" => Some("sin"),
+            "arccos" | "acos" => Some("cos"),
+            _ => None,
+        };
+
+        if let Some(expected_inner_name) = inverse_inner_pair {
+            // Check if inner is the matching trig function
+            if let Expr::Function(inner_name, inner_args) = ctx.get(inner_id) {
+                if inner_name == expected_inner_name && inner_args.len() == 1 {
+                    // Found arctan(tan(u)) or similar - mark the inner function
+                    marks.mark_inverse_trig(inner_id);
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,6 +350,44 @@ mod tests {
         assert!(
             marks.is_trig_square_protected(cos_func),
             "cos(1+2*x) should be protected"
+        );
+    }
+
+    #[test]
+    fn test_scan_marks_inverse_trig_pattern() {
+        let mut ctx = Context::new();
+        let mut marks = PatternMarks::new();
+
+        // Build: arctan(tan(x))
+        let x = ctx.var("x");
+        let tan_x = ctx.add(Expr::Function("tan".into(), vec![x]));
+        let arctan_tan_x = ctx.add(Expr::Function("arctan".into(), vec![tan_x]));
+
+        scan_and_mark_patterns(&ctx, arctan_tan_x, &mut marks);
+
+        // tan(x) should be marked for protection
+        assert!(
+            marks.is_inverse_trig_protected(tan_x),
+            "tan(x) in arctan(tan(x)) should be protected"
+        );
+    }
+
+    #[test]
+    fn test_scan_marks_arcsin_sin_pattern() {
+        let mut ctx = Context::new();
+        let mut marks = PatternMarks::new();
+
+        // Build: arcsin(sin(x))
+        let x = ctx.var("x");
+        let sin_x = ctx.add(Expr::Function("sin".into(), vec![x]));
+        let arcsin_sin_x = ctx.add(Expr::Function("arcsin".into(), vec![sin_x]));
+
+        scan_and_mark_patterns(&ctx, arcsin_sin_x, &mut marks);
+
+        // sin(x) should be marked for protection
+        assert!(
+            marks.is_inverse_trig_protected(sin_x),
+            "sin(x) in arcsin(sin(x)) should be protected"
         );
     }
 }

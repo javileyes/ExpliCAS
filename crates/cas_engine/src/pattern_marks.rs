@@ -18,6 +18,9 @@ pub struct PatternMarks {
     /// When processing is inside one of these contexts, Pow(Add(..), n) will be expanded.
     /// This is more robust than marking individual Pow nodes, as rewrites may change ExprIds.
     pub auto_expand_contexts: HashSet<ExprId>,
+    /// ExprIds of tan/sin/cos nodes that are inside arctan(tan(x)) or similar inverse-trig patterns.
+    /// Protected from conversion to sin/cos to allow principal value simplification.
+    pub inverse_trig_protected: HashSet<ExprId>,
 }
 
 impl PatternMarks {
@@ -27,6 +30,7 @@ impl PatternMarks {
             sqrt_square_protected: HashSet::new(),
             trig_square_protected: HashSet::new(),
             auto_expand_contexts: HashSet::new(),
+            inverse_trig_protected: HashSet::new(),
         }
     }
 
@@ -77,5 +81,16 @@ impl PatternMarks {
     /// Check if any auto-expand contexts have been marked
     pub fn has_auto_expand_contexts(&self) -> bool {
         !self.auto_expand_contexts.is_empty()
+    }
+
+    /// Check if an expression is protected as part of inverse-trig pattern
+    /// (e.g., tan(x) in arctan(tan(x)) should not be converted to sin/cos)
+    pub fn is_inverse_trig_protected(&self, expr: ExprId) -> bool {
+        self.inverse_trig_protected.contains(&expr)
+    }
+
+    /// Mark an expression as part of inverse-trig pattern
+    pub fn mark_inverse_trig(&mut self, expr: ExprId) {
+        self.inverse_trig_protected.insert(expr);
     }
 }
