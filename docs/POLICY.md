@@ -23,8 +23,10 @@ The engine supports 5 semantic axes that control evaluation behavior:
 
 **Rules depending on these axes MUST follow the checklist in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).**
 
+**Presets** provide explicit shortcuts for common configurations: `default`, `strict`, `complex`, `school`. Use `semantics preset <name>` in REPL.
+
 See also:
-- [docs/SEMANTICS_POLICY.md](docs/SEMANTICS_POLICY.md) — Normative definitions
+- [docs/SEMANTICS_POLICY.md](docs/SEMANTICS_POLICY.md) — Normative definitions + presets
 - [docs/CONST_FOLD_POLICY.md](docs/CONST_FOLD_POLICY.md) — const_eval/const_fold architecture
 
 ---

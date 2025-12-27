@@ -172,6 +172,56 @@ New fields are **optional** and do not break existing consumers:
 | `value_domain` | `RealOnly` | Safe, no complex |
 | `branch` | `Principal` | Standard convention |
 | `inv_trig` | `Strict` | Safe, no domain assumptions |
+| `const_fold` | `Off` | Defer semantic decisions |
+
+---
+
+## Presets (V1.1)
+
+Presets provide **explicit, auditable shortcuts** to configure multiple axes at once. They do not change defaults and are only applied when the user invokes them explicitly.
+
+### Design Principles
+
+1. **Explicit, not magic** — User must invoke `semantics preset <name>`
+2. **Traceable** — Apply prints diff of changes
+3. **Complete** — Each preset defines all 5 axes
+4. **Few and clear** — Only 4 presets, each with distinct purpose
+
+### Available Presets
+
+| Preset | domain | value | branch | inv_trig | const_fold | Purpose |
+|--------|--------|-------|--------|----------|------------|---------|
+| `default` | generic | real | principal | strict | off | Reset to engine defaults |
+| `strict` | strict | real | principal | strict | off | Conservative, no assumptions |
+| `complex` | generic | complex | principal | strict | safe | Enable ℂ + materialization |
+| `school` | generic | real | principal | principal | off | Classroom mode |
+
+### REPL Commands
+
+```
+semantics preset              # List available presets
+semantics preset <name>       # Apply preset (prints diff)
+semantics preset help <name>  # Show preset configuration
+```
+
+### Example
+
+```
+> semantics preset complex
+Applied preset: complex
+Changes:
+  value_domain: real → complex
+  const_fold:   off → safe
+
+> sqrt(-1)
+Result: i
+```
+
+### Non-Goals
+
+- Presets do not create aliases for `semantics set`
+- Presets do not introduce "auto" or heuristic behavior
+- Custom/user-defined presets are not supported in V1
 
 ---
 
