@@ -741,13 +741,30 @@ fn run_substitute(args: SubstituteArgs) {
     };
 
     // Build options
-    let opts = match args.mode {
+    let mut opts = match args.mode {
         SubstituteModeArg::Exact => SubstituteOptions::exact(),
         SubstituteModeArg::Power => SubstituteOptions::default(),
     };
+    if args.steps {
+        opts = opts.with_steps();
+    }
 
-    // Run substitution
-    let result = substitute_power_aware(&mut ctx, expr, target, replacement, opts);
+    // Run substitution with steps if requested
+    let (result, steps) = if args.steps {
+        let res = cas_engine::substitute::substitute_with_steps(
+            &mut ctx,
+            expr,
+            target,
+            replacement,
+            opts,
+        );
+        (res.expr, res.steps)
+    } else {
+        (
+            substitute_power_aware(&mut ctx, expr, target, replacement, opts),
+            vec![],
+        )
+    };
 
     // Output result
     match args.format {
@@ -756,7 +773,19 @@ fn run_substitute(args: SubstituteArgs) {
                 SubstituteModeArg::Exact => "exact",
                 SubstituteModeArg::Power => "power",
             };
-            let json = serde_json::json!({
+            let steps_json: Vec<serde_json::Value> = steps
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "rule": s.rule,
+                        "before": s.before,
+                        "after": s.after,
+                        "note": s.note
+                    })
+                })
+                .collect();
+
+            let mut json = serde_json::json!({
                 "ok": true,
                 "result": format!("{}", DisplayExpr { context: &ctx, id: result }),
                 "options": {
@@ -766,9 +795,27 @@ fn run_substitute(args: SubstituteArgs) {
                     }
                 }
             });
+
+            if args.steps && !steps_json.is_empty() {
+                json["steps"] = serde_json::Value::Array(steps_json);
+            }
+
             println!("{}", serde_json::to_string_pretty(&json).unwrap());
         }
         OutputFormat::Text => {
+            if args.steps && !steps.is_empty() {
+                println!("Steps:");
+                for step in &steps {
+                    if let Some(ref note) = step.note {
+                        println!(
+                            "  {} → {} [{}] ({})",
+                            step.before, step.after, step.rule, note
+                        );
+                    } else {
+                        println!("  {} → {} [{}]", step.before, step.after, step.rule);
+                    }
+                }
+            }
             println!(
                 "{}",
                 DisplayExpr {

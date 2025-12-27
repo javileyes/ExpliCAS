@@ -25,6 +25,9 @@ pub struct SubstituteOptions {
     /// If false, only exact divisible exponents are replaced.
     /// Only relevant when power_aware is true.
     pub allow_remainder: bool,
+
+    /// If true, collect substitution steps for traceability.
+    pub collect_steps: bool,
 }
 
 impl Default for SubstituteOptions {
@@ -32,6 +35,7 @@ impl Default for SubstituteOptions {
         Self {
             power_aware: true,
             allow_remainder: true,
+            collect_steps: false,
         }
     }
 }
@@ -42,6 +46,7 @@ impl SubstituteOptions {
         Self {
             power_aware: false,
             allow_remainder: false,
+            collect_steps: false,
         }
     }
 
@@ -50,8 +55,35 @@ impl SubstituteOptions {
         Self {
             power_aware: true,
             allow_remainder: false,
+            collect_steps: false,
         }
     }
+
+    /// Enable step collection.
+    pub fn with_steps(mut self) -> Self {
+        self.collect_steps = true;
+        self
+    }
+}
+
+/// A single substitution step for traceability.
+#[derive(Clone, Debug)]
+pub struct SubstituteStep {
+    /// Rule name: "SubstituteExact", "SubstitutePowerMultiple", "SubstitutePowOfTarget"
+    pub rule: String,
+    /// Expression before substitution (as string)
+    pub before: String,
+    /// Expression after substitution (as string)
+    pub after: String,
+    /// Optional note (e.g., "n=4, k=2, m=2")
+    pub note: Option<String>,
+}
+
+/// Result of substitution including optional steps.
+#[derive(Clone, Debug)]
+pub struct SubstituteResult {
+    pub expr: ExprId,
+    pub steps: Vec<SubstituteStep>,
 }
 
 /// Extract integer exponent from a Number expression.
@@ -157,10 +189,78 @@ pub fn substitute_power_aware(
         None
     };
 
-    substitute_inner(ctx, root, target, replacement, target_power.as_ref(), opts)
+    substitute_inner(
+        ctx,
+        root,
+        target,
+        replacement,
+        target_power.as_ref(),
+        opts,
+        &mut Vec::new(),
+    )
+}
+
+/// Perform power-aware substitution with step collection.
+///
+/// Same as `substitute_power_aware` but returns steps for traceability.
+pub fn substitute_with_steps(
+    ctx: &mut Context,
+    root: ExprId,
+    target: ExprId,
+    replacement: ExprId,
+    opts: SubstituteOptions,
+) -> SubstituteResult {
+    use cas_ast::DisplayExpr;
+
+    // Pre-compute target power pattern if power_aware
+    let target_power = if opts.power_aware {
+        as_power_int(ctx, target)
+    } else {
+        None
+    };
+
+    let mut steps = Vec::new();
+    let expr = substitute_inner(
+        ctx,
+        root,
+        target,
+        replacement,
+        target_power.as_ref(),
+        opts,
+        &mut steps,
+    );
+
+    // Convert ExprId steps to string steps
+    let string_steps: Vec<SubstituteStep> = steps
+        .into_iter()
+        .map(|(rule, before, after, note)| SubstituteStep {
+            rule,
+            before: format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: before
+                }
+            ),
+            after: format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: after
+                }
+            ),
+            note,
+        })
+        .collect();
+
+    SubstituteResult {
+        expr,
+        steps: string_steps,
+    }
 }
 
 /// Inner recursive substitution function.
+/// Steps tuple: (rule_name, before_expr, after_expr, optional_note)
 fn substitute_inner(
     ctx: &mut Context,
     node: ExprId,
@@ -168,9 +268,11 @@ fn substitute_inner(
     replacement: ExprId,
     target_power: Option<&(ExprId, BigInt)>,
     opts: SubstituteOptions,
+    steps: &mut Vec<(String, ExprId, ExprId, Option<String>)>,
 ) -> ExprId {
     // 1) Exact structural match (highest priority)
     if node == target {
+        steps.push(("SubstituteExact".to_string(), node, replacement, None));
         return replacement;
     }
 
@@ -179,6 +281,29 @@ fn substitute_inner(
         if let Some(substituted) =
             try_power_substitution(ctx, node, *target_base, target_exp, replacement, opts)
         {
+            // Determine which power rule was applied
+            if as_power_int(ctx, node).map(|(b, _)| b) == Some(*target_base) {
+                // Power multiple: base^n -> repl^(n/k)
+                if let Some((_, node_exp)) = as_power_int(ctx, node) {
+                    let m = &node_exp / target_exp;
+                    steps.push((
+                        "SubstitutePowerMultiple".to_string(),
+                        node,
+                        substituted,
+                        Some(format!("n={}, k={}, m={}", node_exp, target_exp, m)),
+                    ));
+                } else {
+                    steps.push((
+                        "SubstitutePowerMultiple".to_string(),
+                        node,
+                        substituted,
+                        None,
+                    ));
+                }
+            } else {
+                // Pow of target
+                steps.push(("SubstitutePowOfTarget".to_string(), node, substituted, None));
+            };
             return substituted;
         }
     }
@@ -187,8 +312,8 @@ fn substitute_inner(
     let expr = ctx.get(node).clone();
     match expr {
         Expr::Add(l, r) => {
-            let nl = substitute_inner(ctx, l, target, replacement, target_power, opts);
-            let nr = substitute_inner(ctx, r, target, replacement, target_power, opts);
+            let nl = substitute_inner(ctx, l, target, replacement, target_power, opts, steps);
+            let nr = substitute_inner(ctx, r, target, replacement, target_power, opts, steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Add(nl, nr))
             } else {
@@ -196,8 +321,8 @@ fn substitute_inner(
             }
         }
         Expr::Sub(l, r) => {
-            let nl = substitute_inner(ctx, l, target, replacement, target_power, opts);
-            let nr = substitute_inner(ctx, r, target, replacement, target_power, opts);
+            let nl = substitute_inner(ctx, l, target, replacement, target_power, opts, steps);
+            let nr = substitute_inner(ctx, r, target, replacement, target_power, opts, steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Sub(nl, nr))
             } else {
@@ -205,8 +330,8 @@ fn substitute_inner(
             }
         }
         Expr::Mul(l, r) => {
-            let nl = substitute_inner(ctx, l, target, replacement, target_power, opts);
-            let nr = substitute_inner(ctx, r, target, replacement, target_power, opts);
+            let nl = substitute_inner(ctx, l, target, replacement, target_power, opts, steps);
+            let nr = substitute_inner(ctx, r, target, replacement, target_power, opts, steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Mul(nl, nr))
             } else {
@@ -214,8 +339,8 @@ fn substitute_inner(
             }
         }
         Expr::Div(l, r) => {
-            let nl = substitute_inner(ctx, l, target, replacement, target_power, opts);
-            let nr = substitute_inner(ctx, r, target, replacement, target_power, opts);
+            let nl = substitute_inner(ctx, l, target, replacement, target_power, opts, steps);
+            let nr = substitute_inner(ctx, r, target, replacement, target_power, opts, steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Div(nl, nr))
             } else {
@@ -223,8 +348,8 @@ fn substitute_inner(
             }
         }
         Expr::Pow(b, e) => {
-            let nb = substitute_inner(ctx, b, target, replacement, target_power, opts);
-            let ne = substitute_inner(ctx, e, target, replacement, target_power, opts);
+            let nb = substitute_inner(ctx, b, target, replacement, target_power, opts, steps);
+            let ne = substitute_inner(ctx, e, target, replacement, target_power, opts, steps);
             if nb != b || ne != e {
                 ctx.add(Expr::Pow(nb, ne))
             } else {
@@ -232,7 +357,7 @@ fn substitute_inner(
             }
         }
         Expr::Neg(inner) => {
-            let ni = substitute_inner(ctx, inner, target, replacement, target_power, opts);
+            let ni = substitute_inner(ctx, inner, target, replacement, target_power, opts, steps);
             if ni != inner {
                 ctx.add(Expr::Neg(ni))
             } else {
@@ -243,7 +368,8 @@ fn substitute_inner(
             let mut new_args = Vec::with_capacity(args.len());
             let mut changed = false;
             for arg in args.iter() {
-                let na = substitute_inner(ctx, *arg, target, replacement, target_power, opts);
+                let na =
+                    substitute_inner(ctx, *arg, target, replacement, target_power, opts, steps);
                 if na != *arg {
                     changed = true;
                 }
@@ -259,7 +385,8 @@ fn substitute_inner(
             let mut new_data = Vec::with_capacity(data.len());
             let mut changed = false;
             for elem in data.iter() {
-                let ne = substitute_inner(ctx, *elem, target, replacement, target_power, opts);
+                let ne =
+                    substitute_inner(ctx, *elem, target, replacement, target_power, opts, steps);
                 if ne != *elem {
                     changed = true;
                 }
