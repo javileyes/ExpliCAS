@@ -647,3 +647,162 @@ fn no_fold_symbolic_neg_pow() {
     // x^(-3) should not fold
     assert_eq!(result.expr, pow_expr);
 }
+
+// ============================================================================
+// PR2.3: Rational base with integer exponent tests
+// ============================================================================
+
+#[test]
+fn rational_base_pos_exp() {
+    let mut ctx = Context::new();
+    // (3/4)^2 = 9/16
+    let base = ctx.add(Expr::Number(BigRational::new(3.into(), 4.into())));
+    let exp = ctx.num(2);
+    let pow_expr = ctx.add(Expr::Pow(base, exp));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    let expected = BigRational::new(9.into(), 16.into());
+    assert!(matches!(ctx.get(result.expr), Expr::Number(n) if n == &expected));
+}
+
+#[test]
+fn rational_base_neg_base_odd_exp() {
+    let mut ctx = Context::new();
+    // (-3/4)^3 = -27/64
+    let base = ctx.add(Expr::Number(BigRational::new((-3).into(), 4.into())));
+    let exp = ctx.num(3);
+    let pow_expr = ctx.add(Expr::Pow(base, exp));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    let expected = BigRational::new((-27).into(), 64.into());
+    assert!(matches!(ctx.get(result.expr), Expr::Number(n) if n == &expected));
+}
+
+#[test]
+fn rational_base_neg_exp() {
+    let mut ctx = Context::new();
+    // (3/4)^(-2) = 16/9
+    let base = ctx.add(Expr::Number(BigRational::new(3.into(), 4.into())));
+    let exp = ctx.num(-2);
+    let pow_expr = ctx.add(Expr::Pow(base, exp));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    let expected = BigRational::new(16.into(), 9.into());
+    assert!(matches!(ctx.get(result.expr), Expr::Number(n) if n == &expected));
+}
+
+#[test]
+fn rational_base_neg_base_neg_odd_exp() {
+    let mut ctx = Context::new();
+    // (-3/4)^(-3) = -64/27
+    let base = ctx.add(Expr::Number(BigRational::new((-3).into(), 4.into())));
+    let exp = ctx.num(-3);
+    let pow_expr = ctx.add(Expr::Pow(base, exp));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    let expected = BigRational::new((-64).into(), 27.into());
+    assert!(matches!(ctx.get(result.expr), Expr::Number(n) if n == &expected));
+}
+
+#[test]
+fn rational_base_zero_pos_exp() {
+    let mut ctx = Context::new();
+    // (0/5)^3 = 0
+    let base = ctx.add(Expr::Number(BigRational::new(0.into(), 5.into())));
+    let exp = ctx.num(3);
+    let pow_expr = ctx.add(Expr::Pow(base, exp));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    assert!(matches!(ctx.get(result.expr), Expr::Number(n) if n.is_zero()));
+}
+
+#[test]
+fn rational_base_zero_neg_exp_undefined() {
+    let mut ctx = Context::new();
+    // (0/5)^(-3) = undefined
+    let base = ctx.add(Expr::Number(BigRational::new(0.into(), 5.into())));
+    let exp = ctx.num(-3);
+    let pow_expr = ctx.add(Expr::Pow(base, exp));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Constant(cas_ast::Constant::Undefined)
+    ));
+}
+
+#[test]
+fn no_fold_rational_base_fractional_exp() {
+    let mut ctx = Context::new();
+    // (2/3)^(1/2) should not fold (exp not integer)
+    let base = ctx.add(Expr::Number(BigRational::new(2.into(), 3.into())));
+    let exp = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let pow_expr = ctx.add(Expr::Pow(base, exp));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    // Should not fold
+    assert!(matches!(ctx.get(result.expr), Expr::Pow(_, _)));
+}
+
+#[test]
+fn rational_base_one_any_exp() {
+    let mut ctx = Context::new();
+    // (5/5)^(-999) = 1^(-999) = 1
+    let base = ctx.add(Expr::Number(BigRational::new(5.into(), 5.into()))); // = 1
+    let exp = ctx.num(-999);
+    let pow_expr = ctx.add(Expr::Pow(base, exp));
+
+    let result = fold(
+        &mut ctx,
+        pow_expr,
+        ConstFoldMode::Safe,
+        ValueDomain::RealOnly,
+    );
+
+    assert!(matches!(
+        ctx.get(result.expr),
+        Expr::Number(n) if n == &BigRational::from_integer(1.into())
+    ));
+}
