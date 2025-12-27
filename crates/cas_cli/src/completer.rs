@@ -161,6 +161,7 @@ impl Completer for CasHelper {
                 let subcommands = vec![
                     "set",
                     "help",
+                    "preset",
                     "domain",
                     "value",
                     "branch",
@@ -211,6 +212,45 @@ impl Completer for CasHelper {
                         matches.push(Pair {
                             display: axis.to_string(),
                             replacement: axis.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+
+            // Case: "semantics preset <TAB>" or "semantics preset <partial>" - suggest preset names
+            if parts.len() >= 2
+                && parts[1] == "preset"
+                && ((parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space))
+            {
+                // Check if this is "semantics preset help <TAB>" or just preset name
+                if parts.len() == 3 && parts[2] == "help" && ends_with_space {
+                    // Actually this would be parts.len() == 3 with space, so continue
+                } else if parts.len() >= 3 && parts[2] == "help" {
+                    // "semantics preset help <partial>" - suggest preset names
+                    // This case is handled below
+                } else {
+                    let preset_names = vec!["default", "strict", "complex", "school", "help"];
+                    for name in preset_names {
+                        if name.starts_with(word) {
+                            matches.push(Pair {
+                                display: name.to_string(),
+                                replacement: name.to_string(),
+                            });
+                        }
+                    }
+                    return Ok((start, matches));
+                }
+            }
+
+            // Case: "semantics preset help <TAB>" - suggest preset names for help
+            if parts.len() >= 3 && parts[1] == "preset" && parts[2] == "help" {
+                let preset_names = vec!["default", "strict", "complex", "school"];
+                for name in preset_names {
+                    if name.starts_with(word) {
+                        matches.push(Pair {
+                            display: name.to_string(),
+                            replacement: name.to_string(),
                         });
                     }
                 }

@@ -2531,13 +2531,17 @@ impl Repl {
             Some(&"const_fold") => {
                 self.print_axis_status("const_fold");
             }
+            Some(&"preset") => {
+                self.handle_preset(&args[2..]);
+            }
             Some(other) => {
                 println!("Unknown semantics subcommand: '{}'", other);
-                println!("Usage: semantics [set|help|<axis>]");
+                println!("Usage: semantics [set|preset|help|<axis>]");
                 println!("  semantics            Show all settings");
                 println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold)");
                 println!("  semantics help       Show help");
                 println!("  semantics set ...    Change settings");
+                println!("  semantics preset     List/apply presets");
             }
         }
     }
@@ -2689,6 +2693,208 @@ impl Repl {
         println!("  semantics set domain strict");
         println!("  semantics set value complex inv_trig principal");
         println!("  semantics set domain=strict value=complex");
+        println!();
+        println!("Presets:");
+        println!("  semantics preset              List available presets");
+        println!("  semantics preset <name>       Apply a preset");
+        println!("  semantics preset help <name>  Show preset details");
+    }
+
+    /// Handle "semantics preset" subcommand
+    fn handle_preset(&mut self, args: &[&str]) {
+        use cas_engine::const_fold::ConstFoldMode;
+        use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
+        use cas_engine::DomainMode;
+
+        // Preset definitions: (name, description, domain, value, branch, inv_trig, const_fold)
+        struct Preset {
+            name: &'static str,
+            description: &'static str,
+            domain: DomainMode,
+            value: ValueDomain,
+            branch: BranchPolicy,
+            inv_trig: InverseTrigPolicy,
+            const_fold: ConstFoldMode,
+        }
+
+        let presets = [
+            Preset {
+                name: "default",
+                description: "Reset to engine defaults",
+                domain: DomainMode::Generic,
+                value: ValueDomain::RealOnly,
+                branch: BranchPolicy::Principal,
+                inv_trig: InverseTrigPolicy::Strict,
+                const_fold: ConstFoldMode::Off,
+            },
+            Preset {
+                name: "strict",
+                description: "Conservative real + strict domain",
+                domain: DomainMode::Strict,
+                value: ValueDomain::RealOnly,
+                branch: BranchPolicy::Principal,
+                inv_trig: InverseTrigPolicy::Strict,
+                const_fold: ConstFoldMode::Off,
+            },
+            Preset {
+                name: "complex",
+                description: "Enable ℂ + safe const_fold (sqrt(-1) → i)",
+                domain: DomainMode::Generic,
+                value: ValueDomain::ComplexEnabled,
+                branch: BranchPolicy::Principal,
+                inv_trig: InverseTrigPolicy::Strict,
+                const_fold: ConstFoldMode::Safe,
+            },
+            Preset {
+                name: "school",
+                description: "Real + principal inverse trig (arctan(tan(x)) → x)",
+                domain: DomainMode::Generic,
+                value: ValueDomain::RealOnly,
+                branch: BranchPolicy::Principal,
+                inv_trig: InverseTrigPolicy::PrincipalValue,
+                const_fold: ConstFoldMode::Off,
+            },
+        ];
+
+        match args.first() {
+            None => {
+                // List presets
+                println!("Available presets:");
+                for p in &presets {
+                    println!("  {:10} {}", p.name, p.description);
+                }
+                println!();
+                println!("Usage:");
+                println!("  semantics preset <name>       Apply preset");
+                println!("  semantics preset help <name>  Show preset axes");
+            }
+            Some(&"help") => {
+                // Show preset details
+                let name = args.get(1);
+                if name.is_none() {
+                    println!("Usage: semantics preset help <name>");
+                    println!("Presets: default, strict, complex, school");
+                    return;
+                }
+                let name = name.unwrap();
+                if let Some(p) = presets.iter().find(|p| p.name == *name) {
+                    let domain_str = match p.domain {
+                        DomainMode::Strict => "strict",
+                        DomainMode::Generic => "generic",
+                        DomainMode::Assume => "assume",
+                    };
+                    let value_str = match p.value {
+                        ValueDomain::RealOnly => "real",
+                        ValueDomain::ComplexEnabled => "complex",
+                    };
+                    let inv_trig_str = match p.inv_trig {
+                        InverseTrigPolicy::Strict => "strict",
+                        InverseTrigPolicy::PrincipalValue => "principal",
+                    };
+                    let const_fold_str = match p.const_fold {
+                        ConstFoldMode::Off => "off",
+                        ConstFoldMode::Safe => "safe",
+                    };
+                    println!("{}:", p.name);
+                    println!("  domain_mode  = {}", domain_str);
+                    println!("  value_domain = {}", value_str);
+                    println!("  branch       = principal");
+                    println!("  inv_trig     = {}", inv_trig_str);
+                    println!("  const_fold   = {}", const_fold_str);
+                    println!();
+                    println!("Purpose: {}", p.description);
+                } else {
+                    println!("Unknown preset: '{}'", name);
+                    println!("Available: default, strict, complex, school");
+                }
+            }
+            Some(name) => {
+                // Apply preset
+                if let Some(p) = presets.iter().find(|preset| preset.name == *name) {
+                    // Capture old values for diff
+                    let old_domain = self.simplify_options.domain;
+                    let old_value = self.simplify_options.value_domain;
+                    let old_branch = self.simplify_options.branch;
+                    let old_inv_trig = self.simplify_options.inv_trig;
+                    let old_const_fold = self.state.options.const_fold;
+
+                    // Apply preset
+                    self.simplify_options.domain = p.domain;
+                    self.simplify_options.value_domain = p.value;
+                    self.simplify_options.branch = p.branch;
+                    self.simplify_options.inv_trig = p.inv_trig;
+                    self.state.options.const_fold = p.const_fold;
+
+                    self.sync_config_to_simplifier();
+
+                    println!("Applied preset: {}", p.name);
+                    println!("Changes:");
+
+                    // Print changes
+                    let mut changes = 0;
+                    if old_domain != p.domain {
+                        let old_str = match old_domain {
+                            DomainMode::Strict => "strict",
+                            DomainMode::Generic => "generic",
+                            DomainMode::Assume => "assume",
+                        };
+                        let new_str = match p.domain {
+                            DomainMode::Strict => "strict",
+                            DomainMode::Generic => "generic",
+                            DomainMode::Assume => "assume",
+                        };
+                        println!("  domain_mode:  {} → {}", old_str, new_str);
+                        changes += 1;
+                    }
+                    if old_value != p.value {
+                        let old_str = match old_value {
+                            ValueDomain::RealOnly => "real",
+                            ValueDomain::ComplexEnabled => "complex",
+                        };
+                        let new_str = match p.value {
+                            ValueDomain::RealOnly => "real",
+                            ValueDomain::ComplexEnabled => "complex",
+                        };
+                        println!("  value_domain: {} → {}", old_str, new_str);
+                        changes += 1;
+                    }
+                    if old_branch != p.branch {
+                        println!("  branch:       principal → principal");
+                        changes += 1;
+                    }
+                    if old_inv_trig != p.inv_trig {
+                        let old_str = match old_inv_trig {
+                            InverseTrigPolicy::Strict => "strict",
+                            InverseTrigPolicy::PrincipalValue => "principal",
+                        };
+                        let new_str = match p.inv_trig {
+                            InverseTrigPolicy::Strict => "strict",
+                            InverseTrigPolicy::PrincipalValue => "principal",
+                        };
+                        println!("  inv_trig:     {} → {}", old_str, new_str);
+                        changes += 1;
+                    }
+                    if old_const_fold != p.const_fold {
+                        let old_str = match old_const_fold {
+                            ConstFoldMode::Off => "off",
+                            ConstFoldMode::Safe => "safe",
+                        };
+                        let new_str = match p.const_fold {
+                            ConstFoldMode::Off => "off",
+                            ConstFoldMode::Safe => "safe",
+                        };
+                        println!("  const_fold:   {} → {}", old_str, new_str);
+                        changes += 1;
+                    }
+                    if changes == 0 {
+                        println!("  (no changes - already at this preset)");
+                    }
+                } else {
+                    println!("Unknown preset: '{}'", name);
+                    println!("Available: default, strict, complex, school");
+                }
+            }
+        }
     }
 
     fn parse_semantics_set(&mut self, args: &[&str]) {
