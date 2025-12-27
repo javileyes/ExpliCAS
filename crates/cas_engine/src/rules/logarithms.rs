@@ -182,17 +182,29 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     }
     None
 });
+/// Domain-aware rule for b^log(b, x) → x.
+/// Requires x > 0 (domain of log). Respects domain_mode.
+pub struct ExponentialLogRule;
 
-define_rule!(
-    ExponentialLogRule,
-    "Exponential-Log Inverse",
-    |ctx, expr| {
+impl crate::rule::Rule for ExponentialLogRule {
+    fn name(&self) -> &str {
+        "Exponential-Log Inverse"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
             let exp_data = ctx.get(exp).clone();
 
             // Helper to get log base and arg
-            let get_log_parts = |ctx: &mut Context, e_id: ExprId| -> Option<(ExprId, ExprId)> {
+            let get_log_parts = |ctx: &mut cas_ast::Context,
+                                 e_id: cas_ast::ExprId|
+             -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
                 let e_data = ctx.get(e_id).clone();
                 if let Expr::Function(name, args) = e_data {
                     if name == "log" && args.len() == 2 {
@@ -205,34 +217,102 @@ define_rule!(
                 None
             };
 
-            // Case 1: b^log(b, x) -> x
+            // Helper to check if an expression is provably positive
+            let is_positive = |ctx: &cas_ast::Context, e_id: cas_ast::ExprId| -> bool {
+                match ctx.get(e_id) {
+                    Expr::Number(n) => *n > num_rational::BigRational::from_integer(0.into()),
+                    Expr::Constant(cas_ast::Constant::E) => true,
+                    Expr::Constant(cas_ast::Constant::Pi) => true,
+                    _ => false,
+                }
+            };
+
+            // Case 1: b^log(b, x) → x
             if let Some((log_base, log_arg)) = get_log_parts(ctx, exp) {
                 if compare_expr(ctx, log_base, base) == Ordering::Equal {
-                    return Some(Rewrite {
-                        new_expr: log_arg,
-                        description: "b^log(b, x) = x".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                    });
-                }
-            }
-
-            // Case 2: b^(c * log(b, x)) -> x^c
-            if let Expr::Mul(lhs, rhs) = &exp_data {
-                // Check if lhs or rhs is log(b, x)
-                let mut check_log = |target: ExprId, coeff: ExprId| -> Option<Rewrite> {
-                    if let Some((log_base, log_arg)) = get_log_parts(ctx, target) {
-                        if compare_expr(ctx, log_base, base) == Ordering::Equal {
-                            // Found log(b, x). Result is x^coeff
-                            let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "b^(c*log(b, x)) = x^c".to_string(),
+                    // Check domain_mode: b^log(b, x) = x requires x > 0
+                    let mode = parent_ctx.domain_mode();
+                    match mode {
+                        crate::domain::DomainMode::Strict => {
+                            // Only simplify if x is provably > 0
+                            if is_positive(ctx, log_arg) {
+                                return Some(crate::rule::Rewrite {
+                                    new_expr: log_arg,
+                                    description: "b^log(b, x) = x".to_string(),
+                                    before_local: None,
+                                    after_local: None,
+                                    domain_assumption: None,
+                                });
+                            }
+                            return None;
+                        }
+                        crate::domain::DomainMode::Generic => {
+                            return Some(crate::rule::Rewrite {
+                                new_expr: log_arg,
+                                description: "b^log(b, x) = x".to_string(),
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
                             });
+                        }
+                        crate::domain::DomainMode::Assume => {
+                            return Some(crate::rule::Rewrite {
+                                new_expr: log_arg,
+                                description: "b^log(b, x) = x (assuming x > 0)".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                domain_assumption: Some("Assuming x > 0"),
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Case 2: b^(c * log(b, x)) → x^c
+            if let Expr::Mul(lhs, rhs) = &exp_data {
+                let mut check_log = |target: cas_ast::ExprId,
+                                     coeff: cas_ast::ExprId|
+                 -> Option<crate::rule::Rewrite> {
+                    if let Some((log_base, log_arg)) = get_log_parts(ctx, target) {
+                        if compare_expr(ctx, log_base, base) == Ordering::Equal {
+                            // Check domain_mode
+                            let mode = parent_ctx.domain_mode();
+                            match mode {
+                                crate::domain::DomainMode::Strict => {
+                                    if is_positive(ctx, log_arg) {
+                                        let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
+                                        return Some(crate::rule::Rewrite {
+                                            new_expr,
+                                            description: "b^(c*log(b, x)) = x^c".to_string(),
+                                            before_local: None,
+                                            after_local: None,
+                                            domain_assumption: None,
+                                        });
+                                    }
+                                    return None;
+                                }
+                                crate::domain::DomainMode::Generic => {
+                                    let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
+                                    return Some(crate::rule::Rewrite {
+                                        new_expr,
+                                        description: "b^(c*log(b, x)) = x^c".to_string(),
+                                        before_local: None,
+                                        after_local: None,
+                                        domain_assumption: None,
+                                    });
+                                }
+                                crate::domain::DomainMode::Assume => {
+                                    let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
+                                    return Some(crate::rule::Rewrite {
+                                        new_expr,
+                                        description: "b^(c*log(b, x)) = x^c (assuming x > 0)"
+                                            .to_string(),
+                                        before_local: None,
+                                        after_local: None,
+                                        domain_assumption: Some("Assuming x > 0"),
+                                    });
+                                }
+                            }
                         }
                     }
                     None
@@ -248,7 +328,11 @@ define_rule!(
         }
         None
     }
-);
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Pow"])
+    }
+}
 
 define_rule!(SplitLogExponentsRule, "Split Log Exponents", |ctx, expr| {
     // e^(a + b) -> e^a * e^b IF a or b is a log

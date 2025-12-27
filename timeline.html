@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{1}{x} + \frac{1}{x}</title>
+    <title>CAS Steps: \frac{1}{\sqrt{x + \sqrt{{x}^{2} - 1}}}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -222,13 +222,35 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{1}{x} + \frac{1}{x}\]
+            \[\frac{1}{\sqrt{x + \sqrt{{x}^{2} - 1}}}\]
         </div>
         <div class="timeline">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Collapse Sqrt Conjugate Product</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{{\color{red}{\sqrt{x + \sqrt{{x}^{2} - 1}}\cdot (x - \sqrt{{x}^{2} - 1})}}}{{x}^{2} - {\sqrt{{x}^{2} - 1}}^{2}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Lift conjugate into sqrt}\)</div>
+                        <div class="local-change">
+                            \[\sqrt{x + \sqrt{{x}^{2} - 1}}\cdot (x - \sqrt{{x}^{2} - 1}) \rightarrow \sqrt{x - \sqrt{{x}^{2} - 1}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{{\color{green}{\sqrt{x - \sqrt{{x}^{2} - 1}}}}}{{x}^{2} - {\sqrt{{x}^{2} - 1}}^{2}}\]
+                    </div>
+                    <div class="domain-warning">Domain: x ≥ 1 for real roots</div>
+                </div>
+            </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[2\cdot \frac{1}{x}\]
+            \[\sqrt{x - \sqrt{{x}^{2} - 1}}\]
         </div>
     </div>
     <footer>
