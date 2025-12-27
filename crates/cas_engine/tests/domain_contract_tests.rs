@@ -131,6 +131,145 @@ fn test_strict_x_squared_div_x_squared_stays_unchanged() {
 }
 
 // =============================================================================
+// Strict Mode Power Tests
+// =============================================================================
+
+#[test]
+fn test_strict_x_pow_0_stays_unchanged() {
+    // Strict mode: x^0 should NOT simplify to 1 (x could be 0, and 0^0 is indeterminate)
+    let result = simplify_strict("x^0");
+    assert_ne!(result, "1", "Strict mode should NOT simplify x^0 to 1");
+}
+
+#[test]
+fn test_strict_2_pow_0_simplifies_to_1() {
+    // Strict mode: 2^0 → 1 (2 is provably non-zero)
+    let result = simplify_strict("2^0");
+    assert_eq!(result, "1", "Strict mode should simplify 2^0 to 1");
+}
+
+#[test]
+fn test_strict_pi_pow_0_simplifies_to_1() {
+    // Strict mode: π^0 → 1 (π is provably non-zero)
+    let result = simplify_strict("pi^0");
+    assert_eq!(result, "1", "Strict mode should simplify pi^0 to 1");
+}
+
+#[test]
+fn test_strict_0_pow_x_stays_unchanged() {
+    // Strict mode: 0^x should NOT simplify to 0 (x could be 0 or negative)
+    let result = simplify_strict("0^x");
+    // Should remain 0^x or be undefined, not "0"
+    assert_ne!(result, "0", "Strict mode should NOT simplify 0^x to 0");
+}
+
+#[test]
+fn test_strict_0_pow_2_simplifies_to_0() {
+    // Strict mode: 0^2 → 0 (exponent 2 is provably positive)
+    let result = simplify_strict("0^2");
+    assert_eq!(result, "0", "Strict mode should simplify 0^2 to 0");
+}
+
+// =============================================================================
+// Strict Mode Log/Exp Inverse Tests
+// =============================================================================
+
+#[test]
+fn test_strict_ln_exp_x_stays_unchanged() {
+    // Strict mode: ln(e^x) should NOT simplify to x (requires exp(x) > 0, but branch cuts)
+    // In strict mode, we preserve the composition
+    let result = simplify_strict("ln(exp(x))");
+    // Should either remain as ln(exp(x)) or be log(e, exp(x))
+    let is_preserved = !result.eq("x");
+    assert!(
+        is_preserved,
+        "Strict mode should NOT simplify ln(exp(x)) to x, got: {}",
+        result
+    );
+}
+
+#[test]
+fn test_strict_exp_ln_x_stays_unchanged() {
+    // Strict mode: e^ln(x) should NOT simplify to x (requires x > 0)
+    let result = simplify_strict("exp(ln(x))");
+    // Should NOT be just "x"
+    assert_ne!(
+        result, "x",
+        "Strict mode should NOT simplify exp(ln(x)) to x"
+    );
+}
+
+#[test]
+fn test_strict_exp_ln_2_simplifies() {
+    // Strict mode: e^ln(2) → 2 (2 is provably positive)
+    let result = simplify_strict("exp(ln(2))");
+    // Should simplify to 2 (numeric)
+    assert_eq!(result, "2", "Strict mode should simplify exp(ln(2)) to 2");
+}
+
+#[test]
+fn test_strict_ln_exp_2_simplifies() {
+    // Strict mode: ln(e^2) → 2 (numeric exponent, always valid)
+    let result = simplify_strict("ln(exp(2))");
+    assert_eq!(result, "2", "Strict mode should simplify ln(exp(2)) to 2");
+}
+
+// =============================================================================
+// Strict Mode Root Tests
+// =============================================================================
+
+#[test]
+fn test_strict_sqrt_x_squared_stays_unchanged() {
+    // Strict mode: sqrt(x^2) should NOT simplify to x (x could be negative, result is |x|)
+    let result = simplify_strict("sqrt(x^2)");
+    assert_ne!(
+        result, "x",
+        "Strict mode should NOT simplify sqrt(x^2) to x"
+    );
+}
+
+#[test]
+fn test_strict_sqrt_4_simplifies() {
+    // Strict mode: sqrt(4) → 2 (numeric)
+    let result = simplify_strict("sqrt(4)");
+    assert_eq!(result, "2", "Strict mode should simplify sqrt(4) to 2");
+}
+
+// =============================================================================
+// Strict Mode Composite Expression Tests
+// =============================================================================
+
+#[test]
+fn test_strict_x_minus_1_div_x_minus_1_stays_unchanged() {
+    // Strict mode: (x-1)/(x-1) should NOT simplify (x-1 could be 0 when x=1)
+    let result = simplify_strict("(x-1)/(x-1)");
+    assert_ne!(
+        result, "1",
+        "Strict mode should NOT simplify (x-1)/(x-1) to 1"
+    );
+}
+
+#[test]
+fn test_strict_sin_x_div_sin_x_stays_unchanged() {
+    // Strict mode: sin(x)/sin(x) should NOT simplify (sin(x) could be 0)
+    let result = simplify_strict("sin(x)/sin(x)");
+    assert_ne!(
+        result, "1",
+        "Strict mode should NOT simplify sin(x)/sin(x) to 1"
+    );
+}
+
+#[test]
+fn test_strict_x_plus_y_div_x_plus_y_stays_unchanged() {
+    // Strict mode: (x+y)/(x+y) should NOT simplify (x+y could be 0)
+    let result = simplify_strict("(x+y)/(x+y)");
+    assert_ne!(
+        result, "1",
+        "Strict mode should NOT simplify (x+y)/(x+y) to 1"
+    );
+}
+
+// =============================================================================
 // Proof Helper Tests
 // =============================================================================
 
