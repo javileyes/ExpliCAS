@@ -2824,6 +2824,11 @@ impl Repl {
                     self.simplify_options.branch = p.branch;
                     self.simplify_options.inv_trig = p.inv_trig;
                     self.state.options.const_fold = p.const_fold;
+                    // Sync to state.options (used by evaluation pipeline)
+                    self.state.options.domain_mode = p.domain;
+                    self.state.options.value_domain = p.value;
+                    self.state.options.branch = p.branch;
+                    self.state.options.inv_trig = p.inv_trig;
 
                     self.sync_config_to_simplifier();
 

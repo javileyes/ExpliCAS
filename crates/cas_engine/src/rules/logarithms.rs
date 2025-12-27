@@ -97,31 +97,43 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
         }
 
         // 3. log(b, b^x) = x
-        if let Expr::Pow(p_base, p_exp) = &arg_data {
-            if *p_base == base || ctx.get(*p_base) == ctx.get(base) {
-                return Some(Rewrite {
-                    new_expr: *p_exp,
-                    description: "log(b, b^x) = x".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
-            }
-        }
+        // NOTE: This inverse composition is now handled by LogExpInverseRule
+        // which respects inv_trig policy (like arctan(tan(x)) → x).
+        // Removed from here to avoid unconditional simplification.
 
         // 4. Expansion: log(b, x^y) = y * log(b, x)
         // Note: This overlaps with rule 3 if x == b. Rule 3 is more specific/simpler, so it should match first.
         // This rule is good for canonicalization.
+        // GUARD: When x == b (inverse composition), only simplify if exponent is a number.
+        // For variable exponents like log(e, e^x), let LogExpInverseRule handle with policy.
         if let Expr::Pow(p_base, p_exp) = arg_data {
-            let log_inner = ctx.add(Expr::Function("log".to_string(), vec![base, p_base]));
-            let new_expr = smart_mul(ctx, p_exp, log_inner);
-            return Some(Rewrite {
-                new_expr,
-                description: "log(b, x^y) = y * log(b, x)".to_string(),
-                before_local: None,
-                after_local: None,
-                domain_assumption: Some("Assuming x > 0"),
-            });
+            let is_inverse_composition = p_base == base || ctx.get(p_base) == ctx.get(base);
+
+            if is_inverse_composition {
+                // log(b, b^n) where n is a number → n (always safe, like log(x, x^2) → 2)
+                if matches!(ctx.get(p_exp), Expr::Number(_)) {
+                    return Some(Rewrite {
+                        new_expr: p_exp,
+                        description: "log(b, b^n) = n".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
+                }
+                // For variable exponents like log(e, e^x), skip and let LogExpInverseRule handle
+                // with inv_trig policy check
+            } else {
+                // Non-inverse case: expand normally
+                let log_inner = ctx.add(Expr::Function("log".to_string(), vec![base, p_base]));
+                let new_expr = smart_mul(ctx, p_exp, log_inner);
+                return Some(Rewrite {
+                    new_expr,
+                    description: "log(b, x^y) = y * log(b, x)".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    domain_assumption: Some("Assuming x > 0"),
+                });
+            }
         }
 
         // 5. Product: log(b, x*y) = log(b, x) + log(b, y)
@@ -583,9 +595,82 @@ define_rule!(LogInversePowerRule, "Log Inverse Power", |ctx, expr| {
     None
 });
 
+/// Policy-aware rule for log(b, b^x) → x.
+/// Like arctan(tan(x)) → x, variable exponents only apply when inv_trig=principal.
+/// Numeric exponents (like log(x, x^2) → 2) always apply.
+pub struct LogExpInverseRule;
+
+impl crate::rule::Rule for LogExpInverseRule {
+    fn name(&self) -> &str {
+        "Log-Exp Inverse"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(name, args) = expr_data {
+            // Handle ln(x) as log(e, x), or log(b, x)
+            let (base, arg) = if name == "ln" && args.len() == 1 {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                (e, args[0])
+            } else if name == "log" && args.len() == 2 {
+                (args[0], args[1])
+            } else {
+                return None;
+            };
+
+            let arg_data = ctx.get(arg).clone();
+
+            // log(b, b^x) → x (when b matches)
+            if let Expr::Pow(p_base, p_exp) = arg_data {
+                if p_base == base || ctx.get(p_base) == ctx.get(base) {
+                    // For numeric exponents like log(x, x^2) → 2, always simplify
+                    let is_numeric_exponent = matches!(ctx.get(p_exp), Expr::Number(_));
+
+                    if is_numeric_exponent {
+                        // Always safe: log(b, b^n) = n for any numeric n
+                        return Some(crate::rule::Rewrite {
+                            new_expr: p_exp,
+                            description: "log(b, b^n) = n".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: None,
+                        });
+                    } else {
+                        // For variable exponents like log(e, e^x) → x, require inv_trig=principal
+                        // This treats it like arctan(tan(x)) → x
+                        if parent_ctx.inv_trig_policy()
+                            != crate::semantics::InverseTrigPolicy::PrincipalValue
+                        {
+                            return None; // Preserve composition in strict mode
+                        }
+                        return Some(crate::rule::Rewrite {
+                            new_expr: p_exp,
+                            description: "log(b, b^x) → x (principal branch)".to_string(),
+                            before_local: None,
+                            after_local: None,
+                            domain_assumption: Some("Assuming x is real"),
+                        });
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(LogInversePowerRule));
+    simplifier.add_rule(Box::new(LogExpInverseRule));
 }
