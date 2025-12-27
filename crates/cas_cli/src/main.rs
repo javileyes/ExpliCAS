@@ -668,6 +668,30 @@ fn run_limit(args: LimitArgs) {
 }
 
 fn run_substitute(args: SubstituteArgs) {
+    // For JSON output, delegate to canonical API (single source of truth)
+    if matches!(args.format, OutputFormat::Json) {
+        let mode_str = match args.mode {
+            SubstituteModeArg::Exact => "exact",
+            SubstituteModeArg::Power => "power",
+        };
+        let opts_json = serde_json::json!({
+            "mode": mode_str,
+            "steps": args.steps,
+            "pretty": true
+        });
+        let opts_str = serde_json::to_string(&opts_json).unwrap();
+
+        let out = cas_engine::substitute_str_to_json(
+            &args.expr,
+            &args.target,
+            &args.replacement,
+            Some(&opts_str),
+        );
+        println!("{}", out);
+        return;
+    }
+
+    // Text output path (unchanged)
     use cas_ast::DisplayExpr;
     use cas_engine::substitute::{substitute_power_aware, SubstituteOptions};
     use cas_parser::parse;
@@ -678,21 +702,8 @@ fn run_substitute(args: SubstituteArgs) {
     let expr = match parse(&args.expr, &mut ctx) {
         Ok(e) => e,
         Err(e) => {
-            match args.format {
-                OutputFormat::Json => {
-                    let json = serde_json::json!({
-                        "ok": false,
-                        "error": format!("Parse error in expression: {}", e),
-                        "code": "PARSE_ERROR"
-                    });
-                    println!("{}", json);
-                }
-                OutputFormat::Text => {
-                    eprintln!("Parse error in expression: {}", e);
-                    std::process::exit(1);
-                }
-            }
-            return;
+            eprintln!("Parse error in expression: {}", e);
+            std::process::exit(1);
         }
     };
 
@@ -700,21 +711,8 @@ fn run_substitute(args: SubstituteArgs) {
     let target = match parse(&args.target, &mut ctx) {
         Ok(e) => e,
         Err(e) => {
-            match args.format {
-                OutputFormat::Json => {
-                    let json = serde_json::json!({
-                        "ok": false,
-                        "error": format!("Parse error in target: {}", e),
-                        "code": "PARSE_ERROR"
-                    });
-                    println!("{}", json);
-                }
-                OutputFormat::Text => {
-                    eprintln!("Parse error in target: {}", e);
-                    std::process::exit(1);
-                }
-            }
-            return;
+            eprintln!("Parse error in target: {}", e);
+            std::process::exit(1);
         }
     };
 
@@ -722,21 +720,8 @@ fn run_substitute(args: SubstituteArgs) {
     let replacement = match parse(&args.replacement, &mut ctx) {
         Ok(e) => e,
         Err(e) => {
-            match args.format {
-                OutputFormat::Json => {
-                    let json = serde_json::json!({
-                        "ok": false,
-                        "error": format!("Parse error in replacement: {}", e),
-                        "code": "PARSE_ERROR"
-                    });
-                    println!("{}", json);
-                }
-                OutputFormat::Text => {
-                    eprintln!("Parse error in replacement: {}", e);
-                    std::process::exit(1);
-                }
-            }
-            return;
+            eprintln!("Parse error in replacement: {}", e);
+            std::process::exit(1);
         }
     };
 
@@ -766,63 +751,25 @@ fn run_substitute(args: SubstituteArgs) {
         )
     };
 
-    // Output result
-    match args.format {
-        OutputFormat::Json => {
-            let mode_str = match args.mode {
-                SubstituteModeArg::Exact => "exact",
-                SubstituteModeArg::Power => "power",
-            };
-            let steps_json: Vec<serde_json::Value> = steps
-                .iter()
-                .map(|s| {
-                    serde_json::json!({
-                        "rule": s.rule,
-                        "before": s.before,
-                        "after": s.after,
-                        "note": s.note
-                    })
-                })
-                .collect();
-
-            let mut json = serde_json::json!({
-                "ok": true,
-                "result": format!("{}", DisplayExpr { context: &ctx, id: result }),
-                "options": {
-                    "substitute": {
-                        "mode": mode_str,
-                        "steps": args.steps
-                    }
-                }
-            });
-
-            if args.steps && !steps_json.is_empty() {
-                json["steps"] = serde_json::Value::Array(steps_json);
+    // Text output
+    if args.steps && !steps.is_empty() {
+        println!("Steps:");
+        for step in &steps {
+            if let Some(ref note) = step.note {
+                println!(
+                    "  {} → {} [{}] ({})",
+                    step.before, step.after, step.rule, note
+                );
+            } else {
+                println!("  {} → {} [{}]", step.before, step.after, step.rule);
             }
-
-            println!("{}", serde_json::to_string_pretty(&json).unwrap());
-        }
-        OutputFormat::Text => {
-            if args.steps && !steps.is_empty() {
-                println!("Steps:");
-                for step in &steps {
-                    if let Some(ref note) = step.note {
-                        println!(
-                            "  {} → {} [{}] ({})",
-                            step.before, step.after, step.rule, note
-                        );
-                    } else {
-                        println!("  {} → {} [{}]", step.before, step.after, step.rule);
-                    }
-                }
-            }
-            println!(
-                "{}",
-                DisplayExpr {
-                    context: &ctx,
-                    id: result
-                }
-            );
         }
     }
+    println!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: result
+        }
+    );
 }

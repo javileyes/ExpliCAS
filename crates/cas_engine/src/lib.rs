@@ -72,9 +72,9 @@ pub use eval::*;
 // JSON API exports (canonical for CLI/FFI)
 pub use domain::{can_cancel_factor, CancelDecision, DomainMode, Proof};
 pub use json::{
-    eval_str_to_json, BudgetExceededJson, BudgetJsonInfo, BudgetOpts, EngineJsonError,
-    EngineJsonResponse, EngineJsonStep, EngineJsonWarning, JsonRunOptions, SpanJson,
-    SCHEMA_VERSION,
+    eval_str_to_json, substitute_str_to_json, BudgetExceededJson, BudgetJsonInfo, BudgetOpts,
+    EngineJsonError, EngineJsonResponse, EngineJsonStep, EngineJsonSubstep, EngineJsonWarning,
+    JsonRunOptions, SpanJson, SubstituteJsonOptions, SubstituteJsonResponse, SCHEMA_VERSION,
 };
 pub use phase::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions,

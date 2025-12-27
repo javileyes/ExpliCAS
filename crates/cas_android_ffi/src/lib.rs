@@ -134,6 +134,83 @@ pub fn eval_json_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> St
     eval_str_to_json(&expr_str, &opts_str)
 }
 
+/// JNI function: Java_es_javiergimenez_explicas_CasNative_substituteJson
+///
+/// # Arguments
+/// * `expr` - Expression to substitute in
+/// * `target` - Target expression to replace
+/// * `with_expr` - Replacement expression
+/// * `opts_json` - Options JSON (e.g., {"mode":"power","steps":true})
+///
+/// # Returns
+/// JSON string with schema_version: 1
+///
+/// Uses `cas_engine::substitute_str_to_json` which is the canonical entry point.
+#[no_mangle]
+pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_substituteJson<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    expr: JString<'local>,
+    target: JString<'local>,
+    with_expr: JString<'local>,
+    opts_json: JString<'local>,
+) -> jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        substitute_json_core(&mut env, expr, target, with_expr, opts_json)
+    }));
+
+    match result {
+        Ok(json_str) => match env.new_string(&json_str) {
+            Ok(s) => s.into_raw(),
+            Err(_) => create_fallback_error(&mut env),
+        },
+        Err(_) => {
+            let json = internal_error_json("panic caught in substitute");
+            match env.new_string(&json) {
+                Ok(s) => s.into_raw(),
+                Err(_) => create_fallback_error(&mut env),
+            }
+        }
+    }
+}
+
+/// Core substitute function - uses canonical cas_engine::substitute_str_to_json
+pub fn substitute_json_core(
+    env: &mut JNIEnv,
+    expr: JString,
+    target: JString,
+    with_expr: JString,
+    opts_json: JString,
+) -> String {
+    let expr_str: String = match env.get_string(&expr) {
+        Ok(s) => s.into(),
+        Err(e) => return internal_error_json(&format!("Failed to read expr: {}", e)),
+    };
+
+    let target_str: String = match env.get_string(&target) {
+        Ok(s) => s.into(),
+        Err(e) => return internal_error_json(&format!("Failed to read target: {}", e)),
+    };
+
+    let with_str: String = match env.get_string(&with_expr) {
+        Ok(s) => s.into(),
+        Err(e) => return internal_error_json(&format!("Failed to read with: {}", e)),
+    };
+
+    let opts_str: String = match env.get_string(&opts_json) {
+        Ok(s) => s.into(),
+        Err(_) => String::new(), // Empty opts is OK
+    };
+
+    let opts = if opts_str.is_empty() {
+        None
+    } else {
+        Some(opts_str.as_str())
+    };
+
+    cas_engine::substitute_str_to_json(&expr_str, &target_str, &with_str, opts)
+}
+
 // ============================================================================
 // Tests (without JNI - using direct function calls)
 // ============================================================================

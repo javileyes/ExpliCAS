@@ -7,3 +7,4 @@
 cc c3ba38afed64dc07f3ed2867faa85c4936f03a0343cc0edefab994a31cd01ea5 # shrinks to re = Pow(Pow(Number(0), Variable("a")), Number(0))
 cc b096913b02bf550192e4dbdf55faf904265e5e298cf6533f1e0be9100283754d # shrinks to re = Mul(Add(Number(0), Number(0)), Mul(Number(0), Number(0)))
 cc ed56528a17d77f36cb28a7a4bfd31d095524f76271e580c4b04e3fdafda20dcf # shrinks to re = Function("ln", [Number(0)])
+cc af0d671008c9e2f923782f743f80ff78ea3b9a29920727f91e1ef38853bbfbf4 # shrinks to re = Sub(Constant(Pi), Constant(Pi))

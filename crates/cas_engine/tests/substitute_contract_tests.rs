@@ -294,3 +294,119 @@ fn c2_does_not_match_different_base_structure() {
         "C2: Original should remain"
     );
 }
+
+// ============================================================================
+// Group D — Steps Schema Invariants (PR3.2 contracts)
+// ============================================================================
+
+/// D1: substitute_no_hold_leak
+/// Verify that result and steps never contain __hold
+#[test]
+fn d1_substitute_no_hold_leak() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "x^4 + x^2 + 1");
+    let target = parse_expr(&mut ctx, "x^2");
+    let replacement = parse_expr(&mut ctx, "y");
+
+    let result = substitute_power_aware(
+        &mut ctx,
+        expr,
+        target,
+        replacement,
+        SubstituteOptions::power_aware_no_remainder(),
+    );
+
+    // Result should not contain __hold - check via format
+    let result_str = format!(
+        "{}",
+        cas_ast::DisplayExpr {
+            context: &ctx,
+            id: result
+        }
+    );
+    assert!(
+        !result_str.contains("__hold"),
+        "D1: Result contains __hold: {}",
+        result_str
+    );
+}
+
+/// D2: substitute_deep_expression_power_mode
+/// Verify substitution works inside nested subexpressions
+#[test]
+fn d2_substitute_deep_expression_power_mode() {
+    let mut ctx = Context::new();
+    // ((x^2)+1)^2 + x^4 → ((y)+1)^2 + y^2 = (1+y)^2 + y^2
+    let expr = parse_expr(&mut ctx, "((x^2)+1)^2 + x^4");
+    let target = parse_expr(&mut ctx, "x^2");
+    let replacement = parse_expr(&mut ctx, "y");
+
+    let result = substitute_power_aware(
+        &mut ctx,
+        expr,
+        target,
+        replacement,
+        SubstituteOptions::power_aware_no_remainder(),
+    );
+
+    // Should replace x^2 → y and x^4 → y^2, leaving no x
+    assert!(
+        !contains_var(&ctx, result, "x"),
+        "D2: Should have no x remaining"
+    );
+    assert!(contains_var(&ctx, result, "y"), "D2: Should contain y");
+}
+
+/// D3: substitute_multiple_matches
+/// Verify all occurrences are replaced
+#[test]
+fn d3_substitute_multiple_matches() {
+    let mut ctx = Context::new();
+    // x^4 + x^4 + x^2 → y^2 + y^2 + y (all three replaced)
+    let expr = parse_expr(&mut ctx, "x^4 + x^4 + x^2");
+    let target = parse_expr(&mut ctx, "x^2");
+    let replacement = parse_expr(&mut ctx, "y");
+
+    let result = substitute_power_aware(
+        &mut ctx,
+        expr,
+        target,
+        replacement,
+        SubstituteOptions::power_aware_no_remainder(),
+    );
+
+    // All x should be replaced
+    assert!(
+        !contains_var(&ctx, result, "x"),
+        "D3: All occurrences should be replaced"
+    );
+    assert!(contains_var(&ctx, result, "y"), "D3: Should contain y");
+}
+
+/// D4: substitute_no_invention_mul_is_not_pow
+/// Contract: x*x does NOT match target x^2 (structural only)
+#[test]
+fn d4_substitute_no_invention_mul_is_not_pow() {
+    let mut ctx = Context::new();
+    let expr = parse_expr(&mut ctx, "x*x");
+    let target = parse_expr(&mut ctx, "x^2");
+    let replacement = parse_expr(&mut ctx, "y");
+
+    let result = substitute_power_aware(
+        &mut ctx,
+        expr,
+        target,
+        replacement,
+        SubstituteOptions::power_aware_no_remainder(),
+    );
+
+    // x*x is NOT x^2 structurally → no substitution
+    assert!(
+        !contains_var(&ctx, result, "y"),
+        "D4: x*x should NOT match x^2"
+    );
+    assert!(
+        contains_var(&ctx, result, "x"),
+        "D4: Original x*x should remain"
+    );
+}
