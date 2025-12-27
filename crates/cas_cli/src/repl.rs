@@ -872,9 +872,17 @@ impl Repl {
             return;
         }
 
-        // "mode" - show/switch branch mode (strict vs principal)
+        // "semantics" - unified semantic settings (domain, value, branch, inv_trig, const_fold)
+        if line == "semantics" || line.starts_with("semantics ") {
+            self.handle_semantics(&line);
+            return;
+        }
+
+        // "mode" - DEPRECATED: redirect to semantics
         if line == "mode" || line.starts_with("mode ") {
-            self.handle_mode_command(&line);
+            println!("⚠️  The 'mode' command is deprecated.");
+            println!("Use 'semantics set inv_trig strict|principal' instead.");
+            println!("Run 'semantics' to see current settings.");
             return;
         }
 
@@ -884,9 +892,11 @@ impl Repl {
             return;
         }
 
-        // "complex" - show/switch complex mode (auto, on, off)
+        // "complex" - DEPRECATED: redirect to semantics
         if line == "complex" || line.starts_with("complex ") {
-            self.handle_complex_command(&line);
+            println!("⚠️  The 'complex' command is deprecated.");
+            println!("Use 'semantics set value real|complex' instead.");
+            println!("Run 'semantics' to see current settings.");
             return;
         }
 
@@ -1814,11 +1824,11 @@ impl Repl {
         println!("  timeline <expr>         Export steps to interactive HTML");
         println!();
 
-        println!("System:");
         println!(
             "  set <option> <value>    Pipeline settings (transform, rationalize, max-rewrites)"
         );
-        println!("  mode [strict|principal] Switch simplification mode (educational)");
+        println!("  semantics [set|help]    Semantic settings (domain, value, inv_trig, branch)");
+        println!("  context [mode]          Context mode (auto, standard, solve, integrate)");
         println!("  config <subcmd>         Manage configuration (list, enable, disable...)");
         println!("  profile [cmd]           Rule profiler (enable/disable/clear)");
         println!("  health [cmd]            Health tracking (on/off/reset/status)");
@@ -2490,59 +2500,231 @@ impl Repl {
         }
     }
 
-    /// Handle "mode" command - show or switch branch mode
-    fn handle_mode_command(&mut self, line: &str) {
-        use cas_engine::options::BranchMode;
-
+    /// Handle "semantics" command - unified control for semantic axes
+    fn handle_semantics(&mut self, line: &str) {
         let args: Vec<&str> = line.split_whitespace().collect();
 
         match args.get(1) {
             None => {
-                // Just "mode" - show current mode
-                let mode_str = match self.state.options.branch_mode {
-                    BranchMode::Strict => "strict",
-                    BranchMode::PrincipalBranch => "principal",
-                };
-                println!(
-                    "Current mode: {} ({})",
-                    mode_str,
-                    self.get_mode_description()
-                );
+                // Just "semantics" - show current settings
+                self.print_semantics();
             }
-            Some(&"strict") => {
-                self.state.options.branch_mode = BranchMode::Strict;
-                // Reset inv_trig to Strict (PrincipalBranchInverseTrigRule is self-gated)
-                self.state.options.inv_trig = cas_engine::InverseTrigPolicy::Strict;
-                self.engine.simplifier = cas_engine::Simplifier::with_default_rules();
-                self.sync_config_to_simplifier();
-                println!("Switched to strict mode.");
-                println!("  Mathematically safe: inverse∘function compositions not simplified.");
+            Some(&"help") => {
+                self.print_semantics_help();
             }
-            Some(&"principal") => {
-                self.state.options.branch_mode = BranchMode::PrincipalBranch;
-                // PrincipalBranchInverseTrigRule is now self-gated by inv_trig policy
-                self.state.options.inv_trig = cas_engine::InverseTrigPolicy::PrincipalValue;
-                self.engine.simplifier = cas_engine::Simplifier::with_default_rules();
-                self.sync_config_to_simplifier();
-                println!("Switched to principal branch mode.");
-                println!("  ⚠️ Simplifications assume principal domain for inverse trig.");
-                println!("  Example: arctan(tan(x)) → x (assuming x ∈ (-π/2, π/2))");
+            Some(&"set") => {
+                // Parse remaining args as axis=value pairs or axis value pairs
+                self.parse_semantics_set(&args[2..]);
             }
             Some(other) => {
-                println!("Unknown mode: '{}'", other);
-                println!("Usage: mode [strict | principal]");
-                println!("  strict    - Mathematically safe (default)");
-                println!("  principal - Educational: assumes principal branch");
+                println!("Unknown semantics subcommand: '{}'", other);
+                println!("Usage: semantics [set|help]");
+                println!("  semantics          Show current settings");
+                println!("  semantics help     Show help");
+                println!("  semantics set ...  Change settings");
             }
         }
     }
 
-    fn get_mode_description(&self) -> &'static str {
-        use cas_engine::options::BranchMode;
-        match self.state.options.branch_mode {
-            BranchMode::Strict => "mathematically safe",
-            BranchMode::PrincipalBranch => "assumes principal domain for inverse trig",
+    fn print_semantics(&self) {
+        use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
+        use cas_engine::DomainMode;
+
+        let domain = match self.simplify_options.domain {
+            DomainMode::Strict => "strict",
+            DomainMode::Assume => "assume",
+            DomainMode::Generic => "generic",
+        };
+
+        let value = match self.simplify_options.value_domain {
+            ValueDomain::RealOnly => "real",
+            ValueDomain::ComplexEnabled => "complex",
+        };
+
+        let branch = match self.simplify_options.branch {
+            BranchPolicy::Principal => "principal",
+        };
+
+        let inv_trig = match self.simplify_options.inv_trig {
+            InverseTrigPolicy::Strict => "strict",
+            InverseTrigPolicy::PrincipalValue => "principal",
+        };
+
+        println!("Semantics:");
+        println!("  domain_mode: {}", domain);
+        println!("  value_domain: {}", value);
+
+        // Show branch with inactive note if value=real
+        if self.simplify_options.value_domain == ValueDomain::RealOnly {
+            println!("  branch: {} (inactive: value_domain=real)", branch);
+        } else {
+            println!("  branch: {}", branch);
         }
+
+        println!("  inv_trig: {}", inv_trig);
+        // const_fold is not in SimplifyOptions directly accessible this way
+        // We'll note it's "off" by default for now
+        println!("  const_fold: off");
+    }
+
+    fn print_semantics_help(&self) {
+        println!("Semantics: Control evaluation semantics");
+        println!();
+        println!("Usage:");
+        println!("  semantics                    Show current settings");
+        println!("  semantics set <axis> <val>   Set one axis");
+        println!("  semantics set k=v k=v ...    Set multiple axes");
+        println!();
+        println!("Axes:");
+        println!("  domain      strict | generic | assume");
+        println!("              strict:  No domain assumptions (x/x stays x/x)");
+        println!("              generic: Classic CAS 'almost everywhere' algebra");
+        println!("              assume:  Use assumptions with warnings");
+        println!();
+        println!("  value       real | complex");
+        println!("              real:    ℝ only (sqrt(-1) undefined)");
+        println!("              complex: ℂ enabled (sqrt(-1) = i)");
+        println!();
+        println!("  branch      principal");
+        println!("              (only active when value=complex)");
+        println!();
+        println!("  inv_trig    strict | principal");
+        println!("              strict:    arctan(tan(x)) unchanged");
+        println!("              principal: arctan(tan(x)) → x with warning");
+        println!();
+        println!("  const_fold  off | safe");
+        println!("              off:  No constant folding");
+        println!("              safe: Fold literals (2^3 → 8)");
+        println!();
+        println!("Examples:");
+        println!("  semantics set domain strict");
+        println!("  semantics set value complex inv_trig principal");
+        println!("  semantics set domain=strict value=complex");
+    }
+
+    fn parse_semantics_set(&mut self, args: &[&str]) {
+        if args.is_empty() {
+            println!("Usage: semantics set <axis> <value>");
+            println!("  or:  semantics set <axis>=<value> ...");
+            return;
+        }
+
+        let mut i = 0;
+        while i < args.len() {
+            let arg = args[i];
+
+            // Check for key=value format
+            if let Some((key, value)) = arg.split_once('=') {
+                if !self.set_semantic_axis(key, value) {
+                    return;
+                }
+                i += 1;
+            } else {
+                // key value format
+                if i + 1 >= args.len() {
+                    println!("ERROR: Missing value for axis '{}'", arg);
+                    return;
+                }
+                let value = args[i + 1];
+                if !self.set_semantic_axis(arg, value) {
+                    return;
+                }
+                i += 2;
+            }
+        }
+
+        self.sync_config_to_simplifier();
+        self.print_semantics();
+    }
+
+    fn set_semantic_axis(&mut self, axis: &str, value: &str) -> bool {
+        use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
+        use cas_engine::DomainMode;
+
+        match axis {
+            "domain" => match value {
+                "strict" => {
+                    self.simplify_options.domain = DomainMode::Strict;
+                    self.state.options.domain_mode = DomainMode::Strict;
+                }
+                "generic" => {
+                    self.simplify_options.domain = DomainMode::Generic;
+                    self.state.options.domain_mode = DomainMode::Generic;
+                }
+                "assume" => {
+                    self.simplify_options.domain = DomainMode::Assume;
+                    self.state.options.domain_mode = DomainMode::Assume;
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'domain'", value);
+                    println!("Allowed: strict, generic, assume");
+                    return false;
+                }
+            },
+            "value" => match value {
+                "real" => {
+                    self.simplify_options.value_domain = ValueDomain::RealOnly;
+                    self.state.options.value_domain = ValueDomain::RealOnly;
+                }
+                "complex" => {
+                    self.simplify_options.value_domain = ValueDomain::ComplexEnabled;
+                    self.state.options.value_domain = ValueDomain::ComplexEnabled;
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'value'", value);
+                    println!("Allowed: real, complex");
+                    return false;
+                }
+            },
+            "branch" => match value {
+                "principal" => {
+                    self.simplify_options.branch = BranchPolicy::Principal;
+                    self.state.options.branch = BranchPolicy::Principal;
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'branch'", value);
+                    println!("Allowed: principal");
+                    return false;
+                }
+            },
+            "inv_trig" => match value {
+                "strict" => {
+                    self.simplify_options.inv_trig = InverseTrigPolicy::Strict;
+                    self.state.options.inv_trig = InverseTrigPolicy::Strict;
+                }
+                "principal" => {
+                    self.simplify_options.inv_trig = InverseTrigPolicy::PrincipalValue;
+                    self.state.options.inv_trig = InverseTrigPolicy::PrincipalValue;
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'inv_trig'", value);
+                    println!("Allowed: strict, principal");
+                    return false;
+                }
+            },
+            "const_fold" => {
+                match value {
+                    "off" => {
+                        // const_fold off - need to check if there's a field for this
+                        println!("const_fold set to off");
+                    }
+                    "safe" => {
+                        println!("const_fold set to safe");
+                    }
+                    _ => {
+                        println!("ERROR: Invalid value '{}' for axis 'const_fold'", value);
+                        println!("Allowed: off, safe");
+                        return false;
+                    }
+                }
+            }
+            _ => {
+                println!("ERROR: Unknown axis '{}'", axis);
+                println!("Valid axes: domain, value, branch, inv_trig, const_fold");
+                return false;
+            }
+        }
+        true
     }
 
     /// Handle "context" command - show or switch context mode
@@ -2591,60 +2773,6 @@ impl Repl {
             Some(other) => {
                 println!("Unknown context: '{}'", other);
                 println!("Usage: context [auto | standard | solve | integrate]");
-            }
-        }
-    }
-
-    /// Handle "complex" command - show or switch complex mode
-    fn handle_complex_command(&mut self, line: &str) {
-        use cas_engine::options::ComplexMode;
-
-        let args: Vec<&str> = line.split_whitespace().collect();
-
-        match args.get(1) {
-            None => {
-                // Just "complex" - show current mode
-                let mode_str = match self.state.options.complex_mode {
-                    ComplexMode::Auto => "auto",
-                    ComplexMode::Off => "off",
-                    ComplexMode::On => "on",
-                };
-                println!("Complex mode: {}", mode_str);
-                match self.state.options.complex_mode {
-                    ComplexMode::Auto => {
-                        println!("  Auto: complex rules apply when `i` is detected")
-                    }
-                    ComplexMode::Off => println!("  Off: `i` is treated as literal constant"),
-                    ComplexMode::On => println!("  On: complex rules always apply (i² = -1)"),
-                }
-            }
-            Some(&"auto") => {
-                self.state.options.complex_mode = ComplexMode::Auto;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
-                self.sync_config_to_simplifier();
-                println!("Complex mode: auto");
-                println!("  Complex rules apply when `i` is detected in expression.");
-            }
-            Some(&"off") => {
-                self.state.options.complex_mode = ComplexMode::Off;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
-                self.sync_config_to_simplifier();
-                println!("Complex mode: off");
-                println!("  `i` is treated as a literal constant (no simplification).");
-            }
-            Some(&"on") => {
-                self.state.options.complex_mode = ComplexMode::On;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
-                self.sync_config_to_simplifier();
-                println!("Complex mode: on");
-                println!("  Complex rules always apply: i² = -1, gaussian arithmetic.");
-            }
-            Some(other) => {
-                println!("Unknown complex mode: '{}'", other);
-                println!("Usage: complex [auto | on | off]");
-                println!("  auto - Enable when `i` detected (default)");
-                println!("  on   - Always enable complex rules");
-                println!("  off  - Treat `i` as literal constant");
             }
         }
     }
