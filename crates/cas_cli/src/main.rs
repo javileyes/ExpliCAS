@@ -45,6 +45,9 @@ enum Command {
     /// Compute the limit of an expression
     Limit(LimitArgs),
 
+    /// Substitute a target expression with a replacement
+    Substitute(SubstituteArgs),
+
     /// Start interactive REPL (default if no subcommand given)
     Repl,
 }
@@ -144,6 +147,43 @@ pub enum ConstFoldArg {
     Off,
     /// Safe constant folding (allowlist only)
     Safe,
+}
+
+/// Substitute mode
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum SubstituteModeArg {
+    /// Exact structural matching only
+    Exact,
+    /// Power-aware matching (x^4 with target x^2 → y^2)
+    #[default]
+    Power,
+}
+
+/// Arguments for substitute subcommand
+#[derive(clap::Args, Debug)]
+pub struct SubstituteArgs {
+    /// Expression to substitute in
+    pub expr: String,
+
+    /// Target expression to replace
+    #[arg(long)]
+    pub target: String,
+
+    /// Replacement expression
+    #[arg(long = "with")]
+    pub replacement: String,
+
+    /// Substitution mode
+    #[arg(long, value_enum, default_value_t = SubstituteModeArg::Power)]
+    pub mode: SubstituteModeArg,
+
+    /// Output format
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    pub format: OutputFormat,
+
+    /// Include simplification steps in output
+    #[arg(long, default_value_t = false)]
+    pub steps: bool,
 }
 
 /// Arguments for limit subcommand
@@ -336,6 +376,10 @@ fn main() -> rustyline::Result<()> {
         }
         Some(Command::Limit(args)) => {
             run_limit(args);
+            Ok(())
+        }
+        Some(Command::Substitute(args)) => {
+            run_substitute(args);
             Ok(())
         }
         Some(Command::Repl) | None => {
@@ -620,5 +664,118 @@ fn run_limit(args: LimitArgs) {
                 std::process::exit(1);
             }
         },
+    }
+}
+
+fn run_substitute(args: SubstituteArgs) {
+    use cas_ast::DisplayExpr;
+    use cas_engine::substitute::{substitute_power_aware, SubstituteOptions};
+    use cas_parser::parse;
+
+    let mut ctx = cas_ast::Context::new();
+
+    // Parse expression
+    let expr = match parse(&args.expr, &mut ctx) {
+        Ok(e) => e,
+        Err(e) => {
+            match args.format {
+                OutputFormat::Json => {
+                    let json = serde_json::json!({
+                        "ok": false,
+                        "error": format!("Parse error in expression: {}", e),
+                        "code": "PARSE_ERROR"
+                    });
+                    println!("{}", json);
+                }
+                OutputFormat::Text => {
+                    eprintln!("Parse error in expression: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+    };
+
+    // Parse target
+    let target = match parse(&args.target, &mut ctx) {
+        Ok(e) => e,
+        Err(e) => {
+            match args.format {
+                OutputFormat::Json => {
+                    let json = serde_json::json!({
+                        "ok": false,
+                        "error": format!("Parse error in target: {}", e),
+                        "code": "PARSE_ERROR"
+                    });
+                    println!("{}", json);
+                }
+                OutputFormat::Text => {
+                    eprintln!("Parse error in target: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+    };
+
+    // Parse replacement
+    let replacement = match parse(&args.replacement, &mut ctx) {
+        Ok(e) => e,
+        Err(e) => {
+            match args.format {
+                OutputFormat::Json => {
+                    let json = serde_json::json!({
+                        "ok": false,
+                        "error": format!("Parse error in replacement: {}", e),
+                        "code": "PARSE_ERROR"
+                    });
+                    println!("{}", json);
+                }
+                OutputFormat::Text => {
+                    eprintln!("Parse error in replacement: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+    };
+
+    // Build options
+    let opts = match args.mode {
+        SubstituteModeArg::Exact => SubstituteOptions::exact(),
+        SubstituteModeArg::Power => SubstituteOptions::default(),
+    };
+
+    // Run substitution
+    let result = substitute_power_aware(&mut ctx, expr, target, replacement, opts);
+
+    // Output result
+    match args.format {
+        OutputFormat::Json => {
+            let mode_str = match args.mode {
+                SubstituteModeArg::Exact => "exact",
+                SubstituteModeArg::Power => "power",
+            };
+            let json = serde_json::json!({
+                "ok": true,
+                "result": format!("{}", DisplayExpr { context: &ctx, id: result }),
+                "options": {
+                    "substitute": {
+                        "mode": mode_str,
+                        "steps": args.steps
+                    }
+                }
+            });
+            println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        }
+        OutputFormat::Text => {
+            println!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: result
+                }
+            );
+        }
     }
 }
