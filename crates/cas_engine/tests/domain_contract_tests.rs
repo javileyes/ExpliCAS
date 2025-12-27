@@ -209,3 +209,259 @@ fn test_prove_nonzero_products() {
     let two_times_x = ctx.add(cas_ast::Expr::Mul(two, x));
     assert_eq!(prove_nonzero(&ctx, two_times_x), Proof::Unknown);
 }
+
+// =============================================================================
+// prove_positive Helper Tests
+// =============================================================================
+
+#[test]
+fn test_prove_positive_numbers() {
+    use cas_engine::helpers::prove_positive;
+    use cas_engine::Proof;
+
+    let mut ctx = Context::new();
+
+    let zero = ctx.num(0);
+    let two = ctx.num(2);
+    let neg_three = ctx.num(-3);
+
+    assert_eq!(prove_positive(&ctx, zero), Proof::Disproven);
+    assert_eq!(prove_positive(&ctx, two), Proof::Proven);
+    assert_eq!(prove_positive(&ctx, neg_three), Proof::Disproven);
+}
+
+#[test]
+fn test_prove_positive_constants() {
+    use cas_engine::helpers::prove_positive;
+    use cas_engine::Proof;
+
+    let mut ctx = Context::new();
+
+    let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
+    let e = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
+    let i = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::I));
+
+    assert_eq!(prove_positive(&ctx, pi), Proof::Proven);
+    assert_eq!(prove_positive(&ctx, e), Proof::Proven);
+    assert_eq!(prove_positive(&ctx, i), Proof::Unknown); // i is not real-positive
+}
+
+#[test]
+fn test_prove_positive_products() {
+    use cas_engine::helpers::prove_positive;
+    use cas_engine::Proof;
+
+    let mut ctx = Context::new();
+
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    let neg_two = ctx.num(-2);
+
+    // 2 * 3 = 6, proven positive
+    let two_times_three = ctx.add(cas_ast::Expr::Mul(two, three));
+    assert_eq!(prove_positive(&ctx, two_times_three), Proof::Proven);
+
+    // 2 * (-2) = -4, NOT proven positive (but could be - depends on logic)
+    // Our implementation returns Unknown for mixed signs
+    let two_times_neg = ctx.add(cas_ast::Expr::Mul(two, neg_two));
+    assert_eq!(prove_positive(&ctx, two_times_neg), Proof::Unknown);
+}
+
+#[test]
+fn test_prove_positive_exp_always_positive() {
+    use cas_engine::helpers::prove_positive;
+    use cas_engine::Proof;
+
+    let mut ctx = Context::new();
+
+    let x = ctx.var("x");
+    let exp_x = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![x]));
+
+    // exp(x) > 0 for all real x
+    assert_eq!(prove_positive(&ctx, exp_x), Proof::Proven);
+}
+
+// =============================================================================
+// Log Expansion Gate Tests (Integration)
+// =============================================================================
+
+/// Helper: simplify with DomainMode and ValueDomain via Engine
+fn simplify_with_domain_value(
+    input: &str,
+    domain: cas_engine::DomainMode,
+    value: cas_engine::semantics::ValueDomain,
+) -> (String, Vec<String>) {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    state.options.domain_mode = domain;
+    state.options.value_domain = value;
+
+    let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    let result_str = match &output.result {
+        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+
+    let warnings: Vec<String> = output
+        .domain_warnings
+        .iter()
+        .map(|w| w.message.clone())
+        .collect();
+
+    (result_str, warnings)
+}
+
+/// CONTRACT: ln(x*y) does NOT expand in Strict mode (variables not provably positive)
+#[test]
+fn log_product_strict_no_expand_variables() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, warnings) = simplify_with_domain_value(
+        "ln(x*y)",
+        cas_engine::DomainMode::Strict,
+        ValueDomain::RealOnly,
+    );
+
+    // Should remain unexpanded because x, y are not provably > 0
+    // Check that result contains ln or log, both variables, and does NOT contain '+' (which would mean expansion)
+    let has_log = result.contains("log") || result.contains("ln");
+    let is_unexpanded =
+        has_log && result.contains("x") && result.contains("y") && !result.contains("+");
+    assert!(
+        is_unexpanded,
+        "Expected ln(x*y) to remain unexpanded in Strict mode, got: {}",
+        result
+    );
+
+    assert!(
+        warnings.is_empty(),
+        "No warnings expected in Strict mode, got: {:?}",
+        warnings
+    );
+}
+
+/// CONTRACT: ln(x*y) expands in Assume mode WITH warning
+#[test]
+fn log_product_assume_expands_with_warning() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, warnings) = simplify_with_domain_value(
+        "ln(x*y)",
+        cas_engine::DomainMode::Assume,
+        ValueDomain::RealOnly,
+    );
+
+    // Should expand to log(e, x) + log(e, y)
+    assert!(
+        result.contains("+"),
+        "Expected ln(x*y) to expand in Assume mode, got: {}",
+        result
+    );
+
+    assert!(
+        warnings.iter().any(|w| w.contains("Assuming")),
+        "Expected assumption warning in Assume mode, got: {:?}",
+        warnings
+    );
+}
+
+/// CONTRACT: ln(z*w) does NOT expand in Complex domain (branch cut safety)
+#[test]
+fn log_product_complex_never_expands() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, _) = simplify_with_domain_value(
+        "ln(z*w)",
+        cas_engine::DomainMode::Assume,
+        ValueDomain::ComplexEnabled,
+    );
+
+    // Should NOT expand due to branch cut concerns - should still contain a product
+    assert!(
+        result.contains("z") && result.contains("w") && !result.contains("+"),
+        "Expected ln(z*w) to NOT expand in Complex domain, got: {}",
+        result
+    );
+}
+
+/// CONTRACT: ln(2*pi) expands because both factors are provably positive
+#[test]
+fn log_product_provable_positive_expands() {
+    use cas_engine::semantics::ValueDomain;
+    let (result, warnings) = simplify_with_domain_value(
+        "ln(2*pi)",
+        cas_engine::DomainMode::Strict,
+        ValueDomain::RealOnly,
+    );
+
+    // 2 > 0 and π > 0 are provable, so should expand
+    assert!(
+        result.contains("+"),
+        "Expected ln(2*pi) to expand (both provably positive), got: {}",
+        result
+    );
+
+    assert!(
+        warnings.is_empty(),
+        "No warnings expected when factors are provably positive, got: {:?}",
+        warnings
+    );
+}
+
+// =============================================================================
+// Same-Denominator Fraction Combination Tests
+// =============================================================================
+
+/// CONTRACT: 1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1) simplifies to 0
+/// This is the user's original failing case that motivated the rule
+#[test]
+fn same_denom_fractions_combine_to_zero() {
+    let result = simplify_generic("1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)");
+
+    assert_eq!(
+        result, "0",
+        "Expected expression to simplify to 0, got: {}",
+        result
+    );
+}
+
+/// CONTRACT: a/d + b/d combines into single fraction
+#[test]
+fn same_denom_fractions_combine_simple() {
+    let result = simplify_generic("x/(2*x+1) + y/(2*x+1)");
+
+    // Should combine into single fraction - count number of '/'
+    let div_count = result.matches('/').count();
+    assert!(
+        div_count <= 1,
+        "Expected fractions to combine into one, got: {} (/ count: {})",
+        result,
+        div_count
+    );
+}
+
+/// CONTRACT: 1 + a/d - a/d simplifies to 1 (fractions cancel even with integer mixed in)
+#[test]
+fn same_denom_mixed_cancellation() {
+    let result = simplify_generic("1 + x/(x+1) - x/(x+1)");
+
+    assert_eq!(
+        result, "1",
+        "Expected 1 + x/(x+1) - x/(x+1) to simplify to 1, got: {}",
+        result
+    );
+}
