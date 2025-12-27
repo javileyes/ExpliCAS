@@ -48,9 +48,8 @@ impl CasHelper {
                 "vars".to_string(),
                 "clear".to_string(),
                 "reset".to_string(),
-                "mode".to_string(),
+                "semantics".to_string(),
                 "context".to_string(),
-                "complex".to_string(),
                 "autoexpand".to_string(),
                 "limit".to_string(),
                 "history".to_string(),
@@ -152,19 +151,36 @@ impl Completer for CasHelper {
             }
         }
 
-        // Check for "mode" context
-        if line.starts_with("mode ") {
+        // Check for "semantics" context
+        if line.starts_with("semantics ") {
             let parts: Vec<&str> = line[..pos].split_whitespace().collect();
             let ends_with_space = line[..pos].ends_with(' ');
 
-            // Case: "mode <TAB>" or "mode st<TAB>"
+            // Case: "semantics <TAB>" - suggest subcommands
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                let modes = vec!["strict", "principal"];
-                for m in modes {
-                    if m.starts_with(word) {
+                let subcommands = vec!["set", "help"];
+                for sub in subcommands {
+                    if sub.starts_with(word) {
                         matches.push(Pair {
-                            display: m.to_string(),
-                            replacement: m.to_string(),
+                            display: sub.to_string(),
+                            replacement: sub.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+
+            // Case: "semantics set <TAB>" - suggest axes
+            if parts.len() >= 2
+                && parts[1] == "set"
+                && ((parts.len() == 2 && ends_with_space) || (parts.len() >= 3 && !ends_with_space))
+            {
+                let axes = vec!["domain", "value", "branch", "inv_trig", "const_fold"];
+                for axis in axes {
+                    if axis.starts_with(word) {
+                        matches.push(Pair {
+                            display: axis.to_string(),
+                            replacement: axis.to_string(),
                         });
                     }
                 }
@@ -184,25 +200,6 @@ impl Completer for CasHelper {
                         matches.push(Pair {
                             display: ctx.to_string(),
                             replacement: ctx.to_string(),
-                        });
-                    }
-                }
-                return Ok((start, matches));
-            }
-        }
-
-        // Check for "complex" context
-        if line.starts_with("complex ") {
-            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
-            let ends_with_space = line[..pos].ends_with(' ');
-
-            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                let modes = vec!["auto", "on", "off"];
-                for m in modes {
-                    if m.starts_with(word) {
-                        matches.push(Pair {
-                            display: m.to_string(),
-                            replacement: m.to_string(),
                         });
                     }
                 }

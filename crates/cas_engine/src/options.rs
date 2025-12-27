@@ -107,6 +107,8 @@ pub struct EvalOptions {
     pub value_domain: crate::semantics::ValueDomain,
     /// Branch policy for multi-valued functions
     pub branch: crate::semantics::BranchPolicy,
+    /// Constant folding mode (Off or Safe)
+    pub const_fold: crate::const_fold::ConstFoldMode,
 }
 
 impl EvalOptions {

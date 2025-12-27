@@ -2562,9 +2562,12 @@ impl Repl {
         }
 
         println!("  inv_trig: {}", inv_trig);
-        // const_fold is not in SimplifyOptions directly accessible this way
-        // We'll note it's "off" by default for now
-        println!("  const_fold: off");
+
+        let const_fold = match self.state.options.const_fold {
+            cas_engine::const_fold::ConstFoldMode::Off => "off",
+            cas_engine::const_fold::ConstFoldMode::Safe => "safe",
+        };
+        println!("  const_fold: {}", const_fold);
     }
 
     fn print_semantics_help(&self) {
@@ -2703,13 +2706,13 @@ impl Repl {
                 }
             },
             "const_fold" => {
+                use cas_engine::const_fold::ConstFoldMode;
                 match value {
                     "off" => {
-                        // const_fold off - need to check if there's a field for this
-                        println!("const_fold set to off");
+                        self.state.options.const_fold = ConstFoldMode::Off;
                     }
                     "safe" => {
-                        println!("const_fold set to safe");
+                        self.state.options.const_fold = ConstFoldMode::Safe;
                     }
                     _ => {
                         println!("ERROR: Invalid value '{}' for axis 'const_fold'", value);

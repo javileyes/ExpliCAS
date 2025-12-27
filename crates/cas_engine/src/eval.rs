@@ -199,8 +199,22 @@ impl Engine {
 
                 // Use simplify_with_stats to respect expand_policy and other options
                 let simplify_opts = effective_opts.to_simplify_options();
-                let (res, steps, _stats) =
+                let (mut res, steps, _stats) =
                     ctx_simplifier.simplify_with_stats(resolved, simplify_opts);
+
+                if effective_opts.const_fold == crate::const_fold::ConstFoldMode::Safe {
+                    let mut budget = crate::budget::Budget::preset_cli();
+                    let cfg = crate::semantics::EvalConfig::default();
+                    if let Ok(fold_result) = crate::const_fold::fold_constants(
+                        &mut ctx_simplifier.context,
+                        res,
+                        &cfg,
+                        effective_opts.const_fold,
+                        &mut budget,
+                    ) {
+                        res = fold_result.expr;
+                    }
+                }
 
                 // Transfer context back
                 self.simplifier.context = ctx_simplifier.context;
