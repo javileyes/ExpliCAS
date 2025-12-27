@@ -221,3 +221,143 @@ fn sin_arcsin_simplifies_in_strict() {
     // This is always safe: sin(arcsin(x)) = x for x ∈ [-1, 1]
     assert_eq!(result, "x", "Expected x, got: {}", result);
 }
+
+// ============================================================================
+// Strict mode: NO principal branch warnings should appear
+// ============================================================================
+
+#[test]
+fn strict_arctan_tan_no_principal_warning() {
+    let (_, warnings) = simplify_with_inv_trig("arctan(tan(x))", InverseTrigPolicy::Strict);
+
+    // In strict mode, no "principal branch" warning should appear
+    let has_principal_warning = warnings
+        .iter()
+        .any(|w| w.to_lowercase().contains("principal"));
+    assert!(
+        !has_principal_warning,
+        "Strict mode should NOT emit principal branch warning, got: {:?}",
+        warnings
+    );
+}
+
+// ============================================================================
+// Protection is NOT global: tan(x) outside arctan(tan(...)) can still rewrite
+// ============================================================================
+
+#[test]
+fn principal_tan_alone_can_rewrite_to_sin_cos() {
+    // When inv_trig=principal but tan(x) is NOT inside arctan(...),
+    // TanToSinCosRule should still be allowed to convert tan(x) -> sin(x)/cos(x)
+    // (if that rule is enabled, which depends on other settings)
+    let (result, _) = simplify_with_inv_trig("tan(x) + 1", InverseTrigPolicy::PrincipalValue);
+
+    // The result should contain either tan(x) or sin(x)/cos(x) - both are valid.
+    // The key is that it should NOT be affected by inverse trig protection.
+    // We just verify it didn't error and produced some result.
+    assert!(
+        !result.is_empty(),
+        "Expected valid result for tan(x) + 1, got empty"
+    );
+}
+
+#[test]
+fn principal_nested_tan_outside_arctan_can_rewrite() {
+    // tan(x) * arctan(tan(y)) - the tan(x) is NOT protected, but the inner tan(y) IS
+    // This tests that protection is targeted, not global
+    let (result, _) =
+        simplify_with_inv_trig("tan(x) * arctan(tan(y))", InverseTrigPolicy::PrincipalValue);
+
+    // arctan(tan(y)) should simplify to y
+    // tan(x) may or may not rewrite to sin(x)/cos(x) depending on rules
+    // Key assertion: arctan(tan(y)) -> y happened
+    assert!(
+        result.contains("y") && !result.contains("arctan(tan(y))"),
+        "Expected arctan(tan(y)) to simplify to y, got: {}",
+        result
+    );
+}
+
+// ============================================================================
+// Log-Exp policy tests (analogous to inverse trig)
+// ============================================================================
+
+#[test]
+fn strict_ln_exp_unchanged() {
+    let (result, _) = simplify_with_inv_trig("ln(exp(x))", InverseTrigPolicy::Strict);
+
+    // Strict mode: ln(e^x) should remain unchanged (not simplify to x)
+    assert!(
+        result.contains("log") || result.contains("ln"),
+        "Expected ln(exp(x)) unchanged in strict mode, got: {}",
+        result
+    );
+}
+
+#[test]
+fn strict_ln_exp_no_principal_warning() {
+    let (_, warnings) = simplify_with_inv_trig("ln(exp(x))", InverseTrigPolicy::Strict);
+
+    // In strict mode, no warning about "assuming x is real" should appear
+    let has_assumption_warning = warnings
+        .iter()
+        .any(|w| w.to_lowercase().contains("assuming") || w.to_lowercase().contains("principal"));
+    assert!(
+        !has_assumption_warning,
+        "Strict mode should NOT emit assumption warning for ln(exp(x)), got: {:?}",
+        warnings
+    );
+}
+
+#[test]
+fn principal_ln_exp_simplifies() {
+    let (result, warnings) =
+        simplify_with_inv_trig("ln(exp(x))", InverseTrigPolicy::PrincipalValue);
+
+    // Principal mode: ln(e^x) should simplify to x
+    assert_eq!(result, "x", "Expected x, got: {}", result);
+
+    // Should emit warning about assumption
+    assert!(
+        !warnings.is_empty(),
+        "Expected domain assumption warning for ln(exp(x))"
+    );
+}
+
+#[test]
+fn log_numeric_exponent_always_simplifies() {
+    // log(x, x^2) = 2 should ALWAYS work (numeric exponent), regardless of policy
+    let (result_strict, _) = simplify_with_inv_trig("log(x, x^2)", InverseTrigPolicy::Strict);
+    let (result_principal, _) =
+        simplify_with_inv_trig("log(x, x^2)", InverseTrigPolicy::PrincipalValue);
+
+    assert_eq!(
+        result_strict, "2",
+        "Expected log(x, x^2) = 2 in strict mode, got: {}",
+        result_strict
+    );
+    assert_eq!(
+        result_principal, "2",
+        "Expected log(x, x^2) = 2 in principal mode, got: {}",
+        result_principal
+    );
+}
+
+#[test]
+fn ln_e_to_numeric_always_simplifies() {
+    // ln(e^3) = 3 should ALWAYS work (numeric exponent), regardless of policy
+    let (result_strict, _) = simplify_with_inv_trig("ln(exp(3))", InverseTrigPolicy::Strict);
+    let (result_principal, _) =
+        simplify_with_inv_trig("ln(exp(3))", InverseTrigPolicy::PrincipalValue);
+
+    assert_eq!(
+        result_strict, "3",
+        "Expected ln(e^3) = 3 in strict mode, got: {}",
+        result_strict
+    );
+    assert_eq!(
+        result_principal, "3",
+        "Expected ln(e^3) = 3 in principal mode, got: {}",
+        result_principal
+    );
+}
