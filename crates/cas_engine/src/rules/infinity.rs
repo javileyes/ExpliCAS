@@ -237,7 +237,8 @@ pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
             new_expr: mk_zero(ctx),
             description: "finite / ∞ → 0".to_string(),
             before_local: None,
-            after_local: None,            assumption_events: Default::default(),
+            after_local: None,
+            assumption_events: Default::default(),
         });
     }
     None
@@ -263,7 +264,8 @@ pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
             new_expr: mk_undefined(ctx),
             description: "0 · ∞ is indeterminate".to_string(),
             before_local: None,
-            after_local: None,            assumption_events: Default::default(),
+            after_local: None,
+            assumption_events: Default::default(),
         });
     }
     None
@@ -320,7 +322,8 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
                 new_expr: mk_infinity(ctx, result_sign),
                 description: format!("finite * ∞ → {:?}∞", result_sign),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -341,7 +344,8 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
                 new_expr: mk_infinity(ctx, result_sign),
                 description: format!("finite * ∞ → {:?}∞", result_sign),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -381,7 +385,8 @@ pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         new_expr: mk_infinity(ctx, result_sign),
         description: format!("∞ / finite → {:?}∞", result_sign),
         before_local: None,
-        after_local: None,        assumption_events: Default::default(),
+        after_local: None,
+        assumption_events: Default::default(),
     })
 }
 

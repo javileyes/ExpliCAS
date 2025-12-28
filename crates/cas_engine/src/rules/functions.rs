@@ -19,7 +19,8 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     new_expr: abs_val,
                     description: format!("abs({}) = {}", n, n.abs()),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -39,7 +40,8 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                         new_expr: abs_val,
                         description: format!("abs(-{}) = {}", n, n),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
 
@@ -48,7 +50,8 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     new_expr: abs_inner,
                     description: "abs(-x) = abs(x)".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -81,7 +84,8 @@ define_rule!(
                                 new_expr,
                                 description: format!("|x|^{} = x^{}", n, n),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -132,7 +136,8 @@ define_rule!(
                             new_expr: abs_base,
                             description: "sqrt(x^2) = |x|".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -198,7 +203,8 @@ define_rule!(
                 new_expr: result,
                 description: format!("x^({}/2) = |x|^{} * √x", n, k),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -301,7 +307,8 @@ define_rule!(
                             new_expr: args[0],
                             description: format!("{}(x) = x (already processed)", name),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     // expand() needs to call actual expansion logic
@@ -311,7 +318,8 @@ define_rule!(
                             new_expr: expanded,
                             description: "expand(x) → expanded form".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     _ => {}

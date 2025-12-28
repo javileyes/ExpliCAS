@@ -28,7 +28,8 @@ define_rule!(
                                     new_expr: zero,
                                     description: format!("{}(0) = 0", name),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             "cos" => {
@@ -37,7 +38,8 @@ define_rule!(
                                     new_expr: one,
                                     description: "cos(0) = 1".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             "arccos" => {
@@ -48,7 +50,8 @@ define_rule!(
                                     new_expr,
                                     description: "arccos(0) = pi/2".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             _ => {}
@@ -63,7 +66,8 @@ define_rule!(
                                     new_expr,
                                     description: "arcsin(1) = pi/2".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             "arccos" => {
@@ -72,7 +76,8 @@ define_rule!(
                                     new_expr: zero,
                                     description: "arccos(1) = 0".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             "arctan" => {
@@ -83,7 +88,8 @@ define_rule!(
                                     new_expr,
                                     description: "arctan(1) = pi/4".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             _ => {}
@@ -99,7 +105,8 @@ define_rule!(
                                     new_expr,
                                     description: "arcsin(1/2) = pi/6".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             "arccos" => {
@@ -110,7 +117,8 @@ define_rule!(
                                     new_expr,
                                     description: "arccos(1/2) = pi/3".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             _ => {}
@@ -127,7 +135,8 @@ define_rule!(
                                 new_expr: zero,
                                 description: format!("{}(pi) = 0", name),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "cos" => {
@@ -136,7 +145,8 @@ define_rule!(
                                 new_expr: neg_one,
                                 description: "cos(pi) = -1".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -152,7 +162,8 @@ define_rule!(
                                 new_expr: one,
                                 description: "sin(pi/2) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "cos" => {
@@ -161,7 +172,8 @@ define_rule!(
                                 new_expr: zero,
                                 description: "cos(pi/2) = 0".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "tan" => {
@@ -170,7 +182,8 @@ define_rule!(
                                 new_expr: undefined,
                                 description: "tan(pi/2) = undefined".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -193,7 +206,8 @@ define_rule!(
                                 new_expr,
                                 description: "sin(π/3) = √3/2".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "cos" => {
@@ -205,7 +219,8 @@ define_rule!(
                                 new_expr,
                                 description: "cos(π/3) = 1/2".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "tan" => {
@@ -219,7 +234,8 @@ define_rule!(
                                 new_expr,
                                 description: "tan(π/3) = √3".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -242,7 +258,8 @@ define_rule!(
                                 new_expr,
                                 description: format!("{}(π/4) = √2/2", name),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "tan" => {
@@ -252,7 +269,8 @@ define_rule!(
                                 new_expr: one,
                                 description: "tan(π/4) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -271,7 +289,8 @@ define_rule!(
                                 new_expr,
                                 description: "sin(π/6) = 1/2".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "cos" => {
@@ -287,7 +306,8 @@ define_rule!(
                                 new_expr,
                                 description: "cos(π/6) = √3/2".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "tan" => {
@@ -303,7 +323,8 @@ define_rule!(
                                 new_expr,
                                 description: "tan(π/6) = 1/√3".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -343,7 +364,8 @@ define_rule!(
                                 new_expr,
                                 description: "sin(-x) = -sin(x)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "cos" => {
@@ -352,7 +374,8 @@ define_rule!(
                                 new_expr,
                                 description: "cos(-x) = cos(x)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "tan" => {
@@ -362,7 +385,8 @@ define_rule!(
                                 new_expr,
                                 description: "tan(-x) = -tan(x)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -578,7 +602,8 @@ define_rule!(
                                             new_expr: ctx.num(0),
                                             description: "Pythagorean Identity (empty)".to_string(),
                                             before_local: None,
-                                            after_local: None,                                            assumption_events: Default::default(),
+                                            after_local: None,
+                                            assumption_events: Default::default(),
                                         });
                                     }
 
@@ -663,7 +688,8 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)"
                                     .to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         } else if let Expr::Sub(lhs, rhs) = inner_data {
                             // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
@@ -681,7 +707,8 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)"
                                     .to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         } else if let Expr::Div(num, den) = inner_data {
                             // sin((a + b) / c) -> sin(a/c + b/c) -> ...
@@ -705,7 +732,8 @@ impl crate::rule::Rule for AngleIdentityRule {
                                         "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)"
                                             .to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                         }
@@ -728,7 +756,8 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)"
                                     .to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         } else if let Expr::Sub(lhs, rhs) = inner_data {
                             // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
@@ -746,7 +775,8 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)"
                                     .to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         } else if let Expr::Div(num, den) = inner_data {
                             // cos((a + b) / c) -> cos(a/c + b/c) -> ...
@@ -770,7 +800,8 @@ impl crate::rule::Rule for AngleIdentityRule {
                                         "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)"
                                             .to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                         }
@@ -837,7 +868,8 @@ impl crate::rule::Rule for TanToSinCosRule {
                     new_expr,
                     description: "tan(x) -> sin(x)/cos(x)".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -876,7 +908,8 @@ define_rule!(
                                 new_expr: ctx.num(1),
                                 description: "sec²(x) - tan²(x) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -913,7 +946,8 @@ define_rule!(
                                 new_expr: ctx.num(1),
                                 description: "csc²(x) - cot²(x) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -1143,7 +1177,8 @@ define_rule!(
             new_expr: result,
             description: "sin⁶(x) + cos⁶(x) + 3sin²(x)cos²(x) = (sin²(x) + cos²(x))³".to_string(),
             before_local: None,
-            after_local: None,            assumption_events: Default::default(),
+            after_local: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -1166,7 +1201,8 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(2x) -> 2sin(x)cos(x)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     "cos" => {
@@ -1183,7 +1219,8 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(2x) -> cos^2(x) - sin^2(x)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     _ => {}
@@ -1224,7 +1261,8 @@ define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "sin(3x) → 3sin(x) - 4sin³(x)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     "cos" => {
@@ -1248,7 +1286,8 @@ define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
                             new_expr,
                             description: "cos(3x) → 4cos³(x) - 3cos(x)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     _ => {}
@@ -1696,7 +1735,8 @@ define_rule!(
                             new_expr,
                             description: format!("sin({}x) expansion", n_val),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     } else {
                         // cos
@@ -1707,7 +1747,8 @@ define_rule!(
                             new_expr,
                             description: format!("cos({}x) expansion", n_val),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -1754,7 +1795,8 @@ define_rule!(
                                         new_expr: base_term,
                                         description: "cos^2(x) -> 1 - sin^2(x)".to_string(),
                                         before_local: None,
-                                        after_local: None,                                        assumption_events: Default::default(),
+                                        after_local: None,
+                                        assumption_events: Default::default(),
                                     });
                                 } else {
                                     let half_n_expr = ctx.add(Expr::Number(half_n));
@@ -1763,7 +1805,8 @@ define_rule!(
                                         new_expr,
                                         description: "cos^2k(x) -> (1 - sin^2(x))^k".to_string(),
                                         before_local: None,
-                                        after_local: None,                                        assumption_events: Default::default(),
+                                        after_local: None,
+                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -1874,7 +1917,8 @@ define_rule!(
                     new_expr,
                     description: "Half-Angle Expansion".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -2186,7 +2230,8 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                 new_expr: final_expr,
                 description: description.to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -2272,7 +2317,8 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
             new_expr,
             description: format!("{}(x + {}) phase shift", name, shift_desc),
             before_local: None,
-            after_local: None,            assumption_events: Default::default(),
+            after_local: None,
+            assumption_events: Default::default(),
         });
     }
 
@@ -2735,7 +2781,8 @@ define_rule!(
                                 new_expr: final_result,
                                 description: "cot(u/2) - cot(u) = 1/sin(u)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -2757,7 +2804,8 @@ define_rule!(
                             new_expr,
                             description: "cot(u/2) - cot(u) = 1/sin(u)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     } else if !t_half.is_positive && t_full.is_positive {
                         // -cot(u/2) + cot(u) → -1/sin(u)
@@ -2778,7 +2826,8 @@ define_rule!(
                                 new_expr: final_result,
                                 description: "-cot(u/2) + cot(u) = -1/sin(u)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -2800,7 +2849,8 @@ define_rule!(
                             new_expr,
                             description: "-cot(u/2) + cot(u) = -1/sin(u)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }

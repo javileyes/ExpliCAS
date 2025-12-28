@@ -3481,6 +3481,7 @@ define_rule!(
         }
 
         // Find groups with more than one fraction (those can be combined)
+        #[allow(clippy::type_complexity)]
         let mut combinable_groups: Vec<(ExprId, Vec<(usize, ExprId, bool)>)> = Vec::new();
         for (den, group) in denom_groups.iter() {
             if group.len() >= 2 {

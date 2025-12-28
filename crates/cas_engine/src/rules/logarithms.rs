@@ -29,7 +29,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     new_expr: zero,
                     description: "log(b, 1) = 0".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
             if n.is_zero() {
@@ -39,7 +40,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     new_expr: neg_inf,
                     description: "log(b, 0) = -infinity".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
             if *n < num_rational::BigRational::zero() {
@@ -48,7 +50,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     new_expr: undef,
                     description: "log(b, neg) = undefined".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -72,7 +75,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                                 new_expr,
                                 description: format!("log({}, {}) = {}", b, n, power),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -87,7 +91,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 new_expr: one,
                 description: "log(b, b) = 1".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -111,7 +116,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                         new_expr: p_exp,
                         description: "log(b, b^n) = n".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
                 // For variable exponents like log(e, e^x), skip and let LogExpInverseRule handle
@@ -204,7 +210,8 @@ impl crate::rule::Rule for LogExpansionRule {
                             new_expr,
                             description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     DomainMode::Assume => {
@@ -246,7 +253,8 @@ impl crate::rule::Rule for LogExpansionRule {
                             new_expr,
                             description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     DomainMode::Assume => {
@@ -335,7 +343,8 @@ impl crate::rule::Rule for ExponentialLogRule {
                                     new_expr: log_arg,
                                     description: "b^log(b, x) = x".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             return None;
@@ -345,7 +354,8 @@ impl crate::rule::Rule for ExponentialLogRule {
                                 new_expr: log_arg,
                                 description: "b^log(b, x) = x".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         crate::domain::DomainMode::Assume => {
@@ -380,7 +390,8 @@ impl crate::rule::Rule for ExponentialLogRule {
                                             new_expr,
                                             description: "b^(c*log(b, x)) = x^c".to_string(),
                                             before_local: None,
-                                            after_local: None,                                            assumption_events: Default::default(),
+                                            after_local: None,
+                                            assumption_events: Default::default(),
                                         });
                                     }
                                     return None;
@@ -391,7 +402,8 @@ impl crate::rule::Rule for ExponentialLogRule {
                                         new_expr,
                                         description: "b^(c*log(b, x)) = x^c".to_string(),
                                         before_local: None,
-                                        after_local: None,                                        assumption_events: Default::default(),
+                                        after_local: None,
+                                        assumption_events: Default::default(),
                                     });
                                 }
                                 crate::domain::DomainMode::Assume => {
@@ -450,7 +462,8 @@ define_rule!(SplitLogExponentsRule, "Split Log Exponents", |ctx, expr| {
                         new_expr,
                         description: "e^(a+b) -> e^a * e^b (log cancellation)".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -761,7 +774,8 @@ define_rule!(LogInversePowerRule, "Log Inverse Power", |ctx, expr| {
                 new_expr,
                 description: "x^(c/log(b, x)) = b^c".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -812,7 +826,8 @@ impl crate::rule::Rule for LogExpInverseRule {
                             new_expr: p_exp,
                             description: "log(b, b^n) = n".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     } else {
                         // For variable exponents like log(e, e^x) → x, check domain_mode

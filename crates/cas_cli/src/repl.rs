@@ -3462,8 +3462,8 @@ impl Repl {
                     println!("Steps:");
                     for (i, step) in steps.iter().enumerate() {
                         println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
-                        if let Some(assumption) = &step.domain_assumption {
-                            println!("   ⚠ Domain: {}", assumption);
+                        for event in &step.assumption_events {
+                            println!("   ⚠ Domain: {}", event.message);
                         }
                     }
                 }
@@ -4331,8 +4331,8 @@ impl Repl {
                                 ))
                             );
 
-                            if let Some(assumption) = &step.domain_assumption {
-                                println!("   ⚠ Domain: {}", assumption);
+                            for event in &step.assumption_events {
+                                println!("   ⚠ Domain: {}", event.message);
                             }
                         }
                     }
@@ -4682,9 +4682,8 @@ impl Repl {
                                         ))
                                     );
 
-                                    // Show domain assumption warning if present
-                                    if let Some(assumption) = &step.domain_assumption {
-                                        println!("   ⚠ Domain: {}", assumption);
+                                    for event in &step.assumption_events {
+                                        println!("   ⚠ Domain: {}", event.message);
                                     }
                                 }
                             } else {

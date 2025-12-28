@@ -69,7 +69,8 @@ define_rule!(
                 description: "__hold(P) - __hold(Q) = 0 (equal polynomials mod p, up to scalar)"
                     .to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
 

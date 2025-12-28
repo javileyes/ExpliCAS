@@ -37,10 +37,11 @@ fn simplify_principal_branch(input: &str) -> (String, Vec<String>) {
             id: result,
         }
     );
-    // Collect domain assumptions from all steps
+    // Collect domain assumptions from all steps (via assumption_events)
     let assumptions: Vec<_> = steps
         .iter()
-        .filter_map(|s| s.domain_assumption.map(|d| d.to_string()))
+        .flat_map(|s| &s.assumption_events)
+        .map(|e| e.message.clone())
         .collect();
     (result_str, assumptions)
 }

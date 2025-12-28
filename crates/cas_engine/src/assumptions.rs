@@ -40,7 +40,7 @@ pub enum AssumptionReporting {
 
 impl AssumptionReporting {
     /// Parse from string (for REPL commands)
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "off" => Some(Self::Off),
             "summary" => Some(Self::Summary),
@@ -522,17 +522,17 @@ mod tests {
     #[test]
     fn test_reporting_from_str() {
         assert_eq!(
-            AssumptionReporting::from_str("off"),
+            AssumptionReporting::parse("off"),
             Some(AssumptionReporting::Off)
         );
         assert_eq!(
-            AssumptionReporting::from_str("summary"),
+            AssumptionReporting::parse("summary"),
             Some(AssumptionReporting::Summary)
         );
         assert_eq!(
-            AssumptionReporting::from_str("trace"),
+            AssumptionReporting::parse("trace"),
             Some(AssumptionReporting::Trace)
         );
-        assert_eq!(AssumptionReporting::from_str("invalid"), None);
+        assert_eq!(AssumptionReporting::parse("invalid"), None);
     }
 }

@@ -123,7 +123,8 @@ define_rule!(
             new_expr,
             description: desc,
             before_local: None,
-            after_local: None,            assumption_events: Default::default(),
+            after_local: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -259,7 +260,8 @@ define_rule!(
                 }
             ),
             before_local: None,
-            after_local: None,            assumption_events: Default::default(),
+            after_local: None,
+            assumption_events: Default::default(),
         })
     }
 );

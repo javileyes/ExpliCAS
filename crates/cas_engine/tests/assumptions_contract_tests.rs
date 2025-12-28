@@ -82,26 +82,26 @@ fn reporting_levels_serialize_correctly() {
 #[test]
 fn from_str_parsing() {
     assert_eq!(
-        AssumptionReporting::from_str("off"),
+        AssumptionReporting::parse("off"),
         Some(AssumptionReporting::Off)
     );
     assert_eq!(
-        AssumptionReporting::from_str("summary"),
+        AssumptionReporting::parse("summary"),
         Some(AssumptionReporting::Summary)
     );
     assert_eq!(
-        AssumptionReporting::from_str("trace"),
+        AssumptionReporting::parse("trace"),
         Some(AssumptionReporting::Trace)
     );
     assert_eq!(
-        AssumptionReporting::from_str("OFF"),
+        AssumptionReporting::parse("OFF"),
         Some(AssumptionReporting::Off)
     );
     assert_eq!(
-        AssumptionReporting::from_str("SUMMARY"),
+        AssumptionReporting::parse("SUMMARY"),
         Some(AssumptionReporting::Summary)
     );
-    assert_eq!(AssumptionReporting::from_str("invalid"), None);
+    assert_eq!(AssumptionReporting::parse("invalid"), None);
 }
 
 /// Test: Different expressions are tracked separately
@@ -280,8 +280,10 @@ fn eval_options_has_assumption_reporting() {
 fn options_propagation() {
     use cas_engine::options::EvalOptions;
 
-    let mut eval_opts = EvalOptions::default();
-    eval_opts.assumption_reporting = AssumptionReporting::Summary;
+    let eval_opts = EvalOptions {
+        assumption_reporting: AssumptionReporting::Summary,
+        ..Default::default()
+    };
 
     let simplify_opts = eval_opts.to_simplify_options();
     assert_eq!(

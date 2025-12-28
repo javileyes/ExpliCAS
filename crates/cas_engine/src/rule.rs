@@ -28,7 +28,8 @@ impl Rewrite {
             new_expr,
             description: description.into(),
             before_local: None,
-            after_local: None,            assumption_events: Default::default(),
+            after_local: None,
+            assumption_events: Default::default(),
         }
     }
 
@@ -44,21 +45,24 @@ impl Rewrite {
             new_expr,
             description: description.into(),
             before_local: Some(before_local),
-            after_local: Some(after_local),            assumption_events: Default::default(),
+            after_local: Some(after_local),
+            assumption_events: Default::default(),
         }
     }
 
     /// Create a rewrite with domain assumption warning
+    /// DEPRECATED: Use assumption_events instead
     pub fn with_domain_assumption(
         new_expr: ExprId,
         description: impl Into<String>,
-        assumption: &'static str,
+        _assumption: &'static str,
     ) -> Self {
         Rewrite {
             new_expr,
             description: description.into(),
             before_local: None,
-            after_local: None,            assumption_events: Default::default(),
+            after_local: None,
+            assumption_events: Default::default(),
         }
     }
 }

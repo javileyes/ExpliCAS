@@ -34,7 +34,8 @@ define_rule!(
                                 trig_value.display()
                             ),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -52,7 +53,8 @@ define_rule!(
                                 trig_value.display()
                             ),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -68,7 +70,8 @@ define_rule!(
                                 new_expr,
                                 description: "sin(-x) = -sin(x)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "cos" => {
@@ -77,7 +80,8 @@ define_rule!(
                                 new_expr,
                                 description: "cos(-x) = cos(x)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "tan" => {
@@ -87,7 +91,8 @@ define_rule!(
                                 new_expr,
                                 description: "tan(-x) = -tan(x)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}

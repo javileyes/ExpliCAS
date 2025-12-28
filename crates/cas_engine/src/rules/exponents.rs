@@ -67,7 +67,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     new_expr,
                     description: "Combine powers with same base".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -83,7 +84,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         new_expr,
                         description: "Combine power and base".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -99,7 +101,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         new_expr,
                         description: "Combine base and power".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -112,7 +115,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                 new_expr,
                 description: "Multiply identical terms".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -129,7 +133,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     new_expr,
                     description: "Combine nested identical terms".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -154,7 +159,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         new_expr,
                         description: "Combine nested powers".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -170,7 +176,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         new_expr,
                         description: "Combine base and nested power".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -186,7 +193,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         new_expr,
                         description: "Combine power and nested base".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -219,7 +227,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                                 new_expr,
                                 description: "Combine coeff-power and power".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -236,7 +245,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                                 new_expr,
                                 description: "Combine coeff-power and base".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -264,7 +274,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                                 new_expr,
                                 description: "Combine coeff-base and power".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -282,7 +293,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         new_expr,
                         description: "Combine nested base and power".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -323,7 +335,8 @@ define_rule!(
                         new_expr,
                         description: "Combine powers with same exponent".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -347,7 +360,8 @@ define_rule!(
                                 new_expr,
                                 description: "Combine nested powers with same exponent".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -388,7 +402,8 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
                     new_expr,
                     description: "Power of power with even root: (x^2k)^(1/2) -> |x|^k".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -398,7 +413,8 @@ define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
                 new_expr,
                 description: "Multiply exponents".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -415,7 +431,8 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                 new_expr: result,
                 description: "Evaluate literal power".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -454,7 +471,8 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                                 new_expr: coeff_expr,
                                 description: format!("Evaluate perfect root: {}^{}", b, e),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         } else {
                             // Partial root
@@ -465,7 +483,8 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                                 new_expr,
                                 description: format!("Simplify root: {}^{}", b, e),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -631,7 +650,8 @@ define_rule!(
                         new_expr: base,
                         description: "x^1 -> x".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
                 if n.is_zero() {
@@ -646,7 +666,8 @@ define_rule!(
                                 new_expr: ctx.add(Expr::Constant(cas_ast::Constant::Undefined)),
                                 description: "0^0 -> undefined".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -658,7 +679,8 @@ define_rule!(
                                 new_expr: ctx.num(1),
                                 description: "x^0 -> 1".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         DomainMode::Strict => {
@@ -668,7 +690,8 @@ define_rule!(
                                     new_expr: ctx.num(1),
                                     description: "x^0 -> 1 (x ≠ 0 proven)".to_string(),
                                     before_local: None,
-                                    after_local: None,                                    assumption_events: Default::default(),
+                                    after_local: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             // Unknown or Disproven: don't simplify in Strict mode
@@ -696,7 +719,8 @@ define_rule!(
                         new_expr: ctx.num(1),
                         description: "1^x -> 1".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
                 // 0^x -> 0 REQUIRES x > 0 (because 0^0 is undefined, 0^(-n) is undefined)
@@ -708,7 +732,8 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: "0^n -> 0 (n > 0)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         // 0^0 and 0^(-n) are handled elsewhere as undefined
@@ -723,7 +748,8 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: "0^x -> 0".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         DomainMode::Assume => {
@@ -792,7 +818,8 @@ define_rule!(
                     new_expr,
                     description: "Distribute power over product".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -814,7 +841,8 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
                 new_expr,
                 description: "Distribute power over quotient".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -850,7 +878,8 @@ define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
                             new_expr,
                             description: "(-x)^even -> x^even".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     } else {
                         // (-x)^odd -> -(x^odd)
@@ -860,7 +889,8 @@ define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
                             new_expr,
                             description: "(-x)^odd -> -(x^odd)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }

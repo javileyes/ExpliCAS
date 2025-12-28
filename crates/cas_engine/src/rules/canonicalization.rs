@@ -23,7 +23,8 @@ define_rule!(
                 new_expr,
                 description: "Convert Subtraction to Addition (a - b -> a + (-b))".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -49,7 +50,8 @@ define_rule!(
                     new_expr,
                     description: format!("-({}) = {}", n, normalized_n),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -59,7 +61,8 @@ define_rule!(
                     new_expr: double_inner,
                     description: "-(-x) = x".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -82,7 +85,8 @@ define_rule!(
                     new_expr,
                     description: "-(a + b) = -a - b".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -102,7 +106,8 @@ define_rule!(
                         new_expr,
                         description: format!("-({} * x) = {} * x", n, neg_n),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -149,7 +154,8 @@ define_rule!(
                     new_expr,
                     description: "(-a) * b = -(a * b)".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -176,7 +182,8 @@ define_rule!(
                         new_expr,
                         description: format!("{} * (-x) = {} * x", n, neg_n),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
 
@@ -186,7 +193,8 @@ define_rule!(
                     new_expr,
                     description: "a * (-b) = -(a * b)".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -204,7 +212,8 @@ define_rule!(
                     new_expr,
                     description: "a / (-b) = -(a / b)".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -259,7 +268,8 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
                 new_expr,
                 description: "Sort addition terms".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -281,7 +291,8 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
                     new_expr,
                     description: "Fix associativity (a+b)+c -> a+(b+c)".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -370,7 +381,8 @@ define_rule!(
                     new_expr,
                     description: "Sort multiplication factors".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -385,7 +397,8 @@ define_rule!(
                         new_expr,
                         description: "Fix associativity (a*b)*c -> a*(b*c)".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -416,7 +429,8 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
                     new_expr,
                     description: format!("x / {} = (1/{}) * x", n, n),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -447,7 +461,8 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                                 new_expr,
                                 description: "sqrt(x^2k) -> |x|^k".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -460,7 +475,8 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                     new_expr,
                     description: "sqrt(x) = x^(1/2)".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             } else if args.len() == 2 {
                 // sqrt(x, n) -> x^(1/n)
@@ -471,7 +487,8 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                     new_expr,
                     description: "sqrt(x, n) = x^(1/n)".to_string(),
                     before_local: None,
-                    after_local: None,                    assumption_events: Default::default(),
+                    after_local: None,
+                    assumption_events: Default::default(),
                 });
             }
         } else if name == "root" && args.len() == 2 {
@@ -483,7 +500,8 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                 new_expr,
                 description: "root(x, n) = x^(1/n)".to_string(),
                 before_local: None,
-                after_local: None,                assumption_events: Default::default(),
+                after_local: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -502,7 +520,8 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         new_expr,
                         description: format!("-{} + x -> x - {}", n_clone, n_clone),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -517,7 +536,8 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         new_expr,
                         description: format!("x + (-{}) -> x - {}", n_clone, n_clone),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -555,7 +575,8 @@ define_rule!(
                         new_expr,
                         description: "(y-x) -> -(x-y) for canonical order".to_string(),
                         before_local: None,
-                        after_local: None,                        assumption_events: Default::default(),
+                        after_local: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -667,7 +688,8 @@ define_rule!(
                             new_expr,
                             description: "(-k) * (a-b) → k * (b-a)".to_string(),
                             before_local: None,
-                            after_local: None,                            assumption_events: Default::default(),
+                            after_local: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -691,7 +713,8 @@ define_rule!(
                                 new_expr,
                                 description: "(-k) * (x * (a-b)) → k * (x * (b-a))".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         if let Some((a, b)) = as_sub_like(ctx, ml_id) {
@@ -704,7 +727,8 @@ define_rule!(
                                 new_expr,
                                 description: "(-k) * ((a-b) * x) → k * ((b-a) * x)".to_string(),
                                 before_local: None,
-                                after_local: None,                                assumption_events: Default::default(),
+                                after_local: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
