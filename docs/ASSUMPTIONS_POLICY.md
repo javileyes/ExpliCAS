@@ -124,39 +124,59 @@ semantics set reporting trace   # Future: include step refs
 
 ## Migration Path
 
-### Phase 1 (PR-A1): Collector Infra
-- Add `AssumptionCollector` type
-- Collect from `Rewrite.domain_assumption`
-- Dedup by fingerprint
+### Phase 1 (PR-A1): Collector Infra ✅
+- `AssumptionCollector` type with dedup
+- `AssumptionReporting` enum (Off/Summary/Trace)
+- Wired to `SimplifyOptions` and `EvalOptions`
 
-### Phase 2 (PR-A2): Reporting Axis
-- Add `AssumptionReporting` to semantics
-- Wire to CLI/REPL
+### Phase 2 (PR-A2): REPL Command ✅
+- `semantics set assumptions off|summary|trace`
+- `semantics assumptions` displays current state
+- Default: `Off` (conservative)
 
-### Phase 3 (PR-A3): Structured Keys
-- Replace `domain_assumption: Option<&str>` with `Assumption` struct
-- All rules use structured keys
+### Phase 3 (PR-A3): Engine Wiring ✅
+- `Orchestrator.simplify_pipeline` collects from `Step.domain_assumption`
+- `PipelineStats.assumptions` field
+- `EngineJsonResponse.assumptions` field
+- REPL summary line in `do_simplify`
 
-### Phase 4 (Future): Explicit Assumptions
-- User-declared constraints: `assume x > 0`
+### Phase 4 (Future): Structured Keys
+- Replace `from_legacy_string()` with direct `AssumptionEvent` emission
+- Add `assumption_event: Option<AssumptionEvent>` to `Rewrite`
+- Migrate rules incrementally
+
+### Phase 5 (Future): User-Declared Assumptions
+- User constraints: `assume x > 0`
 - Verification: "used NonZero(x), but user said Positive(x) ✓"
 
-## No-Goals (v1)
+## Implementation Status
 
-- No step/node IDs in assumptions (too much API surface)
-- No user-declared assumptions yet (Phase 4)
-- No intervals or numeric constraints (future)
+| Component | Status |
+|-----------|--------|
+| `assumptions.rs` module | ✅ Complete |
+| `AssumptionCollector` with dedup | ✅ Complete |
+| `AssumptionReporting` enum | ✅ Complete |
+| REPL command | ✅ Complete |
+| Engine wiring | ✅ Complete |
+| JSON surface | ✅ Complete |
+| Contract tests (12+) | ✅ Passing |
+| Legacy string parsing | ✅ Complete |
+| Structured emission from rules | ⏳ Future |
 
-## Hotspots
+## Audit Hotspots
 
-Rules that emit assumptions:
-- `GcdCancelRule` (fractions.rs)
-- `DivZeroRule` (arithmetic.rs)
-- `AddInverseRule` (arithmetic.rs)
-- `AnnihilationRule` (polynomial.rs)
-- `CombineSameDenominatorFractionsRule` (fractions.rs)
-- `CombineLikeTermsRule` (polynomial.rs)
-- InvTrig composition rules (trigonometry.rs)
+Rules that currently emit `domain_assumption` strings (candidates for PR-A4 migration):
+
+| Rule | File | Assumption Kind |
+|------|------|-----------------|
+| `GcdCancelRule` | fractions.rs | NonZero |
+| `DivZeroRule` | arithmetic.rs | NonZero |
+| `AddInverseRule` | arithmetic.rs | Defined |
+| `AnnihilationRule` | polynomial.rs | Defined |
+| `CombineSameDenominatorFractionsRule` | fractions.rs | NonZero |
+| `CombineLikeTermsRule` | polynomial.rs | Defined |
+| InvTrig composition rules | trigonometry.rs | PrincipalRange |
+| Complex branch rules | complex.rs | PrincipalBranch |
 
 ## Test Contracts
 
@@ -165,3 +185,6 @@ Rules that emit assumptions:
 3. **Generic collects**: DomainMode::Generic → assumptions populated
 4. **Off hides**: reporting=Off → assumptions not in JSON
 5. **Stable order**: Same input → same assumption order
+6. **Legacy parsing**: `from_legacy_string()` correctly infers kind
+7. **Options propagation**: EvalOptions → SimplifyOptions → Orchestrator
+
