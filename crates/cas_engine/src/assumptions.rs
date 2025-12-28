@@ -237,6 +237,68 @@ impl AssumptionEvent {
             message: format!("Used principal branch of {}({})", func, display),
         }
     }
+
+    /// Create an assumption from a legacy domain_assumption string.
+    ///
+    /// Parses strings like:
+    /// - "Assuming denominator ≠ 0" → NonZero with "denominator" as display
+    /// - "Assuming expression is defined" → Defined with "expression" as display
+    /// - Other strings → Defined with truncated message as display
+    pub fn from_legacy_string(message: &str) -> Self {
+        use std::collections::hash_map::DefaultHasher;
+
+        // Parse known patterns
+        let (kind, expr_display) = if message.contains("≠ 0") || message.contains("!= 0") {
+            // NonZero assumption
+            let expr = if message.contains("denominator") {
+                "denominator"
+            } else if message.contains("x") {
+                "x"
+            } else {
+                "expr"
+            };
+            ("nonzero", expr.to_string())
+        } else if message.contains("defined") {
+            // Defined assumption
+            ("defined", "expression".to_string())
+        } else if message.contains("> 0") || message.contains("positive") {
+            // Positive assumption
+            ("positive", "expr".to_string())
+        } else if message.contains("principal") || message.contains("range") {
+            // Principal range assumption
+            ("principal_range", "arg".to_string())
+        } else {
+            // Unknown - treat as Defined
+            ("defined", "expression".to_string())
+        };
+
+        // Create fingerprint from the message itself (since we don't have expression)
+        let mut hasher = DefaultHasher::new();
+        message.hash(&mut hasher);
+        let fp = hasher.finish();
+
+        let key = match kind {
+            "nonzero" => AssumptionKey::NonZero {
+                expr_fingerprint: fp,
+            },
+            "positive" => AssumptionKey::Positive {
+                expr_fingerprint: fp,
+            },
+            "principal_range" => AssumptionKey::InvTrigPrincipalRange {
+                func: "trig",
+                arg_fingerprint: fp,
+            },
+            _ => AssumptionKey::Defined {
+                expr_fingerprint: fp,
+            },
+        };
+
+        Self {
+            key,
+            expr_display,
+            message: message.to_string(),
+        }
+    }
 }
 
 // =============================================================================

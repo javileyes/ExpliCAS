@@ -15,7 +15,8 @@ pub struct Rewrite {
     /// Optional: The specific local result after the rule (for n-ary rules)
     pub after_local: Option<ExprId>,
     /// Optional: Domain assumption used by this rule (e.g., "x > 0 for ln(x)")
-    /// When set, CLI/timeline can display warnings about implicit assumptions
+    /// When set, CLI/timeline can display warnings about implicit assumptions.
+    /// The assumption collector will convert this to structured AssumptionEvent.
     pub domain_assumption: Option<&'static str>,
 }
 
