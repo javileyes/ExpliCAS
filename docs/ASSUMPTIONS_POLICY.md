@@ -140,10 +140,50 @@ semantics set reporting trace   # Future: include step refs
 - `EngineJsonResponse.assumptions` field
 - REPL summary line in `do_simplify`
 
-### Phase 4 (Future): Structured Keys
-- Replace `from_legacy_string()` with direct `AssumptionEvent` emission
-- Add `assumption_event: Option<AssumptionEvent>` to `Rewrite`
-- Migrate rules incrementally
+### Phase 4 (PR-A4): Structured Emission — Dual Channel
+
+**Status**: ⏳ Deferred (requires AST-based codemod)
+
+**Goal**: Add `assumption_events: SmallVec<[AssumptionEvent; 1]>` field to `Rewrite` struct.
+
+**Why not sed/perl?** The codebase has ~656 `Rewrite { ... }` struct literals. Regex-based approaches fail because:
+- Rust uses `{}` for both struct literals and format strings
+- Regex cannot distinguish `Rewrite { ... }` from `format!("...{}")`
+- Multi-line regex with backtracking corrupts format strings
+
+**Correct Approach**: AST-based codemod using `syn`:
+
+```rust
+// tools/rewrite_codemod/src/main.rs
+use syn::{parse_file, visit_mut::VisitMut};
+
+struct RewriteInserter;
+
+impl VisitMut for RewriteInserter {
+    fn visit_expr_struct_mut(&mut self, node: &mut syn::ExprStruct) {
+        let is_rewrite = node.path.segments.last()
+            .map(|s| s.ident == "Rewrite").unwrap_or(false);
+        
+        if is_rewrite && !node.fields.iter().any(|f| 
+            matches!(&f.member, syn::Member::Named(id) if id == "assumption_events")
+        ) {
+            let fv: syn::FieldValue = syn::parse_quote! {
+                assumption_events: Default::default()
+            };
+            node.fields.push(fv);
+        }
+        syn::visit_mut::visit_expr_struct_mut(self, node);
+    }
+}
+```
+
+**Migration Contract**:
+1. Add field to `Rewrite` struct
+2. Run syn codemod on all `.rs` files
+3. `cargo fmt && cargo test`
+4. Lint: prohibit `domain_assumption: Some(_)` when structured event exists
+
+**Current Mitigation**: `from_legacy_string()` provides compatibility layer. The whitelist test in `assumptions_contract_tests.rs` ensures legacy strings parse correctly.
 
 ### Phase 5 (Future): User-Declared Assumptions
 - User constraints: `assume x > 0`
