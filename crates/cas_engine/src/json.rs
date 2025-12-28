@@ -79,6 +79,10 @@ pub struct EngineJsonResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<EngineJsonWarning>,
 
+    /// Collected assumptions (deduplicated, with counts)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assumptions: Vec<crate::assumptions::AssumptionRecord>,
+
     /// Budget information (always present)
     pub budget: BudgetJsonInfo,
 }
@@ -105,6 +109,7 @@ impl EngineJsonResponse {
             error: None,
             steps: vec![],
             warnings: vec![],
+            assumptions: vec![],
             budget,
         }
     }
@@ -141,6 +146,7 @@ impl EngineJsonResponse {
             error: None,
             steps,
             warnings: vec![],
+            assumptions: vec![],
             budget,
         }
     }
@@ -154,6 +160,7 @@ impl EngineJsonResponse {
             error: Some(EngineJsonError::from_cas_error(error)),
             steps: vec![],
             warnings: vec![],
+            assumptions: vec![],
             budget,
         }
     }
@@ -489,6 +496,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 error: Some(error),
                 steps: vec![],
                 warnings: vec![],
+                assumptions: vec![],
                 budget,
             };
             return if opts_json.contains("\"pretty\":true") {
@@ -524,6 +532,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 error: Some(error),
                 steps: vec![],
                 warnings: vec![],
+                assumptions: vec![],
                 budget: budget_info,
             };
             return if opts.pretty {
@@ -556,6 +565,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 error: Some(error),
                 steps: vec![],
                 warnings: vec![],
+                assumptions: vec![],
                 budget: budget_info,
             };
             return if opts.pretty {

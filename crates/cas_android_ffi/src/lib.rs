@@ -106,6 +106,7 @@ fn internal_error_json(message: &str) -> String {
         error: Some(error),
         steps: vec![],
         warnings: vec![],
+        assumptions: vec![],
         budget,
     };
     resp.to_json()

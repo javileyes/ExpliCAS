@@ -517,7 +517,27 @@ impl Repl {
             }
         }
 
-        self.last_stats = Some(stats);
+        self.last_stats = Some(stats.clone());
+
+        // Print assumptions summary if reporting is enabled and there are assumptions
+        if self.state.options.assumption_reporting != cas_engine::AssumptionReporting::Off
+            && !stats.assumptions.is_empty()
+        {
+            // Build summary line
+            let items: Vec<String> = stats
+                .assumptions
+                .iter()
+                .map(|r| {
+                    if r.count > 1 {
+                        format!("{}({}) (×{})", r.kind, r.expr, r.count)
+                    } else {
+                        format!("{}({})", r.kind, r.expr)
+                    }
+                })
+                .collect();
+            println!("⚠ Assumptions: {}", items.join(", "));
+        }
+
         (result, steps)
     }
 

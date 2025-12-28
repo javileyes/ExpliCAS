@@ -145,6 +145,8 @@ pub struct PipelineStats {
     pub rationalize_outcome: Option<crate::rationalize_policy::RationalizeOutcome>,
     /// The level that was attempted
     pub rationalize_level: Option<crate::rationalize_policy::AutoRationalizeLevel>,
+    /// Collected assumptions (deduplicated, with counts)
+    pub assumptions: Vec<crate::assumptions::AssumptionRecord>,
 }
 
 /// Iteration budgets for each phase of the pipeline.

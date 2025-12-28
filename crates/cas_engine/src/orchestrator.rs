@@ -340,6 +340,18 @@ impl Orchestrator {
             filtered_steps
         };
 
+        // Collect assumptions from steps if reporting is enabled
+        if self.options.assumption_reporting != crate::assumptions::AssumptionReporting::Off {
+            let mut collector = crate::assumptions::AssumptionCollector::new();
+            for step in &optimized_steps {
+                if let Some(assumption) = step.domain_assumption {
+                    let event = crate::assumptions::AssumptionEvent::from_legacy_string(assumption);
+                    collector.note(event);
+                }
+            }
+            pipeline_stats.assumptions = collector.finish();
+        }
+
         (current, optimized_steps, pipeline_stats)
     }
 }
