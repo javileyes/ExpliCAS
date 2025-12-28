@@ -30,9 +30,9 @@ use std::hash::{Hash, Hasher};
 #[serde(rename_all = "lowercase")]
 pub enum AssumptionReporting {
     /// No assumptions shown (hard off - not in JSON)
-    Off,
-    /// Deduped summary list at end (default for Generic/Assume)
     #[default]
+    Off,
+    /// Deduped summary list at end
     Summary,
     /// Future: Include step locations and trace info
     Trace,

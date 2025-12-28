@@ -315,7 +315,7 @@ impl Default for SimplifyOptions {
             inv_trig: crate::semantics::InverseTrigPolicy::default(), // Strict
             value_domain: crate::semantics::ValueDomain::default(), // RealOnly
             branch: crate::semantics::BranchPolicy::default(), // Principal
-            assumption_reporting: crate::assumptions::AssumptionReporting::Summary, // Default to Summary
+            assumption_reporting: crate::assumptions::AssumptionReporting::Off, // Default to Off (conservador)
         }
     }
 }

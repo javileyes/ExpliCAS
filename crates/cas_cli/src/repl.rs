@@ -2531,6 +2531,9 @@ impl Repl {
             Some(&"const_fold") => {
                 self.print_axis_status("const_fold");
             }
+            Some(&"assumptions") => {
+                self.print_axis_status("assumptions");
+            }
             Some(&"preset") => {
                 self.handle_preset(&args[2..]);
             }
@@ -2538,7 +2541,7 @@ impl Repl {
                 println!("Unknown semantics subcommand: '{}'", other);
                 println!("Usage: semantics [set|preset|help|<axis>]");
                 println!("  semantics            Show all settings");
-                println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold)");
+                println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold|assumptions)");
                 println!("  semantics help       Show help");
                 println!("  semantics set ...    Change settings");
                 println!("  semantics preset     List/apply presets");
@@ -2588,6 +2591,13 @@ impl Repl {
             cas_engine::const_fold::ConstFoldMode::Safe => "safe",
         };
         println!("  const_fold: {}", const_fold);
+
+        let assumptions = match self.state.options.assumption_reporting {
+            cas_engine::AssumptionReporting::Off => "off",
+            cas_engine::AssumptionReporting::Summary => "summary",
+            cas_engine::AssumptionReporting::Trace => "trace",
+        };
+        println!("  assumptions: {}", assumptions);
     }
 
     /// Print status for a single semantic axis with current value and available options
@@ -2653,6 +2663,18 @@ impl Repl {
                 println!("  Values: off | safe");
                 println!("  off:  No constant folding (defer semantic decisions)");
                 println!("  safe: Fold literals (2^3 → 8, sqrt(-1) → i if complex)");
+            }
+            "assumptions" => {
+                let current = match self.state.options.assumption_reporting {
+                    cas_engine::AssumptionReporting::Off => "off",
+                    cas_engine::AssumptionReporting::Summary => "summary",
+                    cas_engine::AssumptionReporting::Trace => "trace",
+                };
+                println!("assumptions: {}", current);
+                println!("  Values: off | summary | trace");
+                println!("  off:     No assumption reporting");
+                println!("  summary: Deduped summary line at end");
+                println!("  trace:   Detailed trace (future)");
             }
             _ => {
                 println!("Unknown axis: {}", axis);
@@ -3018,9 +3040,33 @@ impl Repl {
                     }
                 }
             }
+            "assumptions" => match value {
+                "off" => {
+                    self.state.options.assumption_reporting = cas_engine::AssumptionReporting::Off;
+                    self.simplify_options.assumption_reporting =
+                        cas_engine::AssumptionReporting::Off;
+                }
+                "summary" => {
+                    self.state.options.assumption_reporting =
+                        cas_engine::AssumptionReporting::Summary;
+                    self.simplify_options.assumption_reporting =
+                        cas_engine::AssumptionReporting::Summary;
+                }
+                "trace" => {
+                    self.state.options.assumption_reporting =
+                        cas_engine::AssumptionReporting::Trace;
+                    self.simplify_options.assumption_reporting =
+                        cas_engine::AssumptionReporting::Trace;
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'assumptions'", value);
+                    println!("Allowed: off, summary, trace");
+                    return false;
+                }
+            },
             _ => {
                 println!("ERROR: Unknown axis '{}'", axis);
-                println!("Valid axes: domain, value, branch, inv_trig, const_fold");
+                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions");
                 return false;
             }
         }
