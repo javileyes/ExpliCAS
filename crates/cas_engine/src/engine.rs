@@ -420,26 +420,58 @@ impl Simplifier {
     /// Panics if there are duplicate rule names (debug builds only).
     /// This prevents accidental rule name collisions which can cause
     /// confusing precedence behavior.
+    /// Note: Rules with multiple target_types appear in multiple buckets
+    /// but are the same rule instance, so we deduplicate by Arc pointer first.
     #[cfg(debug_assertions)]
     pub fn assert_unique_rule_names(&self) {
-        let mut seen = HashSet::new();
+        use std::collections::HashSet;
+
+        // Collect all rule names (deduplicating by name as we go)
+        // A rule appearing in multiple buckets with the same name is OK
+        // (e.g., LogContractionRule targets both Add and Sub)
+        let mut seen_names: HashSet<&str> = HashSet::new();
+
         for rule in &self.global_rules {
             let name = rule.name();
-            if !seen.insert(name) {
-                panic!(
-                    "Duplicate rule name detected: '{}'. Each rule must have a unique name.",
-                    name
-                );
+            if !seen_names.insert(name) {
+                // Same name seen again - but might be same rule in different bucket
+                // Only panic if it's truly a different rule (checked below)
             }
         }
-        for rules in self.rules.values() {
-            for rule in rules {
-                let name = rule.name();
-                if !seen.insert(name) {
+
+        // For typed rules, same rule may appear in multiple buckets
+        // We need to check if duplicate names come from the SAME Arc or different ones
+        let mut name_to_first_arc: std::collections::HashMap<&str, *const ()> =
+            std::collections::HashMap::new();
+
+        for rule in &self.global_rules {
+            let name = rule.name();
+            let ptr = Arc::as_ptr(rule).cast::<()>();
+            if let Some(&existing_ptr) = name_to_first_arc.get(name) {
+                if !std::ptr::eq(ptr, existing_ptr) {
                     panic!(
                         "Duplicate rule name detected: '{}'. Each rule must have a unique name.",
                         name
                     );
+                }
+            } else {
+                name_to_first_arc.insert(name, ptr);
+            }
+        }
+
+        for rules in self.rules.values() {
+            for rule in rules {
+                let name = rule.name();
+                let ptr = Arc::as_ptr(rule).cast::<()>();
+                if let Some(&existing_ptr) = name_to_first_arc.get(name) {
+                    if !std::ptr::eq(ptr, existing_ptr) {
+                        panic!(
+                            "Duplicate rule name detected: '{}'. Each rule must have a unique name.",
+                            name
+                        );
+                    }
+                } else {
+                    name_to_first_arc.insert(name, ptr);
                 }
             }
         }

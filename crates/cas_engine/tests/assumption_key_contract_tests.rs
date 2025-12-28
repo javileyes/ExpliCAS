@@ -124,9 +124,25 @@ fn positive_emitted_for_zero_base_power() {
 }
 
 /// CONTRACT: ln(x*y) expansion emits Positive(x) and Positive(y)
+/// NOTE: LogExpansionRule is no longer in default rules (use expand_log command),
+/// so this test explicitly registers the rule to verify assumption emission.
+/// We use Simplifier::new() to avoid LogContractionRule which would undo the expansion.
 #[test]
 fn positive_emitted_for_log_product_expansion() {
-    let steps = simplify_with_assume_steps("ln(x*y)");
+    use cas_engine::rules::logarithms::LogExpansionRule;
+
+    // Create simplifier with ONLY LogExpansionRule (no LogContractionRule which would undo it)
+    let mut simplifier = Simplifier::new();
+    simplifier.add_rule(Box::new(LogExpansionRule));
+    simplifier.set_collect_steps(true);
+
+    let expr = parse("ln(x*y)", &mut simplifier.context).expect("parse failed");
+    let opts = SimplifyOptions {
+        domain: DomainMode::Assume,
+        collect_steps: true,
+        ..Default::default()
+    };
+    let (_, steps) = simplifier.simplify_with_options(expr, opts);
 
     // Should have at least one positive assumption
     assert!(

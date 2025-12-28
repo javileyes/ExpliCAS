@@ -374,19 +374,8 @@ fn parse_function(input: &str) -> IResult<&str, ParseNode> {
     let (input, args) = separated_list0(preceded(multispace0, tag(",")), parse_expr)(input)?;
     let (input, _) = preceded(multispace0, tag(")"))(input)?;
 
-    if name == "ln" && args.len() == 1 {
-        // ln(x) -> log(e, x)
-        return Ok((
-            input,
-            ParseNode::Function(
-                "log".to_string(),
-                vec![ParseNode::Constant(Constant::E), args[0].clone()],
-            ),
-        ));
-    }
-
+    // exp(x) -> e^x (canonical form for exponential)
     if name == "exp" && args.len() == 1 {
-        // exp(x) -> e^x
         return Ok((
             input,
             ParseNode::Pow(
@@ -395,6 +384,10 @@ fn parse_function(input: &str) -> IResult<&str, ParseNode> {
             ),
         ));
     }
+
+    // NOTE: ln(x) is preserved as ln(x) function, NOT converted to log(e, x).
+    // This allows consistent display and simplification of natural logarithms.
+    // The simplification engine knows how to handle both ln() and log(e,) forms.
 
     Ok((input, ParseNode::Function(name.to_string(), args)))
 }

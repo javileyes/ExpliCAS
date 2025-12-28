@@ -6,6 +6,16 @@ use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
+/// Helper: create log(base, arg) or ln(arg) depending on base.
+/// If base is Constant::E, returns ln(arg) to preserve natural log notation.
+fn make_log(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
+    if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
+        ctx.add(Expr::Function("ln".to_string(), vec![arg]))
+    } else {
+        ctx.add(Expr::Function("log".to_string(), vec![base, arg]))
+    }
+}
+
 define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Function(name, args) = expr_data {
@@ -124,7 +134,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 // with inv_trig policy check
             } else {
                 // Non-inverse case: expand normally
-                let log_inner = ctx.add(Expr::Function("log".to_string(), vec![base, p_base]));
+                let log_inner = make_log(ctx, base, p_base);
                 let new_expr = smart_mul(ctx, p_exp, log_inner);
                 return Some(Rewrite {
                     new_expr,
@@ -198,13 +208,13 @@ impl crate::rule::Rule for LogExpansionRule {
 
                 // GATE 2: Check domain_mode with prove_positive
                 match mode {
-                    DomainMode::Strict | DomainMode::Generic => {
+                    DomainMode::Strict => {
                         // Only expand if BOTH factors are provably positive
                         if lhs_positive != Proof::Proven || rhs_positive != Proof::Proven {
                             return None;
                         }
-                        let log_lhs = ctx.add(Expr::Function("log".to_string(), vec![base, lhs]));
-                        let log_rhs = ctx.add(Expr::Function("log".to_string(), vec![base, rhs]));
+                        let log_lhs = make_log(ctx, base, lhs);
+                        let log_rhs = make_log(ctx, base, rhs);
                         let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
                         return Some(crate::rule::Rewrite {
                             new_expr,
@@ -214,23 +224,28 @@ impl crate::rule::Rule for LogExpansionRule {
                             assumption_events: Default::default(),
                         });
                     }
-                    DomainMode::Assume => {
+                    DomainMode::Generic | DomainMode::Assume => {
                         // Expand unless one factor is Disproven (provably ≤ 0)
                         if lhs_positive == Proof::Disproven || rhs_positive == Proof::Disproven {
                             return None;
                         }
-                        let log_lhs = ctx.add(Expr::Function("log".to_string(), vec![base, lhs]));
-                        let log_rhs = ctx.add(Expr::Function("log".to_string(), vec![base, rhs]));
+                        let log_lhs = make_log(ctx, base, lhs);
+                        let log_rhs = make_log(ctx, base, rhs);
                         let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
+                        // Only emit assumptions if not proven
+                        let mut events = smallvec::SmallVec::new();
+                        if lhs_positive != Proof::Proven {
+                            events.push(crate::assumptions::AssumptionEvent::positive(ctx, lhs));
+                        }
+                        if rhs_positive != Proof::Proven {
+                            events.push(crate::assumptions::AssumptionEvent::positive(ctx, rhs));
+                        }
                         return Some(crate::rule::Rewrite {
                             new_expr,
                             description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
                             before_local: None,
                             after_local: None,
-                            assumption_events: smallvec::smallvec![
-                                crate::assumptions::AssumptionEvent::positive(ctx, lhs),
-                                crate::assumptions::AssumptionEvent::positive(ctx, rhs)
-                            ],
+                            assumption_events: events,
                         });
                     }
                 }
@@ -242,12 +257,12 @@ impl crate::rule::Rule for LogExpansionRule {
                 let den_positive = prove_positive(ctx, den);
 
                 match mode {
-                    DomainMode::Strict | DomainMode::Generic => {
+                    DomainMode::Strict => {
                         if num_positive != Proof::Proven || den_positive != Proof::Proven {
                             return None;
                         }
-                        let log_num = ctx.add(Expr::Function("log".to_string(), vec![base, num]));
-                        let log_den = ctx.add(Expr::Function("log".to_string(), vec![base, den]));
+                        let log_num = make_log(ctx, base, num);
+                        let log_den = make_log(ctx, base, den);
                         let new_expr = ctx.add(Expr::Sub(log_num, log_den));
                         return Some(crate::rule::Rewrite {
                             new_expr,
@@ -257,22 +272,27 @@ impl crate::rule::Rule for LogExpansionRule {
                             assumption_events: Default::default(),
                         });
                     }
-                    DomainMode::Assume => {
+                    DomainMode::Generic | DomainMode::Assume => {
                         if num_positive == Proof::Disproven || den_positive == Proof::Disproven {
                             return None;
                         }
-                        let log_num = ctx.add(Expr::Function("log".to_string(), vec![base, num]));
-                        let log_den = ctx.add(Expr::Function("log".to_string(), vec![base, den]));
+                        let log_num = make_log(ctx, base, num);
+                        let log_den = make_log(ctx, base, den);
                         let new_expr = ctx.add(Expr::Sub(log_num, log_den));
+                        // Only emit assumptions if not proven
+                        let mut events = smallvec::SmallVec::new();
+                        if num_positive != Proof::Proven {
+                            events.push(crate::assumptions::AssumptionEvent::positive(ctx, num));
+                        }
+                        if den_positive != Proof::Proven {
+                            events.push(crate::assumptions::AssumptionEvent::positive(ctx, den));
+                        }
                         return Some(crate::rule::Rewrite {
                             new_expr,
                             description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
                             before_local: None,
                             after_local: None,
-                            assumption_events: smallvec::smallvec![
-                                crate::assumptions::AssumptionEvent::positive(ctx, num),
-                                crate::assumptions::AssumptionEvent::positive(ctx, den)
-                            ],
+                            assumption_events: events,
                         });
                     }
                 }
@@ -285,6 +305,149 @@ impl crate::rule::Rule for LogExpansionRule {
         Some(vec!["Function"])
     }
 }
+
+/// LogContractionRule: Contracts sums/differences of logs into single logs.
+/// - ln(a) + ln(b) → ln(a*b)
+/// - ln(a) - ln(b) → ln(a/b)
+/// - log(b, x) + log(b, y) → log(b, x*y)  (same base required)
+/// - log(b, x) - log(b, y) → log(b, x/y)
+///
+/// This rule REDUCES node count and is a valid simplification.
+/// Unlike LogExpansionRule, this is registered by default.
+pub struct LogContractionRule;
+
+impl crate::rule::Rule for LogContractionRule {
+    fn name(&self) -> &str {
+        "Log Contraction"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let expr_data = ctx.get(expr).clone();
+
+        // Case 1: ln(a) + ln(b) → ln(a*b) or log(b,x) + log(b,y) → log(b, x*y)
+        if let Expr::Add(lhs, rhs) = expr_data {
+            if let (Some((base_l, arg_l)), Some((base_r, arg_r))) =
+                (extract_log_parts(ctx, lhs), extract_log_parts(ctx, rhs))
+            {
+                // Check bases are equal
+                if bases_equal(ctx, base_l, base_r) {
+                    let product = ctx.add(Expr::Mul(arg_l, arg_r));
+                    // If base is sentinel (ln case), create ln(), otherwise log()
+                    let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
+                    let new_expr = if base_l == sentinel {
+                        ctx.add(Expr::Function("ln".to_string(), vec![product]))
+                    } else {
+                        make_log(ctx, base_l, product)
+                    };
+                    return Some(crate::rule::Rewrite {
+                        new_expr,
+                        description: "ln(a) + ln(b) = ln(a*b)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        assumption_events: Default::default(),
+                    });
+                }
+            }
+        }
+
+        // Case 2: ln(a) - ln(b) → ln(a/b) or log(b,x) - log(b,y) → log(b, x/y)
+        if let Expr::Sub(lhs, rhs) = expr_data {
+            if let (Some((base_l, arg_l)), Some((base_r, arg_r))) =
+                (extract_log_parts(ctx, lhs), extract_log_parts(ctx, rhs))
+            {
+                // Check bases are equal
+                if bases_equal(ctx, base_l, base_r) {
+                    let quotient = ctx.add(Expr::Div(arg_l, arg_r));
+                    // If base is sentinel (ln case), create ln(), otherwise log()
+                    let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
+                    let new_expr = if base_l == sentinel {
+                        ctx.add(Expr::Function("ln".to_string(), vec![quotient]))
+                    } else {
+                        make_log(ctx, base_l, quotient)
+                    };
+                    return Some(crate::rule::Rewrite {
+                        new_expr,
+                        description: "ln(a) - ln(b) = ln(a/b)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        assumption_events: Default::default(),
+                    });
+                }
+            }
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Add", "Sub"])
+    }
+}
+
+/// Extract (base, argument) from a log expression.
+/// Returns (E, arg) for ln(arg), (base, arg) for log(base, arg), None otherwise.
+fn extract_log_parts(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "ln" && args.len() == 1 {
+            // For ln(x), base is implicitly e - we need to create it
+            // But we can't mutate ctx here. Instead we'll use a sentinel value.
+            // Actually, let's handle ln specially in bases_equal
+            return Some((cas_ast::ExprId::from_raw(u32::MAX), args[0])); // Sentinel for "e"
+        } else if name == "log" && args.len() == 2 {
+            return Some((args[0], args[1]));
+        }
+    }
+    None
+}
+
+/// Check if two log bases are equal.
+/// Handles ln (sentinel u32::MAX) specially.
+fn bases_equal(ctx: &cas_ast::Context, base_l: cas_ast::ExprId, base_r: cas_ast::ExprId) -> bool {
+    let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
+
+    // Both are ln (sentinel)
+    if base_l == sentinel && base_r == sentinel {
+        return true;
+    }
+
+    // One is ln, other is explicit log(e, ...)
+    if base_l == sentinel {
+        if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base_r) {
+            return true;
+        }
+        return false;
+    }
+    if base_r == sentinel {
+        if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base_l) {
+            return true;
+        }
+        return false;
+    }
+
+    // Both are explicit bases - check if equal by expression equality
+    // For simplicity, only match if they're the same ExprId or both are Constant::E
+    if base_l == base_r {
+        return true;
+    }
+
+    // Check if both are e constant
+    if let (Expr::Constant(cas_ast::Constant::E), Expr::Constant(cas_ast::Constant::E)) =
+        (ctx.get(base_l), ctx.get(base_r))
+    {
+        return true;
+    }
+
+    false
+}
+
 /// Domain-aware rule for b^log(b, x) → x.
 /// Requires x > 0 (domain of log). Respects domain_mode.
 pub struct ExponentialLogRule;
@@ -859,7 +1022,14 @@ impl crate::rule::Rule for LogExpInverseRule {
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateLogRule));
-    simplifier.add_rule(Box::new(LogExpansionRule));
+    // NOTE: LogExpansionRule removed from auto-registration.
+    // Log expansion increases node count (ln(xy) → ln(x) + ln(y)) and is not always desirable.
+    // Use the `expand_log` command for explicit expansion.
+    // simplifier.add_rule(Box::new(LogExpansionRule));
+
+    // LogContractionRule DOES reduce node count (ln(a)+ln(b) → ln(ab)) - valid simplification
+    simplifier.add_rule(Box::new(LogContractionRule));
+
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(LogInversePowerRule));

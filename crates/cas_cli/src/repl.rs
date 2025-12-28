@@ -1042,6 +1042,13 @@ impl Repl {
             return;
         }
 
+        // Check for "expand_log" command - explicit logarithm expansion
+        // MUST come before "expand" check due to prefix matching
+        if line.starts_with("expand_log ") || line == "expand_log" {
+            self.handle_expand_log(&line);
+            return;
+        }
+
         // Check for "expand" command - aggressive expansion/distribution
         if line.starts_with("expand ") {
             self.handle_expand(&line);
@@ -3622,6 +3629,115 @@ impl Repl {
                 );
             }
             Err(e) => println!("Parse error: {:?}", e),
+        }
+    }
+
+    /// Handle the 'expand_log' command for explicit logarithm expansion
+    /// Expands ln(xy) → ln(x) + ln(y), ln(x/y) → ln(x) - ln(y), ln(x^n) → n*ln(x)
+    fn handle_expand_log(&mut self, line: &str) {
+        use cas_ast::DisplayExpr;
+
+        let rest = line.strip_prefix("expand_log").unwrap_or(line).trim();
+        if rest.is_empty() {
+            println!("Usage: expand_log <expr>");
+            println!("Description: Expand logarithms using log properties.");
+            println!("Transformations:");
+            println!("  ln(x*y)   → ln(x) + ln(y)");
+            println!("  ln(x/y)   → ln(x) - ln(y)");
+            println!("  ln(x^n)   → n * ln(x)");
+            println!("Example: expand_log ln(x^2 * y) → 2*ln(x) + ln(y)");
+            return;
+        }
+
+        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+            Ok(expr) => {
+                println!(
+                    "Parsed: {}",
+                    DisplayExpr {
+                        context: &self.engine.simplifier.context,
+                        id: expr
+                    }
+                );
+
+                // Apply LogExpansionRule recursively to all subexpressions
+                let expanded = self.expand_log_recursive(expr);
+
+                // NOTE: We do NOT call simplify() here because LogContractionRule
+                // (which is in default rules) would immediately undo the expansion.
+                // The expanded form is the desired result.
+
+                println!(
+                    "Result: {}",
+                    DisplayExpr {
+                        context: &self.engine.simplifier.context,
+                        id: expanded
+                    }
+                );
+            }
+            Err(e) => println!("Parse error: {:?}", e),
+        }
+    }
+
+    /// Recursively apply LogExpansionRule to all subexpressions
+    fn expand_log_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
+        use cas_ast::Expr;
+        use cas_engine::parent_context::ParentContext;
+        use cas_engine::rule::Rule;
+        use cas_engine::rules::logarithms::LogExpansionRule;
+        use cas_engine::DomainMode;
+
+        // Create a parent context with Assume mode to allow expansion of symbolic variables
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Assume);
+
+        let rule = LogExpansionRule;
+
+        // Try to apply the rule at this node
+        if let Some(rewrite) = rule.apply(&mut self.engine.simplifier.context, expr, &parent_ctx) {
+            // Recursively expand the result
+            return self.expand_log_recursive(rewrite.new_expr);
+        }
+
+        // If rule didn't apply, recurse into children
+        let expr_data = self.engine.simplifier.context.get(expr).clone();
+        match expr_data {
+            Expr::Add(l, r) => {
+                let new_l = self.expand_log_recursive(l);
+                let new_r = self.expand_log_recursive(r);
+                self.engine.simplifier.context.add(Expr::Add(new_l, new_r))
+            }
+            Expr::Sub(l, r) => {
+                let new_l = self.expand_log_recursive(l);
+                let new_r = self.expand_log_recursive(r);
+                self.engine.simplifier.context.add(Expr::Sub(new_l, new_r))
+            }
+            Expr::Mul(l, r) => {
+                let new_l = self.expand_log_recursive(l);
+                let new_r = self.expand_log_recursive(r);
+                self.engine.simplifier.context.add(Expr::Mul(new_l, new_r))
+            }
+            Expr::Div(l, r) => {
+                let new_l = self.expand_log_recursive(l);
+                let new_r = self.expand_log_recursive(r);
+                self.engine.simplifier.context.add(Expr::Div(new_l, new_r))
+            }
+            Expr::Pow(b, e) => {
+                let new_b = self.expand_log_recursive(b);
+                let new_e = self.expand_log_recursive(e);
+                self.engine.simplifier.context.add(Expr::Pow(new_b, new_e))
+            }
+            Expr::Neg(inner) => {
+                let new_inner = self.expand_log_recursive(inner);
+                self.engine.simplifier.context.add(Expr::Neg(new_inner))
+            }
+            Expr::Function(name, args) => {
+                let new_args: Vec<_> = args.iter().map(|a| self.expand_log_recursive(*a)).collect();
+                self.engine
+                    .simplifier
+                    .context
+                    .add(Expr::Function(name, new_args))
+            }
+            // Atoms: Number, Variable, Constant, Matrix, SessionRef - return as-is
+            _ => expr,
         }
     }
 

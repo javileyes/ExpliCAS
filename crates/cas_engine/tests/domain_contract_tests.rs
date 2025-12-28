@@ -504,29 +504,24 @@ fn log_product_strict_no_expand_variables() {
     );
 }
 
-/// CONTRACT: ln(x*y) expands in Assume mode WITH warning
+/// CONTRACT: ln(x*y) does NOT expand automatically in Assume mode anymore
+/// LogExpansionRule is now opt-in via the `expand_log` command.
+/// This test verifies that automatic simplification does NOT expand logs.
 #[test]
-fn log_product_assume_expands_with_warning() {
+fn log_product_assume_no_auto_expand() {
     use cas_engine::semantics::ValueDomain;
-    let (result, warnings) = simplify_with_domain_value(
+    let (result, _warnings) = simplify_with_domain_value(
         "ln(x*y)",
         cas_engine::DomainMode::Assume,
         ValueDomain::RealOnly,
     );
 
-    // Should expand to log(e, x) + log(e, y)
+    // Should NOT expand automatically (LogExpansionRule not in defaults)
+    // Use `expand_log ln(x*y)` command for explicit expansion
     assert!(
-        result.contains("+"),
-        "Expected ln(x*y) to expand in Assume mode, got: {}",
+        !result.contains("+"),
+        "Expected ln(x*y) to NOT auto-expand (use expand_log command), got: {}",
         result
-    );
-
-    // LogExpansionRule emits Positive(x) and Positive(y) structured assumptions
-    // which are now wired through to domain_warnings
-    assert!(
-        !warnings.is_empty(),
-        "Expected assumption warning in Assume mode, got: {:?}",
-        warnings
     );
 }
 
@@ -548,27 +543,23 @@ fn log_product_complex_never_expands() {
     );
 }
 
-/// CONTRACT: ln(2*pi) expands because both factors are provably positive
+/// CONTRACT: ln(2*pi) does NOT expand automatically even though both factors are provably positive
+/// LogExpansionRule is now opt-in via the `expand_log` command.
 #[test]
-fn log_product_provable_positive_expands() {
+fn log_product_provable_positive_no_auto_expand() {
     use cas_engine::semantics::ValueDomain;
-    let (result, warnings) = simplify_with_domain_value(
+    let (result, _warnings) = simplify_with_domain_value(
         "ln(2*pi)",
         cas_engine::DomainMode::Strict,
         ValueDomain::RealOnly,
     );
 
-    // 2 > 0 and π > 0 are provable, so should expand
+    // Should NOT expand automatically (LogExpansionRule not in defaults)
+    // Use `expand_log ln(2*pi)` command for explicit expansion
     assert!(
-        result.contains("+"),
-        "Expected ln(2*pi) to expand (both provably positive), got: {}",
+        !result.contains("+"),
+        "Expected ln(2*pi) to NOT auto-expand (use expand_log command), got: {}",
         result
-    );
-
-    assert!(
-        warnings.is_empty(),
-        "No warnings expected when factors are provably positive, got: {:?}",
-        warnings
     );
 }
 

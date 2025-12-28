@@ -717,7 +717,7 @@ fn test_logarithm_simplification() {
         CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule,
     };
     use cas_engine::rules::exponents::EvaluatePowerRule;
-    use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
+    use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, LogExpansionRule};
     use cas_engine::rules::polynomial::{CombineLikeTermsRule, DistributeRule};
 
     let mut simplifier = Simplifier::new();
@@ -727,6 +727,7 @@ fn test_logarithm_simplification() {
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
+    simplifier.add_rule(Box::new(LogExpansionRule)); // Added: ln(a*b) → ln(a) + ln(b)
     simplifier.add_rule(Box::new(CombineConstantsRule));
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
@@ -740,9 +741,14 @@ fn test_logarithm_simplification() {
     // -> ln(x^2) + ln(y) - 2*ln(x)
     // -> 2*ln(x) + ln(y) - 2*ln(x)
     // -> ln(y)
+    // NOTE: LogExpansionRule requires DomainMode::Assume for symbolic variables
     let input1 = "ln(x^2 * y) - 2 * ln(x)";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse");
-    let (result1, steps1) = simplifier.simplify(expr1);
+    let opts = cas_engine::SimplifyOptions {
+        domain: cas_engine::DomainMode::Assume,
+        ..Default::default()
+    };
+    let (result1, steps1, _) = simplifier.simplify_with_stats(expr1, opts);
     println!(
         "Result 1: {}",
         DisplayExpr {
