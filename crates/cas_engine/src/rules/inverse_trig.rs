@@ -346,8 +346,10 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                             .to_string(),
                                         before_local: None,
                                         after_local: None,
-                                        domain_assumption: Some("Assuming x ∈ [-1, 1]"),
-                                        assumption_events: Default::default(),
+                                        domain_assumption: None, // Using structured assumption
+                                        assumption_events: smallvec::smallvec![
+                                            crate::assumptions::AssumptionEvent::defined(ctx, x)
+                                        ],
                                     });
                                 }
                             }
@@ -391,8 +393,10 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                             .to_string(),
                                         before_local: None,
                                         after_local: None,
-                                        domain_assumption: Some("Assuming x ∈ [-1, 1]"),
-                                        assumption_events: Default::default(),
+                                        domain_assumption: None, // Using structured assumption
+                                        assumption_events: smallvec::smallvec![
+                                            crate::assumptions::AssumptionEvent::defined(ctx, x)
+                                        ],
                                     });
                                 }
                             }

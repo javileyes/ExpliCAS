@@ -137,8 +137,10 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     description: "log(b, x^y) = y * log(b, x)".to_string(),
                     before_local: None,
                     after_local: None,
-                    domain_assumption: Some("Assuming x > 0"),
-                    assumption_events: Default::default(),
+                    domain_assumption: None, // Using structured assumption
+                    assumption_events: smallvec::smallvec![
+                        crate::assumptions::AssumptionEvent::positive(ctx, p_base)
+                    ],
                 });
             }
         }
@@ -233,8 +235,11 @@ impl crate::rule::Rule for LogExpansionRule {
                             description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: Some("Assuming x > 0 and y > 0"),
-                            assumption_events: Default::default(),
+                            domain_assumption: None, // Using structured assumptions
+                            assumption_events: smallvec::smallvec![
+                                crate::assumptions::AssumptionEvent::positive(ctx, lhs),
+                                crate::assumptions::AssumptionEvent::positive(ctx, rhs)
+                            ],
                         });
                     }
                 }
@@ -274,8 +279,11 @@ impl crate::rule::Rule for LogExpansionRule {
                             description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: Some("Assuming x > 0 and y > 0"),
-                            assumption_events: Default::default(),
+                            domain_assumption: None, // Using structured assumptions
+                            assumption_events: smallvec::smallvec![
+                                crate::assumptions::AssumptionEvent::positive(ctx, num),
+                                crate::assumptions::AssumptionEvent::positive(ctx, den)
+                            ],
                         });
                     }
                 }
@@ -369,8 +377,10 @@ impl crate::rule::Rule for ExponentialLogRule {
                                 description: "b^log(b, x) = x (assuming x > 0)".to_string(),
                                 before_local: None,
                                 after_local: None,
-                                domain_assumption: Some("Assuming x > 0"),
-                                assumption_events: Default::default(),
+                                domain_assumption: None, // Using structured assumption
+                                assumption_events: smallvec::smallvec![
+                                    crate::assumptions::AssumptionEvent::positive(ctx, log_arg)
+                                ],
                             });
                         }
                     }
@@ -420,8 +430,12 @@ impl crate::rule::Rule for ExponentialLogRule {
                                             .to_string(),
                                         before_local: None,
                                         after_local: None,
-                                        domain_assumption: Some("Assuming x > 0"),
-                                        assumption_events: Default::default(),
+                                        domain_assumption: None, // Using structured assumption
+                                        assumption_events: smallvec::smallvec![
+                                            crate::assumptions::AssumptionEvent::positive(
+                                                ctx, log_arg
+                                            )
+                                        ],
                                     });
                                 }
                             }
@@ -847,8 +861,10 @@ impl crate::rule::Rule for LogExpInverseRule {
                             description: "log(b, b^x) → x".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: Some("Assuming x is real"),
-                            assumption_events: Default::default(),
+                            domain_assumption: None, // Using structured assumption
+                            assumption_events: smallvec::smallvec![
+                                crate::assumptions::AssumptionEvent::defined(ctx, p_exp)
+                            ],
                         });
                     }
                 }
