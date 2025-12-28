@@ -541,7 +541,13 @@ define_rule!(
                             before_local: Some(factored_form),
                             after_local: Some(new_num),
                             domain_assumption: decision.assumption,
-                            assumption_events: Default::default(),
+                            assumption_events: if decision.assumption.is_some() {
+                                smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(
+                                    ctx, gcd_expr
+                                )]
+                            } else {
+                                Default::default()
+                            },
                         });
                     }
                 }
@@ -560,7 +566,13 @@ define_rule!(
                     before_local: Some(factored_form),
                     after_local: Some(result),
                     domain_assumption: decision.assumption,
-                    assumption_events: Default::default(),
+                    assumption_events: if decision.assumption.is_some() {
+                        smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(
+                            ctx, gcd_expr
+                        )]
+                    } else {
+                        Default::default()
+                    },
                 });
             }
         }
@@ -678,7 +690,13 @@ define_rule!(
                     before_local: Some(factored_form),
                     after_local: Some(new_num),
                     domain_assumption: decision.assumption,
-                    assumption_events: Default::default(),
+                    assumption_events: if decision.assumption.is_some() {
+                        smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(
+                            ctx, gcd_expr
+                        )]
+                    } else {
+                        Default::default()
+                    },
                 });
             }
         }
@@ -696,7 +714,11 @@ define_rule!(
             before_local: Some(factored_form),
             after_local: Some(result),
             domain_assumption: decision.assumption,
-            assumption_events: Default::default(),
+            assumption_events: if decision.assumption.is_some() {
+                smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, gcd_expr)]
+            } else {
+                Default::default()
+            },
         });
     }
 );
