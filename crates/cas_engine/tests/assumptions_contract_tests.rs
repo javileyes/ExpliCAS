@@ -205,6 +205,56 @@ fn legacy_string_parsing() {
     assert_eq!(event.key.kind(), "defined");
 }
 
+/// Test: from_legacy_string parses known patterns (whitelist validation)
+/// This test ensures that all known domain_assumption strings in the codebase
+/// are correctly parsed by from_legacy_string(). If this test fails after
+/// adding a new domain_assumption string, add a case here.
+///
+/// NOTE: Parser precedence is: nonzero > defined > positive > principal_range
+/// Strings matching multiple patterns will use the first match.
+#[test]
+fn legacy_string_parsing_whitelist() {
+    use cas_engine::assumptions::AssumptionEvent;
+
+    // Known domain_assumption strings and their expected kinds
+    // Note: strings containing "≠ 0" or "!= 0" will always be nonzero
+    let whitelist = [
+        // NonZero patterns (highest precedence - contains ≠ 0 or != 0)
+        ("Assuming denominator ≠ 0", "nonzero"),
+        ("Assuming x ≠ 0", "nonzero"),
+        ("Assumed divisor != 0", "nonzero"),
+        ("Assuming factor ≠ 0 for cancellation", "nonzero"),
+        // NOTE: This contains "≠ 0" so it matches nonzero, not defined
+        (
+            "Assuming expression is defined (denominators ≠ 0)",
+            "nonzero",
+        ),
+        // Defined patterns (only if no ≠ 0 present)
+        ("Assuming expression is defined", "defined"),
+        // Positive patterns
+        ("Assuming x > 0", "positive"),
+        ("Assumed base positive for real result", "positive"),
+        // Principal range patterns
+        (
+            "Assuming principal value for arctan(tan(x))",
+            "principal_range",
+        ),
+        ("Using principal branch", "principal_range"),
+    ];
+
+    for (message, expected_kind) in whitelist {
+        let event = AssumptionEvent::from_legacy_string(message);
+        assert_eq!(
+            event.key.kind(),
+            expected_kind,
+            "String '{}' should parse to kind '{}', got '{}'",
+            message,
+            expected_kind,
+            event.key.kind()
+        );
+    }
+}
+
 /// Test: SimplifyOptions includes assumption_reporting
 #[test]
 fn simplify_options_has_assumption_reporting() {
