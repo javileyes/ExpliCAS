@@ -135,55 +135,23 @@ semantics set reporting trace   # Future: include step refs
 - Default: `Off` (conservative)
 
 ### Phase 3 (PR-A3): Engine Wiring ✅
-- `Orchestrator.simplify_pipeline` collects from `Step.domain_assumption`
+- `Orchestrator.simplify_pipeline` collects from `Step.assumption_events`
 - `PipelineStats.assumptions` field
 - `EngineJsonResponse.assumptions` field
 - REPL summary line in `do_simplify`
 
-### Phase 4 (PR-A4): Structured Emission — Dual Channel
+### Phase 4 (PR-A4): Structured Emission ✅
 
-**Status**: ⏳ Deferred (requires AST-based codemod)
+**Status**: ✅ Complete (2025-12-28)
 
-**Goal**: Add `assumption_events: SmallVec<[AssumptionEvent; 1]>` field to `Rewrite` struct.
+**Migration Completed**:
+1. Added `assumption_events: SmallVec<[AssumptionEvent; 1]>` to `Rewrite` struct
+2. Migrated all 18 hotspot rules to emit structured `AssumptionEvent`s
+3. **Removed legacy `domain_assumption` field** from `Rewrite` and `Step` (316+ instances via codemod)
+4. Updated engine propagation: `rewrite.assumption_events` → `step.assumption_events`
+5. Updated `eval.rs`, `orchestrator.rs`, `timeline.rs` to use only `assumption_events`
 
-**Why not sed/perl?** The codebase has ~656 `Rewrite { ... }` struct literals. Regex-based approaches fail because:
-- Rust uses `{}` for both struct literals and format strings
-- Regex cannot distinguish `Rewrite { ... }` from `format!("...{}")`
-- Multi-line regex with backtracking corrupts format strings
-
-**Correct Approach**: AST-based codemod using `syn`:
-
-```rust
-// tools/rewrite_codemod/src/main.rs
-use syn::{parse_file, visit_mut::VisitMut};
-
-struct RewriteInserter;
-
-impl VisitMut for RewriteInserter {
-    fn visit_expr_struct_mut(&mut self, node: &mut syn::ExprStruct) {
-        let is_rewrite = node.path.segments.last()
-            .map(|s| s.ident == "Rewrite").unwrap_or(false);
-        
-        if is_rewrite && !node.fields.iter().any(|f| 
-            matches!(&f.member, syn::Member::Named(id) if id == "assumption_events")
-        ) {
-            let fv: syn::FieldValue = syn::parse_quote! {
-                assumption_events: Default::default()
-            };
-            node.fields.push(fv);
-        }
-        syn::visit_mut::visit_expr_struct_mut(self, node);
-    }
-}
-```
-
-**Migration Contract**:
-1. Add field to `Rewrite` struct
-2. Run syn codemod on all `.rs` files
-3. `cargo fmt && cargo test`
-4. Lint: prohibit `domain_assumption: Some(_)` when structured event exists
-
-**Current Mitigation**: `from_legacy_string()` provides compatibility layer. The whitelist test in `assumptions_contract_tests.rs` ensures legacy strings parse correctly.
+**Codemod Pattern Used**: Python dry-run script with brace-counting (see `scripts/remove_domain_assumption.py`)
 
 ### Phase 5 (Future): User-Declared Assumptions
 - User constraints: `assume x > 0`
@@ -201,22 +169,29 @@ impl VisitMut for RewriteInserter {
 | JSON surface | ✅ Complete |
 | Contract tests (12+) | ✅ Passing |
 | Legacy string parsing | ✅ Complete |
-| Structured emission from rules | ⏳ Future |
+| **Structured emission from rules** | **✅ Complete** |
+| **`domain_assumption` field removed** | **✅ Zero-Debt** |
 
-## Audit Hotspots
+## Migrated Hotspots (Completed 2025-12-28)
 
-Rules that currently emit `domain_assumption` strings (candidates for PR-A4 migration):
+All 18 rules that previously emitted `domain_assumption` strings have been migrated to structured `AssumptionEvent`s:
 
-| Rule | File | Assumption Kind |
-|------|------|-----------------|
-| `GcdCancelRule` | fractions.rs | NonZero |
-| `DivZeroRule` | arithmetic.rs | NonZero |
-| `AddInverseRule` | arithmetic.rs | Defined |
-| `AnnihilationRule` | polynomial.rs | Defined |
-| `CombineSameDenominatorFractionsRule` | fractions.rs | NonZero |
-| `CombineLikeTermsRule` | polynomial.rs | Defined |
-| InvTrig composition rules | trigonometry.rs | PrincipalRange |
-| Complex branch rules | complex.rs | PrincipalBranch |
+| Rule | File | Assumption Kind | Factory Used |
+|------|------|-----------------|--------------|
+| `DivZeroRule` | arithmetic.rs | NonZero | `AssumptionEvent::nonzero()` |
+| `SimplifyFractionRule` (GCD) | fractions.rs | NonZero | `AssumptionEvent::nonzero()` |
+| `AddInverseRule` | arithmetic.rs | Defined | `AssumptionEvent::defined()` |
+| `IdentityPowerRule` (x^0) | exponents.rs | NonZero | `AssumptionEvent::nonzero()` |
+| `IdentityPowerRule` (0^x) | exponents.rs | Positive | `AssumptionEvent::positive()` |
+| `EvaluateLogRule` | logarithms.rs | Positive | `AssumptionEvent::positive()` |
+| `LogExpansionRule` | logarithms.rs | Positive | `AssumptionEvent::positive()` |
+| `ExponentialLogRule` | logarithms.rs | Positive | `AssumptionEvent::positive()` |
+| `LogExpInverseRule` | logarithms.rs | Positive | `AssumptionEvent::positive()` |
+| `CosProductTelescopingRule` | integration.rs | NonZero | `AssumptionEvent::nonzero()` |
+| `LiftConjugateToSqrtRule` | fractions.rs | Defined | `AssumptionEvent::defined()` |
+| `PrincipalBranchInverseTrigRule` | inverse_trig.rs | InvTrigPrincipalRange | `AssumptionEvent::inv_trig_principal_range()` |
+| `InverseTrigCompositionRule` (sin∘arcsin) | inverse_trig.rs | Defined | `AssumptionEvent::defined()` |
+| `InverseTrigCompositionRule` (cos∘arccos) | inverse_trig.rs | Defined | `AssumptionEvent::defined()` |
 
 ## Test Contracts
 
