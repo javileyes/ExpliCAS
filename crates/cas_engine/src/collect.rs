@@ -1,53 +1,143 @@
 use crate::build::mul2_raw;
 use crate::helpers::flatten_add_sub_chain;
+use crate::parent_context::ParentContext;
+use crate::DomainMode;
 use cas_ast::{Context, Expr, ExprId};
 
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 
-/// Collects like terms in an expression.
+/// Result of a semantics-aware collection operation.
+/// Contains the new expression and an optional domain assumption if one was made.
+#[derive(Debug, Clone)]
+pub struct CollectResult {
+    pub new_expr: ExprId,
+    pub assumption: Option<String>,
+}
+
+/// Check if an expression contains any Div with a denominator that is not proven non-zero.
+/// This indicates "undefined risk" - the expression could be undefined at some points.
+pub fn has_undefined_risk(ctx: &Context, expr: ExprId) -> bool {
+    use crate::domain::Proof;
+    use crate::helpers::prove_nonzero;
+
+    let mut stack = vec![expr];
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Div(num, den) => {
+                if prove_nonzero(ctx, *den) != Proof::Proven {
+                    return true;
+                }
+                // Still need to check num for nested issues
+                stack.push(*num);
+                stack.push(*den);
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => {
+                stack.push(*inner);
+            }
+            Expr::Function(_, args) => {
+                for arg in args {
+                    stack.push(*arg);
+                }
+            }
+            // Leaf nodes: nothing to push
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Collects like terms with domain_mode awareness.
+/// In Strict mode, refuses to cancel terms that might be undefined.
+/// In Assume mode, cancels with a warning.
+/// In Generic mode, cancels unconditionally.
+///
+/// Returns None if the result would be identical to input or if blocked by Strict mode.
+pub fn collect_with_semantics(
+    ctx: &mut Context,
+    expr: ExprId,
+    parent_ctx: &ParentContext,
+) -> Option<CollectResult> {
+    // CRITICAL: Do NOT collect non-commutative expressions (e.g., matrices)
+    if !ctx.is_mul_commutative(expr) {
+        return None;
+    }
+
+    // Check for undefined risk in the entire expression
+    let risk = has_undefined_risk(ctx, expr);
+    let domain_mode = parent_ctx.domain_mode();
+
+    // Determine if we should proceed based on domain_mode
+    let (allowed, assumption) = match domain_mode {
+        DomainMode::Strict => {
+            if risk {
+                // In Strict mode, don't cancel terms with undefined risk
+                (false, None)
+            } else {
+                (true, None)
+            }
+        }
+        DomainMode::Assume => {
+            // In Assume mode, allow with warning if there's risk
+            let assumption = if risk {
+                Some("Assuming expression is defined (denominators ≠ 0)".to_string())
+            } else {
+                None
+            };
+            (true, assumption)
+        }
+        DomainMode::Generic => {
+            // In Generic mode, always allow without warning
+            (true, None)
+        }
+    };
+
+    if !allowed {
+        return None;
+    }
+
+    // Run the actual collection logic
+    let new_expr = collect_impl(ctx, expr);
+
+    // Only return if something changed
+    if new_expr == expr {
+        return None;
+    }
+
+    Some(CollectResult {
+        new_expr,
+        assumption,
+    })
+}
+
+/// Collects like terms in an expression (legacy wrapper, uses Generic mode).
 /// e.g. 2*x + 3*x -> 5*x
 ///      x + x -> 2*x
 ///      x^2 + 2*x^2 -> 3*x^2
 pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
+    // Use Generic mode for backward compatibility (no blocking, no warnings)
+    let fake_parent = ParentContext::root();
+    match collect_with_semantics(ctx, expr, &fake_parent) {
+        Some(result) => result.new_expr,
+        None => expr, // No change or blocked
+    }
+}
+
+/// Internal implementation of collect logic (no semantics checking)
+fn collect_impl(ctx: &mut Context, expr: ExprId) -> ExprId {
     // CRITICAL: Do NOT collect non-commutative expressions (e.g., matrices)
-    // Matrix addition/subtraction has dedicated rules (MatrixAddRule, MatrixSubRule)
-    // Collecting M + M would incorrectly produce 2*M
     if !ctx.is_mul_commutative(expr) {
         return expr;
     }
 
-    // 1. Check if expression is an Add/Sub chain
-    // We used to bail out if not Add/Sub, but we want to handle Neg(Neg(x)) -> x
-    // and other simplifications even for single terms.
-    // So we proceed regardless.
-
-    // let expr_data = ctx.get(expr).clone();
-    // match expr_data {
-    //     Expr::Add(_, _) | Expr::Sub(_, _) => {
-    //         // Proceed to collect
-    //     },
-    //     _ => return expr, // Nothing to collect at top level
-    // }
-
-    // 2. Flatten terms (using shared helper from crate::helpers)
+    // Flatten terms (using shared helper from crate::helpers)
     let terms = flatten_add_sub_chain(ctx, expr);
 
-    // 3. Group terms by their "non-coefficient" part
-    // We need a canonical representation of the term without its numerical coefficient.
-    // e.g. 2*x -> (2, x)
-    //      x -> (1, x)
-    //      3*x*y -> (3, x*y)
-    //      5 -> (5, 1)
-
-    // Map: TermSignature -> Coefficient
-    // We can't use ExprId as key directly because we want structural equality,
-    // but for now let's assume canonicalization handles structural equality or we use a string key?
-    // Using a string key is slow but safe for now.
-    // Better: Use a helper to extract (coeff, rest) and compare 'rest' structurally.
-
-    // Let's use a Vec of groups to avoid complex hashing for now.
-    // Vec<(coeff, term_part)>
+    // Group terms by their "non-coefficient" part
     let mut groups: Vec<(BigRational, ExprId)> = Vec::new();
 
     for term in terms {
@@ -71,7 +161,7 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
     // Sort groups to ensure canonical order
     groups.sort_by(|a, b| crate::ordering::compare_expr(ctx, a.1, b.1));
 
-    // 4. Reconstruct expression
+    // Reconstruct expression
     let mut new_terms = Vec::new();
     for (coeff, term_part) in groups {
         if coeff.is_zero() {
@@ -103,9 +193,6 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
     // Construct Add chain (Right-Associative to match CanonicalizeAddRule)
     let mut result = *new_terms.last().unwrap();
     for t in new_terms.iter().rev().skip(1) {
-        // Optimization: Handle negative terms?
-        // For right-associative, it's harder to peek.
-        // Let's just use Add for now.
         result = ctx.add(Expr::Add(*t, result));
     }
 

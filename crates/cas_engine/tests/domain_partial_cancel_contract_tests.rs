@@ -107,12 +107,19 @@ fn strict_cancels_gcd_of_integer_coefficients() {
 
 #[test]
 fn strict_zero_numerator_no_spurious_cancel() {
-    // 0 / (2*x) should NOT become 0/x or 0/anything else
-    // The numerator is 0, content gcd with 0 is the other content (2),
-    // but this should simplify to just 0 anyway, NOT do weird partial cancel.
+    // 0 / (2*x) in STRICT mode:
+    // Since 2*x is not proven nonzero (x could be 0), and 0/(2*x) is undefined at x=0
+    // but 0 is defined everywhere, Strict does NOT simplify this expression.
+    // This preserves the original domain of definition.
     let got = simplify_strict("0/(2*x)");
-    // Should become 0 (zero divided by anything nonzero is zero)
-    assert_eq!(got, "0", "0/(2*x) should simplify to 0, got: {}", got);
+    // Should NOT become 0 in Strict (that would change the domain)
+    assert!(
+        got.contains("0") && got.contains("/") && got.contains("x"),
+        "0/(2*x) should stay as 0/(2*x) in Strict mode, got: {}",
+        got
+    );
+    // Key contract: NOT simplified to just 0
+    assert_ne!(got, "0", "Strict should NOT simplify 0/(2*x) to 0");
 }
 
 #[test]

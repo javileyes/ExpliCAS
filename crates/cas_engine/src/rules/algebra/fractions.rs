@@ -3389,12 +3389,18 @@ define_rule!(
 // For expressions like: 1 + (a)/(d) - (b)/(d) + x
 // This rule groups fractions with the same denominator and combines them:
 // → 1 + (a - b)/(d) + x
+//
+// Domain Mode Policy:
+// - Strict: only combine if prove_nonzero(d) == Proven
+// - Assume: combine with domain_assumption warning "Assuming d ≠ 0"
+// - Generic: combine unconditionally (educational mode)
 
 define_rule!(
     CombineSameDenominatorFractionsRule,
     "Combine Same Denominator Fractions",
-    |ctx, expr| {
-        use crate::helpers::flatten_add_sub_chain;
+    |ctx, expr, parent_ctx| {
+        use crate::domain::Proof;
+        use crate::helpers::{flatten_add_sub_chain, prove_nonzero};
         use std::collections::HashMap;
 
         // Only handle Add or Sub at root
@@ -3465,6 +3471,33 @@ define_rule!(
 
         // Take the first combinable group
         let (common_den, group) = &combinable_groups[0];
+
+        // DOMAIN MODE GATE: Check if denominator is provably non-zero
+        let den_nonzero = prove_nonzero(ctx, *common_den);
+        let domain_mode = parent_ctx.domain_mode();
+
+        // Determine if we should proceed and what warning to emit
+        let domain_assumption: Option<&str> = match domain_mode {
+            crate::DomainMode::Strict => {
+                // Only combine if denominator is provably non-zero
+                if den_nonzero != Proof::Proven {
+                    return None;
+                }
+                None
+            }
+            crate::DomainMode::Assume => {
+                // Combine with warning if not proven
+                if den_nonzero != Proof::Proven {
+                    Some("Assuming denominator ≠ 0")
+                } else {
+                    None
+                }
+            }
+            crate::DomainMode::Generic => {
+                // Educational mode: combine unconditionally
+                None
+            }
+        };
 
         // Combine numerators: n1 + n2 + ... (handle negation)
         let combined_num_terms: Vec<ExprId> = group
@@ -3545,7 +3578,7 @@ define_rule!(
             description: "Combine fractions with same denominator".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
+            domain_assumption,
         })
     }
 );

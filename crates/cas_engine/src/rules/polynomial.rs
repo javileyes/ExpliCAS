@@ -576,7 +576,46 @@ fn flatten_additive_terms(
     }
 }
 
-define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
+// AnnihilationRule: Detects and cancels terms like x - x or __hold(sum) - sum
+// Domain Mode Policy: Like AddInverseRule, we must respect domain_mode
+// because if `x` can be undefined (e.g., a/(a-1) when a=1), then x - x
+// is undefined, not 0.
+// - Strict: only if no term contains potentially-undefined subexpressions
+// - Assume: always apply (educational mode assumption: all expressions are defined)
+// - Generic: same as Assume
+define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
+    use crate::domain::Proof;
+    use crate::helpers::prove_nonzero;
+
+    // Helper: check if expression contains any Div with non-literal denominator
+    fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+        let mut stack = vec![expr];
+        while let Some(e) = stack.pop() {
+            match ctx.get(e) {
+                Expr::Div(_, den) => {
+                    if prove_nonzero(ctx, *den) != Proof::Proven {
+                        return true;
+                    }
+                    stack.push(*den);
+                }
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                    stack.push(*l);
+                    stack.push(*r);
+                }
+                Expr::Neg(inner) => {
+                    stack.push(*inner);
+                }
+                Expr::Function(_, args) => {
+                    for arg in args {
+                        stack.push(*arg);
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
     // Only process Add/Sub expressions
     let expr_data = ctx.get(expr).clone();
     if !matches!(expr_data, Expr::Add(_, _) | Expr::Sub(_, _)) {
@@ -610,13 +649,29 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
             if poly_equal(ctx, unwrapped_i, unwrapped_j) {
                 // These terms cancel. If they're the only 2 terms, result is 0
                 if terms.len() == 2 {
+                    // DOMAIN MODE GATE: Check for undefined risk
+                    let domain_mode = parent_ctx.domain_mode();
+                    let either_has_risk =
+                        has_undefined_risk(ctx, *term_i) || has_undefined_risk(ctx, *term_j);
+
+                    if domain_mode == crate::DomainMode::Strict && either_has_risk {
+                        return None;
+                    }
+
+                    let domain_assumption =
+                        if domain_mode == crate::DomainMode::Assume && either_has_risk {
+                            Some("Assuming expression is defined")
+                        } else {
+                            None
+                        };
+
                     let zero = ctx.num(0);
                     return Some(Rewrite {
                         new_expr: zero,
                         description: "x - x = 0".to_string(),
                         before_local: None,
                         after_local: None,
-                        domain_assumption: None,
+                        domain_assumption,
                     });
                 }
             }
@@ -712,37 +767,51 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr| {
     None
 });
 
-define_rule!(CombineLikeTermsRule, "Combine Like Terms", |ctx, expr| {
-    // Only try to collect if it's an Add or Mul, as those are the main things collect handles
-    // (and Pow for constant folding, but that's handled elsewhere usually)
-    let is_add_or_mul = matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Mul(_, _));
+// CombineLikeTermsRule: Collects like terms in Add/Mul expressions
+// Now uses collect_with_semantics for domain_mode awareness:
+// - Strict: refuses to cancel terms with undefined risk (e.g., x/(x+1) - x/(x+1))
+// - Assume: cancels with domain_assumption warning
+// - Generic: cancels unconditionally
+define_rule!(
+    CombineLikeTermsRule,
+    "Combine Like Terms",
+    |ctx, expr, parent_ctx| {
+        // Only try to collect if it's an Add or Mul
+        let is_add_or_mul = matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Mul(_, _));
 
-    if is_add_or_mul {
-        // CRITICAL: Do NOT apply to non-commutative expressions (e.g., matrices)
-        // Matrix addition/subtraction has dedicated rules (MatrixAddRule, MatrixSubRule)
-        // and collect() incorrectly simplifies M + M to 2*M
-        if !ctx.is_mul_commutative(expr) {
-            return None;
-        }
-
-        let new_expr = crate::collect::collect(ctx, expr);
-        if new_expr != expr {
-            // Check if structurally different to avoid infinite loops with ID regeneration
-            if crate::ordering::compare_expr(ctx, new_expr, expr) == Ordering::Equal {
+        if is_add_or_mul {
+            // CRITICAL: Do NOT apply to non-commutative expressions (e.g., matrices)
+            if !ctx.is_mul_commutative(expr) {
                 return None;
             }
 
+            // Use semantics-aware collect that respects domain_mode
+            let result = crate::collect::collect_with_semantics(ctx, expr, parent_ctx)?;
+
+            // Check if structurally different to avoid infinite loops with ID regeneration
+            if crate::ordering::compare_expr(ctx, result.new_expr, expr) == Ordering::Equal {
+                return None;
+            }
+
+            // Convert Option<String> to Option<&'static str> for the Rewrite
+            let domain_assumption: Option<&'static str> = match &result.assumption {
+                Some(s) if s.contains("denominators") => {
+                    Some("Assuming expression is defined (denominators ≠ 0)")
+                }
+                _ => None,
+            };
+
             return Some(Rewrite {
-                new_expr,
-                description: "Global Combine Like Terms".to_string(),
+                new_expr: result.new_expr,
+                description: "Combine like terms".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption: None,
+                domain_assumption,
             });
         }
+        None
     }
-    None
-});
+);
 
 /// Count the number of terms in a sum/difference expression
 /// Returns the count of additive terms (flattening nested Add/Sub)

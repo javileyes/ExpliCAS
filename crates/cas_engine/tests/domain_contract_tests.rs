@@ -413,11 +413,20 @@ fn test_prove_positive_exp_always_positive() {
 
     let mut ctx = Context::new();
 
+    // exp(x) with variable: Unknown (can't prove x is real in ComplexEnabled context)
     let x = ctx.var("x");
     let exp_x = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![x]));
+    assert_eq!(prove_positive(&ctx, exp_x), Proof::Unknown);
 
-    // exp(x) > 0 for all real x
-    assert_eq!(prove_positive(&ctx, exp_x), Proof::Proven);
+    // exp(literal): Proven (literal is always real)
+    let two = ctx.num(2);
+    let exp_two = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![two]));
+    assert_eq!(prove_positive(&ctx, exp_two), Proof::Proven);
+
+    // exp(π): Proven (constant is real)
+    let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
+    let exp_pi = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![pi]));
+    assert_eq!(prove_positive(&ctx, exp_pi), Proof::Proven);
 }
 
 // =============================================================================

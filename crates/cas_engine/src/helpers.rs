@@ -524,8 +524,19 @@ pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
             }
         }
 
-        // exp(x) > 0 for all real x
-        Expr::Function(name, _) if name == "exp" => Proof::Proven,
+        // exp(x) > 0 for all real x, but NOT for complex x (no total order in ℂ)
+        // Since we can't prove x is real without ValueDomain context, be conservative
+        // Only return Proven for exp(literal) where literal > 0
+        Expr::Function(name, args) if name == "exp" && args.len() == 1 => {
+            // exp(positive_literal) > 0 is safe
+            // For general exp(x), we return Unknown (could be complex)
+            match ctx.get(args[0]) {
+                Expr::Number(_)
+                | Expr::Constant(cas_ast::Constant::Pi)
+                | Expr::Constant(cas_ast::Constant::E) => Proof::Proven,
+                _ => Proof::Unknown,
+            }
+        }
 
         // sqrt(x) with x > 0 gives positive result
         Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {

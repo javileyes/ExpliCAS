@@ -101,33 +101,79 @@ define_rule!(
     }
 );
 
-define_rule!(DivZeroRule, "Zero Property of Division", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Div(lhs, rhs) = expr_data {
-        if let Expr::Number(n) = ctx.get(lhs) {
-            if n.is_zero() {
-                // Check if denominator is zero?
-                // Ideally yes, but for symbolic simplification we often assume non-zero.
-                // If denominator is explicitly zero, CombineConstantsRule handles it (or we can check).
-                if let Expr::Number(d) = ctx.get(rhs) {
-                    if d.is_zero() {
-                        return None; // Undefined
+// DivZeroRule: 0/d → 0
+// Domain Mode Policy: 0/d → 0 changes the domain of definition if d can be 0.
+// In Strict mode, the expression 0/(x+1) is undefined at x=-1, but 0 is defined everywhere.
+// - Strict: only apply if prove_nonzero(d) == Proven
+// - Assume: apply with domain_assumption warning "Assuming d ≠ 0"
+// - Generic: apply unconditionally (educational mode)
+define_rule!(
+    DivZeroRule,
+    "Zero Property of Division",
+    |ctx, expr, parent_ctx| {
+        use crate::domain::Proof;
+        use crate::helpers::prove_nonzero;
+
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Div(num, den) = expr_data {
+            // Check if numerator is 0
+            let num_is_zero = matches!(ctx.get(num), Expr::Number(n) if n.is_zero());
+            if !num_is_zero {
+                return None;
+            }
+
+            // Special case: 0/0 → undefined (all modes)
+            if let Expr::Number(d) = ctx.get(den) {
+                if d.is_zero() {
+                    let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                    return Some(Rewrite {
+                        new_expr: undef,
+                        description: "0/0 is undefined".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        domain_assumption: None,
+                    });
+                }
+            }
+
+            // Domain-aware decision for 0/d → 0
+            let den_nonzero = prove_nonzero(ctx, den);
+            let domain_mode = parent_ctx.domain_mode();
+
+            let domain_assumption: Option<&str> = match domain_mode {
+                crate::DomainMode::Strict => {
+                    // Only apply if denominator is provably non-zero
+                    if den_nonzero != Proof::Proven {
+                        return None;
+                    }
+                    None
+                }
+                crate::DomainMode::Assume => {
+                    // Apply with warning if not proven
+                    if den_nonzero != Proof::Proven {
+                        Some("Assuming denominator ≠ 0")
+                    } else {
+                        None
                     }
                 }
+                crate::DomainMode::Generic => {
+                    // Educational mode: apply unconditionally
+                    None
+                }
+            };
 
-                let zero = ctx.num(0);
-                return Some(Rewrite {
-                    new_expr: zero,
-                    description: "0 / x = 0".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
-            }
+            let zero = ctx.num(0);
+            return Some(Rewrite {
+                new_expr: zero,
+                description: "0 / d = 0".to_string(),
+                before_local: None,
+                after_local: None,
+                domain_assumption,
+            });
         }
+        None
     }
-    None
-});
+);
 
 define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
     // We need to clone data to avoid borrowing ctx while mutating it later
@@ -392,33 +438,88 @@ mod tests {
     }
 }
 
-define_rule!(AddInverseRule, "Add Inverse", |ctx, expr| {
+// AddInverseRule: a + (-a) = 0
+// Domain Mode Policy: Like other cancellation rules, we must respect domain_mode
+// because if `a` can be undefined (e.g., x/(x+1) when x=-1), then a + (-a)
+// is undefined, not 0.
+// - Strict: only if `a` contains no potentially-undefined subexpressions (no variable denominator)
+// - Assume: always apply (educational mode assumption: all expressions are defined)
+// - Generic: same as Assume
+define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
+    use crate::domain::Proof;
+    use crate::helpers::prove_nonzero;
+
+    // Helper: check if expression contains any Div with non-literal denominator
+    fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+        let mut stack = vec![expr];
+        while let Some(e) = stack.pop() {
+            match ctx.get(e) {
+                Expr::Div(_, den) => {
+                    // If denominator is not a proven nonzero literal, there's risk
+                    if prove_nonzero(ctx, *den) != Proof::Proven {
+                        return true;
+                    }
+                    stack.push(*den);
+                }
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                    stack.push(*l);
+                    stack.push(*r);
+                }
+                Expr::Neg(inner) => {
+                    stack.push(*inner);
+                }
+                Expr::Function(_, args) => {
+                    for arg in args {
+                        stack.push(*arg);
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
     // Pattern: a + (-a) = 0 or (-a) + a = 0
     if let Expr::Add(l, r) = ctx.get(expr) {
+        let mut matched_inner: Option<cas_ast::ExprId> = None;
+
         // Check if r = -l or l = -r
         if let Expr::Neg(neg_inner) = ctx.get(*r) {
             if *neg_inner == *l {
-                // a + (-a) = 0
-                return Some(Rewrite {
-                    new_expr: ctx.num(0),
-                    description: "a + (-a) = 0".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
+                matched_inner = Some(*l);
             }
         }
-        if let Expr::Neg(neg_inner) = ctx.get(*l) {
-            if *neg_inner == *r {
-                // (-a) + a = 0
-                return Some(Rewrite {
-                    new_expr: ctx.num(0),
-                    description: "(-a) + a = 0".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                });
+        if matched_inner.is_none() {
+            if let Expr::Neg(neg_inner) = ctx.get(*l) {
+                if *neg_inner == *r {
+                    matched_inner = Some(*r);
+                }
             }
+        }
+
+        if let Some(inner) = matched_inner {
+            let domain_mode = parent_ctx.domain_mode();
+
+            // In Strict mode, check for undefined risk
+            if domain_mode == crate::DomainMode::Strict && has_undefined_risk(ctx, inner) {
+                return None;
+            }
+
+            // Determine warning for Assume mode with undefined risk
+            let domain_assumption =
+                if domain_mode == crate::DomainMode::Assume && has_undefined_risk(ctx, inner) {
+                    Some("Assuming expression is defined")
+                } else {
+                    None
+                };
+
+            return Some(Rewrite {
+                new_expr: ctx.num(0),
+                description: "a + (-a) = 0".to_string(),
+                before_local: None,
+                after_local: None,
+                domain_assumption,
+            });
         }
     }
     None
