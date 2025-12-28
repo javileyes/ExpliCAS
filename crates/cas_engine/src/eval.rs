@@ -136,6 +136,7 @@ pub struct EvalOutput {
 }
 
 /// Collect domain warnings from steps with deduplication.
+/// Collects both legacy domain_assumption strings AND structured assumption_events.
 fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
     use std::collections::HashSet;
 
@@ -143,8 +144,21 @@ fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
     let mut warnings = Vec::new();
 
     for step in steps {
+        // Collect legacy domain_assumption strings
         if let Some(msg) = &step.domain_assumption {
             let msg_str = msg.to_string();
+            if !seen.contains(&msg_str) {
+                seen.insert(msg_str.clone());
+                warnings.push(DomainWarning {
+                    message: msg_str,
+                    rule_name: step.rule_name.clone(),
+                });
+            }
+        }
+
+        // Collect structured assumption_events (priority channel)
+        for event in &step.assumption_events {
+            let msg_str = event.message.clone();
             if !seen.contains(&msg_str) {
                 seen.insert(msg_str.clone());
                 warnings.push(DomainWarning {

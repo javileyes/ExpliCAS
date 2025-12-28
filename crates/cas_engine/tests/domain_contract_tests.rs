@@ -508,7 +508,7 @@ fn log_product_strict_no_expand_variables() {
 #[test]
 fn log_product_assume_expands_with_warning() {
     use cas_engine::semantics::ValueDomain;
-    let (result, _warnings) = simplify_with_domain_value(
+    let (result, warnings) = simplify_with_domain_value(
         "ln(x*y)",
         cas_engine::DomainMode::Assume,
         ValueDomain::RealOnly,
@@ -521,10 +521,13 @@ fn log_product_assume_expands_with_warning() {
         result
     );
 
-    // NOTE: LogExpansionRule now uses structured assumption_events (Positive(x), Positive(y))
-    // instead of legacy domain_assumption strings. The Step.assumption_events IS populated,
-    // but Engine.domain_warnings (which comes from Step.domain_assumption) will be empty.
-    // This is expected during the dual-channel migration period.
+    // LogExpansionRule emits Positive(x) and Positive(y) structured assumptions
+    // which are now wired through to domain_warnings
+    assert!(
+        !warnings.is_empty(),
+        "Expected assumption warning in Assume mode, got: {:?}",
+        warnings
+    );
 }
 
 /// CONTRACT: ln(z*w) does NOT expand in Complex domain (branch cut safety)
