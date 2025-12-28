@@ -2,6 +2,7 @@
 // See too_many_arguments allows in: inverse_trig.rs, gcd_zippel_modp.rs (×2), step.rs
 // See arc_with_non_send_sync allows in: profile_cache.rs
 
+pub mod assumptions;
 pub mod auto_expand_scan;
 pub mod budget;
 pub mod canonical_forms;
@@ -70,6 +71,9 @@ pub use engine::{strip_all_holds, Simplifier};
 pub use error::CasError;
 pub use eval::*;
 // JSON API exports (canonical for CLI/FFI)
+pub use assumptions::{
+    AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionRecord, AssumptionReporting,
+};
 pub use domain::{can_cancel_factor, CancelDecision, DomainMode, Proof};
 pub use json::{
     eval_str_to_json, substitute_str_to_json, BudgetExceededJson, BudgetJsonInfo, BudgetOpts,

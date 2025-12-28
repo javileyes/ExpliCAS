@@ -295,6 +295,9 @@ pub struct SimplifyOptions {
 
     /// Branch policy for multi-valued functions (only if ComplexEnabled).
     pub branch: crate::semantics::BranchPolicy,
+
+    /// Assumption reporting level (Off, Summary, Trace).
+    pub assumption_reporting: crate::assumptions::AssumptionReporting,
 }
 
 impl Default for SimplifyOptions {
@@ -312,6 +315,7 @@ impl Default for SimplifyOptions {
             inv_trig: crate::semantics::InverseTrigPolicy::default(), // Strict
             value_domain: crate::semantics::ValueDomain::default(), // RealOnly
             branch: crate::semantics::BranchPolicy::default(), // Principal
+            assumption_reporting: crate::assumptions::AssumptionReporting::Summary, // Default to Summary
         }
     }
 }

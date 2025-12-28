@@ -109,6 +109,8 @@ pub struct EvalOptions {
     pub branch: crate::semantics::BranchPolicy,
     /// Constant folding mode (Off or Safe)
     pub const_fold: crate::const_fold::ConstFoldMode,
+    /// Assumption reporting level (Off, Summary, Trace)
+    pub assumption_reporting: crate::assumptions::AssumptionReporting,
 }
 
 impl EvalOptions {
@@ -168,6 +170,7 @@ impl EvalOptions {
             inv_trig: self.inv_trig,
             value_domain: self.value_domain,
             branch: self.branch,
+            assumption_reporting: self.assumption_reporting,
             ..Default::default()
         }
     }
