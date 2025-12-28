@@ -540,7 +540,6 @@ define_rule!(
                             ),
                             before_local: Some(factored_form),
                             after_local: Some(new_num),
-                            domain_assumption: decision.assumption,
                             assumption_events: if decision.assumption.is_some() {
                                 smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(
                                     ctx, gcd_expr
@@ -565,7 +564,6 @@ define_rule!(
                     ),
                     before_local: Some(factored_form),
                     after_local: Some(result),
-                    domain_assumption: decision.assumption,
                     assumption_events: if decision.assumption.is_some() {
                         smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(
                             ctx, gcd_expr
@@ -653,7 +651,6 @@ define_rule!(
                     ),
                     before_local: Some(expr),
                     after_local: Some(result),
-                    domain_assumption: None, // No assumption needed for numeric cancel,
                     assumption_events: Default::default(),
                 });
             }
@@ -689,7 +686,6 @@ define_rule!(
                     ),
                     before_local: Some(factored_form),
                     after_local: Some(new_num),
-                    domain_assumption: decision.assumption,
                     assumption_events: if decision.assumption.is_some() {
                         smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(
                             ctx, gcd_expr
@@ -713,7 +709,6 @@ define_rule!(
             ),
             before_local: Some(factored_form),
             after_local: Some(result),
-            domain_assumption: decision.assumption,
             assumption_events: if decision.assumption.is_some() {
                 smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, gcd_expr)]
             } else {
@@ -794,7 +789,6 @@ define_rule!(
             description: "Simplify nested fraction".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         });
     }
@@ -839,7 +833,6 @@ define_rule!(
                         description: "Cancel division: (a/b)*b -> a".to_string(),
                         before_local: None,
                         after_local: None,
-                        domain_assumption: None,
                         assumption_events: Default::default(),
                     });
                 }
@@ -864,7 +857,6 @@ define_rule!(
                         description: "Cancel division: a*(b/a) -> b".to_string(),
                         before_local: None,
                         after_local: None,
-                        domain_assumption: None,
                         assumption_events: Default::default(),
                     });
                 }
@@ -911,7 +903,6 @@ define_rule!(
                     description: "Combine fractions in multiplication".to_string(),
                     before_local: None,
                     after_local: None,
-                    domain_assumption: None,
                     assumption_events: Default::default(),
                 });
             }
@@ -1094,7 +1085,6 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                 description: "Add numeric fractions".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption: None,
                 assumption_events: Default::default(),
             });
         }
@@ -1184,7 +1174,6 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                 description: "Add fractions: a/b + c/d -> (ad+bc)/bd".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption: None,
                 assumption_events: Default::default(),
             });
         }
@@ -1264,7 +1253,6 @@ define_rule!(
             description: "Rationalize denominator (diff squares)".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         });
     }
@@ -1407,7 +1395,6 @@ define_rule!(
             description: format!("Rationalize {} root binomial (geometric sum)", ordinal(n)),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         })
     }
@@ -1602,7 +1589,6 @@ define_rule!(
             description: format!("Cancel {} root binomial factor", ordinal(n)),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         })
     }
@@ -1718,7 +1704,6 @@ define_rule!(
             description: "Lift conjugate into sqrt".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption: None, // Using structured assumption
             assumption_events: smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(
                 ctx, other
             )],
@@ -1837,7 +1822,6 @@ define_rule!(
             ),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         })
     }
@@ -1953,7 +1937,6 @@ define_rule!(
                     description: "Rationalize: multiply by √n/√n".to_string(),
                     before_local: None,
                     after_local: None,
-                    domain_assumption: None,
                     assumption_events: Default::default(),
                 });
             }
@@ -2021,7 +2004,6 @@ define_rule!(
                 description: "Rationalize product denominator".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption: None,
                 assumption_events: Default::default(),
             });
         }
@@ -2300,7 +2282,6 @@ define_rule!(
                 description: "Cancel common factors".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption: None,
                 assumption_events: Default::default(),
             });
         }
@@ -2355,7 +2336,6 @@ define_rule!(
                             description: "a^n / a^n = 1".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: decision.assumption,
                             assumption_events: Default::default(),
                         });
                     } else if diff.is_one() {
@@ -2365,7 +2345,6 @@ define_rule!(
                             description: "a^n / a^m = a^(n-m)".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: None,
                             assumption_events: Default::default(),
                         });
                     } else {
@@ -2381,7 +2360,6 @@ define_rule!(
                             description: "a^n / a^m = a^(n-m)".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: None,
                             assumption_events: Default::default(),
                         });
                     }
@@ -2405,7 +2383,6 @@ define_rule!(
                                 description: "a^n / a = a^(n-1)".to_string(),
                                 before_local: None,
                                 after_local: None,
-                                domain_assumption: None,
                                 assumption_events: Default::default(),
                             });
                         } else {
@@ -2416,7 +2393,6 @@ define_rule!(
                                 description: "a^n / a = a^(n-1)".to_string(),
                                 before_local: None,
                                 after_local: None,
-                                domain_assumption: None,
                                 assumption_events: Default::default(),
                             });
                         }
@@ -2443,7 +2419,6 @@ define_rule!(
                             description: "a / a^m = a^(1-m)".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: None,
                             assumption_events: Default::default(),
                         });
                     }
@@ -2482,7 +2457,6 @@ define_rule!(
                     description: "Pull constant from numerator".to_string(),
                     before_local: None,
                     after_local: None,
-                    domain_assumption: None,
                     assumption_events: Default::default(),
                 });
             } else if r_is_const {
@@ -2494,7 +2468,6 @@ define_rule!(
                     description: "Pull constant from numerator".to_string(),
                     before_local: None,
                     after_local: None,
-                    domain_assumption: None,
                     assumption_events: Default::default(),
                 });
             }
@@ -2509,7 +2482,6 @@ define_rule!(
                 description: "Pull negation from numerator".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption: None,
                 assumption_events: Default::default(),
             });
         }
@@ -2723,7 +2695,6 @@ define_rule!(
             description: "Combine fractions with factor-based LCD".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         })
     }
@@ -2870,7 +2841,6 @@ define_rule!(
             ),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         })
     }
@@ -3223,7 +3193,6 @@ define_rule!(
             ),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         })
     }
@@ -3353,7 +3322,6 @@ define_rule!(
             description: "Absorb negation into difference factor".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         })
     }
@@ -3434,7 +3402,6 @@ define_rule!(
             description: "Canonicalize same-tail difference product".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
         })
     }
@@ -3534,7 +3501,8 @@ define_rule!(
         let domain_mode = parent_ctx.domain_mode();
 
         // Determine if we should proceed and what warning to emit
-        let domain_assumption: Option<&str> = match domain_mode {
+        // Note: assumption_events not yet emitted for this rule
+        let _domain_assumption: Option<&str> = match domain_mode {
             crate::DomainMode::Strict => {
                 // Only combine if denominator is provably non-zero
                 if den_nonzero != Proof::Proven {
@@ -3635,7 +3603,6 @@ define_rule!(
             description: "Combine fractions with same denominator".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption,
             assumption_events: Default::default(),
         })
     }

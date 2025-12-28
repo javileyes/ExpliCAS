@@ -1384,11 +1384,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             expr_id,
                             rewrite.new_expr
                         );
-                        // Always accumulate domain_warnings (survives Off mode)
-                        if let Some(assumption) = rewrite.domain_assumption {
-                            self.domain_warnings
-                                .push((rule.name().to_string(), assumption.to_string()));
-                        }
                         if self.steps_mode != StepsMode::Off {
                             let global_before = self.root_expr;
                             let global_after = self.reconstruct_at_path(rewrite.new_expr);
@@ -1405,7 +1400,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             // Propagate local before/after from Rewrite for accurate Rule display
                             step.before_local = rewrite.before_local;
                             step.after_local = rewrite.after_local;
-                            step.domain_assumption = rewrite.domain_assumption;
                             step.assumption_events = rewrite.assumption_events.clone();
                             // Use declarative importance from the Rule
                             step.importance = rule.importance();
@@ -1503,11 +1497,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         expr_id,
                         rewrite.new_expr
                     );
-                    // Always accumulate domain_warnings (survives Off mode)
-                    if let Some(assumption) = rewrite.domain_assumption {
-                        self.domain_warnings
-                            .push((rule.name().to_string(), assumption.to_string()));
-                    }
                     if self.steps_mode != StepsMode::Off {
                         let global_before = self.root_expr;
                         let global_after = self.reconstruct_at_path(rewrite.new_expr);
@@ -1524,18 +1513,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // Propagate local before/after from Rewrite for accurate Rule display
                         step.before_local = rewrite.before_local;
                         step.after_local = rewrite.after_local;
-                        // Propagate domain assumption from Rewrite to Step
-                        step.domain_assumption = rewrite.domain_assumption;
                         step.assumption_events = rewrite.assumption_events.clone();
                         // Use declarative importance from the Rule
                         step.importance = rule.importance();
                         self.steps.push(step);
-                    }
-
-                    // Record domain assumption to profiler if present
-                    if rewrite.domain_assumption.is_some() {
-                        self.profiler
-                            .record_domain_assumption(self.current_phase, rule.name());
                     }
                     expr_id = rewrite.new_expr;
 

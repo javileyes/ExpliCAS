@@ -84,9 +84,7 @@ define_rule!(
                             new_expr: build(ctx),
                             description: desc.to_string(),
                             before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                            assumption_events: Default::default(),
+                            after_local: None,                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -124,9 +122,7 @@ define_rule!(
                                     new_expr: x,
                                     description: format!("{}({}(x)) = x", outer, inner),
                                     before_local: None,
-                                    after_local: None,
-                                    domain_assumption: None,
-                                    assumption_events: Default::default(),
+                                    after_local: None,                                    assumption_events: Default::default(),
                                 });
                             }
                         }
@@ -191,9 +187,7 @@ define_rule!(
                                 new_expr,
                                 description: desc,
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                     }

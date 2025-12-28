@@ -100,9 +100,7 @@ define_rule!(
                     new_expr: new_fn,
                     description: format!("{} → {}", name_clone, canonical),
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
         }
@@ -346,9 +344,7 @@ define_rule!(
                         new_expr: ctx.num(1),
                         description: "sec²(x) - tan²(x) = 1".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -376,9 +372,7 @@ define_rule!(
                         new_expr: ctx.num(1),
                         description: "csc²(x) - cot²(x) = 1".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -407,9 +401,7 @@ define_rule!(
                         new_expr: sec_squared,
                         description: "1 + tan²(x) = sec²(x)".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             } else if is_one(ctx, r_val) {
@@ -421,9 +413,7 @@ define_rule!(
                         new_expr: sec_squared,
                         description: "1 + tan²(x) = sec²(x)".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -451,9 +441,7 @@ define_rule!(
                         new_expr: csc_squared,
                         description: "1 + cot²(x) = csc²(x)".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             } else if is_one(ctx, r_val) {
@@ -465,9 +453,7 @@ define_rule!(
                         new_expr: csc_squared,
                         description: "1 + cot²(x) = csc²(x)".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -507,9 +493,7 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: "sec²(x) - tan²(x) - 1 = 0".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -544,9 +528,7 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: "csc²(x) - cot²(x) - 1 = 0".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -592,9 +574,7 @@ define_rule!(
                     new_expr: ctx.num(1),
                     description: "Reciprocal trig product = 1".to_string(),
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
         }
@@ -648,9 +628,7 @@ define_rule!(
                     new_expr: result,
                     description: "Convert mixed trig fraction to sin/cos".to_string(),
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
         }

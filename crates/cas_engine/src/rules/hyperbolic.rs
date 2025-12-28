@@ -38,9 +38,7 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: format!("{}(0) = 0", name),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -51,9 +49,7 @@ define_rule!(
                                 new_expr: ctx.num(1),
                                 description: "cosh(0) = 1".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -64,9 +60,7 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: format!("{}(0) = 0", name),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -77,9 +71,7 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: "acosh(1) = 0".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -110,9 +102,7 @@ define_rule!(
                                 new_expr: x,
                                 description: "sinh(asinh(x)) = x".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
 
@@ -122,9 +112,7 @@ define_rule!(
                                 new_expr: x,
                                 description: "cosh(acosh(x)) = x".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
 
@@ -134,9 +122,7 @@ define_rule!(
                                 new_expr: x,
                                 description: "tanh(atanh(x)) = x".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
 
@@ -146,9 +132,7 @@ define_rule!(
                                 new_expr: x,
                                 description: "asinh(sinh(x)) = x".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
 
@@ -158,9 +142,7 @@ define_rule!(
                                 new_expr: x,
                                 description: "acosh(cosh(x)) = x".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
 
@@ -170,9 +152,7 @@ define_rule!(
                                 new_expr: x,
                                 description: "atanh(tanh(x)) = x".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -203,9 +183,7 @@ define_rule!(
                                 new_expr,
                                 description: "sinh(-x) = -sinh(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                         // cosh(-x) = cosh(x) (even function)
@@ -216,9 +194,7 @@ define_rule!(
                                 new_expr,
                                 description: "cosh(-x) = cosh(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                         // tanh(-x) = -tanh(x) (odd function)
@@ -230,9 +206,7 @@ define_rule!(
                                 new_expr,
                                 description: "tanh(-x) = -tanh(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                         // asinh(-x) = -asinh(x) (odd function)
@@ -244,9 +218,7 @@ define_rule!(
                                 new_expr,
                                 description: "asinh(-x) = -asinh(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                         // atanh(-x) = -atanh(x) (odd function)
@@ -258,9 +230,7 @@ define_rule!(
                                 new_expr,
                                 description: "atanh(-x) = -atanh(x)".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -303,9 +273,7 @@ define_rule!(
                                     new_expr: ctx.num(1),
                                     description: "cosh²(x) - sinh²(x) = 1".to_string(),
                                     before_local: None,
-                                    after_local: None,
-                                    domain_assumption: None,
-                                    assumption_events: Default::default(),
+                                    after_local: None,                                    assumption_events: Default::default(),
                                 });
                             }
                         }
@@ -324,9 +292,7 @@ define_rule!(
                                     new_expr: ctx.num(-1),
                                     description: "sinh²(x) - cosh²(x) = -1".to_string(),
                                     before_local: None,
-                                    after_local: None,
-                                    domain_assumption: None,
-                                    assumption_events: Default::default(),
+                                    after_local: None,                                    assumption_events: Default::default(),
                                 });
                             }
                         }

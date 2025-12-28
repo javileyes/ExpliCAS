@@ -229,9 +229,7 @@ define_rule!(
                             new_expr: result,
                             description: description.to_string(),
                             before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                            assumption_events: Default::default(),
+                            after_local: None,                            assumption_events: Default::default(),
                         });
                     }
                 }

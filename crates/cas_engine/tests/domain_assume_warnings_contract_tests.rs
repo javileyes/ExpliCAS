@@ -12,9 +12,9 @@
 use cas_engine::{Simplifier, Step};
 use cas_parser::parse;
 
-/// Helper: check if step has any assumption (legacy or structured)
+/// Helper: check if step has any assumption_events
 fn step_has_assumption(step: &Step) -> bool {
-    step.domain_assumption.is_some() || !step.assumption_events.is_empty()
+    !step.assumption_events.is_empty()
 }
 
 /// Helper: simplify with Assume domain mode, returning result and steps
@@ -66,32 +66,14 @@ fn assume_2x_div_2x_simplifies_and_assumption_mentions_symbolic_part() {
 
     // Contract: the assumption should mention x (the symbolic nonzero), not "2*x"
     // (since 2 is provably nonzero, only x needs to be assumed)
-    // Check legacy domain_assumption first
-    let assumptions: Vec<&str> = steps
-        .iter()
-        .filter_map(|s| s.domain_assumption.as_deref())
-        .collect();
-
-    // If no legacy assumptions, check structured assumption_events
+    // Check structured assumption_events
     let has_structured = steps.iter().any(|s| !s.assumption_events.is_empty());
 
     assert!(
-        !assumptions.is_empty() || has_structured,
-        "Expected at least one assumption (legacy or structured), got none"
+        has_structured,
+        "Expected at least one assumption_event, got none"
     );
-
-    // At minimum, assumption should exist. For legacy, check mentions "x"
-    if !assumptions.is_empty() {
-        let mentions_x = assumptions
-            .iter()
-            .any(|a| a.contains("x") || a.contains("non"));
-        assert!(
-            mentions_x,
-            "Expected assumption to mention x or nonzero. Got: {:?}",
-            assumptions
-        );
-    }
-    // For structured, the AssumptionEvent already encodes the expression
+    // Structured assumption_events encodes the expression in its key
 }
 
 #[test]

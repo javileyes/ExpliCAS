@@ -174,9 +174,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                             new_expr,
                             description: "Denest square root".to_string(),
                             before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                            assumption_events: Default::default(),
+                            after_local: None,                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -290,9 +288,7 @@ define_rule!(
                                         new_expr: abs_linear,
                                         description: "Simplify perfect square root".to_string(),
                                         before_local: None,
-                                        after_local: None,
-                                        domain_assumption: None,
-                                        assumption_events: Default::default(),
+                                        after_local: None,                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -325,9 +321,7 @@ define_rule!(
                                         new_expr: term1,
                                         description: "Simplify perfect square root".to_string(),
                                         before_local: None,
-                                        after_local: None,
-                                        domain_assumption: None,
-                                        assumption_events: Default::default(),
+                                        after_local: None,                                        assumption_events: Default::default(),
                                     });
                                 } else {
                                     let sqrt_base =
@@ -337,9 +331,7 @@ define_rule!(
                                         new_expr,
                                         description: "Simplify square root factors".to_string(),
                                         before_local: None,
-                                        after_local: None,
-                                        domain_assumption: None,
-                                        assumption_events: Default::default(),
+                                        after_local: None,                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -705,9 +697,7 @@ define_rule!(
             new_expr: result,
             description: format!("Cubic conjugate identity: ∛(m+t) + ∛(m-t) = {}", root),
             before_local: None,
-            after_local: None,
-            domain_assumption: None,
-            assumption_events: Default::default(),
+            after_local: None,            assumption_events: Default::default(),
         })
     }
 );
@@ -915,9 +905,7 @@ define_rule!(
             new_expr: result,
             description: format!("Denest nested square root: √(a+√b) = √({}) + √({})", m, n),
             before_local: None,
-            after_local: None,
-            domain_assumption: None,
-            assumption_events: Default::default(),
+            after_local: None,            assumption_events: Default::default(),
         })
     }
 );
@@ -1168,9 +1156,7 @@ define_rule!(
                 x, y, n
             ),
             before_local: None,
-            after_local: None,
-            domain_assumption: None,
-            assumption_events: Default::default(),
+            after_local: None,            assumption_events: Default::default(),
         })
     }
 );

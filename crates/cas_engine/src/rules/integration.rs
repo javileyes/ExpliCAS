@@ -85,9 +85,7 @@ impl Rule for ProductToSumRule {
                 new_expr: result,
                 description: "2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)".to_string(),
                 before_local: None,
-                after_local: None,
-                domain_assumption: None,
-                assumption_events: Default::default(),
+                after_local: None,                assumption_events: Default::default(),
             });
         }
 
@@ -230,7 +228,6 @@ impl Rule for CosProductTelescopingRule {
             ),
             before_local: None,
             after_local: None,
-            domain_assumption: None, // Using structured assumption
             assumption_events: smallvec::smallvec![
                 crate::assumptions::AssumptionEvent::nonzero(ctx, sin_den)
             ],

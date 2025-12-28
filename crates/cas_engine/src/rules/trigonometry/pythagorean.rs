@@ -37,9 +37,7 @@ define_rule!(
                 new_expr: result,
                 description: desc,
                 before_local: None,
-                after_local: None,
-                domain_assumption: None,
-                assumption_events: Default::default(),
+                after_local: None,                assumption_events: Default::default(),
             });
         }
         if let Some((result, desc)) = check_pythagorean_pattern(ctx, t2, t1) {
@@ -47,9 +45,7 @@ define_rule!(
                 new_expr: result,
                 description: desc,
                 before_local: None,
-                after_local: None,
-                domain_assumption: None,
-                assumption_events: Default::default(),
+                after_local: None,                assumption_events: Default::default(),
             });
         }
 
@@ -287,9 +283,7 @@ define_rule!(
                     new_expr: result,
                     description: "sin⁴(x) - cos⁴(x) = sin²(x) - cos²(x)".to_string(),
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
         }

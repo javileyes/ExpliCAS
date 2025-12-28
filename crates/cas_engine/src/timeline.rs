@@ -1261,12 +1261,17 @@ impl<'a> TimelineHtml<'a> {
                 String::new()
             };
 
-            // Build domain warning HTML if present
-            let domain_html = if let Some(assumption) = step.domain_assumption {
+            // Build domain warning HTML from assumption_events
+            let domain_html = if !step.assumption_events.is_empty() {
+                let messages: Vec<String> = step
+                    .assumption_events
+                    .iter()
+                    .map(|e| html_escape(&e.message))
+                    .collect();
                 format!(
                     r#"                    <div class="domain-warning">Domain: {}</div>
 "#,
-                    html_escape(assumption)
+                    messages.join(", ")
                 )
             } else {
                 String::new()

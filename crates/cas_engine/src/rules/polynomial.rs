@@ -84,7 +84,6 @@ define_rule!(
                     description: "Distribute".to_string(),
                     before_local: None,
                     after_local: None,
-                    domain_assumption: None,
                     assumption_events: Default::default(),
                 });
             }
@@ -134,7 +133,6 @@ define_rule!(
                     description: "Distribute".to_string(),
                     before_local: None,
                     after_local: None,
-                    domain_assumption: None,
                     assumption_events: Default::default(),
                 });
             }
@@ -283,7 +281,6 @@ define_rule!(
                             description: "Distribute division (simplifying)".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: None,
                             assumption_events: Default::default(),
                         });
                     }
@@ -661,12 +658,8 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                         return None;
                     }
 
-                    let domain_assumption =
-                        if domain_mode == crate::DomainMode::Assume && either_has_risk {
-                            Some("Assuming expression is defined")
-                        } else {
-                            None
-                        };
+                    // Note: domain assumption would be emitted here if Assume mode and either_has_risk
+                    // but assumption_events are not emitted for this case yet
 
                     let zero = ctx.num(0);
                     return Some(Rewrite {
@@ -674,7 +667,6 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                         description: "x - x = 0".to_string(),
                         before_local: None,
                         after_local: None,
-                        domain_assumption,
                         assumption_events: Default::default(),
                     });
                 }
@@ -760,7 +752,6 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                             description: "__hold(sum) - sum = 0".to_string(),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: None,
                             assumption_events: Default::default(),
                         });
                     }
@@ -798,20 +789,14 @@ define_rule!(
                 return None;
             }
 
-            // Convert Option<String> to Option<&'static str> for the Rewrite
-            let domain_assumption: Option<&'static str> = match &result.assumption {
-                Some(s) if s.contains("denominators") => {
-                    Some("Assuming expression is defined (denominators ≠ 0)")
-                }
-                _ => None,
-            };
+            // Note: result.assumption contains warning about denominators
+            // but assumption_events are not emitted for this case yet
 
             return Some(Rewrite {
                 new_expr: result.new_expr,
                 description: "Combine like terms".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption,
                 assumption_events: Default::default(),
             });
         }
@@ -940,7 +925,6 @@ impl crate::rule::Rule for BinomialExpansionRule {
                                 description: format!("Expand binomial power ^{}", n_val),
                                 before_local: None,
                                 after_local: None,
-                                domain_assumption: None,
                                 assumption_events: Default::default(),
                             });
                         }
@@ -1156,7 +1140,6 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
                             description: format!("Auto-expand (a+b)^{}", n_val),
                             before_local: None,
                             after_local: None,
-                            domain_assumption: None,
                             assumption_events: Default::default(),
                         });
                     }
@@ -1391,7 +1374,6 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
                 description: "Polynomial equality: expressions cancel to 0".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption: None,
                 assumption_events: Default::default(),
             });
         }

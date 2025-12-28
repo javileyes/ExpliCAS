@@ -214,22 +214,23 @@ fn warnings_in_steps_on_mode() {
 
     assert_eq!(mode, StepsMode::On);
 
-    // Check if any step has a domain_assumption (Morrie rule should produce one)
-    let _has_domain_warning = steps.iter().any(|s| s.domain_assumption.is_some());
+    // Check if any step has assumption_events (Morrie rule should produce one)
+    let _has_assumption_events = steps.iter().any(|s| !s.assumption_events.is_empty());
 
     // Note: This depends on whether the Morrie telescoping rule fires
-    // If the simplifier applies the rule, we expect a warning
+    // If the simplifier applies the rule, we expect assumption_events
     if !steps.is_empty() {
-        // If steps exist and Morrie applies, we should see a domain_assumption
-        let domain_steps: Vec<_> = steps
+        // If steps exist and Morrie applies, we should see assumption_events
+        let assumption_steps: Vec<_> = steps
             .iter()
-            .filter(|s| s.domain_assumption.is_some())
+            .filter(|s| !s.assumption_events.is_empty())
             .collect();
         println!(
-            "Domain assumption steps: {:?}",
-            domain_steps
+            "Assumption event steps: {:?}",
+            assumption_steps
                 .iter()
-                .map(|s| s.domain_assumption)
+                .flat_map(|s| &s.assumption_events)
+                .map(|e| &e.message)
                 .collect::<Vec<_>>()
         );
 

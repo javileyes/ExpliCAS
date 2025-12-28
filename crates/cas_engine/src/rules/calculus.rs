@@ -25,9 +25,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                                 var_name
                             ),
                             before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                            assumption_events: Default::default(),
+                            after_local: None,                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -46,9 +44,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -76,9 +72,7 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
                             var_name
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -735,9 +729,7 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
 
@@ -779,9 +771,7 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                             end
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -1037,9 +1027,7 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
 
@@ -1071,9 +1059,7 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                         }
                     ),
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
 
@@ -1115,9 +1101,7 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                             end
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }

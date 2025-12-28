@@ -42,7 +42,6 @@ pub struct Step {
     pub after_local: Option<ExprId>,
     /// Optional domain assumption used by the rule (e.g., "x > 0" assumed)
     /// LEGACY: use assumption_events for structured emission, this is fallback.
-    pub domain_assumption: Option<&'static str>,
     /// Structured assumption events (preferred over domain_assumption string).
     /// Propagated from Rewrite.assumption_events during step creation.
     pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
@@ -86,7 +85,6 @@ impl Step {
             global_after: None,
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
         }
@@ -106,7 +104,6 @@ impl Step {
             global_after: None,
             before_local: None,
             after_local: None,
-            domain_assumption: None,
             assumption_events: Default::default(),
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
         }
@@ -139,8 +136,8 @@ impl Step {
             return ImportanceLevel::Trivial;
         }
 
-        // Steps with domain assumptions are always shown - important for user awareness
-        if self.domain_assumption.is_some() {
+        // Steps with assumptions are always shown - important for user awareness
+        if !self.assumption_events.is_empty() {
             return ImportanceLevel::Medium;
         }
 
@@ -167,9 +164,16 @@ mod tests {
         let step = Step::new("No change", "Any Rule", x, x, vec![], Some(&ctx));
         assert_eq!(step.get_importance(), ImportanceLevel::Trivial);
 
-        // Test 3: Steps with domain assumption are bumped to Medium
+        // Test 3: Steps with assumption_events are bumped to Medium
         let mut step = Step::new("Rule with assumption", "Rule", x, y, vec![], Some(&ctx));
-        step.domain_assumption = Some("x > 0");
+        step.assumption_events
+            .push(crate::assumptions::AssumptionEvent {
+                key: crate::assumptions::AssumptionKey::NonZero {
+                    expr_fingerprint: 12345,
+                },
+                expr_display: "x".to_string(),
+                message: "Assuming x ≠ 0".to_string(),
+            });
         assert_eq!(step.get_importance(), ImportanceLevel::Medium);
 
         // Test 4: Declaratively set importance is respected

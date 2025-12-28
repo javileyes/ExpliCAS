@@ -93,9 +93,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                     new_expr: zero,
                     description: format!("collect({}, {})", target_expr, var_name), // Debug format,
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
 
@@ -108,9 +106,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                 new_expr: result,
                 description: format!("collect({}, {})", target_expr, var_name),
                 before_local: None,
-                after_local: None,
-                domain_assumption: None,
-                assumption_events: Default::default(),
+                after_local: None,                assumption_events: Default::default(),
             });
         }
     }
@@ -287,9 +283,7 @@ define_rule!(CollectLikeTermsRule, "Collect Like Terms", |ctx, expr| {
             new_expr,
             description: "Collect like terms".to_string(),
             before_local: None,
-            after_local: None,
-            domain_assumption: None,
-            assumption_events: Default::default(),
+            after_local: None,            assumption_events: Default::default(),
         })
     } else {
         None

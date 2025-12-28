@@ -125,9 +125,7 @@ define_rule!(
                     new_expr,
                     description: "(a-b)(a+b) = a² - b²".to_string(),
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
         }
@@ -154,9 +152,7 @@ define_rule!(
                         new_expr: held,
                         description: "Factorization".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -240,9 +236,7 @@ define_rule!(
                                 new_expr: ctx.num(0),
                                 description: "Factor difference of squares (Empty)".to_string(),
                                 before_local: None,
-                                after_local: None,
-                                domain_assumption: None,
-                                assumption_events: Default::default(),
+                                after_local: None,                                assumption_events: Default::default(),
                             });
                         }
 
@@ -255,9 +249,7 @@ define_rule!(
                             new_expr,
                             description: "Factor difference of squares (N-ary)".to_string(),
                             before_local: None,
-                            after_local: None,
-                            domain_assumption: None,
-                            assumption_events: Default::default(),
+                            after_local: None,                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -296,9 +288,7 @@ define_rule!(
                         new_expr,
                         description: "Automatic Factorization (Reduced Size)".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -320,9 +310,7 @@ define_rule!(
                         new_expr,
                         description: "Automatic Factorization (Diff Squares)".to_string(),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -463,9 +451,7 @@ define_rule!(
             new_expr,
             description: format!("Factor out {}", gcd_int),
             before_local: None,
-            after_local: None,
-            domain_assumption: None,
-            assumption_events: Default::default(),
+            after_local: None,            assumption_events: Default::default(),
         })
     }
 );

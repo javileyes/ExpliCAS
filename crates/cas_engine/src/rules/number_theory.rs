@@ -38,9 +38,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -62,9 +60,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -86,9 +82,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -106,9 +100,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -126,9 +118,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -150,9 +140,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -174,9 +162,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                             }
                         ),
                         before_local: None,
-                        after_local: None,
-                        domain_assumption: None,
-                        assumption_events: Default::default(),
+                        after_local: None,                        assumption_events: Default::default(),
                     });
                 }
             }

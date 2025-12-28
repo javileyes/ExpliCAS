@@ -237,9 +237,7 @@ define_rule!(
                     new_expr,
                     description: desc,
                     before_local: None,
-                    after_local: None,
-                    domain_assumption: None,
-                    assumption_events: Default::default(),
+                    after_local: None,                    assumption_events: Default::default(),
                 });
             }
         }
@@ -271,9 +269,7 @@ define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr, parent_ctx| {
                 new_expr: neg_one,
                 description: "i · i = -1".to_string(),
                 before_local: None,
-                after_local: None,
-                domain_assumption: None,
-                assumption_events: Default::default(),
+                after_local: None,                assumption_events: Default::default(),
             });
         }
     }
@@ -324,9 +320,7 @@ define_rule!(
                 description: "Gaussian multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i"
                     .to_string(),
                 before_local: None,
-                after_local: None,
-                domain_assumption: None,
-                assumption_events: Default::default(),
+                after_local: None,                assumption_events: Default::default(),
             });
         }
         None
@@ -387,9 +381,7 @@ define_rule!(
                 new_expr,
                 description: "Gaussian addition: (a+bi) + (c+di) = (a+c) + (b+d)i".to_string(),
                 before_local: None,
-                after_local: None,
-                domain_assumption: None,
-                assumption_events: Default::default(),
+                after_local: None,                assumption_events: Default::default(),
             });
         }
         None
@@ -458,9 +450,7 @@ define_rule!(
                 new_expr,
                 description: "Gaussian division: (a+bi)/(c+di) using conjugate".to_string(),
                 before_local: None,
-                after_local: None,
-                domain_assumption: None,
-                assumption_events: Default::default(),
+                after_local: None,                assumption_events: Default::default(),
             });
         }
         None
