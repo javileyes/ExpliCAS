@@ -1696,8 +1696,10 @@ define_rule!(
             description: "Lift conjugate into sqrt".to_string(),
             before_local: None,
             after_local: None,
-            domain_assumption: Some("x ≥ 1 for real roots"),
-            assumption_events: Default::default(),
+            domain_assumption: None, // Using structured assumption
+            assumption_events: smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(
+                ctx, other
+            )],
         })
     }
 );

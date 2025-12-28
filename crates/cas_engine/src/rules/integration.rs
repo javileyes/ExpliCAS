@@ -230,8 +230,10 @@ impl Rule for CosProductTelescopingRule {
             ),
             before_local: None,
             after_local: None,
-            domain_assumption: Some("Assuming sin(u) ≠ 0 (used for integration transforms)"),
-            assumption_events: Default::default(),
+            domain_assumption: None, // Using structured assumption
+            assumption_events: smallvec::smallvec![
+                crate::assumptions::AssumptionEvent::nonzero(ctx, sin_den)
+            ],
 })
     }
 }
@@ -300,13 +302,10 @@ mod tests {
         );
 
         let rewrite = result.unwrap();
+        // CosProductTelescopingRule now uses structured assumption_events
         assert!(
-            rewrite.domain_assumption.is_some(),
-            "Should have domain_assumption warning"
-        );
-        assert!(
-            rewrite.domain_assumption.unwrap().contains("sin(u) ≠ 0"),
-            "Warning should mention sin(u) ≠ 0"
+            !rewrite.assumption_events.is_empty(),
+            "Should have assumption_events for sin(u) ≠ 0 warning"
         );
     }
 }
