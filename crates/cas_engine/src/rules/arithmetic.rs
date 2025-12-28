@@ -538,7 +538,11 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
                 before_local: None,
                 after_local: None,
                 domain_assumption,
-                assumption_events: Default::default(),
+                assumption_events: if domain_assumption.is_some() {
+                    smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, inner)]
+                } else {
+                    Default::default()
+                },
             });
         }
     }
