@@ -35,6 +35,7 @@ impl SimpleRule for MatrixAddRule {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -74,6 +75,7 @@ impl SimpleRule for MatrixSubRule {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -112,6 +114,7 @@ impl SimpleRule for ScalarMatrixRule {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -128,6 +131,7 @@ impl SimpleRule for ScalarMatrixRule {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -170,6 +174,7 @@ impl SimpleRule for MatrixMultiplyRule {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -209,6 +214,7 @@ impl SimpleRule for MatrixFunctionRule {
                                     before_local: None,
                                     after_local: None,
                                     domain_assumption: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                         }
@@ -227,6 +233,7 @@ impl SimpleRule for MatrixFunctionRule {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -244,6 +251,7 @@ impl SimpleRule for MatrixFunctionRule {
                                     before_local: None,
                                     after_local: None,
                                     domain_assumption: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                         }
@@ -300,6 +308,7 @@ impl SimpleRule for TransposeProductRule {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }

@@ -95,6 +95,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                     importance: crate::step::ImportanceLevel::Low, // Coalesced canonicalization is low
                 };
                 optimized.push(coalesced);

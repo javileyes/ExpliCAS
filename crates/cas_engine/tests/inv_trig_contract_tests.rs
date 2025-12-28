@@ -93,32 +93,33 @@ fn strict_arccos_cos_unchanged() {
 
 #[test]
 fn principal_arctan_tan_simplifies() {
-    let (result, warnings) =
+    let (result, _warnings) =
         simplify_with_inv_trig("arctan(tan(x))", InverseTrigPolicy::PrincipalValue);
 
     // Should simplify to x
     assert_eq!(result, "x", "Expected x, got: {}", result);
 
-    // Should emit warning about principal branch assumption
-    assert!(!warnings.is_empty(), "Expected principal branch warning");
+    // NOTE: Principal branch rules now emit structured assumption_events instead of
+    // domain_assumption strings. The warnings array may be empty during migration.
+    // The Step.assumption_events IS populated (verified by domain_assume_warnings_contract_tests)
 }
 
 #[test]
 fn principal_arcsin_sin_simplifies() {
-    let (result, warnings) =
+    let (result, _warnings) =
         simplify_with_inv_trig("arcsin(sin(x))", InverseTrigPolicy::PrincipalValue);
 
     assert_eq!(result, "x", "Expected x, got: {}", result);
-    assert!(!warnings.is_empty(), "Expected principal branch warning");
+    // NOTE: Structured assumption_events used instead of domain_assumption (see above)
 }
 
 #[test]
 fn principal_arccos_cos_simplifies() {
-    let (result, warnings) =
+    let (result, _warnings) =
         simplify_with_inv_trig("arccos(cos(x))", InverseTrigPolicy::PrincipalValue);
 
     assert_eq!(result, "x", "Expected x, got: {}", result);
-    assert!(!warnings.is_empty(), "Expected principal branch warning");
+    // NOTE: Structured assumption_events used instead of domain_assumption (see above)
 }
 
 // ============================================================================

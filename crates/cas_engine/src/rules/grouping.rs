@@ -95,6 +95,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -109,6 +110,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -287,6 +289,7 @@ define_rule!(CollectLikeTermsRule, "Collect Like Terms", |ctx, expr| {
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     } else {
         None

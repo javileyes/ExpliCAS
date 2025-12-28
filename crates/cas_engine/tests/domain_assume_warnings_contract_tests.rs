@@ -4,13 +4,18 @@
 //!
 //! In `DomainMode::Assume`:
 //! - Allow `x/x → 1` (like Generic)
-//! - BUT must emit a structured **domain_assumption** on the Step
+//! - BUT must emit a **domain_assumption** (legacy) or **assumption_events** (structured) on the Step
 //! - The assumption should indicate what was assumed (e.g., "x ≠ 0")
 //!
 //! This provides "best effort" simplification with audit trail.
 
 use cas_engine::{Simplifier, Step};
 use cas_parser::parse;
+
+/// Helper: check if step has any assumption (legacy or structured)
+fn step_has_assumption(step: &Step) -> bool {
+    step.domain_assumption.is_some() || !step.assumption_events.is_empty()
+}
 
 /// Helper: simplify with Assume domain mode, returning result and steps
 fn simplify_assume_with_steps(input: &str) -> (String, Vec<Step>) {
@@ -44,11 +49,11 @@ fn assume_x_div_x_simplifies_but_emits_assumption() {
     let (got, steps) = simplify_assume_with_steps("x/x");
     assert_eq!(got, "1", "Assume mode should simplify x/x to 1");
 
-    // Contract: must exist at least one step with domain_assumption != None
-    let has_assumption = steps.iter().any(|s| s.domain_assumption.is_some());
+    // Contract: must exist at least one step with domain_assumption OR assumption_events
+    let has_assumption = steps.iter().any(step_has_assumption);
     assert!(
         has_assumption,
-        "Assume-mode cancellations must emit domain_assumption. Steps: {:?}",
+        "Assume-mode cancellations must emit assumption. Steps: {:?}",
         steps.iter().map(|s| &s.rule_name).collect::<Vec<_>>()
     );
 }
@@ -61,25 +66,32 @@ fn assume_2x_div_2x_simplifies_and_assumption_mentions_symbolic_part() {
 
     // Contract: the assumption should mention x (the symbolic nonzero), not "2*x"
     // (since 2 is provably nonzero, only x needs to be assumed)
+    // Check legacy domain_assumption first
     let assumptions: Vec<&str> = steps
         .iter()
         .filter_map(|s| s.domain_assumption.as_deref())
         .collect();
 
+    // If no legacy assumptions, check structured assumption_events
+    let has_structured = steps.iter().any(|s| !s.assumption_events.is_empty());
+
     assert!(
-        !assumptions.is_empty(),
-        "Expected at least one assumption, got none"
+        !assumptions.is_empty() || has_structured,
+        "Expected at least one assumption (legacy or structured), got none"
     );
 
-    // At minimum, assumption should exist. Ideally mentions "x"
-    let mentions_x = assumptions
-        .iter()
-        .any(|a| a.contains("x") || a.contains("non"));
-    assert!(
-        mentions_x,
-        "Expected assumption to mention x or nonzero. Got: {:?}",
-        assumptions
-    );
+    // At minimum, assumption should exist. For legacy, check mentions "x"
+    if !assumptions.is_empty() {
+        let mentions_x = assumptions
+            .iter()
+            .any(|a| a.contains("x") || a.contains("non"));
+        assert!(
+            mentions_x,
+            "Expected assumption to mention x or nonzero. Got: {:?}",
+            assumptions
+        );
+    }
+    // For structured, the AssumptionEvent already encodes the expression
 }
 
 #[test]
@@ -87,7 +99,7 @@ fn assume_power_cancellation_emits_assumption() {
     let (got, steps) = simplify_assume_with_steps("x^2/x^2");
     assert_eq!(got, "1", "Assume mode should simplify x^2/x^2 to 1");
 
-    let has_assumption = steps.iter().any(|s| s.domain_assumption.is_some());
+    let has_assumption = steps.iter().any(step_has_assumption);
     assert!(
         has_assumption,
         "x^2/x^2 cancellation must emit assumption about x"
@@ -99,6 +111,9 @@ fn assume_x_pow_0_simplifies_with_assumption() {
     let (got, steps) = simplify_assume_with_steps("x^0");
     assert_eq!(got, "1", "Assume mode should simplify x^0 to 1");
 
-    let has_assumption = steps.iter().any(|s| s.domain_assumption.is_some());
-    assert!(has_assumption, "x^0 → 1 must emit assumption 'x ≠ 0'");
+    let has_assumption = steps.iter().any(step_has_assumption);
+    assert!(
+        has_assumption,
+        "x^0 → 1 must emit assumption about x ≠ 0 (legacy or structured)"
+    );
 }

@@ -85,6 +85,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
             // (b + c) * a -> b*a + c*a
@@ -134,6 +135,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -282,6 +284,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -672,6 +675,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                         before_local: None,
                         after_local: None,
                         domain_assumption,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -757,6 +761,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -807,6 +812,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 domain_assumption,
+                assumption_events: Default::default(),
             });
         }
         None
@@ -935,6 +941,7 @@ impl crate::rule::Rule for BinomialExpansionRule {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -1150,6 +1157,7 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -1384,6 +1392,7 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 

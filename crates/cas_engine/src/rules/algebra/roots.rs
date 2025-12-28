@@ -176,6 +176,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -291,6 +292,7 @@ define_rule!(
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: None,
+                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -325,6 +327,7 @@ define_rule!(
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: None,
+                                        assumption_events: Default::default(),
                                     });
                                 } else {
                                     let sqrt_base =
@@ -336,6 +339,7 @@ define_rule!(
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: None,
+                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -703,6 +707,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -912,6 +917,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -1164,6 +1170,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );

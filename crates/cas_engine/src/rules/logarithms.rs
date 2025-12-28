@@ -31,6 +31,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
             if n.is_zero() {
@@ -42,6 +43,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
             if *n < num_rational::BigRational::zero() {
@@ -52,6 +54,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -77,6 +80,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -93,6 +97,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -118,6 +123,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
                 // For variable exponents like log(e, e^x), skip and let LogExpInverseRule handle
@@ -132,6 +138,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: Some("Assuming x > 0"),
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -210,6 +217,7 @@ impl crate::rule::Rule for LogExpansionRule {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     DomainMode::Assume => {
@@ -226,6 +234,7 @@ impl crate::rule::Rule for LogExpansionRule {
                             before_local: None,
                             after_local: None,
                             domain_assumption: Some("Assuming x > 0 and y > 0"),
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -250,6 +259,7 @@ impl crate::rule::Rule for LogExpansionRule {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                     DomainMode::Assume => {
@@ -265,6 +275,7 @@ impl crate::rule::Rule for LogExpansionRule {
                             before_local: None,
                             after_local: None,
                             domain_assumption: Some("Assuming x > 0 and y > 0"),
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -337,6 +348,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                                     before_local: None,
                                     after_local: None,
                                     domain_assumption: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                             return None;
@@ -348,6 +360,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         crate::domain::DomainMode::Assume => {
@@ -357,6 +370,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: Some("Assuming x > 0"),
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -382,6 +396,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                                             before_local: None,
                                             after_local: None,
                                             domain_assumption: None,
+                                            assumption_events: Default::default(),
                                         });
                                     }
                                     return None;
@@ -394,6 +409,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: None,
+                                        assumption_events: Default::default(),
                                     });
                                 }
                                 crate::domain::DomainMode::Assume => {
@@ -405,6 +421,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: Some("Assuming x > 0"),
+                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -450,6 +467,7 @@ define_rule!(SplitLogExponentsRule, "Split Log Exponents", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -762,6 +780,7 @@ define_rule!(LogInversePowerRule, "Log Inverse Power", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -814,6 +833,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     } else {
                         // For variable exponents like log(e, e^x) → x, check domain_mode
@@ -828,6 +848,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                             before_local: None,
                             after_local: None,
                             domain_assumption: Some("Assuming x is real"),
+                            assumption_events: Default::default(),
                         });
                     }
                 }

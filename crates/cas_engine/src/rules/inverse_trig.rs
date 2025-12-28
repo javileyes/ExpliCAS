@@ -189,6 +189,7 @@ where
             before_local: Some(local_before),
             after_local: Some(result),
             domain_assumption: None,
+            assumption_events: Default::default(),
         });
     }
 
@@ -212,6 +213,7 @@ where
                 before_local: Some(local_before),
                 after_local: Some(neg_result),
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -238,6 +240,7 @@ where
                     before_local: Some(local_before),
                     after_local: Some(scaled_result),
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -265,6 +268,7 @@ where
                         before_local: Some(local_before),
                         after_local: Some(neg_scaled),
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -318,6 +322,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                                 before_local: None,
                                                 after_local: None,
                                                 domain_assumption: None,
+                                                assumption_events: Default::default(),
                                             });
                                         }
                                     }
@@ -331,6 +336,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: None,
+                                        assumption_events: Default::default(),
                                     });
                                 }
                                 crate::domain::DomainMode::Assume => {
@@ -341,6 +347,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: Some("Assuming x ∈ [-1, 1]"),
+                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -361,6 +368,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                                 before_local: None,
                                                 after_local: None,
                                                 domain_assumption: None,
+                                                assumption_events: Default::default(),
                                             });
                                         }
                                     }
@@ -373,6 +381,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: None,
+                                        assumption_events: Default::default(),
                                     });
                                 }
                                 crate::domain::DomainMode::Assume => {
@@ -383,6 +392,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: Some("Assuming x ∈ [-1, 1]"),
+                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -396,6 +406,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -417,6 +428,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         before_local: None,
                                         after_local: None,
                                         domain_assumption: None,
+                                        assumption_events: Default::default(),
                                     });
                                 }
                             }
@@ -709,6 +721,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
                                 before_local: Some(local_before),
                                 after_local: Some(result_atan),
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -774,6 +787,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "arctan" => {
@@ -787,6 +801,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         "arccos" => {
@@ -801,6 +816,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -838,6 +854,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -868,6 +885,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -899,6 +917,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -974,7 +993,12 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                             description: "arcsin(sin(u)) → u (principal branch)".to_string(),
                             before_local: Some(expr),
                             after_local: Some(u),
-                            domain_assumption: Some("Assuming u ∈ [-π/2, π/2] (principal branch)"),
+                            domain_assumption: None, // Using structured assumption
+                            assumption_events: smallvec::smallvec![
+                                crate::assumptions::AssumptionEvent::inv_trig_principal_range(
+                                    ctx, "arcsin", u
+                                )
+                            ],
                         });
                     }
                 }
@@ -990,7 +1014,12 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                             description: "arccos(cos(u)) → u (principal branch)".to_string(),
                             before_local: Some(expr),
                             after_local: Some(u),
-                            domain_assumption: Some("Assuming u ∈ [0, π] (principal branch)"),
+                            domain_assumption: None, // Using structured assumption
+                            assumption_events: smallvec::smallvec![
+                                crate::assumptions::AssumptionEvent::inv_trig_principal_range(
+                                    ctx, "arccos", u
+                                )
+                            ],
                         });
                     }
                 }
@@ -1006,7 +1035,12 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                             description: "arctan(tan(u)) → u (principal branch)".to_string(),
                             before_local: Some(expr),
                             after_local: Some(u),
-                            domain_assumption: Some("Assuming u ∈ (-π/2, π/2) (principal branch)"),
+                            domain_assumption: None, // Using structured assumption
+                            assumption_events: smallvec::smallvec![
+                                crate::assumptions::AssumptionEvent::inv_trig_principal_range(
+                                    ctx, "arctan", u
+                                )
+                            ],
                         });
                     }
                 }
@@ -1035,9 +1069,12 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                                     .to_string(),
                                 before_local: Some(expr),
                                 after_local: Some(u),
-                                domain_assumption: Some(
-                                    "Assuming u ∈ (-π/2, π/2) (principal branch)",
-                                ),
+                                domain_assumption: None, // Using structured assumption
+                                assumption_events: smallvec::smallvec![
+                                    crate::assumptions::AssumptionEvent::inv_trig_principal_range(
+                                        ctx, "arctan", u
+                                    )
+                                ],
                             });
                         }
                     }

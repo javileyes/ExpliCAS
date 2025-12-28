@@ -341,10 +341,17 @@ impl Orchestrator {
         };
 
         // Collect assumptions from steps if reporting is enabled
+        // Priority: 1) structured assumption_events, 2) legacy domain_assumption string parsing
         if self.options.assumption_reporting != crate::assumptions::AssumptionReporting::Off {
             let mut collector = crate::assumptions::AssumptionCollector::new();
             for step in &optimized_steps {
-                if let Some(assumption) = step.domain_assumption {
+                // FIRST: collect structured assumption_events (preferred)
+                if !step.assumption_events.is_empty() {
+                    for event in &step.assumption_events {
+                        collector.note(event.clone());
+                    }
+                // FALLBACK: legacy domain_assumption string parsing
+                } else if let Some(assumption) = step.domain_assumption {
                     let event = crate::assumptions::AssumptionEvent::from_legacy_string(assumption);
                     collector.note(event);
                 }

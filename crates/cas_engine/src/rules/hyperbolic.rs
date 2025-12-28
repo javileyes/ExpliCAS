@@ -40,6 +40,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -52,6 +53,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -64,6 +66,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -76,6 +79,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -108,6 +112,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -119,6 +124,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -130,6 +136,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -141,6 +148,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -152,6 +160,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -163,6 +172,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -195,6 +205,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         // cosh(-x) = cosh(x) (even function)
@@ -207,6 +218,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         // tanh(-x) = -tanh(x) (odd function)
@@ -220,6 +232,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         // asinh(-x) = -asinh(x) (odd function)
@@ -233,6 +246,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         // atanh(-x) = -atanh(x) (odd function)
@@ -246,6 +260,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         _ => {}
@@ -290,6 +305,7 @@ define_rule!(
                                     before_local: None,
                                     after_local: None,
                                     domain_assumption: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                         }
@@ -310,6 +326,7 @@ define_rule!(
                                     before_local: None,
                                     after_local: None,
                                     domain_assumption: None,
+                                    assumption_events: Default::default(),
                                 });
                             }
                         }

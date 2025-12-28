@@ -541,6 +541,7 @@ define_rule!(
                             before_local: Some(factored_form),
                             after_local: Some(new_num),
                             domain_assumption: decision.assumption,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -559,6 +560,7 @@ define_rule!(
                     before_local: Some(factored_form),
                     after_local: Some(result),
                     domain_assumption: decision.assumption,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -639,7 +641,8 @@ define_rule!(
                     ),
                     before_local: Some(expr),
                     after_local: Some(result),
-                    domain_assumption: None, // No assumption needed for numeric cancel
+                    domain_assumption: None, // No assumption needed for numeric cancel,
+                    assumption_events: Default::default(),
                 });
             }
             // No numeric content to cancel, don't simplify
@@ -675,6 +678,7 @@ define_rule!(
                     before_local: Some(factored_form),
                     after_local: Some(new_num),
                     domain_assumption: decision.assumption,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -692,6 +696,7 @@ define_rule!(
             before_local: Some(factored_form),
             after_local: Some(result),
             domain_assumption: decision.assumption,
+            assumption_events: Default::default(),
         });
     }
 );
@@ -768,6 +773,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         });
     }
 );
@@ -812,6 +818,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -836,6 +843,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -882,6 +890,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -1064,6 +1073,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -1153,6 +1163,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -1232,6 +1243,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         });
     }
 );
@@ -1374,6 +1386,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -1568,6 +1581,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -1683,6 +1697,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: Some("x ≥ 1 for real roots"),
+            assumption_events: Default::default(),
         })
     }
 );
@@ -1799,6 +1814,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -1914,6 +1930,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
             return None;
@@ -1981,6 +1998,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -2259,6 +2277,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -2313,6 +2332,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             domain_assumption: decision.assumption,
+                            assumption_events: Default::default(),
                         });
                     } else if diff.is_one() {
                         // Result is just the base
@@ -2322,6 +2342,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     } else {
                         // Guard: Don't produce negative fractional exponents (anti-pattern for rationalization)
@@ -2337,6 +2358,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -2360,6 +2382,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         } else {
                             let new_exp = ctx.add(Expr::Number(new_exp_val));
@@ -2370,6 +2393,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -2396,6 +2420,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -2434,6 +2459,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             } else if r_is_const {
                 // (x * c) / y -> c * (x / y)
@@ -2445,6 +2471,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -2459,6 +2486,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
         None
@@ -2672,6 +2700,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -2818,6 +2847,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -3170,6 +3200,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -3299,6 +3330,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -3379,6 +3411,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         })
     }
 );
@@ -3579,6 +3612,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             domain_assumption,
+            assumption_events: Default::default(),
         })
     }
 );

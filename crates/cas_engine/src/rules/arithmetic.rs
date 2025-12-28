@@ -15,6 +15,7 @@ define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -26,6 +27,7 @@ define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -47,6 +49,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -58,6 +61,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -81,6 +85,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -93,6 +98,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -132,6 +138,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -140,25 +147,26 @@ define_rule!(
             let den_nonzero = prove_nonzero(ctx, den);
             let domain_mode = parent_ctx.domain_mode();
 
-            let domain_assumption: Option<&str> = match domain_mode {
+            // Structured assumption emission (preferred over legacy string)
+            let assumption_events = match domain_mode {
                 crate::DomainMode::Strict => {
                     // Only apply if denominator is provably non-zero
                     if den_nonzero != Proof::Proven {
                         return None;
                     }
-                    None
+                    Default::default()
                 }
                 crate::DomainMode::Assume => {
-                    // Apply with warning if not proven
+                    // Apply with structured assumption if not proven
                     if den_nonzero != Proof::Proven {
-                        Some("Assuming denominator ≠ 0")
+                        smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
                     } else {
-                        None
+                        Default::default()
                     }
                 }
                 crate::DomainMode::Generic => {
                     // Educational mode: apply unconditionally
-                    None
+                    Default::default()
                 }
             };
 
@@ -168,7 +176,8 @@ define_rule!(
                 description: "0 / d = 0".to_string(),
                 before_local: None,
                 after_local: None,
-                domain_assumption,
+                domain_assumption: None, // No longer using legacy string
+                assumption_events,
             });
         }
         None
@@ -191,6 +200,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
             // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
@@ -207,6 +217,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -224,6 +235,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
             // Handle nested: c1 * (c2 * x) -> (c1*c2) * x
@@ -240,6 +252,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -263,6 +276,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -281,6 +295,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -297,6 +312,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 } else {
                     let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
@@ -306,6 +322,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -328,6 +345,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
 
@@ -342,6 +360,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -519,6 +538,7 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
                 before_local: None,
                 after_local: None,
                 domain_assumption,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -602,6 +622,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }

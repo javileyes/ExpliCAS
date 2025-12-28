@@ -41,7 +41,11 @@ pub struct Step {
     /// Optional: The specific result of the pattern (for n-ary rules)
     pub after_local: Option<ExprId>,
     /// Optional domain assumption used by the rule (e.g., "x > 0" assumed)
+    /// LEGACY: use assumption_events for structured emission, this is fallback.
     pub domain_assumption: Option<&'static str>,
+    /// Structured assumption events (preferred over domain_assumption string).
+    /// Propagated from Rewrite.assumption_events during step creation.
+    pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
     /// Importance level for step filtering (from Rule::importance())
     pub importance: ImportanceLevel,
 }
@@ -83,6 +87,7 @@ impl Step {
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
         }
     }
@@ -102,6 +107,7 @@ impl Step {
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
         }
     }

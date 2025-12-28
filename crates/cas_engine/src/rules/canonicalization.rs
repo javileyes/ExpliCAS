@@ -25,6 +25,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -52,6 +53,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -63,6 +65,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -87,6 +90,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -108,6 +112,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -157,6 +162,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -185,6 +191,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
 
@@ -196,6 +203,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -215,6 +223,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -271,6 +280,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -294,6 +304,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -384,6 +395,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
 
@@ -400,6 +412,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -432,6 +445,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }
@@ -464,6 +478,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }
@@ -478,6 +493,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             } else if args.len() == 2 {
                 // sqrt(x, n) -> x^(1/n)
@@ -490,6 +506,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         } else if name == "root" && args.len() == 2 {
@@ -503,6 +520,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
     }
@@ -523,6 +541,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -539,6 +558,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -578,6 +598,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         domain_assumption: None,
+                        assumption_events: Default::default(),
                     });
                 }
             }
@@ -626,6 +647,7 @@ define_rule!(
             before_local: Some(inner_id),
             after_local: Some(new_expr),
             domain_assumption: None,
+assumption_events: Default::default(),
         })
     }
 );
@@ -692,6 +714,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             domain_assumption: None,
+                            assumption_events: Default::default(),
                         });
                     }
                 }
@@ -717,6 +740,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                         if let Some((a, b)) = as_sub_like(ctx, ml_id) {
@@ -731,6 +755,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 domain_assumption: None,
+                                assumption_events: Default::default(),
                             });
                         }
                     }

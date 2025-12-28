@@ -39,6 +39,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
         if let Some((result, desc)) = check_pythagorean_pattern(ctx, t2, t1) {
@@ -48,6 +49,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -287,6 +289,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     domain_assumption: None,
+                    assumption_events: Default::default(),
                 });
             }
         }

@@ -15,9 +15,11 @@ pub struct Rewrite {
     /// Optional: The specific local result after the rule (for n-ary rules)
     pub after_local: Option<ExprId>,
     /// Optional: Domain assumption used by this rule (e.g., "x > 0 for ln(x)")
-    /// When set, CLI/timeline can display warnings about implicit assumptions.
-    /// The assumption collector will convert this to structured AssumptionEvent.
+    /// LEGACY: use assumption_events for structured emission, this is fallback.
     pub domain_assumption: Option<&'static str>,
+    /// Structured assumption events (preferred over domain_assumption string)
+    /// Multiple events allowed for rules that make several assumptions.
+    pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
 }
 
 impl Rewrite {
@@ -29,6 +31,7 @@ impl Rewrite {
             before_local: None,
             after_local: None,
             domain_assumption: None,
+            assumption_events: Default::default(),
         }
     }
 
@@ -46,6 +49,7 @@ impl Rewrite {
             before_local: Some(before_local),
             after_local: Some(after_local),
             domain_assumption: None,
+            assumption_events: Default::default(),
         }
     }
 
@@ -61,6 +65,7 @@ impl Rewrite {
             before_local: None,
             after_local: None,
             domain_assumption: Some(assumption),
+            assumption_events: Default::default(),
         }
     }
 }

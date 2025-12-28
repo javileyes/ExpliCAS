@@ -87,6 +87,7 @@ impl Rule for ProductToSumRule {
                 before_local: None,
                 after_local: None,
                 domain_assumption: None,
+                assumption_events: Default::default(),
             });
         }
 
@@ -230,7 +231,8 @@ impl Rule for CosProductTelescopingRule {
             before_local: None,
             after_local: None,
             domain_assumption: Some("Assuming sin(u) ≠ 0 (used for integration transforms)"),
-        })
+            assumption_events: Default::default(),
+})
     }
 }
 
