@@ -48,9 +48,34 @@ pub enum InverseTrigPolicy {
     PrincipalValue,
 }
 
+/// Scope for assumptions when `DomainMode = Assume`.
+///
+/// This axis determines how far the engine can go with assumptions
+/// without requiring an explicit change to `ValueDomain`.
+///
+/// # Design
+///
+/// - `AssumeScope` is independent of `DomainMode`. It's always reflected
+///   in configuration/JSON, but only *active* when `DomainMode = Assume`.
+/// - When the engine needs to invoke an operation that would require ℂ
+///   (e.g., `ln(-2)`), the scope determines the response:
+///   - `Real`: error (UnsupportedInRealDomain)
+///   - `Wildcard`: residual + warning suggesting complex mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AssumeScope {
+    /// Assume positivity/nonzero for ℝ operations.
+    /// Error if the operation would require promotion to ℂ.
+    #[default]
+    Real,
+
+    /// Like Real, but if ℂ is needed, return residual + warning
+    /// instead of error. Never implicitly promotes to ℂ.
+    Wildcard,
+}
+
 /// Unified semantic configuration for evaluation.
 ///
-/// This struct combines all 4 semantic axes into a single
+/// This struct combines all 5 semantic axes into a single
 /// configuration that can be passed through the engine.
 ///
 /// # Example
@@ -59,6 +84,7 @@ pub enum InverseTrigPolicy {
 /// let cfg = EvalConfig::default();
 /// assert_eq!(cfg.domain_mode, DomainMode::Generic);
 /// assert_eq!(cfg.value_domain, ValueDomain::RealOnly);
+/// assert_eq!(cfg.assume_scope, AssumeScope::Real);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EvalConfig {
@@ -73,6 +99,9 @@ pub struct EvalConfig {
 
     /// Inverse trig composition policy
     pub inv_trig: InverseTrigPolicy,
+
+    /// Scope for assumptions (only active if DomainMode = Assume)
+    pub assume_scope: AssumeScope,
 }
 
 impl Default for EvalConfig {
@@ -82,6 +111,7 @@ impl Default for EvalConfig {
             value_domain: ValueDomain::RealOnly,
             branch: BranchPolicy::Principal,
             inv_trig: InverseTrigPolicy::Strict,
+            assume_scope: AssumeScope::Real,
         }
     }
 }
@@ -94,6 +124,7 @@ impl EvalConfig {
             value_domain: ValueDomain::RealOnly,
             branch: BranchPolicy::Principal,
             inv_trig: InverseTrigPolicy::Strict,
+            assume_scope: AssumeScope::Real,
         }
     }
 
@@ -104,6 +135,7 @@ impl EvalConfig {
             value_domain: ValueDomain::RealOnly,
             branch: BranchPolicy::Principal,
             inv_trig: InverseTrigPolicy::Strict,
+            assume_scope: AssumeScope::Real,
         }
     }
 
@@ -114,6 +146,7 @@ impl EvalConfig {
             value_domain: ValueDomain::ComplexEnabled,
             branch: BranchPolicy::Principal,
             inv_trig: InverseTrigPolicy::Strict,
+            assume_scope: AssumeScope::Real,
         }
     }
 }

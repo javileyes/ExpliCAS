@@ -77,6 +77,10 @@ pub struct EvalJsonArgs {
     /// Constant folding mode: off, safe
     #[arg(long, default_value = "off")]
     pub const_fold: String,
+
+    /// Assume scope: real, wildcard
+    #[arg(long, default_value = "real")]
+    pub assume_scope: String,
 }
 
 /// Run the eval-json command
@@ -265,6 +269,12 @@ fn configure_options(opts: &mut cas_engine::options::EvalOptions, args: &EvalJso
     // Branch policy (only Principal for now)
     let _ = args.complex_branch.as_str(); // Parse but only one option
     opts.branch = cas_engine::BranchPolicy::Principal;
+
+    // Assume scope
+    opts.assume_scope = match args.assume_scope.as_str() {
+        "wildcard" => cas_engine::AssumeScope::Wildcard,
+        _ => cas_engine::AssumeScope::Real,
+    };
 }
 
 fn collect_warnings(output: &cas_engine::EvalOutput) -> Vec<WarningJson> {
@@ -314,5 +324,6 @@ fn build_semantics_json(args: &EvalJsonArgs) -> SemanticsJson {
         value_domain: args.value_domain.clone(),
         branch: args.complex_branch.clone(),
         inv_trig: args.inv_trig.clone(),
+        assume_scope: args.assume_scope.clone(),
     }
 }

@@ -149,6 +149,16 @@ pub enum ConstFoldArg {
     Safe,
 }
 
+/// Assume scope for domain assumptions
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum AssumeScopeArg {
+    /// Assume for ℝ, error if ℂ needed (default)
+    #[default]
+    Real,
+    /// Assume for ℝ, residual+warning if ℂ needed
+    Wildcard,
+}
+
 /// Substitute mode
 #[derive(ValueEnum, Debug, Clone, Copy, Default)]
 pub enum SubstituteModeArg {
@@ -279,6 +289,10 @@ pub struct EvalArgs {
     /// Constant folding mode
     #[arg(long, value_enum, default_value_t = ConstFoldArg::Off)]
     pub const_fold: ConstFoldArg,
+
+    /// Assume scope (only active when domain=assume)
+    #[arg(long, value_enum, default_value_t = AssumeScopeArg::Real)]
+    pub assume_scope: AssumeScopeArg,
 }
 
 /// Legacy eval-json arguments (hidden, for backward compatibility)
@@ -322,6 +336,9 @@ pub struct EvalJsonLegacyArgs {
 
     #[arg(long, value_enum, default_value_t = ConstFoldArg::Off)]
     pub const_fold: ConstFoldArg,
+
+    #[arg(long, value_enum, default_value_t = AssumeScopeArg::Real)]
+    pub assume_scope: AssumeScopeArg,
 }
 
 fn main() -> rustyline::Result<()> {
@@ -370,6 +387,7 @@ fn main() -> rustyline::Result<()> {
                 inv_trig: inv_trig_arg_to_string(args.inv_trig),
                 complex_branch: branch_arg_to_string(args.branch_policy),
                 const_fold: const_fold_arg_to_string(args.const_fold),
+                assume_scope: assume_scope_arg_to_string(args.assume_scope),
             };
             commands::eval_json::run(eval_args);
             Ok(())
@@ -430,6 +448,7 @@ fn run_eval(args: EvalArgs) {
                 inv_trig: inv_trig_arg_to_string(args.inv_trig),
                 complex_branch: branch_arg_to_string(args.complex_branch),
                 const_fold: const_fold_arg_to_string(args.const_fold),
+                assume_scope: assume_scope_arg_to_string(args.assume_scope),
             };
             commands::eval_json::run(json_args);
         }
@@ -566,6 +585,14 @@ fn const_fold_arg_to_string(cf: ConstFoldArg) -> String {
     match cf {
         ConstFoldArg::Off => "off".to_string(),
         ConstFoldArg::Safe => "safe".to_string(),
+    }
+}
+
+/// Convert AssumeScopeArg enum to string for JSON args
+fn assume_scope_arg_to_string(as_: AssumeScopeArg) -> String {
+    match as_ {
+        AssumeScopeArg::Real => "real".to_string(),
+        AssumeScopeArg::Wildcard => "wildcard".to_string(),
     }
 }
 

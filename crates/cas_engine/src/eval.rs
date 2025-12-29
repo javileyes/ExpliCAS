@@ -308,6 +308,7 @@ impl Engine {
                 let solver_opts = crate::solver::SolverOptions {
                     value_domain: state.options.value_domain,
                     domain_mode: state.options.domain_mode,
+                    assume_scope: state.options.assume_scope,
                 };
                 let sol_result = crate::solver::solve_with_options(
                     &eq_to_solve,

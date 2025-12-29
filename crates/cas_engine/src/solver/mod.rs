@@ -19,6 +19,8 @@ pub struct SolverOptions {
     pub value_domain: crate::semantics::ValueDomain,
     /// The domain mode (Strict, Assume, Generic)
     pub domain_mode: crate::domain::DomainMode,
+    /// Scope for assumptions (only active if domain_mode=Assume)
+    pub assume_scope: crate::semantics::AssumeScope,
 }
 
 impl Default for SolverOptions {
@@ -26,6 +28,7 @@ impl Default for SolverOptions {
         Self {
             value_domain: crate::semantics::ValueDomain::RealOnly,
             domain_mode: crate::domain::DomainMode::Generic,
+            assume_scope: crate::semantics::AssumeScope::Real,
         }
     }
 }

@@ -4,7 +4,9 @@
 //! Note: Full behavior tests require REPL integration; these verify axes at config level.
 
 use cas_engine::const_fold::ConstFoldMode;
-use cas_engine::semantics::{BranchPolicy, EvalConfig, InverseTrigPolicy, ValueDomain};
+use cas_engine::semantics::{
+    AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, ValueDomain,
+};
 use cas_engine::DomainMode;
 
 // ============================================================================
@@ -32,6 +34,7 @@ fn preset_strict_axes() {
         value_domain: ValueDomain::RealOnly,
         branch: BranchPolicy::Principal,
         inv_trig: InverseTrigPolicy::Strict,
+        assume_scope: AssumeScope::Real,
     };
 
     assert_eq!(cfg.domain_mode, DomainMode::Strict);
@@ -46,6 +49,7 @@ fn preset_complex_axes() {
         value_domain: ValueDomain::ComplexEnabled,
         branch: BranchPolicy::Principal,
         inv_trig: InverseTrigPolicy::Strict,
+        assume_scope: AssumeScope::Real,
     };
 
     // Key differentiator: complex + safe const_fold
@@ -61,6 +65,7 @@ fn preset_school_axes() {
         value_domain: ValueDomain::RealOnly,
         branch: BranchPolicy::Principal,
         inv_trig: InverseTrigPolicy::PrincipalValue,
+        assume_scope: AssumeScope::Real,
     };
 
     // Key differentiator: inv_trig = principal

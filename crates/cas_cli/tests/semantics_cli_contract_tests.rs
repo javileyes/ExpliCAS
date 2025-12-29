@@ -57,6 +57,7 @@ fn semantics_defaults_reflected() {
     assert_eq!(semantics["value_domain"], "real");
     assert_eq!(semantics["inv_trig"], "strict");
     assert_eq!(semantics["branch"], "principal");
+    assert_eq!(semantics["assume_scope"], "real");
 }
 
 #[test]
@@ -82,4 +83,53 @@ fn domain_strict_with_semantics() {
 
     assert_eq!(json["semantics"]["domain_mode"], "strict");
     assert_eq!(json["domain"]["mode"], "strict");
+}
+
+// =============================================================================
+// AssumeScope Tests (PR-SCOPE-1)
+// =============================================================================
+
+#[test]
+fn assume_scope_default_reflected() {
+    let (output, _code) = run_cli(&["eval-json", "1+1"]);
+    let json = parse_json(&output);
+
+    assert_eq!(
+        json["semantics"]["assume_scope"], "real",
+        "assume_scope default should be 'real'"
+    );
+}
+
+#[test]
+fn assume_scope_wildcard_flag_reflected() {
+    let (output, _code) = run_cli(&["eval-json", "1+1", "--assume-scope", "wildcard"]);
+    let json = parse_json(&output);
+
+    assert_eq!(
+        json["semantics"]["assume_scope"], "wildcard",
+        "--assume-scope wildcard should be reflected in JSON"
+    );
+}
+
+#[test]
+fn assume_scope_flag_does_not_change_result() {
+    // Infrastructure-only: changing assume_scope should NOT change result
+    // (behavior changes come in PR-SCOPE-3)
+    let (output1, _) = run_cli(&["eval-json", "x/x", "--domain", "generic"]);
+    let (output2, _) = run_cli(&[
+        "eval-json",
+        "x/x",
+        "--domain",
+        "generic",
+        "--assume-scope",
+        "wildcard",
+    ]);
+
+    let json1 = parse_json(&output1);
+    let json2 = parse_json(&output2);
+
+    assert_eq!(
+        json1["result"], json2["result"],
+        "assume_scope flag should not change result (infra only)"
+    );
 }

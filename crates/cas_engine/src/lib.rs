@@ -86,7 +86,9 @@ pub use phase::{
 };
 pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
 pub use rule::Rule;
-pub use semantics::{BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain};
+pub use semantics::{
+    AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
+};
 pub use session::{resolve_session_refs, Entry, EntryId, EntryKind, ResolveError, SessionStore};
 pub use session_state::SessionState;
 pub use step::Step;

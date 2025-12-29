@@ -111,6 +111,8 @@ pub struct EvalOptions {
     pub const_fold: crate::const_fold::ConstFoldMode,
     /// Assumption reporting level (Off, Summary, Trace)
     pub assumption_reporting: crate::assumptions::AssumptionReporting,
+    /// Scope for assumptions (only active if domain_mode=Assume)
+    pub assume_scope: crate::semantics::AssumeScope,
 }
 
 impl EvalOptions {
@@ -171,6 +173,7 @@ impl EvalOptions {
             value_domain: self.value_domain,
             branch: self.branch,
             assumption_reporting: self.assumption_reporting,
+            assume_scope: self.assume_scope,
             ..Default::default()
         }
     }

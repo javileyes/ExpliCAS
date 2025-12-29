@@ -307,6 +307,11 @@ pub struct SimplifyOptions {
     /// - Collected: don't distribute
     /// - ExpandedLog: don't contract logs
     pub goal: crate::semantics::NormalFormGoal,
+
+    /// Scope for assumptions (only active if domain=Assume).
+    /// - Real: assume for ℝ, error if ℂ needed
+    /// - Wildcard: assume for ℝ, residual+warning if ℂ needed
+    pub assume_scope: crate::semantics::AssumeScope,
 }
 
 impl Default for SimplifyOptions {
@@ -326,6 +331,7 @@ impl Default for SimplifyOptions {
             branch: crate::semantics::BranchPolicy::default(), // Principal
             assumption_reporting: crate::assumptions::AssumptionReporting::Off, // Default to Off (conservador)
             goal: crate::semantics::NormalFormGoal::default(),                  // Simplify
+            assume_scope: crate::semantics::AssumeScope::default(),             // Real
         }
     }
 }

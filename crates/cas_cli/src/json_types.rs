@@ -85,6 +85,8 @@ pub struct SemanticsJson {
     pub branch: String,
     /// Inverse trig composition policy
     pub inv_trig: String,
+    /// Assume scope (only active when domain_mode=assume)
+    pub assume_scope: String,
 }
 
 /// An error result with stable kind/code for API consumers.

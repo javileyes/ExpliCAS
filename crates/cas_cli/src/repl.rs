@@ -2564,6 +2564,9 @@ impl Repl {
             Some(&"assumptions") => {
                 self.print_axis_status("assumptions");
             }
+            Some(&"assume_scope") => {
+                self.print_axis_status("assume_scope");
+            }
             Some(&"preset") => {
                 self.handle_preset(&args[2..]);
             }
@@ -2571,7 +2574,7 @@ impl Repl {
                 println!("Unknown semantics subcommand: '{}'", other);
                 println!("Usage: semantics [set|preset|help|<axis>]");
                 println!("  semantics            Show all settings");
-                println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold|assumptions)");
+                println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold|assumptions|assume_scope)");
                 println!("  semantics help       Show help");
                 println!("  semantics set ...    Change settings");
                 println!("  semantics preset     List/apply presets");
@@ -2628,6 +2631,20 @@ impl Repl {
             cas_engine::AssumptionReporting::Trace => "trace",
         };
         println!("  assumptions: {}", assumptions);
+
+        // Show assume_scope with inactive note if domain_mode != Assume
+        let assume_scope = match self.simplify_options.assume_scope {
+            cas_engine::AssumeScope::Real => "real",
+            cas_engine::AssumeScope::Wildcard => "wildcard",
+        };
+        if self.simplify_options.domain != DomainMode::Assume {
+            println!(
+                "  assume_scope: {} (inactive: domain_mode != assume)",
+                assume_scope
+            );
+        } else {
+            println!("  assume_scope: {}", assume_scope);
+        }
     }
 
     /// Print status for a single semantic axis with current value and available options
@@ -2706,6 +2723,27 @@ impl Repl {
                 println!("  summary: Deduped summary line at end");
                 println!("  trace:   Detailed trace (future)");
             }
+            "assume_scope" => {
+                let current = match self.simplify_options.assume_scope {
+                    cas_engine::AssumeScope::Real => "real",
+                    cas_engine::AssumeScope::Wildcard => "wildcard",
+                };
+                let inactive = self.simplify_options.domain != DomainMode::Assume;
+                if inactive {
+                    println!(
+                        "assume_scope: {} (inactive: domain_mode != assume)",
+                        current
+                    );
+                } else {
+                    println!("assume_scope: {}", current);
+                }
+                println!("  Values: real | wildcard");
+                println!("  real:     Assume for ℝ, error if ℂ needed");
+                println!("  wildcard: Assume for ℝ, residual+warning if ℂ needed");
+                if inactive {
+                    println!("  Note: Only active when domain_mode=assume");
+                }
+            }
             _ => {
                 println!("Unknown axis: {}", axis);
             }
@@ -2741,10 +2779,16 @@ impl Repl {
         println!("              off:  No constant folding");
         println!("              safe: Fold literals (2^3 → 8)");
         println!();
+        println!("  assume_scope real | wildcard");
+        println!("              real:     Assume for ℝ, error if ℂ needed");
+        println!("              wildcard: Assume for ℝ, residual+warning if ℂ needed");
+        println!("              (only active when domain_mode=assume)");
+        println!();
         println!("Examples:");
         println!("  semantics set domain strict");
         println!("  semantics set value complex inv_trig principal");
         println!("  semantics set domain=strict value=complex");
+        println!("  semantics set assume_scope wildcard");
         println!();
         println!("Presets:");
         println!("  semantics preset              List available presets");
@@ -3094,9 +3138,24 @@ impl Repl {
                     return false;
                 }
             },
+            "assume_scope" => match value {
+                "real" => {
+                    self.simplify_options.assume_scope = cas_engine::AssumeScope::Real;
+                    self.state.options.assume_scope = cas_engine::AssumeScope::Real;
+                }
+                "wildcard" => {
+                    self.simplify_options.assume_scope = cas_engine::AssumeScope::Wildcard;
+                    self.state.options.assume_scope = cas_engine::AssumeScope::Wildcard;
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'assume_scope'", value);
+                    println!("Allowed: real, wildcard");
+                    return false;
+                }
+            },
             _ => {
                 println!("ERROR: Unknown axis '{}'", axis);
-                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions");
+                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope");
                 return false;
             }
         }
@@ -3956,6 +4015,7 @@ impl Repl {
                 let solver_opts = cas_engine::solver::SolverOptions {
                     value_domain: self.state.options.value_domain,
                     domain_mode: self.state.options.domain_mode,
+                    assume_scope: self.state.options.assume_scope,
                 };
 
                 match cas_engine::solver::solve_with_options(
