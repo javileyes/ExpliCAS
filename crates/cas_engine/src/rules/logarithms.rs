@@ -306,6 +306,115 @@ impl crate::rule::Rule for LogExpansionRule {
     }
 }
 
+/// LogAbsSimplifyRule: Simplifies ln(|expr|) → ln(expr) when expr > 0.
+///
+/// Domain-aware:
+/// - Strict: only if prove_positive(expr) == Proven
+/// - Generic: allow (like x/x → 1 in Generic)
+/// - Assume: allow with domain_assumption for traceability
+///
+/// ValueDomain-aware:
+/// - ComplexEnabled: only if prove_positive == Proven (no assume for ℂ)
+/// - RealOnly: use DomainMode policy
+///
+/// NOTE: This rule should be registered BEFORE LogContractionRule to catch
+/// `ln(|x|) - ln(x)` before it becomes `ln(|x|/x)`.
+pub struct LogAbsSimplifyRule;
+
+impl crate::rule::Rule for LogAbsSimplifyRule {
+    fn name(&self) -> &str {
+        "Log Abs Simplify"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::domain::{DomainMode, Proof};
+        use crate::helpers::prove_positive;
+        use crate::semantics::ValueDomain;
+
+        // Match ln(arg) or log(base, arg)
+        let (base_opt, arg) = match ctx.get(expr).clone() {
+            Expr::Function(name, args) if name == "ln" && args.len() == 1 => (None, args[0]),
+            Expr::Function(name, args) if name == "log" && args.len() == 2 => {
+                (Some(args[0]), args[1])
+            }
+            _ => return None,
+        };
+
+        // Match abs(inner)
+        let inner = match ctx.get(arg).clone() {
+            Expr::Function(name, args) if name == "abs" && args.len() == 1 => args[0],
+            _ => return None,
+        };
+
+        let vd = parent_ctx.value_domain();
+        let dm = parent_ctx.domain_mode();
+        let pos = prove_positive(ctx, inner);
+
+        // Helper to rebuild ln/log with inner (without abs)
+        let mk_log = |ctx: &mut Context| -> ExprId {
+            match base_opt {
+                Some(base) => ctx.add(Expr::Function("log".to_string(), vec![base, inner])),
+                None => ctx.add(Expr::Function("ln".to_string(), vec![inner])),
+            }
+        };
+
+        // In ComplexEnabled: only allow if Proven (no assume - "positive" not well-defined for ℂ)
+        if vd == ValueDomain::ComplexEnabled {
+            if pos != Proof::Proven {
+                return None;
+            }
+            return Some(Rewrite {
+                new_expr: mk_log(ctx),
+                description: "ln(|x|) = ln(x) for x > 0".to_string(),
+                before_local: None,
+                after_local: None,
+                assumption_events: Default::default(),
+            });
+        }
+
+        // RealOnly: DomainMode policy
+        //   - Strict: only if proven
+        //   - Generic: only if proven (conservative - no silent assumptions)
+        //   - Assume: allow with assumption warning
+        match dm {
+            DomainMode::Strict | DomainMode::Generic => {
+                // Only simplify if proven positive (no silent assumptions)
+                if pos != Proof::Proven {
+                    return None;
+                }
+                Some(Rewrite {
+                    new_expr: mk_log(ctx),
+                    description: "ln(|x|) = ln(x) for x > 0".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    assumption_events: Default::default(),
+                })
+            }
+            DomainMode::Assume => {
+                // In Assume mode: simplify with warning (assumption traceability)
+                let events =
+                    smallvec::smallvec![crate::assumptions::AssumptionEvent::positive(ctx, inner)];
+                Some(Rewrite {
+                    new_expr: mk_log(ctx),
+                    description: "ln(|x|) = ln(x) (assuming x > 0)".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    assumption_events: events,
+                })
+            }
+        }
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+}
+
 /// LogContractionRule: Contracts sums/differences of logs into single logs.
 /// - ln(a) + ln(b) → ln(a*b)
 /// - ln(a) - ln(b) → ln(a/b)
@@ -1034,6 +1143,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Log expansion increases node count (ln(xy) → ln(x) + ln(y)) and is not always desirable.
     // Use the `expand_log` command for explicit expansion.
     // simplifier.add_rule(Box::new(LogExpansionRule));
+
+    // LogAbsSimplifyRule: ln(|x|) → ln(x) when x > 0
+    // Must be BEFORE LogContractionRule to catch `ln(|x|) - ln(x)` before it becomes `ln(|x|/x)`
+    simplifier.add_rule(Box::new(LogAbsSimplifyRule));
 
     // LogContractionRule DOES reduce node count (ln(a)+ln(b) → ln(ab)) - valid simplification
     simplifier.add_rule(Box::new(LogContractionRule));

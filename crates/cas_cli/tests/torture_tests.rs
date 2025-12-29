@@ -16,7 +16,7 @@ use cas_engine::rules::exponents::{
 use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::grouping::CollectRule;
 use cas_engine::rules::logarithms::{
-    EvaluateLogRule, ExponentialLogRule, LogContractionRule, LogExpInverseRule,
+    EvaluateLogRule, ExponentialLogRule, LogAbsSimplifyRule, LogContractionRule, LogExpInverseRule,
     SplitLogExponentsRule,
 };
 use cas_engine::rules::number_theory::NumberTheoryRule;
@@ -66,6 +66,7 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(EvaluateLogRule));
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(LogExpInverseRule)); // ln(e^x) → x
+    simplifier.add_rule(Box::new(LogAbsSimplifyRule)); // ln(|x|) → ln(x) when x > 0 - MUST be before LogContractionRule
     simplifier.add_rule(Box::new(LogContractionRule)); // ln(a) + ln(b) → ln(a*b)
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(ProductPowerRule));
@@ -876,18 +877,24 @@ fn test_torture_28_tangent_sum() {
 }
 
 #[test]
-#[ignore = "Requires ln(|x+1|)→ln(x+1) with domain assumption x+1>0 - not yet supported"]
 fn test_log_sqrt_simplification() {
     let mut simplifier = create_full_simplifier();
 
     // ln(sqrt(x^2 + 2*x + 1)) - ln(x + 1) -> 0
     // Requires:
     // 1. sqrt(x^2+2x+1) -> |x+1| (SimplifySquareRootRule)
-    // 2. ln(|x+1|) -> ln(x+1) (EvaluateLogRule with domain assumption)
+    // 2. ln(|x+1|) -> ln(x+1) (LogAbsSimplifyRule with domain assumption x+1>0)
     // 3. ln(x+1) - ln(x+1) -> 0 (AnnihilationRule or CombineLikeTermsRule)
+    //
+    // NOTE: This requires DomainMode::Assume because we cannot prove x+1 > 0
+    // for a symbolic variable 'x'. The assumption is tracked via assumption_events.
     let input = "ln(sqrt(x^2 + 2*x + 1)) - ln(x + 1)";
     let expr = parse(input, &mut simplifier.context).unwrap();
-    let (res, _) = simplifier.simplify(expr);
+    let opts = cas_engine::SimplifyOptions {
+        domain: cas_engine::DomainMode::Assume,
+        ..Default::default()
+    };
+    let (res, _, _) = simplifier.simplify_with_stats(expr, opts);
     let output = format!(
         "{}",
         DisplayExpr {
