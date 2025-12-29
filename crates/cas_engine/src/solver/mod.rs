@@ -9,6 +9,27 @@ use cas_ast::{Context, Equation, ExprId, SolutionSet};
 
 pub use self::isolation::contains_var;
 
+/// Options for solver operations, containing semantic context.
+///
+/// This struct passes value domain and domain mode information to the solver,
+/// enabling domain-aware decisions like rejecting log operations on negative bases.
+#[derive(Debug, Clone, Copy)]
+pub struct SolverOptions {
+    /// The value domain (RealOnly or ComplexEnabled)
+    pub value_domain: crate::semantics::ValueDomain,
+    /// The domain mode (Strict, Assume, Generic)
+    pub domain_mode: crate::domain::DomainMode,
+}
+
+impl Default for SolverOptions {
+    fn default() -> Self {
+        Self {
+            value_domain: crate::semantics::ValueDomain::RealOnly,
+            domain_mode: crate::domain::DomainMode::Generic,
+        }
+    }
+}
+
 /// Helper: Build a 2-factor product (no normalization).
 
 #[derive(Debug, Clone)]
@@ -43,10 +64,29 @@ impl Drop for DepthGuard {
     }
 }
 
+/// Solve with default options (for backward compatibility with tests).
+/// Uses RealOnly domain and Generic mode.
 pub fn solve(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    solve_with_options(eq, var, simplifier, SolverOptions::default())
+}
+
+/// Solve an equation with explicit semantic options.
+///
+/// This is the primary entry point for domain-aware solving.
+/// `opts` contains ValueDomain and DomainMode which control:
+/// - Whether log operations are valid (RealOnly requires positive arguments)
+/// - Whether to emit assumptions or reject operations
+pub fn solve_with_options(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    // TODO: Pass opts to SolverStrategy::apply() for full domain-aware solving
+    // Currently strategies use SolverOptions::default() which is RealOnly/Generic
+    _opts: SolverOptions,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check and increment recursion depth
     let current_depth = SOLVE_DEPTH.with(|d| {

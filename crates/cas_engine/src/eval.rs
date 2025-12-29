@@ -304,8 +304,17 @@ impl Engine {
                     }
                 };
 
-                // Call solver
-                let sol_result = crate::solver::solve(&eq_to_solve, &var, &mut self.simplifier);
+                // Call solver with semantic options
+                let solver_opts = crate::solver::SolverOptions {
+                    value_domain: state.options.value_domain,
+                    domain_mode: state.options.domain_mode,
+                };
+                let sol_result = crate::solver::solve_with_options(
+                    &eq_to_solve,
+                    &var,
+                    &mut self.simplifier,
+                    solver_opts,
+                );
 
                 match sol_result {
                     Ok((solution_set, solve_steps)) => {

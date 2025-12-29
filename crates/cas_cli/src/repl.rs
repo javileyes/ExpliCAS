@@ -3951,10 +3951,19 @@ impl Repl {
 
         match cas_parser::parse_statement(eq_str, &mut self.engine.simplifier.context) {
             Ok(cas_parser::Statement::Equation(eq)) => {
-                // Call solver with step collection enabled
+                // Call solver with step collection enabled and semantic options
                 self.engine.simplifier.set_collect_steps(true);
+                let solver_opts = cas_engine::solver::SolverOptions {
+                    value_domain: self.state.options.value_domain,
+                    domain_mode: self.state.options.domain_mode,
+                };
 
-                match cas_engine::solver::solve(&eq, var, &mut self.engine.simplifier) {
+                match cas_engine::solver::solve_with_options(
+                    &eq,
+                    var,
+                    &mut self.engine.simplifier,
+                    solver_opts,
+                ) {
                     Ok((solution_set, steps)) => {
                         if steps.is_empty() {
                             println!("No solving steps to visualize.");

@@ -485,6 +485,21 @@ pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
             }
         }
 
+        // Div: a/b > 0 if (a>0 AND b>0) OR (a<0 AND b<0)
+        // For simplicity, we only prove the (a>0 AND b>0) case
+        // This handles 2/3 being represented as Div(2, 3)
+        Expr::Div(a, b) => {
+            let proof_a = prove_positive(ctx, *a);
+            let proof_b = prove_positive(ctx, *b);
+
+            match (proof_a, proof_b) {
+                (Proof::Proven, Proof::Proven) => Proof::Proven,
+                // If either is ≤ 0, we can't easily conclude
+                (Proof::Disproven, _) | (_, Proof::Disproven) => Proof::Unknown, // Could be positive if both negative
+                _ => Proof::Unknown,
+            }
+        }
+
         // Pow with positive base: a^n > 0 if a > 0 and n is any real
         // Pow with even exponent: a^(2k) > 0 if a ≠ 0
         Expr::Pow(base, exp) => {
@@ -557,6 +572,60 @@ pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
 /// for more fine-grained control.
 pub fn can_prove_positive(ctx: &Context, expr: ExprId) -> bool {
     prove_positive(ctx, expr).is_proven()
+}
+
+// ========== Solver Domain Helpers ==========
+
+/// Decision result for `can_take_ln_real`.
+///
+/// Used by the solver to determine if ln(arg) is valid in RealOnly mode.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LnDecision {
+    /// Argument is provably positive - ln() is safe with no assumption.
+    Safe,
+    /// Argument positivity is unknown but allowed under assumption (Assume mode only).
+    /// Contains the assumption message to be emitted.
+    AssumePositive,
+}
+
+/// Check if ln(arg) is valid in RealOnly mode.
+///
+/// This is used by the solver to gate log operations on exponential equations.
+///
+/// # Arguments
+/// * `ctx` - Expression context
+/// * `arg` - The argument to ln()
+/// * `mode` - The current DomainMode
+///
+/// # Returns
+/// * `Ok(LnDecision::Safe)` if arg is provably positive (no assumption needed)
+/// * `Ok(LnDecision::AssumePositive)` if allowed with assumption (Assume mode only)
+/// * `Err(reason)` if ln is invalid (arg ≤ 0 proven, or unknown in Strict/Generic)
+///
+/// # Examples
+/// ```ignore
+/// can_take_ln_real(ctx, ctx.num(2), DomainMode::Strict)   // Ok(Safe)
+/// can_take_ln_real(ctx, ctx.num(-5), DomainMode::Strict)  // Err("argument ≤ 0")
+/// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Strict) // Err("cannot prove > 0")
+/// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Assume) // Ok(AssumePositive)
+/// ```
+pub fn can_take_ln_real(
+    ctx: &Context,
+    arg: ExprId,
+    mode: crate::domain::DomainMode,
+) -> Result<LnDecision, &'static str> {
+    use crate::domain::{DomainMode, Proof};
+
+    let proof = prove_positive(ctx, arg);
+
+    match proof {
+        Proof::Proven => Ok(LnDecision::Safe),
+        Proof::Disproven => Err("argument is ≤ 0"),
+        Proof::Unknown => match mode {
+            DomainMode::Strict | DomainMode::Generic => Err("cannot prove argument > 0 for ln()"),
+            DomainMode::Assume => Ok(LnDecision::AssumePositive),
+        },
+    }
 }
 
 /// Try to extract an integer value from an expression.
@@ -979,8 +1048,10 @@ fn is_negative_one(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => *n == num_rational::BigRational::from_integer((-1).into()),
         Expr::Neg(inner) => {
-            matches!(ctx.get(*inner), Expr::Number(n) 
-                if *n == num_rational::BigRational::from_integer(1.into()))
+            matches!(
+                ctx.get(*inner),
+                Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into())
+            )
         }
         _ => false,
     }

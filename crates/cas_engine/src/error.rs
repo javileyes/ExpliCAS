@@ -38,6 +38,11 @@ pub enum CasError {
     /// For invariant violations in release builds
     #[error("internal error: {0}")]
     InternalError(String),
+
+    /// Operation not supported in RealOnly value domain
+    /// Includes suggestion to enable complex mode
+    #[error("not supported in real domain: {0}")]
+    UnsupportedInRealDomain(String),
 }
 
 impl From<budget::BudgetExceeded> for CasError {
@@ -94,6 +99,7 @@ impl CasError {
             CasError::BudgetExceeded(_) => "BudgetExceeded",
             CasError::NotImplemented { .. } => "NotImplemented",
             CasError::InternalError(_) => "InternalError",
+            CasError::UnsupportedInRealDomain(_) => "DomainError",
         }
     }
 
@@ -116,6 +122,7 @@ impl CasError {
             CasError::BudgetExceeded(_) => "E_BUDGET",
             CasError::NotImplemented { .. } => "E_NOT_IMPL",
             CasError::InternalError(_) => "E_INTERNAL",
+            CasError::UnsupportedInRealDomain(_) => "E_REAL_ONLY",
         }
     }
 

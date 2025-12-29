@@ -6,7 +6,7 @@ use crate::solver::isolation::{contains_var, isolate};
 use crate::solver::solution_set::{compare_values, neg_inf, pos_inf};
 use crate::solver::solve; // Needed for recursive solve in substitution
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::SolveStep;
+use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
@@ -981,7 +981,14 @@ impl SolverStrategy for IsolationStrategy {
                     },
                 });
             }
-            match isolate(eq.rhs, eq.lhs, new_op, var, simplifier) {
+            match isolate(
+                eq.rhs,
+                eq.lhs,
+                new_op,
+                var,
+                simplifier,
+                SolverOptions::default(),
+            ) {
                 Ok((set, mut iso_steps)) => {
                     steps.append(&mut iso_steps);
                     return Some(Ok((set, steps)));
@@ -991,7 +998,14 @@ impl SolverStrategy for IsolationStrategy {
         }
 
         // LHS has var
-        match isolate(eq.lhs, eq.rhs, eq.op.clone(), var, simplifier) {
+        match isolate(
+            eq.lhs,
+            eq.rhs,
+            eq.op.clone(),
+            var,
+            simplifier,
+            SolverOptions::default(),
+        ) {
             Ok((set, steps)) => Some(Ok((set, steps))),
             Err(e) => Some(Err(e)),
         }
@@ -1167,7 +1181,29 @@ impl SolverStrategy for UnwrapStrategy {
                         && contains_var(&simplifier.context, e, var)
                     {
                         // A^x = B -> x * ln(A) = ln(B)
-                        // Take ln of both sides
+                        // DOMAIN GUARDS: Only proceed if ln() is valid in RealOnly mode
+                        use crate::domain::Proof;
+                        use crate::helpers::prove_positive;
+
+                        let base_proof = prove_positive(&simplifier.context, b);
+                        let rhs_proof = prove_positive(&simplifier.context, other);
+
+                        // GUARD: if base is proven ≤ 0 (like literal -2), skip this strategy
+                        // Let IsolationStrategy handle with proper UnsupportedInRealDomain error
+                        if base_proof == Proof::Disproven {
+                            return None;
+                        }
+
+                        // GUARD: if base is proven > 0 but RHS is proven ≤ 0, no real solutions
+                        // Skip this strategy - IsolationStrategy will return Empty with explanation
+                        if base_proof == Proof::Proven && rhs_proof == Proof::Disproven {
+                            return None;
+                        }
+
+                        // Note: If base is Unknown (symbolic), we proceed with ln transformation
+                        // This is acceptable in Generic mode for educational use
+
+                        // Safe to take ln of both sides
                         let ln_str = "ln".to_string();
 
                         // ln(A^x) -> x * ln(A)

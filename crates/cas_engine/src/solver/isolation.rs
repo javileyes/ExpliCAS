@@ -1,6 +1,6 @@
 use crate::engine::Simplifier;
 use crate::solver::solution_set::{intersect_solution_sets, neg_inf, pos_inf, union_solution_sets};
-use crate::solver::{solve, SolveStep, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
+use crate::solver::{solve, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
 use num_traits::Zero;
 
@@ -12,6 +12,7 @@ pub fn isolate(
     op: RelOp,
     var: &str,
     simplifier: &mut Simplifier,
+    opts: SolverOptions,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check recursion depth
     let current_depth = SOLVE_DEPTH.with(|d| *d.borrow());
@@ -98,7 +99,7 @@ pub fn isolate(
                         equation_after: new_eq,
                     });
                 }
-                let results = isolate(l, sim_rhs, op, var, simplifier)?;
+                let results = isolate(l, sim_rhs, op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             } else {
                 // B = RHS - A
@@ -121,7 +122,7 @@ pub fn isolate(
                         equation_after: new_eq,
                     });
                 }
-                let results = isolate(r, sim_rhs, op, var, simplifier)?;
+                let results = isolate(r, sim_rhs, op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             }
         }
@@ -148,7 +149,7 @@ pub fn isolate(
                         equation_after: new_eq,
                     });
                 }
-                let results = isolate(l, sim_rhs, op, var, simplifier)?;
+                let results = isolate(l, sim_rhs, op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             } else {
                 // -B = RHS - A -> B = A - RHS
@@ -173,7 +174,7 @@ pub fn isolate(
                         equation_after: new_eq,
                     });
                 }
-                let results = isolate(r, sim_rhs, new_op, var, simplifier)?;
+                let results = isolate(r, sim_rhs, new_op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             }
         }
@@ -343,7 +344,7 @@ pub fn isolate(
                         equation_after: new_eq,
                     });
                 }
-                let results = isolate(l, new_rhs, new_op, var, simplifier)?;
+                let results = isolate(l, new_rhs, new_op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             } else {
                 // B = RHS / A
@@ -370,7 +371,7 @@ pub fn isolate(
                         equation_after: new_eq,
                     });
                 }
-                let results = isolate(r, new_rhs, new_op, var, simplifier)?;
+                let results = isolate(r, new_rhs, new_op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             }
         }
@@ -403,7 +404,7 @@ pub fn isolate(
                         });
                     }
 
-                    let results_pos = isolate(l, sim_rhs, op_pos, var, simplifier)?;
+                    let results_pos = isolate(l, sim_rhs, op_pos, var, simplifier, opts)?;
                     let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
 
                     // Domain: r > 0
@@ -431,7 +432,7 @@ pub fn isolate(
                         });
                     }
 
-                    let results_neg = isolate(l, sim_rhs, op_neg, var, simplifier)?;
+                    let results_neg = isolate(l, sim_rhs, op_neg, var, simplifier, opts)?;
                     let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
 
                     // Domain: r < 0
@@ -487,7 +488,7 @@ pub fn isolate(
                             equation_after: new_eq,
                         });
                     }
-                    let results = isolate(l, new_rhs, new_op, var, simplifier)?;
+                    let results = isolate(l, new_rhs, new_op, var, simplifier, opts)?;
                     prepend_steps(results, steps)
                 }
             } else {
@@ -535,7 +536,7 @@ pub fn isolate(
                              });
                         }
 
-                        let results_pos = isolate(r, sim_rhs, op_pos, var, simplifier)?;
+                        let results_pos = isolate(r, sim_rhs, op_pos, var, simplifier, opts)?;
                         let (set_pos, steps_pos) = prepend_steps(results_pos, steps_case1)?;
 
                         // Intersect with (0, inf)
@@ -563,7 +564,7 @@ pub fn isolate(
                              });
                         }
 
-                        let results_neg = isolate(r, sim_rhs, op_neg, var, simplifier)?;
+                        let results_neg = isolate(r, sim_rhs, op_neg, var, simplifier, opts)?;
                         let (set_neg, steps_neg) = prepend_steps(results_neg, steps_case2)?;
 
                         // Intersect with (-inf, 0)
@@ -608,7 +609,7 @@ pub fn isolate(
                         equation_after: new_eq,
                     });
                 }
-                let results = isolate(r, sim_rhs, op, var, simplifier)?;
+                let results = isolate(r, sim_rhs, op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             }
         }
@@ -682,7 +683,7 @@ pub fn isolate(
 
                     // Isolate |B|
                     // Note: We pass 'op' as is. |B| < RHS will be handled by isolate(|B|...) logic.
-                    let results = isolate(abs_b, new_rhs, op, var, simplifier)?;
+                    let results = isolate(abs_b, new_rhs, op, var, simplifier, opts)?;
                     prepend_steps(results, steps)
                 } else {
                     // B = RHS^(1/E)
@@ -713,11 +714,12 @@ pub fn isolate(
                         new_op = flip_inequality(new_op);
                     }
 
-                    let results = isolate(b, new_rhs, new_op, var, simplifier)?;
+                    let results = isolate(b, new_rhs, new_op, var, simplifier, opts)?;
                     prepend_steps(results, steps)
                 }
             } else {
-                // E = log(B, RHS)
+                // E = log(B, RHS) - Variable is in exponent (e.g., B^x = RHS → x = log_B(RHS))
+
                 // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
                 // This would create x = log(base, f(x)) which still has x on RHS → infinite loop.
                 // This happens after expansions like (a/b)^x → a^x/b^x when solving.
@@ -727,6 +729,87 @@ pub fn isolate(
                         "Cannot isolate exponential: variable appears on both sides".to_string(),
                     ));
                 }
+
+                // ================================================================
+                // DOMAIN GUARDS for log operation (RealOnly mode)
+                // ================================================================
+                use crate::domain::Proof;
+                use crate::helpers::{is_one, prove_positive};
+                use crate::semantics::ValueDomain;
+
+                // GUARD 1: Handle base = 1 special case
+                // 1^x = 1 for all x → if RHS = 1: AllReals, otherwise: Empty
+                if is_one(&simplifier.context, b) {
+                    let result = if is_one(&simplifier.context, rhs) {
+                        SolutionSet::AllReals
+                    } else {
+                        SolutionSet::Empty
+                    };
+                    if simplifier.collect_steps() {
+                        let desc = if is_one(&simplifier.context, rhs) {
+                            "1^x = 1 for all x → any real number is a solution".to_string()
+                        } else {
+                            format!(
+                                "1^x = 1 for all x, but RHS = {} ≠ 1 → no solution",
+                                cas_ast::DisplayExpr {
+                                    context: &simplifier.context,
+                                    id: rhs
+                                }
+                            )
+                        };
+                        steps.push(SolveStep {
+                            description: desc,
+                            equation_after: Equation { lhs, rhs, op },
+                        });
+                    }
+                    return Ok((result, steps));
+                }
+
+                // GUARD 2: In RealOnly mode, check domain requirements
+                if opts.value_domain == ValueDomain::RealOnly {
+                    let base_proof = prove_positive(&simplifier.context, b);
+                    let rhs_proof = prove_positive(&simplifier.context, rhs);
+
+                    // CASE: base > 0 proven but RHS < 0 → NO REAL SOLUTIONS
+                    // Because a^x > 0 for all real x when a > 0
+                    if base_proof == Proof::Proven && rhs_proof == Proof::Disproven {
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!(
+                                    "No real solutions: {}^x > 0 for all real x, but RHS = {} < 0",
+                                    cas_ast::DisplayExpr {
+                                        context: &simplifier.context,
+                                        id: b
+                                    },
+                                    cas_ast::DisplayExpr {
+                                        context: &simplifier.context,
+                                        id: rhs
+                                    }
+                                ),
+                                equation_after: Equation { lhs, rhs, op },
+                            });
+                        }
+                        return Ok((SolutionSet::Empty, steps));
+                    }
+
+                    // CASE: base is proven ≤ 0 (e.g., literal -2)
+                    // Cannot take real log of non-positive base
+                    if base_proof == Proof::Disproven {
+                        return Err(CasError::UnsupportedInRealDomain(format!(
+                            "Cannot solve {}^{} = {} in real domain: base {} is not positive. Use: semantics preset complex",
+                            cas_ast::DisplayExpr { context: &simplifier.context, id: b },
+                            var,
+                            cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
+                            cas_ast::DisplayExpr { context: &simplifier.context, id: b }
+                        )));
+                    }
+
+                    // Note: If base is Unknown (symbolic variable), we proceed with log transformation
+                    // This is appropriate for Generic mode / educational use
+                }
+                // ================================================================
+                // End of domain guards
+                // ================================================================
 
                 let new_rhs = simplifier
                     .context
@@ -748,7 +831,7 @@ pub fn isolate(
                         equation_after: new_eq,
                     });
                 }
-                let results = isolate(e, new_rhs, op, var, simplifier)?;
+                let results = isolate(e, new_rhs, op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             }
         }
@@ -784,7 +867,7 @@ pub fn isolate(
                         equation_after: eq1,
                     });
                 }
-                let results1 = isolate(arg, rhs, op.clone(), var, simplifier)?;
+                let results1 = isolate(arg, rhs, op.clone(), var, simplifier, opts)?;
                 let (set1, steps1_out) = prepend_steps(results1, steps1)?;
 
                 // Branch 2: Negative case
@@ -825,7 +908,7 @@ pub fn isolate(
                         equation_after: eq2,
                     });
                 }
-                let results2 = isolate(arg, neg_rhs, op2, var, simplifier)?;
+                let results2 = isolate(arg, neg_rhs, op2, var, simplifier, opts)?;
                 let (set2, steps2_out) = prepend_steps(results2, steps2)?;
 
                 // Combine sets
@@ -869,7 +952,7 @@ pub fn isolate(
                             equation_after: new_eq,
                         });
                     }
-                    let results = isolate(arg, new_rhs, op, var, simplifier)?;
+                    let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
                     prepend_steps(results, steps)
                 } else if contains_var(&simplifier.context, base, var)
                     && !contains_var(&simplifier.context, arg, var)
@@ -888,7 +971,7 @@ pub fn isolate(
                             equation_after: new_eq,
                         });
                     }
-                    let results = isolate(base, new_rhs, op, var, simplifier)?;
+                    let results = isolate(base, new_rhs, op, var, simplifier, opts)?;
                     prepend_steps(results, steps)
                 } else {
                     Err(CasError::IsolationError(
@@ -914,7 +997,7 @@ pub fn isolate(
                                     equation_after: new_eq,
                                 });
                             }
-                            let results = isolate(arg, new_rhs, op, var, simplifier)?;
+                            let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
                             prepend_steps(results, steps)
                         }
                         "exp" => {
@@ -932,7 +1015,7 @@ pub fn isolate(
                                     equation_after: new_eq,
                                 });
                             }
-                            let results = isolate(arg, new_rhs, op, var, simplifier)?;
+                            let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
                             prepend_steps(results, steps)
                         }
                         "sqrt" => {
@@ -949,7 +1032,7 @@ pub fn isolate(
                                     equation_after: new_eq,
                                 });
                             }
-                            let results = isolate(arg, new_rhs, op, var, simplifier)?;
+                            let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
                             prepend_steps(results, steps)
                         }
                         "sin" => {
@@ -973,7 +1056,7 @@ pub fn isolate(
                                 simplify_rhs(new_rhs, arg, op.clone(), simplifier);
                             steps.extend(sim_steps);
 
-                            let results = isolate(arg, simplified_rhs, op, var, simplifier)?;
+                            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts)?;
                             prepend_steps(results, steps)
                         }
                         "cos" => {
@@ -997,7 +1080,7 @@ pub fn isolate(
                                 simplify_rhs(new_rhs, arg, op.clone(), simplifier);
                             steps.extend(sim_steps);
 
-                            let results = isolate(arg, simplified_rhs, op, var, simplifier)?;
+                            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts)?;
                             prepend_steps(results, steps)
                         }
                         "tan" => {
@@ -1021,7 +1104,7 @@ pub fn isolate(
                                 simplify_rhs(new_rhs, arg, op.clone(), simplifier);
                             steps.extend(sim_steps);
 
-                            let results = isolate(arg, simplified_rhs, op, var, simplifier)?;
+                            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts)?;
                             prepend_steps(results, steps)
                         }
                         _ => Err(CasError::UnknownFunction(name.clone())),
@@ -1059,7 +1142,7 @@ pub fn isolate(
                 });
             }
 
-            let results = isolate(inner, new_rhs, new_op, var, simplifier)?;
+            let results = isolate(inner, new_rhs, new_op, var, simplifier, opts)?;
             prepend_steps(results, steps)
         }
         _ => Err(CasError::IsolationError(
