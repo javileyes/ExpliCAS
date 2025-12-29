@@ -674,13 +674,21 @@ define_rule!(
 
                     match mode {
                         DomainMode::Generic => {
-                            // Legacy: always simplify x^0 -> 1
+                            // Generic mode: simplify x^0 → 1 with assumption if base is symbolic
+                            // This shows the user the domain restriction (x ≠ 0) even in educational mode
+                            let needs_assumption = !matches!(ctx.get(base), Expr::Number(_));
                             return Some(Rewrite {
                                 new_expr: ctx.num(1),
                                 description: "x^0 -> 1".to_string(),
                                 before_local: None,
                                 after_local: None,
-                                assumption_events: Default::default(),
+                                assumption_events: if needs_assumption {
+                                    smallvec::smallvec![
+                                        crate::assumptions::AssumptionEvent::nonzero(ctx, base)
+                                    ]
+                                } else {
+                                    Default::default()
+                                },
                             });
                         }
                         DomainMode::Strict => {

@@ -4511,14 +4511,8 @@ impl Repl {
 
                 match self.engine.eval(&mut self.state, req) {
                     Ok(output) => {
-                        // Display ID
-                        if let Some(id) = output.stored_id {
-                            print!("#{}: ", id);
-                        }
-
-                        // Show result initially? No, usually Result is shown at end.
-                        // But we might want to show initial state?
-                        // Old logic printed #id and parsed expr.
+                        // Display entry number with parsed expression
+                        // NOTE: Removed duplicate print! that was causing "#1: #1:" display bug
                         // I'll skip it to reduce noise or rely on Result.
                         // Actually old logic printed: `#{id}  {expr}`.
                         if let Some(id) = output.stored_id {
