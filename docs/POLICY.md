@@ -28,6 +28,7 @@ The engine supports 5 semantic axes that control evaluation behavior:
 See also:
 - [docs/SEMANTICS_POLICY.md](docs/SEMANTICS_POLICY.md) — Normative definitions + presets
 - [docs/CONST_FOLD_POLICY.md](docs/CONST_FOLD_POLICY.md) — const_eval/const_fold architecture
+- [docs/NORMAL_FORM_GOAL.md](docs/NORMAL_FORM_GOAL.md) — Goal-gated rules for preserving explicit transformations
 
 ---
 

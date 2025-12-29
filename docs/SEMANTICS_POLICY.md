@@ -270,3 +270,13 @@ The following are explicitly **not** supported in V1:
 - Symbolic complex conjugate/modulus
 
 These may be considered for future versions.
+
+---
+
+## Related: NormalFormGoal
+
+The **NormalFormGoal** system is a separate, orthogonal mechanism that controls which *inverse* rules are allowed to apply. It prevents rules like `DistributeRule` or `LogContractionRule` from undoing explicit user transformations (`collect()`, `expand_log()`).
+
+Unlike the semantic axes defined above (which affect *what* the engine considers valid), NormalFormGoal affects *which rules* are allowed to apply during a specific simplification pass.
+
+See [docs/NORMAL_FORM_GOAL.md](NORMAL_FORM_GOAL.md) for details.
