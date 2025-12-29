@@ -1,7 +1,7 @@
 //! Advanced multivariable stress tests for the equation solver
 //! Tests solving for one variable while treating others as parameters
 
-use cas_ast::{Equation, RelOp, SolutionSet};
+use cas_ast::{Equation, RelOp};
 use cas_engine::engine::Simplifier;
 use cas_engine::solver::solve;
 
@@ -946,8 +946,8 @@ fn test_complex_rational_radical() {
 #[test]
 fn test_nested_fraction_with_powers() {
     // (a/b)^x = c/d
-    // The simplifier expands this to a^x/b^x, but the solver recomposes it back to (a/b)^x
-    // which allows clean isolation: x = log(a/b, c/d)
+    // In RealOnly mode, we cannot solve this because base a/b is not provably positive.
+    // The solver correctly returns UnsupportedInRealDomain error.
     let mut s = Simplifier::with_default_rules();
     let lhs = cas_parser::parse("(a/b)^x", &mut s.context).unwrap();
     let rhs = cas_parser::parse("c/d", &mut s.context).unwrap();
@@ -959,30 +959,21 @@ fn test_nested_fraction_with_powers() {
     };
     let result = solve(&eq, "x", &mut s);
 
-    // Should now return a solution thanks to recomposition
+    // In RealOnly+Generic mode, symbolic bases are not allowed for log path
+    // Solver should return UnsupportedInRealDomain error
     assert!(
-        result.is_ok(),
-        "Should solve (a/b)^x = c/d after recomposition"
+        result.is_err(),
+        "Should error on (a/b)^x = c/d: base not provably positive"
     );
 
-    if let Ok((SolutionSet::Discrete(sols), _)) = result {
-        assert_eq!(sols.len(), 1, "Should have exactly one solution");
-        // The solution should be log(a/b, c/d)
-        let sol_str = format!(
-            "{}",
-            cas_ast::DisplayExpr {
-                context: &s.context,
-                id: sols[0]
-            }
-        );
-        // Accept any log/ln form (ln(c/d)/ln(a/b) is equivalent to log(a/b, c/d))
+    // Verify it's the correct error type
+    if let Err(e) = result {
         assert!(
-            sol_str.contains("log") || sol_str.contains("ln"),
-            "Solution should contain log or ln: {}",
-            sol_str
+            e.to_string().contains("not provably positive")
+                || e.to_string().contains("real domain"),
+            "Error should mention real domain: {}",
+            e
         );
-    } else {
-        panic!("Expected Discrete solution set");
     }
 }
 

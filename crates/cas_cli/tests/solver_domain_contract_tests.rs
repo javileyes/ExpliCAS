@@ -63,8 +63,12 @@ fn exponential_positive_base_negative_rhs_returns_empty() {
 /// Should return error suggesting complex mode.
 #[test]
 fn exponential_negative_base_returns_error() {
+    // Check for either message format
+    let has_expected_error = solve_returns_error_containing("(-2)^x = 5", "not positive")
+        || solve_returns_error_containing("(-2)^x = 5", "not provably positive")
+        || solve_returns_error_containing("(-2)^x = 5", "real domain");
     assert!(
-        solve_returns_error_containing("(-2)^x = 5", "not positive"),
+        has_expected_error,
         "Expected error about base not positive for (-2)^x = 5"
     );
 }

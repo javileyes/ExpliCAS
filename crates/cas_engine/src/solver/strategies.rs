@@ -1188,20 +1188,24 @@ impl SolverStrategy for UnwrapStrategy {
                         let base_proof = prove_positive(&simplifier.context, b);
                         let rhs_proof = prove_positive(&simplifier.context, other);
 
-                        // GUARD: if base is proven ≤ 0 (like literal -2), skip this strategy
-                        // Let IsolationStrategy handle with proper UnsupportedInRealDomain error
-                        if base_proof == Proof::Disproven {
+                        // GUARD: base must be provably positive for real log
+                        // If base is Unknown (symbolic like a/b), skip this strategy
+                        // Let IsolationStrategy return UnsupportedInRealDomain
+                        if base_proof != Proof::Proven {
                             return None;
                         }
 
-                        // GUARD: if base is proven > 0 but RHS is proven ≤ 0, no real solutions
-                        // Skip this strategy - IsolationStrategy will return Empty with explanation
-                        if base_proof == Proof::Proven && rhs_proof == Proof::Disproven {
+                        // GUARD: if base > 0 but RHS is proven ≤ 0, no real solutions
+                        // Skip this strategy - IsolationStrategy will return Empty
+                        if rhs_proof == Proof::Disproven {
                             return None;
                         }
 
-                        // Note: If base is Unknown (symbolic), we proceed with ln transformation
-                        // This is acceptable in Generic mode for educational use
+                        // GUARD: if RHS positivity is Unknown, skip
+                        // Cannot take ln of potentially negative value in RealOnly
+                        if rhs_proof == Proof::Unknown {
+                            return None;
+                        }
 
                         // Safe to take ln of both sides
                         let ln_str = "ln".to_string();

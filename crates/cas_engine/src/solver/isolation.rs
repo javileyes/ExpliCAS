@@ -792,11 +792,11 @@ pub fn isolate(
                         return Ok((SolutionSet::Empty, steps));
                     }
 
-                    // CASE: base is proven ≤ 0 (e.g., literal -2)
-                    // Cannot take real log of non-positive base
-                    if base_proof == Proof::Disproven {
+                    // CASE: base is not provably positive (Unknown or Disproven)
+                    // Cannot take real log without proving base > 0
+                    if base_proof != Proof::Proven {
                         return Err(CasError::UnsupportedInRealDomain(format!(
-                            "Cannot solve {}^{} = {} in real domain: base {} is not positive. Use: semantics preset complex",
+                            "Cannot solve {}^{} = {} in real domain: base {} is not provably positive. Use: semantics preset complex",
                             cas_ast::DisplayExpr { context: &simplifier.context, id: b },
                             var,
                             cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
@@ -804,8 +804,16 @@ pub fn isolate(
                         )));
                     }
 
-                    // Note: If base is Unknown (symbolic variable), we proceed with log transformation
-                    // This is appropriate for Generic mode / educational use
+                    // CASE: RHS positivity is Unknown (can't take log of unknown sign)
+                    if rhs_proof == Proof::Unknown {
+                        return Err(CasError::UnsupportedInRealDomain(format!(
+                            "Cannot prove {} > 0 for log operation in real domain",
+                            cas_ast::DisplayExpr {
+                                context: &simplifier.context,
+                                id: rhs
+                            }
+                        )));
+                    }
                 }
                 // ================================================================
                 // End of domain guards
