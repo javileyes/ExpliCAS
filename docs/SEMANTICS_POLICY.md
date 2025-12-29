@@ -116,6 +116,104 @@ The existing REPL `mode principal/strict` command currently controls this behavi
 
 ---
 
+## Strict Principle (Formal Invariant)
+
+> **"No rewrite shall reduce the set of points where an expression may be undefined, unless definedness is proven."**
+
+This is the "mother rule" for `DomainMode::Strict`. It justifies all gates (`prove_nonzero`, `has_undefined_risk`, etc.) and ensures that:
+
+1. **No information loss** — If `f(x)` is undefined at `x=a`, the rewritten form must also be undefined at `x=a`
+2. **Provable soundness** — Simplifications only apply when the engine can *prove* the condition (literal evaluation, algebraic identity, etc.)
+3. **Conservative failure** — When in doubt, preserve the original form
+
+### Gate Functions
+
+| Function | Proves | Returns |
+|----------|--------|---------|
+| `prove_nonzero(e)` | `e ≠ 0` | `Proven`, `Refuted`, `Unknown` |
+| `prove_positive(e)` | `e > 0` | `Proven`, `Refuted`, `Unknown` |
+| `has_undefined_risk(e)` | `e` may be undefined | `true`, `false` |
+
+In `Strict` mode: `Unknown` → rule **does not fire**.
+In `Assume` mode: `Unknown` → rule fires with `AssumptionEvent`.
+In `Generic` mode: `Unknown` → rule fires silently.
+
+---
+
+## Definedness Hotspots (Exhaustive List)
+
+These are the **only** rewrite patterns that can "erase" undefined points. Each must be gated in `Strict` mode:
+
+### 1. Zero Numerator: `0/d → 0`
+
+| Condition | Action |
+|-----------|--------|
+| `d` is proven nonzero | ✅ Collapse to `0` |
+| `d` may be zero | ❌ Keep `0/d` |
+
+**Gate**: `prove_nonzero(d)` in `DivZeroRule`
+
+### 2. Additive Inverse: `t - t → 0`, `t + (-t) → 0`
+
+| Condition | Action |
+|-----------|--------|
+| `t` has no undefined risk | ✅ Collapse to `0` |
+| `t` contains division/function | ❌ Keep `t - t` |
+
+**Gate**: `has_undefined_risk(t)` in `AddInverseRule`
+
+### 3. Zero Annihilation: `0 * e → 0`
+
+| Condition | Action |
+|-----------|--------|
+| `e` has no undefined risk | ✅ Collapse to `0` |
+| `e` contains division/function | ❌ Keep `0 * e` |
+
+**Gate**: `has_undefined_risk(e)` in `AnnihilationRule`
+
+### 4. Factor Cancellation: `f*g / f*h → g/h`
+
+| Condition | Action |
+|-----------|--------|
+| Common factor proven nonzero | ✅ Cancel |
+| Common factor may be zero | ❌ Keep original |
+
+**Gate**: `prove_nonzero(gcd)` in `SimplifyFractionRule`, `CancelCommonFactorsRule`
+
+### 5. Zero Exponent: `x^0 → 1`
+
+| Condition | Action |
+|-----------|--------|
+| `x` proven nonzero | ✅ Return `1` |
+| `x` may be zero (`0^0` case) | ❌ Keep `x^0` |
+
+**Gate**: `prove_nonzero(x)` in `IdentityPowerRule`
+
+### 6. Inverse Composition: `f⁻¹(f(x)) → x`
+
+| Condition | Action |
+|-----------|--------|
+| `x` in principal range | ✅ Return `x` |
+| `x` outside range | ❌ Keep composed |
+
+**Gate**: `InverseTrigPolicy` axis + range check
+
+---
+
+## Contract Tests for Definedness
+
+The following behaviors MUST hold (see `strict_definedness_contract_tests.rs`):
+
+| # | Expression | Strict | Assume | Generic |
+|---|------------|--------|--------|---------|
+| 1 | `0/(x+1)` | `0/(x+1)` | `0` + assumption | `0` |
+| 2 | `t-t` where `t=x/(x+1)` | `t-t` | `0` + assumption | `0` |
+| 3 | `0/2` | `0` | `0` | `0` |
+| 4 | `0*(x/(x+1))` | `0*(x/(x+1))` | `0` + assumption | `0` |
+| 5 | `x/x` | `x/x` | `1` + assumption | `1` |
+
+---
+
 ## Hotspots (Audit List)
 
 ### DomainMode Hotspots
