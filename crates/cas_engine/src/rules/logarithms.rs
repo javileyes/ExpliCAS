@@ -325,8 +325,16 @@ impl crate::rule::Rule for LogContractionRule {
         &self,
         ctx: &mut cas_ast::Context,
         expr: cas_ast::ExprId,
-        _parent_ctx: &crate::parent_context::ParentContext,
+        parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
+        use crate::semantics::NormalFormGoal;
+
+        // GATE: Don't contract logs when goal is ExpandedLog
+        // This prevents undoing the effect of expand_log command
+        if parent_ctx.goal() == NormalFormGoal::ExpandedLog {
+            return None;
+        }
+
         let expr_data = ctx.get(expr).clone();
 
         // Case 1: ln(a) + ln(b) → ln(a*b) or log(b,x) + log(b,y) → log(b, x*y)

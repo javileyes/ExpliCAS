@@ -95,6 +95,7 @@ impl Orchestrator {
                 self.options.domain,
                 self.options.inv_trig,
                 self.options.value_domain,
+                self.options.goal,
             );
 
             // Log budget stats for this iteration (actual charging done by caller if Budget provided)

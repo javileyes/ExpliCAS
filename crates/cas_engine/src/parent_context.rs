@@ -22,6 +22,8 @@ pub struct ParentContext {
     pub(crate) value_domain: crate::semantics::ValueDomain,
     /// Branch policy for multi-valued functions
     pub(crate) branch: crate::semantics::BranchPolicy,
+    /// Transformation goal (controls which inverse rules are gated)
+    pub(crate) goal: crate::semantics::NormalFormGoal,
 }
 
 impl ParentContext {
@@ -37,6 +39,7 @@ impl ParentContext {
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
+            goal: crate::semantics::NormalFormGoal::default(),
         }
     }
 
@@ -52,6 +55,7 @@ impl ParentContext {
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
+            goal: crate::semantics::NormalFormGoal::default(),
         }
     }
 
@@ -67,6 +71,7 @@ impl ParentContext {
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
+            goal: crate::semantics::NormalFormGoal::default(),
         }
     }
 
@@ -85,6 +90,7 @@ impl ParentContext {
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
+            goal: crate::semantics::NormalFormGoal::default(),
         }
     }
 
@@ -103,6 +109,7 @@ impl ParentContext {
             inv_trig: self.inv_trig,
             value_domain: self.value_domain,
             branch: self.branch,
+            goal: self.goal,
         }
     }
 
@@ -161,6 +168,17 @@ impl ParentContext {
     /// Get branch policy
     pub fn branch_policy(&self) -> crate::semantics::BranchPolicy {
         self.branch
+    }
+
+    /// Get transformation goal
+    pub fn goal(&self) -> crate::semantics::NormalFormGoal {
+        self.goal
+    }
+
+    /// Set transformation goal, returning a new context
+    pub fn with_goal(mut self, goal: crate::semantics::NormalFormGoal) -> Self {
+        self.goal = goal;
+        self
     }
 
     /// Set expand_mode flag, returning a new context

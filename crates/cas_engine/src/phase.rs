@@ -300,6 +300,13 @@ pub struct SimplifyOptions {
 
     /// Assumption reporting level (Off, Summary, Trace).
     pub assumption_reporting: crate::assumptions::AssumptionReporting,
+
+    /// Transformation goal: controls which inverse rules are gated out.
+    /// - Simplify (default): all rules allowed
+    /// - Expanded: don't collect terms back
+    /// - Collected: don't distribute
+    /// - ExpandedLog: don't contract logs
+    pub goal: crate::semantics::NormalFormGoal,
 }
 
 impl Default for SimplifyOptions {
@@ -318,6 +325,7 @@ impl Default for SimplifyOptions {
             value_domain: crate::semantics::ValueDomain::default(), // RealOnly
             branch: crate::semantics::BranchPolicy::default(), // Principal
             assumption_reporting: crate::assumptions::AssumptionReporting::Off, // Default to Off (conservador)
+            goal: crate::semantics::NormalFormGoal::default(),                  // Simplify
         }
     }
 }

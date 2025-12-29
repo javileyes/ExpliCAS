@@ -27,7 +27,16 @@ define_rule!(
     None,
     // NO POST: evita ciclo con FactorCommonIntegerFromAdd (ver test_factor_distribute_no_loop)
     PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE,
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        use crate::semantics::NormalFormGoal;
+
+        // GATE: Don't distribute when goal is Collected or Factored
+        // This prevents undoing the effect of collect() or factor() commands
+        match parent_ctx.goal() {
+            NormalFormGoal::Collected | NormalFormGoal::Factored => return None,
+            _ => {}
+        }
+
         // Don't distribute if expression is in canonical form (e.g., inside abs() or sqrt())
         // This protects patterns like abs((x-2)(x+2)) from expanding
         if crate::canonical_forms::is_canonical_form(ctx, expr) {

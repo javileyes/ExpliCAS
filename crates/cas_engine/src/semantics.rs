@@ -118,6 +118,45 @@ impl EvalConfig {
     }
 }
 
+/// Goal for the current transformation, used to gate inverse rules.
+///
+/// Each command declares a goal, and rules that would go "against" that goal
+/// are gated out. This prevents inverse rules from undoing explicit transformations.
+///
+/// # Examples
+///
+/// - `collect()` sets `goal = Collected` → `DistributeRule` is gated out
+/// - `expand_log()` sets `goal = ExpandedLog` → `LogContractionRule` is gated out
+/// - `simplify()` (default) applies all rules
+///
+/// # Design
+///
+/// This is orthogonal to the other semantic axes (DomainMode, ValueDomain, etc.).
+/// It only affects which simplification rules are allowed to fire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NormalFormGoal {
+    /// Default: apply all simplification rules.
+    /// Both expanding and contracting rules are allowed.
+    #[default]
+    Simplify,
+
+    /// expand(): distribute products, don't collect terms.
+    /// Gates: CombineLikeTermsRule (future)
+    Expanded,
+
+    /// collect(): group terms by variable, don't distribute.
+    /// Gates: DistributeRule
+    Collected,
+
+    /// factor(): find common factors, don't expand.
+    /// Gates: DistributeRule, LogExpansionRule
+    Factored,
+
+    /// expand_log(): expand logarithms, don't contract.
+    /// Gates: LogContractionRule
+    ExpandedLog,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
