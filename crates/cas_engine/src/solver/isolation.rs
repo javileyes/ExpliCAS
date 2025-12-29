@@ -718,6 +718,16 @@ pub fn isolate(
                 }
             } else {
                 // E = log(B, RHS)
+                // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
+                // This would create x = log(base, f(x)) which still has x on RHS → infinite loop.
+                // This happens after expansions like (a/b)^x → a^x/b^x when solving.
+                if contains_var(&simplifier.context, rhs, var) {
+                    return Err(CasError::IsolationError(
+                        var.to_string(),
+                        "Cannot isolate exponential: variable appears on both sides".to_string(),
+                    ));
+                }
+
                 let new_rhs = simplifier
                     .context
                     .add(Expr::Function("log".to_string(), vec![b, rhs]));
