@@ -480,21 +480,8 @@ impl Repl {
         let mut opts = self.state.options.to_simplify_options();
         opts.collect_steps = self.engine.simplifier.collect_steps();
 
-        // TOOL DISPATCHER: Detect tool functions and set appropriate goal
-        // This prevents inverse rules from undoing the effect of collect/expand_log
-        if let cas_ast::Expr::Function(name, _args) = self.engine.simplifier.context.get(expr) {
-            match name.as_str() {
-                "collect" => {
-                    opts.goal = cas_engine::NormalFormGoal::Collected;
-                }
-                // Note: expand_log is handled separately in handle_expand_log
-                // but we gate it here too for consistency
-                "expand_log" => {
-                    opts.goal = cas_engine::NormalFormGoal::ExpandedLog;
-                }
-                _ => {}
-            }
-        }
+        // Note: Tool dispatcher for collect/expand_log is in Engine::eval (cas_engine/src/eval.rs)
+        // This function is dead code but kept for internal use; no dispatcher needed here.
 
         // Enable health metrics and clear previous run if explain or health mode is on
         if self.explain_mode || self.health_enabled {

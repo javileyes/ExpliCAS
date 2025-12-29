@@ -52,13 +52,27 @@ User Input: collect(a*x + b*x, x)
 Output: (a+b)*x  ← Preserved!
 ```
 
-## Gated Rules
+## NormalFormGoal Contract
 
-| Goal | Gated Rules | Purpose |
-|------|-------------|---------|
-| `Collected` | `DistributeRule` | Preserve grouped terms |
-| `Factored` | `DistributeRule` | Preserve factored forms |
-| `ExpandedLog` | `LogContractionRule` | Preserve expanded logarithms |
+> **Stability Contract for Tool Functions**
+
+### Guarantees
+
+| # | Guarantee | Implication |
+|---|-----------|-------------|
+| 1 | Tool functions (`collect`, `expand_log`, etc.) **automatically select goal** in `Engine::eval` | Users don't need to set options manually |
+| 2 | Goal **only blocks inverse rules** that would undo the tool's effect | Other simplifications (e.g., `x+0→x`) still apply |
+| 3 | Goal **defaults to `Simplify`** when no tool-function is detected | Normal expressions simplify as before |
+
+### Goal → Gated Rules Mapping
+
+| Goal | Gated Rules | Rationale |
+|------|-------------|-----------|
+| `Simplify` | (none) | Default: all rules enabled |
+| `Collected` | `DistributeRule` | Preserve `(a+b)*x`, don't expand back to `a*x + b*x` |
+| `Factored` | `DistributeRule` | Preserve `(x-1)(x+1)`, don't expand back |
+| `ExpandedLog` | `LogContractionRule` | Preserve `ln(x)+ln(y)`, don't contract back to `ln(xy)` |
+| `Expanded` | *(future: combine-like-terms)* | Preserve expanded polynomial forms |
 
 ## Implementation Details
 
