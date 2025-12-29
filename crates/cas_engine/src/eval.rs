@@ -200,7 +200,22 @@ impl Engine {
                 ctx_simplifier.context = std::mem::take(&mut self.simplifier.context);
 
                 // Use simplify_with_stats to respect expand_policy and other options
-                let simplify_opts = effective_opts.to_simplify_options();
+                let mut simplify_opts = effective_opts.to_simplify_options();
+
+                // TOOL DISPATCHER: Detect tool functions and set appropriate goal
+                // This prevents inverse rules from undoing the effect of collect/expand_log
+                if let Expr::Function(name, _args) = ctx_simplifier.context.get(resolved) {
+                    match name.as_str() {
+                        "collect" => {
+                            simplify_opts.goal = crate::semantics::NormalFormGoal::Collected;
+                        }
+                        "expand_log" => {
+                            simplify_opts.goal = crate::semantics::NormalFormGoal::ExpandedLog;
+                        }
+                        _ => {}
+                    }
+                }
+
                 let (mut res, steps, _stats) =
                     ctx_simplifier.simplify_with_stats(resolved, simplify_opts);
 

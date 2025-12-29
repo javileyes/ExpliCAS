@@ -480,6 +480,22 @@ impl Repl {
         let mut opts = self.state.options.to_simplify_options();
         opts.collect_steps = self.engine.simplifier.collect_steps();
 
+        // TOOL DISPATCHER: Detect tool functions and set appropriate goal
+        // This prevents inverse rules from undoing the effect of collect/expand_log
+        if let cas_ast::Expr::Function(name, _args) = self.engine.simplifier.context.get(expr) {
+            match name.as_str() {
+                "collect" => {
+                    opts.goal = cas_engine::NormalFormGoal::Collected;
+                }
+                // Note: expand_log is handled separately in handle_expand_log
+                // but we gate it here too for consistency
+                "expand_log" => {
+                    opts.goal = cas_engine::NormalFormGoal::ExpandedLog;
+                }
+                _ => {}
+            }
+        }
+
         // Enable health metrics and clear previous run if explain or health mode is on
         if self.explain_mode || self.health_enabled {
             self.engine.simplifier.profiler.enable_health();
@@ -4635,6 +4651,9 @@ impl Repl {
 
         match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {
+                // Note: Tool dispatcher is handled in Engine::eval, not here
+                // This code path is for timeline/specific commands, not regular expression evaluation
+
                 // Resolve session variables (A, B, etc.) before simplifying
                 let resolved_expr = match self.state.resolve_all(&mut temp_simplifier.context, expr)
                 {
@@ -4674,6 +4693,7 @@ impl Repl {
                 // Use session options (expand_policy, context_mode, etc.) for simplification
                 let mut opts = self.state.options.to_simplify_options();
                 opts.collect_steps = self.verbosity != Verbosity::None;
+
                 let (simplified, steps, _stats) =
                     temp_simplifier.simplify_with_stats(resolved_expr, opts);
 
