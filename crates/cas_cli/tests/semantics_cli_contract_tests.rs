@@ -9,12 +9,16 @@
 use serde_json::Value;
 use std::process::Command;
 
+/// Run the CLI binary directly (not via `cargo run`) for stable test execution.
+/// Uses CARGO_BIN_EXE_cas_cli set automatically by Cargo for integration tests.
 fn run_cli(args: &[&str]) -> (String, i32) {
-    let output = Command::new("cargo")
-        .args(["run", "-p", "cas_cli", "--quiet", "--"])
+    // Get the binary path from the environment variable set by Cargo
+    let bin_path = env!("CARGO_BIN_EXE_cas_cli");
+
+    let output = Command::new(bin_path)
         .args(args)
         .output()
-        .expect("Failed to execute command");
+        .expect("Failed to execute binary");
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let code = output.status.code().unwrap_or(-1);
@@ -22,7 +26,10 @@ fn run_cli(args: &[&str]) -> (String, i32) {
 }
 
 fn parse_json(s: &str) -> Value {
-    serde_json::from_str(s).unwrap_or_else(|_| panic!("Failed to parse JSON: {}", s))
+    // Trim whitespace and find JSON content (in case of extra output)
+    let trimmed = s.trim();
+    serde_json::from_str(trimmed)
+        .unwrap_or_else(|e| panic!("Failed to parse JSON: {} (error: {})", trimmed, e))
 }
 
 // =============================================================================

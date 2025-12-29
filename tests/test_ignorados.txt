@@ -21,6 +21,7 @@ test_eval_json_no_hold_in_result
 test_eval_json_no_hold_in_error
 test_eval_json_schema_version_is_1
 
+SOLUCIONADO!!!
 2. 
 stress_solve_tests_multivariable.rs
  (1 test)
@@ -28,6 +29,7 @@ Razón: Stack overflow - recursión infinita al resolver
 (a/b)^x = c/d
 .
 
+SOLUCIONADO!!!
 bash
 # NO EJECUTAR - causa stack overflow
 cargo test -p cas_cli test_nested_fraction_with_powers -- --ignored
