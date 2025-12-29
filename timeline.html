@@ -1,238 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{1}{\frac{1 + \sqrt{5}}{2}}</title>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        .container {
-            background: white;
-            border-radius: 12px;
-            padding: 30px 25px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-        }
-        h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 10px;
-        }
-        .subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-        }
-        .original {
-            text-align: center;
-            font-size: 1.2em;
-            padding: 15px;
-            background: #f0f4ff;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            border: 2px solid #667eea;
-        }
-        .timeline {
-            position: relative;
-            padding: 20px 0;
-        }
-        .timeline::before {
-            content: '';
-            position: absolute;
-            left: 30px;
-            top: 0;
-            bottom: 0;
-            width: 3px;
-            background: linear-gradient(to bottom, #667eea, #764ba2);
-        }
-        .step {
-            position: relative;
-            margin-bottom: 30px;
-            padding-left: 80px;
-            animation: fadeIn 0.5s ease-in;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .step-number {
-            position: absolute;
-            left: 0;
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-        .step-content {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            border: 1px solid #e0e0e0;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .step-content:hover {
-            transform: translateX(5px);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-        }
-        .step-content h3 {
-            margin-top: 0;
-            color: #667eea;
-            font-size: 1.1em;
-        }
-        .math-expr {
-            padding: 12px 15px;
-            background: #fafafa;
-            border-left: 4px solid #667eea;
-            margin: 10px 0;
-            border-radius: 4px;
-            font-size: 1.05em;
-        }
-        .math-expr.before {
-            border-left-color: #ff9800;
-            background: #fff8f0;
-        }
-        .math-expr.after {
-            border-left-color: #4caf50;
-            background: #f0fff4;
-        }
-        .math-expr strong {
-            color: #666;
-            font-size: 0.9em;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .rule-description {
-            text-align: center;
-            padding: 12px 20px;
-            margin: 15px 0;
-            background: #f9f5ff;
-            border-radius: 6px;
-            font-size: 0.95em;
-            color: #667eea;
-            border: 2px dashed #667eea;
-        }
-        .local-change {
-            font-size: 1.1em;
-            margin: 8px 0;
-            padding: 10px;
-            background: white;
-            border-radius: 4px;
-            text-align: center;
-        }
-        .rule-name {
-            font-size: 0.85em;
-            color: #764ba2;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        .final-result {
-            text-align: center;
-            padding: 20px;
-            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-            color: white;
-            border-radius: 10px;
-            margin-top: 30px;
-            font-size: 1.2em;
-            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
-        }
-        footer {
-            text-align: center;
-            margin-top: 30px;
-            color: white;
-            font-size: 0.9em;
-        }
-        /* Expandable details for didactic sub-steps */
-        .substeps-details {
-            margin: 10px 0;
-            padding: 10px 15px;
-            background: #fff8e1;
-            border: 1px solid #ffcc80;
-            border-radius: 8px;
-            font-size: 0.95em;
-        }
-        .substeps-details summary {
-            cursor: pointer;
-            font-weight: bold;
-            color: #ef6c00;
-            padding: 5px 0;
-        }
-        .substeps-details summary:hover {
-            color: #e65100;
-        }
-        .substeps-content {
-            margin-top: 10px;
-            padding: 10px;
-            background: white;
-            border-radius: 6px;
-        }
-        .substep {
-            padding: 8px 0;
-            border-bottom: 1px dashed #ffe0b2;
-        }
-        .substep:last-child {
-            border-bottom: none;
-        }
-        .substep-desc {
-            font-weight: 500;
-            color: #795548;
-            display: block;
-            margin-bottom: 5px;
-        }
-        .substep-math {
-            padding: 5px 10px;
-            background: #fafafa;
-            border-radius: 4px;
-            text-align: center;
-        }
-        .domain-warning {
-            margin-top: 10px;
-            padding: 8px 12px;
-            background: #fff3cd;
-            border: 1px solid #ffc107;
-            border-radius: 6px;
-            color: #856404;
-            font-size: 0.9em;
-        }
-        .domain-warning::before {
-            content: '⚠ ';
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solve Steps: (a / b)^x = c / d</title>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+    * {
+        box-sizing: border-box;
+    }
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 20px 15px;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        min-height: 100vh;
+        color: #e0e0e0;
+    }
+    .container {
+        background: rgba(30, 40, 60, 0.95);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    h1 {
+        color: #64b5f6;
+        text-align: center;
+        margin-bottom: 10px;
+        font-size: 1.8em;
+    }
+    .subtitle {
+        text-align: center;
+        color: #90caf9;
+        margin-bottom: 25px;
+    }
+    .original {
+        background: linear-gradient(135deg, #1565c0, #0d47a1);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(21, 101, 192, 0.4);
+    }
+    .timeline {
+        position: relative;
+        padding-left: 30px;
+    }
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 10px;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: linear-gradient(to bottom, #64b5f6, #4caf50);
+    }
+    .step {
+        background: rgba(40, 50, 70, 0.8);
+        border-radius: 10px;
+        padding: 15px 20px;
+        margin-bottom: 20px;
+        position: relative;
+        border-left: 4px solid #64b5f6;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .step:hover {
+        transform: translateX(5px);
+        box-shadow: 0 4px 20px rgba(100, 181, 246, 0.3);
+    }
+    .step::before {
+        content: '';
+        position: absolute;
+        left: -23px;
+        top: 20px;
+        width: 12px;
+        height: 12px;
+        background: #64b5f6;
+        border-radius: 50%;
+        border: 3px solid #1a1a2e;
+    }
+    .step-number {
+        color: #64b5f6;
+        font-weight: bold;
+        font-size: 0.9em;
+        margin-bottom: 5px;
+    }
+    .description {
+        color: #b0bec5;
+        font-size: 1em;
+        margin-bottom: 10px;
+        font-style: italic;
+    }
+    .equation {
+        background: rgba(30, 40, 55, 0.9);
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 1.2em;
+    }
+    .final-result {
+        background: linear-gradient(135deg, #2e7d32, #1b5e20);
+        padding: 20px;
+        text-align: center;
+        color: white;
+        border-radius: 10px;
+        margin-top: 30px;
+        font-size: 1.2em;
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }
+    footer {
+        text-align: center;
+        margin-top: 30px;
+        color: white;
+        font-size: 0.9em;
+    }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>CAS Simplification Steps</h1>
-        <p class="subtitle">Step-by-step visualization</p>
-        <div class="original">
-            \(\textbf{Original Expression:}\)
-            \[\frac{1}{\frac{1 + \sqrt{5}}{2}}\]
-        </div>
+<div class="container">
+    <h1>Equation Solving Steps</h1>
+    <p class="subtitle">Solving for <strong>x</strong></p>
+    <div class="original">
+        \(\textbf{Original Equation:}\)
+        \[{(\frac{a}{b})}^{x} = \frac{c}{d}\]
+    </div>
         <div class="timeline">
+        <div class="step">
+            <div class="step-number">Step 1</div>
+            <div class="description">Take log base e of both sides</div>
+            <div class="equation">
+                \[x\cdot \ln(\frac{a}{b}) = \ln(\frac{c}{d})\]
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-number">Step 2</div>
+            <div class="description">Divide both sides by ln(a / b)</div>
+            <div class="equation">
+                \[x = \frac{\ln(\frac{c}{d})}{\ln(\frac{a}{b})}\]
+            </div>
+        </div>
         </div>
         <div class="final-result">
-            \(\textbf{Final Result:}\)
-            \[\frac{1}{2}\cdot (\sqrt{5} - 1)\]
+            \(\textbf{Solution: } x = \)
+            \[\left\{ \frac{\ln(\frac{c}{d})}{\ln(\frac{a}{b})} \right\}\]
         </div>
     </div>
     <footer>
-        Generated by Rust CAS Engine
+        Generated by Rust CAS Engine - Equation Solver
     </footer>
 </body>
 </html>

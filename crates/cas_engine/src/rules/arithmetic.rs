@@ -66,36 +66,103 @@ define_rule!(
     }
 );
 
+// MulZeroRule: 0*e → 0
+// Domain Mode Policy: 0*e → 0 changes the domain of definition if e can be undefined.
+// In Strict mode, the expression 0*(x/(x+1)) is undefined at x=-1, but 0 is defined everywhere.
+// - Strict: only apply if other factor has no undefined risk
+// - Assume: apply with domain_assumption warning if risk exists
+// - Generic: apply unconditionally (educational mode)
 define_rule!(
     MulZeroRule,
     "Zero Property of Multiplication",
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        use crate::domain::Proof;
+        use crate::helpers::prove_nonzero;
+
+        // Helper: check if expression contains any Div with non-literal denominator
+        fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+            let mut stack = vec![expr];
+            while let Some(e) = stack.pop() {
+                match ctx.get(e) {
+                    Expr::Div(_, den) => {
+                        // If denominator is not a proven nonzero literal, there's risk
+                        if prove_nonzero(ctx, *den) != Proof::Proven {
+                            return true;
+                        }
+                        stack.push(*den);
+                    }
+                    Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                        stack.push(*l);
+                        stack.push(*r);
+                    }
+                    Expr::Neg(inner) => {
+                        stack.push(*inner);
+                    }
+                    Expr::Function(_, args) => {
+                        for arg in args {
+                            stack.push(*arg);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            false
+        }
+
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
-            if let Expr::Number(n) = ctx.get(rhs) {
-                if n.is_zero() {
-                    let zero = ctx.num(0);
-                    return Some(Rewrite {
-                        new_expr: zero,
-                        description: "x * 0 = 0".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                    });
-                }
+            // Check if either side is zero literal
+            let lhs_is_zero = matches!(ctx.get(lhs), Expr::Number(n) if n.is_zero());
+            let rhs_is_zero = matches!(ctx.get(rhs), Expr::Number(n) if n.is_zero());
+
+            if !(lhs_is_zero || rhs_is_zero) {
+                return None;
             }
-            if let Expr::Number(n) = ctx.get(lhs) {
-                if n.is_zero() {
-                    let zero = ctx.num(0);
-                    return Some(Rewrite {
-                        new_expr: zero,
-                        description: "0 * x = 0".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                    });
+
+            // The "other" side: 0 * other
+            let other = if lhs_is_zero { rhs } else { lhs };
+            let domain_mode = parent_ctx.domain_mode();
+            let has_risk = has_undefined_risk(ctx, other);
+
+            // Domain-aware decision for 0*e → 0
+            let assumption_events = match domain_mode {
+                crate::DomainMode::Strict => {
+                    // Only apply if other factor has no undefined risk
+                    if has_risk {
+                        return None;
+                    }
+                    Default::default()
                 }
-            }
+                crate::DomainMode::Assume => {
+                    // Apply with structured assumption if has risk
+                    if has_risk {
+                        smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(
+                            ctx, other
+                        )]
+                    } else {
+                        Default::default()
+                    }
+                }
+                crate::DomainMode::Generic => {
+                    // Educational mode: apply unconditionally
+                    Default::default()
+                }
+            };
+
+            let description = if lhs_is_zero {
+                "0 * x = 0".to_string()
+            } else {
+                "x * 0 = 0".to_string()
+            };
+
+            let zero = ctx.num(0);
+            return Some(Rewrite {
+                new_expr: zero,
+                description,
+                before_local: None,
+                after_local: None,
+                assumption_events,
+            });
         }
         None
     }

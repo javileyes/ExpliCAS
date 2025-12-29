@@ -301,8 +301,18 @@ impl Orchestrator {
             "pipeline_complete"
         );
 
-        // Final collection for canonical form
-        let final_collected = crate::collect::collect(&mut simplifier.context, current);
+        // Final collection for canonical form - RESPECTS domain mode
+        // Use collect_with_semantics to preserve Strict definedness invariant
+        let final_parent_ctx =
+            crate::parent_context::ParentContext::root().with_domain_mode(self.options.domain);
+        let final_collected = match crate::collect::collect_with_semantics(
+            &mut simplifier.context,
+            current,
+            &final_parent_ctx,
+        ) {
+            Some(result) => result.new_expr,
+            None => current, // No change (blocked by Strict mode or same result)
+        };
         if final_collected != current {
             if crate::ordering::compare_expr(&simplifier.context, final_collected, current)
                 != std::cmp::Ordering::Equal

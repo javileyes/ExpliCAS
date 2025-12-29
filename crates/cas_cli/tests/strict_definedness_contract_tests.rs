@@ -166,11 +166,9 @@ fn strict_zero_over_proven_nonzero_collapses() {
 // Contract 4: Zero Annihilation with Undefined Risk
 // =============================================================================
 
-/// KNOWN GAP: AnnihilationRule does not gate on has_undefined_risk.
-/// This test documents the expected behavior - currently FAILING.
-/// TODO: Gate AnnihilationRule with has_undefined_risk check.
+/// MulZeroRule is now gated by has_undefined_risk.
+/// This test verifies the fix is working correctly.
 #[test]
-#[ignore = "AnnihilationRule gap: 0*(expr) collapses even with undefined risk"]
 fn strict_zero_times_undefined_does_not_collapse() {
     // 0 * (x/(x+1)) should NOT collapse to 0 in Strict
     let result = simplify_strict("0 * (x/(x+1))");
