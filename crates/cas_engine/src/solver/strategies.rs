@@ -996,6 +996,9 @@ impl SolverStrategy for IsolationStrategy {
             Err(e) => Some(Err(e)),
         }
     }
+
+    // Note: We use the default should_verify() = true here.
+    // Selective verification in solve() handles symbolic solutions.
 }
 
 pub struct UnwrapStrategy;
@@ -1241,6 +1244,9 @@ impl SolverStrategy for UnwrapStrategy {
 
         None
     }
+
+    // Note: We use the default should_verify() = true here.
+    // Selective verification in solve() handles symbolic solutions.
 }
 
 // --- Helper for CollectTermsStrategy (currently unused) ---

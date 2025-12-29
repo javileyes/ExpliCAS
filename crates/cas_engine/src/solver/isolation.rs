@@ -1129,6 +1129,37 @@ pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     }
 }
 
+/// Attempt to recompose a^e / b^e -> (a/b)^e when both powers have the same exponent.
+///
+/// This is used to undo the simplification (a/b)^x -> a^x/b^x when solving exponentials,
+/// allowing clean isolation: (a/b)^x = c/d -> x = log(a/b, c/d).
+///
+/// Uses structural comparison to match exponents that are semantically equal
+/// but may have different ExprIds (which happens during simplification).
+///
+/// Returns Some(recomposed_expr) where recomposed = (a/b)^e, if pattern matches.
+/// Returns None if pattern does not match.
+pub fn try_recompose_pow_quotient(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    use crate::ordering::compare_expr;
+    use std::cmp::Ordering;
+
+    let expr_data = ctx.get(expr).clone();
+    if let Expr::Div(num, den) = expr_data {
+        let num_data = ctx.get(num).clone();
+        let den_data = ctx.get(den).clone();
+        if let (Expr::Pow(a, e1), Expr::Pow(b, e2)) = (num_data, den_data) {
+            // Use structural comparison instead of ExprId ==
+            // This handles cases where the same expression (e.g., 'x') has different IDs
+            if compare_expr(ctx, e1, e2) == Ordering::Equal {
+                // Recompose: (a/b)^e
+                let new_base = ctx.add(Expr::Div(a, b));
+                return Some(ctx.add(Expr::Pow(new_base, e1)));
+            }
+        }
+    }
+    None
+}
+
 pub fn flip_inequality(op: RelOp) -> RelOp {
     match op {
         RelOp::Eq => RelOp::Eq,

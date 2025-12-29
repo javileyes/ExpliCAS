@@ -1,7 +1,7 @@
 //! Advanced multivariable stress tests for the equation solver
 //! Tests solving for one variable while treating others as parameters
 
-use cas_ast::{Equation, RelOp};
+use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_engine::engine::Simplifier;
 use cas_engine::solver::solve;
 
@@ -946,9 +946,8 @@ fn test_complex_rational_radical() {
 #[test]
 fn test_nested_fraction_with_powers() {
     // (a/b)^x = c/d
-    // After simplification: a^x / b^x = c/d → a^x = (c/d) * b^x
-    // The RHS still contains x, so log inverse cannot be applied.
-    // The solver should return a controlled error instead of infinite loop.
+    // The simplifier expands this to a^x/b^x, but the solver recomposes it back to (a/b)^x
+    // which allows clean isolation: x = log(a/b, c/d)
     let mut s = Simplifier::with_default_rules();
     let lhs = cas_parser::parse("(a/b)^x", &mut s.context).unwrap();
     let rhs = cas_parser::parse("c/d", &mut s.context).unwrap();
@@ -960,11 +959,31 @@ fn test_nested_fraction_with_powers() {
     };
     let result = solve(&eq, "x", &mut s);
 
-    // Should return an error (variable on both sides) not stack overflow
+    // Should now return a solution thanks to recomposition
     assert!(
-        result.is_err(),
-        "Should return error when variable appears on both sides of exponential"
+        result.is_ok(),
+        "Should solve (a/b)^x = c/d after recomposition"
     );
+
+    if let Ok((SolutionSet::Discrete(sols), _)) = result {
+        assert_eq!(sols.len(), 1, "Should have exactly one solution");
+        // The solution should be log(a/b, c/d)
+        let sol_str = format!(
+            "{}",
+            cas_ast::DisplayExpr {
+                context: &s.context,
+                id: sols[0]
+            }
+        );
+        // Accept any log/ln form (ln(c/d)/ln(a/b) is equivalent to log(a/b, c/d))
+        assert!(
+            sol_str.contains("log") || sol_str.contains("ln"),
+            "Solution should contain log or ln: {}",
+            sol_str
+        );
+    } else {
+        panic!("Expected Discrete solution set");
+    }
 }
 
 // ============================================================================

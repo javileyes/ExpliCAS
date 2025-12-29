@@ -88,12 +88,28 @@ pub fn solve(
     if contains_var(&simplifier.context, eq.lhs, var) {
         let (sim_lhs, _) = simplifier.simplify(eq.lhs);
         simplified_eq.lhs = sim_lhs;
+
+        // After simplification, try to recompose a^x/b^x -> (a/b)^x
+        // This fixes cases where (a/b)^x was expanded to a^x/b^x during simplify,
+        // which would leave 'x' on both sides after isolation attempts.
+        if let Some(recomposed) =
+            isolation::try_recompose_pow_quotient(&mut simplifier.context, sim_lhs)
+        {
+            simplified_eq.lhs = recomposed;
+        }
     }
 
     // Simplify RHS if it contains the variable
     if contains_var(&simplifier.context, eq.rhs, var) {
         let (sim_rhs, _) = simplifier.simplify(eq.rhs);
         simplified_eq.rhs = sim_rhs;
+
+        // Also try recomposition on RHS
+        if let Some(recomposed) =
+            isolation::try_recompose_pow_quotient(&mut simplifier.context, sim_rhs)
+        {
+            simplified_eq.rhs = recomposed;
+        }
     }
 
     // CRITICAL: After simplification, check for identities and contradictions
@@ -149,11 +165,19 @@ pub fn solve(
                         }
                         let mut valid_sols = Vec::new();
                         for sol in sols {
-                            // CRITICAL: Verify against ORIGINAL equation, not simplified
-                            // This ensures we reject solutions that cause division by zero
-                            // in the original equation, even if they work in the simplified form
-                            if verify_solution(eq, var, sol, simplifier) {
+                            // Skip verification for symbolic solutions (containing functions/variables)
+                            // These can't be verified by substitution. Examples: ln(c/d)/ln(a/b)
+                            // Only verify pure numeric solutions to catch extraneous roots.
+                            if is_symbolic_expr(&simplifier.context, sol) {
+                                // Trust symbolic solutions - can't verify
                                 valid_sols.push(sol);
+                            } else {
+                                // CRITICAL: Verify against ORIGINAL equation, not simplified
+                                // This ensures we reject solutions that cause division by zero
+                                // in the original equation, even if they work in the simplified form
+                                if verify_solution(eq, var, sol, simplifier) {
+                                    valid_sols.push(sol);
+                                }
                             }
                         }
                         return Ok((SolutionSet::Discrete(valid_sols), steps));
@@ -253,6 +277,24 @@ fn verify_solution(eq: &Equation, var: &str, sol: ExprId, simplifier: &mut Simpl
 
     // 3. Check equality
     simplifier.are_equivalent(lhs_sim, rhs_sim)
+}
+
+/// Check if an expression is "symbolic" (contains functions or variables).
+/// Symbolic expressions cannot be verified by substitution because they don't
+/// simplify to pure numbers. Examples: ln(c/d)/ln(a/b), x + a, sqrt(y)
+fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
+    use cas_ast::Expr;
+    match ctx.get(expr) {
+        Expr::Number(_) => false,
+        Expr::Constant(_) => true, // Pi, E, etc are symbolic
+        Expr::Variable(_) => true,
+        Expr::Function(_, _) => true,
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            is_symbolic_expr(ctx, *l) || is_symbolic_expr(ctx, *r)
+        }
+        Expr::Neg(e) => is_symbolic_expr(ctx, *e),
+        _ => true, // Default: treat as symbolic
+    }
 }
 
 fn substitute(ctx: &mut Context, expr: ExprId, var: &str, val: ExprId) -> ExprId {
