@@ -4037,10 +4037,27 @@ impl Repl {
         } else {
             // No comma. Try to see if it looks like "eq var"
             if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
+                let e_trim = e.trim();
                 let v_trim = v.trim();
-                // Check if v is a variable name (alphabetic)
-                if !v_trim.is_empty() && v_trim.chars().all(char::is_alphabetic) {
-                    (e.trim(), v_trim)
+                // Check if v is a variable name (alphabetic) AND
+                // the remaining equation doesn't end with '=' (which would mean v is the RHS) AND
+                // there are no operators after '=' (which would mean v is part of an expression)
+                let has_operators_after_eq = if let Some(eq_pos) = e_trim.find('=') {
+                    let after_eq = &e_trim[eq_pos + 1..];
+                    after_eq.contains('+')
+                        || after_eq.contains('-')
+                        || after_eq.contains('*')
+                        || after_eq.contains('/')
+                        || after_eq.contains('^')
+                } else {
+                    false
+                };
+                if !v_trim.is_empty()
+                    && v_trim.chars().all(char::is_alphabetic)
+                    && !e_trim.ends_with('=')
+                    && !has_operators_after_eq
+                {
+                    (e_trim, v_trim)
                 } else {
                     (rest, "x")
                 }
