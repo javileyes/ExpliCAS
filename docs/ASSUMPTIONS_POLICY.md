@@ -59,6 +59,65 @@ The CAS engine makes **mathematical assumptions** during simplification (e.g., "
 | `principal_range` | InvTrig composition | `arctan(tan(x)) → x` assumes x ∈ (-π/2, π/2) |
 | `principal_branch` | Complex multi-valued | `√-1 → i` in ComplexEnabled |
 
+## Solver Assumptions (Added Dec 2025)
+
+When solving exponential equations like `2^x = y`, the solver may emit assumptions if `DomainMode = Assume`. These are collected via a **thread-local `SolveAssumptionsGuard`** RAII pattern.
+
+### Solver Assumption Kinds
+
+| Kind | Context | Message Example |
+|------|---------|-----------------|
+| `positive` | Log of base | `Assumed base > 0 for logarithm` |
+| `positive` | Log of RHS | `Assumed y > 0 for logarithm` |
+
+### Architecture
+
+```
+┌────────────────────────────────────────────────────────┐
+│             classify_log_solve()                       │
+│  Single source of truth for log domain decisions      │
+├────────────────────────────────────────────────────────┤
+│  strategies.rs ───┐                                    │
+│                   ├──► OkWithAssumptions(vec)          │
+│  isolation.rs ────┘           │                        │
+│                               ▼                        │
+│                  SolverAssumption::to_assumption_event │
+│                               │                        │
+│                               ▼                        │
+│                     note_assumption()                  │
+│                               │                        │
+│                               ▼                        │
+│               SOLVE_ASSUMPTIONS (thread-local)         │
+│                               │                        │
+│                               ▼                        │
+│          SolveAssumptionsGuard.finish()                │
+│                               │                        │
+│                               ▼                        │
+│            EvalOutput.solver_assumptions               │
+└────────────────────────────────────────────────────────┘
+```
+
+### RAII Guard Pattern
+
+The `SolveAssumptionsGuard` handles:
+- **Leak prevention**: Always clears on drop
+- **Nested solve isolation**: Saves/restores previous collector
+- **Thread safety**: Each solve gets its own collector
+
+```rust
+pub struct SolveAssumptionsGuard {
+    previous: Option<AssumptionCollector>,  // For nested solves
+    enabled: bool,
+}
+```
+
+### Contract Tests
+
+- `assume_mode_emits_positive_rhs_assumption`: `2^x = y` → `positive(y)`
+- `strict_mode_no_assumptions`: No assumptions in Strict
+- `assumptions_are_deduplicated`: Same assumption counted, not repeated
+- `nested_solve_guards_are_isolated`: Inner solve doesn't leak to outer
+
 ## Reporting Levels
 
 ```rust

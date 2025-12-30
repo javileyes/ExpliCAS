@@ -1,19 +1,21 @@
 # SEMANTICS POLICY
 
-> **Version 1.0** | Last updated: 2025-12-26
+> **Version 1.1** | Last updated: 2025-12-30
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
 
 ## Overview
 
-ExpliCAS uses **4 orthogonal semantic axes**:
+ExpliCAS uses **5 orthogonal semantic axes**:
 
 | Axis | Controls | Values |
 |------|----------|--------|
 | **DomainMode** | Variable assumptions (≠0, >0, etc.) | `Strict`, `Generic`, `Assume` |
+| **AssumeScope** | What can be assumed in Assume mode | `Real`, `Wildcard` |
 | **ValueDomain** | Universe of constants | `RealOnly`, `ComplexEnabled` |
 | **BranchPolicy** | Multi-valued function branches (ℂ only) | `Principal` |
 | **InverseTrigPolicy** | Inverse∘function compositions | `Strict`, `PrincipalValue` |
+
 
 ---
 
@@ -46,7 +48,43 @@ Controls rules that require assumptions about symbolic variables.
 
 ---
 
+## Axis A': AssumeScope ✅ (Implemented Dec 2025)
+
+Controls **what** can be assumed when `DomainMode = Assume`. Only active in Assume mode.
+
+### Values
+
+| Value | Behavior | Use Case |
+|-------|----------|----------|
+| `Real` | Only assume proven-safe operations (e.g., `positive(y)` for log) | Default, educational |
+| `Wildcard` | Allow residual output for operations requiring complex domain | Research, permissive |
+
+### Solver Decision Table (Exponential Equations)
+
+| Scenario | `scope=Real` | `scope=Wildcard` |
+|----------|--------------|------------------|
+| Base>0, RHS Unknown | Solution + `positive(rhs)` | Solution + `positive(rhs)` |
+| Base<0 (proven) | Error: NeedsComplex | **Residual** + warning |
+
+### Example
+
+```
+> semantics set assume_scope wildcard
+> solve (-2)^x = 5
+⚠ Requires complex logarithm — returning as residual
+Result: solve((-2)^x = 5, x)
+```
+
+### Implementation
+
+- **Classifier**: `classify_log_solve()` in `domain_guards.rs`
+- **Single Source of Truth**: Used by both `strategies.rs` and `isolation.rs`
+- **RAII Guard**: `SolveAssumptionsGuard` for nested solve isolation
+
+---
+
 ## Axis B: ValueDomain (Planned PR1)
+
 
 Defines the universe of values for constant evaluation.
 
