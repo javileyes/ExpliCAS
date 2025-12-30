@@ -72,6 +72,8 @@ define_rule!(
     TrigFunctionNameCanonicalizationRule,
     "Canonicalize Trig Function Names",
     Some(vec!["Function"]),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         if let Expr::Function(name, args) = ctx.get(expr) {
             // Clone name and args to avoid borrow issues

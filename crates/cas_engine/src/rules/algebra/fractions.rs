@@ -721,7 +721,6 @@ define_rule!(
 define_rule!(
     NestedFractionRule,
     "Simplify Complex Fraction",
-    importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
         use cas_ast::views::RationalFnView;
 
@@ -3339,6 +3338,7 @@ define_rule!(
 define_rule!(
     CanonicalDifferenceProductRule,
     "Canonicalize Difference Product",
+    importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
             (*n, *d)
@@ -3423,7 +3423,6 @@ define_rule!(
 define_rule!(
     CombineSameDenominatorFractionsRule,
     "Combine Same Denominator Fractions",
-    importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr, parent_ctx| {
         use crate::domain::Proof;
         use crate::helpers::{flatten_add_sub_chain, prove_nonzero};

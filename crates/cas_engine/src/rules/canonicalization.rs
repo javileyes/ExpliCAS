@@ -12,6 +12,7 @@ use std::cmp::Ordering;
 define_rule!(
     CanonicalizeNegationRule,
     "Canonicalize Negation",
+    importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
 
@@ -222,7 +223,7 @@ define_rule!(
     }
 );
 
-define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
+define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     if let Expr::Add(_, _) = ctx.get(expr) {
         // 1. Flatten
         let mut terms = Vec::new();
@@ -335,6 +336,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", |ctx, expr| {
 define_rule!(
     CanonicalizeMulRule,
     "Canonicalize Multiplication",
+    importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         use crate::ordering::compare_expr;
         use std::cmp::Ordering;
@@ -407,7 +409,7 @@ define_rule!(
     }
 );
 
-define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
+define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Div(lhs, rhs) = expr_data {
         // x / c -> (1/c) * x
@@ -438,7 +440,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", |ctx, expr| {
     None
 });
 
-define_rule!(CanonicalizeRootRule, "Canonicalize Roots", |ctx, expr| {
+define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Function(name, args) = expr_data {
         if name == "sqrt" {
@@ -553,6 +555,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
 define_rule!(
     NormalizeBinomialOrderRule,
     "Normalize Binomial Order",
+    importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         use crate::ordering::compare_expr;
         use std::cmp::Ordering;
@@ -667,6 +670,7 @@ fn build_sub_like(
 define_rule!(
     NegCoeffFlipBinomialRule,
     "Flip binomial under negative coefficient",
+    importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         use num_traits::Signed;
 

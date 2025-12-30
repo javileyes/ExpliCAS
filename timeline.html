@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: 1 + \frac{1}{1 + \frac{1}{1 + \frac{1}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}</title>
+    <title>CAS Steps: \ln({e}^{x}) + {e}^{\ln(x)}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -222,48 +222,49 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[1 + \frac{1}{1 + \frac{1}{1 + \frac{1}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
+            \[\ln({e}^{x}) + {e}^{\ln(x)}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Simplify Complex Fraction</h3>
+                    <h3>Log-Exp Inverse</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[1 + \frac{1}{1 + {\color{red}{\frac{1}{1 + \frac{1}{x}}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
+                        \[{\color{red}{\ln({e}^{x})}} + {e}^{\ln(x)}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplify nested fraction}\)</div>
+                        <div class="rule-name">\(\text{log(b, b^x) → x}\)</div>
                         <div class="local-change">
-                            \[\frac{1}{1 + \frac{1}{x}} \rightarrow \frac{x}{1 + x}\]
+                            \[\ln({e}^{x}) \rightarrow x\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[1 + \frac{1}{1 + {\color{green}{\frac{x}{1 + x}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
+                        \[{\color{green}{x}} + {e}^{\ln({\color{green}{x}})}\]
                     </div>
+                    <div class="domain-warning">Domain: Assumed x is defined</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Simplify Complex Fraction</h3>
+                    <h3>Exponential-Log Inverse</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[1 + {\color{red}{\frac{1}{1 + \frac{x}{1 + x}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
+                        \[x + {\color{red}{{e}^{\ln(x)}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplify nested fraction}\)</div>
+                        <div class="rule-name">\(\text{b^log(b, x) = x}\)</div>
                         <div class="local-change">
-                            \[\frac{1}{1 + \frac{x}{1 + x}} \rightarrow \frac{1 + x}{1 + x + x}\]
+                            \[{e}^{\ln(x)} \rightarrow x\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[1 + {\color{green}{\frac{1 + x}{1 + x + x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
+                        \[{\color{green}{x}} + {\color{green}{x}}\]
                     </div>
                 </div>
             </div>
@@ -273,113 +274,25 @@
                     <h3>Combine Like Terms</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[1 + \frac{1 + x}{{\color{red}{1 + x + x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
+                        \[{\color{red}{x + x}}\]
                     </div>
                     
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Combine like terms}\)</div>
                         <div class="local-change">
-                            \[1 + x + x \rightarrow 1 + 2\cdot x\]
+                            \[x + x \rightarrow 2\cdot x\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[1 + \frac{1 + x}{{\color{green}{1 + 2\cdot x}}} - \frac{2 + 3\cdot x}{{\color{green}{1 + 2\cdot x}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Combine Same Denominator Fractions</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{1 + \frac{1 + x}{1 + 2\cdot x} - \frac{2 + 3\cdot x}{1 + 2\cdot x}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine fractions with same denominator}\)</div>
-                        <div class="local-change">
-                            \[1 + \frac{1 + x}{1 + 2\cdot x} - \frac{2 + 3\cdot x}{1 + 2\cdot x} \rightarrow 1 + \frac{1 + x - 2 + 3\cdot x}{1 + 2\cdot x}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{1 + \frac{1 + x - 2 + 3\cdot x}{1 + 2\cdot x}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[1 + \frac{{\color{red}{1 + x - 3\cdot x - 2}}}{1 + 2\cdot x}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine like terms}\)</div>
-                        <div class="local-change">
-                            \[1 + x - 3\cdot x - 2 \rightarrow -2\cdot x - 1\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[1 + \frac{{\color{green}{-2\cdot x - 1}}}{1 + 2\cdot x}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">6</div>
-                <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[1 + {\color{red}{\frac{-2\cdot x - 1}{1 + 2\cdot x}}}\]
-                    </div>
-                    <details class="substeps-details">
-                            <summary>Factorización de polinomios</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Cancel common factor: 1 + 2·x</span><div class="substep-math">\[(-1 - 2 * x) / (1 + 2·x) \rightarrow -1\]</div></div></div></details>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplified fraction by GCD: 1 + 2·x}\)</div>
-                        <div class="local-change">
-                            \[\frac{-2\cdot x - 1}{1 + 2\cdot x} \rightarrow -1\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[1 - 1\]
-                    </div>
-                    <div class="domain-warning">Domain: Assumed 1 + 2·x ≠ 0</div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">7</div>
-                <div class="step-content">
-                    <h3>Combine Constants</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{1 - 1}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{1 + -1 = 0}\)</div>
-                        <div class="local-change">
-                            \[1 - 1 \rightarrow 0\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{0}}\]
+                        \[{\color{green}{2\cdot x}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[0\]
+            \[2\cdot x\]
         </div>
     </div>
     <footer>

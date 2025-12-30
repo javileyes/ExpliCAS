@@ -1761,6 +1761,7 @@ define_rule!(
 define_rule!(
     CanonicalizeTrigSquareRule,
     "Canonicalize Trig Square",
+    importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         // cos^n(x) -> (1 - sin^2(x))^(n/2) for even n
         let expr_data = ctx.get(expr).clone();

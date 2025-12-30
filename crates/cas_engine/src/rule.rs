@@ -116,10 +116,10 @@ pub trait SimpleRule {
         0
     }
 
-    /// Step importance level for this rule. Default: Low (hidden in normal mode)
-    /// Override to Medium for pedagogically valuable transformations
+    /// Step importance level for this rule. Default: Medium (visible in normal mode)
+    /// Override to Low for canonicalization and other internal transformations
     fn importance(&self) -> ImportanceLevel {
-        ImportanceLevel::Low
+        ImportanceLevel::Medium
     }
 
     /// Step category for grouping. Default: General
@@ -162,9 +162,9 @@ pub trait Rule {
         0
     }
 
-    /// Step importance level for this rule. Default: Low
+    /// Step importance level for this rule. Default: Medium
     fn importance(&self) -> ImportanceLevel {
-        ImportanceLevel::Low
+        ImportanceLevel::Medium
     }
 
     /// Step category for grouping. Default: General
