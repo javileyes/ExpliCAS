@@ -355,13 +355,16 @@ fn domain_strict_ln_exp_no_warning() {
 fn domain_generic_ln_exp_simplifies() {
     let (result, warnings) = simplify_with_domain("ln(exp(x))", DomainMode::Generic);
 
-    // Generic mode: ln(e^x) should simplify to x (we assume x is real)
+    // Generic mode: ln(e^x) should simplify to x
+    // NOTE: e^x > 0 for all real x, so ln(e^x) is always defined and equals x.
+    // No domain assumption is needed - this is mathematically correct.
     assert_eq!(result, "x", "Expected x, got: {}", result);
 
-    // LogExpInverseRule emits Defined(x) structured assumption, now wired to domain_warnings
+    // ln(e^x) = x should NOT emit any warning since e^x > 0 for all real x
     assert!(
-        !warnings.is_empty(),
-        "Expected domain assumption warning for ln(exp(x))"
+        warnings.is_empty(),
+        "ln(exp(x)) should NOT emit warning - e^x > 0 for all real x. Got: {:?}",
+        warnings
     );
 }
 

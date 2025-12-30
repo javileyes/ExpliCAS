@@ -177,10 +177,12 @@ fn positive_emitted_for_exp_ln_inverse() {
 // Defined Assumption Tests
 // =============================================================================
 
-/// CONTRACT: ln(e^x) → x emits Defined(x) assumption
+/// CONTRACT: ln(e^x) → x does NOT emit any assumption
+/// REASON: e^x > 0 for all real x, so ln(e^x) is always defined and equals x.
+/// This is mathematically correct - no domain restriction needed.
 #[test]
-fn defined_emitted_for_log_exp_inverse() {
-    // Use Generic mode which triggers LogExpInverseRule with Defined assumption
+fn no_assumption_for_log_exp_inverse() {
+    // Use Generic mode which triggers LogExpInverseRule
     let mut simplifier = Simplifier::with_default_rules();
     simplifier.set_collect_steps(true);
     let expr = parse("ln(exp(x))", &mut simplifier.context).expect("parse failed");
@@ -193,9 +195,12 @@ fn defined_emitted_for_log_exp_inverse() {
 
     let (_, steps) = simplifier.simplify_with_options(expr, opts);
 
+    // ln(e^x) = x should NOT emit any assumption because e^x > 0 for all x
+    let has_any_assumption = steps.iter().any(|s| !s.assumption_events.is_empty());
+
     assert!(
-        has_assumption_kind(&steps, "defined"),
-        "ln(exp(x)) should emit Defined assumption for x"
+        !has_any_assumption,
+        "ln(exp(x)) should NOT emit any assumption - e^x > 0 for all real x"
     );
 }
 

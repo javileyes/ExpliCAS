@@ -630,12 +630,16 @@ impl crate::rule::Rule for ExponentialLogRule {
                             return None;
                         }
                         crate::domain::DomainMode::Generic => {
+                            // b^log(b, x) = x requires x > 0 (for log to be defined)
+                            // In Generic mode, we simplify but emit the assumption
                             return Some(crate::rule::Rewrite {
                                 new_expr: log_arg,
                                 description: "b^log(b, x) = x".to_string(),
                                 before_local: None,
                                 after_local: None,
-                                assumption_events: Default::default(),
+                                assumption_events: smallvec::smallvec![
+                                    crate::assumptions::AssumptionEvent::positive(ctx, log_arg)
+                                ],
                             });
                         }
                         crate::domain::DomainMode::Assume => {
@@ -1110,20 +1114,43 @@ impl crate::rule::Rule for LogExpInverseRule {
                             assumption_events: Default::default(),
                         });
                     } else {
-                        // For variable exponents like log(e, e^x) → x, check domain_mode
-                        // Strict mode: preserve composition (no assumptions)
-                        // Generic/Assume mode: simplify (assume x is real)
+                        // For variable exponents like log(e, e^x) → x
+                        //
+                        // Domain analysis:
+                        // - RealOnly: e^x > 0 for all x ∈ ℝ, so ln(e^x) = x always. No assumption needed.
+                        // - ComplexEnabled: ln is multivalued. ln(e^x) = x + 2πik.
+                        //   Only equals x if Im(x) ∈ (-π, π] (principal branch).
+                        //
+                        // Strict mode: preserve composition (don't simplify)
                         if parent_ctx.domain_mode() == crate::domain::DomainMode::Strict {
                             return None; // Preserve composition in strict mode
                         }
+
+                        // Check ValueDomain for complex number handling
+                        use crate::semantics::ValueDomain;
+                        let vd = parent_ctx.value_domain();
+
+                        if vd == ValueDomain::ComplexEnabled {
+                            // In complex mode, ln(e^x) = x only for principal branch
+                            // Emit assumption that x is in principal branch (Im(x) ∈ (-π, π])
+                            return Some(crate::rule::Rewrite {
+                                new_expr: p_exp,
+                                description: "log(b, b^x) → x".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                assumption_events: smallvec::smallvec![
+                                    crate::assumptions::AssumptionEvent::defined(ctx, p_exp)
+                                ],
+                            });
+                        }
+
+                        // RealOnly mode: e^x > 0 for all real x, so ln(e^x) = x always
                         return Some(crate::rule::Rewrite {
                             new_expr: p_exp,
                             description: "log(b, b^x) → x".to_string(),
                             before_local: None,
                             after_local: None,
-                            assumption_events: smallvec::smallvec![
-                                crate::assumptions::AssumptionEvent::defined(ctx, p_exp)
-                            ],
+                            assumption_events: Default::default(), // No assumption needed for reals
                         });
                     }
                 }
