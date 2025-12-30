@@ -1146,11 +1146,29 @@ impl crate::rule::Rule for LogExpInverseRule {
                             // For non-e bases, require prove_positive(base) == Proven
                             let base_positive = prove_positive(ctx, base, vd);
                             if base_positive != Proof::Proven {
-                                // Cannot prove base > 0, don't simplify in Strict
-                                if parent_ctx.domain_mode() == crate::domain::DomainMode::Strict {
-                                    return None;
+                                // Cannot prove base > 0
+                                let dm = parent_ctx.domain_mode();
+                                match dm {
+                                    crate::domain::DomainMode::Strict
+                                    | crate::domain::DomainMode::Generic => {
+                                        // Don't simplify if can't prove base > 0
+                                        return None;
+                                    }
+                                    crate::domain::DomainMode::Assume => {
+                                        // Allow with assumption warning
+                                        return Some(crate::rule::Rewrite {
+                                            new_expr: p_exp,
+                                            description: "log(b, b^x) → x".to_string(),
+                                            before_local: None,
+                                            after_local: None,
+                                            assumption_events: smallvec::smallvec![
+                                                crate::assumptions::AssumptionEvent::positive(
+                                                    ctx, base
+                                                )
+                                            ],
+                                        });
+                                    }
                                 }
-                                // In Generic/Assume: emit warning but allow
                             }
                             // Check base ≠ 1 (log_1 is undefined)
                             if let Expr::Number(n) = ctx.get(base) {
@@ -1160,7 +1178,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                             }
                         }
 
-                        // RealOnly with valid base: Always simplify
+                        // RealOnly with valid base (proven positive): Always simplify
                         return Some(crate::rule::Rewrite {
                             new_expr: p_exp,
                             description: "log(b, b^x) → x".to_string(),

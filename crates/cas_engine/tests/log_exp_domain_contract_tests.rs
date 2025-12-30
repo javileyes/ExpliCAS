@@ -527,13 +527,29 @@ mod general_log_base {
     }
 
     #[test]
-    fn log_symbolic_base_simplifies_in_generic() {
-        // log(b, b^x) → x in Generic mode (allowed with assumption)
+    fn log_symbolic_base_blocks_in_generic() {
+        // log(b, b^x): symbolic base should NOT simplify in Generic either
+        // (cannot prove b > 0, and Generic doesn't assume)
         let r = simplify_with_config("log(b, b^x)", ValueDomain::RealOnly, DomainMode::Generic);
+        assert!(
+            r.result.contains("log"),
+            "log(b, b^x) should remain unchanged in Generic (can't prove b > 0), got: {}",
+            r.result
+        );
+    }
+
+    #[test]
+    fn log_symbolic_base_simplifies_in_assume() {
+        // log(b, b^x) → x in Assume mode (allowed with assumption warning)
+        let r = simplify_with_config("log(b, b^x)", ValueDomain::RealOnly, DomainMode::Assume);
         assert_eq!(
             r.result, "x",
-            "log(b, b^x) → x in Generic mode, got: {}",
+            "log(b, b^x) → x in Assume mode, got: {}",
             r.result
+        );
+        assert!(
+            r.has_warning,
+            "Assume mode should emit warning for b > 0 assumption"
         );
     }
 
