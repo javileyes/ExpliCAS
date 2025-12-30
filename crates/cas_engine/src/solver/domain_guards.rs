@@ -115,8 +115,9 @@ pub fn classify_log_solve(
     }
 
     let mode = opts.domain_mode;
-    let base_proof = prove_positive(ctx, base);
-    let rhs_proof = prove_positive(ctx, rhs);
+    let vd = opts.value_domain;
+    let base_proof = prove_positive(ctx, base, vd);
+    let rhs_proof = prove_positive(ctx, rhs, vd);
 
     // Case: base>0 proven and rhs<0 proven => EmptySet
     // (a^x > 0 for all real x when a > 0, so no solution exists)

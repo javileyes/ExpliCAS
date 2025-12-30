@@ -203,8 +203,9 @@ impl crate::rule::Rule for LogExpansionRule {
 
             // log(b, x*y) → log(b, x) + log(b, y)
             if let Expr::Mul(lhs, rhs) = arg_data {
-                let lhs_positive = prove_positive(ctx, lhs);
-                let rhs_positive = prove_positive(ctx, rhs);
+                let vd = parent_ctx.value_domain();
+                let lhs_positive = prove_positive(ctx, lhs, vd);
+                let rhs_positive = prove_positive(ctx, rhs, vd);
 
                 // GATE 2: Check domain_mode with prove_positive
                 match mode {
@@ -253,8 +254,9 @@ impl crate::rule::Rule for LogExpansionRule {
 
             // log(b, x/y) → log(b, x) - log(b, y)
             if let Expr::Div(num, den) = arg_data {
-                let num_positive = prove_positive(ctx, num);
-                let den_positive = prove_positive(ctx, den);
+                let vd = parent_ctx.value_domain();
+                let num_positive = prove_positive(ctx, num, vd);
+                let den_positive = prove_positive(ctx, den, vd);
 
                 match mode {
                     DomainMode::Strict => {
@@ -353,7 +355,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
 
         let vd = parent_ctx.value_domain();
         let dm = parent_ctx.domain_mode();
-        let pos = prove_positive(ctx, inner);
+        let pos = prove_positive(ctx, inner, vd);
 
         // Helper to rebuild ln/log with inner (without abs)
         let mk_log = |ctx: &mut Context| -> ExprId {
@@ -1116,41 +1118,55 @@ impl crate::rule::Rule for LogExpInverseRule {
                     } else {
                         // For variable exponents like log(e, e^x) → x
                         //
-                        // Domain analysis:
-                        // - RealOnly: e^x > 0 for all x ∈ ℝ, so ln(e^x) = x always. No assumption needed.
+                        // NEW CONTRACT (RealOnly = symbols are real):
+                        // - RealOnly: e^x > 0 for all x ∈ ℝ, so ln(e^x) = x ALWAYS.
+                        //   This applies even in Strict mode (no assumption needed).
                         // - ComplexEnabled: ln is multivalued. ln(e^x) = x + 2πik.
-                        //   Only equals x if Im(x) ∈ (-π, π] (principal branch).
+                        //   NEVER simplify for symbolic exponents (would require principal branch).
                         //
-                        // Strict mode: preserve composition (don't simplify)
-                        if parent_ctx.domain_mode() == crate::domain::DomainMode::Strict {
-                            return None; // Preserve composition in strict mode
-                        }
-
-                        // Check ValueDomain for complex number handling
+                        // GATE: For bases other than e, require prove_positive(base) and base ≠ 1
+                        // log(b, b^x) = x only when b > 0 AND b ≠ 1
+                        //
+                        use crate::domain::Proof;
+                        use crate::helpers::prove_positive;
                         use crate::semantics::ValueDomain;
                         let vd = parent_ctx.value_domain();
 
                         if vd == ValueDomain::ComplexEnabled {
-                            // In complex mode, ln(e^x) = x only for principal branch
-                            // Emit assumption that x is in principal branch (Im(x) ∈ (-π, π])
-                            return Some(crate::rule::Rewrite {
-                                new_expr: p_exp,
-                                description: "log(b, b^x) → x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: smallvec::smallvec![
-                                    crate::assumptions::AssumptionEvent::defined(ctx, p_exp)
-                                ],
-                            });
+                            // ComplexEnabled: Never simplify symbolic exponents
+                            // (ln is multivalued, can't assume principal branch)
+                            return None;
                         }
 
-                        // RealOnly mode: e^x > 0 for all real x, so ln(e^x) = x always
+                        // RealOnly: Check if base is provably valid (>0 and ≠1)
+                        let is_e_base =
+                            matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E));
+
+                        if !is_e_base {
+                            // For non-e bases, require prove_positive(base) == Proven
+                            let base_positive = prove_positive(ctx, base, vd);
+                            if base_positive != Proof::Proven {
+                                // Cannot prove base > 0, don't simplify in Strict
+                                if parent_ctx.domain_mode() == crate::domain::DomainMode::Strict {
+                                    return None;
+                                }
+                                // In Generic/Assume: emit warning but allow
+                            }
+                            // Check base ≠ 1 (log_1 is undefined)
+                            if let Expr::Number(n) = ctx.get(base) {
+                                if *n == num_rational::BigRational::from_integer(1.into()) {
+                                    return None; // log base 1 is undefined
+                                }
+                            }
+                        }
+
+                        // RealOnly with valid base: Always simplify
                         return Some(crate::rule::Rewrite {
                             new_expr: p_exp,
                             description: "log(b, b^x) → x".to_string(),
                             before_local: None,
                             after_local: None,
-                            assumption_events: Default::default(), // No assumption needed for reals
+                            assumption_events: Default::default(), // No assumption needed
                         });
                     }
                 }

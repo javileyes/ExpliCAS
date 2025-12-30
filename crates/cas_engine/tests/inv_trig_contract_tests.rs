@@ -325,13 +325,14 @@ fn simplify_with_domain(input: &str, domain: DomainMode) -> (String, Vec<String>
 }
 
 #[test]
-fn domain_strict_ln_exp_unchanged() {
+fn domain_strict_ln_exp_simplifies() {
     let (result, _) = simplify_with_domain("ln(exp(x))", DomainMode::Strict);
 
-    // Strict mode: ln(e^x) should remain unchanged (not simplify to x)
-    assert!(
-        result.contains("log") || result.contains("ln"),
-        "Expected ln(exp(x)) unchanged in strict domain mode, got: {}",
+    // NEW CONTRACT: In RealOnly mode, ln(e^x) DOES simplify to x
+    // Because x ∈ ℝ by contract, and e^x > 0 for all real x
+    assert_eq!(
+        result, "x",
+        "RealOnly+Strict: ln(exp(x)) should simplify to x (x ∈ ℝ by contract), got: {}",
         result
     );
 }

@@ -175,15 +175,13 @@ fn test_strict_0_pow_2_simplifies_to_0() {
 // =============================================================================
 
 #[test]
-fn test_strict_ln_exp_x_stays_unchanged() {
-    // Strict mode: ln(e^x) should NOT simplify to x (requires exp(x) > 0, but branch cuts)
-    // In strict mode, we preserve the composition
+fn test_strict_ln_exp_x_simplifies() {
+    // NEW CONTRACT: In RealOnly mode, ln(e^x) DOES simplify to x
+    // Because x ∈ ℝ by contract, and e^x > 0 for all real x
     let result = simplify_strict("ln(exp(x))");
-    // Should either remain as ln(exp(x)) or be log(e, exp(x))
-    let is_preserved = !result.eq("x");
-    assert!(
-        is_preserved,
-        "Strict mode should NOT simplify ln(exp(x)) to x, got: {}",
+    assert_eq!(
+        result, "x",
+        "RealOnly+Strict: ln(exp(x)) should simplify to x (x ∈ ℝ by contract), got: {}",
         result
     );
 }
@@ -356,41 +354,47 @@ fn test_prove_nonzero_products() {
 #[test]
 fn test_prove_positive_numbers() {
     use cas_engine::helpers::prove_positive;
+    use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
 
     let mut ctx = Context::new();
+    let vd = ValueDomain::RealOnly; // Use RealOnly for these basic tests
 
     let zero = ctx.num(0);
     let two = ctx.num(2);
     let neg_three = ctx.num(-3);
 
-    assert_eq!(prove_positive(&ctx, zero), Proof::Disproven);
-    assert_eq!(prove_positive(&ctx, two), Proof::Proven);
-    assert_eq!(prove_positive(&ctx, neg_three), Proof::Disproven);
+    assert_eq!(prove_positive(&ctx, zero, vd), Proof::Disproven);
+    assert_eq!(prove_positive(&ctx, two, vd), Proof::Proven);
+    assert_eq!(prove_positive(&ctx, neg_three, vd), Proof::Disproven);
 }
 
 #[test]
 fn test_prove_positive_constants() {
     use cas_engine::helpers::prove_positive;
+    use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
 
     let mut ctx = Context::new();
+    let vd = ValueDomain::RealOnly;
 
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
     let e = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
     let i = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::I));
 
-    assert_eq!(prove_positive(&ctx, pi), Proof::Proven);
-    assert_eq!(prove_positive(&ctx, e), Proof::Proven);
-    assert_eq!(prove_positive(&ctx, i), Proof::Unknown); // i is not real-positive
+    assert_eq!(prove_positive(&ctx, pi, vd), Proof::Proven);
+    assert_eq!(prove_positive(&ctx, e, vd), Proof::Proven);
+    assert_eq!(prove_positive(&ctx, i, vd), Proof::Unknown); // i is not real-positive
 }
 
 #[test]
 fn test_prove_positive_products() {
     use cas_engine::helpers::prove_positive;
+    use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
 
     let mut ctx = Context::new();
+    let vd = ValueDomain::RealOnly;
 
     let two = ctx.num(2);
     let three = ctx.num(3);
@@ -398,35 +402,63 @@ fn test_prove_positive_products() {
 
     // 2 * 3 = 6, proven positive
     let two_times_three = ctx.add(cas_ast::Expr::Mul(two, three));
-    assert_eq!(prove_positive(&ctx, two_times_three), Proof::Proven);
+    assert_eq!(prove_positive(&ctx, two_times_three, vd), Proof::Proven);
 
     // 2 * (-2) = -4, NOT proven positive (but could be - depends on logic)
     // Our implementation returns Unknown for mixed signs
     let two_times_neg = ctx.add(cas_ast::Expr::Mul(two, neg_two));
-    assert_eq!(prove_positive(&ctx, two_times_neg), Proof::Unknown);
+    assert_eq!(prove_positive(&ctx, two_times_neg, vd), Proof::Unknown);
 }
 
 #[test]
-fn test_prove_positive_exp_always_positive() {
+fn test_prove_positive_exp() {
     use cas_engine::helpers::prove_positive;
+    use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
 
     let mut ctx = Context::new();
 
-    // exp(x) with variable: Unknown (can't prove x is real in ComplexEnabled context)
     let x = ctx.var("x");
     let exp_x = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![x]));
-    assert_eq!(prove_positive(&ctx, exp_x), Proof::Unknown);
 
-    // exp(literal): Proven (literal is always real)
+    // NEW CONTRACT:
+    // In RealOnly: exp(x) > 0 for ALL x (x is real by contract)
+    assert_eq!(
+        prove_positive(&ctx, exp_x, ValueDomain::RealOnly),
+        Proof::Proven,
+        "RealOnly: exp(x) should be Proven positive (x ∈ ℝ by contract)"
+    );
+
+    // In ComplexEnabled: exp(x) with variable x is Unknown (could be complex)
+    assert_eq!(
+        prove_positive(&ctx, exp_x, ValueDomain::ComplexEnabled),
+        Proof::Unknown,
+        "ComplexEnabled: exp(x) should be Unknown (x could be complex)"
+    );
+
+    // exp(literal): Proven in both modes (literal is always real)
     let two = ctx.num(2);
     let exp_two = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![two]));
-    assert_eq!(prove_positive(&ctx, exp_two), Proof::Proven);
+    assert_eq!(
+        prove_positive(&ctx, exp_two, ValueDomain::RealOnly),
+        Proof::Proven
+    );
+    assert_eq!(
+        prove_positive(&ctx, exp_two, ValueDomain::ComplexEnabled),
+        Proof::Proven
+    );
 
-    // exp(π): Proven (constant is real)
+    // exp(π): Proven in both modes (constant is real)
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
     let exp_pi = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![pi]));
-    assert_eq!(prove_positive(&ctx, exp_pi), Proof::Proven);
+    assert_eq!(
+        prove_positive(&ctx, exp_pi, ValueDomain::RealOnly),
+        Proof::Proven
+    );
+    assert_eq!(
+        prove_positive(&ctx, exp_pi, ValueDomain::ComplexEnabled),
+        Proof::Proven
+    );
 }
 
 // =============================================================================

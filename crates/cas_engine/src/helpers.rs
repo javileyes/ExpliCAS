@@ -431,25 +431,34 @@ pub fn can_prove_nonzero(ctx: &Context, expr: ExprId) -> bool {
 /// This is used by domain-aware simplification to gate operations like
 /// `log(x*y) → log(x) + log(y)` which require both operands to be positive.
 ///
+/// # Arguments
+/// * `ctx` - Expression context
+/// * `expr` - Expression to check
+/// * `value_domain` - RealOnly or ComplexEnabled (affects what can be proven)
+///
+/// # ValueDomain semantics
+/// * `RealOnly`: Symbols/variables are real by default. e^x > 0 for all x ∈ ℝ.
+/// * `ComplexEnabled`: Symbols may be complex. Positivity only provable for numerics.
+///
 /// Returns:
 /// - `Proof::Proven` for expressions **provably** > 0 (2, π, e, |x|^2, etc.)
 /// - `Proof::Disproven` for expressions **provably** ≤ 0 (-3, 0, etc.)
 /// - `Proof::Unknown` for variables, functions, and anything uncertain
 ///
-/// This is intentionally conservative. `Unknown` means "we cannot prove it > 0".
-///
 /// # Examples
 ///
 /// ```ignore
-/// prove_positive(ctx, ctx.num(2))      // Proof::Proven
-/// prove_positive(ctx, ctx.num(0))      // Proof::Disproven
-/// prove_positive(ctx, ctx.num(-3))     // Proof::Disproven
-/// prove_positive(ctx, ctx.var("x"))    // Proof::Unknown
-/// prove_positive(ctx, ctx.pi())        // Proof::Proven
-/// prove_positive(ctx, ctx.e())         // Proof::Proven
+/// prove_positive(ctx, ctx.num(2), RealOnly)      // Proof::Proven
+/// prove_positive(ctx, exp(x), RealOnly)          // Proof::Proven (x real)
+/// prove_positive(ctx, exp(x), ComplexEnabled)   // Proof::Unknown (x may be complex)
 /// ```
-pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
+pub fn prove_positive(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::semantics::ValueDomain,
+) -> crate::domain::Proof {
     use crate::domain::Proof;
+    use crate::semantics::ValueDomain;
     use num_traits::Zero;
 
     match ctx.get(expr) {
@@ -474,8 +483,8 @@ pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
         // Mul: a*b > 0 if (a>0 AND b>0) OR (a<0 AND b<0)
         // For simplicity, we only prove the (a>0 AND b>0) case
         Expr::Mul(a, b) => {
-            let proof_a = prove_positive(ctx, *a);
-            let proof_b = prove_positive(ctx, *b);
+            let proof_a = prove_positive(ctx, *a, value_domain);
+            let proof_b = prove_positive(ctx, *b, value_domain);
 
             match (proof_a, proof_b) {
                 (Proof::Proven, Proof::Proven) => Proof::Proven,
@@ -486,33 +495,43 @@ pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
         }
 
         // Div: a/b > 0 if (a>0 AND b>0) OR (a<0 AND b<0)
-        // For simplicity, we only prove the (a>0 AND b>0) case
-        // This handles 2/3 being represented as Div(2, 3)
         Expr::Div(a, b) => {
-            let proof_a = prove_positive(ctx, *a);
-            let proof_b = prove_positive(ctx, *b);
+            let proof_a = prove_positive(ctx, *a, value_domain);
+            let proof_b = prove_positive(ctx, *b, value_domain);
 
             match (proof_a, proof_b) {
                 (Proof::Proven, Proof::Proven) => Proof::Proven,
-                // If either is ≤ 0, we can't easily conclude
-                (Proof::Disproven, _) | (_, Proof::Disproven) => Proof::Unknown, // Could be positive if both negative
+                (Proof::Disproven, _) | (_, Proof::Disproven) => Proof::Unknown,
                 _ => Proof::Unknown,
             }
         }
 
-        // Pow with positive base: a^n > 0 if a > 0 and n is any real
-        // Pow with even exponent: a^(2k) > 0 if a ≠ 0
+        // Pow: base^exp
+        // - RealOnly: if base > 0, then base^exp > 0 (for any real exp)
+        // - ComplexEnabled: only if exp is a real numeric AND base > 0
         Expr::Pow(base, exp) => {
-            let base_positive = prove_positive(ctx, *base);
-            if base_positive == Proof::Proven {
-                return Proof::Proven; // positive^anything = positive
+            let base_positive = prove_positive(ctx, *base, value_domain);
+
+            match value_domain {
+                ValueDomain::RealOnly => {
+                    // In reals: positive^(anything real) = positive
+                    if base_positive == Proof::Proven {
+                        return Proof::Proven;
+                    }
+                }
+                ValueDomain::ComplexEnabled => {
+                    // In complex: only safe if exponent is a real numeric
+                    let exp_is_real_numeric = matches!(ctx.get(*exp), Expr::Number(_));
+                    if base_positive == Proof::Proven && exp_is_real_numeric {
+                        return Proof::Proven;
+                    }
+                }
             }
 
             // Check for even power (makes result positive if base ≠ 0)
             if let Expr::Number(n) = ctx.get(*exp) {
                 if n.is_integer() {
                     let int_val = n.to_integer();
-                    // Check if int_val is even using modulo (avoid is_even trait dependency)
                     let two: num_bigint::BigInt = 2.into();
                     if &int_val % &two == 0.into() {
                         // a^(even) > 0 if a ≠ 0
@@ -526,8 +545,7 @@ pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
             Proof::Unknown
         }
 
-        // abs(x)^2 or |x|: always ≥ 0, but only > 0 if x ≠ 0
-        // We handle abs(anything) as positive if the argument is nonzero
+        // abs(x): always ≥ 0, but only > 0 if x ≠ 0
         Expr::Function(name, args) if name == "abs" && args.len() == 1 => {
             let inner_nonzero = prove_nonzero(ctx, args[0]);
             if inner_nonzero == Proof::Proven {
@@ -539,23 +557,30 @@ pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
             }
         }
 
-        // exp(x) > 0 for all real x, but NOT for complex x (no total order in ℂ)
-        // Since we can't prove x is real without ValueDomain context, be conservative
-        // Only return Proven for exp(literal) where literal > 0
+        // exp(x) > 0 for all x ∈ ℝ, but NOT for complex x
+        // RealOnly: symbols are real, so exp(symbol) > 0
+        // ComplexEnabled: only exp(literal) is provably positive
         Expr::Function(name, args) if name == "exp" && args.len() == 1 => {
-            // exp(positive_literal) > 0 is safe
-            // For general exp(x), we return Unknown (could be complex)
-            match ctx.get(args[0]) {
-                Expr::Number(_)
-                | Expr::Constant(cas_ast::Constant::Pi)
-                | Expr::Constant(cas_ast::Constant::E) => Proof::Proven,
-                _ => Proof::Unknown,
+            match value_domain {
+                ValueDomain::RealOnly => {
+                    // In RealOnly: e^x > 0 for ALL x (x is real by contract)
+                    Proof::Proven
+                }
+                ValueDomain::ComplexEnabled => {
+                    // In ComplexEnabled: only exp(numeric literal) is provably positive
+                    match ctx.get(args[0]) {
+                        Expr::Number(_)
+                        | Expr::Constant(cas_ast::Constant::Pi)
+                        | Expr::Constant(cas_ast::Constant::E) => Proof::Proven,
+                        _ => Proof::Unknown,
+                    }
+                }
             }
         }
 
         // sqrt(x) with x > 0 gives positive result
         Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
-            prove_positive(ctx, args[0])
+            prove_positive(ctx, args[0], value_domain)
         }
 
         // Neg: -x > 0 iff x < 0 - too complex to prove, return Unknown
@@ -570,8 +595,12 @@ pub fn prove_positive(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
 ///
 /// Returns `true` only for `Proof::Proven`. Use `prove_positive()` directly
 /// for more fine-grained control.
-pub fn can_prove_positive(ctx: &Context, expr: ExprId) -> bool {
-    prove_positive(ctx, expr).is_proven()
+pub fn can_prove_positive(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::semantics::ValueDomain,
+) -> bool {
+    prove_positive(ctx, expr, value_domain).is_proven()
 }
 
 // ========== Solver Domain Helpers ==========
@@ -596,6 +625,7 @@ pub enum LnDecision {
 /// * `ctx` - Expression context
 /// * `arg` - The argument to ln()
 /// * `mode` - The current DomainMode
+/// * `value_domain` - RealOnly or ComplexEnabled
 ///
 /// # Returns
 /// * `Ok(LnDecision::Safe)` if arg is provably positive (no assumption needed)
@@ -604,19 +634,20 @@ pub enum LnDecision {
 ///
 /// # Examples
 /// ```ignore
-/// can_take_ln_real(ctx, ctx.num(2), DomainMode::Strict)   // Ok(Safe)
-/// can_take_ln_real(ctx, ctx.num(-5), DomainMode::Strict)  // Err("argument ≤ 0")
-/// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Strict) // Err("cannot prove > 0")
-/// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Assume) // Ok(AssumePositive)
+/// can_take_ln_real(ctx, ctx.num(2), DomainMode::Strict, RealOnly)   // Ok(Safe)
+/// can_take_ln_real(ctx, ctx.num(-5), DomainMode::Strict, RealOnly)  // Err("argument ≤ 0")
+/// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Strict, RealOnly) // Err("cannot prove > 0")
+/// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Assume, RealOnly) // Ok(AssumePositive)
 /// ```
 pub fn can_take_ln_real(
     ctx: &Context,
     arg: ExprId,
     mode: crate::domain::DomainMode,
+    value_domain: crate::semantics::ValueDomain,
 ) -> Result<LnDecision, &'static str> {
     use crate::domain::{DomainMode, Proof};
 
-    let proof = prove_positive(ctx, arg);
+    let proof = prove_positive(ctx, arg, value_domain);
 
     match proof {
         Proof::Proven => Ok(LnDecision::Safe),
