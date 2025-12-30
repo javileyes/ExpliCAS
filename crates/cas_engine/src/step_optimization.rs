@@ -96,6 +96,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     after_local: None,
                     assumption_events: Default::default(),
                     importance: crate::step::ImportanceLevel::Low, // Coalesced canonicalization is low
+                    category: crate::step::StepCategory::Canonicalize, // Category for coalesced steps
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;

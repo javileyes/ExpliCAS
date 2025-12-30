@@ -19,6 +19,24 @@ pub enum ImportanceLevel {
     High = 3,    // Factor, expand, integrate, complex transforms
 }
 
+/// Category of step for grouping and filtering by type
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StepCategory {
+    #[default]
+    General, // Default for all rules
+    Canonicalize, // Ordering, normalization
+    Simplify,     // Algebraic simplification
+    Expand,       // Distribution, expansion
+    Factor,       // Factorization
+    Rationalize,  // Rationalization
+    ConstEval,    // Constant evaluation
+    ConstFold,    // Constant folding pass
+    Domain,       // Domain-related transforms
+    Solve,        // Solver steps
+    Substitute,   // Substitution
+    Limits,       // Limit calculations
+}
+
 #[derive(Debug, Clone)]
 pub struct Step {
     pub description: String,
@@ -47,6 +65,8 @@ pub struct Step {
     pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
     /// Importance level for step filtering (from Rule::importance())
     pub importance: ImportanceLevel,
+    /// Category of step for grouping (from Rule::category() or pipeline origin)
+    pub category: StepCategory,
 }
 
 impl Step {
@@ -87,6 +107,7 @@ impl Step {
             after_local: None,
             assumption_events: Default::default(),
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
+            category: StepCategory::General,  // Default, can be set by caller
         }
     }
 
@@ -106,6 +127,7 @@ impl Step {
             after_local: None,
             assumption_events: Default::default(),
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
+            category: StepCategory::General,  // Default, can be set by caller
         }
     }
 

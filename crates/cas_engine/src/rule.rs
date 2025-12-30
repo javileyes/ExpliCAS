@@ -1,6 +1,6 @@
 use crate::parent_context::ParentContext;
 use crate::phase::PhaseMask;
-use crate::step::ImportanceLevel;
+use crate::step::{ImportanceLevel, StepCategory};
 use cas_ast::{Context, ExprId};
 
 /// Result of a rule application containing the new expression and metadata
@@ -121,6 +121,12 @@ pub trait SimpleRule {
     fn importance(&self) -> ImportanceLevel {
         ImportanceLevel::Low
     }
+
+    /// Step category for grouping. Default: General
+    /// Override for specific rule types (Expand, Factor, etc.)
+    fn category(&self) -> StepCategory {
+        StepCategory::General
+    }
 }
 
 /// Main Rule trait with parent-context awareness
@@ -160,6 +166,11 @@ pub trait Rule {
     fn importance(&self) -> ImportanceLevel {
         ImportanceLevel::Low
     }
+
+    /// Step category for grouping. Default: General
+    fn category(&self) -> StepCategory {
+        StepCategory::General
+    }
 }
 
 /// Auto-implement Rule for any SimpleRule
@@ -193,5 +204,9 @@ impl<T: SimpleRule> Rule for T {
 
     fn importance(&self) -> ImportanceLevel {
         SimpleRule::importance(self)
+    }
+
+    fn category(&self) -> StepCategory {
+        SimpleRule::category(self)
     }
 }
