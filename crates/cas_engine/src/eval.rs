@@ -133,6 +133,8 @@ pub struct EvalOutput {
     pub domain_warnings: Vec<DomainWarning>,
     pub steps: Vec<crate::Step>,
     pub solve_steps: Vec<crate::solver::SolveStep>,
+    /// Assumptions made during solver operations (for Assume mode).
+    pub solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
 }
 
 /// Collect domain warnings from steps with deduplication.
@@ -186,7 +188,7 @@ impl Engine {
         };
 
         // 3. Dispatch Action -> produce EvalResult
-        let (result, domain_warnings, steps, solve_steps) = match req.action {
+        let (result, domain_warnings, steps, solve_steps, solver_assumptions) = match req.action {
             EvalAction::Simplify => {
                 // Determine effective context mode for this request
                 let effective_opts = self.effective_options(&state.options, resolved);
@@ -255,13 +257,13 @@ impl Engine {
                     }
                 }
 
-                (EvalResult::Expr(res), warnings, steps, vec![])
+                (EvalResult::Expr(res), warnings, steps, vec![], vec![])
             }
             EvalAction::Expand => {
                 // Treating Expand as Simplify for now, as Simplifier has no explicit expand mode yet exposed cleanly
                 let (res, steps) = self.simplifier.simplify(resolved);
                 let warnings = collect_domain_warnings(&steps);
-                (EvalResult::Expr(res), warnings, steps, vec![])
+                (EvalResult::Expr(res), warnings, steps, vec![], vec![])
             }
             EvalAction::Solve { var } => {
                 // Construct proper Equation for solver
@@ -304,18 +306,28 @@ impl Engine {
                     }
                 };
 
-                // Call solver with semantic options
+                // Call solver with semantic options and assumption collection
                 let solver_opts = crate::solver::SolverOptions {
                     value_domain: state.options.value_domain,
                     domain_mode: state.options.domain_mode,
                     assume_scope: state.options.assume_scope,
                 };
+
+                // RAII guard for assumption collection (handles nested solves safely)
+                let collect_assumptions = state.options.assumption_reporting
+                    != crate::assumptions::AssumptionReporting::Off;
+                let assumption_guard =
+                    crate::solver::SolveAssumptionsGuard::new(collect_assumptions);
+
                 let sol_result = crate::solver::solve_with_options(
                     &eq_to_solve,
                     &var,
                     &mut self.simplifier,
                     solver_opts,
                 );
+
+                // Collect assumptions (guard restores previous collector on drop)
+                let solver_assumptions = assumption_guard.finish();
 
                 match sol_result {
                     Ok((solution_set, solve_steps)) => {
@@ -363,8 +375,12 @@ impl Engine {
                                 }
                                 EvalResult::Set(bounds)
                             }
+                            SolutionSet::Residual(residual_expr) => {
+                                // Return the residual expression as a single result
+                                EvalResult::Set(vec![residual_expr])
+                            }
                         };
-                        (eval_res, warnings, vec![], solve_steps)
+                        (eval_res, warnings, vec![], solve_steps, solver_assumptions)
                     }
                     Err(e) => return Err(anyhow::anyhow!("Solver error: {}", e)),
                 }
@@ -382,7 +398,7 @@ impl Engine {
                 };
 
                 let are_eq = self.simplifier.are_equivalent(resolved, resolved_other);
-                (EvalResult::Bool(are_eq), vec![], vec![], vec![])
+                (EvalResult::Bool(are_eq), vec![], vec![], vec![], vec![])
             }
         };
 
@@ -394,6 +410,7 @@ impl Engine {
             domain_warnings,
             steps,
             solve_steps,
+            solver_assumptions,
         })
     }
 }

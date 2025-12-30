@@ -4185,6 +4185,22 @@ impl Repl {
                             println!("⚠ {} (from {})", w.message, w.rule_name);
                         }
 
+                        // Show solver assumptions summary if any
+                        if !output.solver_assumptions.is_empty() {
+                            let items: Vec<String> = output
+                                .solver_assumptions
+                                .iter()
+                                .map(|a| {
+                                    if a.count > 1 {
+                                        format!("{}({}) (×{})", a.kind, a.expr, a.count)
+                                    } else {
+                                        format!("{}({})", a.kind, a.expr)
+                                    }
+                                })
+                                .collect();
+                            println!("⚠ Assumptions: {}", items.join(", "));
+                        }
+
                         // Show Solve Steps
                         if !output.solve_steps.is_empty() && self.verbosity != Verbosity::None {
                             if self.verbosity != Verbosity::Succinct {
@@ -5153,6 +5169,16 @@ fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> S
         cas_ast::SolutionSet::Union(intervals) => {
             let s: Vec<String> = intervals.iter().map(|i| display_interval(ctx, i)).collect();
             s.join(" U ")
+        }
+        cas_ast::SolutionSet::Residual(expr) => {
+            // Display residual expression (unsolved)
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: *expr
+                }
+            )
         }
     }
 }

@@ -1653,6 +1653,14 @@ impl<'a> SolveTimelineHtml<'a> {
                     .collect();
                 parts.join(r" \cup ")
             }
+            SolutionSet::Residual(expr) => {
+                // Show the residual expression as-is
+                LaTeXExpr {
+                    context: self.context,
+                    id: *expr,
+                }
+                .to_latex()
+            }
         }
     }
 

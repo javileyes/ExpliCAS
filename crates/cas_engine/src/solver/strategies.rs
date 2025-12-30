@@ -219,6 +219,7 @@ impl SolverStrategy for SubstitutionStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
+        _opts: &SolverOptions,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         if let Some(sub_var_expr) = detect_substitution(&mut simplifier.context, eq, var) {
             let mut steps = Vec::new();
@@ -435,6 +436,7 @@ impl SolverStrategy for QuadraticStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
+        _opts: &SolverOptions,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let mut steps = Vec::new();
 
@@ -939,6 +941,7 @@ impl SolverStrategy for IsolationStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
+        _opts: &SolverOptions,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Isolation strategy expects variable on LHS.
         // The main solve loop handles swapping, but we should check here or just assume?
@@ -1015,6 +1018,105 @@ impl SolverStrategy for IsolationStrategy {
     // Selective verification in solve() handles symbolic solutions.
 }
 
+/// Check if an exponential equation needs complex logarithm in Wildcard mode.
+/// Returns Some(Ok(Residual)) if Wildcard mode should return a residual.
+/// Returns Some(Err) if an error should be returned.
+/// Returns None if this case doesn't apply (normal processing should continue).
+fn check_exponential_needs_complex(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: &SolverOptions,
+    lhs_has: bool,
+    rhs_has: bool,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    use crate::domain::DomainMode;
+    use crate::semantics::AssumeScope;
+    use crate::solver::domain_guards::{classify_log_solve, LogSolveDecision};
+
+    // Check LHS for exponential a^x pattern
+    if lhs_has && !rhs_has {
+        if let Expr::Pow(base, exp) = simplifier.context.get(eq.lhs).clone() {
+            // Check if exponent contains var and base doesn't
+            if contains_var(&simplifier.context, exp, var)
+                && !contains_var(&simplifier.context, base, var)
+            {
+                let decision = classify_log_solve(&simplifier.context, base, eq.rhs, opts);
+
+                if let LogSolveDecision::NeedsComplex(msg) = decision {
+                    // Check if we're in Wildcard mode
+                    if opts.domain_mode == DomainMode::Assume
+                        && opts.assume_scope == AssumeScope::Wildcard
+                    {
+                        // Create a solve(eq, var) residual
+                        let eq_expr = create_equation_expr(simplifier, eq);
+                        let var_expr = simplifier.context.var(var);
+                        let residual = simplifier
+                            .context
+                            .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
+
+                        // Create step with warning
+                        let mut steps = Vec::new();
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!("{} - use 'semantics preset complex'", msg),
+                                equation_after: eq.clone(),
+                            });
+                        }
+
+                        return Some(Ok((SolutionSet::Residual(residual), steps)));
+                    }
+                    // If not Wildcard, let other handlers deal with it
+                }
+            }
+        }
+    }
+
+    // Check RHS for exponential pattern (symmetric case)
+    if rhs_has && !lhs_has {
+        if let Expr::Pow(base, exp) = simplifier.context.get(eq.rhs).clone() {
+            if contains_var(&simplifier.context, exp, var)
+                && !contains_var(&simplifier.context, base, var)
+            {
+                let decision = classify_log_solve(&simplifier.context, base, eq.lhs, opts);
+
+                if let LogSolveDecision::NeedsComplex(msg) = decision {
+                    if opts.domain_mode == DomainMode::Assume
+                        && opts.assume_scope == AssumeScope::Wildcard
+                    {
+                        let eq_expr = create_equation_expr(simplifier, eq);
+                        let var_expr = simplifier.context.var(var);
+                        let residual = simplifier
+                            .context
+                            .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
+
+                        let mut steps = Vec::new();
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!("{} - use 'semantics preset complex'", msg),
+                                equation_after: eq.clone(),
+                            });
+                        }
+
+                        return Some(Ok((SolutionSet::Residual(residual), steps)));
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Create an expression representing the equation for residual notation
+fn create_equation_expr(simplifier: &mut Simplifier, eq: &Equation) -> ExprId {
+    // We represent eq as Function("__eq__", [lhs, rhs])
+    // This is just for internal residual representation
+    simplifier
+        .context
+        .add(Expr::Function("__eq__".to_string(), vec![eq.lhs, eq.rhs]))
+}
+
 pub struct UnwrapStrategy;
 
 impl SolverStrategy for UnwrapStrategy {
@@ -1027,6 +1129,7 @@ impl SolverStrategy for UnwrapStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
+        opts: &SolverOptions,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Try to unwrap functions on LHS or RHS to expose the variable or transform the equation.
         // This is useful when var is on both sides, e.g. sqrt(2x+3) = x.
@@ -1041,6 +1144,14 @@ impl SolverStrategy for UnwrapStrategy {
 
         if !lhs_has && !rhs_has {
             return None;
+        }
+
+        // EARLY CHECK: Handle exponential NeedsComplex + Wildcard -> Residual
+        // This must be before the closure to be able to return SolutionSet::Residual
+        if let Some(result) =
+            check_exponential_needs_complex(eq, var, simplifier, opts, lhs_has, rhs_has)
+        {
+            return Some(result);
         }
 
         // Helper to invert
@@ -1181,30 +1292,64 @@ impl SolverStrategy for UnwrapStrategy {
                         && contains_var(&simplifier.context, e, var)
                     {
                         // A^x = B -> x * ln(A) = ln(B)
-                        // DOMAIN GUARDS: Only proceed if ln() is valid in RealOnly mode
-                        use crate::domain::Proof;
-                        use crate::helpers::prove_positive;
+                        // Use domain classifier for semantic-aware solving
 
-                        let base_proof = prove_positive(&simplifier.context, b);
-                        let rhs_proof = prove_positive(&simplifier.context, other);
+                        use crate::solver::domain_guards::{classify_log_solve, LogSolveDecision};
 
-                        // GUARD: base must be provably positive for real log
-                        // If base is Unknown (symbolic like a/b), skip this strategy
-                        // Let IsolationStrategy return UnsupportedInRealDomain
-                        if base_proof != Proof::Proven {
-                            return None;
+                        // PRE-CHECK: Handle base = 1 before classifier
+                        // 1^x = 1 -> AllReals, 1^x = b (b≠1) -> Empty
+                        if let Expr::Number(n) = simplifier.context.get(b) {
+                            if *n == num_rational::BigRational::from_integer(1.into()) {
+                                // Base is 1
+                                if let Expr::Number(rhs_n) = simplifier.context.get(other) {
+                                    if *rhs_n == num_rational::BigRational::from_integer(1.into()) {
+                                        // 1^x = 1 -> AllReals (handled specially)
+                                        // We can't return AllReals directly from invert closure,
+                                        // so skip and let IsolationStrategy handle it
+                                        return None;
+                                    } else {
+                                        // 1^x = b (b≠1) -> Empty (also skip)
+                                        return None;
+                                    }
+                                }
+                                // 1^x = symbolic -> skip (can be 1 or not)
+                                return None;
+                            }
                         }
 
-                        // GUARD: if base > 0 but RHS is proven ≤ 0, no real solutions
-                        // Skip this strategy - IsolationStrategy will return Empty
-                        if rhs_proof == Proof::Disproven {
-                            return None;
-                        }
+                        // Use the domain classifier
+                        let decision = classify_log_solve(&simplifier.context, b, other, opts);
 
-                        // GUARD: if RHS positivity is Unknown, skip
-                        // Cannot take ln of potentially negative value in RealOnly
-                        if rhs_proof == Proof::Unknown {
-                            return None;
+                        match decision {
+                            LogSolveDecision::Ok => {
+                                // Safe to take ln - no assumptions needed
+                            }
+                            LogSolveDecision::OkWithAssumptions(assumptions) => {
+                                // Record each assumption via the thread-local collector
+                                for assumption in assumptions {
+                                    let event = assumption.to_assumption_event(
+                                        &simplifier.context,
+                                        b,
+                                        other,
+                                    );
+                                    crate::solver::note_assumption(event);
+                                }
+                            }
+                            LogSolveDecision::EmptySet(_) => {
+                                // No solutions - skip, let IsolationStrategy handle
+                                return None;
+                            }
+                            LogSolveDecision::NeedsComplex(msg) => {
+                                // In RealOnly, can't proceed
+                                // In wildcard scope: should return residual (not implemented here)
+                                // For now, skip and let IsolationStrategy handle
+                                let _ = msg; // suppress warning
+                                return None;
+                            }
+                            LogSolveDecision::Unsupported(_) => {
+                                // Cannot justify in current mode - skip
+                                return None;
+                            }
                         }
 
                         // Safe to take ln of both sides
@@ -1309,6 +1454,7 @@ impl SolverStrategy for CollectTermsStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
+        _opts: &SolverOptions,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
@@ -1381,6 +1527,7 @@ impl SolverStrategy for RationalExponentStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
+        _opts: &SolverOptions,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Only handle equality for now
         if eq.op != RelOp::Eq {

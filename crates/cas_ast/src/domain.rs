@@ -41,4 +41,8 @@ pub enum SolutionSet {
     Union(Vec<Interval>),
     Empty,
     AllReals,
+    /// A residual expression when the equation cannot be solved in the current domain.
+    /// The ExprId represents a `solve(eq, var)` expression that was not fully resolved.
+    /// Used in wildcard mode when complex logarithm is needed but we're in RealOnly.
+    Residual(ExprId),
 }

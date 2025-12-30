@@ -1,4 +1,5 @@
 use crate::build::mul2_raw;
+pub mod domain_guards;
 pub mod isolation;
 pub mod solution_set;
 pub mod strategies;
@@ -54,6 +55,104 @@ pub(crate) const MAX_SOLVE_DEPTH: usize = 50;
 
 thread_local! {
     pub(crate) static SOLVE_DEPTH: std::cell::RefCell<usize> = const { std::cell::RefCell::new(0) };
+    /// Thread-local collector for solver assumptions.
+    /// Used to pass assumptions from strategies back to caller without changing return type.
+    static SOLVE_ASSUMPTIONS: std::cell::RefCell<Option<crate::assumptions::AssumptionCollector>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// RAII guard for solver assumption collection.
+///
+/// Creates a fresh collector on creation, and on drop:
+/// - Returns the collected assumptions via `finish()`
+/// - Restores any previous collector (for nested solves)
+///
+/// # Safety against leaks/reentrancy
+/// - Drop always clears or restores state
+/// - Nested solves get their own collectors (previous is saved)
+pub struct SolveAssumptionsGuard {
+    /// The previous collector (if any) that was active before this guard
+    previous: Option<crate::assumptions::AssumptionCollector>,
+    /// Whether collection is enabled for this guard
+    enabled: bool,
+}
+
+impl SolveAssumptionsGuard {
+    /// Create a new guard that starts assumption collection.
+    /// If `enabled` is false, no collection happens (passthrough).
+    pub fn new(enabled: bool) -> Self {
+        let previous = if enabled {
+            // Take any existing collector (for nested solve case)
+            let prev = SOLVE_ASSUMPTIONS.with(|c| c.borrow_mut().take());
+            // Install fresh collector
+            SOLVE_ASSUMPTIONS.with(|c| {
+                *c.borrow_mut() = Some(crate::assumptions::AssumptionCollector::new());
+            });
+            prev
+        } else {
+            None
+        };
+
+        Self { previous, enabled }
+    }
+
+    /// Finish collection and return the collected records.
+    /// This consumes the guard.
+    pub fn finish(self) -> Vec<crate::assumptions::AssumptionRecord> {
+        // The Drop impl will restore previous, we just need to take current
+        if self.enabled {
+            SOLVE_ASSUMPTIONS.with(|c| {
+                c.borrow_mut()
+                    .take()
+                    .map(|collector| collector.finish())
+                    .unwrap_or_default()
+            })
+        } else {
+            vec![]
+        }
+    }
+}
+
+impl Drop for SolveAssumptionsGuard {
+    fn drop(&mut self) {
+        if self.enabled {
+            // Restore previous collector (or None if there wasn't one)
+            SOLVE_ASSUMPTIONS.with(|c| {
+                *c.borrow_mut() = self.previous.take();
+            });
+        }
+    }
+}
+
+/// Start assumption collection for solver.
+/// DEPRECATED: Use SolveAssumptionsGuard for RAII safety.
+/// Returns true if collection was started (false if already active).
+pub fn start_assumption_collection() -> bool {
+    SOLVE_ASSUMPTIONS.with(|c| {
+        let mut collector = c.borrow_mut();
+        if collector.is_none() {
+            *collector = Some(crate::assumptions::AssumptionCollector::new());
+            true
+        } else {
+            false
+        }
+    })
+}
+
+/// Finish assumption collection and return the collector.
+/// DEPRECATED: Use SolveAssumptionsGuard for RAII safety.
+/// Returns None if collection wasn't started.
+pub fn finish_assumption_collection() -> Option<crate::assumptions::AssumptionCollector> {
+    SOLVE_ASSUMPTIONS.with(|c| c.borrow_mut().take())
+}
+
+/// Note an assumption during solver operation (internal use).
+pub(crate) fn note_assumption(event: crate::assumptions::AssumptionEvent) {
+    SOLVE_ASSUMPTIONS.with(|c| {
+        if let Some(ref mut collector) = *c.borrow_mut() {
+            collector.note(event);
+        }
+    });
 }
 
 /// Guard that decrements depth on drop
@@ -87,9 +186,7 @@ pub fn solve_with_options(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
-    // TODO: Pass opts to SolverStrategy::apply() for full domain-aware solving
-    // Currently strategies use SolverOptions::default() which is RealOnly/Generic
-    _opts: SolverOptions,
+    opts: SolverOptions,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check and increment recursion depth
     let current_depth = SOLVE_DEPTH.with(|d| {
@@ -198,7 +295,7 @@ pub fn solve_with_options(
 
     // 4. Try strategies on the simplified equation
     for strategy in strategies {
-        if let Some(res) = strategy.apply(&simplified_eq, var, simplifier) {
+        if let Some(res) = strategy.apply(&simplified_eq, var, simplifier, &opts) {
             match res {
                 Ok((result, steps)) => {
                     // Verify solutions if Discrete
