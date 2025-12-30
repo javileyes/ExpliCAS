@@ -10,85 +10,90 @@ pub static CSS_STYLES: &str = r#"
 }
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    max-width: 1400px;
+    max-width: 1000px;
     margin: 0 auto;
     padding: 20px 15px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
     min-height: 100vh;
+    color: #e0e0e0;
 }
 .container {
-    background: white;
-    border-radius: 12px;
-    padding: 30px 25px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    background: rgba(30, 40, 60, 0.95);
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 h1 {
+    color: #64b5f6;
     text-align: center;
-    color: #333;
     margin-bottom: 10px;
+    font-size: 1.8em;
 }
 .subtitle {
     text-align: center;
-    color: #666;
-    margin-bottom: 30px;
+    color: #90caf9;
+    margin-bottom: 25px;
 }
 .original {
-    text-align: center;
-    font-size: 1.2em;
-    padding: 15px;
-    background: #f0f4ff;
-    border-radius: 8px;
+    background: linear-gradient(135deg, #1565c0, #0d47a1);
+    padding: 20px;
+    border-radius: 10px;
     margin-bottom: 30px;
-    border: 2px solid #667eea;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(21, 101, 192, 0.4);
 }
 .timeline {
     position: relative;
-    padding: 20px 0;
+    padding-left: 30px;
 }
 .timeline::before {
     content: '';
     position: absolute;
-    left: 30px;
+    left: 10px;
     top: 0;
     bottom: 0;
     width: 3px;
-    background: linear-gradient(to bottom, #667eea, #764ba2);
+    background: linear-gradient(to bottom, #64b5f6, #4caf50);
 }
 .step {
+    background: rgba(40, 50, 70, 0.8);
+    border-radius: 10px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
     position: relative;
-    margin-bottom: 30px;
-    padding-left: 80px;
-    animation: fadeIn 0.5s ease-in;
+    border-left: 4px solid #64b5f6;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+.step:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 20px rgba(100, 181, 246, 0.3);
+}
+.step::before {
+    content: '';
+    position: absolute;
+    left: -23px;
+    top: 20px;
+    width: 12px;
+    height: 12px;
+    background: #64b5f6;
+    border-radius: 50%;
+    border: 3px solid #1a1a2e;
 }
 .step-number {
-    position: absolute;
-    left: 10px;
-    width: 40px;
-    height: 40px;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
+    color: #64b5f6;
     font-weight: bold;
-    font-size: 1.1em;
-    box-shadow: 0 2px 10px rgba(102, 126, 234, 0.4);
+    font-size: 0.9em;
+    margin-bottom: 5px;
 }
 .step-content {
-    background: #fafafa;
+    background: rgba(30, 40, 55, 0.9);
     border-radius: 8px;
     padding: 15px 20px;
-    border: 1px solid #e0e0e0;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    border: 1px solid rgba(100, 181, 246, 0.2);
 }
 .step-description {
     font-weight: 600;
-    color: #667eea;
+    color: #90caf9;
     margin-bottom: 10px;
     display: flex;
     align-items: center;
@@ -102,108 +107,109 @@ h1 {
     text-transform: uppercase;
 }
 .importance-high {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: rgba(76, 175, 80, 0.2);
+    color: #81c784;
 }
 .importance-medium {
-    background: #fff3e0;
-    color: #ef6c00;
+    background: rgba(255, 152, 0, 0.2);
+    color: #ffb74d;
 }
 .importance-low {
-    background: #fce4ec;
-    color: #c2185b;
+    background: rgba(233, 30, 99, 0.2);
+    color: #f48fb1;
 }
 .step-math {
     text-align: center;
     padding: 10px;
-    background: white;
+    background: rgba(30, 40, 55, 0.9);
     border-radius: 6px;
     overflow-x: auto;
 }
 .step-final {
-    border: 2px solid #4CAF50;
-    background: #e8f5e9;
+    border-left: 4px solid #4CAF50;
+    background: rgba(76, 175, 80, 0.15);
 }
 .step-final .step-number {
-    background: linear-gradient(135deg, #4CAF50, #2E7D32);
+    color: #4CAF50;
 }
 .result-section {
+    background: linear-gradient(135deg, #2e7d32, #1b5e20);
+    padding: 20px;
     text-align: center;
-    margin-top: 40px;
-    padding: 25px;
-    background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
-    border-radius: 12px;
-    border: 2px solid #4CAF50;
+    color: white;
+    border-radius: 10px;
+    margin-top: 30px;
+    font-size: 1.2em;
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
 }
 .result-section h2 {
-    color: #2e7d32;
+    color: white;
     margin-bottom: 15px;
 }
 @media (max-width: 600px) {
     body { padding: 10px; }
     .container { padding: 15px; }
-    .step { padding-left: 60px; }
-    .step-number { left: 5px; width: 35px; height: 35px; font-size: 0.9em; }
-    .timeline::before { left: 22px; }
+    .step { padding: 10px 15px; }
+    .step-number { font-size: 0.8em; }
 }
 .hidden-steps-note {
     text-align: center;
-    color: #888;
+    color: #90caf9;
     font-style: italic;
     margin: 20px 0;
     padding: 10px;
-    background: #f5f5f5;
+    background: rgba(40, 50, 70, 0.5);
     border-radius: 6px;
 }
 .substeps-details {
     margin-top: 10px;
     padding: 10px;
-    background: #fff8e1;
-    border: 1px solid #ffcc80;
+    background: rgba(255, 152, 0, 0.1);
+    border: 1px solid rgba(255, 152, 0, 0.3);
     border-radius: 8px;
     font-size: 0.95em;
 }
 .substeps-details summary {
     cursor: pointer;
     font-weight: bold;
-    color: #ef6c00;
+    color: #ffb74d;
     padding: 5px 0;
 }
 .substeps-details summary:hover {
-    color: #e65100;
+    color: #ffa726;
 }
 .substeps-content {
     margin-top: 10px;
     padding: 10px;
-    background: white;
+    background: rgba(30, 40, 55, 0.9);
     border-radius: 6px;
 }
 .substep {
     padding: 8px 0;
-    border-bottom: 1px dashed #ffe0b2;
+    border-bottom: 1px dashed rgba(255, 152, 0, 0.2);
 }
 .substep:last-child {
     border-bottom: none;
 }
 .substep-desc {
     font-weight: 500;
-    color: #795548;
+    color: #b0bec5;
     display: block;
     margin-bottom: 5px;
 }
 .substep-math {
     padding: 5px 10px;
-    background: #fafafa;
+    background: rgba(30, 40, 55, 0.8);
     border-radius: 4px;
     text-align: center;
 }
 .domain-warning {
     margin-top: 10px;
     padding: 8px 12px;
-    background: #fff3cd;
-    border: 1px solid #ffc107;
+    background: rgba(255, 193, 7, 0.15);
+    border: 1px solid rgba(255, 193, 7, 0.4);
     border-radius: 6px;
-    color: #856404;
+    color: #ffd54f;
     font-size: 0.9em;
 }
 .domain-warning::before {
