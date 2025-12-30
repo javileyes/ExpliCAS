@@ -253,7 +253,7 @@ define_rule!(
     }
 );
 
-define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
+define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step::ImportanceLevel::Medium, |ctx, expr| {
     // We need to clone data to avoid borrowing ctx while mutating it later
     let expr_data = ctx.get(expr).clone();
     match expr_data {

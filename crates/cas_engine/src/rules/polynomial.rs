@@ -780,6 +780,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
 define_rule!(
     CombineLikeTermsRule,
     "Combine Like Terms",
+    importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr, parent_ctx| {
         // Only try to collect if it's an Add or Mul
         let is_add_or_mul = matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Mul(_, _));
