@@ -144,8 +144,14 @@ define_rule!(
                     }
                 }
                 crate::DomainMode::Generic => {
-                    // Educational mode: apply unconditionally
-                    Default::default()
+                    // Educational mode: apply with warning for transparency
+                    if has_risk {
+                        smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(
+                            ctx, other
+                        )]
+                    } else {
+                        Default::default()
+                    }
                 }
             };
 
@@ -225,8 +231,12 @@ define_rule!(
                     }
                 }
                 crate::DomainMode::Generic => {
-                    // Educational mode: apply unconditionally
-                    Default::default()
+                    // Educational mode: apply with warning for transparency
+                    if den_nonzero != Proof::Proven {
+                        smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
+                    } else {
+                        Default::default()
+                    }
                 }
             };
 
@@ -573,20 +583,16 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
                 return None;
             }
 
-            // Determine warning for Assume mode with undefined risk
-            let domain_assumption =
-                if domain_mode == crate::DomainMode::Assume && has_undefined_risk(ctx, inner) {
-                    Some("Assuming expression is defined")
-                } else {
-                    None
-                };
+            // Determine warning for Assume/Generic modes with undefined risk
+            let has_risk = has_undefined_risk(ctx, inner);
+            let needs_warning = has_risk && domain_mode != crate::DomainMode::Strict;
 
             return Some(Rewrite {
                 new_expr: ctx.num(0),
                 description: "a + (-a) = 0".to_string(),
                 before_local: None,
                 after_local: None,
-                assumption_events: if domain_assumption.is_some() {
+                assumption_events: if needs_warning {
                     smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, inner)]
                 } else {
                     Default::default()
