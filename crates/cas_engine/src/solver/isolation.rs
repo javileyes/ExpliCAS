@@ -733,9 +733,7 @@ pub fn isolate(
                 // ================================================================
                 // DOMAIN GUARDS for log operation (RealOnly mode)
                 // ================================================================
-                use crate::domain::Proof;
-                use crate::helpers::{is_one, prove_positive};
-                use crate::semantics::ValueDomain;
+                use crate::helpers::is_one;
 
                 // GUARD 1: Handle base = 1 special case
                 // 1^x = 1 for all x → if RHS = 1: AllReals, otherwise: Empty
@@ -765,54 +763,60 @@ pub fn isolate(
                     return Ok((result, steps));
                 }
 
-                // GUARD 2: In RealOnly mode, check domain requirements
-                if opts.value_domain == ValueDomain::RealOnly {
-                    let base_proof = prove_positive(&simplifier.context, b);
-                    let rhs_proof = prove_positive(&simplifier.context, rhs);
+                // ================================================================
+                // UNIFIED DOMAIN GUARDS via classify_log_solve
+                // ================================================================
+                use crate::solver::domain_guards::{classify_log_solve, LogSolveDecision};
 
-                    // CASE: base > 0 proven but RHS < 0 → NO REAL SOLUTIONS
-                    // Because a^x > 0 for all real x when a > 0
-                    if base_proof == Proof::Proven && rhs_proof == Proof::Disproven {
+                let decision = classify_log_solve(&simplifier.context, b, rhs, &opts);
+
+                match decision {
+                    LogSolveDecision::Ok => {
+                        // Base>0 and RHS>0 proven - safe to proceed
+                    }
+                    LogSolveDecision::OkWithAssumptions(assumptions) => {
+                        // Record assumptions in thread-local collector
+                        for assumption in assumptions {
+                            let event = assumption.to_assumption_event(&simplifier.context, b, rhs);
+                            crate::solver::note_assumption(event);
+                        }
+                    }
+                    LogSolveDecision::EmptySet(msg) => {
+                        // No real solutions (e.g., base>0 but RHS<0)
                         if simplifier.collect_steps() {
                             steps.push(SolveStep {
-                                description: format!(
-                                    "No real solutions: {}^x > 0 for all real x, but RHS = {} < 0",
-                                    cas_ast::DisplayExpr {
-                                        context: &simplifier.context,
-                                        id: b
-                                    },
-                                    cas_ast::DisplayExpr {
-                                        context: &simplifier.context,
-                                        id: rhs
-                                    }
-                                ),
+                                description: msg,
                                 equation_after: Equation { lhs, rhs, op },
                             });
                         }
                         return Ok((SolutionSet::Empty, steps));
                     }
-
-                    // CASE: base is not provably positive (Unknown or Disproven)
-                    // Cannot take real log without proving base > 0
-                    if base_proof != Proof::Proven {
-                        return Err(CasError::UnsupportedInRealDomain(format!(
-                            "Cannot solve {}^{} = {} in real domain: base {} is not provably positive. Use: semantics preset complex",
-                            cas_ast::DisplayExpr { context: &simplifier.context, id: b },
-                            var,
-                            cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
-                            cas_ast::DisplayExpr { context: &simplifier.context, id: b }
-                        )));
-                    }
-
-                    // CASE: RHS positivity is Unknown (can't take log of unknown sign)
-                    if rhs_proof == Proof::Unknown {
-                        return Err(CasError::UnsupportedInRealDomain(format!(
-                            "Cannot prove {} > 0 for log operation in real domain",
-                            cas_ast::DisplayExpr {
-                                context: &simplifier.context,
-                                id: rhs
+                    LogSolveDecision::NeedsComplex(msg) => {
+                        // Requires complex log
+                        use crate::semantics::AssumeScope;
+                        if opts.domain_mode == crate::domain::DomainMode::Assume
+                            && opts.assume_scope == AssumeScope::Wildcard
+                        {
+                            // Return residual: solve(base^x = rhs, x)
+                            let eq_expr = simplifier
+                                .context
+                                .add(Expr::Function("__eq__".to_string(), vec![lhs, rhs]));
+                            let var_expr = simplifier.context.var(var);
+                            let residual = simplifier
+                                .context
+                                .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
+                            if simplifier.collect_steps() {
+                                steps.push(SolveStep {
+                                    description: format!("⚠ {} — returning as residual", msg),
+                                    equation_after: Equation { lhs, rhs, op },
+                                });
                             }
-                        )));
+                            return Ok((SolutionSet::Residual(residual), steps));
+                        }
+                        return Err(CasError::UnsupportedInRealDomain(msg));
+                    }
+                    LogSolveDecision::Unsupported(msg) => {
+                        return Err(CasError::UnsupportedInRealDomain(msg));
                     }
                 }
                 // ================================================================
