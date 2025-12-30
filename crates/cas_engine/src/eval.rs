@@ -223,7 +223,12 @@ impl Engine {
 
                 if effective_opts.const_fold == crate::const_fold::ConstFoldMode::Safe {
                     let mut budget = crate::budget::Budget::preset_cli();
-                    let cfg = crate::semantics::EvalConfig::default();
+                    // Use effective_opts to propagate value_domain to const_fold
+                    let cfg = crate::semantics::EvalConfig {
+                        value_domain: effective_opts.value_domain,
+                        branch: effective_opts.branch,
+                        ..Default::default()
+                    };
                     if let Ok(fold_result) = crate::const_fold::fold_constants(
                         &mut ctx_simplifier.context,
                         res,

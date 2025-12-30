@@ -13,7 +13,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::{One, Zero};
+use num_traits::{One, Signed, Zero};
 
 // ============================================================================
 // Gaussian Rational Helpers
@@ -463,6 +463,101 @@ define_rule!(
 );
 
 // ============================================================================
+// SqrtNegativeRule: sqrt(-n) → i * sqrt(n) for negative rational n
+// In ComplexEnabled mode, sqrt of negative literals produces imaginary result
+// ============================================================================
+
+define_rule!(
+    SqrtNegativeRule,
+    "Square Root of Negative",
+    |ctx, expr, parent_ctx| {
+        // Gate: only in ComplexEnabled mode
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+
+        // Match: sqrt(arg) where arg is a negative number
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name != "sqrt" || args.len() != 1 {
+                return None;
+            }
+
+            let arg = args[0];
+
+            // Check if argument is a negative number
+            let neg_value = match ctx.get(arg) {
+                // Direct negative number: sqrt(-n)
+                Expr::Number(n) if n.is_negative() => Some((-n).clone()),
+                // Expr::Neg wrapping a positive number: sqrt(-(n))
+                Expr::Neg(inner) => {
+                    if let Expr::Number(n) = ctx.get(*inner) {
+                        if !n.is_negative() {
+                            Some(n.clone())
+                        } else {
+                            None // -(-n) = positive, handled elsewhere
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+
+            let abs_value = neg_value?;
+
+            // sqrt(-n) = i * sqrt(n)
+            let i = ctx.add(Expr::Constant(Constant::I));
+
+            // Check if sqrt(abs_value) is a perfect square
+            let result = if abs_value.is_integer() {
+                // Check for perfect square
+                use num_traits::ToPrimitive;
+                let int_val = abs_value.to_integer();
+                if let Some(f) = int_val.to_f64() {
+                    let sqrt_f = f.sqrt();
+                    if sqrt_f.fract() == 0.0 && sqrt_f > 0.0 {
+                        // Perfect square: sqrt(-4) = 2i
+                        let sqrt_int = sqrt_f as i64;
+                        let sqrt_num = ctx.num(sqrt_int);
+                        if sqrt_int == 1 {
+                            // sqrt(-1) = i (not 1*i)
+                            i
+                        } else {
+                            ctx.add(Expr::Mul(sqrt_num, i))
+                        }
+                    } else {
+                        // Not perfect square: sqrt(-2) = i * sqrt(2)
+                        let abs_num = ctx.add(Expr::Number(abs_value));
+                        let sqrt_abs = ctx.add(Expr::Function("sqrt".to_string(), vec![abs_num]));
+                        ctx.add(Expr::Mul(i, sqrt_abs))
+                    }
+                } else {
+                    // Large integer - just use i * sqrt(n) form
+                    let abs_num = ctx.add(Expr::Number(abs_value));
+                    let sqrt_abs = ctx.add(Expr::Function("sqrt".to_string(), vec![abs_num]));
+                    ctx.add(Expr::Mul(i, sqrt_abs))
+                }
+            } else {
+                // Non-integer rational: i * sqrt(n)
+                let abs_num = ctx.add(Expr::Number(abs_value));
+                let sqrt_abs = ctx.add(Expr::Function("sqrt".to_string(), vec![abs_num]));
+                ctx.add(Expr::Mul(i, sqrt_abs))
+            };
+
+            return Some(Rewrite {
+                new_expr: result,
+                description: "sqrt(-n) = i·√n (complex mode)".to_string(),
+                before_local: None,
+                after_local: None,
+                assumption_events: Default::default(),
+            });
+        }
+
+        None
+    }
+);
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -472,6 +567,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(GaussianMulRule));
     simplifier.add_rule(Box::new(GaussianAddRule));
     simplifier.add_rule(Box::new(GaussianDivRule));
+    simplifier.add_rule(Box::new(SqrtNegativeRule));
 }
 
 // ============================================================================
