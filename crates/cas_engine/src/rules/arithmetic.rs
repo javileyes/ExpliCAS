@@ -173,7 +173,7 @@ define_rule!(
     DivZeroRule,
     "Zero Property of Division",
     |ctx, expr, parent_ctx| {
-        use crate::domain::{can_cancel_factor, Proof};
+        use crate::domain::Proof;
         use crate::helpers::prove_nonzero;
 
         let expr_data = ctx.get(expr).clone();
@@ -200,7 +200,14 @@ define_rule!(
 
             // Use central gate for NonZero condition (Definability class)
             let den_proof = prove_nonzero(ctx, den);
-            let decision = can_cancel_factor(parent_ctx.domain_mode(), den_proof);
+            let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, den);
+            let decision = crate::domain::can_cancel_factor_with_hint(
+                parent_ctx.domain_mode(),
+                den_proof,
+                key,
+                den,
+                "Zero Property of Division",
+            );
 
             if !decision.allow {
                 return None; // Strict mode: don't simplify if not proven

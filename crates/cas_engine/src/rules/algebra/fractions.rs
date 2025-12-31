@@ -481,7 +481,6 @@ define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
     |ctx, expr, parent_ctx| {
-        use crate::domain::can_cancel_factor;
         use crate::helpers::prove_nonzero;
         use cas_ast::views::RationalFnView;
 
@@ -639,7 +638,14 @@ define_rule!(
         // DOMAIN GATE: Check if we can cancel by this GCD
         // In Strict mode, only allow if GCD is provably non-zero
         let gcd_proof = prove_nonzero(ctx, gcd_expr);
-        let decision = can_cancel_factor(domain_mode, gcd_proof);
+        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, gcd_expr);
+        let decision = crate::domain::can_cancel_factor_with_hint(
+            domain_mode,
+            gcd_proof,
+            key,
+            gcd_expr,
+            "Simplify Nested Fraction",
+        );
         if !decision.allow {
             // STRICT PARTIAL CANCEL: Try to cancel only numeric content
             // The numeric_gcd is always provably nonzero (it's a rational ≠ 0)
@@ -2102,7 +2108,14 @@ define_rule!(
                 if crate::ordering::compare_expr(ctx, nf, df) == std::cmp::Ordering::Equal {
                     // DOMAIN GATE: use canonical helper
                     let proof = prove_nonzero(ctx, nf);
-                    let decision = crate::domain::can_cancel_factor(domain_mode, proof);
+                    let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, nf);
+                    let decision = crate::domain::can_cancel_factor_with_hint(
+                        domain_mode,
+                        proof,
+                        key,
+                        nf,
+                        "Cancel Common Factors",
+                    );
                     if !decision.allow {
                         continue; // Skip this pair in strict mode
                     }
@@ -2132,8 +2145,15 @@ define_rule!(
                                     // x^1 / x = 1, remove both factors
                                     // DOMAIN GATE: check base is provably non-zero
                                     let proof = prove_nonzero(ctx, b);
-                                    let decision =
-                                        crate::domain::can_cancel_factor(domain_mode, proof);
+                                    let key =
+                                        crate::assumptions::AssumptionKey::nonzero_key(ctx, b);
+                                    let decision = crate::domain::can_cancel_factor_with_hint(
+                                        domain_mode,
+                                        proof,
+                                        key,
+                                        b,
+                                        "Cancel Common Factors",
+                                    );
                                     if !decision.allow {
                                         continue; // Skip in strict mode
                                     }
@@ -2177,8 +2197,15 @@ define_rule!(
                                     // x / x^1 = 1, remove both factors
                                     // DOMAIN GATE: check base is provably non-zero
                                     let proof = prove_nonzero(ctx, b);
-                                    let decision =
-                                        crate::domain::can_cancel_factor(domain_mode, proof);
+                                    let key =
+                                        crate::assumptions::AssumptionKey::nonzero_key(ctx, b);
+                                    let decision = crate::domain::can_cancel_factor_with_hint(
+                                        domain_mode,
+                                        proof,
+                                        key,
+                                        b,
+                                        "Cancel Common Factors",
+                                    );
                                     if !decision.allow {
                                         continue; // Skip in strict mode
                                     }
@@ -2242,8 +2269,15 @@ define_rule!(
                                     // x^n / x^n (n == m), remove both factors
                                     // DOMAIN GATE: check base is provably non-zero
                                     let proof = prove_nonzero(ctx, b_n);
-                                    let decision =
-                                        crate::domain::can_cancel_factor(domain_mode, proof);
+                                    let key =
+                                        crate::assumptions::AssumptionKey::nonzero_key(ctx, b_n);
+                                    let decision = crate::domain::can_cancel_factor_with_hint(
+                                        domain_mode,
+                                        proof,
+                                        key,
+                                        b_n,
+                                        "Cancel Common Factors",
+                                    );
                                     if !decision.allow {
                                         continue; // Skip in strict mode
                                     }
@@ -2336,7 +2370,14 @@ define_rule!(
                         // a^n / a^n = 1
                         // DOMAIN GATE: check if base is provably non-zero
                         let proof = prove_nonzero(ctx, *b_n);
-                        let decision = crate::domain::can_cancel_factor(domain_mode, proof);
+                        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, *b_n);
+                        let decision = crate::domain::can_cancel_factor_with_hint(
+                            domain_mode,
+                            proof,
+                            key,
+                            *b_n,
+                            "Quotient of Powers",
+                        );
                         if !decision.allow {
                             return None; // In Strict mode, don't cancel unknown factors
                         }
