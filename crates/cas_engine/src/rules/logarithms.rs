@@ -133,18 +133,50 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 // For variable exponents like log(e, e^x), skip and let LogExpInverseRule handle
                 // with inv_trig policy check
             } else {
-                // Non-inverse case: expand normally
-                let log_inner = make_log(ctx, base, p_base);
-                let new_expr = smart_mul(ctx, p_exp, log_inner);
-                return Some(Rewrite {
-                    new_expr,
-                    description: "log(b, x^y) = y * log(b, x)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: smallvec::smallvec![
-                        crate::assumptions::AssumptionEvent::positive(ctx, p_base)
-                    ],
-                });
+                // Non-inverse case: log(b, x^y) = y * log(b, x)
+                //
+                // MATHEMATICAL CORRECTNESS:
+                // - For even integer exponents: ln(x^2) = ln(|x|^2) = 2·ln(|x|)
+                //   This is valid for all x ≠ 0, no sign assumption needed.
+                // - For odd/non-integer exponents: ln(x^y) = y·ln(x) requires x > 0
+                //
+                // Check if exponent is an even integer
+                let is_even_integer = match ctx.get(p_exp) {
+                    Expr::Number(n) if n.is_integer() => {
+                        let int_val = n.to_integer();
+                        let two: num_bigint::BigInt = 2.into();
+                        &int_val % &two == 0.into() && int_val != 0.into()
+                    }
+                    _ => false,
+                };
+
+                if is_even_integer {
+                    // Even exponent: ln(x^(2k)) = 2k·ln(|x|) - no assumption needed
+                    let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![p_base]));
+                    let log_abs = make_log(ctx, base, abs_base);
+                    let new_expr = smart_mul(ctx, p_exp, log_abs);
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "log(b, x^(even)) = even·log(b, |x|)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        assumption_events: Default::default(), // No assumption needed!
+                    });
+                } else {
+                    // Odd or non-integer exponent: requires x > 0
+                    // Only allow in Generic/Assume modes, block in Strict
+                    let log_inner = make_log(ctx, base, p_base);
+                    let new_expr = smart_mul(ctx, p_exp, log_inner);
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "log(b, x^y) = y * log(b, x)".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        assumption_events: smallvec::smallvec![
+                            crate::assumptions::AssumptionEvent::positive(ctx, p_base)
+                        ],
+                    });
+                }
             }
         }
 

@@ -737,12 +737,14 @@ fn test_logarithm_simplification() {
     simplifier.add_rule(Box::new(EvaluatePowerRule));
 
     // Test 1: Expansion and Cancellation
-    // ln(x^2 * y) - 2*ln(x)
-    // -> ln(x^2) + ln(y) - 2*ln(x)
-    // -> 2*ln(x) + ln(y) - 2*ln(x)
+    // ln(x^3 * y) - 3*ln(x)
+    // -> ln(x^3) + ln(y) - 3*ln(x)
+    // -> 3*ln(x) + ln(y) - 3*ln(x)   (odd exponent: x > 0 assumption)
     // -> ln(y)
     // NOTE: LogExpansionRule requires DomainMode::Assume for symbolic variables
-    let input1 = "ln(x^2 * y) - 2 * ln(x)";
+    // NOTE: Using x^3 (odd exponent) so ln(x^3) = 3*ln(x) with x > 0 assumption.
+    //       For even exponents like x^2, we get 2*ln(|x|) which doesn't cancel.
+    let input1 = "ln(x^3 * y) - 3 * ln(x)";
     let expr1 = parse(input1, &mut simplifier.context).expect("Failed to parse");
     let opts = cas_engine::SimplifyOptions {
         domain: cas_engine::DomainMode::Assume,
