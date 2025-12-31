@@ -13,18 +13,45 @@
 //!
 //! - **Generic**: Classic CAS behavior - work "almost everywhere".
 //!   `x/x → 1` is allowed because it's valid for all x except 0.
-//!   This is the default mode for backward compatibility.
-//!
-//! # Example
-//!
-//! ```ignore
-//! use cas_engine::DomainMode;
-//!
-//! let opts = SimplifyOptions {
-//!     domain: DomainMode::Strict,
-//!     ..Default::default()
-//! };
-//! ```
+
+use std::cell::RefCell;
+
+// =============================================================================
+// Thread-Local Blocked Hint Collector
+// =============================================================================
+
+thread_local! {
+    /// Thread-local storage for blocked hints during simplification.
+    /// This allows rules to emit hints without modifying the ParentContext signature.
+    static BLOCKED_HINTS: RefCell<Vec<BlockedHint>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Register a blocked hint (called by can_apply_analytic_with_hint).
+/// Hints are deduplicated by (rule, key).
+pub fn register_blocked_hint(hint: BlockedHint) {
+    BLOCKED_HINTS.with(|hints| {
+        let mut hints = hints.borrow_mut();
+        // Dedup: check if already exists
+        let exists = hints
+            .iter()
+            .any(|h| h.rule == hint.rule && h.key == hint.key);
+        if !exists {
+            hints.push(hint);
+        }
+    });
+}
+
+/// Take all blocked hints, clearing the thread-local storage.
+/// Called at end of simplification to retrieve hints.
+pub fn take_blocked_hints() -> Vec<BlockedHint> {
+    BLOCKED_HINTS.with(|hints| std::mem::take(&mut *hints.borrow_mut()))
+}
+
+/// Clear blocked hints without returning them.
+/// Called at start of simplification to reset state.
+pub fn clear_blocked_hints() {
+    BLOCKED_HINTS.with(|hints| hints.borrow_mut().clear());
+}
 
 /// Domain assumption mode for simplification.
 ///
@@ -135,6 +162,20 @@ impl Proof {
 // Canonical Domain Gate Helper
 // =============================================================================
 
+/// Hint emitted when an Analytic condition blocks transformation in Generic mode.
+///
+/// This enables pedagogical warnings like:
+/// "Cannot simplify: requires x > 0. Use `domain assume` to allow."
+#[derive(Debug, Clone)]
+pub struct BlockedHint {
+    /// The assumption key (e.g., Positive{expr})
+    pub key: crate::assumptions::AssumptionKey,
+    /// Name of the rule that was blocked
+    pub rule: &'static str,
+    /// Suggestion for the user
+    pub suggestion: &'static str,
+}
+
 /// Result of a domain-aware cancellation decision.
 ///
 /// Used by cancellation rules to determine whether a factor can be cancelled
@@ -146,6 +187,9 @@ pub struct CancelDecision {
     /// Optional domain assumption message for steps/warnings.
     /// Set when cancellation is allowed but based on unproven assumption.
     pub assumption: Option<&'static str>,
+    /// Hint when blocked due to Analytic condition in Generic mode.
+    /// Only set for Generic mode blocks, not for Strict.
+    pub blocked_hint: Option<BlockedHint>,
 }
 
 impl CancelDecision {
@@ -154,14 +198,30 @@ impl CancelDecision {
         Self {
             allow: true,
             assumption: None,
+            blocked_hint: None,
         }
     }
 
-    /// Create a decision that blocks cancellation.
+    /// Create a decision that blocks cancellation (no pedagogical hint).
     pub fn deny() -> Self {
         Self {
             allow: false,
             assumption: None,
+            blocked_hint: None,
+        }
+    }
+
+    /// Create a decision that blocks cancellation with a pedagogical hint.
+    /// Used when Generic mode blocks an Analytic condition.
+    pub fn deny_with_hint(key: crate::assumptions::AssumptionKey, rule: &'static str) -> Self {
+        Self {
+            allow: false,
+            assumption: None,
+            blocked_hint: Some(BlockedHint {
+                key,
+                rule,
+                suggestion: "use `domain assume` to allow analytic assumptions",
+            }),
         }
     }
 
@@ -170,6 +230,7 @@ impl CancelDecision {
         Self {
             allow: true,
             assumption: Some(msg),
+            blocked_hint: None,
         }
     }
 }
@@ -229,25 +290,16 @@ pub fn can_cancel_factor(mode: DomainMode, proof: Proof) -> CancelDecision {
 ///
 /// Uses the ConditionClass taxonomy:
 /// - **Strict**: Only allows if `proof == Proven`
-/// - **Generic**: BLOCKS (Analytic is not Definability)
+/// - **Generic**: BLOCKS with pedagogical hint (Analytic is not Definability)
 /// - **Assume**: Allows and records assumption
+///
+/// For full hint information (rule name, assumption key), use `can_apply_analytic_with_hint`.
 ///
 /// # Returns
 ///
 /// - `allow: true` with no assumption for proven conditions
 /// - `allow: false` in Strict and Generic modes for unproven
 /// - `allow: true` with assumption only in Assume mode
-///
-/// # Example
-///
-/// ```ignore
-/// let proof = prove_positive(ctx, arg, vd);
-/// let decision = can_apply_analytic(mode, proof);
-/// if !decision.allow {
-///     return None; // Strict/Generic: don't apply
-/// }
-/// // Apply rewrite, use decision.assumption if present
-/// ```
 pub fn can_apply_analytic(mode: DomainMode, proof: Proof) -> CancelDecision {
     use crate::assumptions::ConditionClass;
 
@@ -264,7 +316,70 @@ pub fn can_apply_analytic(mode: DomainMode, proof: Proof) -> CancelDecision {
             if mode.allows_unproven(ConditionClass::Analytic) {
                 CancelDecision::allow_with_assumption("assumed positive")
             } else {
-                CancelDecision::deny() // Strict and Generic block this
+                // Strict and Generic block - no hint in this version
+                CancelDecision::deny()
+            }
+        }
+    }
+}
+
+/// Rich version of `can_apply_analytic` that includes pedagogical hint for Generic blocks.
+///
+/// Use this when you have the `AssumptionKey` available to provide better error messages.
+/// The hint is only emitted for Generic mode (not Strict, where blocking is expected).
+///
+/// # Arguments
+///
+/// * `mode` - Current DomainMode
+/// * `proof` - Proof status for the condition
+/// * `key` - AssumptionKey for the condition (e.g., Positive{expr})
+/// * `rule` - Name of the rule being blocked
+///
+/// # Example
+///
+/// ```ignore
+/// let key = AssumptionKey::positive(ctx, arg);
+/// let decision = can_apply_analytic_with_hint(mode, proof, key, "Exponential-Log Inverse");
+/// if !decision.allow {
+///     if let Some(hint) = &decision.blocked_hint {
+///         parent_ctx.register_blocked_hint(hint.clone());
+///     }
+///     return None;
+/// }
+/// ```
+pub fn can_apply_analytic_with_hint(
+    mode: DomainMode,
+    proof: Proof,
+    key: crate::assumptions::AssumptionKey,
+    rule: &'static str,
+) -> CancelDecision {
+    use crate::assumptions::ConditionClass;
+
+    match proof {
+        // Always allow if proven
+        Proof::Proven => CancelDecision::allow(),
+
+        // Never allow if disproven (definitely ≤ 0)
+        Proof::Disproven => CancelDecision::deny(),
+
+        // Unknown: use Analytic ConditionClass gate
+        Proof::Unknown => {
+            if mode.allows_unproven(ConditionClass::Analytic) {
+                // Assume mode: allow with assumption
+                CancelDecision::allow_with_assumption("assumed positive")
+            } else if mode == DomainMode::Generic {
+                // Generic mode: block WITH pedagogical hint
+                // Auto-register to thread-local for REPL to retrieve
+                let hint = BlockedHint {
+                    key: key.clone(),
+                    rule,
+                    suggestion: "use `domain assume` to allow analytic assumptions",
+                };
+                register_blocked_hint(hint);
+                CancelDecision::deny_with_hint(key, rule)
+            } else {
+                // Strict mode: block without hint (expected behavior)
+                CancelDecision::deny()
             }
         }
     }

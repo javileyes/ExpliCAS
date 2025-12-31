@@ -158,6 +158,8 @@ pub struct Simplifier {
     pub profiler: RuleProfiler,
     /// Domain warnings from last simplify() call (side-channel for Off mode)
     last_domain_warnings: Vec<(String, String)>,
+    /// Blocked hints from last simplify() call (pedagogical hints for blocked Analytic conditions)
+    last_blocked_hints: Vec<crate::domain::BlockedHint>,
 }
 
 impl Default for Simplifier {
@@ -182,6 +184,7 @@ impl Simplifier {
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false), // Disabled by default
             last_domain_warnings: Vec::new(),
+            last_blocked_hints: Vec::new(),
         }
     }
 
@@ -262,6 +265,7 @@ impl Simplifier {
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false),
             last_domain_warnings: Vec::new(),
+            last_blocked_hints: Vec::new(),
         }
     }
 
@@ -300,6 +304,17 @@ impl Simplifier {
         let mut seen = std::collections::HashSet::new();
         warnings.retain(|w| seen.insert((w.0.clone(), w.1.clone())));
         warnings
+    }
+
+    /// Take and clear blocked hints from the last simplify() call.
+    /// These are pedagogical hints when Generic mode blocks Analytic conditions.
+    /// Hints are deduplicated by (rule, assumption_key), preserving first-occurrence order.
+    pub fn take_blocked_hints(&mut self) -> Vec<crate::domain::BlockedHint> {
+        let mut hints = std::mem::take(&mut self.last_blocked_hints);
+        // Dedup by (rule, key) preserving first occurrence order
+        let mut seen = std::collections::HashSet::new();
+        hints.retain(|h| seen.insert((h.rule, h.key.clone())));
+        hints
     }
 
     pub fn enable_debug(&mut self) {
@@ -572,11 +587,19 @@ impl Simplifier {
         expr_id: ExprId,
         options: crate::phase::SimplifyOptions,
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
+        // Clear blocked hints from previous simplifications
+        crate::domain::clear_blocked_hints();
+
         let mut orchestrator = crate::orchestrator::Orchestrator::new();
         orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
         orchestrator.options = options;
         orchestrator.options.collect_steps = self.collect_steps();
-        orchestrator.simplify_pipeline(expr_id, self)
+        let result = orchestrator.simplify_pipeline(expr_id, self);
+
+        // Collect blocked hints from thread-local to Simplifier field
+        self.last_blocked_hints = crate::domain::take_blocked_hints();
+
+        result
     }
 
     /// Expand without rationalization.

@@ -620,8 +620,14 @@ impl crate::rule::Rule for ExponentialLogRule {
                     // Use prove_positive with ValueDomain
                     let arg_positive = crate::helpers::prove_positive(ctx, log_arg, vd);
 
-                    // Use Analytic gate: Generic blocks, only Assume allows unproven
-                    let decision = crate::domain::can_apply_analytic(mode, arg_positive);
+                    // Use Analytic gate with hint: Generic blocks with pedagogical message
+                    let key = crate::assumptions::AssumptionKey::positive_key(ctx, log_arg);
+                    let decision = crate::domain::can_apply_analytic_with_hint(
+                        mode,
+                        arg_positive,
+                        key,
+                        "Exponential-Log Inverse",
+                    );
 
                     if !decision.allow {
                         return None; // Strict/Generic: block if not proven

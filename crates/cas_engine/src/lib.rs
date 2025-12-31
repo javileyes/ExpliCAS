@@ -74,7 +74,7 @@ pub use eval::*;
 pub use assumptions::{
     AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionRecord, AssumptionReporting,
 };
-pub use domain::{can_cancel_factor, CancelDecision, DomainMode, Proof};
+pub use domain::{can_cancel_factor, BlockedHint, CancelDecision, DomainMode, Proof};
 pub use json::{
     eval_str_to_json, substitute_str_to_json, BudgetExceededJson, BudgetJsonInfo, BudgetOpts,
     EngineJsonError, EngineJsonResponse, EngineJsonStep, EngineJsonSubstep, EngineJsonWarning,

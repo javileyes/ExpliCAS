@@ -147,6 +147,37 @@ impl AssumptionKey {
             | Self::ComplexPrincipalBranch { .. } => ConditionClass::Analytic,
         }
     }
+
+    /// Create a Positive key from an expression
+    pub fn positive_key(ctx: &Context, expr: ExprId) -> Self {
+        Self::Positive {
+            expr_fingerprint: expr_fingerprint(ctx, expr),
+        }
+    }
+
+    /// Create a NonZero key from an expression
+    pub fn nonzero_key(ctx: &Context, expr: ExprId) -> Self {
+        Self::NonZero {
+            expr_fingerprint: expr_fingerprint(ctx, expr),
+        }
+    }
+
+    /// Get a human-readable display for the required condition.
+    /// Returns (condition_type, expr_display) tuple.
+    pub fn condition_display(&self) -> &'static str {
+        match self {
+            Self::NonZero { .. } => "≠ 0 (NonZero)",
+            Self::Positive { .. } => "> 0 (Positive)",
+            Self::NonNegative { .. } => "≥ 0 (NonNegative)",
+            Self::Defined { .. } => "is defined",
+            Self::InvTrigPrincipalRange { func, .. } => match *func {
+                "asin" | "acos" => "∈ [-1, 1]",
+                "atan" => "∈ ℝ",
+                _ => "in principal range",
+            },
+            Self::ComplexPrincipalBranch { .. } => "principal branch",
+        }
+    }
 }
 
 // =============================================================================
