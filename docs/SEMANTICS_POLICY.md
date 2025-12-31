@@ -1,6 +1,6 @@
 # SEMANTICS POLICY
 
-> **Version 1.1** | Last updated: 2025-12-30
+> **Version 1.2** | Last updated: 2025-12-31
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
 
@@ -83,21 +83,73 @@ Result: solve((-2)^x = 5, x)
 
 ---
 
-## Axis B: ValueDomain (Planned PR1)
+## Axis B: ValueDomain ✅ (Implemented Dec 2025)
 
+Defines the **field of default values for symbols**.
 
-Defines the universe of values for constant evaluation.
+> **Design Principle**:
+> `ValueDomain` decides the **field by default of symbols** (ℝ vs ℂ).
+> `DomainMode` decides if transformations requiring **additional conditions** (x>0, x≠0, inverse ranges) are allowed.
 
 ### Values
 
-| Value | Description | `sqrt(-1)` result |
-|-------|-------------|-------------------|
-| `RealOnly` | ℝ extended with ±∞, undefined | `undefined` |
-| `ComplexEnabled` | ℂ with principal branch | `i` |
+| Value | Description | Symbol Default | `i` Behavior |
+|-------|-------------|----------------|--------------|
+| `RealOnly` | All symbols are real by definition | x ∈ ℝ | `i` = symbol (not constant) |
+| `ComplexEnabled` | Symbols may be complex | x ∈ ℂ | `i² = -1` |
+
+### Critical Behaviors
+
+#### The `i` Constant
+
+| Operation | RealOnly | ComplexEnabled |
+|-----------|----------|----------------|
+| `i * i` | `i²` + warning | `-1` |
+| `i^2` | `i²` + warning | `-1` |
+| `10/(3+4i)` | unchanged | rationalized |
+
+> In `RealOnly`, using `i` emits a pedagogical warning:
+> `⚠ To use complex arithmetic (i² = -1), run: semantics set value complex`
+
+#### Log-Exp Composition
+
+| Expression | RealOnly+Strict | RealOnly+Generic | ComplexEnabled |
+|------------|-----------------|------------------|----------------|
+| `ln(e^x)` | ✅ `x` | ✅ `x` | ❌ unchanged |
+| `e^(ln(x))` | ❌ unchanged | ✅ `x` + warning | ✅ `x` + warning |
+
+**Rationale**: In RealOnly, x ∈ ℝ by contract, so e^x > 0 always. In ComplexEnabled, ln is multivalued.
+
+#### Log Power Rule
+
+| Expression | Even Exponent | Odd Exponent |
+|------------|---------------|--------------|
+| `ln(x²)` | `2·ln(\|x\|)` (no assumption) | - |
+| `ln(x³)` | - | `3·ln(x)` + `⚠ x > 0` |
+| `ln(x⁴)` | `4·ln(\|x\|)` (no assumption) | - |
+
+**Rationale**: Similar to `sqrt(x²) = |x|`, even powers are non-negative.
+
+#### Log with Symbolic Base
+
+| Expression | Strict | Generic | Assume |
+|------------|--------|---------|--------|
+| `log(2, 2^x)` | ✅ `x` | ✅ `x` | ✅ `x` |
+| `log(b, b^x)` | ❌ unchanged | ❌ unchanged | ✅ `x` + `⚠ b > 0` |
+
+**Rationale**: Literal bases (2, e, π) are provably positive. Symbolic bases require assumption.
+
+#### Square Root
+
+| Expression | RealOnly+Strict | RealOnly+Generic |
+|------------|-----------------|------------------|
+| `sqrt(x²)` | `\|x\|` | `\|x\|` |
+| `sqrt(-1)` | `undefined` | `undefined` |
 
 ### Default
 
-`RealOnly` — matches current behavior, no complex arithmetic.
+`RealOnly` — symbols are real, `i` is a warning, no complex arithmetic.
+
 
 ---
 
@@ -392,6 +444,25 @@ For any PR touching semantic axes:
 - [ ] Update hotspots section if adding new affected rules
 - [ ] Verify defaults don't change existing behavior
 - [ ] Run `make ci` to ensure no regressions
+
+---
+
+## Breaking Changes (V1.2)
+
+The following behavioral changes were introduced in V1.2:
+
+### RealOnly Contract (Dec 2025)
+
+**Before**: `ValueDomain::RealOnly` only affected literal evaluation.
+**After**: `RealOnly` now means **"all symbols are real by default"**.
+
+| Behavior | V1.1 | V1.2 |
+|----------|------|------|
+| `ln(e^x)` in Strict | unchanged | `x` |
+| `ln(x²)` | `2·ln(x)` + warning | `2·ln(\|x\|)` |
+| `prove_positive(e^x)` | Unknown | Proven (RealOnly) |
+
+**Migration**: Tests expecting `ln(e^x)` to remain unchanged in Strict will fail. Update expectations or use `ComplexEnabled`.
 
 ---
 
