@@ -317,6 +317,12 @@ impl Simplifier {
         hints
     }
 
+    /// Extend blocked hints from an external source (used for context transfer).
+    /// Hints will be deduplicated when take_blocked_hints is called.
+    pub fn extend_blocked_hints(&mut self, hints: Vec<crate::domain::BlockedHint>) {
+        self.last_blocked_hints.extend(hints);
+    }
+
     pub fn enable_debug(&mut self) {
         self.debug_mode = true;
     }

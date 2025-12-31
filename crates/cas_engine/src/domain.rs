@@ -168,8 +168,10 @@ impl Proof {
 /// "Cannot simplify: requires x > 0. Use `domain assume` to allow."
 #[derive(Debug, Clone)]
 pub struct BlockedHint {
-    /// The assumption key (e.g., Positive{expr})
+    /// The assumption key (e.g., Positive{expr}) - used for deduplication
     pub key: crate::assumptions::AssumptionKey,
+    /// The original expression ID for pretty-printing (display only)
+    pub expr_id: cas_ast::ExprId,
     /// Name of the rule that was blocked
     pub rule: &'static str,
     /// Suggestion for the user
@@ -213,12 +215,17 @@ impl CancelDecision {
 
     /// Create a decision that blocks cancellation with a pedagogical hint.
     /// Used when Generic mode blocks an Analytic condition.
-    pub fn deny_with_hint(key: crate::assumptions::AssumptionKey, rule: &'static str) -> Self {
+    pub fn deny_with_hint(
+        key: crate::assumptions::AssumptionKey,
+        expr_id: cas_ast::ExprId,
+        rule: &'static str,
+    ) -> Self {
         Self {
             allow: false,
             assumption: None,
             blocked_hint: Some(BlockedHint {
                 key,
+                expr_id,
                 rule,
                 suggestion: "use `domain assume` to allow analytic assumptions",
             }),
@@ -351,6 +358,7 @@ pub fn can_apply_analytic_with_hint(
     mode: DomainMode,
     proof: Proof,
     key: crate::assumptions::AssumptionKey,
+    expr_id: cas_ast::ExprId,
     rule: &'static str,
 ) -> CancelDecision {
     use crate::assumptions::ConditionClass;
@@ -372,11 +380,12 @@ pub fn can_apply_analytic_with_hint(
                 // Auto-register to thread-local for REPL to retrieve
                 let hint = BlockedHint {
                     key: key.clone(),
+                    expr_id,
                     rule,
                     suggestion: "use `domain assume` to allow analytic assumptions",
                 };
                 register_blocked_hint(hint);
-                CancelDecision::deny_with_hint(key, rule)
+                CancelDecision::deny_with_hint(key, expr_id, rule)
             } else {
                 // Strict mode: block without hint (expected behavior)
                 CancelDecision::deny()

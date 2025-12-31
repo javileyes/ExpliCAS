@@ -626,6 +626,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                         mode,
                         arg_positive,
                         key,
+                        log_arg, // expr_id for pretty-printing
                         "Exponential-Log Inverse",
                     );
 

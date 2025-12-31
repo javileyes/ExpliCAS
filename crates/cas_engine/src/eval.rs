@@ -240,7 +240,10 @@ impl Engine {
                     }
                 }
 
-                // Transfer context back
+                // Transfer context and blocked hints back to main simplifier
+                // Hints must be transferred BEFORE context to preserve pedagogical feedback
+                self.simplifier
+                    .extend_blocked_hints(ctx_simplifier.take_blocked_hints());
                 self.simplifier.context = ctx_simplifier.context;
 
                 // Collect domain assumptions from steps with deduplication

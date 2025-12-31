@@ -4685,6 +4685,48 @@ impl Repl {
                             EvalResult::Bool(b) => println!("Result: {}", b),
                             EvalResult::None => {}
                         }
+
+                        // Display blocked hints (pedagogical warnings for Generic mode)
+                        let hints = self.engine.simplifier.take_blocked_hints();
+                        if !hints.is_empty() {
+                            let ctx = &self.engine.simplifier.context;
+
+                            // Helper to format condition with expression
+                            let format_condition = |hint: &cas_engine::BlockedHint| -> String {
+                                let expr_str = cas_ast::DisplayExpr {
+                                    context: ctx,
+                                    id: hint.expr_id,
+                                }
+                                .to_string();
+                                match hint.key.kind() {
+                                    "positive" => format!("{} > 0", expr_str),
+                                    "nonzero" => format!("{} ≠ 0", expr_str),
+                                    "nonnegative" => format!("{} ≥ 0", expr_str),
+                                    _ => format!("{} ({})", expr_str, hint.key.kind()),
+                                }
+                            };
+
+                            // Group message if multiple hints
+                            if hints.len() == 1 {
+                                let hint = &hints[0];
+                                println!(
+                                    "ℹ️  Blocked in Generic: requires {} [{}]",
+                                    format_condition(hint),
+                                    hint.rule
+                                );
+                                println!("   {}", hint.suggestion);
+                            } else {
+                                println!("ℹ️  Some simplifications were blocked in Generic:");
+                                for hint in &hints {
+                                    println!(
+                                        " - Requires {}  [{}]",
+                                        format_condition(hint),
+                                        hint.rule
+                                    );
+                                }
+                                println!("   Tip: {}", hints[0].suggestion);
+                            }
+                        }
                     }
                     Err(e) => println!("Error: {}", e),
                 }
