@@ -290,6 +290,56 @@ pub fn can_cancel_factor(mode: DomainMode, proof: Proof) -> CancelDecision {
     }
 }
 
+/// Rich version of `can_cancel_factor` that emits pedagogical hints when Strict blocks.
+///
+/// This enables hints like:
+/// "Blocked in Strict: requires x ≠ 0 [SimplifyFraction]. Use `domain generic` to allow."
+///
+/// # Arguments
+///
+/// * `mode` - Current DomainMode
+/// * `proof` - Proof status for nonzero
+/// * `key` - AssumptionKey for the condition (e.g., NonZero{expr})
+/// * `expr_id` - ExprId for pretty-printing the expression
+/// * `rule` - Name of the rule being blocked
+pub fn can_cancel_factor_with_hint(
+    mode: DomainMode,
+    proof: Proof,
+    key: crate::assumptions::AssumptionKey,
+    expr_id: cas_ast::ExprId,
+    rule: &'static str,
+) -> CancelDecision {
+    use crate::assumptions::ConditionClass;
+
+    match proof {
+        // Always allow if proven
+        Proof::Proven => CancelDecision::allow(),
+
+        // Never allow if disproven (division by 0)
+        Proof::Disproven => CancelDecision::deny(),
+
+        // Unknown: use ConditionClass gate
+        Proof::Unknown => {
+            if mode.allows_unproven(ConditionClass::Definability) {
+                // Generic/Assume mode: allow with assumption
+                CancelDecision::allow_with_assumption("cancelled factor assumed nonzero")
+            } else if mode == DomainMode::Strict {
+                // Strict mode: block WITH pedagogical hint
+                let hint = BlockedHint {
+                    key: key.clone(),
+                    expr_id,
+                    rule,
+                    suggestion: "use `domain generic` to allow definability assumptions",
+                };
+                register_blocked_hint(hint);
+                CancelDecision::deny_with_hint(key, expr_id, rule)
+            } else {
+                CancelDecision::deny()
+            }
+        }
+    }
+}
+
 /// Canonical helper: Decide whether to apply an Analytic condition (Positive, NonNegative).
 ///
 /// This is the single point of truth for rules requiring x > 0 or x ≥ 0.

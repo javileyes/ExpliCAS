@@ -5,6 +5,24 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2025-12-31 - Hint UX Improvements
+
+### Added
+
+- **Hint Grouping**: Multiple blocked hints for the same rule are now grouped into a single line (e.g., `requires x > 0, y > 0 [Log Expansion]`)
+- **Verbosity Control**: New `semantics set hints on|off` command to toggle hint display
+- **Contextual Suggestions**: Hints now suggest appropriate action based on current mode:
+  - Strict → suggests `domain generic` or `domain assume`
+  - Generic → suggests `domain assume`
+- **Snapshot Tests**: Added contract tests for hint emission (V1.3.1 stability)
+
+### Changed
+
+- `hints_enabled` option in `EvalOptions` (default: `true`)
+- Hints display respects current `DomainMode` for targeted suggestions
+
+---
+
 ## [1.3.1] - 2025-12-31 - Blocked Hints
 
 ### Added

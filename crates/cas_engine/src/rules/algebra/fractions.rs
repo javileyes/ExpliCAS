@@ -499,7 +499,16 @@ define_rule!(
                 // DOMAIN GATE: Check if we can cancel by this GCD
                 // In Strict mode, only allow if GCD is provably non-zero
                 let gcd_proof = prove_nonzero(ctx, gcd_expr);
-                let decision = can_cancel_factor(domain_mode, gcd_proof);
+
+                // Use can_cancel_factor_with_hint for pedagogical hints in Strict mode
+                let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, gcd_expr);
+                let decision = crate::domain::can_cancel_factor_with_hint(
+                    domain_mode,
+                    gcd_proof,
+                    key,
+                    gcd_expr,
+                    "Simplify Nested Fraction",
+                );
                 if !decision.allow {
                     // Strict mode + Unknown proof: don't simplify (e.g., x/x stays)
                     return None;
