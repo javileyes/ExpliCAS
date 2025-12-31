@@ -1,6 +1,6 @@
 # SEMANTICS POLICY
 
-> **Version 1.3** | Last updated: 2025-12-31
+> **Version 1.3.1** | Last updated: 2025-12-31
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
 
@@ -62,7 +62,35 @@ Conditions required by transformations are classified into two types:
 - `SimplifyFractionRule` — uses `can_cancel_factor()`
 - `DivZeroRule`, `MulZeroRule` — Definability gate
 - `LogExpansionRule` — uses `can_apply_analytic()`
+- `ExponentialLogRule` — uses `can_apply_analytic_with_hint()` (V1.3.1)
 - `IdentityPowerRule`, `CancelCommonFactorsRule`, `QuotientOfPowersRule`
+
+### Blocked Hints (V1.3.1)
+
+When Generic mode blocks a transformation due to an unproven Analytic condition, the engine emits **pedagogical hints** to guide the user:
+
+```
+> exp(ln(x))
+Result: e^(ln(x))
+ℹ️  Blocked in Generic: requires x > 0 [Exponential-Log Inverse]
+   use `domain assume` to allow analytic assumptions
+```
+
+**Key behaviors:**
+
+| Scenario | Hint Emitted? |
+|----------|---------------|
+| Generic + unproven Analytic | ✅ Yes |
+| Strict + unproven Analytic | ❌ No (expected behavior) |
+| Assume + unproven Analytic | ❌ No (allowed with warning) |
+| Any mode + proven condition | ❌ No (simplification proceeds) |
+
+**Implementation:**
+
+- `can_apply_analytic_with_hint(mode, proof, key, expr_id, rule)` — Rich gate with hint emission
+- `BlockedHint { key, expr_id, rule, suggestion }` — Structured hint data
+- Thread-local collector: `register_blocked_hint()`, `take_blocked_hints()`
+- Hints are deduplicated by `(rule, AssumptionKey)`
 
 ---
 

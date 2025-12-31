@@ -5,6 +5,32 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2025-12-31 - Blocked Hints
+
+### Added
+
+- **Pedagogical Blocked Hints**: When Generic mode blocks simplifications requiring analytic assumptions (e.g., `x > 0`), the REPL now displays actionable hints:
+  ```
+  ℹ️  Blocked in Generic: requires x > 0 [Exponential-Log Inverse]
+     use `domain assume` to allow analytic assumptions
+  ```
+
+- **Thread-local Hint Collector**: `register_blocked_hint()`, `take_blocked_hints()`, `clear_blocked_hints()` in `domain.rs`
+- **Rich Gate Function**: `can_apply_analytic_with_hint()` emits structured hints when Generic blocks Analytic conditions
+- **Hint Propagation**: `Simplifier.extend_blocked_hints()` for context transfer in `Engine.eval()`
+
+### Changed
+
+- `BlockedHint` struct now includes `expr_id` for pretty-printing expression names in hints
+- `ExponentialLogRule` now uses `can_apply_analytic_with_hint()` to emit pedagogical hints
+
+### Technical
+
+- Hints are deduplicated by `(rule, AssumptionKey)` preserving first-occurrence order
+- REPL displays hints using `DisplayExpr` for consistent formatting with result output
+
+---
+
 ## [Unreleased]
 
 ### Added - Pattern Detection Infrastructure (2025-12-07)
