@@ -85,7 +85,7 @@ pub enum StepsMode {
 /// Evaluation options for expression processing.
 ///
 /// Stored in `SessionState` for persistence, but can be overridden per request.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct EvalOptions {
     /// How to handle inverse function compositions
     pub branch_mode: BranchMode,
@@ -113,6 +113,8 @@ pub struct EvalOptions {
     pub assumption_reporting: crate::assumptions::AssumptionReporting,
     /// Scope for assumptions (only active if domain_mode=Assume)
     pub assume_scope: crate::semantics::AssumeScope,
+    /// Whether to display blocked hints in REPL (default: true)
+    pub hints_enabled: bool,
 }
 
 impl EvalOptions {
@@ -181,3 +183,24 @@ impl EvalOptions {
 
 // Backwards compatibility alias
 pub type Assumptions = EvalOptions;
+
+impl Default for EvalOptions {
+    fn default() -> Self {
+        Self {
+            branch_mode: BranchMode::default(),
+            context_mode: ContextMode::default(),
+            complex_mode: ComplexMode::default(),
+            steps_mode: StepsMode::default(),
+            expand_policy: crate::phase::ExpandPolicy::default(),
+            expand_budget: crate::phase::ExpandBudget::default(),
+            domain_mode: crate::DomainMode::default(),
+            inv_trig: crate::semantics::InverseTrigPolicy::default(),
+            value_domain: crate::semantics::ValueDomain::default(),
+            branch: crate::semantics::BranchPolicy::default(),
+            const_fold: crate::const_fold::ConstFoldMode::default(),
+            assumption_reporting: crate::assumptions::AssumptionReporting::default(),
+            assume_scope: crate::semantics::AssumeScope::default(),
+            hints_enabled: true, // Pedagogical hints on by default
+        }
+    }
+}

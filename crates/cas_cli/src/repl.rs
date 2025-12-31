@@ -2645,6 +2645,14 @@ impl Repl {
         } else {
             println!("  assume_scope: {}", assume_scope);
         }
+
+        // Show hints_enabled
+        let hints = if self.state.options.hints_enabled {
+            "on"
+        } else {
+            "off"
+        };
+        println!("  hints: {}", hints);
     }
 
     /// Print status for a single semantic axis with current value and available options
@@ -3153,9 +3161,22 @@ impl Repl {
                     return false;
                 }
             },
+            "hints" => match value {
+                "on" => {
+                    self.state.options.hints_enabled = true;
+                }
+                "off" => {
+                    self.state.options.hints_enabled = false;
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'hints'", value);
+                    println!("Allowed: on, off");
+                    return false;
+                }
+            },
             _ => {
                 println!("ERROR: Unknown axis '{}'", axis);
-                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope");
+                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope, hints");
                 return false;
             }
         }
@@ -4687,8 +4708,9 @@ impl Repl {
                         }
 
                         // Display blocked hints (pedagogical warnings for Generic mode)
+                        // Respects hints_enabled option (can be toggled with `semantics set hints off`)
                         let hints = self.engine.simplifier.take_blocked_hints();
-                        if !hints.is_empty() {
+                        if !hints.is_empty() && self.state.options.hints_enabled {
                             let ctx = &self.engine.simplifier.context;
 
                             // Helper to format condition with expression
@@ -4706,25 +4728,56 @@ impl Repl {
                                 }
                             };
 
-                            // Group message if multiple hints
-                            if hints.len() == 1 {
+                            // Group hints by rule name
+                            let mut grouped: std::collections::HashMap<&str, Vec<String>> =
+                                std::collections::HashMap::new();
+                            for hint in &hints {
+                                grouped
+                                    .entry(hint.rule)
+                                    .or_default()
+                                    .push(format_condition(hint));
+                            }
+
+                            // Contextual suggestion based on current mode
+                            let suggestion = match self.state.options.domain_mode {
+                                cas_engine::DomainMode::Strict => {
+                                    "use `domain generic` or `domain assume` to allow"
+                                }
+                                cas_engine::DomainMode::Generic => {
+                                    "use `domain assume` to allow analytic assumptions"
+                                }
+                                cas_engine::DomainMode::Assume => {
+                                    // Should not happen, but fallback
+                                    "assumptions already enabled"
+                                }
+                            };
+
+                            // Display grouped hints
+                            if grouped.len() == 1 && hints.len() == 1 {
+                                // Single hint: compact format
                                 let hint = &hints[0];
                                 println!(
-                                    "ℹ️  Blocked in Generic: requires {} [{}]",
+                                    "ℹ️  Blocked: requires {} [{}]",
                                     format_condition(hint),
                                     hint.rule
                                 );
-                                println!("   {}", hint.suggestion);
+                                println!("   {}", suggestion);
                             } else {
-                                println!("ℹ️  Some simplifications were blocked in Generic:");
-                                for hint in &hints {
-                                    println!(
-                                        " - Requires {}  [{}]",
-                                        format_condition(hint),
-                                        hint.rule
-                                    );
+                                // Multiple hints or multiple rules: grouped format
+                                println!("ℹ️  Some simplifications were blocked:");
+                                for (rule, conditions) in &grouped {
+                                    if conditions.len() == 1 {
+                                        println!(" - Requires {}  [{}]", conditions[0], rule);
+                                    } else {
+                                        // Compact multiple conditions for same rule
+                                        println!(
+                                            " - Requires {}  [{}]",
+                                            conditions.join(", "),
+                                            rule
+                                        );
+                                    }
                                 }
-                                println!("   Tip: {}", hints[0].suggestion);
+                                println!("   Tip: {}", suggestion);
                             }
                         }
                     }

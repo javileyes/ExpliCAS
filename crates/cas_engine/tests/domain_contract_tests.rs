@@ -754,3 +754,92 @@ fn value_domain_complex_i_fourth() {
         result
     );
 }
+
+// =============================================================================
+// Blocked Hints Tests (V1.3.1)
+// =============================================================================
+
+/// CONTRACT: exp(ln(x)) in Generic mode emits a BlockedHint with x > 0 condition
+#[test]
+fn blocked_hint_exp_ln_x_generic_emits_hint() {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Ensure Generic mode (default)
+    state.options.domain_mode = cas_engine::DomainMode::Generic;
+    state.options.hints_enabled = true;
+
+    let parsed =
+        cas_parser::parse("exp(ln(x))", &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: "exp(ln(x))".to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let _output = engine.eval(&mut state, req).expect("eval failed");
+
+    // Blocked hints are collected in the simplifier
+    let hints = engine.simplifier.take_blocked_hints();
+
+    assert!(!hints.is_empty(), "Expected at least one blocked hint");
+
+    // Verify hint contains correct information
+    let hint = &hints[0];
+    assert_eq!(hint.rule, "Exponential-Log Inverse");
+    assert_eq!(hint.key.kind(), "positive");
+
+    // Verify expr_id points to x
+    let expr_str = cas_ast::DisplayExpr {
+        context: &engine.simplifier.context,
+        id: hint.expr_id,
+    }
+    .to_string();
+    assert_eq!(expr_str, "x", "Hint should reference expression 'x'");
+}
+
+/// CONTRACT: exp(ln(5)) in Generic mode does NOT emit hint (5 is provably positive)
+#[test]
+fn blocked_hint_exp_ln_5_no_hint() {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Ensure Generic mode
+    state.options.domain_mode = cas_engine::DomainMode::Generic;
+
+    let parsed =
+        cas_parser::parse("exp(ln(5))", &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: "exp(ln(5))".to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    // Result should be 5 (simplification allowed)
+    let result_str = match &output.result {
+        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+    assert_eq!(result_str, "5", "exp(ln(5)) should simplify to 5");
+
+    // No blocked hints expected
+    let hints = engine.simplifier.take_blocked_hints();
+    assert!(
+        hints.is_empty(),
+        "No hints expected for provably positive argument"
+    );
+}
