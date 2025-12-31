@@ -68,6 +68,36 @@ impl DomainMode {
     pub fn is_assume(self) -> bool {
         matches!(self, DomainMode::Assume)
     }
+
+    /// Check if this mode allows an unproven condition of the given class.
+    ///
+    /// This is the **central gate** for the Strict/Generic/Assume contract:
+    /// - **Strict**: Never allows unproven conditions (returns false always)
+    /// - **Generic**: Allows Definability (≠0), rejects Analytic (>0, ranges)
+    /// - **Assume**: Allows all condition classes
+    ///
+    /// # Example
+    /// ```ignore
+    /// use cas_engine::assumptions::ConditionClass;
+    ///
+    /// // NonZero is Definability
+    /// assert!(!DomainMode::Strict.allows_unproven(ConditionClass::Definability));
+    /// assert!(DomainMode::Generic.allows_unproven(ConditionClass::Definability));
+    /// assert!(DomainMode::Assume.allows_unproven(ConditionClass::Definability));
+    ///
+    /// // Positive is Analytic
+    /// assert!(!DomainMode::Strict.allows_unproven(ConditionClass::Analytic));
+    /// assert!(!DomainMode::Generic.allows_unproven(ConditionClass::Analytic));
+    /// assert!(DomainMode::Assume.allows_unproven(ConditionClass::Analytic));
+    /// ```
+    pub fn allows_unproven(self, class: crate::assumptions::ConditionClass) -> bool {
+        use crate::assumptions::ConditionClass;
+        match self {
+            DomainMode::Strict => false, // Never accept unproven
+            DomainMode::Generic => class == ConditionClass::Definability,
+            DomainMode::Assume => true, // Accept all
+        }
+    }
 }
 
 /// Result of attempting to prove a property about an expression.
@@ -146,8 +176,13 @@ impl CancelDecision {
 
 /// Canonical helper: Decide whether to cancel a factor based on domain mode.
 ///
-/// This is the single point of truth for all cancellation rules.
+/// This is the single point of truth for all cancellation rules (NonZero condition).
 /// Call this before any `a/a → 1` or similar cancellation.
+///
+/// Uses the ConditionClass taxonomy:
+/// - **Strict**: Only allows if `proof == Proven`
+/// - **Generic**: Allows Definability (NonZero) even if Unknown
+/// - **Assume**: Allows all conditions if Unknown
 ///
 /// # Returns
 ///
@@ -166,33 +201,70 @@ impl CancelDecision {
 /// // Apply rewrite, use decision.assumption if present
 /// ```
 pub fn can_cancel_factor(mode: DomainMode, proof: Proof) -> CancelDecision {
-    match mode {
-        // Strict: only cancel if factor is provably non-zero
-        DomainMode::Strict => {
-            if proof == Proof::Proven {
-                CancelDecision::allow()
+    use crate::assumptions::ConditionClass;
+
+    match proof {
+        // Always allow if proven
+        Proof::Proven => CancelDecision::allow(),
+
+        // Never allow if disproven (division by 0)
+        Proof::Disproven => CancelDecision::deny(),
+
+        // Unknown: use ConditionClass gate
+        Proof::Unknown => {
+            // NonZero is Definability class
+            if mode.allows_unproven(ConditionClass::Definability) {
+                CancelDecision::allow_with_assumption("cancelled factor assumed nonzero")
             } else {
                 CancelDecision::deny()
             }
         }
+    }
+}
 
-        // Generic: always allow for backward compatibility
-        // but mark assumption if not proven (for future auditing)
-        DomainMode::Generic => {
-            if proof == Proof::Proven {
-                CancelDecision::allow()
-            } else {
-                // Allow but note the assumption (optional warning)
-                CancelDecision::allow_with_assumption("cancelled factor assumed nonzero")
-            }
-        }
+/// Canonical helper: Decide whether to apply an Analytic condition (Positive, NonNegative).
+///
+/// This is the single point of truth for rules requiring x > 0 or x ≥ 0.
+/// Uses for: `exp(ln(x)) → x`, `ln(x*y) → ln(x) + ln(y)`, etc.
+///
+/// Uses the ConditionClass taxonomy:
+/// - **Strict**: Only allows if `proof == Proven`
+/// - **Generic**: BLOCKS (Analytic is not Definability)
+/// - **Assume**: Allows and records assumption
+///
+/// # Returns
+///
+/// - `allow: true` with no assumption for proven conditions
+/// - `allow: false` in Strict and Generic modes for unproven
+/// - `allow: true` with assumption only in Assume mode
+///
+/// # Example
+///
+/// ```ignore
+/// let proof = prove_positive(ctx, arg, vd);
+/// let decision = can_apply_analytic(mode, proof);
+/// if !decision.allow {
+///     return None; // Strict/Generic: don't apply
+/// }
+/// // Apply rewrite, use decision.assumption if present
+/// ```
+pub fn can_apply_analytic(mode: DomainMode, proof: Proof) -> CancelDecision {
+    use crate::assumptions::ConditionClass;
 
-        // Assume: like Generic for now (will use explicit assumptions later)
-        DomainMode::Assume => {
-            if proof == Proof::Proven {
-                CancelDecision::allow()
+    match proof {
+        // Always allow if proven
+        Proof::Proven => CancelDecision::allow(),
+
+        // Never allow if disproven (definitely ≤ 0)
+        Proof::Disproven => CancelDecision::deny(),
+
+        // Unknown: use Analytic ConditionClass gate
+        Proof::Unknown => {
+            // Positive/NonNegative is Analytic class (only Assume allows)
+            if mode.allows_unproven(ConditionClass::Analytic) {
+                CancelDecision::allow_with_assumption("assumed positive")
             } else {
-                CancelDecision::allow_with_assumption("cancelled factor assumed nonzero")
+                CancelDecision::deny() // Strict and Generic block this
             }
         }
     }

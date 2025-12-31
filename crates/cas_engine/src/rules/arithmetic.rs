@@ -68,14 +68,15 @@ define_rule!(
 
 // MulZeroRule: 0*e → 0
 // Domain Mode Policy: 0*e → 0 changes the domain of definition if e can be undefined.
-// In Strict mode, the expression 0*(x/(x+1)) is undefined at x=-1, but 0 is defined everywhere.
+// Uses ConditionClass taxonomy:
 // - Strict: only apply if other factor has no undefined risk
-// - Assume: apply with domain_assumption warning if risk exists
-// - Generic: apply unconditionally (educational mode)
+// - Generic: apply with Defined(e) assumption (Definability class)
+// - Assume: apply with Defined(e) assumption
 define_rule!(
     MulZeroRule,
     "Zero Property of Multiplication",
     |ctx, expr, parent_ctx| {
+        use crate::assumptions::ConditionClass;
         use crate::domain::Proof;
         use crate::helpers::prove_nonzero;
 
@@ -121,38 +122,26 @@ define_rule!(
 
             // The "other" side: 0 * other
             let other = if lhs_is_zero { rhs } else { lhs };
-            let domain_mode = parent_ctx.domain_mode();
             let has_risk = has_undefined_risk(ctx, other);
 
-            // Domain-aware decision for 0*e → 0
-            let assumption_events = match domain_mode {
-                crate::DomainMode::Strict => {
-                    // Only apply if other factor has no undefined risk
-                    if has_risk {
-                        return None;
-                    }
-                    Default::default()
-                }
-                crate::DomainMode::Assume => {
-                    // Apply with structured assumption if has risk
-                    if has_risk {
-                        smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(
-                            ctx, other
-                        )]
-                    } else {
-                        Default::default()
-                    }
-                }
-                crate::DomainMode::Generic => {
-                    // Educational mode: apply with warning for transparency
-                    if has_risk {
-                        smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(
-                            ctx, other
-                        )]
-                    } else {
-                        Default::default()
-                    }
-                }
+            // Use ConditionClass gate: Defined is Definability class
+            let allowed = if has_risk {
+                parent_ctx
+                    .domain_mode()
+                    .allows_unproven(ConditionClass::Definability)
+            } else {
+                true // No risk = always allowed
+            };
+
+            if !allowed {
+                return None; // Strict mode: don't simplify if has risk
+            }
+
+            // Build assumption events if has risk and allowed
+            let assumption_events = if has_risk {
+                smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, other)]
+            } else {
+                Default::default()
             };
 
             let description = if lhs_is_zero {
@@ -176,15 +165,15 @@ define_rule!(
 
 // DivZeroRule: 0/d → 0
 // Domain Mode Policy: 0/d → 0 changes the domain of definition if d can be 0.
-// In Strict mode, the expression 0/(x+1) is undefined at x=-1, but 0 is defined everywhere.
+// Uses ConditionClass taxonomy via can_cancel_factor():
 // - Strict: only apply if prove_nonzero(d) == Proven
-// - Assume: apply with domain_assumption warning "Assuming d ≠ 0"
-// - Generic: apply unconditionally (educational mode)
+// - Generic: apply with NonZero(d) assumption (Definability class)
+// - Assume: apply with NonZero(d) assumption
 define_rule!(
     DivZeroRule,
     "Zero Property of Division",
     |ctx, expr, parent_ctx| {
-        use crate::domain::Proof;
+        use crate::domain::{can_cancel_factor, Proof};
         use crate::helpers::prove_nonzero;
 
         let expr_data = ctx.get(expr).clone();
@@ -209,35 +198,19 @@ define_rule!(
                 }
             }
 
-            // Domain-aware decision for 0/d → 0
-            let den_nonzero = prove_nonzero(ctx, den);
-            let domain_mode = parent_ctx.domain_mode();
+            // Use central gate for NonZero condition (Definability class)
+            let den_proof = prove_nonzero(ctx, den);
+            let decision = can_cancel_factor(parent_ctx.domain_mode(), den_proof);
 
-            // Structured assumption emission (preferred over legacy string)
-            let assumption_events = match domain_mode {
-                crate::DomainMode::Strict => {
-                    // Only apply if denominator is provably non-zero
-                    if den_nonzero != Proof::Proven {
-                        return None;
-                    }
-                    Default::default()
-                }
-                crate::DomainMode::Assume => {
-                    // Apply with structured assumption if not proven
-                    if den_nonzero != Proof::Proven {
-                        smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
-                    } else {
-                        Default::default()
-                    }
-                }
-                crate::DomainMode::Generic => {
-                    // Educational mode: apply with warning for transparency
-                    if den_nonzero != Proof::Proven {
-                        smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
-                    } else {
-                        Default::default()
-                    }
-                }
+            if !decision.allow {
+                return None; // Strict mode: don't simplify if not proven
+            }
+
+            // Build assumption events if needed
+            let assumption_events = if decision.assumption.is_some() && den_proof != Proof::Proven {
+                smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
+            } else {
+                Default::default()
             };
 
             let zero = ctx.num(0);

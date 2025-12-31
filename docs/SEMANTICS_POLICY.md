@@ -1,6 +1,6 @@
 # SEMANTICS POLICY
 
-> **Version 1.2** | Last updated: 2025-12-31
+> **Version 1.3** | Last updated: 2025-12-31
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
 
@@ -19,32 +19,50 @@ ExpliCAS uses **5 orthogonal semantic axes**:
 
 ---
 
-## Axis A: DomainMode ✅ (Implemented)
+## Axis A: DomainMode ✅ (V1.3 - ConditionClass Contract)
 
-Controls rules that require assumptions about symbolic variables.
+Controls which transformations are allowed based on **typed side conditions**.
 
-### Values
+### ConditionClass Taxonomy
 
-| Value | Behavior | Use Case |
-|-------|----------|----------|
-| `Strict` | Only cancel/simplify if provably valid | Teaching, formal proofs |
-| `Generic` | Allow all simplifications silently (legacy) | Backward compatibility |
-| `Assume` | Allow simplifications with traceable warnings | Research, exploration |
+Conditions required by transformations are classified into two types:
 
-### Examples
+| Class | Description | Examples |
+|-------|-------------|----------|
+| **Definability** | Small holes at isolated points | `x ≠ 0`, `a is defined` |
+| **Analytic** | Big restrictions (half-lines, ranges) | `x > 0`, `x ≥ 0`, `x ∈ [-π/2, π/2]` |
 
-| Expression | Strict | Generic | Assume |
-|------------|--------|---------|--------|
-| `x/x` | `x/x` | `1` | `1` + warning |
-| `x^0` | `x^0` | `1` | `1` + warning |
-| `4x/(2x)` | `2x/x` | `2` | `2` + warning |
+### DomainMode Gate
+
+| Mode | Definability | Analytic | Use Case |
+|------|--------------|----------|----------|
+| `Strict` | Only if proven | Only if proven | Formal proofs |
+| `Generic` | ✅ Accept (with warning) | ❌ Block | Educational default |
+| `Assume` | ✅ Accept (with warning) | ✅ Accept (with warning) | Research, exploration |
+
+### Canonical Examples
+
+| Expression | Condition | Class | Strict | Generic | Assume |
+|------------|-----------|-------|--------|---------|--------|
+| `x/x → 1` | NonZero(x) | Definability | ❌ | ✅ | ✅ |
+| `0/x → 0` | NonZero(x) | Definability | ❌ | ✅ | ✅ |
+| `ln(x*y) → ln(x)+ln(y)` | Positive(x), Positive(y) | Analytic | ❌ | ❌ | ✅ |
+| `exp(ln(x)) → x` | Positive(x) | Analytic | ❌ | ❌ | ✅ |
+| `sqrt(x)² → x` | NonNegative(x) | Analytic | ❌ | ❌ | ✅ |
+| `2/2 → 1` | — (proven) | Definability | ✅ | ✅ | ✅ |
+
+### Implementation Details
+
+- **Gate Functions**: `can_cancel_factor()` (Definability), `can_apply_analytic()` (Analytic)
+- **Central Logic**: `DomainMode::allows_unproven(ConditionClass)`
+- **Condition Types**: `AssumptionKey::class()` returns `ConditionClass`
 
 ### Affected Rules
 
-- `SimplifyFractionRule` (cancellation gate)
-- `IdentityPowerRule` (`x^0`, `x^1`)
-- `CancelCommonFactorsRule`
-- `QuotientOfPowersRule`
+- `SimplifyFractionRule` — uses `can_cancel_factor()`
+- `DivZeroRule`, `MulZeroRule` — Definability gate
+- `LogExpansionRule` — uses `can_apply_analytic()`
+- `IdentityPowerRule`, `CancelCommonFactorsRule`, `QuotientOfPowersRule`
 
 ---
 

@@ -209,7 +209,6 @@ impl crate::rule::Rule for LogExpansionRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::domain::{DomainMode, Proof};
         use crate::helpers::prove_positive;
         use crate::semantics::ValueDomain;
 
@@ -234,102 +233,79 @@ impl crate::rule::Rule for LogExpansionRule {
             let mode = parent_ctx.domain_mode();
 
             // log(b, x*y) → log(b, x) + log(b, y)
+            // Requires Positive(x) AND Positive(y) - Analytic class
             if let Expr::Mul(lhs, rhs) = arg_data {
                 let vd = parent_ctx.value_domain();
                 let lhs_positive = prove_positive(ctx, lhs, vd);
                 let rhs_positive = prove_positive(ctx, rhs, vd);
 
-                // GATE 2: Check domain_mode with prove_positive
-                match mode {
-                    DomainMode::Strict => {
-                        // Only expand if BOTH factors are provably positive
-                        if lhs_positive != Proof::Proven || rhs_positive != Proof::Proven {
-                            return None;
-                        }
-                        let log_lhs = make_log(ctx, base, lhs);
-                        let log_rhs = make_log(ctx, base, rhs);
-                        let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
-                        return Some(crate::rule::Rewrite {
-                            new_expr,
-                            description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                        });
-                    }
-                    DomainMode::Generic | DomainMode::Assume => {
-                        // Expand unless one factor is Disproven (provably ≤ 0)
-                        if lhs_positive == Proof::Disproven || rhs_positive == Proof::Disproven {
-                            return None;
-                        }
-                        let log_lhs = make_log(ctx, base, lhs);
-                        let log_rhs = make_log(ctx, base, rhs);
-                        let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
-                        // Only emit assumptions if not proven
-                        let mut events = smallvec::SmallVec::new();
-                        if lhs_positive != Proof::Proven {
-                            events.push(crate::assumptions::AssumptionEvent::positive(ctx, lhs));
-                        }
-                        if rhs_positive != Proof::Proven {
-                            events.push(crate::assumptions::AssumptionEvent::positive(ctx, rhs));
-                        }
-                        return Some(crate::rule::Rewrite {
-                            new_expr,
-                            description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: events,
-                        });
-                    }
+                // Use Analytic gate for each factor
+                let lhs_decision = crate::domain::can_apply_analytic(mode, lhs_positive);
+                let rhs_decision = crate::domain::can_apply_analytic(mode, rhs_positive);
+
+                // Both must be allowed
+                if !lhs_decision.allow || !rhs_decision.allow {
+                    return None; // Strict/Generic block if not proven
                 }
+
+                let log_lhs = make_log(ctx, base, lhs);
+                let log_rhs = make_log(ctx, base, rhs);
+                let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
+
+                // Build assumption events for unproven factors
+                let mut events = smallvec::SmallVec::new();
+                if lhs_decision.assumption.is_some() {
+                    events.push(crate::assumptions::AssumptionEvent::positive(ctx, lhs));
+                }
+                if rhs_decision.assumption.is_some() {
+                    events.push(crate::assumptions::AssumptionEvent::positive(ctx, rhs));
+                }
+
+                return Some(crate::rule::Rewrite {
+                    new_expr,
+                    description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    assumption_events: events,
+                });
             }
 
             // log(b, x/y) → log(b, x) - log(b, y)
+            // Requires Positive(x) AND Positive(y) - Analytic class
             if let Expr::Div(num, den) = arg_data {
                 let vd = parent_ctx.value_domain();
                 let num_positive = prove_positive(ctx, num, vd);
                 let den_positive = prove_positive(ctx, den, vd);
 
-                match mode {
-                    DomainMode::Strict => {
-                        if num_positive != Proof::Proven || den_positive != Proof::Proven {
-                            return None;
-                        }
-                        let log_num = make_log(ctx, base, num);
-                        let log_den = make_log(ctx, base, den);
-                        let new_expr = ctx.add(Expr::Sub(log_num, log_den));
-                        return Some(crate::rule::Rewrite {
-                            new_expr,
-                            description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                        });
-                    }
-                    DomainMode::Generic | DomainMode::Assume => {
-                        if num_positive == Proof::Disproven || den_positive == Proof::Disproven {
-                            return None;
-                        }
-                        let log_num = make_log(ctx, base, num);
-                        let log_den = make_log(ctx, base, den);
-                        let new_expr = ctx.add(Expr::Sub(log_num, log_den));
-                        // Only emit assumptions if not proven
-                        let mut events = smallvec::SmallVec::new();
-                        if num_positive != Proof::Proven {
-                            events.push(crate::assumptions::AssumptionEvent::positive(ctx, num));
-                        }
-                        if den_positive != Proof::Proven {
-                            events.push(crate::assumptions::AssumptionEvent::positive(ctx, den));
-                        }
-                        return Some(crate::rule::Rewrite {
-                            new_expr,
-                            description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: events,
-                        });
-                    }
+                // Use Analytic gate for each factor
+                let num_decision = crate::domain::can_apply_analytic(mode, num_positive);
+                let den_decision = crate::domain::can_apply_analytic(mode, den_positive);
+
+                // Both must be allowed
+                if !num_decision.allow || !den_decision.allow {
+                    return None; // Strict/Generic block if not proven
                 }
+
+                let log_num = make_log(ctx, base, num);
+                let log_den = make_log(ctx, base, den);
+                let new_expr = ctx.add(Expr::Sub(log_num, log_den));
+
+                // Build assumption events for unproven factors
+                let mut events = smallvec::SmallVec::new();
+                if num_decision.assumption.is_some() {
+                    events.push(crate::assumptions::AssumptionEvent::positive(ctx, num));
+                }
+                if den_decision.assumption.is_some() {
+                    events.push(crate::assumptions::AssumptionEvent::positive(ctx, den));
+                }
+
+                return Some(crate::rule::Rewrite {
+                    new_expr,
+                    description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    assumption_events: events,
+                });
             }
         }
         None

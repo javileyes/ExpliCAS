@@ -61,6 +61,33 @@ impl std::fmt::Display for AssumptionReporting {
 }
 
 // =============================================================================
+// ConditionClass - Side Condition Taxonomy for DomainMode Gating
+// =============================================================================
+
+/// Classification of side conditions for DomainMode gating.
+///
+/// This taxonomy determines which conditions are acceptable in each DomainMode:
+/// - **Strict**: Only accepts conditions that are *proven* (no Unknown allowed)
+/// - **Generic**: Accepts Definability (small holes like ≠0), rejects Analytic
+/// - **Assume**: Accepts all conditions, records them as assumptions
+///
+/// # Design Principle
+/// - `Definability`: "small holes" - expression ≠ 0, is defined at a point
+/// - `Analytic`: "big restrictions" - positivity, ranges, branch choices
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConditionClass {
+    /// Small holes: expression ≠ 0, denominator defined, etc.
+    /// These exclude isolated points or measure-zero sets.
+    /// Allowed in: Generic, Assume
+    Definability,
+
+    /// Big restrictions: x > 0, x ∈ [a,b], principal branch, etc.
+    /// These impose half-line or range constraints.
+    /// Allowed in: Assume only
+    Analytic,
+}
+
+// =============================================================================
 // AssumptionKey - Hashable Dedup Key
 // =============================================================================
 
@@ -74,7 +101,10 @@ pub enum AssumptionKey {
     NonZero { expr_fingerprint: u64 },
     /// Assumed expression is positive (e.g., for √x² → x)
     Positive { expr_fingerprint: u64 },
+    /// Assumed expression is non-negative (e.g., for sqrt(x)^2 → x)
+    NonNegative { expr_fingerprint: u64 },
     /// Assumed expression is defined (e.g., for a-a → 0 when a has division)
+    /// NOTE: Do NOT use for ln/sqrt definedness - use Positive/NonNegative instead!
     Defined { expr_fingerprint: u64 },
     /// Assumed argument is in principal range for inverse trig composition
     InvTrigPrincipalRange {
@@ -94,9 +124,27 @@ impl AssumptionKey {
         match self {
             Self::NonZero { .. } => "nonzero",
             Self::Positive { .. } => "positive",
+            Self::NonNegative { .. } => "nonnegative",
             Self::Defined { .. } => "defined",
             Self::InvTrigPrincipalRange { .. } => "principal_range",
             Self::ComplexPrincipalBranch { .. } => "principal_branch",
+        }
+    }
+
+    /// Get the condition class for DomainMode gating.
+    ///
+    /// - `Definability`: NonZero, Defined (small holes, accepted in Generic)
+    /// - `Analytic`: Positive, NonNegative, ranges, branches (only Assume)
+    pub fn class(&self) -> ConditionClass {
+        match self {
+            // Definability: "small holes" at isolated points
+            Self::NonZero { .. } | Self::Defined { .. } => ConditionClass::Definability,
+
+            // Analytic: "big restrictions" (half-lines, ranges, branches)
+            Self::Positive { .. }
+            | Self::NonNegative { .. }
+            | Self::InvTrigPrincipalRange { .. }
+            | Self::ComplexPrincipalBranch { .. } => ConditionClass::Analytic,
         }
     }
 }
@@ -176,6 +224,25 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} > 0", display),
+        }
+    }
+
+    /// Create a NonNegative assumption event (for sqrt(x)^2 → x cases)
+    pub fn nonnegative(ctx: &Context, expr: ExprId) -> Self {
+        let fp = expr_fingerprint(ctx, expr);
+        let display = format!(
+            "{}",
+            cas_ast::display::DisplayExpr {
+                context: ctx,
+                id: expr
+            }
+        );
+        Self {
+            key: AssumptionKey::NonNegative {
+                expr_fingerprint: fp,
+            },
+            expr_display: display.clone(),
+            message: format!("Assumed {} ≥ 0", display),
         }
     }
 
