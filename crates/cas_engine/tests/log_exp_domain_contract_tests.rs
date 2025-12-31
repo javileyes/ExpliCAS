@@ -18,16 +18,16 @@
 //! | ComplexEnabled | Generic    | YES         | YES      | ln multivalued, principal branch |
 //! | ComplexEnabled | Assume     | YES         | YES      | Same warning for complex |
 //!
-//! ## e^(ln(x)) → x (ExponentialLogRule)
+//! ## e^(ln(x)) → x (ExponentialLogRule) [V1.3 ConditionClass Contract]
 //!
 //! | ValueDomain    | DomainMode | Simplifies? | Warning? | Reason |
 //! |----------------|------------|-------------|----------|--------|
 //! | RealOnly       | Strict     | NO (if x unknown) | -  | Can't prove x > 0 |
-//! | RealOnly       | Generic    | YES         | YES      | Requires x > 0 for ln |
-//! | RealOnly       | Assume     | YES         | YES      | Same, with traceability |
+//! | RealOnly       | Generic    | NO          | -        | x > 0 is Analytic, blocked in Generic |
+//! | RealOnly       | Assume     | YES         | YES      | Only Assume allows Analytic |
 //! | ComplexEnabled | Strict     | NO          | -        | Can't prove x > 0 |
-//! | ComplexEnabled | Generic    | YES         | YES      | Requires x > 0 for ln |
-//! | ComplexEnabled | Assume     | YES         | YES      | Same |
+//! | ComplexEnabled | Generic    | NO          | -        | x > 0 is Analytic, blocked in Generic |
+//! | ComplexEnabled | Assume     | YES         | YES      | Only Assume allows Analytic |
 
 use cas_ast::DisplayExpr;
 use cas_engine::semantics::ValueDomain;
@@ -268,32 +268,18 @@ mod exp_ln_inverse {
     }
 
     // ------------------------------------------------------------------------
-    // RealOnly × Generic: YES simplification, YES warning (x > 0 required)
+    // RealOnly × Generic: NO simplification (V1.3 CONTRACT)
+    // x > 0 is Analytic class, Generic blocks Analytic conditions
     // ------------------------------------------------------------------------
     #[test]
-    fn real_generic_simplifies_with_positive_warning() {
+    fn real_generic_blocks_analytic() {
         let r = simplify_with_config("exp(ln(x))", ValueDomain::RealOnly, DomainMode::Generic);
 
-        assert_eq!(
-            r.result, "x",
-            "RealOnly+Generic: exp(ln(x)) should simplify to x, got: {}",
+        // V1.3 CONTRACT: Generic blocks Analytic (Positive is Analytic)
+        assert!(
+            r.result.contains("exp") || r.result.contains("e^") || r.result.contains("ln"),
+            "RealOnly+Generic: exp(ln(x)) should remain unchanged (Positive is Analytic, blocked in Generic), got: {}",
             r.result
-        );
-
-        assert!(
-            r.has_warning,
-            "RealOnly+Generic: WARNING expected (ln requires x > 0)"
-        );
-
-        // Check the warning mentions "positive" or "> 0"
-        let has_positive_warning = r
-            .warning_messages
-            .iter()
-            .any(|w| w.to_lowercase().contains("positive") || w.contains("> 0"));
-        assert!(
-            has_positive_warning,
-            "Warning should mention 'positive' or '> 0', got: {:?}",
-            r.warning_messages
         );
     }
 
@@ -335,25 +321,22 @@ mod exp_ln_inverse {
     }
 
     // ------------------------------------------------------------------------
-    // ComplexEnabled × Generic: YES simplification, YES warning
+    // ComplexEnabled × Generic: NO simplification (V1.3 CONTRACT)
+    // x > 0 is Analytic class, Generic blocks Analytic conditions
     // ------------------------------------------------------------------------
     #[test]
-    fn complex_generic_simplifies_with_warning() {
+    fn complex_generic_blocks_analytic() {
         let r = simplify_with_config(
             "exp(ln(x))",
             ValueDomain::ComplexEnabled,
             DomainMode::Generic,
         );
 
-        assert_eq!(
-            r.result, "x",
-            "ComplexEnabled+Generic: exp(ln(x)) should simplify to x, got: {}",
-            r.result
-        );
-
+        // V1.3 CONTRACT: Generic blocks Analytic (Positive is Analytic)
         assert!(
-            r.has_warning,
-            "ComplexEnabled+Generic: WARNING expected (ln requires x > 0 or x ∈ ℂ\\{{0}})"
+            r.result.contains("exp") || r.result.contains("e^") || r.result.contains("ln"),
+            "ComplexEnabled+Generic: exp(ln(x)) should remain unchanged (Positive is Analytic), got: {}",
+            r.result
         );
     }
 
@@ -403,53 +386,47 @@ mod exp_ln_inverse {
 mod combined_expressions {
     use super::*;
 
-    /// exp(ln(x)) + ln(exp(x)) should produce exactly one warning (for x > 0)
-    /// when in RealOnly + Generic mode
+    /// V1.3 CONTRACT: In Generic mode, exp(ln(x)) stays (Positive is Analytic, blocked)
+    /// Only ln(exp(x)) simplifies (no conditions needed in RealOnly)
     #[test]
-    fn combined_real_generic_one_warning() {
+    fn combined_real_generic_partial_simplify() {
         let r = simplify_with_config(
             "exp(ln(x)) + ln(exp(x))",
             ValueDomain::RealOnly,
             DomainMode::Generic,
         );
 
-        // Accept both "2·x" and "2 * x" formats
+        // V1.3 CONTRACT: exp(ln(x)) is BLOCKED in Generic (Positive is Analytic)
+        // Only ln(exp(x)) → x simplifies (RealOnly guarantees e^x > 0)
+        // Result should contain "exp" or "ln" from the blocked part
         assert!(
-            r.result == "2·x" || r.result == "2 * x",
-            "exp(ln(x)) + ln(exp(x)) should simplify to 2x, got: {}",
+            r.result.contains("exp") || r.result.contains("ln"),
+            "RealOnly+Generic: exp(ln(x)) should remain unchanged (Positive is Analytic), got: {}",
             r.result
-        );
-
-        // Only e^(ln(x)) should produce warning, not ln(e^x)
-        assert!(
-            r.has_warning,
-            "Should have warning for exp(ln(x)) requiring x > 0"
         );
     }
 
-    /// In ComplexEnabled + Generic: ln(e^x) does NOT simplify (NEW CONTRACT)
-    /// Only exp(ln(x)) simplifies (with warning for x > 0)
+    /// V1.3 CONTRACT: In ComplexEnabled + Generic, BOTH parts stay unchanged
+    /// - ln(exp(x)) blocked (multivalued ln)
+    /// - exp(ln(x)) blocked (Positive is Analytic, blocked in Generic)
     #[test]
-    fn combined_complex_generic_partial_simplify() {
+    fn combined_complex_generic_no_simplify() {
         let r = simplify_with_config(
             "exp(ln(x)) + ln(exp(x))",
             ValueDomain::ComplexEnabled,
             DomainMode::Generic,
         );
 
-        // ln(e^x) does NOT simplify in ComplexEnabled (multivalued)
-        // Only exp(ln(x)) → x (with x > 0 warning)
-        // Result should be: x + ln(e^x)
+        // V1.3 CONTRACT: BOTH blocked in Generic
+        // ln(e^x) blocked (multivalued ln in complex)
+        // exp(ln(x)) blocked (Positive is Analytic)
+        // Note: display uses "e^" format, not "exp"
+        let has_ln = r.result.contains("ln");
+        let has_exp = r.result.contains("exp") || r.result.contains("e^");
         assert!(
-            r.result.contains("ln"),
-            "ComplexEnabled: ln(exp(x)) should remain unchanged, got: {}",
+            has_ln && has_exp,
+            "ComplexEnabled+Generic: Both parts should remain unchanged, got: {}",
             r.result
-        );
-
-        // exp(ln(x)) does produce a warning for x > 0
-        assert!(
-            r.has_warning,
-            "ComplexEnabled should produce warning for exp(ln(x)) requiring x > 0"
         );
     }
 

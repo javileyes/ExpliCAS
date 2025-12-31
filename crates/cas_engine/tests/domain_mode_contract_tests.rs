@@ -135,6 +135,41 @@ mod analytic_class {
             output
         );
     }
+
+    /// CRITICAL FIX: exp(ln(x)) → x requires Positive(x)
+    /// This is the exact case reported by the user
+    #[test]
+    fn exp_ln_x_generic_blocked() {
+        // exp(ln(x)) → x requires Positive(x) - Analytic
+        let output = simplify_with_mode("exp(ln(x))", DomainMode::Generic);
+        // Should NOT simplify to just "x"
+        assert_ne!(
+            output, "x",
+            "Generic should BLOCK exp(ln(x)) → x (Positive is Analytic), got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn exp_ln_x_strict_blocked() {
+        let output = simplify_with_mode("exp(ln(x))", DomainMode::Strict);
+        assert_ne!(
+            output, "x",
+            "Strict should NOT simplify exp(ln(x)) to x, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn exp_ln_x_assume_allowed() {
+        // Only Assume mode should simplify exp(ln(x)) → x with assumption
+        let output = simplify_with_mode("exp(ln(x))", DomainMode::Assume);
+        assert_eq!(
+            output, "x",
+            "Assume SHOULD simplify exp(ln(x)) to x, got: {}",
+            output
+        );
+    }
 }
 
 // =============================================================================

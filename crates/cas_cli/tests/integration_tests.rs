@@ -815,13 +815,15 @@ fn test_logarithm_simplification() {
     );
 
     // Test 3: Inverse Property
-    // exp(ln(x) + ln(y)) -> exp(ln(x*y)) -> x*y ?
-    // Or exp(ln(x)) * exp(ln(y)) -> x * y
-    // Our current rules might not do exp(a+b) -> exp(a)*exp(b).
-    // Let's test simple inverse: exp(ln(x)) -> x
+    // exp(ln(x)) → x requires Positive(x) - only works in Assume mode (V1.3 contract)
     let input3 = "exp(ln(x))";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse");
-    let (result3, steps3) = simplifier.simplify(expr3);
+    // Use Assume mode since Generic now blocks Analytic conditions (Positive)
+    let opts = cas_engine::SimplifyOptions {
+        domain: cas_engine::DomainMode::Assume,
+        ..Default::default()
+    };
+    let (result3, steps3) = simplifier.simplify_with_options(expr3, opts);
     println!(
         "Result 3: {}",
         DisplayExpr {

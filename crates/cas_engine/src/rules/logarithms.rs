@@ -610,112 +610,81 @@ impl crate::rule::Rule for ExponentialLogRule {
                 None
             };
 
-            // Helper to check if an expression is provably positive
-            let is_positive = |ctx: &cas_ast::Context, e_id: cas_ast::ExprId| -> bool {
-                match ctx.get(e_id) {
-                    Expr::Number(n) => *n > num_rational::BigRational::from_integer(0.into()),
-                    Expr::Constant(cas_ast::Constant::E) => true,
-                    Expr::Constant(cas_ast::Constant::Pi) => true,
-                    _ => false,
-                }
-            };
-
             // Case 1: b^log(b, x) → x
+            // Requires Positive(x) - Analytic class (Generic blocks, only Assume allows)
             if let Some((log_base, log_arg)) = get_log_parts(ctx, exp) {
                 if compare_expr(ctx, log_base, base) == Ordering::Equal {
-                    // Check domain_mode: b^log(b, x) = x requires x > 0
                     let mode = parent_ctx.domain_mode();
-                    match mode {
-                        crate::domain::DomainMode::Strict => {
-                            // Only simplify if x is provably > 0
-                            if is_positive(ctx, log_arg) {
-                                return Some(crate::rule::Rewrite {
-                                    new_expr: log_arg,
-                                    description: "b^log(b, x) = x".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                });
-                            }
-                            return None;
-                        }
-                        crate::domain::DomainMode::Generic => {
-                            // b^log(b, x) = x requires x > 0 (for log to be defined)
-                            // In Generic mode, we simplify but emit the assumption
-                            return Some(crate::rule::Rewrite {
-                                new_expr: log_arg,
-                                description: "b^log(b, x) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: smallvec::smallvec![
-                                    crate::assumptions::AssumptionEvent::positive(ctx, log_arg)
-                                ],
-                            });
-                        }
-                        crate::domain::DomainMode::Assume => {
-                            return Some(crate::rule::Rewrite {
-                                new_expr: log_arg,
-                                description: "b^log(b, x) = x (assuming x > 0)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: smallvec::smallvec![
-                                    crate::assumptions::AssumptionEvent::positive(ctx, log_arg)
-                                ],
-                            });
-                        }
+                    let vd = parent_ctx.value_domain();
+
+                    // Use prove_positive with ValueDomain
+                    let arg_positive = crate::helpers::prove_positive(ctx, log_arg, vd);
+
+                    // Use Analytic gate: Generic blocks, only Assume allows unproven
+                    let decision = crate::domain::can_apply_analytic(mode, arg_positive);
+
+                    if !decision.allow {
+                        return None; // Strict/Generic: block if not proven
                     }
+
+                    // Build assumption events for unproven
+                    let assumption_events = if decision.assumption.is_some() {
+                        smallvec::smallvec![crate::assumptions::AssumptionEvent::positive(
+                            ctx, log_arg
+                        )]
+                    } else {
+                        Default::default()
+                    };
+
+                    return Some(crate::rule::Rewrite {
+                        new_expr: log_arg,
+                        description: "b^log(b, x) = x".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        assumption_events,
+                    });
                 }
             }
 
             // Case 2: b^(c * log(b, x)) → x^c
+            // Requires Positive(x) - Analytic class (Generic blocks, only Assume allows)
             if let Expr::Mul(lhs, rhs) = &exp_data {
+                let vd = parent_ctx.value_domain();
+                let mode = parent_ctx.domain_mode();
+
                 let mut check_log = |target: cas_ast::ExprId,
                                      coeff: cas_ast::ExprId|
                  -> Option<crate::rule::Rewrite> {
                     if let Some((log_base, log_arg)) = get_log_parts(ctx, target) {
                         if compare_expr(ctx, log_base, base) == Ordering::Equal {
-                            // Check domain_mode
-                            let mode = parent_ctx.domain_mode();
-                            match mode {
-                                crate::domain::DomainMode::Strict => {
-                                    if is_positive(ctx, log_arg) {
-                                        let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
-                                        return Some(crate::rule::Rewrite {
-                                            new_expr,
-                                            description: "b^(c*log(b, x)) = x^c".to_string(),
-                                            before_local: None,
-                                            after_local: None,
-                                            assumption_events: Default::default(),
-                                        });
-                                    }
-                                    return None;
-                                }
-                                crate::domain::DomainMode::Generic => {
-                                    let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
-                                    return Some(crate::rule::Rewrite {
-                                        new_expr,
-                                        description: "b^(c*log(b, x)) = x^c".to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-                                    });
-                                }
-                                crate::domain::DomainMode::Assume => {
-                                    let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
-                                    return Some(crate::rule::Rewrite {
-                                        new_expr,
-                                        description: "b^(c*log(b, x)) = x^c (assuming x > 0)"
-                                            .to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: smallvec::smallvec![
-                                            crate::assumptions::AssumptionEvent::positive(
-                                                ctx, log_arg
-                                            )
-                                        ],
-                                    });
-                                }
+                            // Use prove_positive with ValueDomain
+                            let arg_positive = crate::helpers::prove_positive(ctx, log_arg, vd);
+
+                            // Use Analytic gate: Generic blocks, only Assume allows unproven
+                            let decision = crate::domain::can_apply_analytic(mode, arg_positive);
+
+                            if !decision.allow {
+                                return None; // Strict/Generic: block if not proven
                             }
+
+                            let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
+
+                            // Build assumption events for unproven
+                            let assumption_events = if decision.assumption.is_some() {
+                                smallvec::smallvec![crate::assumptions::AssumptionEvent::positive(
+                                    ctx, log_arg
+                                )]
+                            } else {
+                                Default::default()
+                            };
+
+                            return Some(crate::rule::Rewrite {
+                                new_expr,
+                                description: "b^(c*log(b, x)) = x^c".to_string(),
+                                before_local: None,
+                                after_local: None,
+                                assumption_events,
+                            });
                         }
                     }
                     None

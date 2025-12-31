@@ -258,10 +258,23 @@ fn test_log_power_trap() {
 #[test]
 fn test_log_cancellation() {
     // simplify(e^(ln(x) + ln(y))) -> x * y
+    // Requires Positive(x), Positive(y) - only works in Assume mode (V1.3 contract)
     let mut simplifier = create_full_simplifier();
     let input = parse("e^(ln(x) + ln(y))", &mut simplifier.context).unwrap();
     let expected = parse("x * y", &mut simplifier.context).unwrap();
-    assert_equivalent(&mut simplifier, input, expected);
+
+    // Use Assume mode since Generic now blocks Analytic conditions (Positive)
+    let opts = cas_engine::SimplifyOptions {
+        domain: cas_engine::DomainMode::Assume,
+        ..Default::default()
+    };
+    let (sim_input, _) = simplifier.simplify_with_options(input, opts.clone());
+    let (sim_expected, _) = simplifier.simplify_with_options(expected, opts);
+
+    assert!(
+        simplifier.are_equivalent(sim_input, sim_expected),
+        "Log cancellation should work in Assume mode"
+    );
 }
 
 // --- Level 3: The Solver ---
