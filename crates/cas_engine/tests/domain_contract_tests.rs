@@ -899,3 +899,58 @@ fn step_tracks_assumed_nonzero_in_generic() {
         "At least one step should have NonZero assumption event for x"
     );
 }
+
+/// Contract test: Verify that exp(ln(x)) in Assume mode produces a step with Positive assumption.
+///
+/// This tests Analytic condition tracking in timeline.
+#[test]
+fn step_tracks_assumed_positive_in_assume() {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Use Assume mode (allows Analytic conditions)
+    state.options.domain_mode = cas_engine::DomainMode::Assume;
+
+    let parsed =
+        cas_parser::parse("exp(ln(x))", &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: "exp(ln(x))".to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    // Should simplify to x
+    let result_str = match &output.result {
+        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+    assert_eq!(
+        result_str, "x",
+        "exp(ln(x)) should simplify to x in Assume mode"
+    );
+
+    // Check that at least one step has assumption_events with Positive(x)
+    let has_positive_assumption = output.steps.iter().any(|step| {
+        step.assumption_events.iter().any(|event| {
+            matches!(
+                event.key,
+                cas_engine::assumptions::AssumptionKey::Positive { .. }
+            )
+        })
+    });
+
+    assert!(
+        has_positive_assumption,
+        "At least one step should have Positive assumption event for x"
+    );
+}
