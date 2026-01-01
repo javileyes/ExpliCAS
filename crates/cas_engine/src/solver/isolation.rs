@@ -818,7 +818,23 @@ pub fn isolate(
                         }
                         return Err(CasError::UnsupportedInRealDomain(msg));
                     }
-                    LogSolveDecision::Unsupported(msg) => {
+                    LogSolveDecision::Unsupported(msg, missing_conditions) => {
+                        // Register blocked hints for pedagogical feedback
+                        for condition in &missing_conditions {
+                            let event = condition.to_assumption_event(&simplifier.context, b, rhs);
+                            // Get expr_id from condition (base or rhs)
+                            let expr_id = match condition {
+                                crate::solver::domain_guards::SolverAssumption::PositiveBase => b,
+                                crate::solver::domain_guards::SolverAssumption::PositiveRhs => rhs,
+                            };
+                            crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                                key: event.key,
+                                expr_id,
+                                rule: "Take log of both sides",
+                                suggestion: "use `domain assume`",
+                            });
+                        }
+
                         // Graceful degradation: return Residual instead of error
                         // This allows the REPL to show the unsolved equation rather than crash
                         let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);

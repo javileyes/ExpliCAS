@@ -37,7 +37,8 @@ pub enum LogSolveDecision {
     NeedsComplex(String),
 
     /// Cannot justify the step in current mode (strict/generic with unknown).
-    Unsupported(String),
+    /// Carries the missing conditions that would need to be assumed.
+    Unsupported(String, Vec<SolverAssumption>),
 }
 
 /// Assumptions that the solver may record when proceeding under `Assume` mode.
@@ -152,7 +153,8 @@ pub fn classify_log_solve(
         }
         (Proof::Proven, Proof::Unknown, DomainMode::Strict | DomainMode::Generic) => {
             LogSolveDecision::Unsupported(
-                "Cannot prove RHS > 0 for logarithm in current domain mode".to_string(),
+                "Cannot prove RHS > 0 for logarithm".to_string(),
+                vec![SolverAssumption::PositiveRhs],
             )
         }
 
@@ -162,7 +164,8 @@ pub fn classify_log_solve(
         }
         (Proof::Unknown, Proof::Proven, DomainMode::Strict | DomainMode::Generic) => {
             LogSolveDecision::Unsupported(
-                "Cannot prove base > 0 for logarithm in current domain mode".to_string(),
+                "Cannot prove base > 0 for logarithm".to_string(),
+                vec![SolverAssumption::PositiveBase],
             )
         }
 
@@ -175,7 +178,11 @@ pub fn classify_log_solve(
         }
         (Proof::Unknown, Proof::Unknown, DomainMode::Strict | DomainMode::Generic) => {
             LogSolveDecision::Unsupported(
-                "Cannot justify logarithm step in RealOnly mode".to_string(),
+                "Cannot prove base > 0 and RHS > 0 for logarithm".to_string(),
+                vec![
+                    SolverAssumption::PositiveBase,
+                    SolverAssumption::PositiveRhs,
+                ],
             )
         }
 
@@ -253,6 +260,6 @@ mod tests {
         let rhs = ctx.var("y");
 
         let decision = classify_log_solve(&ctx, base, rhs, &opts);
-        assert!(matches!(decision, LogSolveDecision::Unsupported(_)));
+        assert!(matches!(decision, LogSolveDecision::Unsupported(_, _)));
     }
 }

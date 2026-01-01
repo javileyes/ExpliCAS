@@ -1346,7 +1346,7 @@ impl SolverStrategy for UnwrapStrategy {
                                 let _ = msg; // suppress warning
                                 return None;
                             }
-                            LogSolveDecision::Unsupported(_) => {
+                            LogSolveDecision::Unsupported(_, _) => {
                                 // Cannot justify in current mode - skip
                                 return None;
                             }
