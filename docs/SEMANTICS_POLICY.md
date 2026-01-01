@@ -1,6 +1,6 @@
 # SEMANTICS POLICY
 
-> **Version 1.3.1** | Last updated: 2025-12-31
+> **Version 1.3.3** | Last updated: 2026-01-01
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
 
@@ -91,6 +91,29 @@ Result: e^(ln(x))
 - `BlockedHint { key, expr_id, rule, suggestion }` — Structured hint data
 - Thread-local collector: `register_blocked_hint()`, `take_blocked_hints()`
 - Hints are deduplicated by `(rule, AssumptionKey)`
+
+### Transparency Invariant (V1.3.3)
+
+> **Invariant: No assumptions without a timeline record**
+
+When a transformation is applied under an **unproven** side condition (i.e., the condition proof is `Unknown` and the current `DomainMode` allows it), the engine **must**:
+
+1. Attach the corresponding `AssumptionKey` to the rewrite as an `AssumptionEvent`.
+2. Propagate it to the produced `Step` so the timeline shows it under **Assumptions (assumed)**.
+
+This guarantees that any result that depends on a condition is **always traceable** in the timeline.
+
+**Implementation:**
+
+- `CancelDecision.assumed_keys`: SmallVec storing assumed conditions
+- `CancelDecision.allow_with_keys()`: Constructor for allowed-with-assumption decisions
+- `CancelDecision.assumption_events()`: Converts keys to structured events for `Rewrite`
+- Propagation: `Rewrite.assumption_events` → `Step.assumption_events` (automatic in engine)
+
+**Contract tests:**
+
+- `step_tracks_assumed_nonzero_in_generic` — Definability (x ≠ 0)
+- `step_tracks_assumed_positive_in_assume` — Analytic (x > 0)
 
 ---
 

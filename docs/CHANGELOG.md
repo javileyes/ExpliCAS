@@ -5,21 +5,35 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.3] - 2025-12-31 - Timeline Assumption Transparency
+## [1.3.3] - 2026-01-01 - DomainMode Transparency & Pedagogical Hints
 
 ### Added
 
-- **Step Assumption Tracking**: Timeline steps now track assumptions made during transformations
-  - `CancelDecision.assumed_keys` field stores NonZero/Positive conditions assumed
-  - `CancelDecision.assumption_events()` helper converts to structured events
-  - Steps show "Assumed: x ≠ 0" when factor cancellation relies on domain mode
-- **Proven vs Assumed Distinction**: Users can now see which conditions were assumed vs proven
-- **Contract Test**: `step_tracks_assumed_nonzero_in_generic` verifies assumption tracking
+- **Condition-class gating** (Definability vs Analytic) with complementary `DomainMode`s:
+  - `Strict`: only applies rewrites when required conditions are proven
+  - `Generic`: allows *definability holes* (e.g., `x ≠ 0`) and records them
+  - `Assume`: allows analytic assumptions (e.g., `x > 0`) and records them
+- **Pedagogical blocked hints** in the REPL when a rewrite is blocked by an unproven condition (deduplicated, grouped by rule)
+- **Hint verbosity toggle**: `semantics set hints on|off`
+- **Timeline transparency**: Any rewrite applied under an unproven condition records it in the timeline as **Assumptions (assumed)**
+- **Transparency Invariant** documented in `SEMANTICS_POLICY.md`: "No assumptions without timeline record"
+- **Contract tests** for assumption tracking:
+  - `step_tracks_assumed_nonzero_in_generic` — Definability (x ≠ 0)
+  - `step_tracks_assumed_positive_in_assume` — Analytic (x > 0)
 
 ### Changed
 
+- `Generic` no longer performs transformations requiring analytic assumptions (e.g., positivity for log expansions). Such rewrites are now exclusive to `Assume` unless the condition is proven
 - `SimplifyFractionRule` (4 call sites) now uses centralized `assumption_events()` helper
 - Definability hints extended to all 8 `can_cancel_factor` call sites
+
+### Examples
+
+- **Generic mode**:
+  - `x/x → 1` with `Assumed: x ≠ 0`
+  - `ln(x*y)` does **not** expand; REPL shows hint: `use domain assume`
+- **Assume mode**:
+  - `exp(ln(x)) → x` with `Assumed: x > 0`
 
 ---
 
