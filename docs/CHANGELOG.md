@@ -5,6 +5,24 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2025-12-31 - Timeline Assumption Transparency
+
+### Added
+
+- **Step Assumption Tracking**: Timeline steps now track assumptions made during transformations
+  - `CancelDecision.assumed_keys` field stores NonZero/Positive conditions assumed
+  - `CancelDecision.assumption_events()` helper converts to structured events
+  - Steps show "Assumed: x ≠ 0" when factor cancellation relies on domain mode
+- **Proven vs Assumed Distinction**: Users can now see which conditions were assumed vs proven
+- **Contract Test**: `step_tracks_assumed_nonzero_in_generic` verifies assumption tracking
+
+### Changed
+
+- `SimplifyFractionRule` (4 call sites) now uses centralized `assumption_events()` helper
+- Definability hints extended to all 8 `can_cancel_factor` call sites
+
+---
+
 ## [1.3.2] - 2025-12-31 - Hint UX Improvements
 
 ### Added

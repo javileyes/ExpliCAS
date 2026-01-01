@@ -192,15 +192,19 @@ pub struct CancelDecision {
     /// Hint when blocked due to Analytic condition in Generic mode.
     /// Only set for Generic mode blocks, not for Strict.
     pub blocked_hint: Option<BlockedHint>,
+    /// Keys of assumptions made when allowing (for timeline tracking).
+    /// Populated when Unknown proof is allowed by mode.
+    pub assumed_keys: smallvec::SmallVec<[crate::assumptions::AssumptionKey; 2]>,
 }
 
 impl CancelDecision {
-    /// Create a decision that allows cancellation with no assumption.
+    /// Create a decision that allows cancellation with no assumption (proven).
     pub fn allow() -> Self {
         Self {
             allow: true,
             assumption: None,
             blocked_hint: None,
+            assumed_keys: smallvec::SmallVec::new(),
         }
     }
 
@@ -210,6 +214,7 @@ impl CancelDecision {
             allow: false,
             assumption: None,
             blocked_hint: None,
+            assumed_keys: smallvec::SmallVec::new(),
         }
     }
 
@@ -229,6 +234,7 @@ impl CancelDecision {
                 rule,
                 suggestion: "use `domain assume` to allow analytic assumptions",
             }),
+            assumed_keys: smallvec::SmallVec::new(),
         }
     }
 
@@ -238,7 +244,43 @@ impl CancelDecision {
             allow: true,
             assumption: Some(msg),
             blocked_hint: None,
+            assumed_keys: smallvec::SmallVec::new(),
         }
+    }
+
+    /// Create a decision that allows with tracked assumed keys for timeline.
+    /// Use this when Unknown proof is allowed by mode - populates assumption info.
+    pub fn allow_with_keys(
+        msg: &'static str,
+        keys: smallvec::SmallVec<[crate::assumptions::AssumptionKey; 2]>,
+    ) -> Self {
+        Self {
+            allow: true,
+            assumption: Some(msg),
+            blocked_hint: None,
+            assumed_keys: keys,
+        }
+    }
+
+    /// Convert assumed_keys to AssumptionEvents for Rewrite propagation.
+    /// Call this when constructing Rewrite to populate assumption_events.
+    pub fn assumption_events(
+        &self,
+        ctx: &cas_ast::Context,
+        expr_id: cas_ast::ExprId,
+    ) -> smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> {
+        self.assumed_keys
+            .iter()
+            .map(|key| crate::assumptions::AssumptionEvent {
+                key: key.clone(),
+                expr_display: cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: expr_id,
+                }
+                .to_string(),
+                message: format!("Assumed {}", key.condition_display()),
+            })
+            .collect()
     }
 }
 
@@ -321,8 +363,9 @@ pub fn can_cancel_factor_with_hint(
         // Unknown: use ConditionClass gate
         Proof::Unknown => {
             if mode.allows_unproven(ConditionClass::Definability) {
-                // Generic/Assume mode: allow with assumption
-                CancelDecision::allow_with_assumption("cancelled factor assumed nonzero")
+                // Generic/Assume mode: allow with tracked assumption for timeline
+                let keys = smallvec::smallvec![key.clone()];
+                CancelDecision::allow_with_keys("cancelled factor assumed nonzero", keys)
             } else if mode == DomainMode::Strict {
                 // Strict mode: block WITH pedagogical hint
                 let hint = BlockedHint {

@@ -843,3 +843,59 @@ fn blocked_hint_exp_ln_5_no_hint() {
         "No hints expected for provably positive argument"
     );
 }
+
+// =============================================================================
+// Timeline Assumption Tracking Tests
+// =============================================================================
+
+/// Contract test: Verify that (x*y)/x in Generic mode produces a step with assumption_events.
+///
+/// This tests the "proven vs assumed" feature for timeline transparency.
+#[test]
+fn step_tracks_assumed_nonzero_in_generic() {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Ensure Generic mode
+    state.options.domain_mode = cas_engine::DomainMode::Generic;
+
+    let parsed =
+        cas_parser::parse("(x*y)/x", &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: "(x*y)/x".to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    // Should simplify to y
+    let result_str = match &output.result {
+        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+    assert_eq!(result_str, "y", "(x*y)/x should simplify to y");
+
+    // Check that at least one step has assumption_events with NonZero(x)
+    let has_nonzero_assumption = output.steps.iter().any(|step| {
+        step.assumption_events.iter().any(|event| {
+            matches!(
+                event.key,
+                cas_engine::assumptions::AssumptionKey::NonZero { .. }
+            )
+        })
+    });
+
+    assert!(
+        has_nonzero_assumption,
+        "At least one step should have NonZero assumption event for x"
+    );
+}
