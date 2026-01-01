@@ -4674,7 +4674,27 @@ impl Repl {
                                         cas_engine::assumptions::AssumptionKey::ComplexPrincipalBranch { arg_fingerprint, .. } => *arg_fingerprint + 5_000_000,
                                     };
                                     if seen.insert(fp) {
-                                        let condition = event.key.condition_display().to_string();
+                                        // Format: "x ≠ 0" instead of "≠ 0 (NonZero)"
+                                        let condition = match &event.key {
+                                            cas_engine::assumptions::AssumptionKey::NonZero { .. } => {
+                                                format!("{} ≠ 0", event.expr_display)
+                                            }
+                                            cas_engine::assumptions::AssumptionKey::Positive { .. } => {
+                                                format!("{} > 0", event.expr_display)
+                                            }
+                                            cas_engine::assumptions::AssumptionKey::NonNegative { .. } => {
+                                                format!("{} ≥ 0", event.expr_display)
+                                            }
+                                            cas_engine::assumptions::AssumptionKey::Defined { .. } => {
+                                                format!("{} is defined", event.expr_display)
+                                            }
+                                            cas_engine::assumptions::AssumptionKey::InvTrigPrincipalRange { func, .. } => {
+                                                format!("{} in {} principal range", event.expr_display, func)
+                                            }
+                                            cas_engine::assumptions::AssumptionKey::ComplexPrincipalBranch { func, .. } => {
+                                                format!("{}({}) principal branch", func, event.expr_display)
+                                            }
+                                        };
                                         let rule = step.rule_name.clone();
                                         result.push((condition, rule));
                                     }

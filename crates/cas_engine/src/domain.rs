@@ -271,14 +271,38 @@ impl CancelDecision {
     ) -> smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> {
         self.assumed_keys
             .iter()
-            .map(|key| crate::assumptions::AssumptionEvent {
-                key: key.clone(),
-                expr_display: cas_ast::DisplayExpr {
+            .map(|key| {
+                let expr_display = cas_ast::DisplayExpr {
                     context: ctx,
                     id: expr_id,
                 }
-                .to_string(),
-                message: format!("Assumed {}", key.condition_display()),
+                .to_string();
+                // Format: "Assumed x ≠ 0" instead of "Assumed ≠ 0 (NonZero)"
+                let message = match key {
+                    crate::assumptions::AssumptionKey::NonZero { .. } => {
+                        format!("Assumed {} ≠ 0", expr_display)
+                    }
+                    crate::assumptions::AssumptionKey::Positive { .. } => {
+                        format!("Assumed {} > 0", expr_display)
+                    }
+                    crate::assumptions::AssumptionKey::NonNegative { .. } => {
+                        format!("Assumed {} ≥ 0", expr_display)
+                    }
+                    crate::assumptions::AssumptionKey::Defined { .. } => {
+                        format!("Assumed {} is defined", expr_display)
+                    }
+                    crate::assumptions::AssumptionKey::InvTrigPrincipalRange { func, .. } => {
+                        format!("Assumed {} in {} principal range", expr_display, func)
+                    }
+                    crate::assumptions::AssumptionKey::ComplexPrincipalBranch { func, .. } => {
+                        format!("Assumed {}({}) principal branch", func, expr_display)
+                    }
+                };
+                crate::assumptions::AssumptionEvent {
+                    key: key.clone(),
+                    expr_display,
+                    message,
+                }
             })
             .collect()
     }
