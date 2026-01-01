@@ -466,8 +466,9 @@ pub fn can_apply_analytic_with_hint(
         // Unknown: use Analytic ConditionClass gate
         Proof::Unknown => {
             if mode.allows_unproven(ConditionClass::Analytic) {
-                // Assume mode: allow with assumption
-                CancelDecision::allow_with_assumption("assumed positive")
+                // Assume mode: allow with tracked assumption for timeline
+                let keys = smallvec::smallvec![key.clone()];
+                CancelDecision::allow_with_keys("assumed positive", keys)
             } else if mode == DomainMode::Generic {
                 // Generic mode: block WITH pedagogical hint
                 // Auto-register to thread-local for REPL to retrieve
