@@ -4654,6 +4654,37 @@ impl Repl {
                             println!("⚠ {} (from {})", w.message, w.rule_name);
                         }
 
+                        // Collect assumptions from steps for assumption reporting (before steps are consumed)
+                        // Deduplicate by (condition_kind, expr_fingerprint) and group by rule
+                        let show_assumptions = self.state.options.assumption_reporting
+                            != cas_engine::AssumptionReporting::Off;
+                        let assumed_conditions: Vec<(String, String)> = if show_assumptions {
+                            let mut seen: std::collections::HashSet<u64> =
+                                std::collections::HashSet::new();
+                            let mut result = Vec::new();
+                            for step in &output.steps {
+                                for event in &step.assumption_events {
+                                    // Dedupe by fingerprint
+                                    let fp = match &event.key {
+                                        cas_engine::assumptions::AssumptionKey::NonZero { expr_fingerprint } => *expr_fingerprint,
+                                        cas_engine::assumptions::AssumptionKey::Positive { expr_fingerprint } => *expr_fingerprint + 1_000_000,
+                                        cas_engine::assumptions::AssumptionKey::NonNegative { expr_fingerprint } => *expr_fingerprint + 2_000_000,
+                                        cas_engine::assumptions::AssumptionKey::Defined { expr_fingerprint } => *expr_fingerprint + 3_000_000,
+                                        cas_engine::assumptions::AssumptionKey::InvTrigPrincipalRange { arg_fingerprint, .. } => *arg_fingerprint + 4_000_000,
+                                        cas_engine::assumptions::AssumptionKey::ComplexPrincipalBranch { arg_fingerprint, .. } => *arg_fingerprint + 5_000_000,
+                                    };
+                                    if seen.insert(fp) {
+                                        let condition = event.key.condition_display().to_string();
+                                        let rule = step.rule_name.clone();
+                                        result.push((condition, rule));
+                                    }
+                                }
+                            }
+                            result
+                        } else {
+                            Vec::new()
+                        };
+
                         // Show steps using helper
                         // We use output.resolved (input to simplify) and output.steps
                         if !output.steps.is_empty() || self.verbosity != Verbosity::None {
@@ -4778,6 +4809,29 @@ impl Repl {
                                     }
                                 }
                                 println!("   Tip: {}", suggestion);
+                            }
+                        }
+
+                        // Show assumptions summary when assumption_reporting is enabled (after hints)
+                        if show_assumptions && !assumed_conditions.is_empty() {
+                            // Group conditions by rule
+                            let mut by_rule: std::collections::HashMap<String, Vec<String>> =
+                                std::collections::HashMap::new();
+                            for (condition, rule) in &assumed_conditions {
+                                by_rule
+                                    .entry(rule.clone())
+                                    .or_default()
+                                    .push(condition.clone());
+                            }
+
+                            if assumed_conditions.len() == 1 {
+                                let (cond, rule) = &assumed_conditions[0];
+                                println!("ℹ️  Assumptions used (assumed): {} [{}]", cond, rule);
+                            } else {
+                                println!("ℹ️  Assumptions used (assumed):");
+                                for (rule, conds) in &by_rule {
+                                    println!("   - {} [{}]", conds.join(", "), rule);
+                                }
                             }
                         }
                     }

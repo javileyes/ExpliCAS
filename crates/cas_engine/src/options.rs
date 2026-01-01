@@ -115,6 +115,8 @@ pub struct EvalOptions {
     pub assume_scope: crate::semantics::AssumeScope,
     /// Whether to display blocked hints in REPL (default: true)
     pub hints_enabled: bool,
+    /// Explain mode: show assumption summary after each evaluation (default: false)
+    pub explain_mode: bool,
 }
 
 impl EvalOptions {
@@ -201,6 +203,7 @@ impl Default for EvalOptions {
             assumption_reporting: crate::assumptions::AssumptionReporting::default(),
             assume_scope: crate::semantics::AssumeScope::default(),
             hints_enabled: true, // Pedagogical hints on by default
+            explain_mode: false, // Explain mode off by default
         }
     }
 }
