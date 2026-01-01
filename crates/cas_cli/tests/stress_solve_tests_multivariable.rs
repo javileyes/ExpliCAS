@@ -1,7 +1,7 @@
 //! Advanced multivariable stress tests for the equation solver
 //! Tests solving for one variable while treating others as parameters
 
-use cas_ast::{Equation, RelOp};
+use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_engine::engine::Simplifier;
 use cas_engine::solver::solve;
 
@@ -946,8 +946,8 @@ fn test_complex_rational_radical() {
 #[test]
 fn test_nested_fraction_with_powers() {
     // (a/b)^x = c/d
-    // In RealOnly mode, we cannot solve this because base a/b is not provably positive.
-    // The solver correctly returns UnsupportedInRealDomain error.
+    // In RealOnly+Generic mode, base a/b is not provably positive.
+    // The solver returns Residual (graceful degradation) instead of crashing.
     let mut s = Simplifier::with_default_rules();
     let lhs = cas_parser::parse("(a/b)^x", &mut s.context).unwrap();
     let rhs = cas_parser::parse("c/d", &mut s.context).unwrap();
@@ -959,22 +959,20 @@ fn test_nested_fraction_with_powers() {
     };
     let result = solve(&eq, "x", &mut s);
 
-    // In RealOnly+Generic mode, symbolic bases are not allowed for log path
-    // Solver should return UnsupportedInRealDomain error
+    // In RealOnly+Generic mode, symbolic bases return Residual (graceful degradation)
     assert!(
-        result.is_err(),
-        "Should error on (a/b)^x = c/d: base not provably positive"
+        result.is_ok(),
+        "Should return Residual for (a/b)^x = c/d, got: {:?}",
+        result
     );
 
-    // Verify it's the correct error type
-    if let Err(e) = result {
-        assert!(
-            e.to_string().contains("not provably positive")
-                || e.to_string().contains("real domain"),
-            "Error should mention real domain: {}",
-            e
-        );
-    }
+    // Verify it's a Residual
+    let (solution_set, _steps) = result.unwrap();
+    assert!(
+        matches!(solution_set, SolutionSet::Residual(_)),
+        "Should be SolutionSet::Residual, got: {:?}",
+        solution_set
+    );
 }
 
 // ============================================================================

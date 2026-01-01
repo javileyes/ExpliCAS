@@ -6,6 +6,14 @@ use num_traits::Zero;
 
 use crate::error::CasError;
 
+/// Create a residual solve expression: solve(__eq__(lhs, rhs), var)
+/// Used when solver can't justify a step but wants graceful degradation.
+fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
+    let eq_expr = ctx.add(Expr::Function("__eq__".to_string(), vec![lhs, rhs]));
+    let var_expr = ctx.var(var);
+    ctx.add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]))
+}
+
 pub fn isolate(
     lhs: ExprId,
     rhs: ExprId,
@@ -798,16 +806,11 @@ pub fn isolate(
                             && opts.assume_scope == AssumeScope::Wildcard
                         {
                             // Return residual: solve(base^x = rhs, x)
-                            let eq_expr = simplifier
-                                .context
-                                .add(Expr::Function("__eq__".to_string(), vec![lhs, rhs]));
-                            let var_expr = simplifier.context.var(var);
-                            let residual = simplifier
-                                .context
-                                .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
+                            let residual =
+                                mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
                             if simplifier.collect_steps() {
                                 steps.push(SolveStep {
-                                    description: format!("⚠ {} — returning as residual", msg),
+                                    description: format!("{} (residual)", msg),
                                     equation_after: Equation { lhs, rhs, op },
                                 });
                             }
@@ -816,7 +819,16 @@ pub fn isolate(
                         return Err(CasError::UnsupportedInRealDomain(msg));
                     }
                     LogSolveDecision::Unsupported(msg) => {
-                        return Err(CasError::UnsupportedInRealDomain(msg));
+                        // Graceful degradation: return Residual instead of error
+                        // This allows the REPL to show the unsolved equation rather than crash
+                        let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!("{} (residual)", msg),
+                                equation_after: Equation { lhs, rhs, op },
+                            });
+                        }
+                        return Ok((SolutionSet::Residual(residual), steps));
                     }
                 }
                 // ================================================================

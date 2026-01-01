@@ -3,7 +3,7 @@
 //! These tests verify that IsolationStrategy uses the same decision policy
 //! as classify_log_solve(), ensuring coherent handling across all solve paths.
 
-use cas_ast::{Equation, Expr, RelOp};
+use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
 use cas_engine::solver::{solve_with_options, SolveAssumptionsGuard, SolverOptions};
@@ -26,8 +26,8 @@ fn setup_engine() -> Engine {
 // =============================================================================
 
 #[test]
-fn strict_mode_rejects_unknown_rhs() {
-    // 2^x = y in Strict mode - should error, NOT produce ln(y)
+fn strict_mode_returns_residual_for_unknown_rhs() {
+    // 2^x = y in Strict mode - should return Residual (graceful degradation)
     let mut engine = setup_engine();
     let ctx = &mut engine.simplifier.context;
 
@@ -45,17 +45,24 @@ fn strict_mode_rejects_unknown_rhs() {
     let opts = make_opts(DomainMode::Strict, AssumeScope::Real);
     let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
 
-    // Should error (Unsupported in strict mode with unknown RHS)
+    // Should return Residual (graceful degradation, not crash)
     assert!(
-        result.is_err(),
-        "Strict mode should reject unknown RHS for log, got: {:?}",
+        result.is_ok(),
+        "Strict mode should return Residual for unknown RHS, got: {:?}",
         result
+    );
+
+    let (solution_set, _steps) = result.unwrap();
+    assert!(
+        matches!(solution_set, SolutionSet::Residual(_)),
+        "Should be SolutionSet::Residual, got: {:?}",
+        solution_set
     );
 }
 
 #[test]
-fn generic_mode_rejects_unknown_rhs() {
-    // 2^x = y in Generic mode - should error, NOT produce ln(y)
+fn generic_mode_returns_residual_for_unknown_rhs() {
+    // 2^x = y in Generic mode - should return Residual (graceful degradation)
     let mut engine = setup_engine();
     let ctx = &mut engine.simplifier.context;
 
@@ -73,11 +80,18 @@ fn generic_mode_rejects_unknown_rhs() {
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
     let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
 
-    // Should error
+    // Should return Residual (graceful degradation, not crash)
     assert!(
-        result.is_err(),
-        "Generic mode should reject unknown RHS for log, got: {:?}",
+        result.is_ok(),
+        "Generic mode should return Residual for unknown RHS, got: {:?}",
         result
+    );
+
+    let (solution_set, _steps) = result.unwrap();
+    assert!(
+        matches!(solution_set, SolutionSet::Residual(_)),
+        "Should be SolutionSet::Residual, got: {:?}",
+        solution_set
     );
 }
 
