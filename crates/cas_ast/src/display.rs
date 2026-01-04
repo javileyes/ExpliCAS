@@ -715,6 +715,21 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                         }
                     );
                 }
+                // __eq__ is an internal equation representation - display as "lhs = rhs"
+                if name == "__eq__" && args.len() == 2 {
+                    return write!(
+                        f,
+                        "{} = {}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[0]
+                        },
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[1]
+                        }
+                    );
+                }
                 if name == "abs" && args.len() == 1 {
                     write!(
                         f,
