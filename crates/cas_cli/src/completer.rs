@@ -53,6 +53,7 @@ impl CasHelper {
                 "autoexpand".to_string(),
                 "budget".to_string(),
                 "limit".to_string(),
+                "expand_log".to_string(),
                 "history".to_string(),
                 "list".to_string(),
                 "show".to_string(),

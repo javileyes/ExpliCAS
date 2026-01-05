@@ -5,6 +5,44 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-01-05 - Education-First Polish
+
+### Added
+
+- **Issue #1: Output polishing** — `otherwise:` without "if" prefix (✅)
+  - Natural reading in console: `otherwise: ...`
+  - LaTeX uses `\text{otherwise}` cleanly
+
+- **Issue #2: REPL Snapshot Tests** — 8 iconic regression tests (✅)
+  - Deterministic snapshots for solver behavior
+  - Tests include: quadratic, linear, conditional, equal bases
+
+- **Issue #3: Explain Mode** — Compact assumption/hint summary (✅)
+  - `explain on|off` toggle
+  - "Assumptions used" + "Blocked simplifications" blocks
+
+- **Issue #4: Stable API** — `cas_engine::api` module (✅)
+  - Exports: `SolveResult`, `SolutionSet`, `Case`, `ConditionSet`
+  - 10 compile tests in `public_api_contract.rs`
+
+- **Issue #5: `solve --check`** — Solution verification (✅)
+  - One-shot: `solve --check x+2=5, x`
+  - Toggle: `semantics set solve check on|off`
+  - Verifies by substitution in Strict mode
+  - Shows ✓/⚠/ℹ for verified/unverifiable/not-checkable
+
+- **Issue #10: Denominator Guards** — Structured safety (✅)
+  - Clear denominators with `x ≠ value` guards
+  - Conditional output for rational equations
+  - 3 contract tests in `domain_guard_contract_tests.rs`
+
+### Changed
+
+- `EvalOptions` now includes `check_solutions: bool`
+- Solver prepass uses `SolveSafety` classification
+
+---
+
 ## [1.3.7] - 2026-01-05 - SolveSafety Architecture
 
 ### Added

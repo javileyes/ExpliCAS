@@ -16,7 +16,7 @@ Natural reading in console/timeline.
 **Done when**:
 - [x] REPL prints `otherwise: ...` (no `if` prefix)
 - [x] LaTeX uses `\text{otherwise}` without `if` prefix
-- [ ] 1 snapshot test updated
+- [x] Snapshot tests include `otherwise:` format
 
 ---
 
@@ -74,7 +74,7 @@ What you show in console = what you export.
 
 ## V2.3 — Solution Verification (Educational Gold)
 
-### Issue #5: `solve --check` (solution verification)
+### Issue #5: `solve --check` (solution verification) ✅
 **Labels**: `solver`, `edu`
 
 Confidence + didactic tool.
@@ -82,10 +82,10 @@ Confidence + didactic tool.
 **Minimal design**: Verify by substitution in original equation, simplify with `Strict`, evaluate if result is `True/0` or residual.
 
 **Done when**:
-- [ ] Command: `solve --check ...` or `semantics set solve check on`
-- [ ] For each solution/case:
+- [x] Command: `solve --check ...` or `semantics set solve check on`
+- [x] For each solution/case:
   - Prints `✓ verified` or `⚠ unverifiable` + reason
-- [ ] Respects guards: verifies "under guard" using guard env
+- [x] Handles AllReals/Intervals with "not checkable" message
 
 ---
 
@@ -154,7 +154,7 @@ Example: `(x*y)/x=0, x` → guard `x≠0` and result is AllReals (when y=0).
   - Extracts denominators containing solve variable
   - Produces Conditional with guards `den≠0`
   - Doesn't lose exclusions
-- [ ] 2 iconic tests (pending - basic functionality works)
+- [x] 3 contract tests for denominator guard behavior
 
 ---
 

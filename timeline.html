@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \ln({e}^{x}) + {e}^{\ln(x)}</title>
+    <title>CAS Steps: \frac{x}{x} + \frac{{x}^{2}}{{x}^{2}} + \frac{2\cdot x}{2\cdot x}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -424,77 +424,124 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\ln({e}^{x}) + {e}^{\ln(x)}\]
+            \[\frac{x}{x} + \frac{{x}^{2}}{{x}^{2}} + \frac{2\cdot x}{2\cdot x}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Log-Exp Inverse</h3>
+                    <h3>Simplify Nested Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\ln({e}^{x})}} + {e}^{\ln(x)}\]
+                        \[{\color{red}{\frac{x}{x}}} + \frac{{x}^{2}}{{x}^{2}} + \frac{2\cdot x}{2\cdot x}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Factorización de polinomios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Cancel common factor: x</span><div class="substep-math">\[x / x \rightarrow 1\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{log(b, b^x) → x}\)</div>
+                        <div class="rule-name">\(\text{Simplified fraction by GCD: x}\)</div>
                         <div class="local-change">
-                            \[\ln({e}^{x}) \rightarrow x\]
+                            \[\frac{x}{x} \rightarrow 1\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{x}} + {e}^{\ln({\color{green}{x}})}\]
+                        \[{\color{green}{1}} + \frac{{x}^{2}}{{x}^{2}} + \frac{2\cdot x}{2\cdot x}\]
                     </div>
+                    <div class="domain-warning">Domain: Assumed x ≠ 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Exponential-Log Inverse</h3>
+                    <h3>Simplify Nested Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[x + {\color{red}{{e}^{\ln(x)}}}\]
+                        \[1 + {\color{red}{\frac{{x}^{2}}{{x}^{2}}}} + \frac{2\cdot x}{2\cdot x}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{b^log(b, x) = x}\)</div>
+                        <div class="rule-name">\(\text{Simplified fraction by GCD: x^2}\)</div>
                         <div class="local-change">
-                            \[{e}^{\ln(x)} \rightarrow x\]
+                            \[\frac{{x}^{2}}{{x}^{2}} \rightarrow 1\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{x}} + {\color{green}{x}}\]
+                        \[{\color{green}{1}} + {\color{green}{1}} + \frac{2\cdot x}{2\cdot x}\]
                     </div>
-                    <div class="domain-warning">Domain: Assumed x &gt; 0</div>
+                    <div class="domain-warning">Domain: Assumed x^2 ≠ 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Combine Constants</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{x + x}}\]
+                        \[{\color{red}{1 + 1}} + \frac{2\cdot x}{2\cdot x}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine like terms}\)</div>
+                        <div class="rule-name">\(\text{1 + 1 = 2}\)</div>
                         <div class="local-change">
-                            \[x + x \rightarrow 2\cdot x\]
+                            \[1 + 1 \rightarrow 2\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{2\cdot x}}\]
+                        \[{\color{green}{2}} + \frac{{\color{green}{2}}\cdot x}{{\color{green}{2}}\cdot x}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Simplify Nested Fraction</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[2 + {\color{red}{\frac{2\cdot x}{2\cdot x}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Simplified fraction by GCD: 2·x}\)</div>
+                        <div class="local-change">
+                            \[\frac{2\cdot x}{2\cdot x} \rightarrow 1\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[2 + {\color{green}{1}}\]
+                    </div>
+                    <div class="domain-warning">Domain: Assumed 2·x ≠ 0</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Combine Constants</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{2 + 1}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{1 + 2 = 3}\)</div>
+                        <div class="local-change">
+                            \[1 + 2 \rightarrow 3\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{\color{green}{3}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[2\cdot x\]
+            \[3\]
         </div>
     </div>
     <footer>

@@ -1818,6 +1818,22 @@ impl Repl {
                 println!("  If the limit cannot be determined (e.g., sin(x)/x, non-polynomial expressions),");
                 println!("  returns limit(...) as a symbolic residual with a warning.");
             }
+            "expand_log" => {
+                println!("Command: expand_log <expr>");
+                println!();
+                println!("Description: Expands logarithms using log laws (product, quotient, power rules).");
+                println!("             Requires positivity assumptions for correctness.");
+                println!();
+                println!("Laws applied:");
+                println!("  ln(a*b)   → ln(a) + ln(b)   (product rule)");
+                println!("  ln(a/b)   → ln(a) - ln(b)   (quotient rule)");
+                println!("  ln(a^n)   → n*ln(a)         (power rule)");
+                println!();
+                println!("Examples:");
+                println!("  expand_log ln(x^2 * y)     → 2*ln(x) + ln(y)");
+                println!("  expand_log ln(a/b)        → ln(a) - ln(b)");
+                println!("  expand_log ln(x^3 * y^2)  → 3*ln(x) + 2*ln(y)");
+            }
             _ => {
                 println!("Unknown command: {}", parts[1]);
                 self.print_general_help();
@@ -1833,6 +1849,7 @@ impl Repl {
         println!("  <expr>                  Evaluate and simplify an expression");
         println!("  simplify <expr>         Aggressive simplification (full power)");
         println!("  expand <expr>           Expand polynomials");
+        println!("  expand_log <expr>       Expand logarithms (log laws)");
         println!("  factor <expr>           Factor polynomials");
         println!("  collect <expr>, <var>   Group terms by variable");
         println!();
