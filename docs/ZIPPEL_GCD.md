@@ -2,7 +2,7 @@
 
 ## Overview
 
-ExpliCAS includes a high-performance **Zippel modular GCD algorithm** for multivariate polynomial GCD computation. This implementation achieves **2.5× faster performance than Symbolica** on the standard mm_gcd benchmark.
+ExpliCAS includes a high-performance **Zippel modular GCD algorithm** for multivariate polynomial GCD computation. This implementation achieves **fast performance** on the standard mm_gcd benchmark.
 
 ## Performance Results
 

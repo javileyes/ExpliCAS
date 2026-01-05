@@ -162,6 +162,13 @@ impl AssumptionKey {
         }
     }
 
+    /// Create a NonNegative key from an expression (for sqrt arguments)
+    pub fn nonnegative_key(ctx: &Context, expr: ExprId) -> Self {
+        Self::NonNegative {
+            expr_fingerprint: expr_fingerprint(ctx, expr),
+        }
+    }
+
     /// Get a human-readable display for the required condition.
     /// Returns (condition_type, expr_display) tuple.
     pub fn condition_display(&self) -> &'static str {

@@ -61,7 +61,7 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   See [ARCHITECTURE.md](ARCHITECTURE.md#25-cas_engine---pattern-detection-infrastructure-) for details.
 -   **High-Performance Polynomial GCD** ★★ (2025-12):
     -   **Zippel modular GCD algorithm** for multivariate polynomials.
-    -   **2.5× faster than Symbolica** on the mm_gcd benchmark (7-variable, degree-7 polynomials).
+    -   **fast benchmark** on the mm_gcd benchmark (7-variable, degree-7 polynomials).
     -   Rayon parallelism (8 points in parallel on 16 cores).
     -   FxHashMap + precomputed power tables for fast evaluation.
     -   Feature-gated for WASM/no-std compatibility.

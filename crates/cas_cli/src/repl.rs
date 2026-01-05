@@ -4235,8 +4235,8 @@ impl Repl {
         let rest = line[6..].trim();
 
         // Parse --check flag (one-shot override)
-        let (check_enabled, rest) = if rest.starts_with("--check") {
-            let after_flag = rest[7..].trim_start();
+        let (check_enabled, rest) = if let Some(stripped) = rest.strip_prefix("--check") {
+            let after_flag = stripped.trim_start();
             (true, after_flag)
         } else {
             // Use session toggle if no explicit flag

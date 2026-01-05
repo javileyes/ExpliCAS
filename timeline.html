@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{x}{x} + \frac{{x}^{2}}{{x}^{2}} + \frac{2\cdot x}{2\cdot x}</title>
+    <title>CAS Steps: \frac{x - y}{\sqrt{x} - \sqrt{y}}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -424,124 +424,124 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{x}{x} + \frac{{x}^{2}}{{x}^{2}} + \frac{2\cdot x}{2\cdot x}\]
+            \[\frac{x - y}{\sqrt{x} - \sqrt{y}}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
+                    <h3>Rationalize Denominator</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{x}{x}}} + \frac{{x}^{2}}{{x}^{2}} + \frac{2\cdot x}{2\cdot x}\]
+                        \[{\color{red}{\frac{x - y}{\sqrt{x} - \sqrt{y}}}}\]
                     </div>
                     <details class="substeps-details">
-                            <summary>Factorización de polinomios</summary>
+                            <summary>Pasos intermedios</summary>
                             <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Cancel common factor: x</span><div class="substep-math">\[x / x \rightarrow 1\]</div></div></div></details>
+                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{x - y}{\sqrt{x} - \sqrt{y}} \rightarrow \text{Conjugado: } a + b \to a - b\]</div></div><div class="substep">
+                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(x - y) \cdot (a-b)}{(\sqrt{x} - \sqrt{y}) \cdot (a-b)} \rightarrow \frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\sqrt{x}}^{2} - {(-\sqrt{y})}^{2}}\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplified fraction by GCD: x}\)</div>
+                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
                         <div class="local-change">
-                            \[\frac{x}{x} \rightarrow 1\]
+                            \[\frac{x - y}{\sqrt{x} - \sqrt{y}} \rightarrow \frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\sqrt{x}}^{2} - {(-\sqrt{y})}^{2}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{1}} + \frac{{x}^{2}}{{x}^{2}} + \frac{2\cdot x}{2\cdot x}\]
+                        \[{\color{green}{\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\sqrt{x}}^{2} - {(-\sqrt{y})}^{2}}}}\]
                     </div>
-                    <div class="domain-warning">Domain: Assumed x ≠ 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
+                    <h3>Power of a Power</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[1 + {\color{red}{\frac{{x}^{2}}{{x}^{2}}}} + \frac{2\cdot x}{2\cdot x}\]
+                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\color{red}{{\sqrt{x}}^{2}}} - {(-\sqrt{y})}^{2}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplified fraction by GCD: x^2}\)</div>
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
                         <div class="local-change">
-                            \[\frac{{x}^{2}}{{x}^{2}} \rightarrow 1\]
+                            \[{\sqrt{x}}^{2} \rightarrow x\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{1}} + {\color{green}{1}} + \frac{2\cdot x}{2\cdot x}\]
+                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\color{green}{x}} - {(-\sqrt{y})}^{2}}\]
                     </div>
-                    <div class="domain-warning">Domain: Assumed x^2 ≠ 0</div>
+                    <div class="domain-warning">Domain: Assumed x &gt; 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Combine Constants</h3>
+                    <h3>Negative Base Power</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{1 + 1}} + \frac{2\cdot x}{2\cdot x}\]
+                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - {\color{red}{{(-\sqrt{y})}^{2}}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{1 + 1 = 2}\)</div>
+                        <div class="rule-name">\(\text{(-x)^even -> x^even}\)</div>
                         <div class="local-change">
-                            \[1 + 1 \rightarrow 2\]
+                            \[{(-\sqrt{y})}^{2} \rightarrow {\sqrt{y}}^{2}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{2}} + \frac{{\color{green}{2}}\cdot x}{{\color{green}{2}}\cdot x}\]
+                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - {\color{green}{{\sqrt{y}}^{2}}}}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">4</div>
                 <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
+                    <h3>Power of a Power</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[2 + {\color{red}{\frac{2\cdot x}{2\cdot x}}}\]
+                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - {\color{red}{{\sqrt{y}}^{2}}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplified fraction by GCD: 2·x}\)</div>
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
                         <div class="local-change">
-                            \[\frac{2\cdot x}{2\cdot x} \rightarrow 1\]
+                            \[{\sqrt{y}}^{2} \rightarrow y\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[2 + {\color{green}{1}}\]
+                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - {\color{green}{y}}}\]
                     </div>
-                    <div class="domain-warning">Domain: Assumed 2·x ≠ 0</div>
+                    <div class="domain-warning">Domain: Assumed y &gt; 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">5</div>
                 <div class="step-content">
-                    <h3>Combine Constants</h3>
+                    <h3>Cancel Common Factors</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{2 + 1}}\]
+                        \[{\color{red}{\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - y}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{1 + 2 = 3}\)</div>
+                        <div class="rule-name">\(\text{Cancel common factors}\)</div>
                         <div class="local-change">
-                            \[1 + 2 \rightarrow 3\]
+                            \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - y} \rightarrow \frac{\sqrt{x} + \sqrt{y}}{1}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{3}}\]
+                        \[{\color{green}{\frac{\sqrt{x} + \sqrt{y}}{1}}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[3\]
+            \[\sqrt{x} + \sqrt{y}\]
         </div>
     </div>
     <footer>

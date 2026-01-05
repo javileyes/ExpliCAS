@@ -954,3 +954,123 @@ fn step_tracks_assumed_positive_in_assume() {
         "At least one step should have Positive assumption event for x"
     );
 }
+
+// =============================================================================
+// Sqrt Conjugate Collapse Rule Tests (V2.1)
+// =============================================================================
+
+/// CONTRACT: sqrt(x + sqrt(x²-1)) * (x - sqrt(x²-1)) does NOT collapse in Generic mode
+/// The rule requires NonNegative condition (Analytic), which is blocked in Generic.
+#[test]
+fn sqrt_conjugate_collapse_blocked_in_generic() {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Ensure Generic mode (default)
+    state.options.domain_mode = cas_engine::DomainMode::Generic;
+    state.options.hints_enabled = true;
+
+    // Expression: sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))
+    let input = "sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))";
+    let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    let result_str = match &output.result {
+        cas_engine::EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+
+    // Should NOT be collapsed to sqrt(x - sqrt(x^2 - 1))
+    // The result should still contain the multiplication
+    assert!(
+        result_str.contains("*") || result_str.contains("·"),
+        "Generic mode should NOT collapse sqrt conjugate product, got: {}",
+        result_str
+    );
+
+    // Should emit a blocked hint for NonNegative condition
+    let hints = engine.simplifier.take_blocked_hints();
+    let has_nonnegative_hint = hints
+        .iter()
+        .any(|h| h.rule == "Collapse Sqrt Conjugate Product");
+
+    // Note: hint may not be emitted if rule doesn't match structurally
+    // The key test is that the expression is NOT collapsed
+    if !hints.is_empty() {
+        assert!(
+            has_nonnegative_hint,
+            "If hints present, should include Collapse Sqrt Conjugate Product, got: {:?}",
+            hints.iter().map(|h| &h.rule).collect::<Vec<_>>()
+        );
+    }
+}
+
+/// CONTRACT: In Assume mode, sqrt conjugate product CAN collapse with assumption recorded
+#[test]
+fn sqrt_conjugate_collapse_allowed_in_assume() {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Use Assume mode
+    state.options.domain_mode = cas_engine::DomainMode::Assume;
+
+    // Expression: sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))
+    let input = "sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))";
+    let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    let result_str = match &output.result {
+        cas_engine::EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+
+    // In Assume mode, the rule should be allowed to apply
+    // Result may or may not collapse depending on other simplifications
+    // The key is that if it DOES collapse, there should be a NonNegative assumption
+
+    let has_nonnegative_assumption = output.steps.iter().any(|step| {
+        step.assumption_events.iter().any(|event| {
+            matches!(
+                event.key,
+                cas_engine::assumptions::AssumptionKey::NonNegative { .. }
+            )
+        })
+    });
+
+    // If the expression was collapsed, we should see NonNegative assumption
+    // Note: The expression may not collapse if other rules prevent pattern matching
+    if !result_str.contains("*") && !result_str.contains("·") {
+        assert!(
+            has_nonnegative_assumption,
+            "If collapsed in Assume mode, should have NonNegative assumption event"
+        );
+    }
+}

@@ -1593,14 +1593,26 @@ define_rule!(
 // Collapse sqrt(A) * B → sqrt(B) when A and B are conjugates with A*B = 1
 // Example: sqrt(x + sqrt(x²-1)) * (x - sqrt(x²-1)) → sqrt(x - sqrt(x²-1))
 // This works because (p + s)(p - s) = p² - s² = 1 when s = sqrt(p² - 1)
+//
+// IMPORTANT: This transformation requires `other` (the conjugate being lifted into sqrt)
+// to be non-negative (≥ 0), which is an ANALYTIC condition. In Generic mode, this rule
+// should be blocked with a hint. In Assume mode, it proceeds with "Assumed: other ≥ 0".
 define_rule!(
     SqrtConjugateCollapseRule,
     "Collapse Sqrt Conjugate Product",
-    None,
-    PhaseMask::TRANSFORM | PhaseMask::POST,
-    |ctx, expr| {
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Analytic
+    ),
+    |ctx, expr, parent_ctx| {
         use cas_ast::views::MulChainView;
         use num_rational::BigRational;
+        use crate::domain::{can_apply_analytic_with_hint, Proof};
+        use crate::semantics::ValueDomain;
+
+        // Guard: Only apply in RealOnly domain (in Complex, sqrt has branch cuts)
+        if parent_ctx.value_domain() != ValueDomain::RealOnly {
+            return None;
+        }
 
         // Only match Mul expressions
         if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
@@ -1691,18 +1703,47 @@ define_rule!(
         // Additional guard: s must be a sqrt (so p² - s² = p² - t for some t)
         unwrap_sqrt(a_bin.s)?;
 
+        // ================================================================
+        // Analytic Gate: sqrt(other) requires other ≥ 0 (NonNegative)
+        // This is an Analytic condition, blocked in Generic, allowed in Assume
+        // ================================================================
+        let mode = parent_ctx.domain_mode();
+        let key = crate::assumptions::AssumptionKey::nonnegative_key(ctx, other);
+
+        // We don't have a proof for this - it's positivity from structure
+        // The conjugate product could be positive or negative depending on x
+        let proof = Proof::Unknown;
+
+        let decision = can_apply_analytic_with_hint(
+            mode,
+            proof,
+            key,
+            other,
+            "Collapse Sqrt Conjugate Product",
+        );
+
+        if !decision.allow {
+            // Blocked: Generic/Strict mode with unproven NonNegative condition
+            return None;
+        }
+
         // All checks passed! Return sqrt(B) = sqrt(other)
         let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
         let result = ctx.add(Expr::Pow(other, half));
+
+        // Build assumption event if we assumed NonNegative
+        let assumption_events = if decision.assumption.is_some() {
+            smallvec::smallvec![crate::assumptions::AssumptionEvent::nonnegative(ctx, other)]
+        } else {
+            Default::default()
+        };
 
         Some(Rewrite {
             new_expr: result,
             description: "Lift conjugate into sqrt".to_string(),
             before_local: None,
             after_local: None,
-            assumption_events: smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(
-                ctx, other
-            )],
+            assumption_events,
         })
     }
 );
