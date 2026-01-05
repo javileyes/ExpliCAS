@@ -603,6 +603,125 @@ pub fn can_prove_positive(
     prove_positive(ctx, expr, value_domain).is_proven()
 }
 
+/// Attempt to prove whether an expression is non-negative (≥ 0).
+///
+/// This is used by domain-aware simplification to gate operations like
+/// `sqrt(x)² → x` which require x ≥ 0 in reals.
+///
+/// IMPORTANT: This is different from `prove_positive`:
+/// - `prove_positive`: proves x > 0 (strictly positive)
+/// - `prove_nonnegative`: proves x ≥ 0 (non-negative, includes zero)
+///
+/// # Returns
+/// - `Proof::Proven` for expressions **provably** ≥ 0 (0, 2, π, sqrt(x), |x|, x², etc.)
+/// - `Proof::Disproven` for expressions **provably** < 0 (-3, etc.)
+/// - `Proof::Unknown` for variables, functions, and anything uncertain
+pub fn prove_nonnegative(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::semantics::ValueDomain,
+) -> crate::domain::Proof {
+    use crate::domain::Proof;
+    use crate::semantics::ValueDomain;
+    use num_traits::Zero;
+
+    match ctx.get(expr) {
+        // Numbers: check if ≥ 0
+        Expr::Number(n) => {
+            if *n >= num_rational::BigRational::zero() {
+                Proof::Proven
+            } else {
+                Proof::Disproven // negative
+            }
+        }
+
+        // Constants: π, e are positive (hence non-negative); i is not (complex)
+        Expr::Constant(c) => {
+            if matches!(c, cas_ast::Constant::Pi | cas_ast::Constant::E) {
+                Proof::Proven
+            } else {
+                Proof::Unknown // i, undefined, etc.
+            }
+        }
+
+        // Pow: base^exp
+        // Even powers are always non-negative: x² ≥ 0
+        Expr::Pow(base, exp) => {
+            // Check for even power (makes result non-negative for any real base)
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() {
+                    let int_val = n.to_integer();
+                    let two: num_bigint::BigInt = 2.into();
+                    if &int_val % &two == 0.into() && int_val > 0.into() {
+                        // a^(positive even) ≥ 0 always in reals
+                        return Proof::Proven;
+                    }
+                }
+            }
+
+            // Positive base with any exponent in reals is positive (hence non-negative)
+            if value_domain == ValueDomain::RealOnly {
+                let base_positive = prove_positive(ctx, *base, value_domain);
+                if base_positive == Proof::Proven {
+                    return Proof::Proven;
+                }
+            }
+
+            Proof::Unknown
+        }
+
+        // abs(x): always ≥ 0
+        Expr::Function(name, args) if name == "abs" && args.len() == 1 => Proof::Proven,
+
+        // sqrt(x): if defined, result is ≥ 0 (by principal root convention)
+        // But we can't prove sqrt is defined without proving arg ≥ 0 (circular)
+        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+            // If the arg is provably non-negative, sqrt(arg) ≥ 0
+            prove_nonnegative(ctx, args[0], value_domain)
+        }
+
+        // exp(x) > 0 for all real x, hence ≥ 0
+        Expr::Function(name, args) if name == "exp" && args.len() == 1 => {
+            match value_domain {
+                ValueDomain::RealOnly => Proof::Proven, // e^x > 0 for all real x
+                ValueDomain::ComplexEnabled => {
+                    // Only exp(numeric literal) is provably positive
+                    match ctx.get(args[0]) {
+                        Expr::Number(_)
+                        | Expr::Constant(cas_ast::Constant::Pi)
+                        | Expr::Constant(cas_ast::Constant::E) => Proof::Proven,
+                        _ => Proof::Unknown,
+                    }
+                }
+            }
+        }
+
+        // Mul of two non-negative numbers is non-negative
+        Expr::Mul(a, b) => {
+            let proof_a = prove_nonnegative(ctx, *a, value_domain);
+            let proof_b = prove_nonnegative(ctx, *b, value_domain);
+
+            match (proof_a, proof_b) {
+                (Proof::Proven, Proof::Proven) => Proof::Proven,
+                _ => Proof::Unknown, // Can't easily prove otherwise
+            }
+        }
+
+        // Neg: -x ≥ 0 iff x ≤ 0 - check if x is ≤ 0
+        Expr::Neg(inner) => {
+            // If inner is provably ≤ 0 (disproven as non-negative), then -inner ≥ 0
+            let inner_proof = prove_nonnegative(ctx, *inner, value_domain);
+            match inner_proof {
+                Proof::Disproven => Proof::Proven, // -(-3) = 3 ≥ 0
+                _ => Proof::Unknown,
+            }
+        }
+
+        // Variables, other functions: UNKNOWN (conservative)
+        _ => Proof::Unknown,
+    }
+}
+
 /// V2.0: Prove positivity with guard environment.
 ///
 /// Like `prove_positive`, but first checks if the expression's positivity

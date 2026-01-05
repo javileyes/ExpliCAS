@@ -430,16 +430,17 @@ define_rule!(
             if inner_is_even_root {
                 // This transformation requires inner_base >= 0 (NonNegative condition)
                 // Use Analytic gate: Generic blocks with hint, Assume allows
-                // Note: We use prove_positive (x > 0) as it implies x >= 0
+                // Note: We need x >= 0 (NonNegative), not x > 0 (Positive)
+                // because sqrt(0)^2 = 0 is perfectly valid.
                 use crate::domain::can_apply_analytic_with_hint;
-                use crate::helpers::prove_positive;
+                use crate::helpers::prove_nonnegative;
 
                 let mode = parent_ctx.domain_mode();
                 let vd = parent_ctx.value_domain();
-                let proof = prove_positive(ctx, inner_base, vd);
+                let proof = prove_nonnegative(ctx, inner_base, vd);
 
                 // Use Analytic gate with hint for Generic mode blocking
-                let key = crate::assumptions::AssumptionKey::positive_key(ctx, inner_base);
+                let key = crate::assumptions::AssumptionKey::nonnegative_key(ctx, inner_base);
                 let decision = can_apply_analytic_with_hint(
                     mode,
                     proof,
@@ -460,7 +461,7 @@ define_rule!(
                 // Build assumption events if needed
                 let assumption_events = if decision.assumption.is_some() {
                     smallvec::smallvec![
-                        crate::assumptions::AssumptionEvent::positive(ctx, inner_base)
+                        crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base)
                     ]
                 } else {
                     Default::default()

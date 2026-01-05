@@ -13,14 +13,6 @@ ExpliCAS includes a high-performance **Zippel modular GCD algorithm** for multiv
 | **gcd_only** | **1.08s** | **11.4×** |
 | full | ~1.6s | 8.3× |
 
-### Comparison with Other CAS
-
-| System | mm_gcd 7-var Time |
-|--------|------------------|
-| **ExpliCAS** | **~1.6s** 🏆 |
-| Symbolica | 4.1s |
-| Mathematica | 21.6s |
-| SymPy | >100s |
 
 > [!IMPORTANT]
 > **El benchmark requiere la feature `parallel` (default)**

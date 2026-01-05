@@ -2121,6 +2121,7 @@ define_rule!(
         // CancelCommonFactorsRule now does pure factor cancellation.
 
         let mut changed = false;
+        let mut assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = Default::default();
         let mut i = 0;
         while i < num_factors.len() {
             let nf = num_factors[i];
@@ -2143,6 +2144,12 @@ define_rule!(
                     );
                     if !decision.allow {
                         continue; // Skip this pair in strict mode
+                    }
+                    // Record assumption if made
+                    if decision.assumption.is_some() {
+                        assumption_events.push(
+                            crate::assumptions::AssumptionEvent::nonzero(ctx, nf)
+                        );
                     }
                     den_factors.remove(j);
                     found = true;
@@ -2181,6 +2188,12 @@ define_rule!(
                                     );
                                     if !decision.allow {
                                         continue; // Skip in strict mode
+                                    }
+                                    // Record assumption if made
+                                    if decision.assumption.is_some() {
+                                        assumption_events.push(
+                                            crate::assumptions::AssumptionEvent::nonzero(ctx, b)
+                                        );
                                     }
                                     den_factors.remove(j);
                                     found = true; // Remove num factor too
@@ -2306,6 +2319,12 @@ define_rule!(
                                     if !decision.allow {
                                         continue; // Skip in strict mode
                                     }
+                                    // Record assumption if made
+                                    if decision.assumption.is_some() {
+                                        assumption_events.push(
+                                            crate::assumptions::AssumptionEvent::nonzero(ctx, b_n)
+                                        );
+                                    }
                                     den_factors.remove(j);
                                     found = true;
                                     changed = true;
@@ -2350,7 +2369,7 @@ define_rule!(
                 description: "Cancel common factors".to_string(),
                 before_local: None,
                 after_local: None,
-                assumption_events: Default::default(),
+                assumption_events,
             });
         }
 
