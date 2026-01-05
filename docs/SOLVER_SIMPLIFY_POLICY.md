@@ -89,3 +89,76 @@ let opts = SimplifyOptions::for_solve_tactic(DomainMode::Assume);
 - `exponents.rs` - x^0, power-power
 - `trig_inverse_*.rs` - all compositions
 - `hyperbolic.rs` - all compositions
+
+---
+
+## V2.0 Roadmap: Conditional Solutions
+
+> **Status**: Design Phase (Not Implemented)
+
+### Vision
+
+The solver should be **above** `strict/generic/assume` and produce **conditional/piecewise solutions** instead of blocking or assuming silently.
+
+### Key Insight
+
+`strict/generic/assume` become **exploration policies**, not limitations:
+
+| Mode | Behavior with Unproven Conditions |
+|------|-----------------------------------|
+| `Strict` | Returns guarded solutions explicitly |
+| `Generic` | May accept definability holes, returns guards for analytic |
+| `Assume` | Accepts all guards, records assumptions |
+
+### Proposed Extensions
+
+#### 1. `SolutionSet::Conditional`
+
+```rust
+pub enum SolutionSet {
+    // ... existing variants ...
+    Conditional(Vec<Case>),
+}
+
+pub struct Case {
+    when: ConditionSet,  // conjunction of conditions
+    then: SolutionSet,
+}
+```
+
+#### 2. Extended Condition Predicates
+
+Current `AssumptionKey` covers:
+- `NonZero`, `Positive`, `NonNegative`, `Defined`, `InvTrigPrincipalRange`
+
+Needs:
+- `Eq(expr, const)` — for case splits like `a = 0`
+- `Ne(expr, const)` — for clean partitions
+
+#### 3. Example: `a^x = a`
+
+Ideal output:
+```
+Case when: (a = 1) → AllReals    (1^x = 1 ∀x)
+Case when: (a = 0) → (0, ∞)      (0^x = 0 only for x > 0)
+Case when: True    → {1}         (a^1 = a for a ≠ 0, a ≠ 1)
+```
+
+### Incremental Implementation Path
+
+1. **Phase 1**: `SolutionSet::Conditional` without else-branch
+   - If technique requires `cond`, return "solution under `cond`" + "residual"
+
+2. **Phase 2**: Case splits only for "cheap" constants: `a=0`, `a=1`
+   - Very educational, limited branching
+
+3. **Phase 3**: Condition merge/simplification
+   - Absorb subsets, eliminate redundant cases
+
+### Non-Goals (V2.0)
+
+- Full SAT-solver integration
+- Arbitrary Boolean logic in conditions
+- Automatic periodic trig solutions (infinite branches)
+- Complex-domain branch tracking
+
