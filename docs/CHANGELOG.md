@@ -5,6 +5,38 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2026-01-05 - SolveSafety Architecture
+
+### Added
+
+- **SolveSafety Rule Classification System**: Protects solver from applying simplifications that could corrupt solution sets
+  - `SolveSafety` enum: `Always`, `NeedsCondition(ConditionClass)`, `Never`
+  - `SimplifyPurpose` enum: `Eval`, `SolvePrepass`, `SolveTactic`
+  - New `solve_safety:` parameter for `define_rule!` macro
+  - New macro variant for `targets + solve_safety`
+
+- **Solver Pre-pass Integration**: 
+  - `simplifier.simplify_for_solve()` method using `SolvePrepass` purpose
+  - Filter logic in `LocalSimplificationTransformer::apply_rules()`
+  - `SimplifyPurpose` propagation through orchestrator
+
+- **13 Dangerous Rules Marked**:
+  - **Definability (6)**: `CancelCommonFactorsRule`, `SimplifyFractionRule`, `QuotientOfPowersRule`, `IdentityPowerRule`, `MulZeroRule`, `DivZeroRule`
+  - **Analytic (7)**: `LogExpansionRule`, `ExponentialLogRule`, `LogInversePowerRule`, `SplitLogExponentsRule`, `PowerPowerRule`, `HyperbolicCompositionRule`, `TrigInverseExpansionRule`
+
+- **Contract Tests** (`solve_safety_contract_tests.rs`):
+  - Rule marking verification
+  - Prepass blocking validation
+  - Solver correctness tests (`0^x=0`, `a^x=a`, linear equations)
+  - Guardrail tests to prevent unmarked dangerous rules
+
+### Changed
+
+- `SEMANTICS_POLICY.md` updated to V1.3.7 with SolveSafety section
+- `SOLVER_SIMPLIFY_POLICY.md` completely rewritten with implementation details
+
+---
+
 ## [1.3.3] - 2026-01-01 - DomainMode Transparency & Pedagogical Hints
 
 ### Added

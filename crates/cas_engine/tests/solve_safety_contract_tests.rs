@@ -211,3 +211,78 @@ mod solver_tests {
         }
     }
 }
+
+/// Guardrail tests: verify that all sensitive rules are properly marked
+/// as NeedsCondition. If these tests fail, a dangerous rule was added
+/// without proper SolveSafety classification.
+mod guardrail_tests {
+    use cas_engine::rule::{Rule, SimpleRule};
+    use cas_engine::solve_safety::SolveSafety;
+
+    /// Helper macro for SimpleRule implementations
+    macro_rules! assert_simple_not_always {
+        ($rule:expr, $name:expr) => {
+            let safety = SimpleRule::solve_safety(&$rule);
+            assert!(
+                !matches!(safety, SolveSafety::Always),
+                "{} should be marked with NeedsCondition, got: {:?}",
+                $name,
+                safety
+            );
+        };
+    }
+
+    /// Helper macro for Rule implementations (manual impl)
+    macro_rules! assert_rule_not_always {
+        ($rule:expr, $name:expr) => {
+            let safety = Rule::solve_safety(&$rule);
+            assert!(
+                !matches!(safety, SolveSafety::Always),
+                "{} should be marked with NeedsCondition, got: {:?}",
+                $name,
+                safety
+            );
+        };
+    }
+
+    /// All Definability rules must be marked
+    #[test]
+    fn definability_rules_marked() {
+        use cas_engine::rules::algebra::fractions::{
+            CancelCommonFactorsRule, QuotientOfPowersRule, SimplifyFractionRule,
+        };
+        use cas_engine::rules::arithmetic::{DivZeroRule, MulZeroRule};
+        use cas_engine::rules::exponents::IdentityPowerRule;
+
+        assert_simple_not_always!(CancelCommonFactorsRule, "CancelCommonFactorsRule");
+        assert_simple_not_always!(SimplifyFractionRule, "SimplifyFractionRule");
+        assert_simple_not_always!(QuotientOfPowersRule, "QuotientOfPowersRule");
+        assert_simple_not_always!(IdentityPowerRule, "IdentityPowerRule");
+        assert_simple_not_always!(MulZeroRule, "MulZeroRule");
+        assert_simple_not_always!(DivZeroRule, "DivZeroRule");
+    }
+
+    /// All Analytic rules with SimpleRule impl
+    #[test]
+    fn analytic_simplerule_marked() {
+        use cas_engine::rules::exponents::PowerPowerRule;
+        use cas_engine::rules::hyperbolic::HyperbolicCompositionRule;
+        use cas_engine::rules::logarithms::{LogInversePowerRule, SplitLogExponentsRule};
+        use cas_engine::rules::trig_inverse_expansion::TrigInverseExpansionRule;
+
+        assert_simple_not_always!(LogInversePowerRule, "LogInversePowerRule");
+        assert_simple_not_always!(SplitLogExponentsRule, "SplitLogExponentsRule");
+        assert_simple_not_always!(PowerPowerRule, "PowerPowerRule");
+        assert_simple_not_always!(HyperbolicCompositionRule, "HyperbolicCompositionRule");
+        assert_simple_not_always!(TrigInverseExpansionRule, "TrigInverseExpansionRule");
+    }
+
+    /// All Analytic rules with manual Rule impl
+    #[test]
+    fn analytic_rule_manual_marked() {
+        use cas_engine::rules::logarithms::{ExponentialLogRule, LogExpansionRule};
+
+        assert_rule_not_always!(LogExpansionRule, "LogExpansionRule");
+        assert_rule_not_always!(ExponentialLogRule, "ExponentialLogRule");
+    }
+}

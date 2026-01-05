@@ -1,6 +1,6 @@
 # SEMANTICS POLICY
 
-> **Version 1.3.3** | Last updated: 2026-01-01
+> **Version 1.3.7** | Last updated: 2026-01-05
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
 
@@ -556,3 +556,126 @@ The **NormalFormGoal** system is a separate, orthogonal mechanism that controls 
 Unlike the semantic axes defined above (which affect *what* the engine considers valid), NormalFormGoal affects *which rules* are allowed to apply during a specific simplification pass.
 
 See [docs/NORMAL_FORM_GOAL.md](NORMAL_FORM_GOAL.md) for details.
+
+---
+
+## Solver Safety (V1.3.7) ✅
+
+> **New in 1.3.7**: The `SolveSafety` system protects the solver from applying simplifications that could corrupt solution sets.
+
+### Problem Statement
+
+The solver uses the simplifier for pre-pass transformations, but many simplifications that are safe for evaluation can corrupt solution sets:
+
+| Expression | Unsafe Simplification | Problem |
+|------------|----------------------|---------|
+| `(x*y)/x` | → `y` | Lost constraint `x ≠ 0` |
+| `x^0` | → `1` | Lost constraint `x ≠ 0` (0^0 undefined) |
+| `ln(x*y)` | → `ln(x) + ln(y)` | Lost constraint `x > 0, y > 0` |
+| `0^x` | → `0` | Should be `(0, ∞)`, not all reals |
+
+### Solution: SimplifyPurpose Gating
+
+Each rule declares its **SolveSafety classification**, and the solver uses a restricted simplification pipeline.
+
+#### SolveSafety Enum
+
+```rust
+pub enum SolveSafety {
+    Always,                         // Safe for solver pre-pass
+    NeedsCondition(ConditionClass), // Requires condition, blocks in prepass
+    Never,                          // Never safe in solver
+}
+```
+
+#### SimplifyPurpose Enum
+
+```rust
+pub enum SimplifyPurpose {
+    Eval,         // Normal evaluation: all rules
+    SolvePrepass, // Solver pre-pass: only Always rules
+    SolveTactic,  // Solver tactic: per DomainMode
+}
+```
+
+### Filtering Rules
+
+| Purpose | What's Allowed |
+|---------|----------------|
+| `Eval` | All rules (normal simplification) |
+| `SolvePrepass` | Only `SolveSafety::Always` |
+| `SolveTactic` | `Always` + `NeedsCondition` per DomainMode |
+
+#### SolveTactic by DomainMode
+
+| DomainMode | Definability | Analytic |
+|------------|--------------|----------|
+| Strict | ❌ | ❌ |
+| Generic | ✅ | ❌ |
+| Assume | ✅ | ✅ |
+
+### Marked Rules (13 total)
+
+#### Definability (6)
+
+| Rule | File | Condition |
+|------|------|-----------|
+| `CancelCommonFactorsRule` | fractions.rs | factor ≠ 0 |
+| `SimplifyFractionRule` | fractions.rs | denom ≠ 0 |
+| `QuotientOfPowersRule` | fractions.rs | base ≠ 0 |
+| `IdentityPowerRule` | exponents.rs | x^0 needs x ≠ 0 |
+| `MulZeroRule` | arithmetic.rs | hides undefined |
+| `DivZeroRule` | arithmetic.rs | 0/d needs d ≠ 0 |
+
+#### Analytic (7)
+
+| Rule | File | Condition |
+|------|------|-----------|
+| `LogExpansionRule` | logarithms.rs | x, y > 0 |
+| `ExponentialLogRule` | logarithms.rs | x > 0 |
+| `LogInversePowerRule` | logarithms.rs | range |
+| `SplitLogExponentsRule` | logarithms.rs | x > 0 |
+| `PowerPowerRule` | exponents.rs | non-integer exp |
+| `HyperbolicCompositionRule` | hyperbolic.rs | range |
+| `TrigInverseExpansionRule` | trig_inverse_expansion.rs | range |
+
+### API Usage
+
+```rust
+// Solver pre-pass: safe simplification only
+let simplified = simplifier.simplify_for_solve(expr);
+
+// Normal evaluation: all rules
+let (result, steps) = simplifier.simplify(expr);
+
+// Tactic with explicit mode
+let opts = SimplifyOptions::for_solve_tactic(DomainMode::Assume);
+let result = simplifier.simplify_with_options(expr, opts);
+```
+
+### Contract Tests
+
+The `solve_safety_contract_tests.rs` file validates:
+
+1. **Rule marking**: All sensitive rules are `NeedsCondition`
+2. **Prepass blocking**: `ln(x*y)` not expanded in prepass
+3. **Solver correctness**: `0^x = 0` returns `(0, ∞)`, not corrupted
+
+### Guardrails
+
+Guardrail tests ensure new dangerous rules are properly marked:
+
+```rust
+#[test] fn definability_rules_marked() { ... }
+#[test] fn analytic_simplerule_marked() { ... }
+#[test] fn analytic_rule_manual_marked() { ... }
+```
+
+### Adding a New Rule
+
+1. If the rule can change solution sets, add `solve_safety:` to `define_rule!`
+2. Use `Definability` for ≠0 conditions
+3. Use `Analytic` for sign/range/branch conditions
+4. Add to guardrail test in `solve_safety_contract_tests.rs`
+
+See [SOLVER_SIMPLIFY_POLICY.md](SOLVER_SIMPLIFY_POLICY.md) for complete policy.
