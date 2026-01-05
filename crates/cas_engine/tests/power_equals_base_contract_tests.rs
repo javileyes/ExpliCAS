@@ -232,3 +232,61 @@ fn numeric_base_2_to_x_equals_2() {
         other => panic!("Expected Discrete solution set, got: {:?}", other),
     }
 }
+
+// =============================================================================
+// Test 4: 0^x = 0  ⟹  x > 0 (Open interval)
+// =============================================================================
+
+#[test]
+fn zero_to_x_equals_zero_gives_positive_interval() {
+    // 0^x = 0 - should return open interval (0, ∞)
+    // Because 0^0 is undefined and 0^(-n) is undefined
+    let mut engine = setup_engine();
+    let ctx = &mut engine.simplifier.context;
+
+    let zero = ctx.num(0);
+    let x = ctx.var("x");
+    let pow = ctx.add(Expr::Pow(zero, x));
+
+    let eq = Equation {
+        lhs: pow,
+        rhs: zero,
+        op: RelOp::Eq,
+    };
+
+    let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
+    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+
+    assert!(result.is_ok(), "Should solve 0^x = 0, got: {:?}", result);
+
+    let (solution_set, _steps) = result.unwrap();
+
+    // Should be an interval (0, infinity) - via Continuous variant
+    match solution_set {
+        SolutionSet::Continuous(interval) => {
+            use cas_ast::domain::BoundType;
+
+            // Lower should be 0, open (0^0 undefined)
+            assert!(
+                matches!(interval.min_type, BoundType::Open),
+                "Lower bound should be open (0^0 undefined)"
+            );
+
+            // Check lower is 0
+            let lower_str = cas_ast::DisplayExpr {
+                context: &engine.simplifier.context,
+                id: interval.min,
+            }
+            .to_string();
+            assert_eq!(
+                lower_str, "0",
+                "Lower bound should be 0, got: {}",
+                lower_str
+            );
+        }
+        other => panic!(
+            "Expected Continuous solution set (interval), got: {:?}",
+            other
+        ),
+    }
+}

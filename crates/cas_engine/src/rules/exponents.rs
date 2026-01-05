@@ -748,32 +748,28 @@ define_rule!(
                         return None;
                     }
                     // Exponent is variable - check domain_mode
+                    // NOTE: 0^x → 0 requires x > 0 (0^0 undefined, 0^(-n) undefined)
+                    // This is a Type C "domain pruning" rule - dangerous for solvers
+                    // because it destroys the x > 0 constraint needed for correct solution sets.
+                    // Only apply in Assume mode with explicit assumption.
                     let mode = parent_ctx.domain_mode();
                     match mode {
-                        DomainMode::Generic => {
-                            // Assume x > 0
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "0^x -> 0".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                            });
+                        DomainMode::Generic | DomainMode::Strict => {
+                            // Don't simplify - preserve the structure for solver
+                            // In Generic: we could assume, but prefer to keep branch info
+                            // In Strict: can't assume x > 0
+                            return None;
                         }
                         DomainMode::Assume => {
                             return Some(Rewrite {
                                 new_expr: ctx.num(0),
-                                description: "0^x -> 0 (assuming x > 0)".to_string(),
+                                description: "0^x → 0 (assuming x > 0)".to_string(),
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: smallvec::smallvec![
                                     crate::assumptions::AssumptionEvent::positive(ctx, exp)
                                 ],
                             });
-                        }
-                        DomainMode::Strict => {
-                            // Don't simplify - can't assume x > 0
-                            return None;
                         }
                     }
                 }
