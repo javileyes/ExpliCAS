@@ -67,11 +67,17 @@ fn test_solve_session_ref() {
     match result {
         Ok(output) => {
             match output.result {
-                EvalResult::Set(sols) => {
-                    println!("Solutions: {:?}", sols);
-                    // Expect 4
+                EvalResult::SolutionSet(solution_set) => {
+                    println!("Solution set: {:?}", solution_set);
+                    // V2.0: Expect SolutionSet::Discrete with solution 4
+                    match solution_set {
+                        cas_ast::SolutionSet::Discrete(sols) => {
+                            println!("Solutions: {:?}", sols);
+                        }
+                        _ => panic!("Expected Discrete solution set"),
+                    }
                 }
-                _ => panic!("Expected Set result, got {:?}", output.result),
+                _ => panic!("Expected SolutionSet result, got {:?}", output.result),
             }
         }
         Err(e) => panic!("Eval failed: {}", e),

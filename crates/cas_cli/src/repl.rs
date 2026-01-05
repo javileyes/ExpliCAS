@@ -4341,8 +4341,13 @@ impl Repl {
                         }
 
                         match output.result {
+                            EvalResult::SolutionSet(ref solution_set) => {
+                                // V2.0: Display full solution set including Conditional
+                                let ctx = &self.engine.simplifier.context;
+                                println!("Result: {}", display_solution_set(ctx, solution_set));
+                            }
                             EvalResult::Set(sols) => {
-                                // Use ScopedRenderer if scopes are present (e.g., QuadraticFormula)
+                                // Legacy: discrete solutions as Vec<ExprId>
                                 let ctx = &self.engine.simplifier.context;
                                 let sol_strs: Vec<String> = if !output.output_scopes.is_empty() {
                                     let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
@@ -4894,6 +4899,11 @@ impl Repl {
                                     "Result: {}",
                                     cas_ast::DisplayExprStyled::new(context, res, &style_prefs)
                                 );
+                            }
+                            EvalResult::SolutionSet(ref solution_set) => {
+                                // V2.0: Display full solution set
+                                let ctx = &self.engine.simplifier.context;
+                                println!("Result: {}", display_solution_set(ctx, solution_set));
                             }
                             EvalResult::Set(_sols) => {
                                 println!("Result: Set(...)"); // Simplify result logic doesn't usually produce Set

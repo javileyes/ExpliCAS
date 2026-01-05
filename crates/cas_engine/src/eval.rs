@@ -111,9 +111,10 @@ pub struct EvalRequest {
 #[derive(Clone, Debug)]
 pub enum EvalResult {
     Expr(ExprId),
-    Set(Vec<ExprId>), // For Solve multiple roots
-    Bool(bool),       // For Equiv
-    None,             // For commands with no output
+    Set(Vec<ExprId>),                  // For Solve multiple roots (legacy)
+    SolutionSet(cas_ast::SolutionSet), // V2.0: Full solution set including Conditional
+    Bool(bool),                        // For Equiv
+    None,                              // For commands with no output
 }
 
 /// A domain assumption warning with its source rule.
@@ -359,69 +360,10 @@ impl Engine {
 
                     match sol_result {
                         Ok((solution_set, solve_steps)) => {
-                            // Convert SolutionSet to EvalResult::Set (of ExprIds)
-                            // If Discrete, straightforward. If Continuous/AllReals, might need representation.
-                            // EvalResult::Set expects Vec<ExprId>.
-                            // SolutionSet::Discrete(Vec<ExprId>).
-                            // SolutionSet::AllReals -> no standard Expr representation yet? Or maybe a special Expr?
-                            // Let's rely on what solve produces.
-
-                            use cas_ast::SolutionSet;
-                            // For Solve, currently no domain warnings in steps
+                            // V2.0: Return the full SolutionSet preserving all variants
+                            // including Conditional for proper REPL display
                             let warnings: Vec<DomainWarning> = vec![];
-
-                            let eval_res = match solution_set {
-                                SolutionSet::Discrete(sols) => EvalResult::Set(sols),
-                                SolutionSet::AllReals => {
-                                    // Return empty list or special token?
-                                    // For now let's return EvalResult::None or handle via text output in CLI?
-                                    // The user requested EvalResult::Set(Vec<ExprId>).
-                                    // Let's create a special expression "AllReals"?
-                                    let id = self
-                                        .simplifier
-                                        .context
-                                        .add(Expr::Variable("All Reals".to_string())); // Hacky
-                                    EvalResult::Set(vec![id])
-                                }
-                                SolutionSet::Empty => EvalResult::Set(vec![]),
-                                SolutionSet::Continuous(interval) => {
-                                    // Convert interval to Expr representation?
-                                    // Interval has min, max.
-                                    // Let's return min and max in result set for now?? No that's confusing.
-                                    // Let's return the simplified interval boundaries as expressions.
-                                    // Or create a Tuple expr.
-                                    // "EvalResult::Set" implies discrete solutions.
-                                    // But User said "EvalResult::Set(Vec<ExprId>)".
-                                    // I'll return the interval bounds as 2 elements if continuous.
-                                    EvalResult::Set(vec![interval.min, interval.max])
-                                }
-                                SolutionSet::Union(intervals) => {
-                                    let mut bounds = Vec::new();
-                                    for interval in intervals {
-                                        bounds.push(interval.min);
-                                        bounds.push(interval.max);
-                                    }
-                                    EvalResult::Set(bounds)
-                                }
-                                SolutionSet::Residual(residual_expr) => {
-                                    // Return the residual expression as a single result
-                                    EvalResult::Set(vec![residual_expr])
-                                }
-                                SolutionSet::Conditional(cases) => {
-                                    // V2.0: Return first case's solutions for now
-                                    // TODO: Full conditional display in REPL
-                                    if let Some(first_case) = cases.first() {
-                                        match &first_case.then.solutions {
-                                            SolutionSet::Discrete(sols) => {
-                                                EvalResult::Set(sols.clone())
-                                            }
-                                            _ => EvalResult::Set(vec![]),
-                                        }
-                                    } else {
-                                        EvalResult::Set(vec![])
-                                    }
-                                }
-                            };
+                            let eval_res = EvalResult::SolutionSet(solution_set);
                             // Collect output scopes from solver (e.g., QuadraticFormula)
                             let output_scopes = crate::solver::take_scopes();
                             (
