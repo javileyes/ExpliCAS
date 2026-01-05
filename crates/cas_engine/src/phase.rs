@@ -312,6 +312,13 @@ pub struct SimplifyOptions {
     /// - Real: assume for ℝ, error if ℂ needed
     /// - Wildcard: assume for ℝ, residual+warning if ℂ needed
     pub assume_scope: crate::semantics::AssumeScope,
+
+    /// Purpose of simplification: Eval (default), SolvePrepass, or SolveTactic.
+    /// Controls which rules are filtered based on their solve_safety() labels.
+    /// - Eval: all rules allowed
+    /// - SolvePrepass: only SolveSafety::Always rules (no conditional rules)
+    /// - SolveTactic: allows conditional rules based on DomainMode
+    pub simplify_purpose: crate::solve_safety::SimplifyPurpose,
 }
 
 impl Default for SimplifyOptions {
@@ -332,6 +339,7 @@ impl Default for SimplifyOptions {
             assumption_reporting: crate::assumptions::AssumptionReporting::Off, // Default to Off (conservador)
             goal: crate::semantics::NormalFormGoal::default(),                  // Simplify
             assume_scope: crate::semantics::AssumeScope::default(),             // Real
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),  // Eval
         }
     }
 }
@@ -359,6 +367,26 @@ impl SimplifyOptions {
         let mut opt = Self::default();
         opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
         opt
+    }
+
+    /// Options for solver pre-pass: only SolveSafety::Always rules.
+    /// Blocks rules that require assumptions (NeedsCondition) or are never safe (Never).
+    /// This prevents solution set corruption during equation pre-simplification.
+    pub fn for_solve_prepass() -> Self {
+        Self {
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::SolvePrepass,
+            collect_steps: false, // Pre-pass is invisible
+            ..Default::default()
+        }
+    }
+
+    /// Options for solver tactic: conditional rules allowed based on DomainMode.
+    pub fn for_solve_tactic(domain_mode: crate::domain::DomainMode) -> Self {
+        Self {
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::SolveTactic,
+            domain: domain_mode,
+            ..Default::default()
+        }
     }
 }
 

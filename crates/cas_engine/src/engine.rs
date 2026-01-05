@@ -558,6 +558,7 @@ impl Simplifier {
             nodes_snap: 0,
             budget_op: crate::budget::Operation::SimplifyCore,
             stop_reason: None,
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -616,6 +617,15 @@ impl Simplifier {
         // Strip ALL nested __hold wrappers (not just top-level)
         let clean_result = strip_all_holds(&mut self.context, result);
         (clean_result, steps)
+    }
+
+    /// Simplify for solver pre-pass: only safe rules (SolveSafety::Always).
+    /// Blocks rules that could corrupt solution sets (those requiring assumptions).
+    /// Steps are not collected (pre-pass is invisible to user).
+    pub fn simplify_for_solve(&mut self, expr_id: ExprId) -> ExprId {
+        let (result, _steps) =
+            self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::for_solve_prepass());
+        result
     }
 
     pub fn apply_rules_loop(
@@ -727,6 +737,7 @@ impl Simplifier {
                 }
             },
             stop_reason: None,
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -943,6 +954,8 @@ struct LocalSimplificationTransformer<'a> {
     budget_op: crate::budget::Operation,
     /// Set when budget exceeded - contains the error details for the caller
     stop_reason: Option<crate::budget::BudgetExceeded>,
+    /// Purpose of simplification: controls which rules are filtered by solve_safety()
+    simplify_purpose: crate::solve_safety::SimplifyPurpose,
 }
 
 use cas_ast::visitor::Transformer;
@@ -1368,6 +1381,26 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         self.profiler
                             .record_rejected_phase(self.current_phase, rule.name());
                         continue;
+                    }
+                    // SolveSafety filter: in SolvePrepass, only allow Always-safe rules
+                    // In SolveTactic, use domain_mode to determine if conditional rules are allowed
+                    match self.simplify_purpose {
+                        crate::solve_safety::SimplifyPurpose::Eval => {
+                            // Eval: all rules allowed (default behavior)
+                        }
+                        crate::solve_safety::SimplifyPurpose::SolvePrepass => {
+                            // Pre-pass: only SolveSafety::Always rules
+                            if !rule.solve_safety().safe_for_prepass() {
+                                continue;
+                            }
+                        }
+                        crate::solve_safety::SimplifyPurpose::SolveTactic => {
+                            // Tactic: check against domain_mode
+                            let domain_mode = self.initial_parent_ctx.domain_mode();
+                            if !rule.solve_safety().safe_for_tactic(domain_mode) {
+                                continue;
+                            }
+                        }
                     }
                     // Build ParentContext with ancestors from traversal stack + pattern marks + expand_mode + auto_expand
                     let parent_ctx = {
