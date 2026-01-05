@@ -729,9 +729,10 @@ pub fn isolate(
                 // E = log(B, RHS) - Variable is in exponent (e.g., B^x = RHS → x = log_B(RHS))
 
                 // ================================================================
-                // SPECIAL CASE: base^x = base → x = 1 (for base ≠ 0)
+                // POWER EQUALS BASE SHORTCUT: base^x = base
                 // This pattern can be solved without logarithms!
-                // Works for any a ≠ 0: a^1 = a
+                // - For base = 0: 0^x = 0 ⟹ x > 0 (0^0 undefined, 0^t<0 undefined)
+                // - For base ≠ 0: base^x = base ⟹ x = 1 (always valid)
                 // ================================================================
                 // Check if RHS == base (by ID or by simplifying difference to 0)
                 let bases_equal = {
@@ -744,27 +745,49 @@ pub fn isolate(
                     }
                 };
 
-                if bases_equal {
-                    // base^x = base  →  x = 1 (when base ≠ 0)
-                    // Note: For base = 0, 0^x = 0 only when x > 0, but 0^1 = 0 is still valid
-                    let one = simplifier.context.num(1);
+                if bases_equal && op == RelOp::Eq {
+                    // Check if base is 0 (literal)
+                    let base_is_zero =
+                        matches!(simplifier.context.get(b), Expr::Number(n) if n.is_zero());
 
-                    if simplifier.collect_steps() {
-                        steps.push(SolveStep {
-                            description: format!(
-                                "Pattern: {}^{} = {} → {} = 1 (exponent must equal 1 when bases are equal and non-zero)",
-                                cas_ast::DisplayExpr { context: &simplifier.context, id: b },
-                                var,
-                                cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
-                                var
-                            ),
-                            equation_after: Equation { lhs: e, rhs: one, op: op.clone() },
-                        });
+                    if base_is_zero {
+                        // 0^x = 0 ⟹ x > 0 (0^0 and 0^t<0 are undefined in ℝ)
+                        let zero = simplifier.context.num(0);
+
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!(
+                                    "Power Equals Base Shortcut: 0^{} = 0 ⟹ {} > 0 (0^0 undefined, 0^t for t<0 undefined)",
+                                    var, var
+                                ),
+                                equation_after: Equation { lhs: e, rhs: zero, op: RelOp::Gt },
+                            });
+                        }
+
+                        // Solve e > 0
+                        let results = isolate(e, zero, RelOp::Gt, var, simplifier, opts)?;
+                        return prepend_steps(results, steps);
+                    } else {
+                        // base^x = base ⟹ x = 1 (when base ≠ 0)
+                        let one = simplifier.context.num(1);
+
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!(
+                                    "Power Equals Base Shortcut: {}^{} = {} ⟹ {} = 1 (B^1 = B always holds)",
+                                    cas_ast::DisplayExpr { context: &simplifier.context, id: b },
+                                    var,
+                                    cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
+                                    var
+                                ),
+                                equation_after: Equation { lhs: e, rhs: one, op: op.clone() },
+                            });
+                        }
+
+                        // Recurse to solve e = 1
+                        let results = isolate(e, one, op, var, simplifier, opts)?;
+                        return prepend_steps(results, steps);
                     }
-
-                    // Recurse to solve e = 1
-                    let results = isolate(e, one, op, var, simplifier, opts)?;
-                    return prepend_steps(results, steps);
                 }
 
                 // ================================================================
