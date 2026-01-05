@@ -20,25 +20,25 @@ Natural reading in console/timeline.
 
 ---
 
-### Issue #2: REPL "iconic" snapshots (UX regression)
+### Issue #2: REPL "iconic" snapshots (UX regression) ✅
 **Labels**: `tests`, `ux`
 
 Detect experience breakage instantly.
 
-**Recommended set (8–10)**:
-1. `solve a^x=a, x` (Conditional 3 cases)
-2. `solve 2^x=y, x` (Conditional with guard `y>0`)
-3. `solve 0^x=0, x` (interval `x>0`)
-4. `solve a*x^2+b*x+c=0, x` (sqrt or pow per display policy)
-5. `exp(ln(x))` in Generic (blocked + hint)
-6. `exp(ln(x))` in Assume (solved + Assumed x>0)
-7. `ln(x*y)` in Generic (blocked + hint)
-8. `x/x` in Generic (1 + assumption x≠0)
+**Implemented set (8 tests)**:
+1. `solve a^x=a, x` with budget=2 (Conditional 3 cases) ✅
+2. `solve a^x=a, x` with budget=1 (fallback to {1}) ✅
+3. `solve 0^x=0, x` (interval x>0) ✅
+4. `solve 2^x=8, x` (x = ln(8)/ln(2)) ✅
+5. `solve x^2-4=0, x` (quadratic: {-2, 2}) ✅
+6. `solve x+2=5, x` (simple linear: {3}) ✅
+7. `solve 2*x=10, x` (linear mult: {5}) ✅
+8. `solve a^x=a^2, x` (equal bases: {2}) ✅
 
 **Done when**:
-- [ ] Deterministic snapshots (no IDs/noise)
-- [ ] `cargo test` runs them
-- [ ] Short README: "how to update snapshots"
+- [x] Deterministic snapshots (no IDs/noise)
+- [x] `cargo test` runs them
+- [x] Docs in test file: "how to update snapshots"
 
 ---
 

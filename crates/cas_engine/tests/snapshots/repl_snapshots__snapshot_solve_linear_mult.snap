@@ -1,0 +1,5 @@
+---
+source: crates/cas_engine/tests/repl_snapshots.rs
+expression: result
+---
+{ 5 }

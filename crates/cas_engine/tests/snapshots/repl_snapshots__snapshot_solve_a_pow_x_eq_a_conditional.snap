@@ -1,0 +1,8 @@
+---
+source: crates/cas_engine/tests/repl_snapshots.rs
+expression: result
+---
+Conditional:
+  if a = 1: All Real Numbers
+  if a = 0: (0, infinity)
+  otherwise: { 1 }
