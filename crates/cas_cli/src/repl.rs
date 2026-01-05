@@ -1903,6 +1903,7 @@ impl Repl {
         println!("  clear [name]            Clear one or all variables");
         println!("  reset                   Clear all session state (keeps cache)");
         println!("  reset full              Clear all session state AND profile cache");
+        println!("  budget [N]              Set/show Conditional branching budget (0-3)");
         println!("  cache [status|clear]    View or clear profile cache");
         println!("  history / list          Show session history (#ids)");
         println!("  show #<id>              Display a session entry");

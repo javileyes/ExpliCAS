@@ -51,6 +51,7 @@ impl CasHelper {
                 "semantics".to_string(),
                 "context".to_string(),
                 "autoexpand".to_string(),
+                "budget".to_string(),
                 "limit".to_string(),
                 "history".to_string(),
                 "list".to_string(),
@@ -324,6 +325,25 @@ impl Completer for CasHelper {
                         matches.push(Pair {
                             display: m.to_string(),
                             replacement: m.to_string(),
+                        });
+                    }
+                }
+                return Ok((start, matches));
+            }
+        }
+
+        // Check for "budget" context (V2.0 Conditional branching)
+        if line.starts_with("budget ") {
+            let parts: Vec<&str> = line[..pos].split_whitespace().collect();
+            let ends_with_space = line[..pos].ends_with(' ');
+
+            if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
+                let values = vec!["0", "1", "2", "3"];
+                for v in values {
+                    if v.starts_with(word) {
+                        matches.push(Pair {
+                            display: v.to_string(),
+                            replacement: v.to_string(),
                         });
                     }
                 }
