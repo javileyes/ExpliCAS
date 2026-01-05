@@ -212,6 +212,27 @@ impl ConditionSet {
                 .join(" \\land ")
         }
     }
+
+    /// V2.0 Phase 2D: Check if this is an "otherwise" (empty) condition
+    pub fn is_otherwise(&self) -> bool {
+        self.predicates.is_empty()
+    }
+
+    /// V2.0 Phase 2D: Combine two condition sets (conjunction/AND)
+    /// Used for flattening nested Conditionals
+    pub fn and(&self, other: &ConditionSet) -> ConditionSet {
+        let mut combined = self.predicates.clone();
+        for pred in &other.predicates {
+            if !combined.contains(pred) {
+                combined.push(pred.clone());
+            }
+        }
+        // Sort for stable ordering
+        combined.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+        ConditionSet {
+            predicates: combined,
+        }
+    }
 }
 
 /// V2.0: Complete result of a solve operation.
@@ -254,6 +275,14 @@ impl SolveResult {
     /// Check if this result has any actual solutions
     pub fn has_solutions(&self) -> bool {
         !matches!(self.solutions, SolutionSet::Empty)
+    }
+
+    /// V2.0 Phase 2D: Flatten nested Conditional solutions
+    pub fn flatten(self) -> Self {
+        Self {
+            solutions: self.solutions.flatten(),
+            residual: self.residual,
+        }
     }
 }
 
@@ -300,4 +329,58 @@ pub enum SolutionSet {
     /// V2.0: Conditional/piecewise solutions.
     /// Each case represents "if conditions hold, then these solutions".
     Conditional(Vec<Case>),
+}
+
+impl SolutionSet {
+    /// V2.0 Phase 2D: Flatten nested Conditional solutions
+    ///
+    /// Transforms nested structures like:
+    ///   if G1 -> (if G2 -> S else R) else T
+    /// into flat structure:
+    ///   if (G1 ∧ G2) -> S
+    ///   if (G1 ∧ G3) -> R
+    ///   if otherwise -> T
+    pub fn flatten(self) -> SolutionSet {
+        match self {
+            SolutionSet::Conditional(cases) => {
+                let mut out: Vec<Case> = Vec::new();
+
+                for case in cases {
+                    // First, flatten the inner result
+                    let flat_result = case.then.flatten();
+
+                    // Check if the inner solutions are themselves Conditional
+                    if let SolutionSet::Conditional(inner_cases) = flat_result.solutions {
+                        // Expand: combine outer guard with each inner guard
+                        for inner_case in inner_cases {
+                            let combined_guard = case.when.and(&inner_case.when);
+                            out.push(Case {
+                                when: combined_guard,
+                                then: inner_case.then,
+                            });
+                        }
+                    } else {
+                        // Not a nested Conditional, keep as-is (with flattened inner result)
+                        out.push(Case {
+                            when: case.when,
+                            then: Box::new(flat_result),
+                        });
+                    }
+                }
+
+                // Sort: put "otherwise" cases last for better UX
+                out.sort_by(
+                    |a, b| match (a.when.is_otherwise(), b.when.is_otherwise()) {
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        _ => std::cmp::Ordering::Equal,
+                    },
+                );
+
+                SolutionSet::Conditional(out)
+            }
+            // Non-Conditional variants pass through unchanged
+            other => other,
+        }
+    }
 }
