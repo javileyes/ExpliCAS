@@ -127,6 +127,13 @@ pub trait SimpleRule {
     fn category(&self) -> StepCategory {
         StepCategory::General
     }
+
+    /// Safety classification for use in equation solving.
+    /// Default: Always (safe in solver pre-pass).
+    /// Override to NeedsCondition for rules requiring assumptions (e.g., cancellation).
+    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
+        crate::solve_safety::SolveSafety::Always
+    }
 }
 
 /// Main Rule trait with parent-context awareness
@@ -171,6 +178,11 @@ pub trait Rule {
     fn category(&self) -> StepCategory {
         StepCategory::General
     }
+
+    /// Safety classification for use in equation solving.
+    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
+        crate::solve_safety::SolveSafety::Always
+    }
 }
 
 /// Auto-implement Rule for any SimpleRule
@@ -208,5 +220,9 @@ impl<T: SimpleRule> Rule for T {
 
     fn category(&self) -> StepCategory {
         SimpleRule::category(self)
+    }
+
+    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
+        SimpleRule::solve_safety(self)
     }
 }

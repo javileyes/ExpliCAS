@@ -46,6 +46,7 @@ pub mod semantic_equality;
 pub mod semantics;
 pub mod session;
 pub mod session_state;
+pub mod solve_safety;
 pub mod solver;
 pub mod step;
 pub mod step_optimization;

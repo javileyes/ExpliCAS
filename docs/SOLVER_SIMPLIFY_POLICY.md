@@ -1,87 +1,127 @@
-# Solver Simplify Policy
+# Solver Rule Safety Checklist
 
-This document defines the policy for expression simplification during equation solving. The key insight is that **solver simplification must preserve solution sets**, which is stricter than general evaluation simplification.
+Quick reference for implementing `SolveSafety` labels on existing rules.
 
-## Core Principle
+## Classification
 
-> For `solve`, only simplify with transformations that are **global equivalences**. Leave conditional transformations as **controlled solver techniques** (with assumptions and validation).
+- **A (Always Safe)**: Safe in solver pre-pass
+- **B (Definability)**: Requires ≠0 conditions, use in tactics with validation
+- **C (Analytic)**: Requires positivity/ranges, use only in Assume + validation
 
-## SimplifyPurpose Enum
+---
+
+## Rules by Module
+
+### `arithmetic.rs` ✅ All Type A
+- `AddZeroRule` → A
+- `MulOneRule` → A  
+- `MulZeroRule` → A (but see note¹)
+- `SubSameRule` → A
+- `DivOneRule` → A
+- `DivSameRule` → B (requires ≠0)
+- `NegNegRule` → A
+- `CombineConstantsRule` → A
+
+### `canonicalization.rs` ✅ All Type A
+- `CanonicalizeAddRule` → A
+- `CanonicalizeMulRule` → A
+- `NormalizeSignsRule` → A
+- `CollectLikeTermsRule` → A
+
+### `exponents.rs` ⚠️ Mixed
+- `ProductPowerRule` → A (same base)
+- `ProductSameExponentRule` → A
+- `PowerPowerRule` → C (unsafe for non-integer exp)
+- `EvaluatePowerRule` → A (literals only)
+- `IdentityPowerRule`:
+  - `x^1 → x` → A
+  - `x^0 → 1` → B (requires x≠0)
+  - `1^x → 1` → A
+  - `0^x → 0` → C ⛔ (requires x>0) **ALREADY FIXED**
+- `NegativeBasePowerRule` → A (integer exp only)
+- `PowerProductRule` → A
+- `PowerQuotientRule` → A
+
+### `logarithms.rs` ⚠️ Mixed
+- `LogOfOneRule` → A
+- `LogOfBaseRule` → A
+- `LogOfPowerRule` → C (requires base>0, arg>0)
+- `LogExpRule` (`ln(exp(x))→x`) → A (RealOnly contract)
+- `ExpLogRule` (`exp(ln(x))→x`) → C (requires x>0)
+- `LogExpansionRule` (`ln(xy)→ln(x)+ln(y)`) → C (requires x,y>0)
+- `LogContractionRule` → C (inverse of expansion)
+
+### `algebra/fractions.rs` ⚠️ Mixed
+- `CancelCommonFactorsRule` → B (requires factor≠0)
+- `SimplifyFractionRule` → B (requires denom≠0)
+- `AddFractionsRule` → A
+- `DivZeroRule` (`0/d→0`) → B (requires d≠0)
+
+### `trigonometry/` ⚠️ Mixed
+- Basic identities (`sin²+cos²=1`) → A
+- `TanToSinCosRule` → A
+- Double/triple angle → A
+
+### `inverse_trig.rs` ⛔ Type C
+- `AsinSinRule` → C (requires range)
+- `AcosCosRule` → C (requires range)
+- `AtanTanRule` → C (requires range)
+- All inverse compositions → C
+
+### `functions.rs` ✅ Mostly Type A
+- `AbsOfNegRule` → A
+- `AbsOfAbsRule` → A
+- `SqrtSquareRule` → A* (introduces |x|)
+
+### `grouping.rs` ✅ Type A
+- All → A (just restructuring)
+
+---
+
+## Implementation Quick Guide
+
+### Option 1: Disable List (Fast)
+Add to `ContextMode::Solve` in `engine.rs`:
 
 ```rust
-pub enum SimplifyPurpose {
-    /// Standard evaluation - can use Generic/Assume mode freely
-    Eval,
-    /// Solving equations - must preserve solution equivalence
-    Solve,
+ContextMode::Solve => {
+    // Already disabled
+    s.disabled_rules.insert("Simplify Square Root of Square".to_string());
+    s.disabled_rules.insert("Simplify Odd Half-Integer Power".to_string());
+    
+    // Type B - Definability (add these)
+    s.disabled_rules.insert("Cancel Common Factors".to_string());
+    s.disabled_rules.insert("Simplify Fraction".to_string());
+    
+    // Type C - Analytic (add these)
+    s.disabled_rules.insert("Log of Power".to_string());
+    s.disabled_rules.insert("Exp of Log".to_string());
+    s.disabled_rules.insert("Log Expansion".to_string());
+    s.disabled_rules.insert("Log Contraction".to_string());
+    // 0^x already handled in rule itself
 }
 ```
 
-## Rule Classification
+### Option 2: SolveSafety Enum (Clean)
+Add to rule trait:
 
-### Type A: Global Equivalence (Safe for Solve)
+```rust
+pub enum SolveSafety {
+    Always,                    // Type A
+    NeedsDefinability,         // Type B  
+    NeedsAnalytic,             // Type C
+}
 
-Rewrites that preserve solutions for all domain assignments:
-- Normalization: commutative/associative reordering
-- `x + 0 → x`, `x * 1 → x`
-- `x - 0 → x`, `x / 1 → x`
-- Expand/factor (when reversible, no divisions introduced)
-- Collecting like terms
+trait Rule {
+    fn solve_safety(&self) -> SolveSafety { SolveSafety::Always }
+    // ... existing methods
+}
+```
 
-✅ **Allowed in solver pre-pass**
+---
 
-### Type B: Conditional Equivalence (Needs Assumptions)
+## Notes
 
-Rewrites valid under conditions:
-- `x / x → 1` (requires `x ≠ 0`)
-- `ln(exp(x)) → x` (requires appropriate domain)
-- `sqrt(x²) → |x|` or `→ x` with assumptions
+¹ `MulZeroRule` (`0*x→0`): Technically safe, but can hide "x undefined" in equations. Consider B for strict mode.
 
-⚠️ **NOT as pre-simplify**. Only as controlled solver techniques with:
-1. Registered assumption
-2. Solution validation (ideally)
-
-### Type C: Domain Pruning / Case Collapse (Dangerous)
-
-Rewrites that fundamentally change solution structure:
-- `0^x → 0` (loses `x > 0` as condition)
-- `abs(x) → x` (loses `x ≥ 0`)
-- `x/x → 1` applied silently (loses `x ≠ 0`)
-
-🚫 **Prohibited in solver pre-pass** even in Generic/Assume mode
-
-## Current Rule Classification
-
-| Rule | Type | Solver Pre-pass |
-|------|------|-----------------|
-| `x + 0 → x` | A | ✅ Allow |
-| `x * 1 → x` | A | ✅ Allow |
-| `x^1 → x` | A | ✅ Allow |
-| `x^0 → 1` | B | ⚠️ Only if x≠0 proven |
-| `0^x → 0` | C | 🚫 Block |
-| `1^x → 1` | A | ✅ Allow |
-| `x/x → 1` | B | ⚠️ Only with assumption |
-| `0 * x → 0` | C | 🚫 Block (loses x defined) |
-
-## Implementation
-
-### Phase 1: Minimal Fix (Current)
-- Add `solver_safe: bool` flag to rules
-- Block `0^x → 0` when called from solver context
-- Propagate solver context through simplifier
-
-### Phase 2: Full Architecture
-- `SimplifyPurpose` enum in `SimplifyOptions`
-- Rule trait method: `fn allowed_for(&self, purpose: SimplifyPurpose) -> bool`
-- Solver creates temporary simplifier with `Solve` purpose
-
-### Phase 3: Solution Validation
-- Post-solve substitution check
-- Verify solutions satisfy original equation
-- Verify domain conditions (definedness)
-
-## Related Policies
-
-- `DISPLAY_POLICY.md` - Display transform rules
-- `CONST_FOLD_POLICY.md` - Constant folding behavior
-- `ASSUMPTIONS_POLICY.md` - Assumption handling
+² Rules that introduce `abs()` are Type A mathematically but can complicate isolation heuristics.
