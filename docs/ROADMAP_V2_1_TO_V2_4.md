@@ -1,0 +1,175 @@
+# Roadmap V2.1 → V2.4: Education-First Solver Evolution
+
+> **Primary user**: Professor (reliable, explainable, presentable outputs with cases)  
+> **Secondary**: Student (understands "why", clear guards, verification, steps)  
+> **Tertiary**: Integrator (stable API, serialization, contracts/regression)
+
+---
+
+## V2.1 — API/UX Stability & Polish
+
+### Issue #1: Output polishing — `otherwise:` without "if" ✅
+**Labels**: `ux`, `printer`
+
+Natural reading in console/timeline.
+
+**Done when**:
+- [x] REPL prints `otherwise: ...` (no `if` prefix)
+- [x] LaTeX uses `\text{otherwise}` without `if` prefix
+- [ ] 1 snapshot test updated
+
+---
+
+### Issue #2: REPL "iconic" snapshots (UX regression)
+**Labels**: `tests`, `ux`
+
+Detect experience breakage instantly.
+
+**Recommended set (8–10)**:
+1. `solve a^x=a, x` (Conditional 3 cases)
+2. `solve 2^x=y, x` (Conditional with guard `y>0`)
+3. `solve 0^x=0, x` (interval `x>0`)
+4. `solve a*x^2+b*x+c=0, x` (sqrt or pow per display policy)
+5. `exp(ln(x))` in Generic (blocked + hint)
+6. `exp(ln(x))` in Assume (solved + Assumed x>0)
+7. `ln(x*y)` in Generic (blocked + hint)
+8. `x/x` in Generic (1 + assumption x≠0)
+
+**Done when**:
+- [ ] Deterministic snapshots (no IDs/noise)
+- [ ] `cargo test` runs them
+- [ ] Short README: "how to update snapshots"
+
+---
+
+### Issue #3: "Explain mode" for solve (compact summary)
+**Labels**: `edu`, `ux`
+
+Already have assumptions/hints/timeline; need a "professor mode" compact view.
+
+**Done when**:
+- [ ] `semantics set explain on|off` (or similar)
+- [ ] On `solve`, prints:
+  - "Assumptions used" (if any)
+  - "Cases" with guards
+  - "Blocked simplifications" (if any)
+- [ ] Correct dedup, stable order
+
+---
+
+### Issue #4: Stable results API (for integrators)
+**Labels**: `api`, `ffi`
+
+What you show in console = what you export.
+
+**Done when**:
+- [ ] `SolveResult` and `SolutionSet::Conditional` exposed in `cas_engine` public API
+- [ ] Stable `Display`/`to_string` documented
+- [ ] 1 "public API compile" test (or doctest)
+
+---
+
+## V2.3 — Solution Verification (Educational Gold)
+
+### Issue #5: `solve --check` (solution verification)
+**Labels**: `solver`, `edu`
+
+Confidence + didactic tool.
+
+**Minimal design**: Verify by substitution in original equation, simplify with `Strict`, evaluate if result is `True/0` or residual.
+
+**Done when**:
+- [ ] Command: `solve --check ...` or `semantics set solve check on`
+- [ ] For each solution/case:
+  - Prints `✓ verified` or `⚠ unverifiable` + reason
+- [ ] Respects guards: verifies "under guard" using guard env
+
+---
+
+### Issue #6: Verification for intervals/sets
+**Labels**: `solver`, `edu`
+
+Solver already returns intervals (`(0,∞)`), etc.
+
+**Done when**:
+- [ ] When verifying `x ∈ (0,∞)`, prints:
+  - "verified symbolically under guard" if possible
+  - or "requires numeric sampling" if not ready yet
+- [ ] Doesn't lie: if it can't verify, marks as unverifiable
+
+---
+
+### Issue #7: "Counterexample hint" basic (only on failure)
+**Labels**: `edu`, `solver`
+
+Super educational: "this solution fails if…"
+
+**Done when**:
+- [ ] If a solution doesn't verify in Strict, attempts to find simple counterexample (only typical literals: 0,1,2,-1 if applicable) and shows it
+- [ ] If none found, doesn't invent one
+
+---
+
+## V2.2 — Expressive Predicates & Guards
+
+### Issue #8: Add `NeZero/NeOne` + basic simplification
+**Labels**: `solver`, `guards`
+
+**Done when**:
+- [ ] `ConditionPredicate` includes `NeZero/NeOne`
+- [ ] `ConditionSet::simplify()`:
+  - `EqZero` + `NeZero` ⇒ contradiction
+  - `EqOne` + `NeOne` ⇒ contradiction
+  - `NeOne` doesn't eliminate anything yet (but allows clean guards)
+- [ ] Snapshots updated if prints change
+
+---
+
+### Issue #9: Cheap extra implications (guard quality)
+**Labels**: `solver`, `guards`
+
+**Done when**:
+- [ ] Safe rules (RealOnly):
+  - `EqOne(x) ⇒ Positive(x)` (if deciding to assume 1>0 as numeric)
+  - `Positive(x) ⇒ NeZero(x)` (redundancy)
+- [ ] All with simplification tests
+
+---
+
+## V2.4 — New Solve Strategies (with Safety Net)
+
+### Issue #10: Didactic strategy — clear denominators with guards
+**Labels**: `solver`, `edu`
+
+Typical classroom rational equations.
+
+Example: `(x^2-1)/(x-1)=0` → guard `x≠1` and solve `x+1=0`.
+
+**Done when**:
+- [ ] Strategy "clear denominators":
+  - Produces Conditional with guards `den≠0`
+  - Doesn't lose exclusions
+- [ ] 2 iconic tests (the above + one with multiple factors)
+
+---
+
+## Focus Notes
+
+- In education, most important is **output stability** and **honesty** (if can't verify, say so)
+- V2.4 only after `--check`, so each new strategy comes with safety net
+- Run `make ci` before any merge
+
+---
+
+## Suggested Order
+
+1. **Issue #1** (5 min) — `otherwise:` polish
+2. **Issue #2** (1-2h) — Snapshots infrastructure
+3. **Issue #3** (1h) — Explain mode
+4. **Issue #4** (30 min) — API stability
+5. **Issue #5** (2-3h) — `--check` verification
+6. **Issue #6** (1h) — Interval verification
+7. **Issue #7** (1h) — Counterexample hints
+8. **Issue #8** (1h) — `NeZero/NeOne`
+9. **Issue #9** (30 min) — Implications
+10. **Issue #10** (2h) — Clear denominators strategy

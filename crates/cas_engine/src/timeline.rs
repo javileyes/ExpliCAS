@@ -2004,12 +2004,17 @@ impl<'a> SolveTimelineHtml<'a> {
             }
             SolutionSet::Conditional(cases) => {
                 // V2.0 Phase 2C: Pretty-print conditional solutions as piecewise LaTeX
+                // V2.1: Use "otherwise" without "if" prefix for natural reading
                 let case_strs: Vec<String> = cases
                     .iter()
                     .map(|case| {
-                        let cond_latex = case.when.latex_display_with_context(self.context);
                         let sol_latex = self.solution_set_inner_to_latex(&case.then.solutions);
-                        format!("{} & \\text{{if }} {}", sol_latex, cond_latex)
+                        if case.when.is_otherwise() {
+                            format!("{} & \\text{{otherwise}}", sol_latex)
+                        } else {
+                            let cond_latex = case.when.latex_display_with_context(self.context);
+                            format!("{} & \\text{{if }} {}", sol_latex, cond_latex)
+                        }
                     })
                     .collect();
                 format!(r"\begin{{cases}} {} \end{{cases}}", case_strs.join(r" \\ "))

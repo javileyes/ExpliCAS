@@ -5504,12 +5504,17 @@ fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> S
         }
         cas_ast::SolutionSet::Conditional(cases) => {
             // V2.0 Phase 2C: Pretty-print conditional solutions
+            // V2.1: Use "otherwise:" without "if" prefix for natural reading
             let case_strs: Vec<String> = cases
                 .iter()
                 .map(|case| {
-                    let cond_str = case.when.display_with_context(ctx);
                     let sol_str = display_solution_set(ctx, &case.then.solutions);
-                    format!("  if {}: {}", cond_str, sol_str)
+                    if case.when.is_otherwise() {
+                        format!("  otherwise: {}", sol_str)
+                    } else {
+                        let cond_str = case.when.display_with_context(ctx);
+                        format!("  if {}: {}", cond_str, sol_str)
+                    }
                 })
                 .collect();
             format!("Conditional:\n{}", case_strs.join("\n"))
