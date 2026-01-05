@@ -2003,39 +2003,52 @@ impl<'a> SolveTimelineHtml<'a> {
                 .to_latex()
             }
             SolutionSet::Conditional(cases) => {
-                // V2.0: Show conditional solutions as piecewise cases
+                // V2.0 Phase 2C: Pretty-print conditional solutions as piecewise LaTeX
                 let case_strs: Vec<String> = cases
                     .iter()
                     .map(|case| {
-                        let cond_str = if case.when.is_empty() {
-                            "\\text{otherwise}".to_string()
-                        } else {
-                            case.when
-                                .predicates()
-                                .iter()
-                                .map(|p| {
-                                    let expr_latex = LaTeXExpr {
-                                        context: self.context,
-                                        id: p.expr_id(),
-                                    }
-                                    .to_latex();
-                                    format!("{} {}", expr_latex, p.display())
-                                })
-                                .collect::<Vec<_>>()
-                                .join(" \\land ")
-                        };
-                        let sol_latex = match &case.then.solutions {
-                            SolutionSet::Conditional(_) => "\\text{(nested)}".to_string(),
-                            _ => {
-                                // Format the solution set
-                                format!("{:?}", case.then.solutions)
-                            }
-                        };
-                        format!("{} & \\text{{if }} {}", sol_latex, cond_str)
+                        let cond_latex = case.when.latex_display_with_context(self.context);
+                        let sol_latex = self.solution_set_inner_to_latex(&case.then.solutions);
+                        format!("{} & \\text{{if }} {}", sol_latex, cond_latex)
                     })
                     .collect();
                 format!(r"\begin{{cases}} {} \end{{cases}}", case_strs.join(r" \\ "))
             }
+        }
+    }
+
+    /// V2.0 Phase 2C: Render inner solution set to LaTeX (for Conditional cases)
+    fn solution_set_inner_to_latex(&self, solution_set: &SolutionSet) -> String {
+        match solution_set {
+            SolutionSet::Empty => r"\emptyset".to_string(),
+            SolutionSet::AllReals => r"\mathbb{R}".to_string(),
+            SolutionSet::Discrete(exprs) => {
+                let elements: Vec<String> = exprs
+                    .iter()
+                    .map(|e| {
+                        LaTeXExpr {
+                            context: self.context,
+                            id: *e,
+                        }
+                        .to_latex()
+                    })
+                    .collect();
+                format!(r"\left\{{ {} \right\}}", elements.join(", "))
+            }
+            SolutionSet::Continuous(interval) => self.interval_to_latex(interval),
+            SolutionSet::Union(intervals) => {
+                let parts: Vec<String> = intervals
+                    .iter()
+                    .map(|i| self.interval_to_latex(i))
+                    .collect();
+                parts.join(r" \cup ")
+            }
+            SolutionSet::Residual(expr) => LaTeXExpr {
+                context: self.context,
+                id: *expr,
+            }
+            .to_latex(),
+            SolutionSet::Conditional(_) => r"\text{(nested conditional)}".to_string(),
         }
     }
 

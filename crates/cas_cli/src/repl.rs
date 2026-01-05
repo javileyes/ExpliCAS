@@ -5448,29 +5448,11 @@ fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> S
             )
         }
         cas_ast::SolutionSet::Conditional(cases) => {
-            // V2.0: Display conditional solutions
+            // V2.0 Phase 2C: Pretty-print conditional solutions
             let case_strs: Vec<String> = cases
                 .iter()
                 .map(|case| {
-                    let cond_str = if case.when.is_empty() {
-                        "otherwise".to_string()
-                    } else {
-                        case.when
-                            .predicates()
-                            .iter()
-                            .map(|p| {
-                                let expr_str = format!(
-                                    "{}",
-                                    DisplayExpr {
-                                        context: ctx,
-                                        id: p.expr_id()
-                                    }
-                                );
-                                format!("{} {}", expr_str, p.display())
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" and ")
-                    };
+                    let cond_str = case.when.display_with_context(ctx);
                     let sol_str = display_solution_set(ctx, &case.then.solutions);
                     format!("  if {}: {}", cond_str, sol_str)
                 })
