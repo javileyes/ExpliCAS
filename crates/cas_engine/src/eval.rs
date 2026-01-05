@@ -135,6 +135,8 @@ pub struct EvalOutput {
     pub solve_steps: Vec<crate::solver::SolveStep>,
     /// Assumptions made during solver operations (for Assume mode).
     pub solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
+    /// Scopes for context-aware display (e.g., QuadraticFormula -> sqrt display).
+    pub output_scopes: Vec<cas_ast::display_transforms::ScopeTag>,
 }
 
 /// Collect domain warnings from steps with deduplication.
@@ -188,227 +190,262 @@ impl Engine {
         };
 
         // 3. Dispatch Action -> produce EvalResult
-        let (result, domain_warnings, steps, solve_steps, solver_assumptions) = match req.action {
-            EvalAction::Simplify => {
-                // Determine effective context mode for this request
-                let effective_opts = self.effective_options(&state.options, resolved);
+        let (result, domain_warnings, steps, solve_steps, solver_assumptions, output_scopes) =
+            match req.action {
+                EvalAction::Simplify => {
+                    // Determine effective context mode for this request
+                    let effective_opts = self.effective_options(&state.options, resolved);
 
-                // Get cached profile (or build once and cache)
-                let profile = state.profile_cache.get_or_build(&effective_opts);
+                    // Get cached profile (or build once and cache)
+                    let profile = state.profile_cache.get_or_build(&effective_opts);
 
-                // Create simplifier from cached profile
-                let mut ctx_simplifier = Simplifier::from_profile(profile);
-                // Transfer the context (expressions)
-                ctx_simplifier.context = std::mem::take(&mut self.simplifier.context);
+                    // Create simplifier from cached profile
+                    let mut ctx_simplifier = Simplifier::from_profile(profile);
+                    // Transfer the context (expressions)
+                    ctx_simplifier.context = std::mem::take(&mut self.simplifier.context);
 
-                // Use simplify_with_stats to respect expand_policy and other options
-                let mut simplify_opts = effective_opts.to_simplify_options();
+                    // Use simplify_with_stats to respect expand_policy and other options
+                    let mut simplify_opts = effective_opts.to_simplify_options();
 
-                // TOOL DISPATCHER: Detect tool functions and set appropriate goal
-                // This prevents inverse rules from undoing the effect of collect/expand_log
-                if let Expr::Function(name, _args) = ctx_simplifier.context.get(resolved) {
-                    match name.as_str() {
-                        "collect" => {
-                            simplify_opts.goal = crate::semantics::NormalFormGoal::Collected;
+                    // TOOL DISPATCHER: Detect tool functions and set appropriate goal
+                    // This prevents inverse rules from undoing the effect of collect/expand_log
+                    if let Expr::Function(name, _args) = ctx_simplifier.context.get(resolved) {
+                        match name.as_str() {
+                            "collect" => {
+                                simplify_opts.goal = crate::semantics::NormalFormGoal::Collected;
+                            }
+                            "expand_log" => {
+                                simplify_opts.goal = crate::semantics::NormalFormGoal::ExpandedLog;
+                            }
+                            _ => {}
                         }
-                        "expand_log" => {
-                            simplify_opts.goal = crate::semantics::NormalFormGoal::ExpandedLog;
+                    }
+
+                    let (mut res, steps, _stats) =
+                        ctx_simplifier.simplify_with_stats(resolved, simplify_opts);
+
+                    if effective_opts.const_fold == crate::const_fold::ConstFoldMode::Safe {
+                        let mut budget = crate::budget::Budget::preset_cli();
+                        // Use effective_opts to propagate value_domain to const_fold
+                        let cfg = crate::semantics::EvalConfig {
+                            value_domain: effective_opts.value_domain,
+                            branch: effective_opts.branch,
+                            ..Default::default()
+                        };
+                        if let Ok(fold_result) = crate::const_fold::fold_constants(
+                            &mut ctx_simplifier.context,
+                            res,
+                            &cfg,
+                            effective_opts.const_fold,
+                            &mut budget,
+                        ) {
+                            res = fold_result.expr;
                         }
-                        _ => {}
                     }
-                }
 
-                let (mut res, steps, _stats) =
-                    ctx_simplifier.simplify_with_stats(resolved, simplify_opts);
+                    // Transfer context and blocked hints back to main simplifier
+                    // Hints must be transferred BEFORE context to preserve pedagogical feedback
+                    self.simplifier
+                        .extend_blocked_hints(ctx_simplifier.take_blocked_hints());
+                    self.simplifier.context = ctx_simplifier.context;
 
-                if effective_opts.const_fold == crate::const_fold::ConstFoldMode::Safe {
-                    let mut budget = crate::budget::Budget::preset_cli();
-                    // Use effective_opts to propagate value_domain to const_fold
-                    let cfg = crate::semantics::EvalConfig {
-                        value_domain: effective_opts.value_domain,
-                        branch: effective_opts.branch,
-                        ..Default::default()
-                    };
-                    if let Ok(fold_result) = crate::const_fold::fold_constants(
-                        &mut ctx_simplifier.context,
-                        res,
-                        &cfg,
-                        effective_opts.const_fold,
-                        &mut budget,
-                    ) {
-                        res = fold_result.expr;
-                    }
-                }
+                    // Collect domain assumptions from steps with deduplication
+                    let mut warnings = collect_domain_warnings(&steps);
 
-                // Transfer context and blocked hints back to main simplifier
-                // Hints must be transferred BEFORE context to preserve pedagogical feedback
-                self.simplifier
-                    .extend_blocked_hints(ctx_simplifier.take_blocked_hints());
-                self.simplifier.context = ctx_simplifier.context;
-
-                // Collect domain assumptions from steps with deduplication
-                let mut warnings = collect_domain_warnings(&steps);
-
-                // Add warning if i is used in RealOnly mode
-                if effective_opts.value_domain == crate::semantics::ValueDomain::RealOnly
-                    && crate::helpers::contains_i(&self.simplifier.context, resolved)
-                {
-                    let i_warning = DomainWarning {
+                    // Add warning if i is used in RealOnly mode
+                    if effective_opts.value_domain == crate::semantics::ValueDomain::RealOnly
+                        && crate::helpers::contains_i(&self.simplifier.context, resolved)
+                    {
+                        let i_warning = DomainWarning {
                         message:
                             "To use complex arithmetic (i² = -1), run: semantics set value complex"
                                 .to_string(),
                         rule_name: "Imaginary Usage Warning".to_string(),
                     };
-                    // Only add if not already present
-                    if !warnings.iter().any(|w| w.message == i_warning.message) {
-                        warnings.push(i_warning);
+                        // Only add if not already present
+                        if !warnings.iter().any(|w| w.message == i_warning.message) {
+                            warnings.push(i_warning);
+                        }
                     }
+
+                    (
+                        EvalResult::Expr(res),
+                        warnings,
+                        steps,
+                        vec![],
+                        vec![],
+                        vec![],
+                    )
                 }
+                EvalAction::Expand => {
+                    // Treating Expand as Simplify for now, as Simplifier has no explicit expand mode yet exposed cleanly
+                    let (res, steps) = self.simplifier.simplify(resolved);
+                    let warnings = collect_domain_warnings(&steps);
+                    (
+                        EvalResult::Expr(res),
+                        warnings,
+                        steps,
+                        vec![],
+                        vec![],
+                        vec![],
+                    )
+                }
+                EvalAction::Solve { var } => {
+                    // Construct proper Equation for solver
+                    // If resolved is "Equal(lhs, rhs)", use that.
+                    // Otherwise assume "resolved == 0".
 
-                (EvalResult::Expr(res), warnings, steps, vec![], vec![])
-            }
-            EvalAction::Expand => {
-                // Treating Expand as Simplify for now, as Simplifier has no explicit expand mode yet exposed cleanly
-                let (res, steps) = self.simplifier.simplify(resolved);
-                let warnings = collect_domain_warnings(&steps);
-                (EvalResult::Expr(res), warnings, steps, vec![], vec![])
-            }
-            EvalAction::Solve { var } => {
-                // Construct proper Equation for solver
-                // If resolved is "Equal(lhs, rhs)", use that.
-                // Otherwise assume "resolved == 0".
-
-                // We must peek at the resolved expression structure
-                let eq_to_solve = match self.simplifier.context.get(resolved) {
-                    Expr::Function(name, args) if name == "Equal" && args.len() == 2 => {
-                        Equation {
-                            lhs: args[0],
-                            rhs: args[1],
-                            op: RelOp::Eq, // Assuming strict equality for Solve for now
-                        }
-                    }
-                    Expr::Function(name, args) if name == "Less" && args.len() == 2 => Equation {
-                        lhs: args[0],
-                        rhs: args[1],
-                        op: RelOp::Lt,
-                    },
-                    Expr::Function(name, args) if name == "Greater" && args.len() == 2 => {
-                        Equation {
-                            lhs: args[0],
-                            rhs: args[1],
-                            op: RelOp::Gt,
-                        }
-                    }
-                    // Handle other ops if needed, or default to Expr = 0
-                    _ => {
-                        use num_traits::Zero;
-                        let zero = self
-                            .simplifier
-                            .context
-                            .add(Expr::Number(num_rational::BigRational::zero()));
-                        Equation {
-                            lhs: resolved,
-                            rhs: zero,
-                            op: RelOp::Eq,
-                        }
-                    }
-                };
-
-                // Call solver with semantic options and assumption collection
-                let solver_opts = crate::solver::SolverOptions {
-                    value_domain: state.options.value_domain,
-                    domain_mode: state.options.domain_mode,
-                    assume_scope: state.options.assume_scope,
-                };
-
-                // RAII guard for assumption collection (handles nested solves safely)
-                let collect_assumptions = state.options.assumption_reporting
-                    != crate::assumptions::AssumptionReporting::Off;
-                let assumption_guard =
-                    crate::solver::SolveAssumptionsGuard::new(collect_assumptions);
-
-                let sol_result = crate::solver::solve_with_options(
-                    &eq_to_solve,
-                    &var,
-                    &mut self.simplifier,
-                    solver_opts,
-                );
-
-                // Collect assumptions (guard restores previous collector on drop)
-                let solver_assumptions = assumption_guard.finish();
-
-                match sol_result {
-                    Ok((solution_set, solve_steps)) => {
-                        // Convert SolutionSet to EvalResult::Set (of ExprIds)
-                        // If Discrete, straightforward. If Continuous/AllReals, might need representation.
-                        // EvalResult::Set expects Vec<ExprId>.
-                        // SolutionSet::Discrete(Vec<ExprId>).
-                        // SolutionSet::AllReals -> no standard Expr representation yet? Or maybe a special Expr?
-                        // Let's rely on what solve produces.
-
-                        use cas_ast::SolutionSet;
-                        // For Solve, currently no domain warnings in steps
-                        let warnings: Vec<DomainWarning> = vec![];
-
-                        let eval_res = match solution_set {
-                            SolutionSet::Discrete(sols) => EvalResult::Set(sols),
-                            SolutionSet::AllReals => {
-                                // Return empty list or special token?
-                                // For now let's return EvalResult::None or handle via text output in CLI?
-                                // The user requested EvalResult::Set(Vec<ExprId>).
-                                // Let's create a special expression "AllReals"?
-                                let id = self
-                                    .simplifier
-                                    .context
-                                    .add(Expr::Variable("All Reals".to_string())); // Hacky
-                                EvalResult::Set(vec![id])
+                    // We must peek at the resolved expression structure
+                    let eq_to_solve = match self.simplifier.context.get(resolved) {
+                        Expr::Function(name, args) if name == "Equal" && args.len() == 2 => {
+                            Equation {
+                                lhs: args[0],
+                                rhs: args[1],
+                                op: RelOp::Eq, // Assuming strict equality for Solve for now
                             }
-                            SolutionSet::Empty => EvalResult::Set(vec![]),
-                            SolutionSet::Continuous(interval) => {
-                                // Convert interval to Expr representation?
-                                // Interval has min, max.
-                                // Let's return min and max in result set for now?? No that's confusing.
-                                // Let's return the simplified interval boundaries as expressions.
-                                // Or create a Tuple expr.
-                                // "EvalResult::Set" implies discrete solutions.
-                                // But User said "EvalResult::Set(Vec<ExprId>)".
-                                // I'll return the interval bounds as 2 elements if continuous.
-                                EvalResult::Set(vec![interval.min, interval.max])
+                        }
+                        Expr::Function(name, args) if name == "Less" && args.len() == 2 => {
+                            Equation {
+                                lhs: args[0],
+                                rhs: args[1],
+                                op: RelOp::Lt,
                             }
-                            SolutionSet::Union(intervals) => {
-                                let mut bounds = Vec::new();
-                                for interval in intervals {
-                                    bounds.push(interval.min);
-                                    bounds.push(interval.max);
+                        }
+                        Expr::Function(name, args) if name == "Greater" && args.len() == 2 => {
+                            Equation {
+                                lhs: args[0],
+                                rhs: args[1],
+                                op: RelOp::Gt,
+                            }
+                        }
+                        // Handle other ops if needed, or default to Expr = 0
+                        _ => {
+                            use num_traits::Zero;
+                            let zero = self
+                                .simplifier
+                                .context
+                                .add(Expr::Number(num_rational::BigRational::zero()));
+                            Equation {
+                                lhs: resolved,
+                                rhs: zero,
+                                op: RelOp::Eq,
+                            }
+                        }
+                    };
+
+                    // Call solver with semantic options and assumption collection
+                    let solver_opts = crate::solver::SolverOptions {
+                        value_domain: state.options.value_domain,
+                        domain_mode: state.options.domain_mode,
+                        assume_scope: state.options.assume_scope,
+                    };
+
+                    // RAII guard for assumption collection (handles nested solves safely)
+                    let collect_assumptions = state.options.assumption_reporting
+                        != crate::assumptions::AssumptionReporting::Off;
+                    let assumption_guard =
+                        crate::solver::SolveAssumptionsGuard::new(collect_assumptions);
+
+                    let sol_result = crate::solver::solve_with_options(
+                        &eq_to_solve,
+                        &var,
+                        &mut self.simplifier,
+                        solver_opts,
+                    );
+
+                    // Collect assumptions (guard restores previous collector on drop)
+                    let solver_assumptions = assumption_guard.finish();
+
+                    match sol_result {
+                        Ok((solution_set, solve_steps)) => {
+                            // Convert SolutionSet to EvalResult::Set (of ExprIds)
+                            // If Discrete, straightforward. If Continuous/AllReals, might need representation.
+                            // EvalResult::Set expects Vec<ExprId>.
+                            // SolutionSet::Discrete(Vec<ExprId>).
+                            // SolutionSet::AllReals -> no standard Expr representation yet? Or maybe a special Expr?
+                            // Let's rely on what solve produces.
+
+                            use cas_ast::SolutionSet;
+                            // For Solve, currently no domain warnings in steps
+                            let warnings: Vec<DomainWarning> = vec![];
+
+                            let eval_res = match solution_set {
+                                SolutionSet::Discrete(sols) => EvalResult::Set(sols),
+                                SolutionSet::AllReals => {
+                                    // Return empty list or special token?
+                                    // For now let's return EvalResult::None or handle via text output in CLI?
+                                    // The user requested EvalResult::Set(Vec<ExprId>).
+                                    // Let's create a special expression "AllReals"?
+                                    let id = self
+                                        .simplifier
+                                        .context
+                                        .add(Expr::Variable("All Reals".to_string())); // Hacky
+                                    EvalResult::Set(vec![id])
                                 }
-                                EvalResult::Set(bounds)
-                            }
-                            SolutionSet::Residual(residual_expr) => {
-                                // Return the residual expression as a single result
-                                EvalResult::Set(vec![residual_expr])
-                            }
-                        };
-                        (eval_res, warnings, vec![], solve_steps, solver_assumptions)
+                                SolutionSet::Empty => EvalResult::Set(vec![]),
+                                SolutionSet::Continuous(interval) => {
+                                    // Convert interval to Expr representation?
+                                    // Interval has min, max.
+                                    // Let's return min and max in result set for now?? No that's confusing.
+                                    // Let's return the simplified interval boundaries as expressions.
+                                    // Or create a Tuple expr.
+                                    // "EvalResult::Set" implies discrete solutions.
+                                    // But User said "EvalResult::Set(Vec<ExprId>)".
+                                    // I'll return the interval bounds as 2 elements if continuous.
+                                    EvalResult::Set(vec![interval.min, interval.max])
+                                }
+                                SolutionSet::Union(intervals) => {
+                                    let mut bounds = Vec::new();
+                                    for interval in intervals {
+                                        bounds.push(interval.min);
+                                        bounds.push(interval.max);
+                                    }
+                                    EvalResult::Set(bounds)
+                                }
+                                SolutionSet::Residual(residual_expr) => {
+                                    // Return the residual expression as a single result
+                                    EvalResult::Set(vec![residual_expr])
+                                }
+                            };
+                            // Collect output scopes from solver (e.g., QuadraticFormula)
+                            let output_scopes = crate::solver::take_scopes();
+                            (
+                                eval_res,
+                                warnings,
+                                vec![],
+                                solve_steps,
+                                solver_assumptions,
+                                output_scopes,
+                            )
+                        }
+                        Err(e) => return Err(anyhow::anyhow!("Solver error: {}", e)),
                     }
-                    Err(e) => return Err(anyhow::anyhow!("Solver error: {}", e)),
                 }
-            }
-            EvalAction::Equiv { other } => {
-                let resolved_other = match state.resolve_all(&mut self.simplifier.context, other) {
-                    Ok(r) => r,
-                    Err(ResolveError::CircularReference(msg)) => {
-                        return Err(anyhow::anyhow!(
-                            "Circular reference detected in other: {}",
-                            msg
-                        ))
-                    }
-                    Err(e) => return Err(anyhow::anyhow!("Resolution error in other: {}", e)),
-                };
+                EvalAction::Equiv { other } => {
+                    let resolved_other = match state
+                        .resolve_all(&mut self.simplifier.context, other)
+                    {
+                        Ok(r) => r,
+                        Err(ResolveError::CircularReference(msg)) => {
+                            return Err(anyhow::anyhow!(
+                                "Circular reference detected in other: {}",
+                                msg
+                            ))
+                        }
+                        Err(e) => return Err(anyhow::anyhow!("Resolution error in other: {}", e)),
+                    };
 
-                let are_eq = self.simplifier.are_equivalent(resolved, resolved_other);
-                (EvalResult::Bool(are_eq), vec![], vec![], vec![], vec![])
-            }
-        };
+                    let are_eq = self.simplifier.are_equivalent(resolved, resolved_other);
+                    (
+                        EvalResult::Bool(are_eq),
+                        vec![],
+                        vec![],
+                        vec![],
+                        vec![],
+                        vec![],
+                    )
+                }
+            };
 
         Ok(EvalOutput {
             stored_id,
@@ -419,6 +456,7 @@ impl Engine {
             steps,
             solve_steps,
             solver_assumptions,
+            output_scopes,
         })
     }
 }

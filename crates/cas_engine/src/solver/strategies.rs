@@ -872,6 +872,11 @@ impl SolverStrategy for QuadraticStrategy {
                     }
                 };
 
+                // Emit scope for display transforms (sqrt display in quadratic context)
+                crate::solver::emit_scope(cas_ast::display_transforms::ScopeTag::Rule(
+                    "QuadraticFormula",
+                ));
+
                 return Some(Ok((result, steps)));
             }
 
@@ -917,6 +922,11 @@ impl SolverStrategy for QuadraticStrategy {
                     "Inequalities with symbolic coefficients not yet supported".to_string(),
                 )));
             }
+
+            // Emit scope for display transforms (sqrt display in quadratic context)
+            crate::solver::emit_scope(cas_ast::display_transforms::ScopeTag::Rule(
+                "QuadraticFormula",
+            ));
 
             return Some(Ok((SolutionSet::Discrete(vec![sim_sol1, sim_sol2]), steps)));
         }

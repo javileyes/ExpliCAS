@@ -152,6 +152,30 @@ fn clean_display_string(s: &str) -> String {
     result
 }
 
+/// Render an expression with scoped display transforms based on the rule name.
+/// Used for per-step rendering where certain rules (e.g., "Quadratic Formula")
+/// should display sqrt notation instead of ^(1/2).
+fn render_with_rule_scope(ctx: &Context, id: ExprId, rule_name: &str) -> String {
+    // Map rule names to scopes
+    let scopes: Vec<cas_ast::display_transforms::ScopeTag> = match rule_name {
+        "Quadratic Formula" => vec![cas_ast::display_transforms::ScopeTag::Rule(
+            "QuadraticFormula",
+        )],
+        // Add more rule mappings as needed
+        _ => vec![],
+    };
+
+    if scopes.is_empty() {
+        // No transforms apply - use standard display
+        DisplayExpr { context: ctx, id }.to_string()
+    } else {
+        // Use scoped renderer with transforms
+        let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
+        let renderer = cas_ast::display_transforms::ScopedRenderer::new(ctx, &scopes, &registry);
+        renderer.render(id)
+    }
+}
+
 pub struct Repl {
     /// The high-level Engine instance (wraps Simplifier)
     pub engine: cas_engine::Engine,
@@ -4227,33 +4251,73 @@ impl Repl {
                             if self.verbosity != Verbosity::Succinct {
                                 println!("Steps:");
                             }
+                            // Prepare scoped renderer if scopes are present
+                            let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
+                            let has_scopes = !output.output_scopes.is_empty();
+                            let renderer = if has_scopes {
+                                Some(cas_ast::display_transforms::ScopedRenderer::new(
+                                    &self.engine.simplifier.context,
+                                    &output.output_scopes,
+                                    &registry,
+                                ))
+                            } else {
+                                None
+                            };
+
                             for (i, step) in output.solve_steps.iter().enumerate() {
                                 println!("{}. {}", i + 1, step.description);
-                                // Display equation after step
-                                let lhs_d = DisplayExpr {
-                                    context: &self.engine.simplifier.context,
-                                    id: step.equation_after.lhs,
+                                // Display equation after step with scoped transforms
+                                let ctx = &self.engine.simplifier.context;
+                                let (lhs_str, rhs_str) = if let Some(ref r) = renderer {
+                                    (
+                                        r.render(step.equation_after.lhs),
+                                        r.render(step.equation_after.rhs),
+                                    )
+                                } else {
+                                    (
+                                        DisplayExpr {
+                                            context: ctx,
+                                            id: step.equation_after.lhs,
+                                        }
+                                        .to_string(),
+                                        DisplayExpr {
+                                            context: ctx,
+                                            id: step.equation_after.rhs,
+                                        }
+                                        .to_string(),
+                                    )
                                 };
-                                let rhs_d = DisplayExpr {
-                                    context: &self.engine.simplifier.context,
-                                    id: step.equation_after.rhs,
-                                };
-                                println!("   -> {} {} {}", lhs_d, step.equation_after.op, rhs_d);
+                                println!(
+                                    "   -> {} {} {}",
+                                    lhs_str, step.equation_after.op, rhs_str
+                                );
                             }
                         }
 
                         match output.result {
                             EvalResult::Set(sols) => {
-                                let sol_strs: Vec<String> = sols
-                                    .iter()
-                                    .map(|id| {
-                                        DisplayExpr {
-                                            context: &self.engine.simplifier.context,
-                                            id: *id,
-                                        }
-                                        .to_string()
-                                    })
-                                    .collect();
+                                // Use ScopedRenderer if scopes are present (e.g., QuadraticFormula)
+                                let ctx = &self.engine.simplifier.context;
+                                let sol_strs: Vec<String> = if !output.output_scopes.is_empty() {
+                                    let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
+                                    let renderer = cas_ast::display_transforms::ScopedRenderer::new(
+                                        ctx,
+                                        &output.output_scopes,
+                                        &registry,
+                                    );
+                                    sols.iter().map(|id| renderer.render(*id)).collect()
+                                } else {
+                                    // Standard display without transforms
+                                    sols.iter()
+                                        .map(|id| {
+                                            DisplayExpr {
+                                                context: ctx,
+                                                id: *id,
+                                            }
+                                            .to_string()
+                                        })
+                                        .collect()
+                                };
                                 if sol_strs.is_empty() {
                                     println!("Result: No solution");
                                 } else {
@@ -4562,13 +4626,11 @@ impl Repl {
                                     &style_prefs
                                 )
                             ));
-                            let after_disp = clean_display_string(&format!(
-                                "{}",
-                                DisplayExprStyled::new(
-                                    &self.engine.simplifier.context,
-                                    rule_after_id,
-                                    &style_prefs
-                                )
+                            // Use scoped renderer for after expression if rule has transforms
+                            let after_disp = clean_display_string(&render_with_rule_scope(
+                                &self.engine.simplifier.context,
+                                rule_after_id,
+                                &step.rule_name,
                             ));
 
                             if before_disp == after_disp {
@@ -5069,14 +5131,13 @@ impl Repl {
                                                 &style_prefs
                                             )
                                         ));
-                                        let after_disp = clean_display_string(&format!(
-                                            "{}",
-                                            DisplayExprStyled::new(
+                                        // Use scoped renderer for after expression if rule has transforms
+                                        let after_disp =
+                                            clean_display_string(&render_with_rule_scope(
                                                 &temp_simplifier.context,
                                                 rule_after_id,
-                                                &style_prefs
-                                            )
-                                        ));
+                                                &step.rule_name,
+                                            ));
 
                                         println!("   Rule: {} -> {}", before_disp, after_disp);
                                     }

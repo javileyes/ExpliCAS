@@ -1,5 +1,6 @@
 pub mod display; // NEW: Display formatting
 pub mod display_context;
+pub mod display_transforms; // Scoped display transforms (sqrt in quadratic, etc.)
 pub mod domain;
 pub mod error; // Error types for AST operations
 pub mod expression;
