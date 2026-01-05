@@ -26,8 +26,8 @@ fn setup_engine() -> Engine {
 // =============================================================================
 
 #[test]
-fn strict_mode_returns_residual_for_unknown_rhs() {
-    // 2^x = y in Strict mode - should return Residual (graceful degradation)
+fn strict_mode_returns_conditional_for_unknown_rhs() {
+    // V2.0: 2^x = y in Strict mode - should return Conditional (guarded solution)
     let mut engine = setup_engine();
     let ctx = &mut engine.simplifier.context;
 
@@ -45,24 +45,36 @@ fn strict_mode_returns_residual_for_unknown_rhs() {
     let opts = make_opts(DomainMode::Strict, AssumeScope::Real);
     let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
 
-    // Should return Residual (graceful degradation, not crash)
+    // V2.0: Should return Conditional (not crash, not Residual)
     assert!(
         result.is_ok(),
-        "Strict mode should return Residual for unknown RHS, got: {:?}",
+        "Strict mode should return Conditional for unknown RHS, got: {:?}",
         result
     );
 
     let (solution_set, _steps) = result.unwrap();
-    assert!(
-        matches!(solution_set, SolutionSet::Residual(_)),
-        "Should be SolutionSet::Residual, got: {:?}",
-        solution_set
-    );
+
+    // V2.0: Expect Conditional with guarded solution
+    match &solution_set {
+        SolutionSet::Conditional(cases) => {
+            assert!(!cases.is_empty(), "Should have at least one case");
+            // First case should have Positive(y) guard
+            let first = &cases[0];
+            assert!(
+                !first.when.is_empty(),
+                "First case should have a guard (Positive(y))"
+            );
+        }
+        _ => panic!(
+            "Should be SolutionSet::Conditional, got: {:?}",
+            solution_set
+        ),
+    }
 }
 
 #[test]
-fn generic_mode_returns_residual_for_unknown_rhs() {
-    // 2^x = y in Generic mode - should return Residual (graceful degradation)
+fn generic_mode_returns_conditional_for_unknown_rhs() {
+    // V2.0: 2^x = y in Generic mode - should return Conditional (guarded solution)
     let mut engine = setup_engine();
     let ctx = &mut engine.simplifier.context;
 
@@ -80,19 +92,31 @@ fn generic_mode_returns_residual_for_unknown_rhs() {
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
     let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
 
-    // Should return Residual (graceful degradation, not crash)
+    // V2.0: Should return Conditional (not crash, not Residual)
     assert!(
         result.is_ok(),
-        "Generic mode should return Residual for unknown RHS, got: {:?}",
+        "Generic mode should return Conditional for unknown RHS, got: {:?}",
         result
     );
 
     let (solution_set, _steps) = result.unwrap();
-    assert!(
-        matches!(solution_set, SolutionSet::Residual(_)),
-        "Should be SolutionSet::Residual, got: {:?}",
-        solution_set
-    );
+
+    // V2.0: Expect Conditional with guarded solution
+    match &solution_set {
+        SolutionSet::Conditional(cases) => {
+            assert!(!cases.is_empty(), "Should have at least one case");
+            // Verify first case has solution (not just residual)
+            let first = &cases[0];
+            assert!(
+                first.then.has_solutions(),
+                "First case should have actual solutions under guard"
+            );
+        }
+        _ => panic!(
+            "Should be SolutionSet::Conditional, got: {:?}",
+            solution_set
+        ),
+    }
 }
 
 // =============================================================================

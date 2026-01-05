@@ -955,10 +955,18 @@ pub fn isolate(
                         return Err(CasError::UnsupportedInRealDomain(msg));
                     }
                     LogSolveDecision::Unsupported(msg, missing_conditions) => {
+                        // V2.0: Return Conditional solution instead of Residual
+                        // Build guard set from missing conditions
+                        let guard =
+                            crate::solver::domain_guards::SolverAssumption::to_condition_set(
+                                &missing_conditions,
+                                b,
+                                rhs,
+                            );
+
                         // Register blocked hints for pedagogical feedback
                         for condition in &missing_conditions {
                             let event = condition.to_assumption_event(&simplifier.context, b, rhs);
-                            // Get expr_id from condition (base or rhs)
                             let expr_id = match condition {
                                 crate::solver::domain_guards::SolverAssumption::PositiveBase => b,
                                 crate::solver::domain_guards::SolverAssumption::PositiveRhs => rhs,
@@ -971,16 +979,71 @@ pub fn isolate(
                             });
                         }
 
-                        // Graceful degradation: return Residual instead of error
-                        // This allows the REPL to show the unsolved equation rather than crash
-                        let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+                        // Execute solver under guard: proceed with log step as if conditions were proven
+                        let new_rhs = simplifier
+                            .context
+                            .add(Expr::Function("log".to_string(), vec![b, rhs]));
+                        let new_eq = Equation {
+                            lhs: e,
+                            rhs: new_rhs,
+                            op: op.clone(),
+                        };
+
+                        let mut guarded_steps = steps.clone();
                         if simplifier.collect_steps() {
-                            steps.push(SolveStep {
-                                description: format!("{} (residual)", msg),
-                                equation_after: Equation { lhs, rhs, op },
+                            guarded_steps.push(SolveStep {
+                                description: format!(
+                                    "Take log base {} of both sides (under guard: {})",
+                                    cas_ast::DisplayExpr {
+                                        context: &simplifier.context,
+                                        id: b
+                                    },
+                                    msg
+                                ),
+                                equation_after: new_eq,
                             });
                         }
-                        return Ok((SolutionSet::Residual(residual), steps));
+
+                        // Recurse to solve under guard (e = log_b(rhs))
+                        let guarded_result = isolate(e, new_rhs, op.clone(), var, simplifier, opts);
+
+                        // Build the conditional result
+                        let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+
+                        match guarded_result {
+                            Ok((guarded_solutions, mut solve_steps)) => {
+                                guarded_steps.append(&mut solve_steps);
+
+                                // Create conditional: if guard then solutions, otherwise residual
+                                let cases = vec![
+                                    cas_ast::Case::new(guard, guarded_solutions),
+                                    // "otherwise" case with empty guard = true
+                                    cas_ast::Case::new(
+                                        cas_ast::ConditionSet::empty(),
+                                        SolutionSet::Residual(residual),
+                                    ),
+                                ];
+
+                                if simplifier.collect_steps() {
+                                    steps.push(SolveStep {
+                                        description: format!("Conditional solution: {}", msg),
+                                        equation_after: Equation { lhs, rhs, op },
+                                    });
+                                }
+
+                                return Ok((SolutionSet::Conditional(cases), steps));
+                            }
+                            Err(_) => {
+                                // If solving under guard also fails, return just residual
+                                if simplifier.collect_steps() {
+                                    steps.push(SolveStep {
+                                        description: format!("{} (residual)", msg),
+                                        equation_after: Equation { lhs, rhs, op },
+                                    });
+                                }
+                                return Ok((SolutionSet::Residual(residual), steps));
+                            }
+                        }
                     }
                 }
                 // ================================================================

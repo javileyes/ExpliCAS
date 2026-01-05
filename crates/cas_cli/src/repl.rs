@@ -5470,7 +5470,7 @@ fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> S
                             .collect::<Vec<_>>()
                             .join(" and ")
                     };
-                    let sol_str = display_solution_set(ctx, case.then.as_ref());
+                    let sol_str = display_solution_set(ctx, &case.then.solutions);
                     format!("  if {}: {}", cond_str, sol_str)
                 })
                 .collect();

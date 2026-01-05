@@ -135,23 +135,74 @@ impl ConditionSet {
     }
 }
 
+/// V2.0: Complete result of a solve operation.
+///
+/// Contains both the solutions found and any unsolved residual.
+/// This structure allows branches in conditional solutions to be partially resolved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SolveResult {
+    /// The solutions found (may be Conditional for piecewise solutions)
+    pub solutions: SolutionSet,
+    /// Unsolved portion, if any (a solve(...) expression)
+    pub residual: Option<ExprId>,
+}
+
+impl SolveResult {
+    /// Create a result with solutions only (fully resolved)
+    pub fn solved(solutions: SolutionSet) -> Self {
+        Self {
+            solutions,
+            residual: None,
+        }
+    }
+
+    /// Create a result with only residual (nothing solved)
+    pub fn unsolved(residual: ExprId) -> Self {
+        Self {
+            solutions: SolutionSet::Empty,
+            residual: Some(residual),
+        }
+    }
+
+    /// Create a result with both solutions and residual (partially solved)
+    pub fn partial(solutions: SolutionSet, residual: ExprId) -> Self {
+        Self {
+            solutions,
+            residual: Some(residual),
+        }
+    }
+
+    /// Check if this result has any actual solutions
+    pub fn has_solutions(&self) -> bool {
+        !matches!(self.solutions, SolutionSet::Empty)
+    }
+}
+
 /// A single case in a conditional solution set.
 ///
-/// Represents "if `when` holds, then solutions are `then`".
+/// Represents "if `when` holds, then `then` is the result".
 #[derive(Debug, Clone, PartialEq)]
 pub struct Case {
     /// Conditions that must hold for this case
     pub when: ConditionSet,
-    /// Solutions when conditions hold
-    pub then: Box<SolutionSet>,
+    /// Complete solve result when conditions hold (may include residual)
+    pub then: Box<SolveResult>,
 }
 
 impl Case {
-    /// Create a new case
-    pub fn new(when: ConditionSet, then: SolutionSet) -> Self {
+    /// Create a new case with fully resolved solutions
+    pub fn new(when: ConditionSet, solutions: SolutionSet) -> Self {
         Self {
             when,
-            then: Box::new(then),
+            then: Box::new(SolveResult::solved(solutions)),
+        }
+    }
+
+    /// Create a new case with a complete SolveResult
+    pub fn with_result(when: ConditionSet, result: SolveResult) -> Self {
+        Self {
+            when,
+            then: Box::new(result),
         }
     }
 }

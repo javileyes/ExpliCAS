@@ -2024,11 +2024,11 @@ impl<'a> SolveTimelineHtml<'a> {
                                 .collect::<Vec<_>>()
                                 .join(" \\land ")
                         };
-                        let sol_latex = match case.then.as_ref() {
+                        let sol_latex = match &case.then.solutions {
                             SolutionSet::Conditional(_) => "\\text{(nested)}".to_string(),
                             _ => {
-                                // Recursively format non-conditional solution
-                                format!("{:?}", case.then)
+                                // Format the solution set
+                                format!("{:?}", case.then.solutions)
                             }
                         };
                         format!("{} & \\text{{if }} {}", sol_latex, cond_str)

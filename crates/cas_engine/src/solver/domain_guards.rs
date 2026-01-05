@@ -97,6 +97,19 @@ impl SolverAssumption {
             SolverAssumption::PositiveBase => ConditionPredicate::Positive(base),
         }
     }
+
+    /// Convert a list of SolverAssumptions to a ConditionSet
+    pub fn to_condition_set(
+        assumptions: &[SolverAssumption],
+        base: ExprId,
+        rhs: ExprId,
+    ) -> cas_ast::ConditionSet {
+        let predicates: Vec<cas_ast::ConditionPredicate> = assumptions
+            .iter()
+            .map(|a| a.to_condition_predicate(base, rhs))
+            .collect();
+        cas_ast::ConditionSet::from_predicates(predicates)
+    }
 }
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.

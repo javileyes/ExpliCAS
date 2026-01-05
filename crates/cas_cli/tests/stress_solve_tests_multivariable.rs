@@ -946,8 +946,8 @@ fn test_complex_rational_radical() {
 #[test]
 fn test_nested_fraction_with_powers() {
     // (a/b)^x = c/d
-    // In RealOnly+Generic mode, base a/b is not provably positive.
-    // The solver returns Residual (graceful degradation) instead of crashing.
+    // V2.0: In RealOnly+Generic mode, base a/b is not provably positive.
+    // The solver now returns Conditional with guarded solution.
     let mut s = Simplifier::with_default_rules();
     let lhs = cas_parser::parse("(a/b)^x", &mut s.context).unwrap();
     let rhs = cas_parser::parse("c/d", &mut s.context).unwrap();
@@ -959,20 +959,35 @@ fn test_nested_fraction_with_powers() {
     };
     let result = solve(&eq, "x", &mut s);
 
-    // In RealOnly+Generic mode, symbolic bases return Residual (graceful degradation)
+    // V2.0: Conditional returned with guarded solution
     assert!(
         result.is_ok(),
-        "Should return Residual for (a/b)^x = c/d, got: {:?}",
+        "Should return Conditional for (a/b)^x = c/d, got: {:?}",
         result
     );
 
-    // Verify it's a Residual
+    // Verify it's Conditional (V2.0 behavior)
     let (solution_set, _steps) = result.unwrap();
-    assert!(
-        matches!(solution_set, SolutionSet::Residual(_)),
-        "Should be SolutionSet::Residual, got: {:?}",
-        solution_set
-    );
+    match &solution_set {
+        SolutionSet::Conditional(cases) => {
+            assert!(!cases.is_empty(), "Should have at least one case");
+            // First case should have guards (Positive(a/b), Positive(c/d))
+            let first = &cases[0];
+            assert!(
+                !first.when.is_empty(),
+                "First case should have positivity guards"
+            );
+            // Verify the guarded case has actual solution
+            assert!(
+                first.then.has_solutions(),
+                "Guarded case should have actual solutions"
+            );
+        }
+        _ => panic!(
+            "V2.0: Should be SolutionSet::Conditional, got: {:?}",
+            solution_set
+        ),
+    }
 }
 
 // ============================================================================

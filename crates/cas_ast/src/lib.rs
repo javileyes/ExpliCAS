@@ -19,7 +19,9 @@ pub mod visitor;
 
 pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
 pub use display_context::{DisplayContext, DisplayHint};
-pub use domain::{BoundType, Interval, SolutionSet};
+pub use domain::{
+    BoundType, Case, ConditionPredicate, ConditionSet, Interval, SolutionSet, SolveResult,
+};
 pub use expression::{Constant, Context, ContextStats, Expr, ExprId, MulCommutativity};
 pub use latex::{LaTeXExpr, LaTeXExprWithHints};
 pub use latex_highlight::{

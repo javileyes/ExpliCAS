@@ -410,7 +410,7 @@ impl Engine {
                                     // V2.0: Return first case's solutions for now
                                     // TODO: Full conditional display in REPL
                                     if let Some(first_case) = cases.first() {
-                                        match first_case.then.as_ref() {
+                                        match &first_case.then.solutions {
                                             SolutionSet::Discrete(sols) => {
                                                 EvalResult::Set(sols.clone())
                                             }
