@@ -103,6 +103,63 @@ mod prepass_tests {
     }
 }
 
+mod solve_tactic_tests {
+    use super::*;
+    use cas_engine::domain::DomainMode;
+    use cas_engine::SimplifyOptions;
+
+    /// SolveTactic in Assume mode SHOULD allow Analytic rules.
+    /// This test verifies that exp(ln(x)) simplifies to x in tactic mode.
+    #[test]
+    fn tactic_in_assume_allows_analytic_rules() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse_expr(&mut simplifier, "exp(ln(x))");
+
+        let opts = SimplifyOptions::for_solve_tactic(DomainMode::Assume);
+        let (result, _) = simplifier.simplify_with_options(expr, opts);
+
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+        );
+
+        // In Assume mode with SolveTactic, exp(ln(x)) should simplify to x
+        assert_eq!(
+            result_str, "x",
+            "SolveTactic(Assume) should allow exp(ln(x))→x, got: {}",
+            result_str
+        );
+    }
+
+    /// SolveTactic in Generic mode should NOT allow Analytic rules.
+    #[test]
+    fn tactic_in_generic_blocks_analytic_rules() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse_expr(&mut simplifier, "exp(ln(x))");
+
+        let opts = SimplifyOptions::for_solve_tactic(DomainMode::Generic);
+        let (result, _) = simplifier.simplify_with_options(expr, opts);
+
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+        );
+
+        // In Generic mode, Analytic rules should be blocked
+        assert!(
+            result_str.contains("ln") || result_str.contains("e"),
+            "SolveTactic(Generic) should block exp(ln(x))→x, got: {}",
+            result_str
+        );
+    }
+}
+
 mod solver_tests {
     use super::*;
     use cas_ast::domain::{BoundType, SolutionSet};

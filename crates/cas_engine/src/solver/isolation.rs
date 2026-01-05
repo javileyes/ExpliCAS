@@ -875,7 +875,28 @@ pub fn isolate(
                 // ================================================================
                 use crate::solver::domain_guards::{classify_log_solve, LogSolveDecision};
 
-                let decision = classify_log_solve(&simplifier.context, b, rhs, &opts);
+                // ================================================================
+                // SOLVE TACTIC: Pre-simplify base/rhs with Analytic rules in Assume mode
+                // This allows rules like exp(ln(x))→x to fire before classification,
+                // potentially proving positivity conditions that would otherwise block.
+                // ================================================================
+                let (tactic_base, tactic_rhs) = if opts.domain_mode
+                    == crate::domain::DomainMode::Assume
+                    && opts.value_domain == crate::semantics::ValueDomain::RealOnly
+                {
+                    use crate::SimplifyOptions;
+                    let tactic_opts = SimplifyOptions::for_solve_tactic(opts.domain_mode);
+
+                    let (sim_base, _) = simplifier.simplify_with_options(b, tactic_opts.clone());
+                    let (sim_rhs, _) = simplifier.simplify_with_options(rhs, tactic_opts);
+
+                    (sim_base, sim_rhs)
+                } else {
+                    (b, rhs)
+                };
+
+                let decision =
+                    classify_log_solve(&simplifier.context, tactic_base, tactic_rhs, &opts);
 
                 match decision {
                     LogSolveDecision::Ok => {
