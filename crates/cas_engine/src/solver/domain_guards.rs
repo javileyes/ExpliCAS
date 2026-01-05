@@ -88,6 +88,15 @@ impl SolverAssumption {
             SolverAssumption::PositiveBase => AssumptionEvent::positive(ctx, base),
         }
     }
+
+    /// Convert to a ConditionPredicate for conditional solutions (V2.0).
+    pub fn to_condition_predicate(&self, base: ExprId, rhs: ExprId) -> cas_ast::ConditionPredicate {
+        use cas_ast::ConditionPredicate;
+        match self {
+            SolverAssumption::PositiveRhs => ConditionPredicate::Positive(rhs),
+            SolverAssumption::PositiveBase => ConditionPredicate::Positive(base),
+        }
+    }
 }
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.
