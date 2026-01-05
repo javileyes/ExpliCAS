@@ -208,7 +208,10 @@ define_rule!(
     TrigInverseExpansionRule,
     "Trig of Inverse Trig Expansion",
     Some(vec!["Function"]),
-    |ctx, expr| {
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Analytic
+    ),
+    |ctx, expr, _parent_ctx| {
         if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
             if outer_args.len() != 1 {
                 return None;

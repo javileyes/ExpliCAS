@@ -372,7 +372,13 @@ define_rule!(
     }
 );
 
-define_rule!(PowerPowerRule, "Power of a Power", |ctx, expr| {
+define_rule!(
+    PowerPowerRule,
+    "Power of a Power",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Analytic
+    ),
+    |ctx, expr, _parent_ctx| {
     // (x^a)^b -> x^(a*b)
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, outer_exp) = expr_data {
