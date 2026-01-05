@@ -75,6 +75,9 @@ define_rule!(
 define_rule!(
     MulZeroRule,
     "Zero Property of Multiplication",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
     |ctx, expr, parent_ctx| {
         use crate::assumptions::ConditionClass;
         use crate::domain::Proof;
@@ -172,6 +175,9 @@ define_rule!(
 define_rule!(
     DivZeroRule,
     "Zero Property of Division",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
     |ctx, expr, parent_ctx| {
         use crate::domain::Proof;
         use crate::helpers::prove_nonzero;

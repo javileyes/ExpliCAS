@@ -725,7 +725,13 @@ impl crate::rule::Rule for ExponentialLogRule {
     }
 }
 
-define_rule!(SplitLogExponentsRule, "Split Log Exponents", |ctx, expr| {
+define_rule!(
+    SplitLogExponentsRule,
+    "Split Log Exponents",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Analytic
+    ),
+    |ctx, expr, _parent_ctx| {
     // e^(a + b) -> e^a * e^b IF a or b is a log
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {
