@@ -959,7 +959,13 @@ mod tests {
     }
 }
 
-define_rule!(LogInversePowerRule, "Log Inverse Power", |ctx, expr| {
+define_rule!(
+    LogInversePowerRule,
+    "Log Inverse Power",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Analytic
+    ),
+    |ctx, expr, _parent_ctx| {
     // println!("LogInversePowerRule checking {:?}", expr);
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {

@@ -637,6 +637,9 @@ mod tests {
 define_rule!(
     IdentityPowerRule,
     "Identity Power",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
     |ctx, expr, parent_ctx| {
         use crate::domain::{DomainMode, Proof};
         use crate::helpers::prove_nonzero;
