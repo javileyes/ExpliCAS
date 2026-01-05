@@ -2002,6 +2002,40 @@ impl<'a> SolveTimelineHtml<'a> {
                 }
                 .to_latex()
             }
+            SolutionSet::Conditional(cases) => {
+                // V2.0: Show conditional solutions as piecewise cases
+                let case_strs: Vec<String> = cases
+                    .iter()
+                    .map(|case| {
+                        let cond_str = if case.when.is_empty() {
+                            "\\text{otherwise}".to_string()
+                        } else {
+                            case.when
+                                .predicates()
+                                .iter()
+                                .map(|p| {
+                                    let expr_latex = LaTeXExpr {
+                                        context: self.context,
+                                        id: p.expr_id(),
+                                    }
+                                    .to_latex();
+                                    format!("{} {}", expr_latex, p.display())
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" \\land ")
+                        };
+                        let sol_latex = match case.then.as_ref() {
+                            SolutionSet::Conditional(_) => "\\text{(nested)}".to_string(),
+                            _ => {
+                                // Recursively format non-conditional solution
+                                format!("{:?}", case.then)
+                            }
+                        };
+                        format!("{} & \\text{{if }} {}", sol_latex, cond_str)
+                    })
+                    .collect();
+                format!(r"\begin{{cases}} {} \end{{cases}}", case_strs.join(r" \\ "))
+            }
         }
     }
 

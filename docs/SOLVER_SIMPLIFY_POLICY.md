@@ -106,13 +106,50 @@ The solver should be **above** `strict/generic/assume` and produce **conditional
 
 | Mode | Behavior with Unproven Conditions |
 |------|-----------------------------------|
-| `Strict` | Returns guarded solutions explicitly |
-| `Generic` | May accept definability holes, returns guards for analytic |
-| `Assume` | Accepts all guards, records assumptions |
+| `Strict` | Never auto-assume → returns `Conditional` or `Residual` |
+| `Generic` | May auto-accept `Definability`, returns guards for `Analytic` |
+| `Assume` | May collapse cases, but recommend showing all (more honest/educational) |
 
-### Proposed Extensions
+---
 
-#### 1. `SolutionSet::Conditional`
+### Data Structures
+
+#### 1. Unified `ConditionPredicate`
+
+Extend `AssumptionKey` as a logical object, not just event:
+
+```rust
+pub enum ConditionPredicate {
+    // Existing (from AssumptionKey)
+    NonZero(ExprId),
+    Positive(ExprId),
+    NonNegative(ExprId),
+    Defined(ExprId),
+    InvTrigPrincipalRange(ExprId),
+    
+    // V2.0 Phase 2: specialized equality (cheap, no general algebra)
+    EqZero(ExprId),
+    NeZero(ExprId),
+    EqOne(ExprId),
+    NeOne(ExprId),
+    
+    // V2.0 Phase 3+: general equality (optional, later)
+    // Eq(ExprId, ExprId),
+    // Ne(ExprId, ExprId),
+}
+```
+
+#### 2. `ConditionSet`
+
+Conjunction of predicates with stable ordering for snapshots:
+
+```rust
+pub struct ConditionSet {
+    predicates: Vec<ConditionPredicate>,  // sorted, deduplicated
+}
+```
+
+#### 3. `SolutionSet::Conditional`
 
 ```rust
 pub enum SolutionSet {
@@ -121,39 +158,63 @@ pub enum SolutionSet {
 }
 
 pub struct Case {
-    when: ConditionSet,  // conjunction of conditions
+    when: ConditionSet,
     then: SolutionSet,
 }
 ```
 
-#### 2. Extended Condition Predicates
+#### 4. `SolveResult` (Phase 1 approach)
 
-Current `AssumptionKey` covers:
-- `NonZero`, `Positive`, `NonNegative`, `Defined`, `InvTrigPrincipalRange`
-
-Needs:
-- `Eq(expr, const)` — for case splits like `a = 0`
-- `Ne(expr, const)` — for clean partitions
-
-#### 3. Example: `a^x = a`
-
-Ideal output:
+```rust
+pub struct SolveResult {
+    pub solutions: SolutionSet,       // may include Conditional
+    pub residual: Option<ExprId>,     // unsolved portion (solve(...) call)
+}
 ```
-Case when: (a = 1) → AllReals    (1^x = 1 ∀x)
-Case when: (a = 0) → (0, ∞)      (0^x = 0 only for x > 0)
-Case when: True    → {1}         (a^1 = a for a ≠ 0, a ≠ 1)
-```
+
+---
+
+### Invariants (extend V1.3.7)
+
+- **No conditional branch without explicit guard record** — every `Case` must have traceable `when`
+- **No branch explosion without budget** — limit case splits to prevent combinatorial explosion
+
+---
 
 ### Incremental Implementation Path
 
-1. **Phase 1**: `SolutionSet::Conditional` without else-branch
-   - If technique requires `cond`, return "solution under `cond`" + "residual"
+#### Phase 1: Conditional without else-branch
 
-2. **Phase 2**: Case splits only for "cheap" constants: `a=0`, `a=1`
-   - Very educational, limited branching
+When a technique requires `cond` and it's `Unknown`:
+- `solutions = Conditional([Case{when:cond, then:sol}])`
+- `residual = Some(original_solve_call)`
 
-3. **Phase 3**: Condition merge/simplification
-   - Absorb subsets, eliminate redundant cases
+#### Phase 2: Case splits for cheap constants
+
+Only split on `EqZero`, `EqOne`, `NeZero`, `NeOne`:
+- `a^x = a` → 3 cases (a=0, a=1, otherwise)
+- Very educational, controlled branching
+
+#### Phase 3: Condition simplification (3 cheap rules)
+
+1. **Contradictions**: `EqZero(a)` ∧ `NeZero(a)` → eliminate case
+2. **Subsumption**: if `when = True` and more specific cases exist → keep both or prefer specific
+3. **Proven/Disproven**: if `prove_nonzero(a) = Proven` → remove `NeZero(a)` from guards (redundant)
+
+---
+
+### Example: `a^x = a`
+
+```
+x ∈ ℝ solutions:
+  • if a = 1: AllReals      (1^x = 1 ∀x)
+  • if a = 0: (0, ∞)        (0^x = 0 only for x > 0)
+  • otherwise: {1}          (a^1 = a for a ≠ 0, a ≠ 1)
+
+Unresolved: none (all cases covered)
+```
+
+---
 
 ### Non-Goals (V2.0)
 
@@ -161,4 +222,4 @@ Case when: True    → {1}         (a^1 = a for a ≠ 0, a ≠ 1)
 - Arbitrary Boolean logic in conditions
 - Automatic periodic trig solutions (infinite branches)
 - Complex-domain branch tracking
-
+- `Eq(expr, expr)` general — start with `EqZero`/`EqOne` only

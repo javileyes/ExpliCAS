@@ -406,6 +406,20 @@ impl Engine {
                                     // Return the residual expression as a single result
                                     EvalResult::Set(vec![residual_expr])
                                 }
+                                SolutionSet::Conditional(cases) => {
+                                    // V2.0: Return first case's solutions for now
+                                    // TODO: Full conditional display in REPL
+                                    if let Some(first_case) = cases.first() {
+                                        match first_case.then.as_ref() {
+                                            SolutionSet::Discrete(sols) => {
+                                                EvalResult::Set(sols.clone())
+                                            }
+                                            _ => EvalResult::Set(vec![]),
+                                        }
+                                    } else {
+                                        EvalResult::Set(vec![])
+                                    }
+                                }
                             };
                             // Collect output scopes from solver (e.g., QuadraticFormula)
                             let output_scopes = crate::solver::take_scopes();
