@@ -728,6 +728,82 @@ pub fn isolate(
             } else {
                 // E = log(B, RHS) - Variable is in exponent (e.g., B^x = RHS → x = log_B(RHS))
 
+                // ================================================================
+                // SPECIAL CASE: base^x = base → x = 1 (for base ≠ 0)
+                // This pattern can be solved without logarithms!
+                // Works for any a ≠ 0: a^1 = a
+                // ================================================================
+                // Check if RHS == base (by ID or by simplifying difference to 0)
+                let bases_equal = {
+                    if b == rhs {
+                        true
+                    } else {
+                        let diff = simplifier.context.add(Expr::Sub(b, rhs));
+                        let (sim_diff, _) = simplifier.simplify(diff);
+                        matches!(simplifier.context.get(sim_diff), Expr::Number(n) if n.is_zero())
+                    }
+                };
+
+                if bases_equal {
+                    // base^x = base  →  x = 1 (when base ≠ 0)
+                    // Note: For base = 0, 0^x = 0 only when x > 0, but 0^1 = 0 is still valid
+                    let one = simplifier.context.num(1);
+
+                    if simplifier.collect_steps() {
+                        steps.push(SolveStep {
+                            description: format!(
+                                "Pattern: {}^{} = {} → {} = 1 (exponent must equal 1 when bases are equal and non-zero)",
+                                cas_ast::DisplayExpr { context: &simplifier.context, id: b },
+                                var,
+                                cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
+                                var
+                            ),
+                            equation_after: Equation { lhs: e, rhs: one, op: op.clone() },
+                        });
+                    }
+
+                    // Recurse to solve e = 1
+                    let results = isolate(e, one, op, var, simplifier, opts)?;
+                    return prepend_steps(results, steps);
+                }
+
+                // ================================================================
+                // SPECIAL CASE: base^x = base^n → x = n (when base ≠ 0, base ≠ 1)
+                // e.g., a^x = a^2 → x = 2
+                // ================================================================
+                if let Expr::Pow(rhs_base, rhs_exp) = simplifier.context.get(rhs).clone() {
+                    let pow_bases_equal = {
+                        if b == rhs_base {
+                            true
+                        } else {
+                            let diff = simplifier.context.add(Expr::Sub(b, rhs_base));
+                            let (sim_diff, _) = simplifier.simplify(diff);
+                            matches!(simplifier.context.get(sim_diff), Expr::Number(n) if n.is_zero())
+                        }
+                    };
+
+                    if pow_bases_equal {
+                        // base^x = base^n → x = n
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!(
+                                    "Pattern: {}^{} = {}^{} → {} = {} (equal bases imply equal exponents when base ≠ 0, 1)",
+                                    cas_ast::DisplayExpr { context: &simplifier.context, id: b },
+                                    var,
+                                    cas_ast::DisplayExpr { context: &simplifier.context, id: rhs_base },
+                                    cas_ast::DisplayExpr { context: &simplifier.context, id: rhs_exp },
+                                    var,
+                                    cas_ast::DisplayExpr { context: &simplifier.context, id: rhs_exp }
+                                ),
+                                equation_after: Equation { lhs: e, rhs: rhs_exp, op: op.clone() },
+                            });
+                        }
+
+                        let results = isolate(e, rhs_exp, op, var, simplifier, opts)?;
+                        return prepend_steps(results, steps);
+                    }
+                }
+
                 // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
                 // This would create x = log(base, f(x)) which still has x on RHS → infinite loop.
                 // This happens after expansions like (a/b)^x → a^x/b^x when solving.

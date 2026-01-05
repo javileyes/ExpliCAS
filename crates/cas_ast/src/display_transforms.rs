@@ -261,4 +261,62 @@ mod tests {
             result
         );
     }
+
+    /// Test that applies() is called once per render (at ScopedRenderer creation),
+    /// not per node. This ensures prefiltering efficiency.
+    #[test]
+    fn test_prefilter_efficiency() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static APPLIES_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+        /// Instrumented transform that counts applies() calls
+        struct CountingTransform;
+        impl DisplayTransform for CountingTransform {
+            fn name(&self) -> &'static str {
+                "CountingTransform"
+            }
+            fn applies(&self, _scopes: &[ScopeTag]) -> bool {
+                APPLIES_CALLS.fetch_add(1, Ordering::SeqCst);
+                false // Never actually applies
+            }
+            fn try_render(
+                &self,
+                _ctx: &Context,
+                _id: ExprId,
+                _render_child: &dyn Fn(ExprId) -> String,
+            ) -> Option<String> {
+                None
+            }
+        }
+
+        // Create expression tree with multiple nodes
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+        let c = ctx.num(3);
+        let add1 = ctx.add(Expr::Add(a, b));
+        let root = ctx.add(Expr::Add(add1, c));
+
+        // Create registry and reset counter
+        let mut registry = DisplayTransformRegistry::new();
+        registry.register(Box::new(CountingTransform));
+        APPLIES_CALLS.store(0, Ordering::SeqCst);
+
+        // Create renderer (this should call applies() once)
+        let scopes = vec![ScopeTag::Rule("Test")];
+        let renderer = ScopedRenderer::new(&ctx, &scopes, &registry);
+
+        // Render tree with 3 nodes
+        let _ = renderer.render(root);
+
+        // applies() should have been called exactly ONCE (during ScopedRenderer::new),
+        // not 3 times (once per node)
+        let calls = APPLIES_CALLS.load(Ordering::SeqCst);
+        assert_eq!(
+            calls, 1,
+            "applies() should be called once per render creation, not per node. Got {} calls for 3 nodes.",
+            calls
+        );
+    }
 }
