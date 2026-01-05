@@ -4106,7 +4106,7 @@ impl Repl {
                     value_domain: self.state.options.value_domain,
                     domain_mode: self.state.options.domain_mode,
                     assume_scope: self.state.options.assume_scope,
-                    budget: cas_engine::solver::SolveBudget::default(),
+                    budget: self.state.options.budget,
                 };
 
                 match cas_engine::solver::solve_with_options(

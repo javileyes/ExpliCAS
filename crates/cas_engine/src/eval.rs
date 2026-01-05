@@ -338,7 +338,7 @@ impl Engine {
                         value_domain: state.options.value_domain,
                         domain_mode: state.options.domain_mode,
                         assume_scope: state.options.assume_scope,
-                        budget: crate::solver::SolveBudget::default(),
+                        budget: state.options.budget,
                     };
 
                     // RAII guard for assumption collection (handles nested solves safely)
