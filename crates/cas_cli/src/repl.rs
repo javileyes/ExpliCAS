@@ -959,6 +959,12 @@ impl Repl {
             return;
         }
 
+        // "budget" - V2.0: Control Conditional branching budget for solve
+        if line == "budget" || line.starts_with("budget ") {
+            self.handle_budget_command(&line);
+            return;
+        }
+
         // "history" or "list" - show session history
         if line == "history" || line == "list" {
             self.handle_history_command();
@@ -3394,6 +3400,44 @@ impl Repl {
                 println!("Usage: autoexpand [on | off]");
                 println!("  on  - Auto-expand cheap polynomial powers");
                 println!("  off - Only expand when explicitly requested (default)");
+            }
+        }
+    }
+
+    /// V2.0: Handle "budget" command - control Conditional branching for solve
+    fn handle_budget_command(&mut self, line: &str) {
+        let args: Vec<&str> = line.split_whitespace().collect();
+
+        match args.get(1) {
+            None => {
+                // Just "budget" - show current setting
+                let budget = self.state.options.budget;
+                println!("Solve budget: max_branches={}", budget.max_branches);
+                println!("  Controls how many case splits the solver can create.");
+                println!("  0: No splits (fallback to simple solutions)");
+                println!("  1: Conservative (default)");
+                println!("  2+: Allow case splits for symbolic bases (a^x=a, etc)");
+                println!("  (use 'budget N' to change, e.g. 'budget 2')");
+            }
+            Some(n_str) => {
+                if let Ok(n) = n_str.parse::<usize>() {
+                    self.state.options.budget.max_branches = n;
+                    println!("Solve budget: max_branches = {}", n);
+                    if n == 0 {
+                        println!("  ⚠️ No case splits allowed (fallback to simple solutions)");
+                    } else if n == 1 {
+                        println!("  Conservative mode (default)");
+                    } else {
+                        println!("  ✓ Case splits enabled for symbolic bases");
+                        println!("  Try: solve a^x = a");
+                    }
+                } else {
+                    println!("Invalid budget value: '{}' (expected a number)", n_str);
+                    println!("Usage: budget N");
+                    println!("  budget 0  - No case splits");
+                    println!("  budget 1  - Conservative (default)");
+                    println!("  budget 2  - Allow case splits for a^x=a patterns");
+                }
             }
         }
     }

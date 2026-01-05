@@ -233,6 +233,94 @@ impl ConditionSet {
             predicates: combined,
         }
     }
+
+    /// V2.0 Phase 3A: Simplify redundant predicates
+    ///
+    /// Rules:
+    /// - Positive(x) implies NonZero(x) → remove NonZero
+    /// - NonNegative(x) implies Defined(x) (for sqrt) → remove Defined
+    /// - Duplicate predicates removed (already handled by dedup)
+    pub fn simplify(&self) -> ConditionSet {
+        let mut result: Vec<ConditionPredicate> = Vec::new();
+
+        for pred in &self.predicates {
+            let dominated = self.predicates.iter().any(|other| {
+                if pred == other {
+                    return false; // Don't compare with self
+                }
+                // Check if 'other' implies 'pred' (making pred redundant)
+                match (other, pred) {
+                    // Positive(x) implies NonZero(x)
+                    (ConditionPredicate::Positive(e1), ConditionPredicate::NonZero(e2))
+                        if e1 == e2 =>
+                    {
+                        true
+                    }
+                    // Positive(x) implies NonNegative(x)
+                    (ConditionPredicate::Positive(e1), ConditionPredicate::NonNegative(e2))
+                        if e1 == e2 =>
+                    {
+                        true
+                    }
+                    // EqOne(x) implies NonZero(x)
+                    (ConditionPredicate::EqOne(e1), ConditionPredicate::NonZero(e2))
+                        if e1 == e2 =>
+                    {
+                        true
+                    }
+                    _ => false,
+                }
+            });
+
+            if !dominated {
+                result.push(pred.clone());
+            }
+        }
+
+        ConditionSet::from_predicates(result)
+    }
+
+    /// V2.0 Phase 3B: Check if this condition set is a contradiction (impossible)
+    ///
+    /// Returns true if predicates are mutually exclusive.
+    pub fn is_contradiction(&self) -> bool {
+        for (i, p1) in self.predicates.iter().enumerate() {
+            for p2 in self.predicates.iter().skip(i + 1) {
+                if Self::predicates_contradict(p1, p2) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Check if two predicates contradict each other
+    fn predicates_contradict(p1: &ConditionPredicate, p2: &ConditionPredicate) -> bool {
+        match (p1, p2) {
+            // EqZero(x) contradicts NonZero(x)
+            (ConditionPredicate::EqZero(e1), ConditionPredicate::NonZero(e2))
+            | (ConditionPredicate::NonZero(e1), ConditionPredicate::EqZero(e2))
+                if e1 == e2 =>
+            {
+                true
+            }
+            // EqZero(x) contradicts Positive(x)
+            (ConditionPredicate::EqZero(e1), ConditionPredicate::Positive(e2))
+            | (ConditionPredicate::Positive(e1), ConditionPredicate::EqZero(e2))
+                if e1 == e2 =>
+            {
+                true
+            }
+            // EqZero(x) contradicts EqOne(x)
+            (ConditionPredicate::EqZero(e1), ConditionPredicate::EqOne(e2))
+            | (ConditionPredicate::EqOne(e1), ConditionPredicate::EqZero(e2))
+                if e1 == e2 =>
+            {
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 /// V2.0: Complete result of a solve operation.
@@ -380,6 +468,70 @@ impl SolutionSet {
                 SolutionSet::Conditional(out)
             }
             // Non-Conditional variants pass through unchanged
+            other => other,
+        }
+    }
+
+    /// V2.0 Phase 3: Full simplification pipeline
+    ///
+    /// Combines flatten() + simplify_cases()
+    pub fn simplify(self) -> SolutionSet {
+        self.flatten().simplify_cases()
+    }
+
+    /// V2.0 Phase 3B/C: Simplify cases in a Conditional
+    ///
+    /// - 3B: Filters out cases with contradictory guards
+    /// - 3C: Simplifies each guard, removes duplicates
+    fn simplify_cases(self) -> SolutionSet {
+        match self {
+            SolutionSet::Conditional(cases) => {
+                let mut out: Vec<Case> = Vec::new();
+
+                for case in cases {
+                    // Simplify the guard (Phase 3A)
+                    let simplified_when = case.when.simplify();
+
+                    // Check for contradictions (Phase 3B)
+                    if simplified_when.is_contradiction() {
+                        continue; // Skip impossible cases
+                    }
+
+                    // Recursively simplify the inner result
+                    let simplified_then = Box::new(SolveResult {
+                        solutions: case.then.solutions.simplify_cases(),
+                        residual: case.then.residual,
+                    });
+
+                    // Check if we already have a case with identical result (Phase 3C)
+                    let duplicate = out.iter().any(|existing| {
+                        existing.when == simplified_when && existing.then == simplified_then
+                    });
+
+                    if !duplicate {
+                        out.push(Case {
+                            when: simplified_when,
+                            then: simplified_then,
+                        });
+                    }
+                }
+
+                // Sort: put "otherwise" cases last
+                out.sort_by(
+                    |a, b| match (a.when.is_otherwise(), b.when.is_otherwise()) {
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        _ => std::cmp::Ordering::Equal,
+                    },
+                );
+
+                // If only one case with otherwise, unwrap to plain solution
+                if out.len() == 1 && out[0].when.is_otherwise() {
+                    return out.remove(0).then.solutions;
+                }
+
+                SolutionSet::Conditional(out)
+            }
             other => other,
         }
     }

@@ -117,6 +117,8 @@ pub struct EvalOptions {
     pub hints_enabled: bool,
     /// Explain mode: show assumption summary after each evaluation (default: false)
     pub explain_mode: bool,
+    /// V2.0: Budget for Conditional branching in solve
+    pub budget: crate::solver::SolveBudget,
 }
 
 impl EvalOptions {
@@ -204,6 +206,7 @@ impl Default for EvalOptions {
             assume_scope: crate::semantics::AssumeScope::default(),
             hints_enabled: true, // Pedagogical hints on by default
             explain_mode: false, // Explain mode off by default
+            budget: crate::solver::SolveBudget::default(),
         }
     }
 }
