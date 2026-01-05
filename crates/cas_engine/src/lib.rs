@@ -58,6 +58,13 @@ pub mod timeline_templates;
 pub mod unipoly_modp;
 pub mod visualizer;
 
+/// V2.1 Issue #4: Stable Public API
+///
+/// This module contains the stable, versioned API for external integrators.
+/// Types and functions exported here are guaranteed to maintain backward
+/// compatibility following semantic versioning.
+pub mod api;
+
 pub mod build;
 pub mod error;
 pub mod helpers;

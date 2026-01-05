@@ -56,15 +56,19 @@ Already have assumptions/hints/timeline; need a "professor mode" compact view.
 
 ---
 
-### Issue #4: Stable results API (for integrators)
+### Issue #4: Stable results API (for integrators) ✅
 **Labels**: `api`, `ffi`
 
 What you show in console = what you export.
 
 **Done when**:
-- [ ] `SolveResult` and `SolutionSet::Conditional` exposed in `cas_engine` public API
-- [ ] Stable `Display`/`to_string` documented
-- [ ] 1 "public API compile" test (or doctest)
+- [x] `cas_engine::api` module re-exports stable types:
+  - `SolveResult`, `SolutionSet`, `Case`, `ConditionSet`, `ConditionPredicate`
+  - `SolveBudget`, `SolverOptions`
+  - `solve`, `solve_with_options`
+  - `DisplayExpr`, `LaTeXExpr`
+- [x] Stable API documented in api.rs
+- [x] 10 compile tests in `public_api_contract.rs`
 
 ---
 
