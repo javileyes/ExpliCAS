@@ -4378,12 +4378,87 @@ impl Repl {
                             _ => println!("Result: {:?}", output.result),
                         }
 
-                        // Display blocked hints (pedagogical warnings for Generic mode)
+                        // V2.1 Issue #3: Explain mode - structured summary for solve
+                        // Collect blocked hints for explain output
                         let hints = cas_engine::domain::take_blocked_hints();
-                        if !hints.is_empty() && self.state.options.hints_enabled {
+                        let has_assumptions = !output.solver_assumptions.is_empty();
+                        let has_blocked = !hints.is_empty();
+
+                        if self.explain_mode && (has_assumptions || has_blocked) {
+                            println!(); // Separator line
                             let ctx = &self.engine.simplifier.context;
 
-                            // Helper to format condition with expression
+                            // Block 1: Assumptions used
+                            if has_assumptions {
+                                println!("ℹ️ Assumptions used:");
+                                // Dedup and stable order by (kind, expr)
+                                let mut assumption_items: Vec<_> = output
+                                    .solver_assumptions
+                                    .iter()
+                                    .map(|a| {
+                                        let cond_str = match a.kind.as_str() {
+                                            "Positive" => format!("{} > 0", a.expr),
+                                            "NonZero" => format!("{} ≠ 0", a.expr),
+                                            "NonNegative" => format!("{} ≥ 0", a.expr),
+                                            _ => format!("{} ({})", a.expr, a.kind),
+                                        };
+                                        cond_str
+                                    })
+                                    .collect();
+                                // Stable sort and dedup
+                                assumption_items.sort();
+                                assumption_items.dedup();
+                                for cond in assumption_items {
+                                    println!("  - {}", cond);
+                                }
+                            }
+
+                            // Block 2: Blocked simplifications
+                            if has_blocked {
+                                println!("ℹ️ Blocked simplifications:");
+                                // Helper to format condition with expression
+                                let format_condition = |hint: &cas_engine::BlockedHint| -> String {
+                                    let expr_str = cas_ast::DisplayExpr {
+                                        context: ctx,
+                                        id: hint.expr_id,
+                                    }
+                                    .to_string();
+                                    match hint.key.kind() {
+                                        "positive" => format!("{} > 0", expr_str),
+                                        "nonzero" => format!("{} ≠ 0", expr_str),
+                                        "nonnegative" => format!("{} ≥ 0", expr_str),
+                                        _ => format!("{} ({})", expr_str, hint.key.kind()),
+                                    }
+                                };
+
+                                // Dedup by (condition, rule)
+                                let mut blocked_items: Vec<_> = hints
+                                    .iter()
+                                    .map(|h| (format_condition(h), h.rule.to_string()))
+                                    .collect();
+                                blocked_items.sort();
+                                blocked_items.dedup();
+                                for (cond, rule) in blocked_items {
+                                    println!("  - requires {}  [{}]", cond, rule);
+                                }
+
+                                // Contextual suggestion
+                                let suggestion = match self.state.options.domain_mode {
+                                    cas_engine::DomainMode::Strict => {
+                                        "tip: use `domain generic` or `domain assume` to allow"
+                                    }
+                                    cas_engine::DomainMode::Generic => {
+                                        "tip: use `domain assume` to allow"
+                                    }
+                                    cas_engine::DomainMode::Assume => {
+                                        "tip: assumptions already enabled"
+                                    }
+                                };
+                                println!("  {}", suggestion);
+                            }
+                        } else if has_blocked && self.state.options.hints_enabled {
+                            // Legacy: show blocked hints even without explain_mode if hints_enabled
+                            let ctx = &self.engine.simplifier.context;
                             let format_condition = |hint: &cas_engine::BlockedHint| -> String {
                                 let expr_str = cas_ast::DisplayExpr {
                                     context: ctx,
@@ -4398,7 +4473,6 @@ impl Repl {
                                 }
                             };
 
-                            // Contextual suggestion based on current mode
                             let suggestion = match self.state.options.domain_mode {
                                 cas_engine::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"

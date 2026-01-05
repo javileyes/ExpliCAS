@@ -285,11 +285,27 @@ pub fn solve_with_options(
         return Err(CasError::VariableNotFound(var.to_string()));
     }
 
+    // V2.1 Issue #10: Extract denominators containing the variable BEFORE simplification
+    // These will be used to create NonZero guards in the final result
+    let mut domain_exclusions: std::collections::HashSet<ExprId> = std::collections::HashSet::new();
+    domain_exclusions.extend(extract_denominators_with_var(
+        &simplifier.context,
+        eq.lhs,
+        var,
+    ));
+    domain_exclusions.extend(extract_denominators_with_var(
+        &simplifier.context,
+        eq.rhs,
+        var,
+    ));
+    let domain_exclusions: Vec<ExprId> = domain_exclusions.into_iter().collect();
+
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
     if eq.op == cas_ast::RelOp::Eq {
         if let Some(result) = try_solve_rational_exponent(eq, var, simplifier) {
-            return result;
+            // Wrap result with domain guards if needed
+            return wrap_with_domain_guards(result, &domain_exclusions, simplifier);
         }
     }
 
@@ -338,8 +354,7 @@ pub fn solve_with_options(
 
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
-        // Variable disappeared - this is either an identity or contradiction
-        // Simplify the difference and check if it's zero
+        // Variable disappeared - this is either an identity, contradiction, or parameter-dependent
         use cas_ast::Expr;
         match simplifier.context.get(diff_simplified) {
             Expr::Number(n) => {
@@ -353,8 +368,34 @@ pub fn solve_with_options(
                 }
             }
             _ => {
-                // Difference couldn't simplify to a number
-                // This might be a complex case, proceed with normal solving
+                // Variable was eliminated during simplification (e.g., x/x = 1)
+                // The equation is now a constraint on OTHER variables.
+                // Example: (x*y)/x = 0 simplifies to y = 0
+                // Solution: x can be any value (AllReals) when the constraint holds,
+                // EXCEPT values that make denominators zero.
+                let steps = if simplifier.collect_steps() {
+                    vec![SolveStep {
+                        description: format!(
+                            "Variable '{}' canceled during simplification. Solution depends on constraint: {} = 0",
+                            var,
+                            cas_ast::DisplayExpr { context: &simplifier.context, id: diff_simplified }
+                        ),
+                        equation_after: Equation {
+                            lhs: diff_simplified,
+                            rhs: simplifier.context.add(Expr::Number(num_rational::BigRational::from_integer(0.into()))),
+                            op: cas_ast::RelOp::Eq,
+                        },
+                    }]
+                } else {
+                    vec![]
+                };
+
+                // V2.1 Issue #10: Apply domain guards if any denominators contained the variable
+                return wrap_with_domain_guards(
+                    Ok((SolutionSet::AllReals, steps)),
+                    &domain_exclusions,
+                    simplifier,
+                );
             }
         }
     }
@@ -590,6 +631,84 @@ fn substitute(ctx: &mut Context, expr: ExprId, var: &str, val: ExprId) -> ExprId
         }
         _ => expr,
     }
+}
+
+/// V2.1 Issue #10: Extract all denominators from an expression that contain the given variable.
+///
+/// Used to detect domain restrictions when solving equations with fractions.
+/// Returns a list of ExprIds that appear as denominators and contain the variable.
+///
+/// Example: `(x*y)/x` returns `[x]` (the denominator x contains var "x")
+fn extract_denominators_with_var(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
+    use std::collections::HashSet;
+    let mut denoms_set: HashSet<ExprId> = HashSet::new();
+    collect_denominators_into_set(ctx, expr, var, &mut denoms_set);
+    denoms_set.into_iter().collect()
+}
+
+/// Helper to recursively collect denominators into a HashSet
+fn collect_denominators_into_set(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    denoms: &mut std::collections::HashSet<ExprId>,
+) {
+    use cas_ast::Expr;
+    match ctx.get(expr) {
+        Expr::Div(num, denom) => {
+            // Check if denominator contains the variable
+            if contains_var(ctx, *denom, var) {
+                denoms.insert(*denom);
+            }
+            // Also check for nested divisions in numerator and denominator
+            collect_denominators_into_set(ctx, *num, var, denoms);
+            collect_denominators_into_set(ctx, *denom, var, denoms);
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+            collect_denominators_into_set(ctx, *l, var, denoms);
+            collect_denominators_into_set(ctx, *r, var, denoms);
+        }
+        Expr::Neg(e) => {
+            collect_denominators_into_set(ctx, *e, var, denoms);
+        }
+        Expr::Function(_, args) => {
+            for arg in args {
+                collect_denominators_into_set(ctx, *arg, var, denoms);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// V2.1 Issue #10: Wrap a solve result with domain guards for denominators.
+///
+/// If there are domain exclusions (denominators that must be non-zero),
+/// this wraps the result in a Conditional with NonZero guards.
+fn wrap_with_domain_guards(
+    result: Result<(SolutionSet, Vec<SolveStep>), CasError>,
+    exclusions: &[ExprId],
+    _simplifier: &mut Simplifier,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // If no exclusions, return as-is
+    if exclusions.is_empty() {
+        return result;
+    }
+
+    let (solution_set, steps) = result?;
+
+    // Build the NonZero guard condition set
+    let mut guard = cas_ast::ConditionSet::empty();
+    for &denom in exclusions {
+        guard.push(cas_ast::ConditionPredicate::NonZero(denom));
+    }
+
+    // Wrap in Conditional: [guard -> solution, otherwise -> Empty (undefined)]
+    let cases = vec![
+        cas_ast::Case::new(guard, solution_set),
+        cas_ast::Case::new(cas_ast::ConditionSet::empty(), SolutionSet::Empty),
+    ];
+
+    Ok((SolutionSet::Conditional(cases).simplify(), steps))
 }
 
 #[cfg(test)]

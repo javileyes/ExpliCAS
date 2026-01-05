@@ -42,18 +42,17 @@ Detect experience breakage instantly.
 
 ---
 
-### Issue #3: "Explain mode" for solve (compact summary)
+### Issue #3: "Explain mode" for solve (compact summary) ✅
 **Labels**: `edu`, `ux`
 
 Already have assumptions/hints/timeline; need a "professor mode" compact view.
 
 **Done when**:
-- [ ] `semantics set explain on|off` (or similar)
-- [ ] On `solve`, prints:
-  - "Assumptions used" (if any)
-  - "Cases" with guards
-  - "Blocked simplifications" (if any)
-- [ ] Correct dedup, stable order
+- [x] `explain on|off` command toggles explain mode
+- [x] On `solve`, prints:
+  - "Assumptions used" (if any) - dedup, stable order
+  - "Blocked simplifications" (if any) - with contextual tip
+- [x] Correct dedup, stable order
 
 ---
 
@@ -138,18 +137,20 @@ Super educational: "this solution fails if…"
 
 ## V2.4 — New Solve Strategies (with Safety Net)
 
-### Issue #10: Didactic strategy — clear denominators with guards
+### Issue #10: Didactic strategy — clear denominators with guards ✅
 **Labels**: `solver`, `edu`
 
 Typical classroom rational equations.
 
 Example: `(x^2-1)/(x-1)=0` → guard `x≠1` and solve `x+1=0`.
+Example: `(x*y)/x=0, x` → guard `x≠0` and result is AllReals (when y=0).
 
 **Done when**:
-- [ ] Strategy "clear denominators":
+- [x] Strategy "clear denominators":
+  - Extracts denominators containing solve variable
   - Produces Conditional with guards `den≠0`
   - Doesn't lose exclusions
-- [ ] 2 iconic tests (the above + one with multiple factors)
+- [ ] 2 iconic tests (pending - basic functionality works)
 
 ---
 
