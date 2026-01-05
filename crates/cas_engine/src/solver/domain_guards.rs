@@ -226,6 +226,7 @@ mod tests {
             value_domain: ValueDomain::RealOnly,
             domain_mode: mode,
             assume_scope: scope,
+            budget: crate::solver::SolveBudget::default(),
         };
         (ctx, opts)
     }

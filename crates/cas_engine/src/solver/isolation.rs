@@ -956,6 +956,22 @@ pub fn isolate(
                     }
                     LogSolveDecision::Unsupported(msg, missing_conditions) => {
                         // V2.0: Return Conditional solution instead of Residual
+                        // BUT only if budget allows branching
+
+                        // Check budget first
+                        if !opts.budget.can_branch() {
+                            // No budget: fall back to Residual (V1.3 behavior)
+                            let residual =
+                                mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+                            if simplifier.collect_steps() {
+                                steps.push(SolveStep {
+                                    description: format!("{} (residual, budget exhausted)", msg),
+                                    equation_after: Equation { lhs, rhs, op },
+                                });
+                            }
+                            return Ok((SolutionSet::Residual(residual), steps));
+                        }
+
                         // Build guard set from missing conditions
                         let guard =
                             crate::solver::domain_guards::SolverAssumption::to_condition_set(

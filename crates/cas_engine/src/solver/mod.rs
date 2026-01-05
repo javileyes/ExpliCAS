@@ -22,6 +22,52 @@ pub struct SolverOptions {
     pub domain_mode: crate::domain::DomainMode,
     /// Scope for assumptions (only active if domain_mode=Assume)
     pub assume_scope: crate::semantics::AssumeScope,
+    /// V2.0: Budget for conditional branching (anti-explosion)
+    pub budget: SolveBudget,
+}
+
+/// V2.0 Phase 2A: Budget for conditional solution branching.
+///
+/// Controls how many conditional branches the solver can create,
+/// preventing combinatorial explosion in complex equations.
+#[derive(Debug, Clone, Copy)]
+pub struct SolveBudget {
+    /// Maximum number of branches that can be created (0 = no branching allowed)
+    pub max_branches: usize,
+    /// Maximum nesting depth for conditional solutions
+    pub max_depth: usize,
+}
+
+impl Default for SolveBudget {
+    fn default() -> Self {
+        Self {
+            max_branches: 1,
+            max_depth: 2,
+        }
+    }
+}
+
+impl SolveBudget {
+    /// No branching allowed - always return residual
+    pub fn none() -> Self {
+        Self {
+            max_branches: 0,
+            max_depth: 0,
+        }
+    }
+
+    /// Check if branching is allowed
+    pub fn can_branch(&self) -> bool {
+        self.max_branches > 0
+    }
+
+    /// Consume one branch, returning remaining budget
+    pub fn consume_branch(self) -> Self {
+        Self {
+            max_branches: self.max_branches.saturating_sub(1),
+            ..self
+        }
+    }
 }
 
 impl Default for SolverOptions {
@@ -30,6 +76,7 @@ impl Default for SolverOptions {
             value_domain: crate::semantics::ValueDomain::RealOnly,
             domain_mode: crate::domain::DomainMode::Generic,
             assume_scope: crate::semantics::AssumeScope::Real,
+            budget: SolveBudget::default(),
         }
     }
 }

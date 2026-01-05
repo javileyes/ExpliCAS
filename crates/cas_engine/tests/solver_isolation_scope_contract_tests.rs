@@ -14,6 +14,7 @@ fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
         value_domain: ValueDomain::RealOnly,
         domain_mode: mode,
         assume_scope: scope,
+        budget: cas_engine::solver::SolveBudget::default(),
     }
 }
 
@@ -225,4 +226,51 @@ fn assume_wildcard_negative_base_returns_residual_isolation() {
             residual_str
         );
     }
+}
+
+// =============================================================================
+// V2.0 Phase 2A: Budget control tests
+// =============================================================================
+
+#[test]
+fn budget_zero_returns_residual_not_conditional() {
+    // V2.0: With budget.max_branches=0, solver returns Residual (not Conditional)
+    let mut engine = setup_engine();
+    let ctx = &mut engine.simplifier.context;
+
+    let two = ctx.num(2);
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let pow = ctx.add(Expr::Pow(two, x));
+
+    let eq = Equation {
+        lhs: pow,
+        rhs: y,
+        op: RelOp::Eq,
+    };
+
+    // Use budget=none (max_branches=0)
+    let opts = SolverOptions {
+        value_domain: ValueDomain::RealOnly,
+        domain_mode: DomainMode::Generic,
+        assume_scope: AssumeScope::Real,
+        budget: cas_engine::solver::SolveBudget::none(),
+    };
+
+    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+
+    assert!(
+        result.is_ok(),
+        "Should succeed with Residual even with budget=0, got: {:?}",
+        result
+    );
+
+    let (solution_set, _steps) = result.unwrap();
+
+    // With no budget, should return Residual (V1.3 fallback)
+    assert!(
+        matches!(solution_set, SolutionSet::Residual(_)),
+        "Budget=0 should return Residual, got: {:?}",
+        solution_set
+    );
 }

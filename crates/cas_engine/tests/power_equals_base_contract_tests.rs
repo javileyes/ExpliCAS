@@ -19,6 +19,7 @@ fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
         value_domain: ValueDomain::RealOnly,
         domain_mode: mode,
         assume_scope: scope,
+        budget: cas_engine::solver::SolveBudget::default(),
     }
 }
 

@@ -951,7 +951,7 @@ impl SolverStrategy for IsolationStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
-        _opts: &SolverOptions,
+        opts: &SolverOptions,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Isolation strategy expects variable on LHS.
         // The main solve loop handles swapping, but we should check here or just assume?
@@ -994,14 +994,8 @@ impl SolverStrategy for IsolationStrategy {
                     },
                 });
             }
-            match isolate(
-                eq.rhs,
-                eq.lhs,
-                new_op,
-                var,
-                simplifier,
-                SolverOptions::default(),
-            ) {
+            // V2.0: Pass opts through to propagate budget
+            match isolate(eq.rhs, eq.lhs, new_op, var, simplifier, *opts) {
                 Ok((set, mut iso_steps)) => {
                     steps.append(&mut iso_steps);
                     return Some(Ok((set, steps)));
@@ -1011,14 +1005,8 @@ impl SolverStrategy for IsolationStrategy {
         }
 
         // LHS has var
-        match isolate(
-            eq.lhs,
-            eq.rhs,
-            eq.op.clone(),
-            var,
-            simplifier,
-            SolverOptions::default(),
-        ) {
+        // V2.0: Pass opts through to propagate budget
+        match isolate(eq.lhs, eq.rhs, eq.op.clone(), var, simplifier, *opts) {
             Ok((set, steps)) => Some(Ok((set, steps))),
             Err(e) => Some(Err(e)),
         }
