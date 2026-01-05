@@ -253,7 +253,8 @@ pub fn solve_with_options(
 
     // Simplify LHS if it contains the variable
     if contains_var(&simplifier.context, eq.lhs, var) {
-        let (sim_lhs, _) = simplifier.simplify(eq.lhs);
+        // SolveSafety: use prepass to avoid conditional rules corrupting solution set
+        let sim_lhs = simplifier.simplify_for_solve(eq.lhs);
         simplified_eq.lhs = sim_lhs;
 
         // After simplification, try to recompose a^x/b^x -> (a/b)^x
@@ -268,7 +269,8 @@ pub fn solve_with_options(
 
     // Simplify RHS if it contains the variable
     if contains_var(&simplifier.context, eq.rhs, var) {
-        let (sim_rhs, _) = simplifier.simplify(eq.rhs);
+        // SolveSafety: use prepass to avoid conditional rules corrupting solution set
+        let sim_rhs = simplifier.simplify_for_solve(eq.rhs);
         simplified_eq.rhs = sim_rhs;
 
         // Also try recomposition on RHS
@@ -284,7 +286,8 @@ pub fn solve_with_options(
     let difference = simplifier
         .context
         .add(cas_ast::Expr::Sub(simplified_eq.lhs, simplified_eq.rhs));
-    let (diff_simplified, _) = simplifier.simplify(difference);
+    // SolveSafety: use prepass for identity/contradiction check
+    let diff_simplified = simplifier.simplify_for_solve(difference);
 
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {

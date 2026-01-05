@@ -659,6 +659,7 @@ impl Simplifier {
             crate::semantics::InverseTrigPolicy::default(),
             crate::semantics::ValueDomain::default(),
             crate::semantics::NormalFormGoal::default(),
+            crate::solve_safety::SimplifyPurpose::default(),
         )
     }
 
@@ -677,6 +678,7 @@ impl Simplifier {
         inv_trig: crate::semantics::InverseTrigPolicy,
         value_domain: crate::semantics::ValueDomain,
         goal: crate::semantics::NormalFormGoal,
+        simplify_purpose: crate::solve_safety::SimplifyPurpose,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
@@ -737,7 +739,7 @@ impl Simplifier {
                 }
             },
             stop_reason: None,
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            simplify_purpose,
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);

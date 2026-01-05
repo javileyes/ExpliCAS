@@ -480,6 +480,9 @@ fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool
 define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
     |ctx, expr, parent_ctx| {
         use crate::helpers::prove_nonzero;
         use cas_ast::views::RationalFnView;
