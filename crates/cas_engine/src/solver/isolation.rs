@@ -768,25 +768,111 @@ pub fn isolate(
                         let results = isolate(e, zero, RelOp::Gt, var, simplifier, opts)?;
                         return prepend_steps(results, steps);
                     } else {
-                        // base^x = base ⟹ x = 1 (when base ≠ 0)
-                        let one = simplifier.context.num(1);
+                        // base^x = base ⟹ x = 1 (when base ≠ 0, ≠ 1)
+                        // V2.0 Phase 2B: When base is symbolic (not a literal number),
+                        // create Conditional case splits for complete didactic solution.
 
+                        let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));
+                        let one = simplifier.context.num(1);
+                        let zero = simplifier.context.num(0);
+
+                        // If base is a literal number (but not zero, already handled above),
+                        // just return x = 1 directly (no case split needed).
+                        if base_is_numeric {
+                            if simplifier.collect_steps() {
+                                steps.push(SolveStep {
+                                    description: format!(
+                                        "Power Equals Base Shortcut: {}^{} = {} ⟹ {} = 1 (B^1 = B always holds)",
+                                        cas_ast::DisplayExpr { context: &simplifier.context, id: b },
+                                        var,
+                                        cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
+                                        var
+                                    ),
+                                    equation_after: Equation { lhs: e, rhs: one, op: op.clone() },
+                                });
+                            }
+
+                            // Recurse to solve e = 1
+                            let results = isolate(e, one, op, var, simplifier, opts)?;
+                            return prepend_steps(results, steps);
+                        }
+
+                        // ================================================================
+                        // V2.0 Phase 2B: Symbolic base → Case splits
+                        // For a^x = a where 'a' is symbolic:
+                        //   Case 1: if a = 1 → AllReals (1^x = 1 for all x)
+                        //   Case 2: if a = 0 → x > 0 (0^x = 0 only for x > 0)
+                        //   Case 3: otherwise → x = 1 (a^1 = a for a ≠ 0, a ≠ 1)
+                        // ================================================================
+
+                        // Budget check: need at least 2 branches for meaningful split
+                        if opts.budget.max_branches < 2 {
+                            // No budget for splits: fallback to simple x = 1
+                            if simplifier.collect_steps() {
+                                steps.push(SolveStep {
+                                    description: format!(
+                                        "Power Equals Base: {}^{} = {} ⟹ {} = 1 (assuming base ≠ 0, 1)",
+                                        cas_ast::DisplayExpr { context: &simplifier.context, id: b },
+                                        var,
+                                        cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
+                                        var
+                                    ),
+                                    equation_after: Equation { lhs: e, rhs: one, op: op.clone() },
+                                });
+                            }
+                            let results = isolate(e, one, op, var, simplifier, opts)?;
+                            return prepend_steps(results, steps);
+                        }
+
+                        // Build the three cases
+                        use cas_ast::{
+                            BoundType, Case, ConditionPredicate, ConditionSet, Interval,
+                            SolveResult,
+                        };
+
+                        // Case 1: a = 1 → AllReals
+                        let case_one_guard = ConditionSet::single(ConditionPredicate::EqOne(b));
+                        let case_one_result = SolveResult::solved(SolutionSet::AllReals);
+                        let case_one = Case::with_result(case_one_guard, case_one_result);
+
+                        // Case 2: a = 0 → x > 0, i.e., Continuous((0, +∞))
+                        let case_zero_guard = ConditionSet::single(ConditionPredicate::EqZero(b));
+                        let pos_infinity = simplifier
+                            .context
+                            .add(Expr::Variable("infinity".to_string()));
+                        let interval_x_positive = Interval {
+                            min: zero,
+                            min_type: BoundType::Open,
+                            max: pos_infinity,
+                            max_type: BoundType::Open,
+                        };
+                        let case_zero_result =
+                            SolveResult::solved(SolutionSet::Continuous(interval_x_positive));
+                        let case_zero = Case::with_result(case_zero_guard, case_zero_result);
+
+                        // Case 3: otherwise → x = 1
+                        let case_default_guard = ConditionSet::empty(); // "otherwise"
+                        let case_default_result =
+                            SolveResult::solved(SolutionSet::Discrete(vec![one]));
+                        let case_default =
+                            Case::with_result(case_default_guard, case_default_result);
+
+                        // Pedagogical step
                         if simplifier.collect_steps() {
                             steps.push(SolveStep {
                                 description: format!(
-                                    "Power Equals Base Shortcut: {}^{} = {} ⟹ {} = 1 (B^1 = B always holds)",
-                                    cas_ast::DisplayExpr { context: &simplifier.context, id: b },
-                                    var,
-                                    cas_ast::DisplayExpr { context: &simplifier.context, id: rhs },
-                                    var
+                                    "Power Equals Base with symbolic base '{}': case split → a=1: AllReals, a=0: x>0, otherwise: x=1",
+                                    cas_ast::DisplayExpr { context: &simplifier.context, id: b }
                                 ),
-                                equation_after: Equation { lhs: e, rhs: one, op: op.clone() },
+                                equation_after: Equation { lhs: e, rhs: b, op: op.clone() },
                             });
                         }
 
-                        // Recurse to solve e = 1
-                        let results = isolate(e, one, op, var, simplifier, opts)?;
-                        return prepend_steps(results, steps);
+                        // Return the Conditional (important: order matters for UX)
+                        // Put more specific cases first (a=1, a=0), then default
+                        let conditional =
+                            SolutionSet::Conditional(vec![case_one, case_zero, case_default]);
+                        return Ok((conditional, steps));
                     }
                 }
 

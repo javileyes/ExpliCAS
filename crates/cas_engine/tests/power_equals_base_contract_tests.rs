@@ -33,7 +33,9 @@ fn setup_engine() -> Engine {
 
 #[test]
 fn power_equals_base_symbolic_strict_mode() {
-    // a^x = a in Strict mode - should return {1} without log
+    // V2.0 Phase 2B: a^x = a with symbolic base in Strict mode
+    // Should return Conditional with case splits:
+    //   a=1 → AllReals, a=0 → x>0, otherwise → {1}
     let mut engine = setup_engine();
     let ctx = &mut engine.simplifier.context;
 
@@ -47,36 +49,60 @@ fn power_equals_base_symbolic_strict_mode() {
         op: RelOp::Eq,
     };
 
-    let opts = make_opts(DomainMode::Strict, AssumeScope::Real);
+    // Use budget=2 to allow case splits
+    let opts = SolverOptions {
+        value_domain: ValueDomain::RealOnly,
+        domain_mode: DomainMode::Strict,
+        assume_scope: AssumeScope::Real,
+        budget: cas_engine::solver::SolveBudget {
+            max_branches: 2,
+            max_depth: 2,
+        },
+    };
     let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
 
     assert!(result.is_ok(), "Should solve a^x = a, got: {:?}", result);
 
     let (solution_set, _steps) = result.unwrap();
 
-    // Should be Discrete with single solution
-    match solution_set {
-        SolutionSet::Discrete(sols) => {
-            assert_eq!(
-                sols.len(),
-                1,
-                "Expected exactly 1 solution, got: {:?}",
-                sols
+    // V2.0: Should be Conditional with 3 cases
+    match &solution_set {
+        SolutionSet::Conditional(cases) => {
+            assert_eq!(cases.len(), 3, "Expected 3 cases (a=1, a=0, otherwise)");
+            // Case 1: a=1 → AllReals
+            assert!(
+                matches!(cases[0].then.solutions, SolutionSet::AllReals),
+                "First case should be AllReals for a=1"
             );
-            let sol_str = cas_ast::DisplayExpr {
-                context: &engine.simplifier.context,
-                id: sols[0],
+            // Case 2: a=0 → x > 0 (Continuous)
+            assert!(
+                matches!(cases[1].then.solutions, SolutionSet::Continuous(_)),
+                "Second case should be Continuous for a=0"
+            );
+            // Case 3: otherwise → {1}
+            match &cases[2].then.solutions {
+                SolutionSet::Discrete(sols) if sols.len() == 1 => {
+                    let sol_str = cas_ast::DisplayExpr {
+                        context: &engine.simplifier.context,
+                        id: sols[0],
+                    }
+                    .to_string();
+                    assert_eq!(sol_str, "1", "Default case should be x=1");
+                }
+                other => panic!("Default case should be Discrete({{1}}), got: {:?}", other),
             }
-            .to_string();
-            assert_eq!(sol_str, "1", "Expected solution = 1, got: {}", sol_str);
         }
-        other => panic!("Expected Discrete solution set, got: {:?}", other),
+        other => panic!(
+            "V2.0: Expected Conditional for symbolic base, got: {:?}",
+            other
+        ),
     }
 }
 
 #[test]
 fn power_equals_base_symbolic_generic_mode() {
-    // a^x = a in Generic mode - should also return {1}
+    // V2.0 Phase 2B: a^x = a with symbolic base in Generic mode
+    // With default budget (1), should fallback to {1}
     let mut engine = setup_engine();
     let ctx = &mut engine.simplifier.context;
 
@@ -90,6 +116,7 @@ fn power_equals_base_symbolic_generic_mode() {
         op: RelOp::Eq,
     };
 
+    // Default budget (max_branches=1) → fallback to {1}
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
     let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
 
@@ -97,6 +124,7 @@ fn power_equals_base_symbolic_generic_mode() {
 
     let (solution_set, _steps) = result.unwrap();
 
+    // With default budget (1 < 2), falls back to simple {1}
     match solution_set {
         SolutionSet::Discrete(sols) => {
             assert_eq!(sols.len(), 1, "Expected exactly 1 solution");
@@ -107,7 +135,10 @@ fn power_equals_base_symbolic_generic_mode() {
             .to_string();
             assert_eq!(sol_str, "1", "Expected solution = 1, got: {}", sol_str);
         }
-        other => panic!("Expected Discrete solution set, got: {:?}", other),
+        other => panic!(
+            "With budget=1, expected fallback Discrete({{1}}), got: {:?}",
+            other
+        ),
     }
 }
 

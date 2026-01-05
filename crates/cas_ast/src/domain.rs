@@ -54,6 +54,10 @@ pub enum ConditionPredicate {
     Defined(ExprId),
     /// Argument must be in principal range of inverse trig function
     InvTrigPrincipalRange { func: &'static str, arg: ExprId },
+    /// V2.0 Phase 2B: Expression equals zero
+    EqZero(ExprId),
+    /// V2.0 Phase 2B: Expression equals one
+    EqOne(ExprId),
 }
 
 impl ConditionPredicate {
@@ -67,6 +71,8 @@ impl ConditionPredicate {
             Self::InvTrigPrincipalRange { func, .. } => {
                 format!("in principal range of {}", func)
             }
+            Self::EqZero(_) => "= 0".to_string(),
+            Self::EqOne(_) => "= 1".to_string(),
         }
     }
 
@@ -77,7 +83,9 @@ impl ConditionPredicate {
             | Self::Positive(e)
             | Self::NonNegative(e)
             | Self::Defined(e)
-            | Self::InvTrigPrincipalRange { arg: e, .. } => *e,
+            | Self::InvTrigPrincipalRange { arg: e, .. }
+            | Self::EqZero(e)
+            | Self::EqOne(e) => *e,
         }
     }
 }
