@@ -314,6 +314,12 @@ impl crate::rule::Rule for LogExpansionRule {
     fn target_types(&self) -> Option<Vec<&str>> {
         Some(vec!["Function"])
     }
+
+    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
+        crate::solve_safety::SolveSafety::NeedsCondition(
+            crate::assumptions::ConditionClass::Analytic,
+        )
+    }
 }
 
 /// LogAbsSimplifyRule: Simplifies ln(|expr|) → ln(expr) when expr > 0.
@@ -710,6 +716,12 @@ impl crate::rule::Rule for ExponentialLogRule {
 
     fn target_types(&self) -> Option<Vec<&str>> {
         Some(vec!["Pow"])
+    }
+
+    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
+        crate::solve_safety::SolveSafety::NeedsCondition(
+            crate::assumptions::ConditionClass::Analytic,
+        )
     }
 }
 

@@ -2008,6 +2008,9 @@ define_rule!(
 define_rule!(
     CancelCommonFactorsRule,
     "Cancel Common Factors",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
     |ctx, expr, parent_ctx| {
         use crate::helpers::prove_nonzero;
 

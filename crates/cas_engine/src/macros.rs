@@ -293,4 +293,109 @@ macro_rules! define_rule {
             }
         }
     };
+
+    // =========================================================================
+    // SOLVE_SAFETY FORMS (domain-aware with solve_safety classification)
+    // =========================================================================
+
+    // Domain-aware form with solve_safety, no targets, no phase
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        solve_safety: $safety:expr,
+        | $ctx:ident, $arg:ident, $parent_ctx:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, _ctx: &mut cas_ast::Context, _expr: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                unreachable!("This rule uses apply_with_context")
+            }
+
+            fn apply_with_context(
+                &self,
+                $ctx: &mut cas_ast::Context,
+                $arg: cas_ast::ExprId,
+                $parent_ctx: &$crate::parent_context::ParentContext,
+            ) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn solve_safety(&self) -> $crate::solve_safety::SolveSafety {
+                $safety
+            }
+        }
+    };
+
+    // Domain-aware form with solve_safety AND importance
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        solve_safety: $safety:expr,
+        importance: $importance:expr,
+        | $ctx:ident, $arg:ident, $parent_ctx:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, _ctx: &mut cas_ast::Context, _expr: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                unreachable!("This rule uses apply_with_context")
+            }
+
+            fn apply_with_context(
+                &self,
+                $ctx: &mut cas_ast::Context,
+                $arg: cas_ast::ExprId,
+                $parent_ctx: &$crate::parent_context::ParentContext,
+            ) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn importance(&self) -> $crate::step::ImportanceLevel {
+                $importance
+            }
+
+            fn solve_safety(&self) -> $crate::solve_safety::SolveSafety {
+                $safety
+            }
+        }
+    };
+
+    // Simple 2-arg form with solve_safety (no parent_ctx, no targets)
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        solve_safety: $safety:expr,
+        | $ctx:ident, $arg:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, $ctx: &mut cas_ast::Context, $arg: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn solve_safety(&self) -> $crate::solve_safety::SolveSafety {
+                $safety
+            }
+        }
+    };
 }
