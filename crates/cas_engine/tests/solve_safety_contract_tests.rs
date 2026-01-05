@@ -158,6 +158,33 @@ mod solve_tactic_tests {
             result_str
         );
     }
+
+    /// Guard test: SolveTactic should NOT transform inputs outside Assume+RealOnly
+    /// This is a regression guard to ensure scope is not widened by future refactors.
+    #[test]
+    fn tactic_scope_guard_strict_mode() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse_expr(&mut simplifier, "exp(ln(x))");
+
+        // In Strict mode, even SolveTactic should not apply Analytic rules
+        let opts = SimplifyOptions::for_solve_tactic(DomainMode::Strict);
+        let (result, _) = simplifier.simplify_with_options(expr, opts);
+
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+        );
+
+        // Strict mode: absolutely no Analytic rules
+        assert!(
+            result_str.contains("ln"),
+            "SolveTactic(Strict) must not apply any Analytic rules, got: {}",
+            result_str
+        );
+    }
 }
 
 mod solver_tests {
