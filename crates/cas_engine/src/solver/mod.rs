@@ -1,4 +1,5 @@
 use crate::build::mul2_raw;
+pub mod check;
 pub mod domain_guards;
 pub mod isolation;
 pub mod solution_set;

@@ -3060,6 +3060,29 @@ impl Repl {
                     println!("ERROR: Missing value for axis '{}'", arg);
                     return;
                 }
+
+                // Special case: "solve check on|off" is a 3-part axis
+                if arg == "solve" && args.get(i + 1) == Some(&"check") && i + 2 < args.len() {
+                    let on_off = args[i + 2];
+                    match on_off {
+                        "on" => {
+                            self.state.options.check_solutions = true;
+                            println!("Solve check: ON (solutions will be verified)");
+                        }
+                        "off" => {
+                            self.state.options.check_solutions = false;
+                            println!("Solve check: OFF");
+                        }
+                        _ => {
+                            println!("ERROR: Invalid value '{}' for 'solve check'", on_off);
+                            println!("Allowed: on, off");
+                            return;
+                        }
+                    }
+                    i += 3;
+                    continue;
+                }
+
                 let value = args[i + 1];
                 if !self.set_semantic_axis(arg, value) {
                     return;
@@ -3205,9 +3228,21 @@ impl Repl {
                     return false;
                 }
             },
+            "solve" => match value {
+                "check" => {
+                    // "solve check" is special: toggle without secondary value
+                    println!("ERROR: Use 'semantics set solve check on' or 'semantics set solve check off'");
+                    return false;
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'solve'", value);
+                    println!("Allowed: 'check on', 'check off'");
+                    return false;
+                }
+            },
             _ => {
                 println!("ERROR: Unknown axis '{}'", axis);
-                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope, hints");
+                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope, hints, solve");
                 return false;
             }
         }
@@ -4179,8 +4214,17 @@ impl Repl {
         use cas_engine::EntryKind;
         use cas_parser::Statement;
 
-        // solve <equation>, <var>
+        // solve [--check] <equation>, <var>
         let rest = line[6..].trim();
+
+        // Parse --check flag (one-shot override)
+        let (check_enabled, rest) = if rest.starts_with("--check") {
+            let after_flag = rest[7..].trim_start();
+            (true, after_flag)
+        } else {
+            // Use session toggle if no explicit flag
+            (self.state.options.check_solutions, rest)
+        };
 
         // Split by comma or space to get equation and var
         let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
@@ -4236,6 +4280,12 @@ impl Repl {
 
         match parsed_expr_res {
             Ok(stmt) => {
+                // Store equation for potential verification
+                let original_equation: Option<cas_ast::Equation> = match &stmt {
+                    Statement::Equation(eq) => Some(eq.clone()),
+                    Statement::Expression(_) => None,
+                };
+
                 let (kind, parsed_expr) = match stmt {
                     Statement::Equation(eq) => {
                         let eq_expr = self
@@ -4346,7 +4396,7 @@ impl Repl {
                                 let ctx = &self.engine.simplifier.context;
                                 println!("Result: {}", display_solution_set(ctx, solution_set));
                             }
-                            EvalResult::Set(sols) => {
+                            EvalResult::Set(ref sols) => {
                                 // Legacy: discrete solutions as Vec<ExprId>
                                 let ctx = &self.engine.simplifier.context;
                                 let sol_strs: Vec<String> = if !output.output_scopes.is_empty() {
@@ -4376,6 +4426,65 @@ impl Repl {
                                 }
                             }
                             _ => println!("Result: {:?}", output.result),
+                        }
+
+                        // Issue #5: Solution verification (--check flag)
+                        if check_enabled {
+                            if let EvalResult::SolutionSet(ref solution_set) = output.result {
+                                if let Some(ref eq) = original_equation {
+                                    use cas_engine::solver::check::{
+                                        verify_solution_set, VerifySummary,
+                                    };
+
+                                    let verify_result = verify_solution_set(
+                                        &mut self.engine.simplifier,
+                                        eq,
+                                        var,
+                                        solution_set,
+                                    );
+
+                                    // Display verification status
+                                    match verify_result.summary {
+                                        VerifySummary::AllVerified => {
+                                            println!("✓ All solutions verified");
+                                        }
+                                        VerifySummary::PartiallyVerified => {
+                                            println!("⚠ Some solutions verified");
+                                            for (sol_id, status) in &verify_result.solutions {
+                                                let sol_str = DisplayExpr {
+                                                    context: &self.engine.simplifier.context,
+                                                    id: *sol_id,
+                                                }
+                                                .to_string();
+                                                match status {
+                                                    cas_engine::solver::check::VerifyStatus::Verified => {
+                                                        println!("  ✓ {} = {} verified", var, sol_str);
+                                                    }
+                                                    cas_engine::solver::check::VerifyStatus::Unverifiable { reason, .. } => {
+                                                        println!("  ⚠ {} = {}: {}", var, sol_str, reason);
+                                                    }
+                                                    cas_engine::solver::check::VerifyStatus::NotCheckable { reason } => {
+                                                        println!("  ℹ {} = {}: {}", var, sol_str, reason);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        VerifySummary::NoneVerified => {
+                                            println!("⚠ No solutions could be verified");
+                                        }
+                                        VerifySummary::NotCheckable => {
+                                            if let Some(desc) = verify_result.guard_description {
+                                                println!("ℹ {}", desc);
+                                            } else {
+                                                println!("ℹ Solution type not checkable");
+                                            }
+                                        }
+                                        VerifySummary::Empty => {
+                                            // Empty set - nothing to verify
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // V2.1 Issue #3: Explain mode - structured summary for solve
@@ -4477,7 +4586,9 @@ impl Repl {
                                 cas_engine::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }
-                                cas_engine::DomainMode::Generic => "use `semantics set domain assume` to allow",
+                                cas_engine::DomainMode::Generic => {
+                                    "use `semantics set domain assume` to allow"
+                                }
                                 cas_engine::DomainMode::Assume => "assumptions already enabled",
                             };
 

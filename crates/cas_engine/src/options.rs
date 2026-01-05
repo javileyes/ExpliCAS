@@ -119,6 +119,8 @@ pub struct EvalOptions {
     pub explain_mode: bool,
     /// V2.0: Budget for Conditional branching in solve
     pub budget: crate::solver::SolveBudget,
+    /// Issue #5: Verify solutions by substitution (default: false)
+    pub check_solutions: bool,
 }
 
 impl EvalOptions {
@@ -207,6 +209,7 @@ impl Default for EvalOptions {
             hints_enabled: true, // Pedagogical hints on by default
             explain_mode: false, // Explain mode off by default
             budget: crate::solver::SolveBudget::default(),
+            check_solutions: false, // Solution verification off by default
         }
     }
 }
