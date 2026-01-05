@@ -1077,7 +1077,7 @@ pub fn isolate(
                                 key: event.key,
                                 expr_id,
                                 rule: "Take log of both sides",
-                                suggestion: "use `domain assume`",
+                                suggestion: "use `semantics set domain assume`",
                             });
                         }
 

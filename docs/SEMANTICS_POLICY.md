@@ -73,7 +73,7 @@ When Generic mode blocks a transformation due to an unproven Analytic condition,
 > exp(ln(x))
 Result: e^(ln(x))
 ℹ️  Blocked in Generic: requires x > 0 [Exponential-Log Inverse]
-   use `domain assume` to allow analytic assumptions
+   use `semantics set domain assume` to allow analytic assumptions
 ```
 
 **Key behaviors:**

@@ -378,7 +378,7 @@ define_rule!(
     solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
         crate::assumptions::ConditionClass::Analytic
     ),
-    |ctx, expr, _parent_ctx| {
+    |ctx, expr, parent_ctx| {
     // (x^a)^b -> x^(a*b)
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, outer_exp) = expr_data {
@@ -413,6 +413,69 @@ define_rule!(
                 });
             }
 
+            // ================================================================
+            // V2.1: Domain check for even roots like (x^(1/2))^2 -> x
+            // This requires x >= 0 since sqrt(x) is only defined for non-negatives in reals.
+            // We use prove_positive as a conservative check (x > 0 implies x >= 0).
+            // ================================================================
+            let inner_is_even_root = if let Expr::Number(n) = ctx.get(inner_exp) {
+                // Check if inner_exp = p/q where q is even (even root)
+                // e.g., 1/2 has denominator 2 (sqrt), 1/4 has denominator 4 (4th root)
+                let denom = n.denom();
+                denom.is_even()
+            } else {
+                false
+            };
+
+            if inner_is_even_root {
+                // This transformation requires inner_base >= 0 (NonNegative condition)
+                // Use Analytic gate: Generic blocks with hint, Assume allows
+                // Note: We use prove_positive (x > 0) as it implies x >= 0
+                use crate::domain::can_apply_analytic_with_hint;
+                use crate::helpers::prove_positive;
+
+                let mode = parent_ctx.domain_mode();
+                let vd = parent_ctx.value_domain();
+                let proof = prove_positive(ctx, inner_base, vd);
+
+                // Use Analytic gate with hint for Generic mode blocking
+                let key = crate::assumptions::AssumptionKey::positive_key(ctx, inner_base);
+                let decision = can_apply_analytic_with_hint(
+                    mode,
+                    proof,
+                    key,
+                    inner_base,
+                    "Power of a Power",
+                );
+
+                if !decision.allow {
+                    // Blocked: Generic/Strict mode with unproven condition
+                    return None;
+                }
+
+                // Allowed: proceed with transformation
+                let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
+                let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
+
+                // Build assumption events if needed
+                let assumption_events = if decision.assumption.is_some() {
+                    smallvec::smallvec![
+                        crate::assumptions::AssumptionEvent::positive(ctx, inner_base)
+                    ]
+                } else {
+                    Default::default()
+                };
+
+                return Some(Rewrite {
+                    new_expr,
+                    description: "Multiply exponents".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    assumption_events,
+                });
+            }
+
+            // Default case: no domain restriction needed
             let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
             let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
             return Some(Rewrite {

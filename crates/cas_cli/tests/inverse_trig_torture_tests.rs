@@ -15,6 +15,28 @@ fn simplify_str(input: &str) -> String {
     )
 }
 
+/// Simplify with Assume mode - allows analytic assumptions like x > 0
+/// Use for trig identities that require domain assumptions
+fn simplify_str_assume(input: &str) -> String {
+    let mut simplifier = Simplifier::with_default_rules();
+    let expr = parse(input, &mut simplifier.context).unwrap();
+
+    // Use Assume mode for analytic simplifications
+    let opts = cas_engine::SimplifyOptions {
+        domain: cas_engine::DomainMode::Assume,
+        ..Default::default()
+    };
+
+    let (result, _steps, _) = simplifier.simplify_with_stats(expr, opts);
+    format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    )
+}
+
 // ==================== Test 46: El Bumerán Roto (Principal Values) ====================
 
 #[test]
@@ -112,7 +134,8 @@ fn test_50_tan_asin_composition() {
     //   cos(θ) = √(1-x²)
     //   tan(θ) = sin(θ)/cos(θ) = x/√(1-x²)
     //   tan²(θ) = x²/(1-x²)
-    let result = simplify_str("tan(asin(x))^2 - x^2/(1-x^2)");
+    // NOTE: Requires Assume mode because sqrt(1-x²)^2 → (1-x²) needs 1-x² ≥ 0
+    let result = simplify_str_assume("tan(asin(x))^2 - x^2/(1-x^2)");
 
     println!("Test 50 result: {}", result);
 

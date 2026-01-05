@@ -543,12 +543,20 @@ fn test_zero_equivalence_suite() {
 fn test_torture_6_conjugate() {
     // 1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)
     // Expected: 0
+    // NOTE: This requires Assume mode because sqrt(x)^2 = x requires x >= 0
+    // The identity uses x - 1 = (sqrt(x) - 1)(sqrt(x) + 1)
     let input = "1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)";
     let mut simplifier = create_full_simplifier();
-    // Rules are now in create_full_simplifier
 
     let expr = parse(input, &mut simplifier.context).unwrap();
-    let (simplified, _) = simplifier.simplify(expr);
+
+    // Use Assume mode to allow sqrt(x)^2 -> x
+    let opts = cas_engine::SimplifyOptions {
+        domain: cas_engine::DomainMode::Assume,
+        ..Default::default()
+    };
+    let (simplified, _, _) = simplifier.simplify_with_stats(expr, opts);
+
     let result_str = format!(
         "{}",
         DisplayExpr {

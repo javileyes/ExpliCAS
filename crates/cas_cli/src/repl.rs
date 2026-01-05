@@ -4448,7 +4448,7 @@ impl Repl {
                                         "tip: use `domain generic` or `domain assume` to allow"
                                     }
                                     cas_engine::DomainMode::Generic => {
-                                        "tip: use `domain assume` to allow"
+                                        "tip: use `semantics set domain assume` to allow"
                                     }
                                     cas_engine::DomainMode::Assume => {
                                         "tip: assumptions already enabled"
@@ -4477,7 +4477,7 @@ impl Repl {
                                 cas_engine::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }
-                                cas_engine::DomainMode::Generic => "use `domain assume` to allow",
+                                cas_engine::DomainMode::Generic => "use `semantics set domain assume` to allow",
                                 cas_engine::DomainMode::Assume => "assumptions already enabled",
                             };
 
@@ -5023,7 +5023,7 @@ impl Repl {
                                     "use `domain generic` or `domain assume` to allow"
                                 }
                                 cas_engine::DomainMode::Generic => {
-                                    "use `domain assume` to allow analytic assumptions"
+                                    "use `semantics set domain assume` to allow analytic assumptions"
                                 }
                                 cas_engine::DomainMode::Assume => {
                                     // Should not happen, but fallback

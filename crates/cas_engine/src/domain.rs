@@ -165,7 +165,7 @@ impl Proof {
 /// Hint emitted when an Analytic condition blocks transformation in Generic mode.
 ///
 /// This enables pedagogical warnings like:
-/// "Cannot simplify: requires x > 0. Use `domain assume` to allow."
+/// "Cannot simplify: requires x > 0. Use `semantics set domain assume` to allow."
 #[derive(Debug, Clone)]
 pub struct BlockedHint {
     /// The assumption key (e.g., Positive{expr}) - used for deduplication
@@ -232,7 +232,7 @@ impl CancelDecision {
                 key,
                 expr_id,
                 rule,
-                suggestion: "use `domain assume` to allow analytic assumptions",
+                suggestion: "use `semantics set domain assume` to allow analytic assumptions",
             }),
             assumed_keys: smallvec::SmallVec::new(),
         }
@@ -500,7 +500,7 @@ pub fn can_apply_analytic_with_hint(
                     key: key.clone(),
                     expr_id,
                     rule,
-                    suggestion: "use `domain assume` to allow analytic assumptions",
+                    suggestion: "use `semantics set domain assume` to allow analytic assumptions",
                 };
                 register_blocked_hint(hint);
                 CancelDecision::deny_with_hint(key, expr_id, rule)

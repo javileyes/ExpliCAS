@@ -94,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pedagogical Blocked Hints**: When Generic mode blocks simplifications requiring analytic assumptions (e.g., `x > 0`), the REPL now displays actionable hints:
   ```
   ℹ️  Blocked in Generic: requires x > 0 [Exponential-Log Inverse]
-     use `domain assume` to allow analytic assumptions
+     use `semantics set domain assume` to allow analytic assumptions
   ```
 
 - **Thread-local Hint Collector**: `register_blocked_hint()`, `take_blocked_hints()`, `clear_blocked_hints()` in `domain.rs`
