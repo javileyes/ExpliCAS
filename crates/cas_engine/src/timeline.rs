@@ -1180,6 +1180,19 @@ impl<'a> TimelineHtml<'a> {
         .domain-warning::before {{
             content: '⚠ ';
         }}
+        .domain-requires {{
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: rgba(33, 150, 243, 0.15);
+            border: 1px solid rgba(33, 150, 243, 0.4);
+            border-radius: 6px;
+            color: #64b5f6;
+            font-size: 0.9em;
+            transition: background 0.3s ease, color 0.3s ease;
+        }}
+        .domain-requires::before {{
+            content: 'ℹ️ ';
+        }}
     </style>
 </head>
 <body>
@@ -1479,6 +1492,22 @@ impl<'a> TimelineHtml<'a> {
                 String::new()
             };
 
+            // Build requires HTML from required_conditions (implicit domain constraints)
+            let requires_html = if !step.required_conditions.is_empty() {
+                let messages: Vec<String> = step
+                    .required_conditions
+                    .iter()
+                    .map(|c| html_escape(&c.display(self.context)))
+                    .collect();
+                format!(
+                    r#"                    <div class="domain-requires">Requires: {}</div>
+"#,
+                    messages.join(", ")
+                )
+            } else {
+                String::new()
+            };
+
             html.push_str(&format!(
                 r#"            <div class="step">
                 <div class="step-number">{}</div>
@@ -1499,7 +1528,7 @@ impl<'a> TimelineHtml<'a> {
                         \(\textbf{{After:}}\)
                         \[{}\]
                     </div>
-{}                </div>
+{}{}                </div>
             </div>
 "#,
                 step_number,
@@ -1509,6 +1538,7 @@ impl<'a> TimelineHtml<'a> {
                 step.description,
                 local_change_latex,
                 global_after,
+                requires_html,
                 domain_html
             ));
         }

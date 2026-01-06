@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{x - y}{\sqrt{x} - \sqrt{y}}</title>
+    <title>CAS Steps: {\sqrt{x}}^{2}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -397,6 +397,19 @@
         .domain-warning::before {
             content: '⚠ ';
         }
+        .domain-requires {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: rgba(33, 150, 243, 0.15);
+            border: 1px solid rgba(33, 150, 243, 0.4);
+            border-radius: 6px;
+            color: #64b5f6;
+            font-size: 0.9em;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        .domain-requires::before {
+            content: 'ℹ️ ';
+        }
     </style>
 </head>
 <body>
@@ -424,41 +437,16 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{x - y}{\sqrt{x} - \sqrt{y}}\]
+            \[{\sqrt{x}}^{2}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Rationalize Denominator</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{x - y}{\sqrt{x} - \sqrt{y}}}}\]
-                    </div>
-                    <details class="substeps-details">
-                            <summary>Pasos intermedios</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{x - y}{\sqrt{x} - \sqrt{y}} \rightarrow \text{Conjugado: } a + b \to a - b\]</div></div><div class="substep">
-                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(x - y) \cdot (a-b)}{(\sqrt{x} - \sqrt{y}) \cdot (a-b)} \rightarrow \frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\sqrt{x}}^{2} - {(-\sqrt{y})}^{2}}\]</div></div></div></details>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
-                        <div class="local-change">
-                            \[\frac{x - y}{\sqrt{x} - \sqrt{y}} \rightarrow \frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\sqrt{x}}^{2} - {(-\sqrt{y})}^{2}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\sqrt{x}}^{2} - {(-\sqrt{y})}^{2}}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
                     <h3>Power of a Power</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\color{red}{{\sqrt{x}}^{2}}} - {(-\sqrt{y})}^{2}}\]
+                        \[{\color{red}{{\sqrt{x}}^{2}}}\]
                     </div>
                     
                     <div class="rule-description">
@@ -469,79 +457,15 @@
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{{\color{green}{x}} - {(-\sqrt{y})}^{2}}\]
+                        \[{\color{green}{x}}\]
                     </div>
-                    <div class="domain-warning">Domain: Assumed x &gt; 0</div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Negative Base Power</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - {\color{red}{{(-\sqrt{y})}^{2}}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{(-x)^even -> x^even}\)</div>
-                        <div class="local-change">
-                            \[{(-\sqrt{y})}^{2} \rightarrow {\sqrt{y}}^{2}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - {\color{green}{{\sqrt{y}}^{2}}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Power of a Power</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - {\color{red}{{\sqrt{y}}^{2}}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
-                        <div class="local-change">
-                            \[{\sqrt{y}}^{2} \rightarrow y\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - {\color{green}{y}}}\]
-                    </div>
-                    <div class="domain-warning">Domain: Assumed y &gt; 0</div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
-                    <h3>Cancel Common Factors</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - y}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel common factors}\)</div>
-                        <div class="local-change">
-                            \[\frac{(x - y)\cdot (\sqrt{x} + \sqrt{y})}{x - y} \rightarrow \frac{\sqrt{x} + \sqrt{y}}{1}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{\sqrt{x} + \sqrt{y}}{1}}}\]
-                    </div>
+                    <div class="domain-requires">Requires: x ≥ 0</div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[\sqrt{x} + \sqrt{y}\]
+            \[x\]
         </div>
     </div>
     <footer>
