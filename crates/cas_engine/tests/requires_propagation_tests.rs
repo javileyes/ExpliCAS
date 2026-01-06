@@ -1,0 +1,170 @@
+//! Regression tests for Requires/Assumed propagation when reusing session entries.
+//!
+//! These tests verify that:
+//! 1. Requires are re-inferred when expressions are reused via #id
+//! 2. Structural domain conditions propagate correctly through composition
+//! 3. Combined expressions inherit requires from all sub-expressions
+
+use cas_ast::Expr;
+use cas_engine::eval::{EvalAction, EvalRequest};
+use cas_engine::session::EntryKind;
+use cas_engine::session_state::SessionState;
+use cas_engine::Engine;
+
+/// Helper to create eval request for expression
+fn make_simplify_request(engine: &mut Engine, expr_str: &str) -> EvalRequest {
+    let parsed =
+        cas_parser::parse(expr_str, &mut engine.simplifier.context).expect("parse should succeed");
+    EvalRequest {
+        raw_input: expr_str.to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: true,
+    }
+}
+
+/// Test: sqrt(x) produces x ≥ 0, and this propagates when reused
+#[test]
+fn requires_propagate_on_sqrt_reuse() {
+    use cas_engine::implicit_domain::ImplicitCondition;
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::default();
+
+    // Step 1: Evaluate sqrt(x) -> stored as #1
+    let req1 = make_simplify_request(&mut engine, "sqrt(x)");
+    let output1 = engine.eval(&mut state, req1).expect("eval should succeed");
+
+    // Verify sqrt(x) has x ≥ 0 in requires
+    let has_x_nonneg = output1.required_conditions.iter().any(|c| {
+        matches!(c, ImplicitCondition::NonNegative(e) 
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "x"))
+    });
+    assert!(
+        has_x_nonneg,
+        "sqrt(x) should require x ≥ 0, got: {:?}",
+        output1.required_conditions
+    );
+
+    // Step 2: Build expression using #1: "#1 + 4"
+    // We need to parse this, but since #1 references session, we simulate by
+    // directly building the expression
+    let stored_id = output1.stored_id.expect("should have stored_id");
+    assert_eq!(stored_id, 1, "First entry should be #1");
+
+    // Parse "#1 + 4" which will resolve #1 -> sqrt(x)
+    let req2 = make_simplify_request(&mut engine, "#1 + 4");
+    let output2 = engine.eval(&mut state, req2).expect("eval should succeed");
+
+    // Verify the reused expression still has x ≥ 0
+    let has_x_nonneg_2 = output2.required_conditions.iter().any(|c| {
+        matches!(c, ImplicitCondition::NonNegative(e) 
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "x"))
+    });
+    assert!(
+        has_x_nonneg_2,
+        "Reused sqrt(x) in #1 + 4 should still require x ≥ 0, got: {:?}",
+        output2.required_conditions
+    );
+}
+
+/// Test: ln(y) produces y > 0, and this propagates when reused
+#[test]
+fn requires_propagate_on_ln_reuse() {
+    use cas_engine::implicit_domain::ImplicitCondition;
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::default();
+
+    // Step 1: Evaluate ln(y) -> stored as #1
+    let req1 = make_simplify_request(&mut engine, "ln(y)");
+    let output1 = engine.eval(&mut state, req1).expect("eval should succeed");
+
+    // Verify ln(y) has y > 0 in requires
+    let has_y_positive = output1.required_conditions.iter().any(|c| {
+        matches!(c, ImplicitCondition::Positive(e) 
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
+    });
+    assert!(
+        has_y_positive,
+        "ln(y) should require y > 0, got: {:?}",
+        output1.required_conditions
+    );
+
+    // Step 2: Use #1 in composition: "#1 * 2"
+    let req2 = make_simplify_request(&mut engine, "#1 * 2");
+    let output2 = engine.eval(&mut state, req2).expect("eval should succeed");
+
+    // Verify y > 0 propagates
+    let has_y_positive_2 = output2.required_conditions.iter().any(|c| {
+        matches!(c, ImplicitCondition::Positive(e) 
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
+    });
+    assert!(
+        has_y_positive_2,
+        "Reused ln(y) in #1 * 2 should still require y > 0, got: {:?}",
+        output2.required_conditions
+    );
+}
+
+/// Test: Combined expressions inherit requires from all sub-expressions
+#[test]
+fn requires_combine_from_multiple_sources() {
+    use cas_engine::implicit_domain::ImplicitCondition;
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::default();
+
+    // Create sqrt(x) + ln(y) which should require both x ≥ 0 AND y > 0
+    let req = make_simplify_request(&mut engine, "sqrt(x) + ln(y)");
+    let output = engine.eval(&mut state, req).expect("eval should succeed");
+
+    // Check for x ≥ 0
+    let has_x_nonneg = output.required_conditions.iter().any(|c| {
+        matches!(c, ImplicitCondition::NonNegative(e) 
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "x"))
+    });
+
+    // Check for y > 0
+    let has_y_positive = output.required_conditions.iter().any(|c| {
+        matches!(c, ImplicitCondition::Positive(e) 
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
+    });
+
+    assert!(
+        has_x_nonneg,
+        "sqrt(x) + ln(y) should require x ≥ 0, got: {:?}",
+        output.required_conditions
+    );
+    assert!(
+        has_y_positive,
+        "sqrt(x) + ln(y) should require y > 0, got: {:?}",
+        output.required_conditions
+    );
+}
+
+/// Test: Division by variable produces x ≠ 0 requirement
+#[test]
+fn requires_nonzero_from_division() {
+    use cas_engine::implicit_domain::ImplicitCondition;
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::default();
+
+    // Create 1/x which should require x ≠ 0
+    let req = make_simplify_request(&mut engine, "1/z");
+    let output = engine.eval(&mut state, req).expect("eval should succeed");
+
+    // Check for z ≠ 0
+    let has_z_nonzero = output.required_conditions.iter().any(|c| {
+        matches!(c, ImplicitCondition::NonZero(e) 
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "z"))
+    });
+
+    assert!(
+        has_z_nonzero,
+        "1/z should require z ≠ 0, got: {:?}",
+        output.required_conditions
+    );
+}

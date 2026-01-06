@@ -231,6 +231,63 @@ El resultado es un “profesor automático”:
 
 ---
 
+## 4.1) Propagación en reutilización de expresiones
+
+Un aspecto clave del sistema es que los **Requires se propagan automáticamente** cuando reutilizas expresiones de la sesión mediante `#id`.
+
+### Comportamiento
+
+Cuando evalúas `#1 + 4` (donde `#1` era `sqrt(x)`):
+
+1. El motor **resuelve** `#1` → `sqrt(x)`
+2. Construye la expresión compuesta: `sqrt(x) + 4`
+3. **Re-infiere** el dominio estructural de la expresión resuelta
+4. Muestra `ℹ️ Requires: x ≥ 0`
+
+### Ejemplo en REPL
+
+```bash
+> sqrt(x)
+#1: √(x)
+ℹ️ Requires:
+  - x ≥ 0
+
+> #1 + 4
+#2: 4 + √(x)
+ℹ️ Requires:
+  - x ≥ 0    ← SE PROPAGA
+
+> show #2
+Entry #2:
+  Parsed:     4 + #1
+  Resolved:   4 + sqrt(x)
+  ℹ️ Requires:
+    - x ≥ 0  ← VISIBLE EN SHOW
+```
+
+### Expresiones combinadas
+
+Cuando combinas sub-expresiones con diferentes restricciones, **todas se acumulan**:
+
+```bash
+> sqrt(x) + ln(y)
+ℹ️ Requires:
+  - x ≥ 0    ← de sqrt(x)
+  - y > 0    ← de ln(y)
+```
+
+### Por qué es importante
+
+| Sin propagación | Con propagación |
+|-----------------|-----------------|
+| El alumno "pierde" el dominio al reutilizar | El dominio viaja con la expresión |
+| Fácil cometer errores silenciosos | Transparencia total |
+| El motor "olvida" contexto | La sesión es coherente |
+
+> **Invariante**: Los Requires se infieren de la **estructura** de la expresión resuelta, no se "almacenan" con el ID. Esto significa que siempre reflejan el estado actual.
+
+---
+
 ## 5) Qué puedes pedirle al motor (comandos útiles)
 
 * Cambiar política:
