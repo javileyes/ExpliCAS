@@ -15,6 +15,7 @@ define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
         }
@@ -26,6 +27,7 @@ define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
         }
@@ -47,6 +49,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -58,6 +61,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -160,6 +164,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 assumption_events,
+            required_conditions: vec![],
             });
         }
         None
@@ -200,6 +205,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -233,6 +239,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 assumption_events,
+            required_conditions: vec![],
             });
         }
         None
@@ -255,6 +262,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
             // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
@@ -271,6 +279,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+                            required_conditions: vec![],
                         });
                     }
                 }
@@ -288,6 +297,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
             // Handle nested: c1 * (c2 * x) -> (c1*c2) * x
@@ -304,6 +314,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+                            required_conditions: vec![],
                         });
                     }
                 }
@@ -327,6 +338,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -345,6 +357,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
         }
@@ -361,6 +374,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 } else {
                     let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
@@ -370,6 +384,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -392,6 +407,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         }
 
@@ -406,6 +422,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -583,6 +600,7 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
                 } else {
                     Default::default()
                 },
+                required_conditions: vec![],
             });
         }
     }
@@ -666,6 +684,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
         }

@@ -87,6 +87,7 @@ impl Rule for ProductToSumRule {
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+            required_conditions: vec![],
             });
         }
 
@@ -232,6 +233,7 @@ impl Rule for CosProductTelescopingRule {
             assumption_events: smallvec::smallvec![
                 crate::assumptions::AssumptionEvent::nonzero(ctx, sin_den)
             ],
+            required_conditions: vec![],
 })
     }
 }

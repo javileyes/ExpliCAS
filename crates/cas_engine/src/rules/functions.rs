@@ -21,6 +21,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
 
@@ -42,6 +43,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
 
@@ -52,6 +54,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
         }
@@ -86,6 +89,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -138,6 +142,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+            required_conditions: vec![],
                         });
                     }
                 }
@@ -205,6 +210,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+            required_conditions: vec![],
             });
         }
 
@@ -309,6 +315,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+            required_conditions: vec![],
                         });
                     }
                     // expand() needs to call actual expansion logic
@@ -320,6 +327,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+            required_conditions: vec![],
                         });
                     }
                     _ => {}

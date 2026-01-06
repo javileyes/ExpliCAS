@@ -40,6 +40,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -52,6 +53,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -64,6 +66,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -76,6 +79,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -111,6 +115,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
 
@@ -122,6 +127,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
 
@@ -133,6 +139,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
 
@@ -144,6 +151,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
 
@@ -155,6 +163,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
 
@@ -166,6 +175,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -198,6 +208,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                         // cosh(-x) = cosh(x) (even function)
@@ -210,6 +221,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                         // tanh(-x) = -tanh(x) (odd function)
@@ -223,6 +235,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                         // asinh(-x) = -asinh(x) (odd function)
@@ -236,6 +249,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                         // atanh(-x) = -atanh(x) (odd function)
@@ -249,6 +263,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                         _ => {}
@@ -293,6 +308,7 @@ define_rule!(
                                     before_local: None,
                                     after_local: None,
                                     assumption_events: Default::default(),
+            required_conditions: vec![],
                                 });
                             }
                         }
@@ -313,6 +329,7 @@ define_rule!(
                                     before_local: None,
                                     after_local: None,
                                     assumption_events: Default::default(),
+            required_conditions: vec![],
                                 });
                             }
                         }

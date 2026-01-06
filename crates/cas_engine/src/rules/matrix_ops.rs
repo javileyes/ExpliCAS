@@ -35,6 +35,7 @@ impl SimpleRule for MatrixAddRule {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -74,6 +75,7 @@ impl SimpleRule for MatrixSubRule {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -112,6 +114,7 @@ impl SimpleRule for ScalarMatrixRule {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
 
@@ -128,6 +131,7 @@ impl SimpleRule for ScalarMatrixRule {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
         }
@@ -170,6 +174,7 @@ impl SimpleRule for MatrixMultiplyRule {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -209,6 +214,7 @@ impl SimpleRule for MatrixFunctionRule {
                                     before_local: None,
                                     after_local: None,
                                     assumption_events: Default::default(),
+            required_conditions: vec![],
                                 });
                             }
                         }
@@ -227,6 +233,7 @@ impl SimpleRule for MatrixFunctionRule {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -244,6 +251,7 @@ impl SimpleRule for MatrixFunctionRule {
                                     before_local: None,
                                     after_local: None,
                                     assumption_events: Default::default(),
+            required_conditions: vec![],
                                 });
                             }
                         }
@@ -300,6 +308,7 @@ impl SimpleRule for TransposeProductRule {
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+            required_conditions: vec![],
                         });
                     }
                 }

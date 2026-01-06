@@ -26,6 +26,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 } else {
                     return Some(Rewrite {
@@ -34,6 +35,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -62,6 +64,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 } else {
                     return Some(Rewrite {
@@ -70,6 +73,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -94,6 +98,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
         }
@@ -124,6 +129,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -136,6 +142,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }

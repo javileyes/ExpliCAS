@@ -176,6 +176,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+            required_conditions: vec![],
                         });
                     }
                 }
@@ -291,6 +292,7 @@ define_rule!(
                                         before_local: None,
                                         after_local: None,
                                         assumption_events: Default::default(),
+            required_conditions: vec![],
                                     });
                                 }
                             }
@@ -325,6 +327,7 @@ define_rule!(
                                         before_local: None,
                                         after_local: None,
                                         assumption_events: Default::default(),
+            required_conditions: vec![],
                                     });
                                 } else {
                                     let sqrt_base =
@@ -336,6 +339,7 @@ define_rule!(
                                         before_local: None,
                                         after_local: None,
                                         assumption_events: Default::default(),
+            required_conditions: vec![],
                                     });
                                 }
                             }
@@ -703,6 +707,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
+            required_conditions: vec![],
         })
     }
 );
@@ -912,6 +917,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
+            required_conditions: vec![],
         })
     }
 );
@@ -1164,6 +1170,7 @@ define_rule!(
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
+            required_conditions: vec![],
         })
     }
 );

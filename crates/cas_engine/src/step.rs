@@ -63,6 +63,10 @@ pub struct Step {
     /// Structured assumption events (preferred over domain_assumption string).
     /// Propagated from Rewrite.assumption_events during step creation.
     pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
+    /// Required conditions for validity (implicit domain preservation) - NOT assumptions!
+    /// These are conditions that were already implicitly required by the input expression.
+    /// Propagated from Rewrite.required_conditions during step creation.
+    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
     /// Importance level for step filtering (from Rule::importance())
     pub importance: ImportanceLevel,
     /// Category of step for grouping (from Rule::category() or pipeline origin)
@@ -106,6 +110,7 @@ impl Step {
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
+            required_conditions: vec![],
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
             category: StepCategory::General,  // Default, can be set by caller
         }
@@ -126,6 +131,7 @@ impl Step {
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
+            required_conditions: vec![],
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
             category: StepCategory::General,  // Default, can be set by caller
         }

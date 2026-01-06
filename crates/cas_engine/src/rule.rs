@@ -19,6 +19,10 @@ pub struct Rewrite {
     /// Structured assumption events (preferred over domain_assumption string)
     /// Multiple events allowed for rules that make several assumptions.
     pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
+    /// Required conditions for validity (implicit domain preservation) - NOT assumptions!
+    /// These are conditions that were already implicitly required by the input expression.
+    /// Used when a rewrite makes implicit domain constraints explicit (e.g., sqrt(x)^2 → x requires x ≥ 0).
+    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
 }
 
 impl Rewrite {
@@ -30,6 +34,7 @@ impl Rewrite {
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
+            required_conditions: vec![],
         }
     }
 
@@ -47,6 +52,7 @@ impl Rewrite {
             before_local: Some(before_local),
             after_local: Some(after_local),
             assumption_events: Default::default(),
+            required_conditions: vec![],
         }
     }
 
@@ -63,6 +69,7 @@ impl Rewrite {
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
+            required_conditions: vec![],
         }
     }
 }

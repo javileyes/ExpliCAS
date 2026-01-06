@@ -1484,16 +1484,26 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 expansion
                             {
                                 match mode {
-                                    crate::domain::DomainMode::Strict
-                                    | crate::domain::DomainMode::Generic => {
+                                    crate::domain::DomainMode::Strict => {
+                                        // Strict: block - don't expand domain at all
                                         debug!(
-                                            "{}[DEBUG] Rule '{}' would expand analytic domain ({}), blocked in {:?} mode",
+                                            "{}[DEBUG] Rule '{}' would expand analytic domain ({}), blocked in Strict mode",
                                             self.indent(),
                                             rule.name(),
-                                            sources.join(", "),
-                                            mode
+                                            sources.join(", ")
                                         );
                                         continue;
+                                    }
+                                    crate::domain::DomainMode::Generic => {
+                                        // Generic: allow rewrite but emit as required_conditions (not assumptions!)
+                                        // This communicates "the input already required these conditions implicitly"
+                                        rewrite.required_conditions.extend(dropped.clone());
+                                        debug!(
+                                            "{}[DEBUG] Rule '{}' expands analytic domain, allowed in Generic mode with required conditions: {}",
+                                            self.indent(),
+                                            rule.name(),
+                                            sources.join(", ")
+                                        );
                                     }
                                     crate::domain::DomainMode::Assume => {
                                         // In Assume mode: allow rewrite but register assumptions
@@ -1565,6 +1575,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             step.before_local = rewrite.before_local;
                             step.after_local = rewrite.after_local;
                             step.assumption_events = rewrite.assumption_events.clone();
+                            step.required_conditions = rewrite.required_conditions.clone();
                             // Use declarative importance from the Rule
                             step.importance = rule.importance();
                             self.steps.push(step);
@@ -1675,16 +1686,26 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if let AnalyticExpansionResult::WouldExpand { dropped, sources } = expansion
                         {
                             match mode {
-                                crate::domain::DomainMode::Strict
-                                | crate::domain::DomainMode::Generic => {
+                                crate::domain::DomainMode::Strict => {
+                                    // Strict: block - don't expand domain at all
                                     debug!(
-                                        "{}[DEBUG] Global Rule '{}' would expand analytic domain ({}), blocked in {:?} mode",
+                                        "{}[DEBUG] Global Rule '{}' would expand analytic domain ({}), blocked in Strict mode",
                                         self.indent(),
                                         rule.name(),
-                                        sources.join(", "),
-                                        mode
+                                        sources.join(", ")
                                     );
                                     continue;
+                                }
+                                crate::domain::DomainMode::Generic => {
+                                    // Generic: allow rewrite but emit as required_conditions (not assumptions!)
+                                    // This communicates "the input already required these conditions implicitly"
+                                    rewrite.required_conditions.extend(dropped.clone());
+                                    debug!(
+                                        "{}[DEBUG] Global Rule '{}' expands analytic domain, allowed in Generic mode with required conditions: {}",
+                                        self.indent(),
+                                        rule.name(),
+                                        sources.join(", ")
+                                    );
                                 }
                                 crate::domain::DomainMode::Assume => {
                                     // In Assume mode: allow rewrite but register assumptions
@@ -1744,6 +1765,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         step.before_local = rewrite.before_local;
                         step.after_local = rewrite.after_local;
                         step.assumption_events = rewrite.assumption_events.clone();
+                        step.required_conditions = rewrite.required_conditions.clone();
                         // Use declarative importance from the Rule
                         step.importance = rule.importance();
                         self.steps.push(step);

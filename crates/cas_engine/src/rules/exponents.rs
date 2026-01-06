@@ -69,6 +69,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
         }
@@ -86,6 +87,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -103,6 +105,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -117,6 +120,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+                required_conditions: vec![],
             });
         }
 
@@ -135,6 +139,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
 
@@ -161,6 +166,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -178,6 +184,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -195,6 +202,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -229,6 +237,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -247,6 +256,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -276,6 +286,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -295,6 +306,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -337,6 +349,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -362,6 +375,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -410,6 +424,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
 
@@ -478,6 +493,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),  // No assumption needed!
+                        required_conditions: vec![],
                     });
                 }
 
@@ -515,6 +531,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events,
+            required_conditions: vec![],
                 });
             }
 
@@ -527,6 +544,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+            required_conditions: vec![],
             });
         }
     }
@@ -545,6 +563,7 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+                required_conditions: vec![],
             });
         }
 
@@ -585,6 +604,7 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         } else {
                             // Partial root
@@ -597,6 +617,7 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -767,6 +788,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
                 if n.is_zero() {
@@ -783,6 +805,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -804,6 +827,7 @@ define_rule!(
                                 } else {
                                     Default::default()
                                 },
+                                required_conditions: vec![],
                             });
                         }
                         DomainMode::Strict => {
@@ -815,6 +839,7 @@ define_rule!(
                                     before_local: None,
                                     after_local: None,
                                     assumption_events: Default::default(),
+            required_conditions: vec![],
                                 });
                             }
                             // Unknown or Disproven: don't simplify in Strict mode
@@ -830,6 +855,7 @@ define_rule!(
                                 assumption_events: smallvec::smallvec![
                                     crate::assumptions::AssumptionEvent::nonzero(ctx, base)
                                 ],
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -844,6 +870,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
                 // 0^x -> 0 REQUIRES x > 0 (because 0^0 is undefined, 0^(-n) is undefined)
@@ -857,6 +884,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                         // 0^0 and 0^(-n) are handled elsewhere as undefined
@@ -884,6 +912,7 @@ define_rule!(
                                 assumption_events: smallvec::smallvec![
                                     crate::assumptions::AssumptionEvent::positive(ctx, exp)
                                 ],
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -939,6 +968,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+                    required_conditions: vec![],
                 });
             }
         }
@@ -962,6 +992,7 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+                required_conditions: vec![],
             });
         }
     }
@@ -999,6 +1030,7 @@ define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+                            required_conditions: vec![],
                         });
                     } else {
                         // (-x)^odd -> -(x^odd)
@@ -1010,6 +1042,7 @@ define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+                            required_conditions: vec![],
                         });
                     }
                 }
@@ -1083,6 +1116,7 @@ define_rule!(
                 .to_string(),
             before_local: Some(base),
             after_local: Some(new_base),            assumption_events: Default::default(),
+            required_conditions: vec![],
 })
     }
 );

@@ -26,6 +26,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+            required_conditions: vec![],
             });
         }
 
@@ -53,6 +54,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
 
@@ -64,6 +66,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
 
@@ -88,6 +91,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
 
@@ -109,6 +113,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -157,6 +162,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
 
@@ -185,6 +191,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
 
@@ -196,6 +203,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
         }
@@ -215,6 +223,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
         }
@@ -271,6 +280,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+            required_conditions: vec![],
             });
         }
 
@@ -294,6 +304,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
         }
@@ -385,6 +396,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
 
@@ -401,6 +413,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -433,6 +446,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
         }
@@ -465,6 +479,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
@@ -479,6 +494,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             } else if args.len() == 2 {
                 // sqrt(x, n) -> x^(1/n)
@@ -491,6 +507,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
+            required_conditions: vec![],
                 });
             }
         } else if name == "root" && args.len() == 2 {
@@ -504,6 +521,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
+            required_conditions: vec![],
             });
         }
     }
@@ -524,6 +542,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -540,6 +559,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -580,6 +600,7 @@ define_rule!(
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
+            required_conditions: vec![],
                     });
                 }
             }
@@ -627,6 +648,7 @@ define_rule!(
             description: "-(a - b) → (b - a) (canonical orientation)".to_string(),
             before_local: Some(inner_id),
             after_local: Some(new_expr),assumption_events: Default::default(),
+            required_conditions: vec![],
         })
     }
 );
@@ -694,6 +716,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
+            required_conditions: vec![],
                         });
                     }
                 }
@@ -719,6 +742,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                         if let Some((a, b)) = as_sub_like(ctx, ml_id) {
@@ -733,6 +757,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
+            required_conditions: vec![],
                             });
                         }
                     }
