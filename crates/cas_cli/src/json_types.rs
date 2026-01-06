@@ -275,3 +275,178 @@ pub struct MmGcdTimingsMs {
     pub gcd_ms: f64,
     pub full_ms: f64,
 }
+
+// =============================================================================
+// OutputEnvelope V1 - Stable Android/FFI API
+// =============================================================================
+
+/// Root envelope for all API responses (eval & solve)
+#[derive(Serialize, Debug)]
+pub struct OutputEnvelope {
+    pub schema_version: u8,
+    pub engine: EngineInfo,
+    pub request: RequestInfo,
+    pub result: ResultDto,
+    pub transparency: TransparencyDto,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<StepDto>,
+}
+
+/// Engine metadata
+#[derive(Serialize, Debug)]
+pub struct EngineInfo {
+    pub name: String,
+    pub version: String,
+}
+
+impl Default for EngineInfo {
+    fn default() -> Self {
+        Self {
+            name: "ExpliCAS".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        }
+    }
+}
+
+/// Request information
+#[derive(Serialize, Debug)]
+pub struct RequestInfo {
+    pub kind: String, // "eval" | "solve"
+    pub input: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub solve_var: Option<String>,
+    pub options: RequestOptions,
+}
+
+/// Request options
+#[derive(Serialize, Debug, Default)]
+pub struct RequestOptions {
+    pub domain_mode: String,
+    pub value_domain: String,
+    pub hints: bool,
+    pub explain: bool,
+}
+
+/// Expression with dual rendering
+#[derive(Serialize, Debug, Clone)]
+pub struct ExprDto {
+    pub display: String,
+    pub canonical: String,
+}
+
+/// Result (polymorphic by kind)
+#[derive(Serialize, Debug)]
+#[serde(tag = "kind")]
+pub enum ResultDto {
+    #[serde(rename = "eval_result")]
+    Eval { value: ExprDto },
+    #[serde(rename = "solve_result")]
+    Solve {
+        solutions: SolutionSetDto,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        residual: Option<ExprDto>,
+    },
+    #[serde(rename = "error")]
+    Error { message: String },
+}
+
+/// Solution set (polymorphic by kind)
+#[derive(Serialize, Debug)]
+#[serde(tag = "kind")]
+pub enum SolutionSetDto {
+    #[serde(rename = "finite_set")]
+    FiniteSet { elements: Vec<ExprDto> },
+    #[serde(rename = "all_reals")]
+    AllReals,
+    #[serde(rename = "empty_set")]
+    EmptySet,
+    #[serde(rename = "interval")]
+    Interval { lower: BoundDto, upper: BoundDto },
+    #[serde(rename = "conditional")]
+    Conditional { cases: Vec<CaseDto> },
+}
+
+/// Interval bound
+#[derive(Serialize, Debug)]
+#[serde(tag = "kind")]
+pub enum BoundDto {
+    #[serde(rename = "closed")]
+    Closed { value: ExprDto },
+    #[serde(rename = "open")]
+    Open { value: ExprDto },
+    #[serde(rename = "neg_infinity")]
+    NegInfinity,
+    #[serde(rename = "infinity")]
+    Infinity,
+}
+
+/// Conditional case
+#[derive(Serialize, Debug)]
+pub struct CaseDto {
+    pub when: WhenDto,
+    pub then: ThenDto,
+}
+
+/// Predicate set for conditional
+#[derive(Serialize, Debug)]
+pub struct WhenDto {
+    pub predicates: Vec<ConditionDto>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_otherwise: bool,
+}
+
+/// Result branch for conditional
+#[derive(Serialize, Debug)]
+pub struct ThenDto {
+    pub solutions: SolutionSetDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub residual: Option<ExprDto>,
+}
+
+/// Transparency section (global summary)
+#[derive(Serialize, Debug, Default)]
+pub struct TransparencyDto {
+    pub required_conditions: Vec<ConditionDto>,
+    pub assumptions_used: Vec<AssumptionDto>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub blocked_hints: Vec<BlockedHintDto>,
+}
+
+/// Domain condition (Requires)
+#[derive(Serialize, Debug, Clone)]
+pub struct ConditionDto {
+    pub kind: String,
+    pub display: String,
+    pub expr_display: String,
+    pub expr_canonical: String,
+}
+
+/// Assumption used (Assumed)
+#[derive(Serialize, Debug, Clone)]
+pub struct AssumptionDto {
+    pub kind: String,
+    pub display: String,
+    pub expr_canonical: String,
+    pub rule: String,
+}
+
+/// Blocked hint
+#[derive(Serialize, Debug, Clone)]
+pub struct BlockedHintDto {
+    pub rule: String,
+    pub requires: Vec<String>,
+    pub tip: String,
+}
+
+/// Step DTO for trace
+#[derive(Serialize, Debug)]
+pub struct StepDto {
+    pub index: usize,
+    pub rule: String,
+    pub before: ExprDto,
+    pub after: ExprDto,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub assumptions_used: Vec<AssumptionDto>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required_conditions: Vec<ConditionDto>,
+}

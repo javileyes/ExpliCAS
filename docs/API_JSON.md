@@ -32,3 +32,26 @@ Implicit domain constraints from input expression structure.
 - `required_conditions` separate from `assumptions` (warnings)
 - Witness survival: if expression is preserved in result, no requirement emitted
 - Empty array if no requirements
+
+---
+
+## Known `kind` Values
+
+| kind | Meaning |
+|------|---------|
+| `NonNegative` | x ≥ 0 |
+| `Positive` | x > 0 |
+| `NonZero` | x ≠ 0 |
+| `Defined` | (reserved) |
+| `EqZero` | x = 0 |
+| `EqOne` | x = 1 |
+| `Otherwise` | Default case |
+
+> **Policy**: Unknown kinds must be **ignored** (forward-compatible).
+
+---
+
+## See Also
+
+- [ANDROID_OUTPUT_ENVELOPE.md](./ANDROID_OUTPUT_ENVELOPE.md) — Full FFI envelope spec
+- [Requires_vs_assumed.md](./Requires_vs_assumed.md) — Semantic contract

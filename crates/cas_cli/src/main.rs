@@ -42,6 +42,10 @@ enum Command {
     #[command(name = "eval-json", hide = true)]
     EvalJson(EvalJsonLegacyArgs),
 
+    /// Evaluate and return stable OutputEnvelope V1 (for Android/FFI)
+    #[command(name = "envelope-json")]
+    EnvelopeJson(commands::envelope_json::EnvelopeJsonArgs),
+
     /// Compute the limit of an expression
     Limit(LimitArgs),
 
@@ -390,6 +394,10 @@ fn main() -> rustyline::Result<()> {
                 assume_scope: assume_scope_arg_to_string(args.assume_scope),
             };
             commands::eval_json::run(eval_args);
+            Ok(())
+        }
+        Some(Command::EnvelopeJson(args)) => {
+            commands::envelope_json::run(args);
             Ok(())
         }
         Some(Command::Limit(args)) => {

@@ -9,6 +9,40 @@ Esta separación es clave para un uso **educativo** y también para integrar el 
 
 ---
 
+## Contrato Formal (TL;DR)
+
+| Canal | Qué significa | Cuándo aparece |
+|-------|---------------|----------------|
+| **ℹ️ Requires** | Dominio **implícito** de la entrada | Siempre que se "consume" una restricción |
+| **⚠ Assumed** | Hipótesis **extra** aceptada por política | `Generic` (≠0) o `Assume` (todo) |
+| **Blocked** | Regla no aplicable en modo actual | Cuando modo lo impide + `hints on` |
+
+> **Invariante**: Requires ≠ Assumed — nunca se mezclan.
+
+---
+
+## Referencia Rápida (verificable en REPL)
+
+```bash
+# 1. Requires: dominio implícito
+> sqrt(x)^2
+ℹ️ Requires: x ≥ 0
+Result: x
+
+# 2. Assumed: agujero algebraico
+> x/x  # (en Generic)
+⚠ Assumed x ≠ 0
+Result: 1
+
+# 3. Witness survival: no emite Requires si sqrt sobrevive
+> (x-y)/(sqrt(x)-sqrt(y))
+⚠ Assumed x - y ≠ 0
+Result: √(x) + √(y)
+# (NO hay x≥0, y≥0)
+```
+
+---
+
 ## 1) Glosario rápido
 
 ### Requires (requisitos de dominio)
