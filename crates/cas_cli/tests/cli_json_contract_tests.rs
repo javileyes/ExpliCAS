@@ -158,3 +158,70 @@ fn test_eval_json_schema_version_is_1() {
 
     assert_eq!(json["schema_version"], 1, "Schema version must be 1");
 }
+
+// =============================================================================
+// FFI Mock Tests - RequiredConditions Schema Validation
+// =============================================================================
+
+/// FFI MOCK: Validates required_conditions schema structure for Android/FFI consumers
+#[test]
+#[ignore = "Uses cargo run internally, causing lock contention in CI"]
+fn test_ffi_mock_required_conditions_schema() {
+    let (output, _code) = run_cli(&["eval-json", "sqrt(x)^2"]);
+    let json = parse_json(&output);
+
+    // 1. schema_version present
+    assert!(
+        json["schema_version"].is_u64(),
+        "FFI contract: schema_version must be present and numeric"
+    );
+
+    // 2. required_conditions is array
+    assert!(
+        json["required_conditions"].is_array(),
+        "FFI contract: required_conditions must be an array"
+    );
+
+    // 3. At least one condition for sqrt(x)^2
+    let conditions = json["required_conditions"].as_array().unwrap();
+    assert!(
+        !conditions.is_empty(),
+        "FFI contract: sqrt(x)^2 should have required conditions"
+    );
+
+    // 4. First condition has correct structure
+    let first = &conditions[0];
+    assert_eq!(
+        first["kind"], "NonNegative",
+        "FFI contract: kind must be 'NonNegative'"
+    );
+    assert!(
+        first["expr_display"].is_string(),
+        "FFI contract: expr_display must be string"
+    );
+    assert!(
+        first["expr_canonical"].is_string(),
+        "FFI contract: expr_canonical must be string"
+    );
+
+    // 5. required_display is array of strings
+    assert!(
+        json["required_display"].is_array(),
+        "FFI contract: required_display must be an array"
+    );
+}
+
+/// FFI MOCK: Validates witness survival - no false required conditions
+#[test]
+#[ignore = "Uses cargo run internally, causing lock contention in CI"]
+fn test_ffi_mock_witness_survival_empty_required() {
+    let (output, _code) = run_cli(&["eval-json", "(x-y)/(sqrt(x)-sqrt(y))"]);
+    let json = parse_json(&output);
+
+    // Witness survival: sqrt survives in result, no required_conditions emitted
+    let conditions = json["required_conditions"].as_array().unwrap();
+    assert!(
+        conditions.is_empty(),
+        "FFI contract: witness survival means no x≥0 or y≥0 requirements"
+    );
+}

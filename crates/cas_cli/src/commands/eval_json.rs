@@ -312,13 +312,17 @@ fn collect_required_conditions(
                 ImplicitCondition::Positive(e) => ("Positive", *e),
                 ImplicitCondition::NonZero(e) => ("NonZero", *e),
             };
+            // For now, canonical = display (no transforms currently applied)
+            // When display transforms are added, expr_canonical should render without them
+            let expr_str = DisplayExpr {
+                context: ctx,
+                id: expr_id,
+            }
+            .to_string();
             RequiredConditionJson {
                 kind: kind.to_string(),
-                expr_display: DisplayExpr {
-                    context: ctx,
-                    id: expr_id,
-                }
-                .to_string(),
+                expr_display: expr_str.clone(),
+                expr_canonical: expr_str,
             }
         })
         .collect()

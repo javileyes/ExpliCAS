@@ -181,8 +181,10 @@ pub struct WarningJson {
 pub struct RequiredConditionJson {
     /// Condition kind: "NonNegative", "Positive", or "NonZero"
     pub kind: String,
-    /// Human-readable expression display (e.g. "x")
+    /// Human-readable expression display (may vary with display transforms/scopes)
     pub expr_display: String,
+    /// Canonical expression string (stable, without transforms/scopes)
+    pub expr_canonical: String,
 }
 
 /// Expression statistics (node count, depth)
