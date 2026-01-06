@@ -130,6 +130,7 @@ pub fn classify_log_solve(
     base: ExprId,
     rhs: ExprId,
     opts: &SolverOptions,
+    env: Option<&super::SolveDomainEnv>,
 ) -> LogSolveDecision {
     // Only applies to RealOnly mode
     // In Complex mode, this PR doesn't decide multi-valued branches
@@ -139,12 +140,27 @@ pub fn classify_log_solve(
 
     let mode = opts.domain_mode;
     let vd = opts.value_domain;
-    let base_proof = prove_positive(ctx, base, vd);
-    let rhs_proof = prove_positive(ctx, rhs, vd);
+
+    // V2.2+: Check env.required first - if condition is already required, treat as proven
+    let base_in_env = env.map(|e| e.has_positive(base)).unwrap_or(false);
+    let rhs_in_env = env.map(|e| e.has_positive(rhs)).unwrap_or(false);
+
+    let base_proof = if base_in_env {
+        Proof::ProvenImplicit // Already in global requires
+    } else {
+        prove_positive(ctx, base, vd)
+    };
+
+    let rhs_proof = if rhs_in_env {
+        Proof::ProvenImplicit // Already in global requires
+    } else {
+        prove_positive(ctx, rhs, vd)
+    };
 
     // Case: base>0 proven and rhs<0 proven => EmptySet
     // (a^x > 0 for all real x when a > 0, so no solution exists)
-    if base_proof == Proof::Proven && rhs_proof == Proof::Disproven {
+    if matches!(base_proof, Proof::Proven | Proof::ProvenImplicit) && rhs_proof == Proof::Disproven
+    {
         return LogSolveDecision::EmptySet(
             "No real solutions: base^x > 0 for all real x, but RHS ≤ 0".to_string(),
         );
@@ -228,7 +244,7 @@ mod tests {
         let base = ctx.num(2); // 2 > 0 proven
         let rhs = ctx.num(8); // 8 > 0 proven
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts);
+        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
         assert!(matches!(decision, LogSolveDecision::Ok));
     }
 
@@ -238,7 +254,7 @@ mod tests {
         let base = ctx.num(2);
         let rhs = ctx.num(-5);
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts);
+        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
         assert!(matches!(decision, LogSolveDecision::EmptySet(_)));
     }
 
@@ -248,7 +264,7 @@ mod tests {
         let base = ctx.num(-2);
         let rhs = ctx.num(5);
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts);
+        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
         assert!(matches!(decision, LogSolveDecision::NeedsComplex(_)));
     }
 
@@ -258,7 +274,7 @@ mod tests {
         let base = ctx.num(2);
         let rhs = ctx.var("y"); // Unknown
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts);
+        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
         match decision {
             LogSolveDecision::OkWithAssumptions(assumptions) => {
                 assert!(assumptions.contains(&SolverAssumption::PositiveRhs));
@@ -273,7 +289,7 @@ mod tests {
         let base = ctx.num(2);
         let rhs = ctx.var("y");
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts);
+        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
         assert!(matches!(decision, LogSolveDecision::Unsupported(_, _)));
     }
 }

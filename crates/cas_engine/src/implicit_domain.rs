@@ -129,6 +129,11 @@ impl ImplicitDomain {
         &self.conditions
     }
 
+    /// Get mutable access to conditions
+    pub fn conditions_mut(&mut self) -> &mut HashSet<ImplicitCondition> {
+        &mut self.conditions
+    }
+
     /// Check if this domain is a superset of another (contains all its conditions)
     pub fn contains_all(&self, other: &ImplicitDomain) -> bool {
         other.conditions.is_subset(&self.conditions)

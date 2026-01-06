@@ -998,7 +998,7 @@ pub fn isolate(
                 };
 
                 let decision =
-                    classify_log_solve(&simplifier.context, tactic_base, tactic_rhs, &opts);
+                    classify_log_solve(&simplifier.context, tactic_base, tactic_rhs, &opts, None);
 
                 match decision {
                     LogSolveDecision::Ok => {

@@ -1039,7 +1039,7 @@ fn check_exponential_needs_complex(
             if contains_var(&simplifier.context, exp, var)
                 && !contains_var(&simplifier.context, base, var)
             {
-                let decision = classify_log_solve(&simplifier.context, base, eq.rhs, opts);
+                let decision = classify_log_solve(&simplifier.context, base, eq.rhs, opts, None);
 
                 if let LogSolveDecision::NeedsComplex(msg) = decision {
                     // Check if we're in Wildcard mode
@@ -1076,7 +1076,7 @@ fn check_exponential_needs_complex(
             if contains_var(&simplifier.context, exp, var)
                 && !contains_var(&simplifier.context, base, var)
             {
-                let decision = classify_log_solve(&simplifier.context, base, eq.lhs, opts);
+                let decision = classify_log_solve(&simplifier.context, base, eq.lhs, opts, None);
 
                 if let LogSolveDecision::NeedsComplex(msg) = decision {
                     if opts.domain_mode == DomainMode::Assume
@@ -1316,7 +1316,8 @@ impl SolverStrategy for UnwrapStrategy {
                         }
 
                         // Use the domain classifier
-                        let decision = classify_log_solve(&simplifier.context, b, other, opts);
+                        let decision =
+                            classify_log_solve(&simplifier.context, b, other, opts, None);
 
                         match decision {
                             LogSolveDecision::Ok => {

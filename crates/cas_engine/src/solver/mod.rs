@@ -377,6 +377,32 @@ pub fn solve_with_options(
     ));
     let domain_exclusions: Vec<ExprId> = domain_exclusions.into_iter().collect();
 
+    // V2.2+: Build SolveDomainEnv with global required conditions
+    // This is the "semantic ground" for all solver decisions
+    let mut domain_env = SolveDomainEnv::new();
+    {
+        use crate::implicit_domain::{derive_requires_from_equation, infer_implicit_domain};
+
+        // 1. Infer implicit domain from both sides
+        let lhs_domain = infer_implicit_domain(&simplifier.context, eq.lhs, opts.value_domain);
+        let rhs_domain = infer_implicit_domain(&simplifier.context, eq.rhs, opts.value_domain);
+        domain_env.required.extend(&lhs_domain);
+        domain_env.required.extend(&rhs_domain);
+
+        // 2. Derive additional requires from equation equality
+        // e.g., 2^x = sqrt(y) → since 2^x > 0, we have sqrt(y) > 0, so y > 0
+        let derived = derive_requires_from_equation(
+            &simplifier.context,
+            eq.lhs,
+            eq.rhs,
+            &domain_env.required,
+            opts.value_domain,
+        );
+        for cond in derived {
+            domain_env.required.conditions_mut().insert(cond);
+        }
+    }
+
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
     if eq.op == cas_ast::RelOp::Eq {
