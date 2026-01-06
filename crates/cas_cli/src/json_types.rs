@@ -26,6 +26,13 @@ pub struct EvalJsonOutput {
     /// Domain warnings from simplification
     pub warnings: Vec<WarningJson>,
 
+    /// Required conditions (implicit domain constraints from input expression)
+    /// These are NOT assumptions - they were already implied by the input.
+    pub required_conditions: Vec<RequiredConditionJson>,
+
+    /// Human-readable required conditions for simple frontends
+    pub required_display: Vec<String>,
+
     /// Budget information
     pub budget: BudgetJson,
 
@@ -166,6 +173,16 @@ impl ErrorJsonOutput {
 pub struct WarningJson {
     pub rule: String,
     pub assumption: String,
+}
+
+/// A required condition (implicit domain constraint) from the input expression.
+/// These are NOT assumptions - they were already implied by the input structure.
+#[derive(Serialize, Debug, Clone)]
+pub struct RequiredConditionJson {
+    /// Condition kind: "NonNegative", "Positive", or "NonZero"
+    pub kind: String,
+    /// Human-readable expression display (e.g. "x")
+    pub expr_display: String,
 }
 
 /// Expression statistics (node count, depth)

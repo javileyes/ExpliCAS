@@ -12,8 +12,8 @@ use cas_parser::parse;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{
-    BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, SemanticsJson,
-    TimingsJson, WarningJson,
+    BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, RequiredConditionJson,
+    SemanticsJson, TimingsJson, WarningJson,
 };
 
 /// Arguments for eval-json subcommand
@@ -153,6 +153,11 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 steps_mode: args.steps.clone(),
                 steps_count: output.steps.len(),
                 warnings: collect_warnings(&output),
+                required_conditions: collect_required_conditions(
+                    &output,
+                    &engine.simplifier.context,
+                ),
+                required_display: collect_required_display(&output, &engine.simplifier.context),
                 budget: build_budget_json(args),
                 domain: build_domain_json(args),
                 stats: Default::default(),
@@ -195,6 +200,8 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         steps_mode: args.steps.clone(),
         steps_count: output.steps.len(),
         warnings: collect_warnings(&output),
+        required_conditions: collect_required_conditions(&output, &engine.simplifier.context),
+        required_display: collect_required_display(&output, &engine.simplifier.context),
         budget: build_budget_json(args),
         domain: build_domain_json(args),
         stats,
@@ -285,6 +292,47 @@ fn collect_warnings(output: &cas_engine::EvalOutput) -> Vec<WarningJson> {
             rule: w.rule_name.clone(),
             assumption: w.message.clone(),
         })
+        .collect()
+}
+
+/// Collect required_conditions as structured JSON objects
+fn collect_required_conditions(
+    output: &cas_engine::EvalOutput,
+    ctx: &cas_ast::Context,
+) -> Vec<RequiredConditionJson> {
+    use cas_ast::DisplayExpr;
+    use cas_engine::implicit_domain::ImplicitCondition;
+
+    output
+        .required_conditions
+        .iter()
+        .map(|cond| {
+            let (kind, expr_id) = match cond {
+                ImplicitCondition::NonNegative(e) => ("NonNegative", *e),
+                ImplicitCondition::Positive(e) => ("Positive", *e),
+                ImplicitCondition::NonZero(e) => ("NonZero", *e),
+            };
+            RequiredConditionJson {
+                kind: kind.to_string(),
+                expr_display: DisplayExpr {
+                    context: ctx,
+                    id: expr_id,
+                }
+                .to_string(),
+            }
+        })
+        .collect()
+}
+
+/// Collect required_conditions as human-readable strings for simple frontends
+fn collect_required_display(
+    output: &cas_engine::EvalOutput,
+    ctx: &cas_ast::Context,
+) -> Vec<String> {
+    output
+        .required_conditions
+        .iter()
+        .map(|cond| cond.display(ctx))
         .collect()
 }
 
