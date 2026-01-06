@@ -3543,12 +3543,19 @@ impl Repl {
         let input = line.trim().trim_start_matches('#');
         match input.parse::<u64>() {
             Ok(id) => {
-                if let Some(entry) = self.state.store.get(id) {
-                    println!("Entry #{}:", id);
-                    println!("  Type:       {}", entry.type_str());
-                    println!("  Raw:        {}", entry.raw_text);
+                // Clone entry data to avoid borrow conflicts
+                let entry_data = self
+                    .state
+                    .store
+                    .get(id)
+                    .map(|e| (e.type_str().to_string(), e.raw_text.clone(), e.kind.clone()));
 
-                    match &entry.kind {
+                if let Some((type_str, raw_text, kind)) = entry_data {
+                    println!("Entry #{}:", id);
+                    println!("  Type:       {}", type_str);
+                    println!("  Raw:        {}", raw_text);
+
+                    match &kind {
                         cas_engine::EntryKind::Expr(expr_id) => {
                             // Show parsed expression
                             println!(
@@ -3577,16 +3584,59 @@ impl Repl {
                                 );
                             }
 
-                            // Show simplified
-                            let (simplified, _) = self.engine.simplifier.simplify(resolved);
-                            if simplified != resolved {
-                                println!(
-                                    "  Simplified: {}",
-                                    DisplayExpr {
-                                        context: &self.engine.simplifier.context,
-                                        id: simplified
+                            // Perform full eval to get requires/assumed metadata
+                            let req = cas_engine::EvalRequest {
+                                raw_input: raw_text.clone(),
+                                parsed: *expr_id,
+                                kind: cas_engine::EntryKind::Expr(*expr_id),
+                                action: cas_engine::EvalAction::Simplify,
+                                auto_store: false,
+                            };
+
+                            if let Ok(output) = self.engine.eval(&mut self.state, req) {
+                                // Show simplified result
+                                if let cas_engine::EvalResult::Expr(simplified) = &output.result {
+                                    if *simplified != *expr_id {
+                                        println!(
+                                            "  Simplified: {}",
+                                            DisplayExpr {
+                                                context: &self.engine.simplifier.context,
+                                                id: *simplified
+                                            }
+                                        );
                                     }
-                                );
+                                }
+
+                                // Show Requires (implicit domain conditions)
+                                if !output.required_conditions.is_empty() {
+                                    println!("  ℹ️ Requires:");
+                                    for cond in &output.required_conditions {
+                                        println!(
+                                            "    - {}",
+                                            cond.display(&self.engine.simplifier.context)
+                                        );
+                                    }
+                                }
+
+                                // Show Assumed (domain warnings)
+                                if !output.domain_warnings.is_empty() {
+                                    println!("  ⚠ Assumed:");
+                                    for w in &output.domain_warnings {
+                                        println!("    - {}", w.message);
+                                    }
+                                }
+                            } else {
+                                // Fallback: just simplify without metadata
+                                let (simplified, _) = self.engine.simplifier.simplify(resolved);
+                                if simplified != resolved {
+                                    println!(
+                                        "  Simplified: {}",
+                                        DisplayExpr {
+                                            context: &self.engine.simplifier.context,
+                                            id: simplified
+                                        }
+                                    );
+                                }
                             }
                         }
                         cas_engine::EntryKind::Eq { lhs, rhs } => {

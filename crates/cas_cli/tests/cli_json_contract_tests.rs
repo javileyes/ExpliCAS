@@ -225,3 +225,93 @@ fn test_ffi_mock_witness_survival_empty_required() {
         "FFI contract: witness survival means no x≥0 or y≥0 requirements"
     );
 }
+
+// =============================================================================
+// OutputEnvelope V1 Contract Tests (envelope-json command)
+// =============================================================================
+
+/// Validates OutputEnvelope V1 root structure for Android/FFI
+#[test]
+#[ignore = "Uses cargo run internally, causing lock contention in CI"]
+fn test_envelope_json_v1_structure() {
+    let (output, _code) = run_cli(&["envelope-json", "sqrt(x)^2"]);
+    let json = parse_json(&output);
+
+    // Root envelope fields
+    assert_eq!(json["schema_version"], 1, "V1: schema_version must be 1");
+    assert!(json["engine"].is_object(), "V1: engine must be object");
+    assert_eq!(json["engine"]["name"], "ExpliCAS");
+    assert!(json["request"].is_object(), "V1: request must be object");
+    assert!(json["result"].is_object(), "V1: result must be object");
+    assert!(
+        json["transparency"].is_object(),
+        "V1: transparency must be object"
+    );
+}
+
+/// Validates result structure with kind discriminator
+#[test]
+#[ignore = "Uses cargo run internally, causing lock contention in CI"]
+fn test_envelope_json_result_eval() {
+    let (output, _code) = run_cli(&["envelope-json", "2+2"]);
+    let json = parse_json(&output);
+
+    assert_eq!(
+        json["result"]["kind"], "eval_result",
+        "V1: result.kind for eval"
+    );
+    assert!(
+        json["result"]["value"].is_object(),
+        "V1: result.value must exist"
+    );
+    assert!(
+        json["result"]["value"]["display"].is_string(),
+        "V1: value.display"
+    );
+    assert!(
+        json["result"]["value"]["canonical"].is_string(),
+        "V1: value.canonical"
+    );
+}
+
+/// Validates transparency section with requires vs assumed
+#[test]
+#[ignore = "Uses cargo run internally, causing lock contention in CI"]
+fn test_envelope_json_transparency_requires() {
+    let (output, _code) = run_cli(&["envelope-json", "sqrt(x)^2"]);
+    let json = parse_json(&output);
+
+    let transparency = &json["transparency"];
+    assert!(transparency["required_conditions"].is_array());
+    assert!(transparency["assumptions_used"].is_array());
+
+    let required = transparency["required_conditions"].as_array().unwrap();
+    assert!(
+        !required.is_empty(),
+        "V1: sqrt(x)^2 should have required_conditions"
+    );
+
+    let first = &required[0];
+    assert_eq!(first["kind"], "NonNegative");
+    assert!(first["display"].as_str().unwrap().contains("≥"));
+    assert!(first["expr_canonical"].is_string());
+}
+
+/// Validates witness survival in envelope format
+#[test]
+#[ignore = "Uses cargo run internally, causing lock contention in CI"]
+fn test_envelope_json_witness_survival() {
+    let (output, _code) = run_cli(&["envelope-json", "(x-y)/(sqrt(x)-sqrt(y))"]);
+    let json = parse_json(&output);
+
+    let transparency = &json["transparency"];
+    let required = transparency["required_conditions"].as_array().unwrap();
+    let assumed = transparency["assumptions_used"].as_array().unwrap();
+
+    assert!(
+        required.is_empty(),
+        "V1: witness survival → no required_conditions"
+    );
+    assert!(!assumed.is_empty(), "V1: should have assumptions_used");
+    assert_eq!(assumed[0]["kind"], "NonZero");
+}
