@@ -82,6 +82,82 @@ impl Default for SolverOptions {
     }
 }
 
+// =============================================================================
+// Domain Environment (V2.2+)
+// =============================================================================
+
+/// Domain environment for solver operations.
+///
+/// Contains the "semantic ground" under which the solver operates:
+/// - `required`: Constraints inferred from equation structure (e.g., sqrt(y) → y ≥ 0)
+/// - `assumed`: Constraints assumed by policy (only in Assume mode)
+///
+/// This is passed explicitly rather than via TLS for clean reentrancy and testability.
+#[derive(Debug, Clone, Default)]
+pub struct SolveDomainEnv {
+    /// Required conditions inferred from equation structure.
+    /// These are NOT assumptions - they represent the minimum domain of validity.
+    pub required: crate::implicit_domain::ImplicitDomain,
+    /// Assumed conditions made during solving (only populated in Assume mode).
+    pub assumed: Vec<crate::assumptions::AssumptionEvent>,
+}
+
+impl SolveDomainEnv {
+    /// Create a new empty environment
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if a Positive condition is already in the required set
+    pub fn has_positive(&self, expr: cas_ast::ExprId) -> bool {
+        self.required.contains_positive(expr)
+    }
+
+    /// Check if a NonNegative condition is already in the required set
+    pub fn has_nonnegative(&self, expr: cas_ast::ExprId) -> bool {
+        self.required.contains_nonnegative(expr)
+    }
+
+    /// Check if a NonZero condition is already in the required set
+    pub fn has_nonzero(&self, expr: cas_ast::ExprId) -> bool {
+        self.required.contains_nonzero(expr)
+    }
+
+    /// Convert required conditions to a ConditionSet for use with guards
+    pub fn required_as_condition_set(&self) -> cas_ast::ConditionSet {
+        self.required.to_condition_set()
+    }
+}
+
+/// Diagnostics collected during solve operation.
+///
+/// This is returned alongside solutions to provide transparency about
+/// what conditions were required vs assumed during solving.
+#[derive(Debug, Clone, Default)]
+pub struct SolveDiagnostics {
+    /// Conditions required by the equation structure (domain minimum)
+    pub required: Vec<crate::implicit_domain::ImplicitCondition>,
+    /// Assumptions made during solving (policy decisions)
+    pub assumed: Vec<crate::assumptions::AssumptionEvent>,
+}
+
+impl SolveDiagnostics {
+    /// Create empty diagnostics
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Convert to Vec for display
+    pub fn required_display(&self, ctx: &cas_ast::Context) -> Vec<String> {
+        self.required.iter().map(|c| c.display(ctx)).collect()
+    }
+
+    /// Convert to Vec for display
+    pub fn assumed_display(&self) -> Vec<String> {
+        self.assumed.iter().map(|a| a.message.clone()).collect()
+    }
+}
+
 /// Helper: Build a 2-factor product (no normalization).
 
 #[derive(Debug, Clone)]

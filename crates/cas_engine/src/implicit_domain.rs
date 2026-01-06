@@ -138,6 +138,53 @@ impl ImplicitDomain {
     pub fn dropped_from<'a>(&'a self, other: &'a ImplicitDomain) -> Vec<&'a ImplicitCondition> {
         self.conditions.difference(&other.conditions).collect()
     }
+
+    /// Merge conditions from another domain into this one
+    pub fn extend(&mut self, other: &ImplicitDomain) {
+        for cond in &other.conditions {
+            self.conditions.insert(cond.clone());
+        }
+    }
+
+    /// Convert to a ConditionSet for solver use
+    pub fn to_condition_set(&self) -> cas_ast::ConditionSet {
+        let predicates: Vec<cas_ast::ConditionPredicate> =
+            self.conditions.iter().map(|c| c.into()).collect();
+        cas_ast::ConditionSet::from_predicates(predicates)
+    }
+}
+
+// =============================================================================
+// Adapters: ImplicitCondition ↔ ConditionPredicate
+// =============================================================================
+
+impl From<&ImplicitCondition> for cas_ast::ConditionPredicate {
+    fn from(cond: &ImplicitCondition) -> Self {
+        match cond {
+            ImplicitCondition::NonNegative(e) => cas_ast::ConditionPredicate::NonNegative(*e),
+            ImplicitCondition::Positive(e) => cas_ast::ConditionPredicate::Positive(*e),
+            ImplicitCondition::NonZero(e) => cas_ast::ConditionPredicate::NonZero(*e),
+        }
+    }
+}
+
+impl From<ImplicitCondition> for cas_ast::ConditionPredicate {
+    fn from(cond: ImplicitCondition) -> Self {
+        (&cond).into()
+    }
+}
+
+impl TryFrom<&cas_ast::ConditionPredicate> for ImplicitCondition {
+    type Error = ();
+
+    fn try_from(pred: &cas_ast::ConditionPredicate) -> Result<Self, Self::Error> {
+        match pred {
+            cas_ast::ConditionPredicate::NonNegative(e) => Ok(ImplicitCondition::NonNegative(*e)),
+            cas_ast::ConditionPredicate::Positive(e) => Ok(ImplicitCondition::Positive(*e)),
+            cas_ast::ConditionPredicate::NonZero(e) => Ok(ImplicitCondition::NonZero(*e)),
+            _ => Err(()), // Defined, InvTrigPrincipalRange, EqZero, EqOne not mapped
+        }
+    }
 }
 
 // =============================================================================
@@ -425,6 +472,80 @@ pub fn infer_implicit_domain(ctx: &Context, root: ExprId, vd: ValueDomain) -> Im
     let mut domain = ImplicitDomain::default();
     infer_recursive(ctx, root, &mut domain);
     domain
+}
+
+/// Derive additional required conditions from equation equality.
+///
+/// This function uses the equation `lhs = rhs` to derive stronger conditions.
+/// For RealOnly:
+/// - If `prove_positive(lhs)` is proven → add `Positive(rhs)`
+/// - If `prove_positive(rhs)` is proven → add `Positive(lhs)`
+/// - Then propagate through sqrt: `Positive(sqrt(t))` → `Positive(t)`
+///
+/// This enables `2^x = sqrt(y)` to derive `y > 0`:
+/// - `2^x > 0` (always true for a > 0)
+/// - Therefore `sqrt(y) > 0`
+/// - Therefore `y > 0`
+///
+/// Returns additional conditions to add to the required set.
+pub fn derive_requires_from_equation(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    _existing: &ImplicitDomain,
+    vd: ValueDomain,
+) -> Vec<ImplicitCondition> {
+    if vd != ValueDomain::RealOnly {
+        return vec![];
+    }
+
+    let mut derived = Vec::new();
+
+    // Check if LHS is provably positive
+    let lhs_positive = crate::helpers::prove_positive(ctx, lhs, vd);
+    if matches!(
+        lhs_positive,
+        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit
+    ) {
+        // LHS > 0 proven, so RHS > 0
+        add_positive_and_propagate(ctx, rhs, &mut derived);
+    }
+
+    // Check if RHS is provably positive
+    let rhs_positive = crate::helpers::prove_positive(ctx, rhs, vd);
+    if matches!(
+        rhs_positive,
+        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit
+    ) {
+        // RHS > 0 proven, so LHS > 0
+        add_positive_and_propagate(ctx, lhs, &mut derived);
+    }
+
+    derived
+}
+
+/// Add Positive(expr) and propagate through sqrt/ln structure.
+/// - Positive(sqrt(t)) → Positive(t)
+fn add_positive_and_propagate(ctx: &Context, expr: ExprId, derived: &mut Vec<ImplicitCondition>) {
+    // Add the base condition
+    derived.push(ImplicitCondition::Positive(expr));
+
+    // Propagate through sqrt: if expr = sqrt(t), then t > 0
+    match ctx.get(expr) {
+        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+            derived.push(ImplicitCondition::Positive(args[0]));
+        }
+        Expr::Pow(base, exp) => {
+            // Check for t^(1/2) form
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if is_even_root_exponent(n) {
+                    // sqrt(base) > 0 implies base > 0
+                    derived.push(ImplicitCondition::Positive(*base));
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Check if expression contains any variables.
