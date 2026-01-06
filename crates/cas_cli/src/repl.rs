@@ -3625,6 +3625,14 @@ impl Repl {
                                         println!("    - {}", w.message);
                                     }
                                 }
+
+                                // Show Blocked hints (rules that couldn't fire)
+                                if !output.blocked_hints.is_empty() {
+                                    println!("  🚫 Blocked:");
+                                    for hint in &output.blocked_hints {
+                                        println!("    - {} (hint: {})", hint.rule, hint.suggestion);
+                                    }
+                                }
                             } else {
                                 // Fallback: just simplify without metadata
                                 let (simplified, _) = self.engine.simplifier.simplify(resolved);

@@ -142,6 +142,9 @@ pub struct EvalOutput {
     /// NOT assumptions! These were already required by the input expression.
     /// Sorted and deduplicated for stable display.
     pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
+    /// Blocked hints - operations that could not proceed in Strict/Generic mode.
+    /// These suggest using Assume mode to enable certain transformations.
+    pub blocked_hints: Vec<crate::domain::BlockedHint>,
 }
 
 /// Collect domain warnings from steps with deduplication.
@@ -454,6 +457,9 @@ impl Engine {
         let mut required_conditions = collect_required_conditions(&steps, &self.simplifier.context);
         required_conditions.extend(solver_required);
 
+        // Collect blocked hints from simplifier
+        let blocked_hints = self.simplifier.take_blocked_hints();
+
         Ok(EvalOutput {
             stored_id,
             parsed: req.parsed,
@@ -465,6 +471,7 @@ impl Engine {
             solver_assumptions,
             output_scopes,
             required_conditions,
+            blocked_hints,
         })
     }
 }
