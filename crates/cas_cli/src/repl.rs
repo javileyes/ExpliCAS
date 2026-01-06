@@ -4495,6 +4495,19 @@ impl Repl {
                             _ => println!("Result: {:?}", output.result),
                         }
 
+                        // V2.2+: Show Requires (implicit domain conditions from solver)
+                        if !output.required_conditions.is_empty() {
+                            println!("ℹ️ Requires:");
+                            for cond in &output.required_conditions {
+                                println!("  - {}", cond.display(&self.engine.simplifier.context));
+                            }
+                        }
+
+                        // V2.2+: Show Assumed (not in domain_warnings from simplification,
+                        // but solver_assumptions if they are in Assume mode)
+                        // Note: solver_assumptions already shown above as "⚠ Assumptions:"
+                        // This is just for consistency labeling
+
                         // Issue #5: Solution verification (--check flag)
                         if check_enabled {
                             if let EvalResult::SolutionSet(ref solution_set) = output.result {

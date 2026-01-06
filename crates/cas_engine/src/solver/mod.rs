@@ -187,6 +187,50 @@ thread_local! {
     /// Strategies emit scopes like "QuadraticFormula" which affect display transforms.
     static OUTPUT_SCOPES: std::cell::RefCell<Vec<cas_ast::display_transforms::ScopeTag>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    /// Thread-local current domain environment for solver.
+    /// Set by solve_with_options, consulted by classify_log_solve via get_current_domain_env().
+    static CURRENT_DOMAIN_ENV: std::cell::RefCell<Option<SolveDomainEnv>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Get the current domain environment (if set by an enclosing solve).
+/// Used by classify_log_solve to check if conditions are already proven.
+pub fn get_current_domain_env() -> Option<SolveDomainEnv> {
+    CURRENT_DOMAIN_ENV.with(|e| e.borrow().clone())
+}
+
+/// Set the current domain environment (called by solve_with_options).
+fn set_current_domain_env(env: SolveDomainEnv) {
+    CURRENT_DOMAIN_ENV.with(|e| {
+        *e.borrow_mut() = Some(env);
+    });
+}
+
+/// Clear the current domain environment (called on solve exit).
+fn clear_current_domain_env() {
+    CURRENT_DOMAIN_ENV.with(|e| {
+        // Before clearing, save to LAST_SOLVER_REQUIRED for eval.rs to retrieve
+        if let Some(ref env) = *e.borrow() {
+            LAST_SOLVER_REQUIRED.with(|last| {
+                *last.borrow_mut() = env.required.conditions().iter().cloned().collect();
+            });
+        }
+        *e.borrow_mut() = None;
+    });
+}
+
+thread_local! {
+    /// Thread-local storage for required conditions from the last completed solve.
+    /// Set by clear_current_domain_env before clearing the main env.
+    /// Retrieved by eval.rs via take_solver_required().
+    static LAST_SOLVER_REQUIRED: std::cell::RefCell<Vec<crate::implicit_domain::ImplicitCondition>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Take the required conditions from the last completed solve.
+/// This is called by eval.rs to get solver-derived requirements after solve completes.
+pub fn take_solver_required() -> Vec<crate::implicit_domain::ImplicitCondition> {
+    LAST_SOLVER_REQUIRED.with(|last| std::mem::take(&mut *last.borrow_mut()))
 }
 
 /// RAII guard for solver assumption collection.
@@ -402,6 +446,18 @@ pub fn solve_with_options(
             domain_env.required.conditions_mut().insert(cond);
         }
     }
+
+    // V2.2+: Set domain_env in TLS for strategies to access via get_current_domain_env()
+    set_current_domain_env(domain_env);
+
+    // RAII guard to clear env on exit (handles all return paths)
+    struct EnvGuard;
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            clear_current_domain_env();
+        }
+    }
+    let _env_guard = EnvGuard;
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops

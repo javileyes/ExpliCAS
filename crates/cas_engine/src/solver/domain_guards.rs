@@ -142,8 +142,12 @@ pub fn classify_log_solve(
     let vd = opts.value_domain;
 
     // V2.2+: Check env.required first - if condition is already required, treat as proven
-    let base_in_env = env.map(|e| e.has_positive(base)).unwrap_or(false);
-    let rhs_in_env = env.map(|e| e.has_positive(rhs)).unwrap_or(false);
+    // Fallback to TLS env if not passed explicitly (allows strategies to benefit without signature changes)
+    let tls_env = super::get_current_domain_env();
+    let effective_env = env.or_else(|| tls_env.as_ref());
+
+    let base_in_env = effective_env.map(|e| e.has_positive(base)).unwrap_or(false);
+    let rhs_in_env = effective_env.map(|e| e.has_positive(rhs)).unwrap_or(false);
 
     let base_proof = if base_in_env {
         Proof::ProvenImplicit // Already in global requires
