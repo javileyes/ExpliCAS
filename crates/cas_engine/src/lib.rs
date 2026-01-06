@@ -10,6 +10,7 @@ pub mod collect;
 pub mod const_eval;
 pub mod const_fold;
 pub mod cycle_detector;
+pub mod diagnostics;
 pub mod didactic;
 pub mod display_context;
 pub mod domain;

@@ -583,8 +583,29 @@ pub fn prove_positive(
             prove_positive(ctx, args[0], value_domain)
         }
 
-        // Neg: -x > 0 iff x < 0 - too complex to prove, return Unknown
-        Expr::Neg(_) => Proof::Unknown,
+        // Neg: -x > 0 iff x < 0
+        // If x is proven positive (> 0), then -x is proven negative (< 0), so Disproven
+        // If x is proven negative (< 0), then -x is proven positive (> 0), so Proven
+        Expr::Neg(inner) => {
+            let inner_proof = prove_positive(ctx, *inner, value_domain);
+            match inner_proof {
+                Proof::Proven => Proof::Disproven, // -(positive) = negative
+                Proof::Disproven => {
+                    // Inner is ≤ 0. If inner is strictly < 0, -inner > 0
+                    // But we can't distinguish < 0 from = 0 here, so Unknown for now
+                    // However, for literals like Neg(Number(5)), inner is 5 > 0 → Proven
+                    // So this case handles Neg(negative_number) = positive
+                    // Check if inner is a negative number
+                    if let Expr::Number(n) = ctx.get(*inner) {
+                        if n.is_negative() {
+                            return Proof::Proven; // -(-n) = n > 0
+                        }
+                    }
+                    Proof::Unknown
+                }
+                _ => Proof::Unknown,
+            }
+        }
 
         // Variables, other functions: UNKNOWN (conservative)
         _ => Proof::Unknown,

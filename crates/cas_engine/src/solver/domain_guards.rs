@@ -144,7 +144,7 @@ pub fn classify_log_solve(
     // V2.2+: Check env.required first - if condition is already required, treat as proven
     // Fallback to TLS env if not passed explicitly (allows strategies to benefit without signature changes)
     let tls_env = super::get_current_domain_env();
-    let effective_env = env.or_else(|| tls_env.as_ref());
+    let effective_env = env.or(tls_env.as_ref());
 
     let base_in_env = effective_env.map(|e| e.has_positive(base)).unwrap_or(false);
     let rhs_in_env = effective_env.map(|e| e.has_positive(rhs)).unwrap_or(false);
@@ -295,5 +295,21 @@ mod tests {
 
         let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
         assert!(matches!(decision, LogSolveDecision::Unsupported(_, _)));
+    }
+
+    #[test]
+    fn test_base_positive_rhs_neg_expr_empty() {
+        // Test with Neg(5) which is how parser represents -5
+        let (mut ctx, opts) = make_test_ctx_and_opts(DomainMode::Generic, AssumeScope::Real);
+        let base = ctx.num(2);
+        let five = ctx.num(5);
+        let rhs = ctx.add(cas_ast::Expr::Neg(five)); // Neg(5) instead of Number(-5)
+
+        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
+        assert!(
+            matches!(decision, LogSolveDecision::EmptySet(_)),
+            "Expected EmptySet for Neg(5), got {:?}",
+            decision
+        );
     }
 }

@@ -145,6 +145,9 @@ pub struct EvalOutput {
     /// Blocked hints - operations that could not proceed in Strict/Generic mode.
     /// These suggest using Assume mode to enable certain transformations.
     pub blocked_hints: Vec<crate::domain::BlockedHint>,
+    /// V2.2+: Unified diagnostics with origin tracking.
+    /// Consolidates requires, assumed, and blocked in one container.
+    pub diagnostics: crate::diagnostics::Diagnostics,
 }
 
 /// Collect domain warnings from steps with deduplication.
@@ -196,7 +199,7 @@ fn collect_required_conditions(
     }
 
     // Sort for stable output (by display string)
-    conditions.sort_by(|a, b| a.display(ctx).cmp(&b.display(ctx)));
+    conditions.sort_by_key(|a| a.display(ctx));
     conditions
 }
 
@@ -487,6 +490,36 @@ impl Engine {
         // Collect blocked hints from simplifier
         let blocked_hints = self.simplifier.take_blocked_hints();
 
+        // V2.2+: Build unified Diagnostics with origin tracking
+        let mut diagnostics = crate::diagnostics::Diagnostics::new();
+
+        // Add requires from various sources with appropriate origins
+        for cond in &required_conditions {
+            // Determine origin based on where it came from
+            // For now, use OutputImplicit as default (structural inference from resolved)
+            diagnostics.push_required(
+                cond.clone(),
+                crate::diagnostics::RequireOrigin::OutputImplicit,
+            );
+        }
+
+        // Add solver requires with EquationDerived origin (from solver_required)
+        // These were already merged into required_conditions above, so we just add
+        // blocked hints
+        for hint in &blocked_hints {
+            diagnostics.push_blocked(hint.clone());
+        }
+
+        // Add assumed events from solve steps (if any)
+        for step in &steps {
+            for event in &step.assumption_events {
+                diagnostics.push_assumed(event.clone());
+            }
+        }
+
+        // Dedup and sort for stable output (also filters trivials)
+        diagnostics.dedup_and_sort(&self.simplifier.context);
+
         Ok(EvalOutput {
             stored_id,
             parsed: req.parsed,
@@ -499,6 +532,7 @@ impl Engine {
             output_scopes,
             required_conditions,
             blocked_hints,
+            diagnostics,
         })
     }
 }

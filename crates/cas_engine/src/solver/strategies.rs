@@ -1016,8 +1016,10 @@ impl SolverStrategy for IsolationStrategy {
     // Selective verification in solve() handles symbolic solutions.
 }
 
-/// Check if an exponential equation needs complex logarithm in Wildcard mode.
+/// Check if an exponential equation needs complex logarithm in Wildcard mode,
+/// or if it has no real solutions (EmptySet).
 /// Returns Some(Ok(Residual)) if Wildcard mode should return a residual.
+/// Returns Some(Ok(Empty)) if no real solutions exist.
 /// Returns Some(Err) if an error should be returned.
 /// Returns None if this case doesn't apply (normal processing should continue).
 fn check_exponential_needs_complex(
@@ -1041,30 +1043,47 @@ fn check_exponential_needs_complex(
             {
                 let decision = classify_log_solve(&simplifier.context, base, eq.rhs, opts, None);
 
-                if let LogSolveDecision::NeedsComplex(msg) = decision {
-                    // Check if we're in Wildcard mode
-                    if opts.domain_mode == DomainMode::Assume
-                        && opts.assume_scope == AssumeScope::Wildcard
-                    {
-                        // Create a solve(eq, var) residual
-                        let eq_expr = create_equation_expr(simplifier, eq);
-                        let var_expr = simplifier.context.var(var);
-                        let residual = simplifier
-                            .context
-                            .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
-
-                        // Create step with warning
+                match &decision {
+                    LogSolveDecision::EmptySet(msg) => {
+                        // base > 0 but RHS <= 0 proven: no real solutions exist
                         let mut steps = Vec::new();
                         if simplifier.collect_steps() {
                             steps.push(SolveStep {
-                                description: format!("{} - use 'semantics preset complex'", msg),
+                                description: msg.clone(),
                                 equation_after: eq.clone(),
                             });
                         }
-
-                        return Some(Ok((SolutionSet::Residual(residual), steps)));
+                        return Some(Ok((SolutionSet::Empty, steps)));
                     }
-                    // If not Wildcard, let other handlers deal with it
+                    LogSolveDecision::NeedsComplex(msg) => {
+                        // Check if we're in Wildcard mode
+                        if opts.domain_mode == DomainMode::Assume
+                            && opts.assume_scope == AssumeScope::Wildcard
+                        {
+                            // Create a solve(eq, var) residual
+                            let eq_expr = create_equation_expr(simplifier, eq);
+                            let var_expr = simplifier.context.var(var);
+                            let residual = simplifier
+                                .context
+                                .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
+
+                            // Create step with warning
+                            let mut steps = Vec::new();
+                            if simplifier.collect_steps() {
+                                steps.push(SolveStep {
+                                    description: format!(
+                                        "{} - use 'semantics preset complex'",
+                                        msg
+                                    ),
+                                    equation_after: eq.clone(),
+                                });
+                            }
+
+                            return Some(Ok((SolutionSet::Residual(residual), steps)));
+                        }
+                        // If not Wildcard, let other handlers deal with it
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1078,26 +1097,43 @@ fn check_exponential_needs_complex(
             {
                 let decision = classify_log_solve(&simplifier.context, base, eq.lhs, opts, None);
 
-                if let LogSolveDecision::NeedsComplex(msg) = decision {
-                    if opts.domain_mode == DomainMode::Assume
-                        && opts.assume_scope == AssumeScope::Wildcard
-                    {
-                        let eq_expr = create_equation_expr(simplifier, eq);
-                        let var_expr = simplifier.context.var(var);
-                        let residual = simplifier
-                            .context
-                            .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
-
+                match &decision {
+                    LogSolveDecision::EmptySet(msg) => {
+                        // base > 0 but LHS <= 0 proven: no real solutions exist
                         let mut steps = Vec::new();
                         if simplifier.collect_steps() {
                             steps.push(SolveStep {
-                                description: format!("{} - use 'semantics preset complex'", msg),
+                                description: msg.clone(),
                                 equation_after: eq.clone(),
                             });
                         }
-
-                        return Some(Ok((SolutionSet::Residual(residual), steps)));
+                        return Some(Ok((SolutionSet::Empty, steps)));
                     }
+                    LogSolveDecision::NeedsComplex(msg) => {
+                        if opts.domain_mode == DomainMode::Assume
+                            && opts.assume_scope == AssumeScope::Wildcard
+                        {
+                            let eq_expr = create_equation_expr(simplifier, eq);
+                            let var_expr = simplifier.context.var(var);
+                            let residual = simplifier
+                                .context
+                                .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
+
+                            let mut steps = Vec::new();
+                            if simplifier.collect_steps() {
+                                steps.push(SolveStep {
+                                    description: format!(
+                                        "{} - use 'semantics preset complex'",
+                                        msg
+                                    ),
+                                    equation_after: eq.clone(),
+                                });
+                            }
+
+                            return Some(Ok((SolutionSet::Residual(residual), steps)));
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1335,7 +1371,8 @@ impl SolverStrategy for UnwrapStrategy {
                                 }
                             }
                             LogSolveDecision::EmptySet(_) => {
-                                // No solutions - skip, let IsolationStrategy handle
+                                // Should have been caught by check_exponential_needs_complex
+                                // but if we get here somehow, skip (let outer handler deal with it)
                                 return None;
                             }
                             LogSolveDecision::NeedsComplex(msg) => {

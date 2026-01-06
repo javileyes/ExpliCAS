@@ -306,6 +306,7 @@ pub fn expands_analytic_domain(
 /// * `rewritten_node` - The node being replaced
 /// * `replacement` - The replacement expression
 /// * `vd` - Value domain
+///
 /// Result of checking if a rewrite would expand analytic domain.
 #[derive(Debug, Clone)]
 pub enum AnalyticExpansionResult {
@@ -523,8 +524,14 @@ pub fn derive_requires_from_equation(
         lhs_positive,
         crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit
     ) {
-        // LHS > 0 proven, so RHS > 0
-        add_positive_and_propagate(ctx, rhs, &mut derived);
+        // LHS > 0 proven, so RHS > 0 (for the equation to have solutions)
+        // BUT: Only add this if RHS is not DISPROVEN (provably ≤ 0)
+        // If RHS is disproven, the equation has no solutions, don't propagate the constraint
+        let rhs_check = crate::helpers::prove_positive(ctx, rhs, vd);
+        if rhs_check != crate::domain::Proof::Disproven {
+            add_positive_and_propagate(ctx, rhs, &mut derived);
+        }
+        // If rhs_check == Disproven, this equation has no solution (will be caught by EmptySet later)
     }
 
     // Check if RHS is provably positive
@@ -533,8 +540,12 @@ pub fn derive_requires_from_equation(
         rhs_positive,
         crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit
     ) {
-        // RHS > 0 proven, so LHS > 0
-        add_positive_and_propagate(ctx, lhs, &mut derived);
+        // RHS > 0 proven, so LHS > 0 (for the equation to have solutions)
+        // Same check: don't propagate if LHS is disproven
+        let lhs_check = crate::helpers::prove_positive(ctx, lhs, vd);
+        if lhs_check != crate::domain::Proof::Disproven {
+            add_positive_and_propagate(ctx, lhs, &mut derived);
+        }
     }
 
     derived

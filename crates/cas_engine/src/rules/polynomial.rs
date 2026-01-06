@@ -94,7 +94,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
-            required_conditions: vec![],
+                    required_conditions: vec![],
                 });
             }
             // (b + c) * a -> b*a + c*a
@@ -144,7 +144,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
-            required_conditions: vec![],
+                    required_conditions: vec![],
                 });
             }
         }
@@ -293,7 +293,7 @@ define_rule!(
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
-            required_conditions: vec![],
+                            required_conditions: vec![],
                         });
                     }
                 }
@@ -680,7 +680,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                         before_local: None,
                         after_local: None,
                         assumption_events: Default::default(),
-            required_conditions: vec![],
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -766,7 +766,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
-            required_conditions: vec![],
+                            required_conditions: vec![],
                         });
                     }
                 }
@@ -812,7 +812,7 @@ define_rule!(
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                required_conditions: vec![],
             });
         }
         None
@@ -941,7 +941,7 @@ impl crate::rule::Rule for BinomialExpansionRule {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -1157,7 +1157,7 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
                             before_local: None,
                             after_local: None,
                             assumption_events: Default::default(),
-            required_conditions: vec![],
+                            required_conditions: vec![],
                         });
                     }
                 }
@@ -1392,7 +1392,7 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                required_conditions: vec![],
             });
         }
 

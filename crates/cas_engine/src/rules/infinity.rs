@@ -191,7 +191,7 @@ pub fn add_infinity_absorption(ctx: &mut Context, expr: ExprId) -> Option<Rewrit
         before_local: None,
         after_local: None,
         assumption_events: Default::default(),
-            required_conditions: vec![],
+        required_conditions: vec![],
     })
 }
 
@@ -327,7 +327,7 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                required_conditions: vec![],
             });
         }
     }
@@ -350,7 +350,7 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
                 before_local: None,
                 after_local: None,
                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                required_conditions: vec![],
             });
         }
     }
@@ -392,7 +392,7 @@ pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         before_local: None,
         after_local: None,
         assumption_events: Default::default(),
-            required_conditions: vec![],
+        required_conditions: vec![],
     })
 }
 

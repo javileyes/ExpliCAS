@@ -213,7 +213,7 @@ where
                 before_local: Some(local_before),
                 after_local: Some(neg_result),
                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                required_conditions: vec![],
             });
         }
     }
@@ -240,7 +240,7 @@ where
                     before_local: Some(local_before),
                     after_local: Some(scaled_result),
                     assumption_events: Default::default(),
-            required_conditions: vec![],
+                    required_conditions: vec![],
                 });
             }
         }
@@ -268,7 +268,7 @@ where
                         before_local: Some(local_before),
                         after_local: Some(neg_scaled),
                         assumption_events: Default::default(),
-            required_conditions: vec![],
+                        required_conditions: vec![],
                     });
                 }
             }
@@ -322,7 +322,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                                 before_local: None,
                                                 after_local: None,
                                                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                                                required_conditions: vec![],
                                             });
                                         }
                                     }
@@ -336,7 +336,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         before_local: None,
                                         after_local: None,
                                         assumption_events: Default::default(),
-            required_conditions: vec![],
+                                        required_conditions: vec![],
                                     });
                                 }
                                 crate::domain::DomainMode::Assume => {
@@ -370,7 +370,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                                 before_local: None,
                                                 after_local: None,
                                                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                                                required_conditions: vec![],
                                             });
                                         }
                                     }
@@ -383,7 +383,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         before_local: None,
                                         after_local: None,
                                         assumption_events: Default::default(),
-            required_conditions: vec![],
+                                        required_conditions: vec![],
                                     });
                                 }
                                 crate::domain::DomainMode::Assume => {
@@ -410,7 +410,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                                required_conditions: vec![],
                             });
                         }
 
@@ -432,7 +432,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         before_local: None,
                                         after_local: None,
                                         assumption_events: Default::default(),
-            required_conditions: vec![],
+                                        required_conditions: vec![],
                                     });
                                 }
                             }
@@ -725,7 +725,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
                                 before_local: Some(local_before),
                                 after_local: Some(result_atan),
                                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                                required_conditions: vec![],
                             });
                         }
                     }
@@ -791,7 +791,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                                required_conditions: vec![],
                             });
                         }
                         "arctan" => {
@@ -805,7 +805,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                                required_conditions: vec![],
                             });
                         }
                         "arccos" => {
@@ -820,7 +820,7 @@ define_rule!(
                                 before_local: None,
                                 after_local: None,
                                 assumption_events: Default::default(),
-            required_conditions: vec![],
+                                required_conditions: vec![],
                             });
                         }
                         _ => {}
@@ -858,7 +858,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
-            required_conditions: vec![],
+                    required_conditions: vec![],
                 });
             }
         }
@@ -889,7 +889,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
-            required_conditions: vec![],
+                    required_conditions: vec![],
                 });
             }
         }
@@ -921,7 +921,7 @@ define_rule!(
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
-            required_conditions: vec![],
+                    required_conditions: vec![],
                 });
             }
         }
