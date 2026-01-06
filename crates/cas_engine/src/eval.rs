@@ -457,6 +457,33 @@ impl Engine {
         let mut required_conditions = collect_required_conditions(&steps, &self.simplifier.context);
         required_conditions.extend(solver_required);
 
+        // V2.2+: Also infer implicit domain from the resolved expression structure
+        // This ensures Requires is shown even if no simplification steps occurred
+        // (e.g., `ln(x)` with no simplification still shows `x > 0`)
+        {
+            use crate::implicit_domain::infer_implicit_domain;
+            use std::collections::HashSet;
+
+            let structural_domain = infer_implicit_domain(
+                &self.simplifier.context,
+                resolved,
+                crate::semantics::ValueDomain::RealOnly, // Default to RealOnly for structural inference
+            );
+
+            // Merge with existing, avoiding duplicates by display string
+            let existing_displays: HashSet<String> = required_conditions
+                .iter()
+                .map(|c| c.display(&self.simplifier.context))
+                .collect();
+
+            for cond in structural_domain.conditions() {
+                let display = cond.display(&self.simplifier.context);
+                if !existing_displays.contains(&display) {
+                    required_conditions.push(cond.clone());
+                }
+            }
+        }
+
         // Collect blocked hints from simplifier
         let blocked_hints = self.simplifier.take_blocked_hints();
 
