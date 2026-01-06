@@ -138,6 +138,10 @@ pub struct EvalOutput {
     pub solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
     /// Scopes for context-aware display (e.g., QuadraticFormula -> sqrt display).
     pub output_scopes: Vec<cas_ast::display_transforms::ScopeTag>,
+    /// Required conditions for validity - implicit domain constraints from input.
+    /// NOT assumptions! These were already required by the input expression.
+    /// Sorted and deduplicated for stable display.
+    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
 }
 
 /// Collect domain warnings from steps with deduplication.
@@ -163,6 +167,34 @@ fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
     }
 
     warnings
+}
+
+/// Collect required conditions from steps with deduplication.
+/// These are implicit domain constraints from the input, NOT assumptions.
+/// Sorted for stable/deterministic output.
+fn collect_required_conditions(
+    steps: &[crate::Step],
+    ctx: &cas_ast::Context,
+) -> Vec<crate::implicit_domain::ImplicitCondition> {
+    use crate::implicit_domain::ImplicitCondition;
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut conditions: Vec<ImplicitCondition> = Vec::new();
+
+    for step in steps {
+        for cond in &step.required_conditions {
+            let display = cond.display(ctx);
+            if !seen.contains(&display) {
+                seen.insert(display);
+                conditions.push(cond.clone());
+            }
+        }
+    }
+
+    // Sort for stable output (by display string)
+    conditions.sort_by(|a, b| a.display(ctx).cmp(&b.display(ctx)));
+    conditions
 }
 
 impl Engine {
@@ -404,6 +436,9 @@ impl Engine {
                 }
             };
 
+        // Accumulate required_conditions from all steps
+        let required_conditions = collect_required_conditions(&steps, &self.simplifier.context);
+
         Ok(EvalOutput {
             stored_id,
             parsed: req.parsed,
@@ -414,6 +449,7 @@ impl Engine {
             solve_steps,
             solver_assumptions,
             output_scopes,
+            required_conditions,
         })
     }
 }

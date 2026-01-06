@@ -40,6 +40,42 @@ pub enum ImplicitCondition {
     NonZero(ExprId),
 }
 
+impl ImplicitCondition {
+    /// Human-readable display for REPL/UI.
+    pub fn display(&self, ctx: &Context) -> String {
+        use cas_ast::display::DisplayExpr;
+        match self {
+            ImplicitCondition::NonNegative(e) => {
+                format!(
+                    "{} ≥ 0",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *e
+                    }
+                )
+            }
+            ImplicitCondition::Positive(e) => {
+                format!(
+                    "{} > 0",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *e
+                    }
+                )
+            }
+            ImplicitCondition::NonZero(e) => {
+                format!(
+                    "{} ≠ 0",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *e
+                    }
+                )
+            }
+        }
+    }
+}
+
 /// Set of implicit conditions inferred from an expression.
 #[derive(Debug, Clone, Default)]
 pub struct ImplicitDomain {

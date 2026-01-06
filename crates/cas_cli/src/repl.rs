@@ -5005,6 +5005,16 @@ impl Repl {
                             println!("⚠ {} (from {})", w.message, w.rule_name);
                         }
 
+                        // Show required conditions (implicit domain constraints from input)
+                        // These are NOT assumptions - they were already required by the input expression
+                        if !output.required_conditions.is_empty() {
+                            println!("ℹ️ Requires:");
+                            for cond in &output.required_conditions {
+                                let cond_display = cond.display(&self.engine.simplifier.context);
+                                println!("  - {}", cond_display);
+                            }
+                        }
+
                         // Collect assumptions from steps for assumption reporting (before steps are consumed)
                         // Deduplicate by (condition_kind, expr_fingerprint) and group by rule
                         let show_assumptions = self.state.options.assumption_reporting

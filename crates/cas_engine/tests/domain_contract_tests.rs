@@ -1074,3 +1074,113 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
         );
     }
 }
+
+// =============================================================================
+// RequiredConditions Tests (V2.x - Semantic Channel for Implicit Domain)
+// =============================================================================
+
+/// Helper: simplify with Generic mode and extract required_conditions
+fn simplify_generic_with_required(input: &str) -> (String, Vec<String>) {
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    state.options.domain_mode = cas_engine::DomainMode::Generic;
+
+    let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        kind: EntryKind::Expr(parsed),
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+
+    let result_str = match &output.result {
+        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+
+    let required: Vec<String> = output
+        .required_conditions
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+    (result_str, required)
+}
+
+/// CONTRACT: sqrt(x)^2 simplifies to x in Generic mode with Requires: x ≥ 0
+#[test]
+fn required_conditions_sqrt_x_squared_simplifies_with_requires() {
+    let (result, required) = simplify_generic_with_required("sqrt(x)^2");
+
+    assert_eq!(
+        result, "x",
+        "sqrt(x)^2 should simplify to x in Generic mode"
+    );
+    assert!(
+        required
+            .iter()
+            .any(|c| c.contains("x ≥ 0") || c.contains("x >= 0")),
+        "Should require x ≥ 0, got: {:?}",
+        required
+    );
+}
+
+/// CONTRACT: sqrt(x)^2 does NOT simplify in Strict mode
+#[test]
+fn required_conditions_sqrt_x_squared_blocked_in_strict() {
+    let result = simplify_strict("sqrt(x)^2");
+
+    // Should remain unchanged (blocked by airbag)
+    assert!(
+        result.contains("√") || result.contains("sqrt") || result.contains("^"),
+        "sqrt(x)^2 should NOT simplify to just x in Strict mode, got: {}",
+        result
+    );
+}
+
+/// CONTRACT: Witness survival - sqrt functions remain, no Requires emitted
+/// (x-y)/(sqrt(x)-sqrt(y)) → sqrt(x)+sqrt(y) with NO x≥0 or y≥0 requirement
+#[test]
+fn required_conditions_witness_survival_no_requires() {
+    let (result, required) = simplify_generic_with_required("(x-y)/(sqrt(x)-sqrt(y))");
+
+    // Should simplify to √x + √y (or equivalent)
+    assert!(
+        result.contains("√") || result.contains("sqrt") || result.contains("^(1/2)"),
+        "Should contain sqrt in result, got: {}",
+        result
+    );
+
+    // Should NOT have x≥0 or y≥0 in required (witness survives)
+    let has_nonneg = required.iter().any(|c| {
+        c.contains("x ≥ 0") || c.contains("y ≥ 0") || c.contains("x >= 0") || c.contains("y >= 0")
+    });
+    assert!(
+        !has_nonneg,
+        "Should NOT require x≥0 or y≥0 (witness survives), got: {:?}",
+        required
+    );
+}
+
+/// CONTRACT: Numeric sqrt is always safe, no Requires needed
+#[test]
+fn required_conditions_numeric_sqrt_no_requires() {
+    let (result, required) = simplify_generic_with_required("sqrt(4)^2");
+
+    assert_eq!(result, "4", "sqrt(4)^2 should simplify to 4");
+    assert!(
+        required.is_empty(),
+        "Numeric sqrt should not require anything, got: {:?}",
+        required
+    );
+}
