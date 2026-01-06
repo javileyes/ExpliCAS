@@ -4496,10 +4496,17 @@ impl Repl {
                         }
 
                         // V2.2+: Show Requires (implicit domain conditions from solver)
-                        if !output.required_conditions.is_empty() {
+                        // Filter out trivial conditions like "2 > 0" (constant expressions)
+                        let ctx = &self.engine.simplifier.context;
+                        let non_trivial: Vec<_> = output
+                            .required_conditions
+                            .iter()
+                            .filter(|c| !c.is_trivial(ctx))
+                            .collect();
+                        if !non_trivial.is_empty() {
                             println!("ℹ️ Requires:");
-                            for cond in &output.required_conditions {
-                                println!("  - {}", cond.display(&self.engine.simplifier.context));
+                            for cond in &non_trivial {
+                                println!("  - {}", cond.display(ctx));
                             }
                         }
 

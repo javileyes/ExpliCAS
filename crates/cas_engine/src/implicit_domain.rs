@@ -74,6 +74,17 @@ impl ImplicitCondition {
             }
         }
     }
+
+    /// Check if this condition is trivial (on a constant expression).
+    /// Trivial conditions like "2 > 0" should be filtered from display.
+    pub fn is_trivial(&self, ctx: &Context) -> bool {
+        let expr = match self {
+            ImplicitCondition::NonNegative(e) => *e,
+            ImplicitCondition::Positive(e) => *e,
+            ImplicitCondition::NonZero(e) => *e,
+        };
+        !contains_variable(ctx, expr)
+    }
 }
 
 /// Set of implicit conditions inferred from an expression.
