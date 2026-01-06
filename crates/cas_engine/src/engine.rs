@@ -700,7 +700,8 @@ impl Simplifier {
         .with_domain_mode(domain_mode)
         .with_inv_trig(inv_trig)
         .with_value_domain(value_domain)
-        .with_goal(goal);
+        .with_goal(goal)
+        .with_root_expr(&self.context, expr_id);
 
         // Capture nodes_created BEFORE creating transformer (can't access while borrowed)
         let nodes_snap = self.context.stats().nodes_created;
@@ -1458,6 +1459,36 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             }
                         }
 
+                        // Domain Delta Airbag: Block rewrites that expand analytic domain in Strict/Generic
+                        // This catches any rewrite that removes implicit constraints like x≥0 from sqrt(x)
+                        // BUT only if the witness doesn't survive elsewhere in the tree!
+                        // NOTE: Only activate when implicit domain context is available (via with_root_expr)
+                        let vd = parent_ctx.value_domain();
+                        let mode = parent_ctx.domain_mode();
+                        if parent_ctx.implicit_domain().is_some()
+                            && matches!(
+                                mode,
+                                crate::domain::DomainMode::Strict
+                                    | crate::domain::DomainMode::Generic
+                            )
+                        {
+                            if crate::implicit_domain::expands_analytic_in_context(
+                                self.context,
+                                self.root_expr, // Full tree root
+                                expr_id,        // Node being replaced
+                                rewrite.new_expr,
+                                vd,
+                            ) {
+                                debug!(
+                                    "{}[DEBUG] Rule '{}' would expand analytic domain, blocked in {:?} mode",
+                                    self.indent(),
+                                    rule.name(),
+                                    mode
+                                );
+                                continue;
+                            }
+                        }
+
                         // Record rule application with delta_nodes for health metrics
                         let delta = if self.profiler.is_health_enabled() {
                             let before = crate::helpers::count_all_nodes(self.context, expr_id);
@@ -1583,6 +1614,33 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             ) {
                                 continue; // Skip - no improvement
                             }
+                        }
+                    }
+
+                    // Domain Delta Airbag: Block rewrites that expand analytic domain in Strict/Generic
+                    // NOTE: Only activate when implicit domain context is available (via with_root_expr)
+                    let vd = self.initial_parent_ctx.value_domain();
+                    let mode = self.initial_parent_ctx.domain_mode();
+                    if self.initial_parent_ctx.implicit_domain().is_some()
+                        && matches!(
+                            mode,
+                            crate::domain::DomainMode::Strict | crate::domain::DomainMode::Generic
+                        )
+                    {
+                        if crate::implicit_domain::expands_analytic_in_context(
+                            self.context,
+                            self.root_expr, // Full tree root
+                            expr_id,        // Node being replaced
+                            rewrite.new_expr,
+                            vd,
+                        ) {
+                            debug!(
+                                "{}[DEBUG] Global Rule '{}' would expand analytic domain, blocked in {:?} mode",
+                                self.indent(),
+                                rule.name(),
+                                mode
+                            );
+                            continue;
                         }
                     }
 

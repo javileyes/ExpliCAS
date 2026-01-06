@@ -24,6 +24,10 @@ pub struct ParentContext {
     pub(crate) branch: crate::semantics::BranchPolicy,
     /// Transformation goal (controls which inverse rules are gated)
     pub(crate) goal: crate::semantics::NormalFormGoal,
+    /// Root expression for this simplification pass (for implicit domain)
+    pub(crate) root_expr: Option<ExprId>,
+    /// Cached implicit domain (computed once per pass)
+    pub(crate) implicit_domain: Option<crate::implicit_domain::ImplicitDomain>,
 }
 
 impl ParentContext {
@@ -40,6 +44,8 @@ impl ParentContext {
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
             goal: crate::semantics::NormalFormGoal::default(),
+            root_expr: None,
+            implicit_domain: None,
         }
     }
 
@@ -56,6 +62,8 @@ impl ParentContext {
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
             goal: crate::semantics::NormalFormGoal::default(),
+            root_expr: None,
+            implicit_domain: None,
         }
     }
 
@@ -72,6 +80,8 @@ impl ParentContext {
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
             goal: crate::semantics::NormalFormGoal::default(),
+            root_expr: None,
+            implicit_domain: None,
         }
     }
 
@@ -91,6 +101,8 @@ impl ParentContext {
             value_domain: crate::semantics::ValueDomain::default(),
             branch: crate::semantics::BranchPolicy::default(),
             goal: crate::semantics::NormalFormGoal::default(),
+            root_expr: None,
+            implicit_domain: None,
         }
     }
 
@@ -110,6 +122,8 @@ impl ParentContext {
             value_domain: self.value_domain,
             branch: self.branch,
             goal: self.goal,
+            root_expr: self.root_expr,
+            implicit_domain: self.implicit_domain.clone(),
         }
     }
 
@@ -214,6 +228,24 @@ impl ParentContext {
         self.auto_expand = auto_expand;
         self.auto_expand_budget = budget;
         self
+    }
+
+    /// Get root expression for this pass (used for implicit domain)
+    pub fn root_expr(&self) -> Option<ExprId> {
+        self.root_expr
+    }
+
+    /// Set root expression and compute implicit domain
+    pub fn with_root_expr(mut self, ctx: &Context, root: ExprId) -> Self {
+        use crate::implicit_domain::infer_implicit_domain;
+        self.root_expr = Some(root);
+        self.implicit_domain = Some(infer_implicit_domain(ctx, root, self.value_domain));
+        self
+    }
+
+    /// Get cached implicit domain
+    pub fn implicit_domain(&self) -> Option<&crate::implicit_domain::ImplicitDomain> {
+        self.implicit_domain.as_ref()
     }
 
     /// Get immediate parent, if exists

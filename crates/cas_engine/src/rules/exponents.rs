@@ -429,17 +429,59 @@ define_rule!(
 
             if inner_is_even_root {
                 // This transformation requires inner_base >= 0 (NonNegative condition)
-                // Use Analytic gate: Generic blocks with hint, Assume allows
-                // Note: We need x >= 0 (NonNegative), not x > 0 (Positive)
-                // because sqrt(0)^2 = 0 is perfectly valid.
-                use crate::domain::can_apply_analytic_with_hint;
+                // First try implicit domain: if sqrt(x) exists elsewhere in the tree,
+                // we can use ProvenImplicit without assumptions.
+                use crate::domain::{can_apply_analytic_with_hint, Proof};
                 use crate::helpers::prove_nonnegative;
+                use crate::implicit_domain::{witness_survives_in_context, WitnessKind};
 
                 let mode = parent_ctx.domain_mode();
                 let vd = parent_ctx.value_domain();
-                let proof = prove_nonnegative(ctx, inner_base, vd);
+                let base_proof = prove_nonnegative(ctx, inner_base, vd);
 
-                // Use Analytic gate with hint for Generic mode blocking
+                // Check if we can use implicit domain (witness survives in context)
+                let proof = if matches!(base_proof, Proof::Unknown) {
+                    if let (Some(implicit), Some(root)) = (parent_ctx.implicit_domain(), parent_ctx.root_expr()) {
+                        if implicit.contains_nonnegative(inner_base) {
+                            // Build the output candidate (the result of this rewrite)
+                            let output_candidate = inner_base;
+                            // Check if witness survives in the full tree after replacement
+                            if witness_survives_in_context(
+                                ctx,
+                                inner_base,
+                                root,
+                                expr,  // The node being replaced
+                                Some(output_candidate),
+                                WitnessKind::Sqrt,
+                            ) {
+                                Proof::ProvenImplicit
+                            } else {
+                                Proof::Unknown
+                            }
+                        } else {
+                            Proof::Unknown
+                        }
+                    } else {
+                        Proof::Unknown
+                    }
+                } else {
+                    base_proof
+                };
+
+                // If proven (explicit or implicit), proceed without assumption
+                if matches!(proof, Proof::Proven | Proof::ProvenImplicit) {
+                    let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
+                    let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
+                    return Some(Rewrite {
+                        new_expr,
+                        description: "Multiply exponents".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        assumption_events: Default::default(),  // No assumption needed!
+                    });
+                }
+
+                // Fall back to normal Analytic gate for Unknown case
                 let key = crate::assumptions::AssumptionKey::nonnegative_key(ctx, inner_base);
                 let decision = can_apply_analytic_with_hint(
                     mode,
@@ -454,11 +496,11 @@ define_rule!(
                     return None;
                 }
 
-                // Allowed: proceed with transformation
+                // Allowed via Assume mode: proceed with assumption
                 let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
                 let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
 
-                // Build assumption events if needed
+                // Build assumption events
                 let assumption_events = if decision.assumption.is_some() {
                     smallvec::smallvec![
                         crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base)
