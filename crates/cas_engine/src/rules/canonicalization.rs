@@ -767,6 +767,56 @@ define_rule!(
         None
     }
 );
+/// ExpToEPowRule: Convert exp(x) → e^x
+///
+/// GATE: Only applies in RealOnly mode.
+/// In ComplexEnabled, exp(z) is univalued while e^z (via pow) could imply
+/// multivalued logarithm semantics. Keeping exp() as a function preserves
+/// the intended univalued semantics in complex domain.
+///
+/// This allows ExponentialLogRule to match e^(ln(x)) → x patterns.
+pub struct ExpToEPowRule;
+
+impl crate::rule::Rule for ExpToEPowRule {
+    fn name(&self) -> &str {
+        "Convert exp to Power"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::semantics::ValueDomain;
+
+        // GATE: Only in RealOnly (exp is univalued; ComplexEnabled needs special handling)
+        if parent_ctx.value_domain() != ValueDomain::RealOnly {
+            return None;
+        }
+
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(name, args) = expr_data {
+            if name == "exp" && args.len() == 1 {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                let new_expr = ctx.add(Expr::Pow(e, args[0]));
+                return Some(Rewrite {
+                    new_expr,
+                    description: "exp(x) = e^x".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    assumption_events: Default::default(),
+                    required_conditions: vec![],
+                });
+            }
+        }
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+}
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     // RE-ENABLED: Needed for -0 → 0 normalization
@@ -784,6 +834,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // simplifier.add_rule(Box::new(NormalizeBinomialOrderRule));
     simplifier.add_rule(Box::new(NegSubFlipRule)); // -(a-b) → (b-a) only when a > b
     simplifier.add_rule(Box::new(NegCoeffFlipBinomialRule)); // (-k)*(a-b) → k*(b-a)
+
+    // exp(x) → e^x (RealOnly only - preserves complex semantics)
+    simplifier.add_rule(Box::new(ExpToEPowRule));
 }
 
 #[cfg(test)]

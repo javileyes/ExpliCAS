@@ -85,6 +85,77 @@ impl ImplicitCondition {
         };
         !contains_variable(ctx, expr)
     }
+
+    /// Check if this condition's witness survives in the output expression.
+    ///
+    /// This is used for the "witness survival" display policy:
+    /// - If `sqrt(x)` survives in output → `x ≥ 0` is implicitly shown (no need to display)
+    /// - If `sqrt(x)` was consumed (e.g., `sqrt(x)^2 → x`) → `x ≥ 0` must be displayed
+    pub fn witness_survives_in(&self, ctx: &Context, output: ExprId) -> bool {
+        match self {
+            ImplicitCondition::NonNegative(e) => {
+                witness_survives(ctx, *e, output, WitnessKind::Sqrt)
+            }
+            ImplicitCondition::Positive(e) => witness_survives(ctx, *e, output, WitnessKind::Log),
+            ImplicitCondition::NonZero(e) => {
+                witness_survives(ctx, *e, output, WitnessKind::Division)
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Display Level for Requires
+// =============================================================================
+
+/// Display level for required conditions.
+///
+/// Controls how many requires are shown to the user:
+/// - `Essential`: Only show requires whose witness was consumed (pedagogically important)
+/// - `All`: Show all requires including those with surviving witnesses
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RequiresDisplayLevel {
+    /// Show only essential requires (witness consumed or from equation derivation)
+    #[default]
+    Essential,
+    /// Show all requires including implicit ones (witness survives)
+    All,
+}
+
+/// Filter required conditions based on display level and witness survival.
+///
+/// In `Essential` mode, only shows requires whose witness was consumed:
+/// - `sqrt(x) + 1` → x≥0 witness survives → HIDE
+/// - `sqrt(x)^2 → x` → x≥0 witness consumed → SHOW
+///
+/// In `All` mode, shows everything.
+///
+/// # Arguments
+/// * `requires` - All required conditions
+/// * `ctx` - AST context  
+/// * `result` - The result expression (to check witness survival)
+/// * `level` - Display level (Essential or All)
+///
+/// # Returns
+/// Filtered list of conditions to display
+pub fn filter_requires_for_display<'a>(
+    requires: &'a [ImplicitCondition],
+    ctx: &Context,
+    result: ExprId,
+    level: RequiresDisplayLevel,
+) -> Vec<&'a ImplicitCondition> {
+    requires
+        .iter()
+        .filter(|cond| {
+            // Always show if level is All
+            if level == RequiresDisplayLevel::All {
+                return true;
+            }
+
+            // Essential: show only if witness does NOT survive
+            !cond.witness_survives_in(ctx, result)
+        })
+        .collect()
 }
 
 /// Set of implicit conditions inferred from an expression.
