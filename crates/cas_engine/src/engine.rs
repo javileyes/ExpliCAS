@@ -1437,7 +1437,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         }
                         ctx
                     };
-                    if let Some(rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
+                    if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
                         // Check semantic equality - skip if no real change
                         // EXCEPTION: Didactic rules should always generate steps
                         // even if result is semantically equivalent (e.g., sqrt(12) → 2*√3)
@@ -1459,33 +1459,67 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             }
                         }
 
-                        // Domain Delta Airbag: Block rewrites that expand analytic domain in Strict/Generic
+                        // Domain Delta Airbag: Check if rewrite expands analytic domain
                         // This catches any rewrite that removes implicit constraints like x≥0 from sqrt(x)
-                        // BUT only if the witness doesn't survive elsewhere in the tree!
-                        // NOTE: Only activate when implicit domain context is available (via with_root_expr)
+                        // Behavior by mode:
+                        // - Strict/Generic: Block if expansion detected
+                        // - Assume: Allow but register dropped predicates as assumptions
                         let vd = parent_ctx.value_domain();
                         let mode = parent_ctx.domain_mode();
-                        if parent_ctx.implicit_domain().is_some()
-                            && matches!(
-                                mode,
-                                crate::domain::DomainMode::Strict
-                                    | crate::domain::DomainMode::Generic
-                            )
-                        {
-                            if crate::implicit_domain::expands_analytic_in_context(
+                        if parent_ctx.implicit_domain().is_some() {
+                            use crate::implicit_domain::{
+                                check_analytic_expansion, AnalyticExpansionResult,
+                                ImplicitCondition,
+                            };
+
+                            let expansion = check_analytic_expansion(
                                 self.context,
-                                self.root_expr, // Full tree root
-                                expr_id,        // Node being replaced
+                                self.root_expr,
+                                expr_id,
                                 rewrite.new_expr,
                                 vd,
-                            ) {
-                                debug!(
-                                    "{}[DEBUG] Rule '{}' would expand analytic domain, blocked in {:?} mode",
-                                    self.indent(),
-                                    rule.name(),
-                                    mode
-                                );
-                                continue;
+                            );
+
+                            if let AnalyticExpansionResult::WouldExpand { dropped, sources } =
+                                expansion
+                            {
+                                match mode {
+                                    crate::domain::DomainMode::Strict
+                                    | crate::domain::DomainMode::Generic => {
+                                        debug!(
+                                            "{}[DEBUG] Rule '{}' would expand analytic domain ({}), blocked in {:?} mode",
+                                            self.indent(),
+                                            rule.name(),
+                                            sources.join(", "),
+                                            mode
+                                        );
+                                        continue;
+                                    }
+                                    crate::domain::DomainMode::Assume => {
+                                        // In Assume mode: allow rewrite but register assumptions
+                                        for cond in dropped {
+                                            match cond {
+                                                ImplicitCondition::NonNegative(t) => {
+                                                    rewrite.assumption_events.push(
+                                                        crate::assumptions::AssumptionEvent::nonnegative(self.context, t)
+                                                    );
+                                                }
+                                                ImplicitCondition::Positive(t) => {
+                                                    rewrite.assumption_events.push(
+                                                        crate::assumptions::AssumptionEvent::positive(self.context, t)
+                                                    );
+                                                }
+                                                ImplicitCondition::NonZero(_) => {} // Skip definability
+                                            }
+                                        }
+                                        debug!(
+                                            "{}[DEBUG] Rule '{}' expands analytic domain, allowed in Assume mode with assumptions: {}",
+                                            self.indent(),
+                                            rule.name(),
+                                            sources.join(", ")
+                                        );
+                                    }
+                                }
                             }
                         }
 
@@ -1591,7 +1625,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                 // Apply rule with initial_parent_ctx which contains pattern_marks
                 // CRITICAL: Must use initial_parent_ctx for pattern-aware guards (like AngleIdentityRule)
-                if let Some(rewrite) = rule.apply(self.context, expr_id, &self.initial_parent_ctx) {
+                if let Some(mut rewrite) =
+                    rule.apply(self.context, expr_id, &self.initial_parent_ctx)
+                {
                     // Fast path: if rewrite produces identical ExprId, skip entirely
                     if rewrite.new_expr == expr_id {
                         continue;
@@ -1617,30 +1653,67 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         }
                     }
 
-                    // Domain Delta Airbag: Block rewrites that expand analytic domain in Strict/Generic
-                    // NOTE: Only activate when implicit domain context is available (via with_root_expr)
+                    // Domain Delta Airbag: Check if rewrite expands analytic domain
+                    // Behavior by mode:
+                    // - Strict/Generic: Block if expansion detected
+                    // - Assume: Allow but register dropped predicates as assumptions
                     let vd = self.initial_parent_ctx.value_domain();
                     let mode = self.initial_parent_ctx.domain_mode();
-                    if self.initial_parent_ctx.implicit_domain().is_some()
-                        && matches!(
-                            mode,
-                            crate::domain::DomainMode::Strict | crate::domain::DomainMode::Generic
-                        )
-                    {
-                        if crate::implicit_domain::expands_analytic_in_context(
+                    if self.initial_parent_ctx.implicit_domain().is_some() {
+                        use crate::implicit_domain::{
+                            check_analytic_expansion, AnalyticExpansionResult, ImplicitCondition,
+                        };
+
+                        let expansion = check_analytic_expansion(
                             self.context,
-                            self.root_expr, // Full tree root
-                            expr_id,        // Node being replaced
+                            self.root_expr,
+                            expr_id,
                             rewrite.new_expr,
                             vd,
-                        ) {
-                            debug!(
-                                "{}[DEBUG] Global Rule '{}' would expand analytic domain, blocked in {:?} mode",
-                                self.indent(),
-                                rule.name(),
-                                mode
-                            );
-                            continue;
+                        );
+
+                        if let AnalyticExpansionResult::WouldExpand { dropped, sources } = expansion
+                        {
+                            match mode {
+                                crate::domain::DomainMode::Strict
+                                | crate::domain::DomainMode::Generic => {
+                                    debug!(
+                                        "{}[DEBUG] Global Rule '{}' would expand analytic domain ({}), blocked in {:?} mode",
+                                        self.indent(),
+                                        rule.name(),
+                                        sources.join(", "),
+                                        mode
+                                    );
+                                    continue;
+                                }
+                                crate::domain::DomainMode::Assume => {
+                                    // In Assume mode: allow rewrite but register assumptions
+                                    for cond in dropped {
+                                        match cond {
+                                            ImplicitCondition::NonNegative(t) => {
+                                                rewrite.assumption_events.push(
+                                                    crate::assumptions::AssumptionEvent::nonnegative(self.context, t)
+                                                );
+                                            }
+                                            ImplicitCondition::Positive(t) => {
+                                                rewrite.assumption_events.push(
+                                                    crate::assumptions::AssumptionEvent::positive(
+                                                        self.context,
+                                                        t,
+                                                    ),
+                                                );
+                                            }
+                                            ImplicitCondition::NonZero(_) => {} // Skip definability
+                                        }
+                                    }
+                                    debug!(
+                                        "{}[DEBUG] Global Rule '{}' expands analytic domain, allowed in Assume mode with assumptions: {}",
+                                        self.indent(),
+                                        rule.name(),
+                                        sources.join(", ")
+                                    );
+                                }
+                            }
                         }
                     }
 

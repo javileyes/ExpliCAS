@@ -207,6 +207,149 @@ pub fn expands_analytic_domain(
 /// * `rewritten_node` - The node being replaced
 /// * `replacement` - The replacement expression
 /// * `vd` - Value domain
+/// Result of checking if a rewrite would expand analytic domain.
+#[derive(Debug, Clone)]
+pub enum AnalyticExpansionResult {
+    /// No expansion - rewrite is safe
+    Safe,
+    /// Would expand domain - contains predicates whose witnesses don't survive
+    /// Fields: (dropped_predicates, source_descriptions)
+    WouldExpand {
+        dropped: Vec<ImplicitCondition>,
+        sources: Vec<String>, // e.g., "x ≥ 0 (from sqrt(x))"
+    },
+}
+
+impl AnalyticExpansionResult {
+    pub fn is_safe(&self) -> bool {
+        matches!(self, AnalyticExpansionResult::Safe)
+    }
+
+    pub fn would_expand(&self) -> bool {
+        matches!(self, AnalyticExpansionResult::WouldExpand { .. })
+    }
+}
+
+/// Context-aware check: does this rewrite expand analytic domain considering the full tree?
+///
+/// Returns detailed information about dropped predicates for:
+/// - Blocking in Strict/Generic
+/// - Registering assumptions in Assume mode
+/// - Better UX diagnostics
+pub fn check_analytic_expansion(
+    ctx: &Context,
+    root: ExprId,
+    rewritten_node: ExprId,
+    replacement: ExprId,
+    vd: ValueDomain,
+) -> AnalyticExpansionResult {
+    // First check if local rewrite expands domain
+    let delta = domain_delta_check(ctx, rewritten_node, replacement, vd);
+
+    match delta {
+        DomainDelta::Safe => AnalyticExpansionResult::Safe,
+        DomainDelta::ExpandsDefinability(_) => AnalyticExpansionResult::Safe, // Only care about Analytic
+        DomainDelta::ExpandsAnalytic(dropped) => {
+            let mut unsatisfied: Vec<ImplicitCondition> = Vec::new();
+            let mut sources: Vec<String> = Vec::new();
+
+            // For each dropped constraint, check if witness survives in tree after replacement
+            for cond in dropped {
+                let (target, kind, predicate_str, source_str) = match &cond {
+                    ImplicitCondition::NonNegative(t) => {
+                        let var_name = format_expr_short(ctx, *t);
+                        (
+                            *t,
+                            WitnessKind::Sqrt,
+                            format!("{} ≥ 0", var_name),
+                            format!("from sqrt({})", var_name),
+                        )
+                    }
+                    ImplicitCondition::Positive(t) => {
+                        let var_name = format_expr_short(ctx, *t);
+                        (
+                            *t,
+                            WitnessKind::Log,
+                            format!("{} > 0", var_name),
+                            format!("from ln({})", var_name),
+                        )
+                    }
+                    ImplicitCondition::NonZero(_) => continue, // Skip definability
+                };
+
+                // Check for predicate implication: Positive(x) implies NonNegative(x)
+                // If output has ln(x), we have x > 0 which covers x ≥ 0
+                let covered_by_stronger =
+                    is_covered_by_stronger_predicate(ctx, &cond, root, rewritten_node, replacement);
+
+                // If witness survives OR covered by stronger predicate, it's fine
+                if covered_by_stronger
+                    || witness_survives_in_context(
+                        ctx,
+                        target,
+                        root,
+                        rewritten_node,
+                        Some(replacement),
+                        kind,
+                    )
+                {
+                    continue; // This predicate is satisfied
+                }
+
+                // Predicate would be dropped
+                unsatisfied.push(cond);
+                sources.push(format!("{} ({})", predicate_str, source_str));
+            }
+
+            if unsatisfied.is_empty() {
+                AnalyticExpansionResult::Safe
+            } else {
+                AnalyticExpansionResult::WouldExpand {
+                    dropped: unsatisfied,
+                    sources,
+                }
+            }
+        }
+    }
+}
+
+/// Check if a predicate is covered by a stronger predicate in the output.
+/// E.g., NonNegative(x) is covered if Positive(x) survives (because x > 0 ⇒ x ≥ 0)
+fn is_covered_by_stronger_predicate(
+    ctx: &Context,
+    predicate: &ImplicitCondition,
+    root: ExprId,
+    rewritten_node: ExprId,
+    replacement: ExprId,
+) -> bool {
+    match predicate {
+        ImplicitCondition::NonNegative(t) => {
+            // x ≥ 0 is covered by x > 0 (which comes from ln(x))
+            witness_survives_in_context(
+                ctx,
+                *t,
+                root,
+                rewritten_node,
+                Some(replacement),
+                WitnessKind::Log,
+            )
+        }
+        ImplicitCondition::Positive(_) => false, // Nothing stronger than Positive for our purposes
+        ImplicitCondition::NonZero(_) => false,  // Not checking definability here
+    }
+}
+
+/// Format expression for display (short form)
+fn format_expr_short(ctx: &Context, expr: ExprId) -> String {
+    match ctx.get(expr) {
+        Expr::Variable(name) => name.clone(),
+        Expr::Number(n) => format!("{}", n),
+        _ => format!("expr#{:?}", expr),
+    }
+}
+
+/// Quick check: does this rewrite expand analytic domain?
+/// Use this as a simple guard in Strict/Generic modes.
 pub fn expands_analytic_in_context(
     ctx: &Context,
     root: ExprId,
@@ -214,36 +357,7 @@ pub fn expands_analytic_in_context(
     replacement: ExprId,
     vd: ValueDomain,
 ) -> bool {
-    // First check if local rewrite expands domain
-    let delta = domain_delta_check(ctx, rewritten_node, replacement, vd);
-
-    match delta {
-        DomainDelta::Safe => false,
-        DomainDelta::ExpandsDefinability(_) => false, // Only block Analytic, not Definability
-        DomainDelta::ExpandsAnalytic(dropped) => {
-            // For each dropped constraint, check if witness survives in tree after replacement
-            for cond in dropped {
-                let (target, kind) = match cond {
-                    ImplicitCondition::NonNegative(t) => (t, WitnessKind::Sqrt),
-                    ImplicitCondition::Positive(t) => (t, WitnessKind::Log),
-                    ImplicitCondition::NonZero(_) => continue, // Skip definability
-                };
-
-                // If witness does NOT survive in tree after this replacement, block
-                if !witness_survives_in_context(
-                    ctx,
-                    target,
-                    root,
-                    rewritten_node,
-                    Some(replacement),
-                    kind,
-                ) {
-                    return true; // Would expand domain
-                }
-            }
-            false // All witnesses survive - safe
-        }
-    }
+    check_analytic_expansion(ctx, root, rewritten_node, replacement, vd).would_expand()
 }
 
 // =============================================================================
