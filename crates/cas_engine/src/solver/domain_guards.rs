@@ -164,54 +164,45 @@ pub fn classify_log_solve(
         );
     }
 
-    // At this point: base is Proven or Unknown, rhs is Proven or Unknown
-    match (base_proof, rhs_proof, mode) {
+    // At this point: base is Proven/ProvenImplicit or Unknown, rhs is Proven/ProvenImplicit or Unknown
+    // Treat ProvenImplicit as equivalent to Proven for this decision table.
+    let base_ok = matches!(base_proof, Proof::Proven | Proof::ProvenImplicit);
+    let rhs_ok = matches!(rhs_proof, Proof::Proven | Proof::ProvenImplicit);
+
+    match (base_ok, rhs_ok, mode) {
         // Both proven positive: safe to proceed
-        (Proof::Proven, Proof::Proven, _) => LogSolveDecision::Ok,
+        (true, true, _) => LogSolveDecision::Ok,
 
         // Base proven, RHS unknown: only Assume mode allows
-        (Proof::Proven, Proof::Unknown, DomainMode::Assume) => {
+        (true, false, DomainMode::Assume) => {
             LogSolveDecision::OkWithAssumptions(vec![SolverAssumption::PositiveRhs])
         }
-        (Proof::Proven, Proof::Unknown, DomainMode::Strict | DomainMode::Generic) => {
-            LogSolveDecision::Unsupported(
-                "Cannot prove RHS > 0 for logarithm".to_string(),
-                vec![SolverAssumption::PositiveRhs],
-            )
-        }
+        (true, false, DomainMode::Strict | DomainMode::Generic) => LogSolveDecision::Unsupported(
+            "Cannot prove RHS > 0 for logarithm".to_string(),
+            vec![SolverAssumption::PositiveRhs],
+        ),
 
         // Base unknown, RHS proven: only Assume mode allows
-        (Proof::Unknown, Proof::Proven, DomainMode::Assume) => {
+        (false, true, DomainMode::Assume) => {
             LogSolveDecision::OkWithAssumptions(vec![SolverAssumption::PositiveBase])
         }
-        (Proof::Unknown, Proof::Proven, DomainMode::Strict | DomainMode::Generic) => {
-            LogSolveDecision::Unsupported(
-                "Cannot prove base > 0 for logarithm".to_string(),
-                vec![SolverAssumption::PositiveBase],
-            )
-        }
+        (false, true, DomainMode::Strict | DomainMode::Generic) => LogSolveDecision::Unsupported(
+            "Cannot prove base > 0 for logarithm".to_string(),
+            vec![SolverAssumption::PositiveBase],
+        ),
 
         // Both unknown: only Assume mode allows (with both assumptions)
-        (Proof::Unknown, Proof::Unknown, DomainMode::Assume) => {
-            LogSolveDecision::OkWithAssumptions(vec![
+        (false, false, DomainMode::Assume) => LogSolveDecision::OkWithAssumptions(vec![
+            SolverAssumption::PositiveBase,
+            SolverAssumption::PositiveRhs,
+        ]),
+        (false, false, DomainMode::Strict | DomainMode::Generic) => LogSolveDecision::Unsupported(
+            "Cannot prove base > 0 and RHS > 0 for logarithm".to_string(),
+            vec![
                 SolverAssumption::PositiveBase,
                 SolverAssumption::PositiveRhs,
-            ])
-        }
-        (Proof::Unknown, Proof::Unknown, DomainMode::Strict | DomainMode::Generic) => {
-            LogSolveDecision::Unsupported(
-                "Cannot prove base > 0 and RHS > 0 for logarithm".to_string(),
-                vec![
-                    SolverAssumption::PositiveBase,
-                    SolverAssumption::PositiveRhs,
-                ],
-            )
-        }
-
-        // Disproven cases already handled above, but for exhaustiveness:
-        (Proof::Disproven, _, _) | (_, Proof::Disproven, _) => {
-            LogSolveDecision::NeedsComplex("Requires complex logarithm".to_string())
-        }
+            ],
+        ),
     }
 }
 

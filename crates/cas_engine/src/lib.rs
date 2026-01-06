@@ -19,6 +19,8 @@ pub mod eval;
 pub mod expand;
 pub mod factor;
 pub mod gcd_zippel_modp;
+pub mod helpers;
+pub mod implicit_domain;
 pub mod limits;
 pub mod matrix;
 pub mod modp;
@@ -67,7 +69,6 @@ pub mod api;
 
 pub mod build;
 pub mod error;
-pub mod helpers;
 pub mod json; // Canonical JSON API types (PR-B)
 pub mod nary;
 pub mod visitors;

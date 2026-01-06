@@ -135,6 +135,9 @@ impl DomainMode {
 pub enum Proof {
     /// Property is provably true (e.g., 2 ≠ 0 is proven)
     Proven,
+    /// Property is implied by expression structure (e.g., sqrt(x) implies x ≥ 0).
+    /// Only valid when witness survives in output - no assumption event generated.
+    ProvenImplicit,
     /// Property status is unknown (e.g., we don't know if x ≠ 0)
     Unknown,
     /// Property is provably false (e.g., 0 ≠ 0 is disproven)
@@ -338,8 +341,8 @@ pub fn can_cancel_factor(mode: DomainMode, proof: Proof) -> CancelDecision {
     use crate::assumptions::ConditionClass;
 
     match proof {
-        // Always allow if proven
-        Proof::Proven => CancelDecision::allow(),
+        // Always allow if proven (explicit or implicit)
+        Proof::Proven | Proof::ProvenImplicit => CancelDecision::allow(),
 
         // Never allow if disproven (division by 0)
         Proof::Disproven => CancelDecision::deny(),
@@ -378,8 +381,8 @@ pub fn can_cancel_factor_with_hint(
     use crate::assumptions::ConditionClass;
 
     match proof {
-        // Always allow if proven
-        Proof::Proven => CancelDecision::allow(),
+        // Always allow if proven (explicit or implicit)
+        Proof::Proven | Proof::ProvenImplicit => CancelDecision::allow(),
 
         // Never allow if disproven (division by 0)
         Proof::Disproven => CancelDecision::deny(),
@@ -428,8 +431,8 @@ pub fn can_apply_analytic(mode: DomainMode, proof: Proof) -> CancelDecision {
     use crate::assumptions::ConditionClass;
 
     match proof {
-        // Always allow if proven
-        Proof::Proven => CancelDecision::allow(),
+        // Always allow if proven (explicit or implicit)
+        Proof::Proven | Proof::ProvenImplicit => CancelDecision::allow(),
 
         // Never allow if disproven (definitely ≤ 0)
         Proof::Disproven => CancelDecision::deny(),
@@ -481,8 +484,8 @@ pub fn can_apply_analytic_with_hint(
     use crate::assumptions::ConditionClass;
 
     match proof {
-        // Always allow if proven
-        Proof::Proven => CancelDecision::allow(),
+        // Always allow if proven (explicit or implicit)
+        Proof::Proven | Proof::ProvenImplicit => CancelDecision::allow(),
 
         // Never allow if disproven (definitely ≤ 0)
         Proof::Disproven => CancelDecision::deny(),

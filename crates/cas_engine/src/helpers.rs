@@ -722,6 +722,46 @@ pub fn prove_nonnegative(
     }
 }
 
+/// Prove non-negative with implicit domain support.
+///
+/// This extends `prove_nonnegative` to also consider conditions that are
+/// implicitly required by the expression structure (e.g., `sqrt(x)` implies `x ≥ 0`).
+///
+/// Returns `Proof::ProvenImplicit` if:
+/// 1. The base proof is `Unknown`
+/// 2. The expression has an implicit non-negative constraint
+/// 3. The witness for that constraint survives in the output
+///
+/// This enables simplifications like `sqrt(x)² → x` within expressions
+/// that still contain `sqrt(x)` elsewhere, without requiring explicit assumptions.
+pub fn prove_nonnegative_with_implicit(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::semantics::ValueDomain,
+    implicit_domain: &crate::implicit_domain::ImplicitDomain,
+    output: ExprId,
+) -> crate::domain::Proof {
+    use crate::domain::Proof;
+    use crate::implicit_domain::WitnessKind;
+
+    // First try normal proof
+    let base_proof = prove_nonnegative(ctx, expr, value_domain);
+
+    match base_proof {
+        Proof::Proven | Proof::ProvenImplicit | Proof::Disproven => base_proof,
+        Proof::Unknown => {
+            // Check if implicit domain contains NonNegative(expr)
+            if implicit_domain.contains_nonnegative(expr) {
+                // Check if witness survives in output
+                if crate::implicit_domain::witness_survives(ctx, expr, output, WitnessKind::Sqrt) {
+                    return Proof::ProvenImplicit;
+                }
+            }
+            Proof::Unknown
+        }
+    }
+}
+
 /// V2.0: Prove positivity with guard environment.
 ///
 /// Like `prove_positive`, but first checks if the expression's positivity
@@ -840,7 +880,7 @@ pub fn can_take_ln_real(
     let proof = prove_positive(ctx, arg, value_domain);
 
     match proof {
-        Proof::Proven => Ok(LnDecision::Safe),
+        Proof::Proven | Proof::ProvenImplicit => Ok(LnDecision::Safe),
         Proof::Disproven => Err("argument is ≤ 0"),
         Proof::Unknown => match mode {
             DomainMode::Strict | DomainMode::Generic => Err("cannot prove argument > 0 for ln()"),
