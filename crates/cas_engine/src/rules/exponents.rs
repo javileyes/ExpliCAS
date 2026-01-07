@@ -943,6 +943,18 @@ define_rule!(
                 let a = *a;
                 let b = *b;
 
+                // GUARD: Don't distribute fractional exponents over symbolic products
+                // This prevents cycles: (3V/4π)^(1/3) ↔ 3^(1/3)*V^(1/3)/(4π)^(1/3)
+                if let Expr::Number(exp_num) = ctx.get(exp) {
+                    let denom = exp_num.denom();
+                    if denom > &num_bigint::BigInt::from(1) {
+                        // Fractional exponent - only distribute if base is purely numeric
+                        if !is_purely_numeric(ctx, base) {
+                            return None;
+                        }
+                    }
+                }
+
                 // GUARD: Prevent ping-pong with ProductSameExponentRule
                 // If one factor is a number and exponent is SYMBOLIC (variable),
                 // ProductSameExponentRule would recombine them creating a cycle.
@@ -980,6 +992,18 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
     // (a / b)^n -> a^n / b^n
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {
+        // GUARD: Don't distribute fractional exponents over symbolic quotients
+        // This prevents cycles: (3V/(4π))^(1/3) ↔ 3^(1/3)*V^(1/3)/(4^(1/3)*π^(1/3))
+        if let Expr::Number(exp_num) = ctx.get(exp) {
+            let denom = exp_num.denom();
+            if denom > &num_bigint::BigInt::from(1) {
+                // Fractional exponent - only distribute if base is purely numeric
+                if !is_purely_numeric(ctx, base) {
+                    return None;
+                }
+            }
+        }
+
         let base_data = ctx.get(base).clone();
         if let Expr::Div(num, den) = base_data {
             // Distribute exponent
@@ -998,6 +1022,21 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
     }
     None
 });
+
+/// Check if expression is purely numeric (no variables/constants)
+fn is_purely_numeric(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) => true,
+        Expr::Variable(_) | Expr::Constant(_) => false,
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            is_purely_numeric(ctx, *l) && is_purely_numeric(ctx, *r)
+        }
+        Expr::Neg(inner) => is_purely_numeric(ctx, *inner),
+        Expr::Function(_, args) => args.iter().all(|a| is_purely_numeric(ctx, *a)),
+        Expr::Matrix { data, .. } => data.iter().all(|e| is_purely_numeric(ctx, *e)),
+        Expr::SessionRef(_) => false,
+    }
+}
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
