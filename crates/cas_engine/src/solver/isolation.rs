@@ -373,6 +373,24 @@ pub fn isolate(
 
             // Default behavior: divide by one factor (for equations or when only one has var)
             if contains_var(&simplifier.context, l, var) {
+                // IMPROVEMENT: If RHS also contains var, dividing creates circular equation.
+                // Instead, use linear_form on the full equation: lhs = rhs → lhs - rhs = 0
+                // Note: at this point lhs = Mul(l, r) where l contains var
+                if contains_var(&simplifier.context, rhs, var) {
+                    // Try linear_form: k*x = y*(x+c) → k*x - y*x - y*c = 0
+                    // Use the current equation state: lhs = rhs (not l)
+                    if let Some((solution_set, linear_steps)) =
+                        crate::solver::linear_collect::try_linear_collect_v2(
+                            lhs, rhs, var, simplifier,
+                        )
+                    {
+                        let mut all_steps = steps;
+                        all_steps.extend(linear_steps);
+                        return Ok((solution_set, all_steps));
+                    }
+                    // If linear_form fails, fall through to original logic
+                }
+
                 // A = RHS / B
                 // Check if B is negative constant to flip inequality
                 let mut new_op = op;
@@ -401,7 +419,24 @@ pub fn isolate(
                 let results = isolate(l, new_rhs, new_op, var, simplifier, opts)?;
                 prepend_steps(results, steps)
             } else {
-                // B = RHS / A
+                // B = RHS / A (r contains var, l doesn't)
+
+                // IMPROVEMENT: If RHS also contains var, dividing creates circular equation.
+                // Try linear_form on the full equation: lhs = rhs → lhs - rhs = 0
+                // Example: k*x = y*(x+c) → linear_form gives x*(k-y) - c*y = 0
+                if contains_var(&simplifier.context, rhs, var) {
+                    if let Some((solution_set, linear_steps)) =
+                        crate::solver::linear_collect::try_linear_collect_v2(
+                            lhs, rhs, var, simplifier,
+                        )
+                    {
+                        let mut all_steps = steps;
+                        all_steps.extend(linear_steps);
+                        return Ok((solution_set, all_steps));
+                    }
+                    // If linear_form fails, fall through to original logic
+                }
+
                 let mut new_op = op;
                 if is_known_negative(&simplifier.context, l) {
                     new_op = flip_inequality(new_op);
