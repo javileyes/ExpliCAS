@@ -9,7 +9,7 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
 use num_rational::BigRational;
-use num_traits::{Signed, Zero};
+use num_traits::{Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
 
 // --- Helper Functions (Keep these as they are useful helpers) ---
@@ -422,6 +422,80 @@ fn analyze_term_mut(ctx: &mut Context, term: ExprId, var: &str) -> Option<(ExprI
         }
         _ => None,
     }
+}
+
+/// Helper to pull perfect square numeric factors out of sqrt.
+/// Converts sqrt(k * expr) → m * sqrt(expr) when k = m² is a perfect square.
+/// This is semantically equivalent (no new assumptions).
+fn pull_square_from_sqrt(ctx: &mut Context, sqrt_expr: ExprId) -> ExprId {
+    // Check if expr is Pow(base, 1/2) - our representation of sqrt
+    let expr_data = ctx.get(sqrt_expr).clone();
+    let Expr::Pow(base, exp) = expr_data else {
+        return sqrt_expr;
+    };
+
+    // Check if exponent is 1/2
+    let is_half = matches!(ctx.get(exp), Expr::Div(n, d)
+        if matches!(ctx.get(*n), Expr::Number(num) if num == &num_rational::BigRational::from_integer(1.into()))
+        && matches!(ctx.get(*d), Expr::Number(den) if den == &num_rational::BigRational::from_integer(2.into()))
+    );
+    if !is_half {
+        return sqrt_expr;
+    }
+
+    // Extract numeric factor from base: base = k * rest
+    let (factor, rest) = split_numeric_factor(ctx, base);
+    let Some(k) = factor else {
+        return sqrt_expr;
+    };
+
+    // Check if k is a perfect square (only for positive integers)
+    if k <= 0 {
+        return sqrt_expr;
+    }
+
+    let sqrt_k = (k as f64).sqrt();
+    let m = sqrt_k.round() as i64;
+    if m * m != k {
+        return sqrt_expr; // Not a perfect square
+    }
+    if m == 1 {
+        return sqrt_expr; // No simplification needed
+    }
+
+    // Build m * sqrt(rest)
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let half = ctx.add(Expr::Div(one, two));
+    let sqrt_rest = ctx.add(Expr::Pow(rest, half));
+    let m_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+        m.into(),
+    )));
+    ctx.add(Expr::Mul(m_expr, sqrt_rest))
+}
+
+/// Split a numeric coefficient from an expression: k * rest
+/// Returns (Some(k), rest) if there's a numeric factor in a Mul, (None, original) otherwise
+fn split_numeric_factor(ctx: &Context, expr: ExprId) -> (Option<i64>, ExprId) {
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        // Check left factor
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n.is_integer() {
+                if let Some(k) = n.to_integer().to_i64() {
+                    return (Some(k), *r);
+                }
+            }
+        }
+        // Check right factor
+        if let Expr::Number(n) = ctx.get(*r) {
+            if n.is_integer() {
+                if let Some(k) = n.to_integer().to_i64() {
+                    return (Some(k), *l);
+                }
+            }
+        }
+    }
+    (None, expr)
 }
 
 pub struct QuadraticStrategy;
@@ -888,9 +962,12 @@ impl SolverStrategy for QuadraticStrategy {
             let four = simplifier.context.num(4);
             let four_a = simplifier.context.add(Expr::Mul(four, sim_a));
             let four_ac = simplifier.context.add(Expr::Mul(four_a, sim_c));
-            let delta = simplifier.context.add(Expr::Sub(b2, four_ac));
+            let delta_raw = simplifier.context.add(Expr::Sub(b2, four_ac));
 
-            let (sim_delta, _) = simplifier.simplify(delta);
+            // POST-SIMPLIFY: Expand then simplify discriminant for cleaner form
+            // This converts "16 + 4*(y - 4)" → "4*y"
+            let delta_expanded = crate::expand::expand(&mut simplifier.context, delta_raw);
+            let (sim_delta, _) = simplifier.simplify(delta_expanded);
 
             // x = (-b +/- sqrt(delta)) / 2a
 
@@ -900,18 +977,27 @@ impl SolverStrategy for QuadraticStrategy {
 
             let one = simplifier.context.num(1);
             let half = simplifier.context.add(Expr::Div(one, two));
-            let sqrt_delta = simplifier.context.add(Expr::Pow(sim_delta, half));
+            let sqrt_delta_raw = simplifier.context.add(Expr::Pow(sim_delta, half));
+
+            // POST-SIMPLIFY: Pull perfect square numeric factors from sqrt
+            // This converts sqrt(4*y) → 2*sqrt(y)
+            let sqrt_delta = pull_square_from_sqrt(&mut simplifier.context, sqrt_delta_raw);
 
             // x1 = (-b - sqrt(delta)) / 2a
             let num1 = simplifier.context.add(Expr::Sub(neg_b, sqrt_delta));
-            let sol1 = simplifier.context.add(Expr::Div(num1, two_a));
+            let sol1_raw = simplifier.context.add(Expr::Div(num1, two_a));
 
             // x2 = (-b + sqrt(delta)) / 2a
             let num2 = simplifier.context.add(Expr::Add(neg_b, sqrt_delta));
-            let sol2 = simplifier.context.add(Expr::Div(num2, two_a));
+            let sol2_raw = simplifier.context.add(Expr::Div(num2, two_a));
 
-            let (sim_sol1, _) = simplifier.simplify(sol1);
-            let (sim_sol2, _) = simplifier.simplify(sol2);
+            // POST-SIMPLIFY: Expand and simplify solutions for cleaner form
+            // This converts "(4 ± 2*sqrt(y)) / 2" → "2 ± sqrt(y)"
+            let sol1_expanded = crate::expand::expand(&mut simplifier.context, sol1_raw);
+            let (sim_sol1, _) = simplifier.simplify(sol1_expanded);
+
+            let sol2_expanded = crate::expand::expand(&mut simplifier.context, sol2_raw);
+            let (sim_sol2, _) = simplifier.simplify(sol2_expanded);
 
             // For symbolic solutions, we can't easily order them or determine intervals.
             // We just return them as a discrete set.
