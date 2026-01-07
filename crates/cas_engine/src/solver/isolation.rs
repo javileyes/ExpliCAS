@@ -39,6 +39,24 @@ pub fn isolate(
             // Simplify RHS before returning
             let (sim_rhs, _) = simplifier.simplify(rhs);
 
+            // GUARDRAIL: Reject if solution still contains target variable (circular)
+            // Example: solve A = P + P*r*t, P → "P = A - P*r*t" is NOT a valid solution
+            if contains_var(&simplifier.context, sim_rhs, var) {
+                // Phase 2: Try linear_collect strategy before giving up
+                // This handles cases like A = P + P*r*t → P = A/(1+r*t)
+                if let Some((solution_set, linear_steps)) =
+                    crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
+                {
+                    let mut all_steps = steps;
+                    all_steps.extend(linear_steps);
+                    return Ok((solution_set, all_steps));
+                }
+
+                // If linear_collect didn't work, return as Residual
+                let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+                return Ok((SolutionSet::Residual(residual), steps));
+            }
+
             let set = match op {
                 RelOp::Eq => SolutionSet::Discrete(vec![sim_rhs]),
                 RelOp::Neq => {

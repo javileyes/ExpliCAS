@@ -1,0 +1,315 @@
+//! Linear Collect Strategy for solving equations with additive terms.
+//!
+//! This module handles equations where the target variable appears in multiple
+//! additive terms, like A = P + P*r*t. It factors out the variable and solves
+//! by division, returning a Conditional solution when the coefficient might be zero.
+//!
+//! Example: A = P + P*r*t
+//! 1. Move all to LHS: P + P*r*t - A = 0
+//! 2. Factor: P*(1 + r*t) - A = 0
+//! 3. Solve: P = A / (1 + r*t)  [guard: 1 + r*t ≠ 0]
+
+use cas_ast::{Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, RelOp, SolutionSet};
+
+use crate::engine::Simplifier;
+use crate::nary::add_terms_no_sign;
+use crate::solver::isolation::contains_var;
+use crate::solver::SolveStep;
+
+/// Classification of a term with respect to a variable.
+#[derive(Debug)]
+pub enum TermClass {
+    /// Term doesn't contain the variable (e.g., A, 5, r*t)
+    Const(ExprId),
+    /// Term is linear in the variable: coef * var (e.g., P, 3*P, r*t*P)
+    /// None means coefficient is 1 (implicit)
+    Linear(Option<ExprId>), // the coefficient (without var), None = 1
+    /// Term contains variable in non-linear way (e.g., P^2, sqrt(P), 1/P)
+    NonLinear,
+}
+
+/// Try to solve a linear equation where variable appears in multiple additive terms.
+///
+/// Returns Some((SolutionSet, steps)) if successful, None if not applicable.
+///
+/// Example: P + P*r*t - A = 0 → P = A / (1 + r*t) with guard 1+r*t ≠ 0
+pub fn try_linear_collect(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<(SolutionSet, Vec<SolveStep>)> {
+    let ctx = &mut simplifier.context;
+
+    // 1. Build expr = lhs - rhs (move everything to LHS, so expr = 0)
+    let expr = ctx.add(Expr::Sub(lhs, rhs));
+    let (expr, _) = simplifier.simplify(expr);
+
+    // 2. Flatten as sum of terms using canonical utility
+    let terms: Vec<ExprId> = add_terms_no_sign(&simplifier.context, expr)
+        .into_iter()
+        .collect();
+
+    // 3. Classify each term
+    let mut coeff_parts: Vec<ExprId> = Vec::new();
+    let mut const_parts: Vec<ExprId> = Vec::new();
+
+    for term in terms {
+        match split_linear_term(&simplifier.context, term, var) {
+            TermClass::Const(k) => const_parts.push(k),
+            TermClass::Linear(c) => {
+                // Convert None (implicit 1) to explicit 1
+                let coef = c.unwrap_or_else(|| simplifier.context.num(1));
+                coeff_parts.push(coef);
+            }
+            TermClass::NonLinear => {
+                // Variable appears non-linearly, this strategy doesn't apply
+                return None;
+            }
+        }
+    }
+
+    // If no linear terms found, strategy doesn't apply
+    if coeff_parts.is_empty() {
+        return None;
+    }
+
+    // 4. Build coeff = sum of linear coefficients
+    let coeff = build_sum(&mut simplifier.context, &coeff_parts);
+    let (coeff, _) = simplifier.simplify(coeff);
+
+    // 5. Build const = sum of constant parts (with sign flipped for solution)
+    // coeff*var + const = 0 → var = -const / coeff
+    let const_sum = build_sum(&mut simplifier.context, &const_parts);
+    let neg_const = simplifier.context.add(Expr::Neg(const_sum));
+    let (neg_const, _) = simplifier.simplify(neg_const);
+
+    // 6. Build solution: var = -const / coeff
+    let solution = simplifier.context.add(Expr::Div(neg_const, coeff));
+    let (solution, _) = simplifier.simplify(solution);
+
+    // 7. Build step description
+    let mut steps = Vec::new();
+    if simplifier.collect_steps() {
+        let var_expr = simplifier.context.var(var);
+        steps.push(SolveStep {
+            description: format!(
+                "Collect terms in {} and factor: {} * {} = {}",
+                var,
+                cas_ast::DisplayExpr {
+                    context: &simplifier.context,
+                    id: coeff
+                },
+                var,
+                cas_ast::DisplayExpr {
+                    context: &simplifier.context,
+                    id: neg_const
+                }
+            ),
+            equation_after: cas_ast::Equation {
+                lhs: simplifier.context.add(Expr::Mul(coeff, var_expr)),
+                rhs: neg_const,
+                op: RelOp::Eq,
+            },
+        });
+        steps.push(SolveStep {
+            description: format!(
+                "Divide both sides by {}",
+                cas_ast::DisplayExpr {
+                    context: &simplifier.context,
+                    id: coeff
+                }
+            ),
+            equation_after: cas_ast::Equation {
+                lhs: var_expr,
+                rhs: solution,
+                op: RelOp::Eq,
+            },
+        });
+    }
+
+    // 8. Return as Conditional with guard: coeff ≠ 0
+    // Primary case: coeff ≠ 0 → { solution }
+    let guard = ConditionSet::single(ConditionPredicate::NonZero(coeff));
+
+    let primary_case = Case::new(guard, SolutionSet::Discrete(vec![solution]));
+
+    // Degenerate case: coeff = 0
+    // If coeff = 0 AND const = 0 → AllReals
+    // If coeff = 0 AND const ≠ 0 → EmptySet
+    // For now, just use the simpler "otherwise: residual" approach
+    // TODO: Add full degenerate handling with budget check
+
+    let otherwise_case = Case::new(
+        ConditionSet::empty(), // "otherwise"
+        SolutionSet::Empty,    // If coeff = 0, treat as no solution (simplified)
+    );
+
+    let conditional = SolutionSet::Conditional(vec![primary_case, otherwise_case]);
+
+    Some((conditional, steps))
+}
+
+/// Classify a term as Const, Linear(coef), or NonLinear.
+fn split_linear_term(ctx: &Context, term: ExprId, var: &str) -> TermClass {
+    // If term doesn't contain var, it's a constant
+    if !contains_var(ctx, term, var) {
+        return TermClass::Const(term);
+    }
+
+    match ctx.get(term) {
+        // term == var → Linear(1)
+        Expr::Variable(v) if v == var => {
+            // Coefficient is 1 (implicit)
+            TermClass::Linear(None) // None = implicit coefficient 1
+        }
+        // term == coef * var or var * coef → Linear(coef)
+        Expr::Mul(l, r) => {
+            let l_has = contains_var(ctx, *l, var);
+            let r_has = contains_var(ctx, *r, var);
+
+            match (l_has, r_has) {
+                (true, false) => {
+                    // l contains var, r is coefficient
+                    // Check if l is just the variable
+                    if matches!(ctx.get(*l), Expr::Variable(v) if v == var) {
+                        TermClass::Linear(Some(*r))
+                    } else {
+                        // l is more complex (var^2, var*var, etc.)
+                        // Recursively check l
+                        match split_linear_term(ctx, *l, var) {
+                            TermClass::Linear(_inner_coef) => {
+                                // Combine: r * inner_coef
+                                // For now, mark as NonLinear to be safe
+                                // TODO: properly combine coefficients
+                                TermClass::NonLinear
+                            }
+                            _ => TermClass::NonLinear,
+                        }
+                    }
+                }
+                (false, true) => {
+                    // r contains var, l is coefficient
+                    if matches!(ctx.get(*r), Expr::Variable(v) if v == var) {
+                        TermClass::Linear(Some(*l))
+                    } else {
+                        match split_linear_term(ctx, *r, var) {
+                            TermClass::Linear(_) => TermClass::NonLinear, // Nested, too complex
+                            _ => TermClass::NonLinear,
+                        }
+                    }
+                }
+                (true, true) => {
+                    // Both contain var (e.g., var * var) → NonLinear
+                    TermClass::NonLinear
+                }
+                (false, false) => {
+                    // Neither contains var - shouldn't happen since we checked above
+                    TermClass::Const(term)
+                }
+            }
+        }
+        // term == -expr → check inner
+        Expr::Neg(inner) => match split_linear_term(ctx, *inner, var) {
+            TermClass::Const(_) => TermClass::Const(term), // Keep negated form
+            TermClass::Linear(_) => TermClass::Linear(Some(term)), // Negate term = negate coef
+            TermClass::NonLinear => TermClass::NonLinear,
+        },
+        // var in power position → NonLinear (unless power is 1)
+        Expr::Pow(base, exp) => {
+            if contains_var(ctx, *exp, var) {
+                // Variable in exponent → NonLinear
+                TermClass::NonLinear
+            } else if contains_var(ctx, *base, var) {
+                // Check if exponent is 1
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n == num_rational::BigRational::from_integer(1.into()) {
+                        // base^1 = base
+                        return split_linear_term(ctx, *base, var);
+                    }
+                }
+                // base^n with n ≠ 1 → NonLinear
+                TermClass::NonLinear
+            } else {
+                TermClass::Const(term)
+            }
+        }
+        // Division: if var in denominator → NonLinear
+        Expr::Div(num, denom) => {
+            if contains_var(ctx, *denom, var) {
+                TermClass::NonLinear
+            } else {
+                // var only in numerator: num = coef * var, result = (coef/denom) * var
+                match split_linear_term(ctx, *num, var) {
+                    TermClass::Linear(_) => TermClass::NonLinear, // Too complex for now
+                    TermClass::Const(_) => TermClass::Const(term),
+                    TermClass::NonLinear => TermClass::NonLinear,
+                }
+            }
+        }
+        // Functions: if var inside → NonLinear
+        Expr::Function(_, args) => {
+            if args.iter().any(|a| contains_var(ctx, *a, var)) {
+                TermClass::NonLinear
+            } else {
+                TermClass::Const(term)
+            }
+        }
+        // Anything else with var → NonLinear
+        _ => TermClass::NonLinear,
+    }
+}
+
+/// Build a sum expression from a list of terms.
+fn build_sum(ctx: &mut Context, parts: &[ExprId]) -> ExprId {
+    if parts.is_empty() {
+        return ctx.num(0);
+    }
+    let mut result = parts[0];
+    for &part in &parts[1..] {
+        result = ctx.add(Expr::Add(result, part));
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_terms_no_sign() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+
+        // a + b + c
+        let ab = ctx.add(Expr::Add(a, b));
+        let abc = ctx.add(Expr::Add(ab, c));
+
+        let terms = add_terms_no_sign(&ctx, abc);
+        assert_eq!(terms.len(), 3);
+    }
+
+    #[test]
+    fn test_split_linear_term_const() {
+        let mut ctx = Context::new();
+        let a = ctx.var("A");
+
+        match split_linear_term(&ctx, a, "P") {
+            TermClass::Const(_) => {}
+            _ => panic!("A should be Const with respect to P"),
+        }
+    }
+
+    #[test]
+    fn test_split_linear_term_var() {
+        let mut ctx = Context::new();
+        let p = ctx.var("P");
+
+        match split_linear_term(&ctx, p, "P") {
+            TermClass::Linear(_) => {}
+            _ => panic!("P should be Linear(1) with respect to P"),
+        }
+    }
+}

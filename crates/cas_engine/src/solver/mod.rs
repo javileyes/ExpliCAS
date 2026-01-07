@@ -2,6 +2,7 @@ use crate::build::mul2_raw;
 pub mod check;
 pub mod domain_guards;
 pub mod isolation;
+pub mod linear_collect;
 pub mod solution_set;
 pub mod strategies;
 pub mod strategy;
