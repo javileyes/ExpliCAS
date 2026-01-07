@@ -12,7 +12,7 @@
 use cas_ast::{Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, RelOp, SolutionSet};
 
 use crate::engine::Simplifier;
-use crate::nary::add_terms_no_sign;
+use crate::nary::{add_terms_signed, Sign};
 use crate::solver::isolation::contains_var;
 use crate::solver::SolveStep;
 
@@ -45,22 +45,32 @@ pub fn try_linear_collect(
     let expr = ctx.add(Expr::Sub(lhs, rhs));
     let (expr, _) = simplifier.simplify(expr);
 
-    // 2. Flatten as sum of terms using canonical utility
-    let terms: Vec<ExprId> = add_terms_no_sign(&simplifier.context, expr)
-        .into_iter()
-        .collect();
+    // 2. Flatten as sum of SIGNED terms using canonical utility
+    let terms = add_terms_signed(&simplifier.context, expr);
 
-    // 3. Classify each term
+    // 3. Classify each term, respecting signs
     let mut coeff_parts: Vec<ExprId> = Vec::new();
     let mut const_parts: Vec<ExprId> = Vec::new();
 
-    for term in terms {
+    for (term, sign) in terms {
         match split_linear_term(&simplifier.context, term, var) {
-            TermClass::Const(k) => const_parts.push(k),
+            TermClass::Const(_) => {
+                // Apply sign to constant term
+                let signed_term = match sign {
+                    Sign::Pos => term,
+                    Sign::Neg => simplifier.context.add(Expr::Neg(term)),
+                };
+                const_parts.push(signed_term);
+            }
             TermClass::Linear(c) => {
                 // Convert None (implicit 1) to explicit 1
                 let coef = c.unwrap_or_else(|| simplifier.context.num(1));
-                coeff_parts.push(coef);
+                // Apply sign to coefficient
+                let signed_coef = match sign {
+                    Sign::Pos => coef,
+                    Sign::Neg => simplifier.context.add(Expr::Neg(coef)),
+                };
+                coeff_parts.push(signed_coef);
             }
             TermClass::NonLinear => {
                 // Variable appears non-linearly, this strategy doesn't apply
@@ -94,7 +104,7 @@ pub fn try_linear_collect(
         let var_expr = simplifier.context.var(var);
         steps.push(SolveStep {
             description: format!(
-                "Collect terms in {} and factor: {} * {} = {}",
+                "Collect terms in {} and factor: {} · {} = {}",
                 var,
                 cas_ast::DisplayExpr {
                     context: &simplifier.context,
@@ -131,21 +141,25 @@ pub fn try_linear_collect(
     // 8. Return as Conditional with guard: coeff ≠ 0
     // Primary case: coeff ≠ 0 → { solution }
     let guard = ConditionSet::single(ConditionPredicate::NonZero(coeff));
-
     let primary_case = Case::new(guard, SolutionSet::Discrete(vec![solution]));
 
     // Degenerate case: coeff = 0
     // If coeff = 0 AND const = 0 → AllReals
     // If coeff = 0 AND const ≠ 0 → EmptySet
-    // For now, just use the simpler "otherwise: residual" approach
-    // TODO: Add full degenerate handling with budget check
 
+    // Case: coeff = 0 ∧ const = 0 → AllReals
+    // Note: we use neg_const (= -const_sum = A for our example) for cleaner display
+    let mut both_zero_guard = ConditionSet::single(ConditionPredicate::EqZero(coeff));
+    both_zero_guard.push(ConditionPredicate::EqZero(neg_const));
+    let all_reals_case = Case::new(both_zero_guard, SolutionSet::AllReals);
+
+    // Case: otherwise → EmptySet
     let otherwise_case = Case::new(
         ConditionSet::empty(), // "otherwise"
-        SolutionSet::Empty,    // If coeff = 0, treat as no solution (simplified)
+        SolutionSet::Empty,
     );
 
-    let conditional = SolutionSet::Conditional(vec![primary_case, otherwise_case]);
+    let conditional = SolutionSet::Conditional(vec![primary_case, all_reals_case, otherwise_case]);
 
     Some((conditional, steps))
 }
@@ -277,7 +291,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_add_terms_no_sign() {
+    fn test_add_terms_signed() {
         let mut ctx = Context::new();
         let a = ctx.var("a");
         let b = ctx.var("b");
@@ -287,7 +301,7 @@ mod tests {
         let ab = ctx.add(Expr::Add(a, b));
         let abc = ctx.add(Expr::Add(ab, c));
 
-        let terms = add_terms_no_sign(&ctx, abc);
+        let terms = add_terms_signed(&ctx, abc);
         assert_eq!(terms.len(), 3);
     }
 
