@@ -3132,10 +3132,10 @@ Users can control pipeline behavior interactively:
 > set rationalize off       # Skip Phase 3
 > set rationalize 1.5       # Set level (0, 1, 1.5)
 > set max-rewrites 100      # Safety limit
-> set explain on            # Show diagnostics
+> set debug on              # Show diagnostics
 ```
 
-With `explain on`:
+With `debug on`:
 ```text
 ──── Pipeline Diagnostics ────
   Core:       2 iters, 3 rewrites

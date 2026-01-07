@@ -615,12 +615,12 @@ Rationalization set to Level 1.5 (same-surd products)
 > set max-rewrites 100    # Safety limit on total rewrites
 Max rewrites set to 100
 
-> set explain on          # Show pipeline diagnostics
-Explain mode ENABLED
+> set debug on            # Show pipeline diagnostics
+Debug mode ENABLED
 ```
 
 #### Pipeline Diagnostics
-With `set explain on`, each simplification shows detailed stats:
+With `set debug on`, each simplification shows detailed stats:
 ```text
 > x/(1+sqrt(2))
 
@@ -643,13 +643,13 @@ Pipeline settings:
   set transform <on|off>
   set rationalize <on|off|0|1|1.5>
   set max-rewrites <N>
-  set explain <on|off>
+  set debug <on|off>
 
 Current settings:
   transform: on
   rationalize: Level15
   max-rewrites: 300
-  explain: off
+  debug: off
 ```
 
 ### Debug Tools
@@ -687,8 +687,8 @@ Monitor engine health with two modes:
 
 **Explain Mode** (inline diagnostics):
 ```text
-> set explain on
-Explain mode ENABLED
+> set debug on
+Debug mode ENABLED
 
 > (1+x)^5
 ──── Pipeline Diagnostics ────

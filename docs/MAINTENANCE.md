@@ -797,7 +797,7 @@ println!("{}", simplifier.profiler.health_report_for_phase(Some(SimplifyPhase::T
 
 | Command | Effect |
 |---------|--------|
-| `set explain on` | Show pipeline diagnostics + health report inline |
+| `set debug on` | Show pipeline diagnostics + health report inline |
 | `health on` | Enable background health tracking |
 | `health` | Display last health report with cycle info |
 | `health reset` | Clear accumulated statistics |
