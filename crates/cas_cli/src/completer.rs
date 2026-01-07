@@ -484,7 +484,7 @@ impl Completer for CasHelper {
 
             // First argument: option name
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
-                let options = vec!["explain", "transform", "rationalize", "max-rewrites"];
+                let options = vec!["debug", "transform", "rationalize", "max-rewrites"];
                 for opt in options {
                     if opt.starts_with(word) {
                         matches.push(Pair {
@@ -501,7 +501,7 @@ impl Completer for CasHelper {
                 && ((parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space))
             {
                 let values = match parts[1] {
-                    "explain" | "transform" => vec!["on", "off"],
+                    "debug" | "transform" => vec!["on", "off"],
                     "rationalize" => vec!["off", "0", "1", "1.5"],
                     _ => vec![],
                 };

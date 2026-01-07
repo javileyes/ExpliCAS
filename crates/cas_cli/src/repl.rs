@@ -183,11 +183,11 @@ pub struct Repl {
     config: CasConfig,
     /// Options controlling the simplification pipeline (phases, budgets)
     simplify_options: cas_engine::SimplifyOptions,
-    /// When true, show pipeline diagnostics after simplification
-    explain_mode: bool,
+    /// When true, show pipeline/engine diagnostics after simplification
+    debug_mode: bool,
     /// Last pipeline stats for diagnostics
     last_stats: Option<cas_engine::PipelineStats>,
-    /// When true, always track health metrics (independent of explain)
+    /// When true, always track health metrics (independent of debug)
     health_enabled: bool,
     /// Last health report string for `health` command
     last_health_report: Option<String>,
@@ -486,7 +486,7 @@ impl Repl {
             verbosity: Verbosity::Normal,
             config,
             simplify_options: cas_engine::SimplifyOptions::default(),
-            explain_mode: false,
+            debug_mode: false,
             last_stats: None,
             health_enabled: false,
             last_health_report: None,
@@ -507,8 +507,8 @@ impl Repl {
         // Note: Tool dispatcher for collect/expand_log is in Engine::eval (cas_engine/src/eval.rs)
         // This function is dead code but kept for internal use; no dispatcher needed here.
 
-        // Enable health metrics and clear previous run if explain or health mode is on
-        if self.explain_mode || self.health_enabled {
+        // Enable health metrics and clear previous run if debug or health mode is on
+        if self.debug_mode || self.health_enabled {
             self.engine.simplifier.profiler.enable_health();
             self.engine.simplifier.profiler.clear_run();
         }
@@ -516,13 +516,13 @@ impl Repl {
         let (result, steps, stats) = self.engine.simplifier.simplify_with_stats(expr, opts);
 
         // Store health report for the `health` command
-        // Always store if health_enabled; for explain-only use threshold
-        if self.health_enabled || (self.explain_mode && stats.total_rewrites >= 5) {
+        // Always store if health_enabled; for debug-only use threshold
+        if self.health_enabled || (self.debug_mode && stats.total_rewrites >= 5) {
             self.last_health_report = Some(self.engine.simplifier.profiler.health_report());
         }
 
-        // Show explain output if enabled
-        if self.explain_mode {
+        // Show debug output if enabled
+        if self.debug_mode {
             self.print_pipeline_stats(&stats);
 
             // Policy A+ hint: when simplify makes minimal changes to a Mul expression
@@ -1158,7 +1158,7 @@ impl Repl {
                     println!("{}", report);
                 } else {
                     println!("No health report available.");
-                    println!("Run a simplification first (health is captured when explain mode or health mode is on).");
+                    println!("Run a simplification first (health is captured when debug mode or health mode is on).");
                     println!("Enable with: health on");
                 }
             } else {
@@ -1395,16 +1395,16 @@ impl Repl {
                     println!("Usage: set max-rewrites <number>");
                 }
             }
-            "explain" => match parts[2] {
+            "debug" => match parts[2] {
                 "on" | "true" | "1" => {
-                    self.explain_mode = true;
-                    println!("Explain mode ENABLED (pipeline diagnostics after each simplify)");
+                    self.debug_mode = true;
+                    println!("Debug mode ENABLED (pipeline diagnostics after each operation)");
                 }
                 "off" | "false" | "0" => {
-                    self.explain_mode = false;
-                    println!("Explain mode DISABLED");
+                    self.debug_mode = false;
+                    println!("Debug mode DISABLED");
                 }
-                _ => println!("Usage: set explain <on|off>"),
+                _ => println!("Usage: set debug <on|off>"),
             },
             _ => self.print_set_help(),
         }
@@ -1415,7 +1415,7 @@ impl Repl {
         println!("  set transform <on|off>         Enable/disable distribution & expansion");
         println!("  set rationalize <on|off|0|1|1.5>  Set rationalization level");
         println!("  set max-rewrites <N>           Set max total rewrites (safety limit)");
-        println!("  set explain <on|off>           Show pipeline diagnostics after simplify");
+        println!("  set debug <on|off>             Show pipeline diagnostics after operations");
         println!();
         println!("Current settings:");
         println!(
@@ -1434,10 +1434,7 @@ impl Repl {
             "  max-rewrites: {}",
             self.simplify_options.budgets.max_total_rewrites
         );
-        println!(
-            "  explain: {}",
-            if self.explain_mode { "on" } else { "off" }
-        );
+        println!("  debug: {}", if self.debug_mode { "on" } else { "off" });
     }
 
     fn handle_help(&self, line: &str) {
@@ -2533,7 +2530,7 @@ impl Repl {
         self.sync_config_to_simplifier();
 
         // Reset options
-        self.explain_mode = false;
+        self.debug_mode = false;
         self.last_stats = None;
         self.health_enabled = false;
         self.last_health_report = None;
@@ -4580,7 +4577,7 @@ impl Repl {
                         if !requires_to_show.is_empty() {
                             println!("ℹ️ Requires:");
                             for item in requires_to_show {
-                                if self.explain_mode {
+                                if self.debug_mode {
                                     println!("  - {}", item.display_with_origin(ctx));
                                 } else {
                                     println!("  - {}", item.cond.display(ctx));
@@ -4653,12 +4650,12 @@ impl Repl {
                         }
 
                         // V2.1 Issue #3: Explain mode - structured summary for solve
-                        // Collect blocked hints for explain output
+                        // Collect blocked hints for debug output
                         let hints = cas_engine::domain::take_blocked_hints();
                         let has_assumptions = !output.solver_assumptions.is_empty();
                         let has_blocked = !hints.is_empty();
 
-                        if self.explain_mode && (has_assumptions || has_blocked) {
+                        if self.debug_mode && (has_assumptions || has_blocked) {
                             println!(); // Separator line
                             let ctx = &self.engine.simplifier.context;
 
@@ -4731,7 +4728,7 @@ impl Repl {
                                 println!("  {}", suggestion);
                             }
                         } else if has_blocked && self.state.options.hints_enabled {
-                            // Legacy: show blocked hints even without explain_mode if hints_enabled
+                            // Legacy: show blocked hints even without debug_mode if hints_enabled
                             let ctx = &self.engine.simplifier.context;
                             let format_condition = |hint: &cas_engine::BlockedHint| -> String {
                                 let expr_str = cas_ast::DisplayExpr {
@@ -5165,7 +5162,7 @@ impl Repl {
 
                             let ctx = &self.engine.simplifier.context;
                             let display_level = self.state.options.requires_display;
-                            let explain_mode = self.explain_mode;
+                            let debug_mode = self.debug_mode;
 
                             // Filter requires based on display level and witness survival
                             let filtered: Vec<_> = if let Some(result) = result_expr {
@@ -5182,7 +5179,7 @@ impl Repl {
                             if !filtered.is_empty() {
                                 println!("ℹ️ Requires:");
                                 for item in &filtered {
-                                    if explain_mode {
+                                    if debug_mode {
                                         // Show with origins for pedagogical transparency
                                         println!("  - {}", item.display_with_origin(ctx));
                                     } else {
