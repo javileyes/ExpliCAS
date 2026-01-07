@@ -5102,8 +5102,8 @@ impl Repl {
 
                         // Show required conditions (implicit domain constraints from input)
                         // These are NOT assumptions - they were already required by the input expression
-                        // Apply witness survival filter based on requires_display setting
-                        if !output.required_conditions.is_empty() {
+                        // V2.2+: Use unified diagnostics with origin tracking and witness survival filter
+                        if !output.diagnostics.requires.is_empty() {
                             // Get result expression for witness survival check
                             let result_expr = match &output.result {
                                 EvalResult::Expr(e) => Some(*e),
@@ -5112,25 +5112,29 @@ impl Repl {
 
                             let ctx = &self.engine.simplifier.context;
                             let display_level = self.state.options.requires_display;
+                            let explain_mode = self.explain_mode;
 
                             // Filter requires based on display level and witness survival
                             let filtered: Vec<_> = if let Some(result) = result_expr {
-                                cas_engine::implicit_domain::filter_requires_for_display(
-                                    &output.required_conditions,
+                                output.diagnostics.filter_requires_for_display(
                                     ctx,
                                     result,
                                     display_level,
                                 )
                             } else {
                                 // No result expr = show all (can't check witness survival)
-                                output.required_conditions.iter().collect()
+                                output.diagnostics.requires.iter().collect()
                             };
 
                             if !filtered.is_empty() {
                                 println!("ℹ️ Requires:");
-                                for cond in &filtered {
-                                    let cond_display = cond.display(ctx);
-                                    println!("  - {}", cond_display);
+                                for item in &filtered {
+                                    if explain_mode {
+                                        // Show with origins for pedagogical transparency
+                                        println!("  - {}", item.display_with_origin(ctx));
+                                    } else {
+                                        println!("  - {}", item.cond.display(ctx));
+                                    }
                                 }
                             }
                         }

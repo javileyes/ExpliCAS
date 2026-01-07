@@ -182,6 +182,48 @@ impl Diagnostics {
     pub fn required_conditions(&self) -> Vec<ImplicitCondition> {
         self.requires.iter().map(|r| r.cond.clone()).collect()
     }
+
+    /// Filter requires for display based on level and witness survival.
+    ///
+    /// In `Essential` mode:
+    /// - Always show items with "strong" origins (EquationDerived, RewriteAirbag)
+    /// - Show items whose witness does NOT survive in the result
+    /// - Hide items whose witness survives (redundant visually)
+    ///
+    /// In `All` mode: show everything.
+    pub fn filter_requires_for_display<'a>(
+        &'a self,
+        ctx: &Context,
+        result: cas_ast::ExprId,
+        level: crate::implicit_domain::RequiresDisplayLevel,
+    ) -> Vec<&'a RequiredItem> {
+        use crate::implicit_domain::RequiresDisplayLevel;
+
+        self.requires
+            .iter()
+            .filter(|item| {
+                // Always show if level is All
+                if level == RequiresDisplayLevel::All {
+                    return true;
+                }
+
+                // Essential mode: show if strong origin OR witness consumed
+                let has_strong_origin = item.origins.iter().any(|o| {
+                    matches!(
+                        o,
+                        RequireOrigin::EquationDerived | RequireOrigin::RewriteAirbag
+                    )
+                });
+
+                if has_strong_origin {
+                    return true;
+                }
+
+                // Show if witness does NOT survive
+                !item.cond.witness_survives_in(ctx, result)
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
