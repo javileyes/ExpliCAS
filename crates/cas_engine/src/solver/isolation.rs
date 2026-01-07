@@ -537,7 +537,24 @@ pub fn isolate(
                     prepend_steps(results, steps)
                 }
             } else {
-                // B = A / RHS
+                // B = A / RHS (variable in denominator)
+
+                // PEDAGOGICAL IMPROVEMENT: If LHS is 1/var, use reciprocal solve
+                // for cleaner steps: "Combine fractions" → "Take reciprocal"
+                if crate::solver::reciprocal_solve::is_simple_reciprocal(
+                    &simplifier.context,
+                    lhs,
+                    var,
+                ) {
+                    if let Some((solution_set, reciprocal_steps)) =
+                        crate::solver::reciprocal_solve::try_reciprocal_solve(
+                            lhs, rhs, var, simplifier,
+                        )
+                    {
+                        return Ok((solution_set, reciprocal_steps));
+                    }
+                }
+
                 // CRITICAL FIX: Check if RHS is zero to avoid creating undefined (1/0)
                 // This happens for inequalities like 1/x > 0 where RHS=0
                 let is_rhs_zero =
