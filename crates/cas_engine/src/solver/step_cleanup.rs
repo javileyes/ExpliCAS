@@ -21,8 +21,9 @@ use cas_ast::{Context, Expr, ExprId};
 ///
 /// # Arguments
 /// * `ctx` - Expression context
-/// * `steps` - Original solve steps
-/// * `detailed` - If true, decompose complex steps into atomic sub-steps (Phase 2.5)
+/// * `steps` - Original solve steps  
+/// * `detailed` - If true, decompose into atomic sub-steps (Normal/Verbose verbosity)
+///                If false, use compact representation (Succinct verbosity)
 pub fn cleanup_solve_steps(
     ctx: &mut Context,
     steps: Vec<SolveStep>,
@@ -36,7 +37,8 @@ pub fn cleanup_solve_steps(
     let filtered = remove_redundant_steps(ctx, steps);
 
     // Phase 2: Rewrite log-linear steps for didactic clarity
-    // In detailed mode, decompose "Collect and factor" into atomic sub-steps
+    // detailed=true → atomic sub-steps (Expand, Move, Factor)
+    // detailed=false → compact step (Collect and factor)
     use crate::solver::log_linear_narrator;
     let narrated = log_linear_narrator::rewrite_log_linear_steps(ctx, filtered, detailed);
 

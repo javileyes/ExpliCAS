@@ -168,6 +168,38 @@ impl SolveDiagnostics {
 pub struct SolveStep {
     pub description: String,
     pub equation_after: Equation,
+    /// Importance level for step filtering (matches Step::importance system)
+    /// Default: Medium (visible in Normal verbosity)
+    pub importance: crate::step::ImportanceLevel,
+}
+
+impl SolveStep {
+    /// Create a new SolveStep with default Medium importance (visible in Normal mode)
+    pub fn new(description: impl Into<String>, equation_after: Equation) -> Self {
+        Self {
+            description: description.into(),
+            equation_after,
+            importance: crate::step::ImportanceLevel::Medium,
+        }
+    }
+
+    /// Create a SolveStep with Low importance (visible only in Verbose mode)
+    pub fn with_low_importance(description: impl Into<String>, equation_after: Equation) -> Self {
+        Self {
+            description: description.into(),
+            equation_after,
+            importance: crate::step::ImportanceLevel::Low,
+        }
+    }
+
+    /// Create a SolveStep with High importance (key solver steps)
+    pub fn with_high_importance(description: impl Into<String>, equation_after: Equation) -> Self {
+        Self {
+            description: description.into(),
+            equation_after,
+            importance: crate::step::ImportanceLevel::High,
+        }
+    }
 }
 
 use crate::error::CasError;
@@ -548,6 +580,7 @@ pub fn solve_with_options(
                             rhs: simplifier.context.add(Expr::Number(num_rational::BigRational::from_integer(0.into()))),
                             op: cas_ast::RelOp::Eq,
                         },
+                        importance: crate::step::ImportanceLevel::Medium,
                     }]
                 } else {
                     vec![]
@@ -662,6 +695,7 @@ fn try_solve_rational_exponent(
                 q
             ),
             equation_after: new_eq.clone(),
+            importance: crate::step::ImportanceLevel::Medium,
         });
     }
 

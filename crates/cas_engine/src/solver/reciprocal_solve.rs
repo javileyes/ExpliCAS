@@ -180,6 +180,7 @@ pub fn try_reciprocal_solve(
                 rhs: display_rhs,
                 op: RelOp::Eq,
             },
+            importance: crate::step::ImportanceLevel::Medium,
         });
     }
 
@@ -197,6 +198,7 @@ pub fn try_reciprocal_solve(
                 rhs: simplified_solution,
                 op: RelOp::Eq,
             },
+            importance: crate::step::ImportanceLevel::Medium,
         });
     }
 

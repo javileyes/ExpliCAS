@@ -4459,20 +4459,26 @@ impl Repl {
                         }
 
                         // Show Solve Steps
-                        if !output.solve_steps.is_empty() && self.verbosity != Verbosity::None {
-                            if self.verbosity != Verbosity::Succinct {
-                                println!("Steps:");
-                            }
+                        // V2.3.8: Three verbosity levels for solver steps:
+                        // - None: skip solver steps entirely (just result)
+                        // - Succinct: compact steps (3: log, collect+factor, divide)
+                        // - Normal/Verbose: detailed steps (5: log, expand, move, factor, divide)
+                        let show_solve_steps =
+                            !output.solve_steps.is_empty() && self.verbosity != Verbosity::None;
+
+                        if show_solve_steps {
+                            println!("Steps:");
 
                             // V2.3: Clean up steps for better didactic display
-                            // - Normalize signs: `0 - (-(t))` → `t`
-                            // - Remove redundant step pairs
-                            // V2.3.5: When explain_mode is on, use detailed trace
+                            // detailed=true for Normal/Verbose → 5 atomic sub-steps
+                            // detailed=false for Succinct → 3 compact steps
+                            let detailed =
+                                matches!(self.verbosity, Verbosity::Normal | Verbosity::Verbose);
                             let cleaned_steps =
                                 cas_engine::solver::step_cleanup::cleanup_solve_steps(
                                     &mut self.engine.simplifier.context,
                                     output.solve_steps.clone(),
-                                    self.explain_mode, // detailed = explain on
+                                    detailed,
                                 );
 
                             // Prepare scoped renderer if scopes are present
