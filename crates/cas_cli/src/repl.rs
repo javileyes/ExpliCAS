@@ -3257,9 +3257,26 @@ impl Repl {
                     return false;
                 }
             },
+            "requires" => match value {
+                "essential" => {
+                    self.state.options.requires_display =
+                        cas_engine::implicit_domain::RequiresDisplayLevel::Essential;
+                    println!("Requires display: essential (hide if witness survives)");
+                }
+                "all" => {
+                    self.state.options.requires_display =
+                        cas_engine::implicit_domain::RequiresDisplayLevel::All;
+                    println!("Requires display: all (show everything)");
+                }
+                _ => {
+                    println!("ERROR: Invalid value '{}' for axis 'requires'", value);
+                    println!("Allowed: essential, all");
+                    return false;
+                }
+            },
             _ => {
                 println!("ERROR: Unknown axis '{}'", axis);
-                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope, hints, solve");
+                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope, hints, solve, requires");
                 return false;
             }
         }
@@ -5085,11 +5102,36 @@ impl Repl {
 
                         // Show required conditions (implicit domain constraints from input)
                         // These are NOT assumptions - they were already required by the input expression
+                        // Apply witness survival filter based on requires_display setting
                         if !output.required_conditions.is_empty() {
-                            println!("ℹ️ Requires:");
-                            for cond in &output.required_conditions {
-                                let cond_display = cond.display(&self.engine.simplifier.context);
-                                println!("  - {}", cond_display);
+                            // Get result expression for witness survival check
+                            let result_expr = match &output.result {
+                                EvalResult::Expr(e) => Some(*e),
+                                _ => None,
+                            };
+
+                            let ctx = &self.engine.simplifier.context;
+                            let display_level = self.state.options.requires_display;
+
+                            // Filter requires based on display level and witness survival
+                            let filtered: Vec<_> = if let Some(result) = result_expr {
+                                cas_engine::implicit_domain::filter_requires_for_display(
+                                    &output.required_conditions,
+                                    ctx,
+                                    result,
+                                    display_level,
+                                )
+                            } else {
+                                // No result expr = show all (can't check witness survival)
+                                output.required_conditions.iter().collect()
+                            };
+
+                            if !filtered.is_empty() {
+                                println!("ℹ️ Requires:");
+                                for cond in &filtered {
+                                    let cond_display = cond.display(ctx);
+                                    println!("  - {}", cond_display);
+                                }
                             }
                         }
 

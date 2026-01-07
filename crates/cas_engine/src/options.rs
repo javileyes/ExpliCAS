@@ -121,6 +121,8 @@ pub struct EvalOptions {
     pub budget: crate::solver::SolveBudget,
     /// Issue #5: Verify solutions by substitution (default: false)
     pub check_solutions: bool,
+    /// Display level for required conditions (Essential hides witness-surviving requires)
+    pub requires_display: crate::implicit_domain::RequiresDisplayLevel,
 }
 
 impl EvalOptions {
@@ -210,6 +212,7 @@ impl Default for EvalOptions {
             explain_mode: false, // Explain mode off by default
             budget: crate::solver::SolveBudget::default(),
             check_solutions: false, // Solution verification off by default
+            requires_display: crate::implicit_domain::RequiresDisplayLevel::Essential,
         }
     }
 }
