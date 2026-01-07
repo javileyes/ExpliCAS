@@ -104,7 +104,26 @@ pub fn isolate(
         }
         Expr::Add(l, r) => {
             // (A + B) = RHS
-            if contains_var(&simplifier.context, l, var) {
+
+            // PEDAGOGICAL IMPROVEMENT: If BOTH addends contain the variable,
+            // try linear_collect directly to avoid circular "subtract" steps.
+            // Example: P + P*r*t = A → factor directly to P*(1+r*t) = A
+            let l_has = contains_var(&simplifier.context, l, var);
+            let r_has = contains_var(&simplifier.context, r, var);
+
+            if l_has && r_has {
+                // Both terms have the variable - use linear_collect for clean factor step
+                if let Some((solution_set, linear_steps)) =
+                    crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
+                {
+                    let mut all_steps = steps;
+                    all_steps.extend(linear_steps);
+                    return Ok((solution_set, all_steps));
+                }
+                // If linear_collect fails, fall through to normal isolation
+            }
+
+            if l_has {
                 // A = RHS - B
                 let new_rhs = simplifier.context.add(Expr::Sub(rhs, r));
                 let (sim_rhs, _) = simplifier.simplify(new_rhs);
