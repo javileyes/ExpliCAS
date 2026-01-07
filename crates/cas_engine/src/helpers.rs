@@ -413,7 +413,63 @@ pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
             Proof::Unknown
         }
 
-        // Variables, functions, etc: UNKNOWN (conservative)
+        // Div: a/b ≠ 0 iff a ≠ 0 (assuming b ≠ 0 for the expression to be defined)
+        Expr::Div(a, b) => {
+            let proof_a = prove_nonzero(ctx, *a);
+            let proof_b = prove_nonzero(ctx, *b);
+
+            match (proof_a, proof_b) {
+                // If numerator is 0, whole thing is 0
+                (Proof::Disproven, _) => Proof::Disproven,
+                // If a ≠ 0 and b ≠ 0, then a/b ≠ 0
+                (Proof::Proven, Proof::Proven) => Proof::Proven,
+                _ => Proof::Unknown,
+            }
+        }
+
+        // ln(x) or log(x): non-zero iff x ≠ 1 (and x > 0 for it to be defined)
+        // We check if x is a numeric constant that is > 0 and ≠ 1
+        Expr::Function(name, args) if (name == "ln" || name == "log") && args.len() == 1 => {
+            match ctx.get(args[0]) {
+                Expr::Number(n) => {
+                    let one = num_rational::BigRational::one();
+                    let zero = num_rational::BigRational::zero();
+                    if *n > zero && *n != one {
+                        Proof::Proven // ln(x) where x > 0 and x ≠ 1 means ln(x) ≠ 0
+                    } else if *n == one {
+                        Proof::Disproven // ln(1) = 0
+                    } else {
+                        Proof::Unknown // x ≤ 0, ln undefined
+                    }
+                }
+                // Check for division of two positive numbers ≠ 1 (like 3/5)
+                Expr::Div(num, denom) => {
+                    match (ctx.get(*num), ctx.get(*denom)) {
+                        (Expr::Number(n), Expr::Number(d)) => {
+                            let zero = num_rational::BigRational::zero();
+                            if *n > zero && *d > zero && n != d {
+                                Proof::Proven // ln(a/b) where a,b > 0 and a ≠ b means ≠ 0
+                            } else if n == d {
+                                Proof::Disproven // ln(1) = 0
+                            } else {
+                                Proof::Unknown
+                            }
+                        }
+                        _ => Proof::Unknown,
+                    }
+                }
+                Expr::Constant(c) => {
+                    if matches!(c, cas_ast::Constant::Pi | cas_ast::Constant::E) {
+                        Proof::Proven // ln(π) ≠ 0, ln(e) = 1 ≠ 0
+                    } else {
+                        Proof::Unknown
+                    }
+                }
+                _ => Proof::Unknown,
+            }
+        }
+
+        // Variables, other functions: UNKNOWN (conservative)
         _ => Proof::Unknown,
     }
 }

@@ -138,7 +138,32 @@ pub fn try_linear_collect(
         });
     }
 
-    // 8. Return as Conditional with guard: coeff ≠ 0
+    // 8. Check if we can give a direct solution (coef is a ground constant)
+    // If coef contains no variables and prove_nonzero returns Proven, skip the Conditional
+    if !contains_var(&simplifier.context, coeff, var) {
+        use crate::domain::Proof;
+        use crate::helpers::prove_nonzero;
+
+        let proof = prove_nonzero(&simplifier.context, coeff);
+        if proof == Proof::Proven {
+            // Direct solution: coeff is provably non-zero constant
+            return Some((SolutionSet::Discrete(vec![solution]), steps));
+        }
+        // If Disproven (coeff == 0), check neg_const
+        if proof == Proof::Disproven {
+            let const_proof = prove_nonzero(&simplifier.context, neg_const);
+            if const_proof == Proof::Disproven {
+                // Both are 0: 0*x + 0 = 0 → AllReals
+                return Some((SolutionSet::AllReals, steps));
+            } else if const_proof == Proof::Proven {
+                // 0*x + nonzero = 0 → Empty
+                return Some((SolutionSet::Empty, steps));
+            }
+            // Otherwise fall through to Conditional
+        }
+    }
+
+    // 9. Return as Conditional with guard: coeff ≠ 0
     // Primary case: coeff ≠ 0 → { solution }
     let guard = ConditionSet::single(ConditionPredicate::NonZero(coeff));
     let primary_case = Case::new(guard, SolutionSet::Discrete(vec![solution]));
@@ -545,6 +570,31 @@ pub fn try_linear_collect_v2(
                 op: RelOp::Eq,
             },
         });
+    }
+
+    // Check if we can give a direct solution (coef is a ground constant)
+    // If coef contains no variables and prove_nonzero returns Proven, skip the Conditional
+    if !contains_var(&simplifier.context, coef, var) {
+        use crate::domain::Proof;
+        use crate::helpers::prove_nonzero;
+
+        let proof = prove_nonzero(&simplifier.context, coef);
+        if proof == Proof::Proven {
+            // Direct solution: coef is provably non-zero constant
+            return Some((SolutionSet::Discrete(vec![solution]), steps));
+        }
+        // If Disproven (coef == 0), check constant
+        if proof == Proof::Disproven {
+            let const_proof = prove_nonzero(&simplifier.context, constant);
+            if const_proof == Proof::Disproven {
+                // Both are 0: 0*x + 0 = 0 → AllReals
+                return Some((SolutionSet::AllReals, steps));
+            } else if const_proof == Proof::Proven {
+                // 0*x + nonzero = 0 → Empty
+                return Some((SolutionSet::Empty, steps));
+            }
+            // Otherwise fall through to Conditional
+        }
     }
 
     // Build conditional solution set
