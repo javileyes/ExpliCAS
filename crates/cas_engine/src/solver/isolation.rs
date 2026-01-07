@@ -52,6 +52,15 @@ pub fn isolate(
                     return Ok((solution_set, all_steps));
                 }
 
+                // Phase 2.1: Try structural linear form extractor (handles y*(1+x) case)
+                if let Some((solution_set, linear_steps)) =
+                    crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
+                {
+                    let mut all_steps = steps;
+                    all_steps.extend(linear_steps);
+                    return Ok((solution_set, all_steps));
+                }
+
                 // If linear_collect didn't work, return as Residual
                 let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
                 return Ok((SolutionSet::Residual(residual), steps));
