@@ -589,6 +589,11 @@ pub fn derive_requires_from_equation(
 
     let mut derived = Vec::new();
 
+    // Helper to check if expr is abs(...)
+    let is_abs = |ctx: &Context, e: ExprId| -> bool {
+        matches!(ctx.get(e), Expr::Function(name, args) if name == "abs" && args.len() == 1)
+    };
+
     // Check if LHS is provably positive
     let lhs_positive = crate::helpers::prove_positive(ctx, lhs, vd);
     if matches!(
@@ -597,12 +602,11 @@ pub fn derive_requires_from_equation(
     ) {
         // LHS > 0 proven, so RHS > 0 (for the equation to have solutions)
         // BUT: Only add this if RHS is not DISPROVEN (provably ≤ 0)
-        // If RHS is disproven, the equation has no solutions, don't propagate the constraint
+        // ALSO: Skip if RHS is abs(...) - solutions automatically satisfy abs(A) > 0
         let rhs_check = crate::helpers::prove_positive(ctx, rhs, vd);
-        if rhs_check != crate::domain::Proof::Disproven {
+        if rhs_check != crate::domain::Proof::Disproven && !is_abs(ctx, rhs) {
             add_positive_and_propagate(ctx, rhs, &mut derived);
         }
-        // If rhs_check == Disproven, this equation has no solution (will be caught by EmptySet later)
     }
 
     // Check if RHS is provably positive
@@ -612,9 +616,9 @@ pub fn derive_requires_from_equation(
         crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit
     ) {
         // RHS > 0 proven, so LHS > 0 (for the equation to have solutions)
-        // Same check: don't propagate if LHS is disproven
+        // Skip if LHS is abs(...) - solutions automatically satisfy abs(A) > 0
         let lhs_check = crate::helpers::prove_positive(ctx, lhs, vd);
-        if lhs_check != crate::domain::Proof::Disproven {
+        if lhs_check != crate::domain::Proof::Disproven && !is_abs(ctx, lhs) {
             add_positive_and_propagate(ctx, lhs, &mut derived);
         }
     }
@@ -622,27 +626,38 @@ pub fn derive_requires_from_equation(
     derived
 }
 
-/// Add Positive(expr) and propagate through sqrt/ln structure.
+/// Add Positive(expr) and propagate through sqrt/ln/abs structure.
 /// - Positive(sqrt(t)) → Positive(t)
+/// - Positive(abs(t)) → NonZero(t) (since |t| > 0 ⟺ t ≠ 0)
 fn add_positive_and_propagate(ctx: &Context, expr: ExprId, derived: &mut Vec<ImplicitCondition>) {
-    // Add the base condition
-    derived.push(ImplicitCondition::Positive(expr));
-
-    // Propagate through sqrt: if expr = sqrt(t), then t > 0
     match ctx.get(expr) {
+        // abs(t) > 0 ⟺ t ≠ 0 (since abs is always ≥ 0)
+        // Don't add Positive(abs(t)) - it's redundant and confusing
+        // Instead add NonZero(t) which is the actual constraint
+        Expr::Function(name, args) if name == "abs" && args.len() == 1 => {
+            derived.push(ImplicitCondition::NonZero(args[0]));
+        }
+        // sqrt(t) > 0 implies t > 0
         Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+            derived.push(ImplicitCondition::Positive(expr));
             derived.push(ImplicitCondition::Positive(args[0]));
         }
+        // t^(1/2) > 0 implies t > 0
         Expr::Pow(base, exp) => {
-            // Check for t^(1/2) form
             if let Expr::Number(n) = ctx.get(*exp) {
                 if is_even_root_exponent(n) {
-                    // sqrt(base) > 0 implies base > 0
+                    derived.push(ImplicitCondition::Positive(expr));
                     derived.push(ImplicitCondition::Positive(*base));
+                    return;
                 }
             }
+            // Non-even-root power: add as-is
+            derived.push(ImplicitCondition::Positive(expr));
         }
-        _ => {}
+        _ => {
+            // Default: add the base condition
+            derived.push(ImplicitCondition::Positive(expr));
+        }
     }
 }
 
