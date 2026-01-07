@@ -26,6 +26,8 @@ pub struct Entry {
     pub kind: EntryKind,
     /// Original raw text input (for display)
     pub raw_text: String,
+    /// Diagnostics from evaluation (for SessionPropagated tracking)
+    pub diagnostics: crate::diagnostics::Diagnostics,
 }
 
 impl Entry {
@@ -70,11 +72,26 @@ impl SessionStore {
         }
     }
 
-    /// Store a new entry and return its ID
+    /// Store a new entry and return its ID (no diagnostics)
     pub fn push(&mut self, kind: EntryKind, raw_text: String) -> EntryId {
+        self.push_with_diagnostics(kind, raw_text, crate::diagnostics::Diagnostics::default())
+    }
+
+    /// Store a new entry with diagnostics and return its ID
+    pub fn push_with_diagnostics(
+        &mut self,
+        kind: EntryKind,
+        raw_text: String,
+        diagnostics: crate::diagnostics::Diagnostics,
+    ) -> EntryId {
         let id = self.next_id;
         self.next_id += 1;
-        self.entries.push(Entry { id, kind, raw_text });
+        self.entries.push(Entry {
+            id,
+            kind,
+            raw_text,
+            diagnostics,
+        });
         id
     }
 
@@ -116,6 +133,17 @@ impl SessionStore {
     /// Get the next ID that will be assigned (for preview)
     pub fn next_id(&self) -> EntryId {
         self.next_id
+    }
+
+    /// Update the diagnostics for an entry (used after eval completes)
+    pub fn update_diagnostics(
+        &mut self,
+        id: EntryId,
+        diagnostics: crate::diagnostics::Diagnostics,
+    ) {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+            entry.diagnostics = diagnostics;
+        }
     }
 }
 
@@ -161,7 +189,24 @@ pub fn resolve_session_refs(
 ) -> Result<ExprId, ResolveError> {
     let mut cache: HashMap<EntryId, ExprId> = HashMap::new();
     let mut visiting: HashSet<EntryId> = HashSet::new();
-    resolve_recursive(ctx, expr, store, &mut cache, &mut visiting)
+    let mut _inherited = crate::diagnostics::Diagnostics::new();
+    resolve_recursive(ctx, expr, store, &mut cache, &mut visiting, &mut _inherited)
+}
+
+/// Resolve session refs AND accumulate inherited diagnostics.
+///
+/// When an expression references `#id`, the diagnostics from that entry
+/// are accumulated for SessionPropagated tracking.
+pub fn resolve_session_refs_with_diagnostics(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    store: &SessionStore,
+) -> Result<(ExprId, crate::diagnostics::Diagnostics), ResolveError> {
+    let mut cache: HashMap<EntryId, ExprId> = HashMap::new();
+    let mut visiting: HashSet<EntryId> = HashSet::new();
+    let mut inherited = crate::diagnostics::Diagnostics::new();
+    let resolved = resolve_recursive(ctx, expr, store, &mut cache, &mut visiting, &mut inherited)?;
+    Ok((resolved, inherited))
 }
 
 fn resolve_recursive(
@@ -170,17 +215,18 @@ fn resolve_recursive(
     store: &SessionStore,
     cache: &mut HashMap<EntryId, ExprId>,
     visiting: &mut HashSet<EntryId>,
+    inherited: &mut crate::diagnostics::Diagnostics,
 ) -> Result<ExprId, ResolveError> {
     use cas_ast::Expr;
 
     let node = ctx.get(expr).clone();
 
     match node {
-        Expr::SessionRef(id) => resolve_session_id(ctx, id, store, cache, visiting),
+        Expr::SessionRef(id) => resolve_session_id(ctx, id, store, cache, visiting, inherited),
         Expr::Variable(ref name) => {
             if name.starts_with('#') && name.len() > 1 && name[1..].chars().all(char::is_numeric) {
                 if let Ok(id) = name[1..].parse::<u64>() {
-                    return resolve_session_id(ctx, id, store, cache, visiting);
+                    return resolve_session_id(ctx, id, store, cache, visiting, inherited);
                 }
             }
             Ok(expr)
@@ -188,8 +234,8 @@ fn resolve_recursive(
 
         // Binary operators - recurse into children
         Expr::Add(l, r) => {
-            let new_l = resolve_recursive(ctx, l, store, cache, visiting)?;
-            let new_r = resolve_recursive(ctx, r, store, cache, visiting)?;
+            let new_l = resolve_recursive(ctx, l, store, cache, visiting, inherited)?;
+            let new_r = resolve_recursive(ctx, r, store, cache, visiting, inherited)?;
             if new_l == l && new_r == r {
                 Ok(expr)
             } else {
@@ -197,8 +243,8 @@ fn resolve_recursive(
             }
         }
         Expr::Sub(l, r) => {
-            let new_l = resolve_recursive(ctx, l, store, cache, visiting)?;
-            let new_r = resolve_recursive(ctx, r, store, cache, visiting)?;
+            let new_l = resolve_recursive(ctx, l, store, cache, visiting, inherited)?;
+            let new_r = resolve_recursive(ctx, r, store, cache, visiting, inherited)?;
             if new_l == l && new_r == r {
                 Ok(expr)
             } else {
@@ -206,8 +252,8 @@ fn resolve_recursive(
             }
         }
         Expr::Mul(l, r) => {
-            let new_l = resolve_recursive(ctx, l, store, cache, visiting)?;
-            let new_r = resolve_recursive(ctx, r, store, cache, visiting)?;
+            let new_l = resolve_recursive(ctx, l, store, cache, visiting, inherited)?;
+            let new_r = resolve_recursive(ctx, r, store, cache, visiting, inherited)?;
             if new_l == l && new_r == r {
                 Ok(expr)
             } else {
@@ -215,8 +261,8 @@ fn resolve_recursive(
             }
         }
         Expr::Div(l, r) => {
-            let new_l = resolve_recursive(ctx, l, store, cache, visiting)?;
-            let new_r = resolve_recursive(ctx, r, store, cache, visiting)?;
+            let new_l = resolve_recursive(ctx, l, store, cache, visiting, inherited)?;
+            let new_r = resolve_recursive(ctx, r, store, cache, visiting, inherited)?;
             if new_l == l && new_r == r {
                 Ok(expr)
             } else {
@@ -224,8 +270,8 @@ fn resolve_recursive(
             }
         }
         Expr::Pow(b, e) => {
-            let new_b = resolve_recursive(ctx, b, store, cache, visiting)?;
-            let new_e = resolve_recursive(ctx, e, store, cache, visiting)?;
+            let new_b = resolve_recursive(ctx, b, store, cache, visiting, inherited)?;
+            let new_e = resolve_recursive(ctx, e, store, cache, visiting, inherited)?;
             if new_b == b && new_e == e {
                 Ok(expr)
             } else {
@@ -235,7 +281,7 @@ fn resolve_recursive(
 
         // Unary
         Expr::Neg(e) => {
-            let new_e = resolve_recursive(ctx, e, store, cache, visiting)?;
+            let new_e = resolve_recursive(ctx, e, store, cache, visiting, inherited)?;
             if new_e == e {
                 Ok(expr)
             } else {
@@ -248,7 +294,7 @@ fn resolve_recursive(
             let mut changed = false;
             let mut new_args = Vec::with_capacity(args.len());
             for arg in &args {
-                let new_arg = resolve_recursive(ctx, *arg, store, cache, visiting)?;
+                let new_arg = resolve_recursive(ctx, *arg, store, cache, visiting, inherited)?;
                 if new_arg != *arg {
                     changed = true;
                 }
@@ -266,7 +312,7 @@ fn resolve_recursive(
             let mut changed = false;
             let mut new_data = Vec::with_capacity(data.len());
             for elem in &data {
-                let new_elem = resolve_recursive(ctx, *elem, store, cache, visiting)?;
+                let new_elem = resolve_recursive(ctx, *elem, store, cache, visiting, inherited)?;
                 if new_elem != *elem {
                     changed = true;
                 }
@@ -294,6 +340,7 @@ fn resolve_session_id(
     store: &SessionStore,
     cache: &mut HashMap<EntryId, ExprId>,
     visiting: &mut HashSet<EntryId>,
+    inherited: &mut crate::diagnostics::Diagnostics,
 ) -> Result<ExprId, ResolveError> {
     use cas_ast::Expr;
 
@@ -310,6 +357,9 @@ fn resolve_session_id(
     // Get entry from store
     let entry = store.get(id).ok_or(ResolveError::NotFound(id))?;
 
+    // SessionPropagated: inherit requires from this entry
+    inherited.inherit_requires_from(&entry.diagnostics);
+
     // Mark as visiting for cycle detection
     visiting.insert(id);
 
@@ -317,12 +367,12 @@ fn resolve_session_id(
     let substitution = match &entry.kind {
         EntryKind::Expr(stored_expr) => {
             // Recursively resolve the stored expression (it may contain #refs too)
-            resolve_recursive(ctx, *stored_expr, store, cache, visiting)?
+            resolve_recursive(ctx, *stored_expr, store, cache, visiting, inherited)?
         }
         EntryKind::Eq { lhs, rhs } => {
             // For equations used as expressions, use residue form: (lhs - rhs)
-            let resolved_lhs = resolve_recursive(ctx, *lhs, store, cache, visiting)?;
-            let resolved_rhs = resolve_recursive(ctx, *rhs, store, cache, visiting)?;
+            let resolved_lhs = resolve_recursive(ctx, *lhs, store, cache, visiting, inherited)?;
+            let resolved_rhs = resolve_recursive(ctx, *rhs, store, cache, visiting, inherited)?;
             ctx.add(Expr::Sub(resolved_lhs, resolved_rhs))
         }
     };

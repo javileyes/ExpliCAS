@@ -224,6 +224,23 @@ impl Diagnostics {
             })
             .collect()
     }
+
+    /// Inherit requires from another Diagnostics (for session reference propagation).
+    ///
+    /// Each inherited condition gets SessionPropagated added to its origins,
+    /// while preserving original origins. This tracks provenance when reusing `#id`.
+    ///
+    /// NOTE: Only requires are inherited. Assumed and blocked are NOT propagated
+    /// because they are "history of the process", not properties of the result.
+    pub fn inherit_requires_from(&mut self, other: &Diagnostics) {
+        for item in &other.requires {
+            // Add each origin from the source, plus SessionPropagated
+            for &origin in &item.origins {
+                self.push_required(item.cond.clone(), origin);
+            }
+            self.push_required(item.cond.clone(), RequireOrigin::SessionPropagated);
+        }
+    }
 }
 
 #[cfg(test)]

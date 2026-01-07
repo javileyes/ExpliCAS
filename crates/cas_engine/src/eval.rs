@@ -175,34 +175,6 @@ fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
     warnings
 }
 
-/// Collect required conditions from steps with deduplication.
-/// These are implicit domain constraints from the input, NOT assumptions.
-/// Sorted for stable/deterministic output.
-fn collect_required_conditions(
-    steps: &[crate::Step],
-    ctx: &cas_ast::Context,
-) -> Vec<crate::implicit_domain::ImplicitCondition> {
-    use crate::implicit_domain::ImplicitCondition;
-    use std::collections::HashSet;
-
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut conditions: Vec<ImplicitCondition> = Vec::new();
-
-    for step in steps {
-        for cond in &step.required_conditions {
-            let display = cond.display(ctx);
-            if !seen.contains(&display) {
-                seen.insert(display);
-                conditions.push(cond.clone());
-            }
-        }
-    }
-
-    // Sort for stable output (by display string)
-    conditions.sort_by_key(|a| a.display(ctx));
-    conditions
-}
-
 impl Engine {
     /// The main entry point for evaluating requests.
     /// Handles session storage, resolution, and action dispatch.
@@ -218,15 +190,17 @@ impl Engine {
             None
         };
 
-        // 2. Resolve (state.resolve_all)
+        // 2. Resolve (state.resolve_all_with_diagnostics)
         // We resolve the parsed expression against the session state (Session refs #id and Environment vars)
-        let resolved = match state.resolve_all(&mut self.simplifier.context, req.parsed) {
-            Ok(r) => r,
-            Err(ResolveError::CircularReference(msg)) => {
-                return Err(anyhow::anyhow!("Circular reference detected: {}", msg))
-            }
-            Err(e) => return Err(anyhow::anyhow!("Resolution error: {}", e)),
-        };
+        // Also captures inherited diagnostics from any referenced entries for SessionPropagated tracking
+        let (resolved, inherited_diagnostics) =
+            match state.resolve_all_with_diagnostics(&mut self.simplifier.context, req.parsed) {
+                Ok(r) => r,
+                Err(ResolveError::CircularReference(msg)) => {
+                    return Err(anyhow::anyhow!("Circular reference detected: {}", msg))
+                }
+                Err(e) => return Err(anyhow::anyhow!("Resolution error: {}", e)),
+            };
 
         // 3. Dispatch Action -> produce EvalResult
         let (
@@ -456,56 +430,64 @@ impl Engine {
             }
         };
 
-        // Accumulate required_conditions from all steps + solver_required
-        let mut required_conditions = collect_required_conditions(&steps, &self.simplifier.context);
-        required_conditions.extend(solver_required);
-
-        // V2.2+: Also infer implicit domain from the resolved expression structure
-        // This ensures Requires is shown even if no simplification steps occurred
-        // (e.g., `ln(x)` with no simplification still shows `x > 0`)
-        {
-            use crate::implicit_domain::infer_implicit_domain;
-            use std::collections::HashSet;
-
-            let structural_domain = infer_implicit_domain(
-                &self.simplifier.context,
-                resolved,
-                crate::semantics::ValueDomain::RealOnly, // Default to RealOnly for structural inference
-            );
-
-            // Merge with existing, avoiding duplicates by display string
-            let existing_displays: HashSet<String> = required_conditions
-                .iter()
-                .map(|c| c.display(&self.simplifier.context))
-                .collect();
-
-            for cond in structural_domain.conditions() {
-                let display = cond.display(&self.simplifier.context);
-                if !existing_displays.contains(&display) {
-                    required_conditions.push(cond.clone());
-                }
-            }
-        }
-
         // Collect blocked hints from simplifier
         let blocked_hints = self.simplifier.take_blocked_hints();
 
         // V2.2+: Build unified Diagnostics with origin tracking
+        // Each source gets its appropriate origin:
+        // - Steps (rewrite airbag) → RewriteAirbag
+        // - Solver → EquationDerived
+        // - Structural inference on input → InputImplicit (via OutputImplicit for now)
         let mut diagnostics = crate::diagnostics::Diagnostics::new();
 
-        // Add requires from various sources with appropriate origins
-        for cond in &required_conditions {
-            // Determine origin based on where it came from
-            // For now, use OutputImplicit as default (structural inference from resolved)
+        // 1. Add requires from simplification steps → RewriteAirbag
+        //    These are conditions detected when a rewrite consumed the witness
+        {
+            use std::collections::HashSet;
+            let mut seen: HashSet<String> = HashSet::new();
+            for step in &steps {
+                for cond in &step.required_conditions {
+                    let display = cond.display(&self.simplifier.context);
+                    if seen.insert(display) {
+                        diagnostics.push_required(
+                            cond.clone(),
+                            crate::diagnostics::RequireOrigin::RewriteAirbag,
+                        );
+                    }
+                }
+            }
+        }
+
+        // 2. Add requires from solver → EquationDerived
+        //    These are conditions derived from equation structure
+        for cond in &solver_required {
             diagnostics.push_required(
                 cond.clone(),
-                crate::diagnostics::RequireOrigin::OutputImplicit,
+                crate::diagnostics::RequireOrigin::EquationDerived,
             );
         }
 
-        // Add solver requires with EquationDerived origin (from solver_required)
-        // These were already merged into required_conditions above, so we just add
-        // blocked hints
+        // 3. Add requires from structural inference on input → OutputImplicit
+        //    (These are visible in input but not yet consumed)
+        {
+            use crate::implicit_domain::infer_implicit_domain;
+
+            let structural_domain = infer_implicit_domain(
+                &self.simplifier.context,
+                resolved,
+                crate::semantics::ValueDomain::RealOnly,
+            );
+
+            for cond in structural_domain.conditions() {
+                // Only add if not already present (dedup by condition)
+                diagnostics.push_required(
+                    cond.clone(),
+                    crate::diagnostics::RequireOrigin::OutputImplicit,
+                );
+            }
+        }
+
+        // Add blocked hints
         for hint in &blocked_hints {
             diagnostics.push_blocked(hint.clone());
         }
@@ -517,8 +499,21 @@ impl Engine {
             }
         }
 
+        // SessionPropagated: inherit requires from any referenced session entries
+        // This tracks provenance when reusing #id
+        diagnostics.inherit_requires_from(&inherited_diagnostics);
+
         // Dedup and sort for stable output (also filters trivials)
         diagnostics.dedup_and_sort(&self.simplifier.context);
+
+        // Update stored entry with final diagnostics (for SessionPropagated tracking)
+        if let Some(id) = stored_id {
+            state.store.update_diagnostics(id, diagnostics.clone());
+        }
+
+        // Legacy field: extract conditions from diagnostics for backward compatibility
+        // Tests and some code paths still use output.required_conditions
+        let required_conditions = diagnostics.required_conditions();
 
         Ok(EvalOutput {
             stored_id,

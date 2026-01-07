@@ -46,6 +46,27 @@ impl SessionState {
         Ok(fully_resolved)
     }
 
+    /// Resolve all references AND return inherited diagnostics.
+    ///
+    /// When the expression contains session references (#id), the diagnostics
+    /// from those entries are accumulated for SessionPropagated origin tracking.
+    pub fn resolve_all_with_diagnostics(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+    ) -> Result<(ExprId, crate::diagnostics::Diagnostics), ResolveError> {
+        use crate::session::resolve_session_refs_with_diagnostics;
+
+        // 1. Resolve session refs and collect inherited diagnostics
+        let (expr_with_refs, inherited) =
+            resolve_session_refs_with_diagnostics(ctx, expr, &self.store)?;
+
+        // 2. Substitute variables from environment
+        let fully_resolved = crate::env::substitute(ctx, &self.env, expr_with_refs);
+
+        Ok((fully_resolved, inherited))
+    }
+
     /// Clear all session state (history and environment)
     pub fn clear(&mut self) {
         self.store.clear();

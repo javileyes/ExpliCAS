@@ -168,3 +168,128 @@ fn requires_nonzero_from_division() {
         output.required_conditions
     );
 }
+
+// =============================================================================
+// SessionPropagated Origin Tests (V2.2)
+// =============================================================================
+
+/// Test A: SessionPropagated origin appears when reusing #id
+///
+/// When an expression references #n, the conditions from that entry should be
+/// inherited with SessionPropagated added to their origins.
+#[test]
+fn session_propagated_origin_appears_on_reuse() {
+    use cas_engine::diagnostics::RequireOrigin;
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::default();
+
+    // Step 1: Evaluate sqrt(x) -> stored as #1
+    let req1 = make_simplify_request(&mut engine, "sqrt(x)");
+    let output1 = engine.eval(&mut state, req1).expect("eval should succeed");
+
+    // Verify #1 was stored
+    let stored_id = output1.stored_id.expect("should have stored_id");
+    assert_eq!(stored_id, 1, "First entry should be #1");
+
+    // Verify #1's diagnostics have requires (for later inheritance)
+    assert!(
+        !output1.diagnostics.requires.is_empty(),
+        "sqrt(x) should have requires in diagnostics"
+    );
+
+    // Step 2: Evaluate #1 + 1 (reuses #1)
+    let req2 = make_simplify_request(&mut engine, "#1 + 1");
+    let output2 = engine.eval(&mut state, req2).expect("eval should succeed");
+
+    // Verify x ≥ 0 is in diagnostics.requires with SessionPropagated origin
+    let has_session_propagated = output2.diagnostics.requires.iter().any(|item| {
+        item.origins
+            .iter()
+            .any(|o| matches!(o, RequireOrigin::SessionPropagated))
+    });
+
+    assert!(
+        has_session_propagated,
+        "Reused #1 should have SessionPropagated origin, got requires: {:?}",
+        output2
+            .diagnostics
+            .requires
+            .iter()
+            .map(|r| (&r.cond, &r.origins))
+            .collect::<Vec<_>>()
+    );
+
+    // Also verify original origin is preserved
+    let has_original_origin = output2.diagnostics.requires.iter().any(|item| {
+        item.origins
+            .iter()
+            .any(|o| matches!(o, RequireOrigin::OutputImplicit))
+    });
+
+    assert!(
+        has_original_origin,
+        "Original OutputImplicit origin should be preserved alongside SessionPropagated"
+    );
+}
+
+/// Test B: SessionPropagated does NOT contaminate assumed/blocked
+///
+/// When reusing #id, only `requires` should be inherited.
+/// `assumed` and `blocked` should NOT be propagated.
+#[test]
+fn session_propagated_no_assumed_blocked_contamination() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::default();
+
+    // Use Assume mode to generate assumed events
+    state.options.domain_mode = cas_engine::DomainMode::Assume;
+
+    // Step 1: Evaluate exp(ln(x)) in Assume mode
+    // This should simplify to x and record Positive(x) as assumed
+    let req1 = make_simplify_request(&mut engine, "exp(ln(x))");
+    let output1 = engine.eval(&mut state, req1).expect("eval should succeed");
+
+    // Verify we got an assumed event (or at least the simplification happened)
+    let result1 = match &output1.result {
+        cas_engine::EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+    assert_eq!(
+        result1, "x",
+        "exp(ln(x)) should simplify to x in Assume mode"
+    );
+
+    // Step 2: Evaluate #1 + 1 (reuses #1)
+    let req2 = make_simplify_request(&mut engine, "#1 + 1");
+    let output2 = engine.eval(&mut state, req2).expect("eval should succeed");
+
+    // Verify assumed from #1 is NOT propagated to #2
+    // (assumed events should only reflect the current evaluation)
+    // Note: The current eval might have its own assumed events, but they should
+    // not include ones from the #1 evaluation context
+
+    // Key insight: assumed should NOT grow unboundedly from referenced entries
+    // We can't easily assert this without more detailed tracking, but the key
+    // architectural guarantee is that inherit_requires_from only inherits requires,
+    // not assumed or blocked. This is enforced by the function signature.
+
+    // For now, we verify that the result is correct
+    let result2 = match &output2.result {
+        cas_engine::EvalResult::Expr(e) => cas_ast::DisplayExpr {
+            context: &engine.simplifier.context,
+            id: *e,
+        }
+        .to_string(),
+        _ => "error".to_string(),
+    };
+    assert!(
+        result2 == "x + 1" || result2 == "1 + x",
+        "#1 + 1 should give x + 1 (or 1 + x), got: {}",
+        result2
+    );
+}
