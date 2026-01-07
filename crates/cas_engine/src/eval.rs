@@ -467,23 +467,58 @@ impl Engine {
             );
         }
 
-        // 3. Add requires from structural inference on input → OutputImplicit
-        //    (These are visible in input but not yet consumed)
+        // 3. Add requires from structural inference
+        //    InputImplicit: conditions visible in input (resolved) before simplification
+        //    OutputImplicit: conditions visible in output (result) after simplification
         {
             use crate::implicit_domain::infer_implicit_domain;
 
-            let structural_domain = infer_implicit_domain(
+            // InputImplicit: infer from resolved (input after ref resolution)
+            let input_domain = infer_implicit_domain(
                 &self.simplifier.context,
                 resolved,
                 crate::semantics::ValueDomain::RealOnly,
             );
 
-            for cond in structural_domain.conditions() {
-                // Only add if not already present (dedup by condition)
+            for cond in input_domain.conditions() {
                 diagnostics.push_required(
                     cond.clone(),
-                    crate::diagnostics::RequireOrigin::OutputImplicit,
+                    crate::diagnostics::RequireOrigin::InputImplicit,
                 );
+            }
+
+            // OutputImplicit: infer from result (after simplification/solving)
+            // Extract ExprId from EvalResult if available
+            let result_expr_id = match &result {
+                EvalResult::Expr(e) => Some(*e),
+                EvalResult::Set(exprs) => {
+                    // For solve results (legacy), infer from first solution
+                    exprs.first().copied()
+                }
+                EvalResult::SolutionSet(solution_set) => {
+                    // For V2.0 solutions, extract first concrete value if any
+                    use cas_ast::SolutionSet;
+                    match solution_set {
+                        SolutionSet::Discrete(vec) => vec.first().copied(),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+
+            if let Some(result_id) = result_expr_id {
+                let output_domain = infer_implicit_domain(
+                    &self.simplifier.context,
+                    result_id,
+                    crate::semantics::ValueDomain::RealOnly,
+                );
+
+                for cond in output_domain.conditions() {
+                    diagnostics.push_required(
+                        cond.clone(),
+                        crate::diagnostics::RequireOrigin::OutputImplicit,
+                    );
+                }
             }
         }
 

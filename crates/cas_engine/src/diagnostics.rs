@@ -26,7 +26,11 @@ pub enum RequireOrigin {
     EquationImplicit,
     /// Derived via equation equality (e.g., 2^x = sqrt(y) → 2^x > 0 → sqrt(y) > 0 → y > 0)
     EquationDerived,
+    /// Implicit in the input expression (before simplification)
+    /// e.g., sqrt(x) in "sqrt(x)^2" → x ≥ 0
+    InputImplicit,
     /// Implicit in the output/result (e.g., ln(y) appears in solution)
+    /// e.g., solve 2^x = y → ln(y)/ln(2) → y > 0
     OutputImplicit,
     /// Detected by rewrite airbag (witness survival check)
     RewriteAirbag,
@@ -40,6 +44,7 @@ impl RequireOrigin {
         match self {
             RequireOrigin::EquationImplicit => "equation implicit",
             RequireOrigin::EquationDerived => "equation derived",
+            RequireOrigin::InputImplicit => "input implicit",
             RequireOrigin::OutputImplicit => "output implicit",
             RequireOrigin::RewriteAirbag => "rewrite airbag",
             RequireOrigin::SessionPropagated => "session propagated",

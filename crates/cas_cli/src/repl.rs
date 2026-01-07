@@ -2701,6 +2701,13 @@ impl Repl {
             "off"
         };
         println!("  hints: {}", hints);
+
+        // Show requires display level
+        let requires = match self.state.options.requires_display {
+            cas_engine::implicit_domain::RequiresDisplayLevel::Essential => "essential",
+            cas_engine::implicit_domain::RequiresDisplayLevel::All => "all",
+        };
+        println!("  requires: {}", requires);
     }
 
     /// Print status for a single semantic axis with current value and available options
@@ -4521,17 +4528,28 @@ impl Repl {
                         }
 
                         // V2.2+: Show Requires (implicit domain conditions from solver)
-                        // Filter out trivial conditions like "2 > 0" (constant expressions)
+                        // Using unified diagnostics with origin tracking
                         let ctx = &self.engine.simplifier.context;
-                        let non_trivial: Vec<_> = output
-                            .required_conditions
-                            .iter()
-                            .filter(|c| !c.is_trivial(ctx))
-                            .collect();
-                        if !non_trivial.is_empty() {
+                        let result_expr_id = match &output.result {
+                            EvalResult::Expr(e) => *e,
+                            EvalResult::Set(v) => *v.first().unwrap_or(&output.resolved),
+                            _ => output.resolved,
+                        };
+                        let display_level = self.state.options.requires_display;
+                        let requires_to_show = output.diagnostics.filter_requires_for_display(
+                            ctx,
+                            result_expr_id,
+                            display_level,
+                        );
+
+                        if !requires_to_show.is_empty() {
                             println!("ℹ️ Requires:");
-                            for cond in &non_trivial {
-                                println!("  - {}", cond.display(ctx));
+                            for item in requires_to_show {
+                                if self.explain_mode {
+                                    println!("  - {}", item.display_with_origin(ctx));
+                                } else {
+                                    println!("  - {}", item.cond.display(ctx));
+                                }
                             }
                         }
 
