@@ -4463,6 +4463,16 @@ impl Repl {
                             if self.verbosity != Verbosity::Succinct {
                                 println!("Steps:");
                             }
+
+                            // V2.3: Clean up steps for better didactic display
+                            // - Normalize signs: `0 - (-(t))` → `t`
+                            // - Remove redundant step pairs
+                            let cleaned_steps =
+                                cas_engine::solver::step_cleanup::cleanup_solve_steps(
+                                    &mut self.engine.simplifier.context,
+                                    output.solve_steps.clone(),
+                                );
+
                             // Prepare scoped renderer if scopes are present
                             let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
                             let has_scopes = !output.output_scopes.is_empty();
@@ -4476,7 +4486,7 @@ impl Repl {
                                 None
                             };
 
-                            for (i, step) in output.solve_steps.iter().enumerate() {
+                            for (i, step) in cleaned_steps.iter().enumerate() {
                                 println!("{}. {}", i + 1, step.description);
                                 // Display equation after step with scoped transforms
                                 let ctx = &self.engine.simplifier.context;

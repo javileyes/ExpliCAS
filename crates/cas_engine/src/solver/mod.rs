@@ -3,8 +3,10 @@ pub mod check;
 pub mod domain_guards;
 pub mod isolation;
 pub mod linear_collect;
+pub mod log_linear_narrator;
 pub mod reciprocal_solve;
 pub mod solution_set;
+pub mod step_cleanup;
 pub mod strategies;
 pub mod strategy;
 
