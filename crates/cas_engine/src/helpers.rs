@@ -537,15 +537,20 @@ pub fn prove_positive(
         }
 
         // Mul: a*b > 0 if (a>0 AND b>0) OR (a<0 AND b<0)
-        // For simplicity, we only prove the (a>0 AND b>0) case
+        // V2.3: Also detect if either factor is exactly 0 (then product is 0, Disproven for >0)
         Expr::Mul(a, b) => {
+            // Check if either factor is exactly 0
+            if is_zero(ctx, *a) || is_zero(ctx, *b) {
+                return Proof::Disproven; // 0 * anything = 0, which is not > 0
+            }
+
             let proof_a = prove_positive(ctx, *a, value_domain);
             let proof_b = prove_positive(ctx, *b, value_domain);
 
             match (proof_a, proof_b) {
                 (Proof::Proven, Proof::Proven) => Proof::Proven,
-                // If either is ≤ 0, we can't easily conclude
-                (Proof::Disproven, _) | (_, Proof::Disproven) => Proof::Unknown, // Could be positive if both negative
+                // If either is ≤ 0, we can't easily conclude (could be positive if both negative)
+                (Proof::Disproven, _) | (_, Proof::Disproven) => Proof::Unknown,
                 _ => Proof::Unknown,
             }
         }

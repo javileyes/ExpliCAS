@@ -605,7 +605,7 @@ pub fn derive_requires_from_equation(
         // ALSO: Skip if RHS is abs(...) - solutions automatically satisfy abs(A) > 0
         let rhs_check = crate::helpers::prove_positive(ctx, rhs, vd);
         if rhs_check != crate::domain::Proof::Disproven && !is_abs(ctx, rhs) {
-            add_positive_and_propagate(ctx, rhs, &mut derived);
+            add_positive_and_propagate(ctx, rhs, &mut derived, vd);
         }
     }
 
@@ -619,7 +619,7 @@ pub fn derive_requires_from_equation(
         // Skip if LHS is abs(...) - solutions automatically satisfy abs(A) > 0
         let lhs_check = crate::helpers::prove_positive(ctx, lhs, vd);
         if lhs_check != crate::domain::Proof::Disproven && !is_abs(ctx, lhs) {
-            add_positive_and_propagate(ctx, lhs, &mut derived);
+            add_positive_and_propagate(ctx, lhs, &mut derived, vd);
         }
     }
 
@@ -629,7 +629,22 @@ pub fn derive_requires_from_equation(
 /// Add Positive(expr) and propagate through sqrt/ln/abs structure.
 /// - Positive(sqrt(t)) → Positive(t)
 /// - Positive(abs(t)) → NonZero(t) (since |t| > 0 ⟺ t ≠ 0)
-fn add_positive_and_propagate(ctx: &Context, expr: ExprId, derived: &mut Vec<ImplicitCondition>) {
+///
+/// V2.3: Now takes ValueDomain to filter out conditions that are Disproven
+/// (e.g., 0*x > 0 is always false, should not become a "Requires")
+fn add_positive_and_propagate(
+    ctx: &Context,
+    expr: ExprId,
+    derived: &mut Vec<ImplicitCondition>,
+    vd: ValueDomain,
+) {
+    // V2.3: Skip adding conditions that are provably false (Disproven)
+    // Example: 0*x > 0 is Disproven, so don't add it as a "Requires"
+    let positive_check = crate::helpers::prove_positive(ctx, expr, vd);
+    if positive_check == crate::domain::Proof::Disproven {
+        return; // Don't add impossible conditions
+    }
+
     match ctx.get(expr) {
         // abs(t) > 0 ⟺ t ≠ 0 (since abs is always ≥ 0)
         // Don't add Positive(abs(t)) - it's redundant and confusing
