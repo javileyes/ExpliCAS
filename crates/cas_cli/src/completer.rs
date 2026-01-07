@@ -170,6 +170,7 @@ impl Completer for CasHelper {
                     "inv_trig",
                     "const_fold",
                     "assumptions",
+                    "requires",
                 ];
                 for sub in subcommands {
                     if sub.starts_with(word) {
@@ -193,6 +194,7 @@ impl Completer for CasHelper {
                     "const_fold" => vec!["off", "safe"],
                     "assumptions" => vec!["off", "summary", "trace"],
                     "hints" => vec!["on", "off"],
+                    "requires" => vec!["essential", "all"],
                     _ => vec![],
                 };
                 for v in values {
@@ -219,6 +221,7 @@ impl Completer for CasHelper {
                     "const_fold",
                     "assumptions",
                     "hints",
+                    "requires",
                 ];
                 for axis in axes {
                     if axis.starts_with(word) {
@@ -281,6 +284,7 @@ impl Completer for CasHelper {
                     "const_fold" => vec!["off", "safe"],
                     "assumptions" => vec!["off", "summary", "trace"],
                     "hints" => vec!["on", "off"],
+                    "requires" => vec!["essential", "all"],
                     _ => vec![],
                 };
                 for v in values {

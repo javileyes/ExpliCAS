@@ -2615,6 +2615,9 @@ impl Repl {
             Some(&"assume_scope") => {
                 self.print_axis_status("assume_scope");
             }
+            Some(&"requires") => {
+                self.print_axis_status("requires");
+            }
             Some(&"preset") => {
                 self.handle_preset(&args[2..]);
             }
@@ -2622,7 +2625,7 @@ impl Repl {
                 println!("Unknown semantics subcommand: '{}'", other);
                 println!("Usage: semantics [set|preset|help|<axis>]");
                 println!("  semantics            Show all settings");
-                println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold|assumptions|assume_scope)");
+                println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold|assumptions|assume_scope|requires)");
                 println!("  semantics help       Show help");
                 println!("  semantics set ...    Change settings");
                 println!("  semantics preset     List/apply presets");
@@ -2807,6 +2810,16 @@ impl Repl {
                     println!("  Note: Only active when domain_mode=assume");
                 }
             }
+            "requires" => {
+                let current = match self.state.options.requires_display {
+                    cas_engine::implicit_domain::RequiresDisplayLevel::Essential => "essential",
+                    cas_engine::implicit_domain::RequiresDisplayLevel::All => "all",
+                };
+                println!("requires: {}", current);
+                println!("  Values: essential | all");
+                println!("  essential: Only show requires whose witness was consumed");
+                println!("  all:       Show all requires including implicit ones");
+            }
             _ => {
                 println!("Unknown axis: {}", axis);
             }
@@ -2846,6 +2859,10 @@ impl Repl {
         println!("              real:     Assume for ℝ, error if ℂ needed");
         println!("              wildcard: Assume for ℝ, residual+warning if ℂ needed");
         println!("              (only active when domain_mode=assume)");
+        println!();
+        println!("  requires    essential | all");
+        println!("              essential: Show only requires whose witness was consumed");
+        println!("              all:       Show all requires including implicit ones");
         println!();
         println!("Examples:");
         println!("  semantics set domain strict");
