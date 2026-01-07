@@ -669,12 +669,35 @@ pub fn isolate(
                 }
 
                 if simplifier.collect_steps() {
+                    // PEDAGOGICAL: Decompose into 2 steps instead of 1
+                    // Step 1: Multiply both sides by denominator (r)
+                    // P*V/T = n*R → P*V = n*R * T
+                    let rhs_times_r = simplifier.context.add(Expr::Mul(rhs, r));
+                    let (rhs_times_r_simplified, _) = simplifier.simplify(rhs_times_r);
+
                     steps.push(SolveStep {
                         description: format!(
-                            "Isolate denominator {}",
+                            "Multiply both sides by {}",
                             cas_ast::DisplayExpr {
                                 context: &simplifier.context,
                                 id: r
+                            }
+                        ),
+                        equation_after: Equation {
+                            lhs: l,
+                            rhs: rhs_times_r_simplified,
+                            op: op.clone(),
+                        },
+                    });
+
+                    // Step 2: Divide both sides by rhs (the original RHS)
+                    // P*V = n*R * T → T = P*V / (n*R)
+                    steps.push(SolveStep {
+                        description: format!(
+                            "Divide both sides by {}",
+                            cas_ast::DisplayExpr {
+                                context: &simplifier.context,
+                                id: rhs
                             }
                         ),
                         equation_after: new_eq,
