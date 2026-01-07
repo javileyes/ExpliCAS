@@ -299,6 +299,11 @@ Cuando combinas sub-expresiones con diferentes restricciones, **todas se acumula
 * Resumen de suposiciones:
 
   * `semantics set assumptions off|summary`
+* **Nivel de Requires** (nuevo en V1.3.8):
+
+  * `semantics set requires essential|all`
+  * `essential`: solo muestra Requires cuyo testigo fue consumido (ej: `sqrt(x)² → x`)
+  * `all`: muestra todos los Requires, incluso si el testigo sobrevive
 * Modo explicación:
 
   * `explain on|off`

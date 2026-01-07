@@ -1,12 +1,12 @@
 # SEMANTICS POLICY
 
-> **Version 1.3.7** | Last updated: 2026-01-05
+> **Version 1.3.8** | Last updated: 2026-01-07
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
 
 ## Overview
 
-ExpliCAS uses **5 orthogonal semantic axes**:
+ExpliCAS uses **6 orthogonal semantic axes**:
 
 | Axis | Controls | Values |
 |------|----------|--------|
@@ -15,6 +15,7 @@ ExpliCAS uses **5 orthogonal semantic axes**:
 | **ValueDomain** | Universe of constants | `RealOnly`, `ComplexEnabled` |
 | **BranchPolicy** | Multi-valued function branches (ℂ only) | `Principal` |
 | **InverseTrigPolicy** | Inverse∘function compositions | `Strict`, `PrincipalValue` |
+| **RequiresDisplay** | How many Requires to show | `Essential`, `All` |
 
 
 ---
@@ -258,6 +259,59 @@ The existing REPL `mode principal/strict` command currently controls this behavi
 
 ---
 
+## Axis E: RequiresDisplay ✅ (V1.3.8)
+
+Controls how many **Requires** (domain constraints) are shown to the user.
+
+> **Context**: The engine infers domain conditions like `x ≥ 0` from `sqrt(x)`. When a transformation "consumes" the witness (e.g., `sqrt(x)² → x`), the Requires must be surfaced. However, if the witness **survives** in the output (e.g., `sqrt(x) + 1`), showing the Requires is redundant since the user can see the `sqrt`.
+
+### Values
+
+| Value | Behavior | Use Case |
+|-------|----------|----------|
+| `Essential` | Only show if witness was consumed | Default, cleaner output |
+| `All` | Show all inferred Requires | Debugging, learning, strict tracing |
+
+### Example
+
+```
+> semantics set requires essential
+> sqrt(x) + 1
+Result: 1 + √(x)
+# (no Requires shown - √ is visible)
+
+> sqrt(x)^2
+Result: x
+ℹ️ Requires: x ≥ 0
+# (Requires shown - √ was consumed)
+
+> semantics set requires all
+> sqrt(x) + 1
+Result: 1 + √(x)
+ℹ️ Requires: x ≥ 0
+# (Requires shown even though √ survives)
+```
+
+### REPL Commands
+
+```
+semantics requires              # Show current value + options
+semantics set requires all      # Show ALL inferred requires  
+semantics set requires essential # Hide redundant (witness survives)
+```
+
+### Implementation
+
+- **Enum**: `RequiresDisplayLevel::Essential | All` in `implicit_domain.rs`
+- **Filter**: `retain_essential_requires()` checks if witness survives
+- **WitnessKind**: `Sqrt`, `Log`, `Pow`, `Div`, `Abs` (extensible)
+
+### Default
+
+`Essential` — cleaner output, only surfaces Requires when mathematically necessary.
+
+---
+
 ## Rule Dependency Table
 
 | Rule | DomainMode | ValueDomain | BranchPolicy | InverseTrigPolicy |
@@ -430,6 +484,7 @@ New fields are **optional** and do not break existing consumers:
 | `branch` | `Principal` | Standard convention |
 | `inv_trig` | `Strict` | Safe, no domain assumptions |
 | `const_fold` | `Off` | Defer semantic decisions |
+| `requires` | `Essential` | Cleaner output, hide redundant |
 
 ---
 
@@ -441,7 +496,7 @@ Presets provide **explicit, auditable shortcuts** to configure multiple axes at 
 
 1. **Explicit, not magic** — User must invoke `semantics preset <name>`
 2. **Traceable** — Apply prints diff of changes
-3. **Complete** — Each preset defines all 5 axes
+3. **Complete** — Each preset defines all 6 axes
 4. **Few and clear** — Only 4 presets, each with distinct purpose
 
 ### Available Presets
