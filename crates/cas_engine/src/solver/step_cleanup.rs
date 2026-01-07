@@ -18,7 +18,16 @@ use cas_ast::{Context, Expr, ExprId};
 /// 2. Rewrites log-linear steps for better didactic flow (Phase 2)
 /// 3. Normalizes signs in each equation (display only)
 /// 4. Removes consecutive steps with identical equations
-pub fn cleanup_solve_steps(ctx: &mut Context, steps: Vec<SolveStep>) -> Vec<SolveStep> {
+///
+/// # Arguments
+/// * `ctx` - Expression context
+/// * `steps` - Original solve steps
+/// * `detailed` - If true, decompose complex steps into atomic sub-steps (Phase 2.5)
+pub fn cleanup_solve_steps(
+    ctx: &mut Context,
+    steps: Vec<SolveStep>,
+    detailed: bool,
+) -> Vec<SolveStep> {
     if steps.is_empty() {
         return steps;
     }
@@ -27,8 +36,9 @@ pub fn cleanup_solve_steps(ctx: &mut Context, steps: Vec<SolveStep>) -> Vec<Solv
     let filtered = remove_redundant_steps(ctx, steps);
 
     // Phase 2: Rewrite log-linear steps for didactic clarity
+    // In detailed mode, decompose "Collect and factor" into atomic sub-steps
     use crate::solver::log_linear_narrator;
-    let narrated = log_linear_narrator::rewrite_log_linear_steps(ctx, filtered);
+    let narrated = log_linear_narrator::rewrite_log_linear_steps(ctx, filtered, detailed);
 
     // Phase 3: Normalize signs in remaining steps
     let normalized: Vec<SolveStep> = narrated
@@ -37,6 +47,7 @@ pub fn cleanup_solve_steps(ctx: &mut Context, steps: Vec<SolveStep>) -> Vec<Solv
         .collect();
 
     // Phase 4: Remove consecutive steps with identical equations
+    // Now safe for both modes since detailed generates distinct equations
     remove_duplicate_equations(normalized)
 }
 

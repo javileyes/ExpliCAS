@@ -4467,10 +4467,12 @@ impl Repl {
                             // V2.3: Clean up steps for better didactic display
                             // - Normalize signs: `0 - (-(t))` → `t`
                             // - Remove redundant step pairs
+                            // V2.3.5: When explain_mode is on, use detailed trace
                             let cleaned_steps =
                                 cas_engine::solver::step_cleanup::cleanup_solve_steps(
                                     &mut self.engine.simplifier.context,
                                     output.solve_steps.clone(),
+                                    self.explain_mode, // detailed = explain on
                                 );
 
                             // Prepare scoped renderer if scopes are present
