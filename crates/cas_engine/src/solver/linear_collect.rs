@@ -53,7 +53,7 @@ pub fn try_linear_collect(
     let mut const_parts: Vec<ExprId> = Vec::new();
 
     for (term, sign) in terms {
-        match split_linear_term(&simplifier.context, term, var) {
+        match split_linear_term(&mut simplifier.context, term, var) {
             TermClass::Const(_) => {
                 // Apply sign to constant term
                 let signed_term = match sign {
@@ -165,13 +165,13 @@ pub fn try_linear_collect(
 }
 
 /// Classify a term as Const, Linear(coef), or NonLinear.
-fn split_linear_term(ctx: &Context, term: ExprId, var: &str) -> TermClass {
+fn split_linear_term(ctx: &mut Context, term: ExprId, var: &str) -> TermClass {
     // If term doesn't contain var, it's a constant
     if !contains_var(ctx, term, var) {
         return TermClass::Const(term);
     }
 
-    match ctx.get(term) {
+    match ctx.get(term).clone() {
         // term == var → Linear(1)
         Expr::Variable(v) if v == var => {
             // Coefficient is 1 (implicit)
@@ -179,24 +179,31 @@ fn split_linear_term(ctx: &Context, term: ExprId, var: &str) -> TermClass {
         }
         // term == coef * var or var * coef → Linear(coef)
         Expr::Mul(l, r) => {
-            let l_has = contains_var(ctx, *l, var);
-            let r_has = contains_var(ctx, *r, var);
+            let l_has = contains_var(ctx, l, var);
+            let r_has = contains_var(ctx, r, var);
 
             match (l_has, r_has) {
                 (true, false) => {
                     // l contains var, r is coefficient
                     // Check if l is just the variable
-                    if matches!(ctx.get(*l), Expr::Variable(v) if v == var) {
-                        TermClass::Linear(Some(*r))
+                    if matches!(ctx.get(l), Expr::Variable(v) if v == var) {
+                        TermClass::Linear(Some(r))
                     } else {
-                        // l is more complex (var^2, var*var, etc.)
+                        // l is more complex (Mul(P, k), etc.)
                         // Recursively check l
-                        match split_linear_term(ctx, *l, var) {
-                            TermClass::Linear(_inner_coef) => {
+                        match split_linear_term(ctx, l, var) {
+                            TermClass::Linear(inner_coef) => {
                                 // Combine: r * inner_coef
-                                // For now, mark as NonLinear to be safe
-                                // TODO: properly combine coefficients
-                                TermClass::NonLinear
+                                match inner_coef {
+                                    Some(k) => {
+                                        let combined = ctx.add(Expr::Mul(r, k));
+                                        TermClass::Linear(Some(combined))
+                                    }
+                                    None => {
+                                        // inner was just var, so coef = r
+                                        TermClass::Linear(Some(r))
+                                    }
+                                }
                             }
                             _ => TermClass::NonLinear,
                         }
@@ -204,11 +211,20 @@ fn split_linear_term(ctx: &Context, term: ExprId, var: &str) -> TermClass {
                 }
                 (false, true) => {
                     // r contains var, l is coefficient
-                    if matches!(ctx.get(*r), Expr::Variable(v) if v == var) {
-                        TermClass::Linear(Some(*l))
+                    if matches!(ctx.get(r), Expr::Variable(v) if v == var) {
+                        TermClass::Linear(Some(l))
                     } else {
-                        match split_linear_term(ctx, *r, var) {
-                            TermClass::Linear(_) => TermClass::NonLinear, // Nested, too complex
+                        match split_linear_term(ctx, r, var) {
+                            TermClass::Linear(inner_coef) => {
+                                // Combine: l * inner_coef
+                                match inner_coef {
+                                    Some(k) => {
+                                        let combined = ctx.add(Expr::Mul(l, k));
+                                        TermClass::Linear(Some(combined))
+                                    }
+                                    None => TermClass::Linear(Some(l)),
+                                }
+                            }
                             _ => TermClass::NonLinear,
                         }
                     }
@@ -224,22 +240,22 @@ fn split_linear_term(ctx: &Context, term: ExprId, var: &str) -> TermClass {
             }
         }
         // term == -expr → check inner
-        Expr::Neg(inner) => match split_linear_term(ctx, *inner, var) {
+        Expr::Neg(inner) => match split_linear_term(ctx, inner, var) {
             TermClass::Const(_) => TermClass::Const(term), // Keep negated form
             TermClass::Linear(_) => TermClass::Linear(Some(term)), // Negate term = negate coef
             TermClass::NonLinear => TermClass::NonLinear,
         },
         // var in power position → NonLinear (unless power is 1)
         Expr::Pow(base, exp) => {
-            if contains_var(ctx, *exp, var) {
+            if contains_var(ctx, exp, var) {
                 // Variable in exponent → NonLinear
                 TermClass::NonLinear
-            } else if contains_var(ctx, *base, var) {
+            } else if contains_var(ctx, base, var) {
                 // Check if exponent is 1
-                if let Expr::Number(n) = ctx.get(*exp) {
+                if let Expr::Number(n) = ctx.get(exp) {
                     if *n == num_rational::BigRational::from_integer(1.into()) {
                         // base^1 = base
-                        return split_linear_term(ctx, *base, var);
+                        return split_linear_term(ctx, base, var);
                     }
                 }
                 // base^n with n ≠ 1 → NonLinear
@@ -250,11 +266,11 @@ fn split_linear_term(ctx: &Context, term: ExprId, var: &str) -> TermClass {
         }
         // Division: if var in denominator → NonLinear
         Expr::Div(num, denom) => {
-            if contains_var(ctx, *denom, var) {
+            if contains_var(ctx, denom, var) {
                 TermClass::NonLinear
             } else {
                 // var only in numerator: num = coef * var, result = (coef/denom) * var
-                match split_linear_term(ctx, *num, var) {
+                match split_linear_term(ctx, num, var) {
                     TermClass::Linear(_) => TermClass::NonLinear, // Too complex for now
                     TermClass::Const(_) => TermClass::Const(term),
                     TermClass::NonLinear => TermClass::NonLinear,
@@ -310,7 +326,7 @@ mod tests {
         let mut ctx = Context::new();
         let a = ctx.var("A");
 
-        match split_linear_term(&ctx, a, "P") {
+        match split_linear_term(&mut ctx, a, "P") {
             TermClass::Const(_) => {}
             _ => panic!("A should be Const with respect to P"),
         }
@@ -321,7 +337,7 @@ mod tests {
         let mut ctx = Context::new();
         let p = ctx.var("P");
 
-        match split_linear_term(&ctx, p, "P") {
+        match split_linear_term(&mut ctx, p, "P") {
             TermClass::Linear(_) => {}
             _ => panic!("P should be Linear(1) with respect to P"),
         }
