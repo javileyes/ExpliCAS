@@ -190,6 +190,7 @@ where
             after_local: Some(result),
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         });
     }
 
@@ -214,6 +215,7 @@ where
                 after_local: Some(neg_result),
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
     }
@@ -241,6 +243,7 @@ where
                     after_local: Some(scaled_result),
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -269,6 +272,7 @@ where
                         after_local: Some(neg_scaled),
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -323,6 +327,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                                 after_local: None,
                                                 assumption_events: Default::default(),
                                                 required_conditions: vec![],
+                                                poly_proof: None,
                                             });
                                         }
                                     }
@@ -337,6 +342,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         after_local: None,
                                         assumption_events: Default::default(),
                                         required_conditions: vec![],
+                                        poly_proof: None,
                                     });
                                 }
                                 crate::domain::DomainMode::Assume => {
@@ -350,6 +356,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                             crate::assumptions::AssumptionEvent::defined(ctx, x)
                                         ],
                                         required_conditions: vec![],
+                                        poly_proof: None,
                                     });
                                 }
                             }
@@ -371,6 +378,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                                 after_local: None,
                                                 assumption_events: Default::default(),
                                                 required_conditions: vec![],
+                                                poly_proof: None,
                                             });
                                         }
                                     }
@@ -384,6 +392,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         after_local: None,
                                         assumption_events: Default::default(),
                                         required_conditions: vec![],
+                                        poly_proof: None,
                                     });
                                 }
                                 crate::domain::DomainMode::Assume => {
@@ -397,6 +406,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                             crate::assumptions::AssumptionEvent::defined(ctx, x)
                                         ],
                                         required_conditions: vec![],
+                                        poly_proof: None,
                                     });
                                 }
                             }
@@ -411,6 +421,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
 
@@ -433,6 +444,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         after_local: None,
                                         assumption_events: Default::default(),
                                         required_conditions: vec![],
+                                        poly_proof: None,
                                     });
                                 }
                             }
@@ -726,6 +738,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
                                 after_local: Some(result_atan),
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -792,6 +805,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "arctan" => {
@@ -806,6 +820,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "arccos" => {
@@ -821,6 +836,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         _ => {}
@@ -859,6 +875,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -890,6 +907,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -922,6 +940,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -1003,6 +1022,7 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                                 )
                             ],
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }
@@ -1024,6 +1044,7 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                                 )
                             ],
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }
@@ -1045,6 +1066,7 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                                 )
                             ],
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }
@@ -1079,6 +1101,7 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                                     )
                                 ],
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }

@@ -42,6 +42,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
             if n.is_zero() {
@@ -54,6 +55,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
             if *n < num_rational::BigRational::zero() {
@@ -65,6 +67,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
 
@@ -91,6 +94,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -108,6 +112,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
 
@@ -134,6 +139,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
                 // For variable exponents like log(e, e^x), skip and let LogExpInverseRule handle
@@ -168,6 +174,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(), // No assumption needed!
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 } else {
                     // Odd or non-integer exponent: requires x > 0
@@ -183,6 +190,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                             crate::assumptions::AssumptionEvent::positive(ctx, p_base)
                         ],
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -276,6 +284,7 @@ impl crate::rule::Rule for LogExpansionRule {
                     after_local: None,
                     assumption_events: events,
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
 
@@ -315,6 +324,7 @@ impl crate::rule::Rule for LogExpansionRule {
                     after_local: None,
                     assumption_events: events,
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -401,6 +411,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
 
@@ -421,6 +432,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 })
             }
             DomainMode::Assume => {
@@ -434,6 +446,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
                     after_local: None,
                     assumption_events: events,
                     required_conditions: vec![],
+                    poly_proof: None,
                 })
             }
         }
@@ -497,6 +510,7 @@ impl crate::rule::Rule for LogContractionRule {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -524,6 +538,7 @@ impl crate::rule::Rule for LogContractionRule {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -671,6 +686,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                         after_local: None,
                         assumption_events,
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -714,6 +730,7 @@ impl crate::rule::Rule for ExponentialLogRule {
                                 after_local: None,
                                 assumption_events,
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -770,6 +787,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                     });
                 }
             }
@@ -1089,6 +1107,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
             });
         }
     }
@@ -1142,6 +1161,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     } else {
                         // For variable exponents like log(e, e^x) → x
@@ -1195,6 +1215,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                                                 )
                                             ],
                                             required_conditions: vec![],
+                                            poly_proof: None,
                                         });
                                     }
                                 }
@@ -1215,6 +1236,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                             after_local: None,
                             assumption_events: Default::default(), // No assumption needed
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }

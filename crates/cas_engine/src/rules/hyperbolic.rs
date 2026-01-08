@@ -41,6 +41,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -54,6 +55,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -67,6 +69,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -80,6 +83,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -116,6 +120,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
 
@@ -128,6 +133,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
 
@@ -140,6 +146,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
 
@@ -152,6 +159,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
 
@@ -164,6 +172,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
 
@@ -176,6 +185,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
                     }
@@ -209,6 +219,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         // cosh(-x) = cosh(x) (even function)
@@ -222,6 +233,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         // tanh(-x) = -tanh(x) (odd function)
@@ -236,6 +248,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         // asinh(-x) = -asinh(x) (odd function)
@@ -250,6 +263,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         // atanh(-x) = -atanh(x) (odd function)
@@ -264,6 +278,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         _ => {}
@@ -309,6 +324,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                         }
@@ -330,6 +346,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                         }

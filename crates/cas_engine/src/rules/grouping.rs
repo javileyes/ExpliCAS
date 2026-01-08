@@ -96,6 +96,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
 
@@ -111,6 +112,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
     }
@@ -290,6 +292,7 @@ define_rule!(CollectLikeTermsRule, "Collect Like Terms", |ctx, expr| {
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     } else {
         None

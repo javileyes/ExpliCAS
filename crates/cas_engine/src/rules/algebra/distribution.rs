@@ -27,6 +27,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 } else {
                     return Some(Rewrite {
@@ -36,6 +37,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -65,6 +67,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 } else {
                     return Some(Rewrite {
@@ -74,6 +77,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -99,6 +103,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -130,6 +135,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -143,6 +149,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }

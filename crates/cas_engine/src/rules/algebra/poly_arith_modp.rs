@@ -72,6 +72,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
 

@@ -1580,6 +1580,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             step.after_local = rewrite.after_local;
                             step.assumption_events = rewrite.assumption_events.clone();
                             step.required_conditions = rewrite.required_conditions.clone();
+                            // Propagate polynomial proof data for didactic display
+                            step.poly_proof = rewrite.poly_proof.clone();
                             // Use declarative importance from the Rule
                             step.importance = rule.importance();
                             self.steps.push(step);
@@ -1770,6 +1772,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         step.after_local = rewrite.after_local;
                         step.assumption_events = rewrite.assumption_events.clone();
                         step.required_conditions = rewrite.required_conditions.clone();
+                        // Propagate polynomial proof data for didactic display
+                        step.poly_proof = rewrite.poly_proof.clone();
                         // Use declarative importance from the Rule
                         step.importance = rule.importance();
                         self.steps.push(step);

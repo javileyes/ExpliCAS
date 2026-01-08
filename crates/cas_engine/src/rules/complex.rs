@@ -240,6 +240,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -274,6 +275,7 @@ define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr, parent_ctx| {
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
     }
@@ -327,6 +329,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
         None
@@ -390,6 +393,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
         None
@@ -461,6 +465,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
         None
@@ -556,6 +561,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
 

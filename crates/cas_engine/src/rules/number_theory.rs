@@ -41,6 +41,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -65,6 +66,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -89,6 +91,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -109,6 +112,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -129,6 +133,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -153,6 +158,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -177,6 +183,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }

@@ -27,6 +27,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
             });
         }
 
@@ -55,6 +56,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
 
@@ -67,6 +69,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
 
@@ -92,6 +95,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
 
@@ -114,6 +118,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                     });
                 }
             }
@@ -163,6 +168,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
 
@@ -192,6 +198,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                     });
                 }
 
@@ -204,6 +211,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
         }
@@ -224,6 +232,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
         }
@@ -281,6 +290,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
                 after_local: None,
                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
             });
         }
 
@@ -305,6 +315,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
         }
@@ -397,6 +408,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
 
@@ -414,6 +426,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                     });
                 }
             }
@@ -447,6 +460,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
         }
@@ -480,6 +494,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
                     }
@@ -495,6 +510,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             } else if args.len() == 2 {
                 // sqrt(x, n) -> x^(1/n)
@@ -508,6 +524,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                     after_local: None,
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
         } else if name == "root" && args.len() == 2 {
@@ -522,6 +539,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                 after_local: None,
                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
             });
         }
     }
@@ -543,6 +561,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -560,6 +579,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -601,6 +621,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                     });
                 }
             }
@@ -649,6 +670,7 @@ define_rule!(
             before_local: Some(inner_id),
             after_local: Some(new_expr),assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -717,6 +739,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                         });
                     }
                 }
@@ -743,6 +766,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
                         if let Some((a, b)) = as_sub_like(ctx, ml_id) {
@@ -758,6 +782,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
                     }
@@ -807,6 +832,7 @@ impl crate::rule::Rule for ExpToEPowRule {
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }

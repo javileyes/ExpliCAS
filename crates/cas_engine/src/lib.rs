@@ -28,6 +28,7 @@ pub mod modp;
 pub mod mono;
 pub mod multinomial_expand;
 pub mod multipoly;
+pub mod multipoly_display;
 pub mod multipoly_modp;
 pub mod options;
 pub mod orchestrator;

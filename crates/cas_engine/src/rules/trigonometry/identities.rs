@@ -31,6 +31,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                             "cos" => {
@@ -42,6 +43,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                             "arccos" => {
@@ -55,6 +57,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                             _ => {}
@@ -72,6 +75,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                             "arccos" => {
@@ -83,6 +87,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                             "arctan" => {
@@ -96,6 +101,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                             _ => {}
@@ -114,6 +120,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                             "arccos" => {
@@ -127,6 +134,7 @@ define_rule!(
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                             _ => {}
@@ -146,6 +154,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "cos" => {
@@ -157,6 +166,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         _ => {}
@@ -175,6 +185,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "cos" => {
@@ -186,6 +197,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "tan" => {
@@ -197,6 +209,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         _ => {}
@@ -222,6 +235,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "cos" => {
@@ -236,6 +250,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "tan" => {
@@ -252,6 +267,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         _ => {}
@@ -277,6 +293,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "tan" => {
@@ -289,6 +306,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         _ => {}
@@ -310,6 +328,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "cos" => {
@@ -328,6 +347,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "tan" => {
@@ -346,6 +366,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         _ => {}
@@ -388,6 +409,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "cos" => {
@@ -399,6 +421,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         "tan" => {
@@ -411,6 +434,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                         _ => {}
@@ -629,6 +653,7 @@ define_rule!(
                                             after_local: None,
                                             assumption_events: Default::default(),
                                             required_conditions: vec![],
+                                            poly_proof: None,
                                         });
                                     }
 
@@ -650,6 +675,7 @@ define_rule!(
                                         after_local: None,
                                         assumption_events: Default::default(),
                                         required_conditions: vec![],
+                                        poly_proof: None,
                                     });
                                 }
                             }
@@ -717,6 +743,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         } else if let Expr::Sub(lhs, rhs) = inner_data {
                             // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
@@ -737,6 +764,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         } else if let Expr::Div(num, den) = inner_data {
                             // sin((a + b) / c) -> sin(a/c + b/c) -> ...
@@ -763,6 +791,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                         }
@@ -788,6 +817,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         } else if let Expr::Sub(lhs, rhs) = inner_data {
                             // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
@@ -808,6 +838,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         } else if let Expr::Div(num, den) = inner_data {
                             // cos((a + b) / c) -> cos(a/c + b/c) -> ...
@@ -834,6 +865,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                                     after_local: None,
                                     assumption_events: Default::default(),
                                     required_conditions: vec![],
+                                    poly_proof: None,
                                 });
                             }
                         }
@@ -903,6 +935,7 @@ impl crate::rule::Rule for TanToSinCosRule {
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -944,6 +977,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -983,6 +1017,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -1215,6 +1250,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -1240,6 +1276,7 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                     "cos" => {
@@ -1259,6 +1296,7 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                     _ => {}
@@ -1302,6 +1340,7 @@ define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                     "cos" => {
@@ -1328,6 +1367,7 @@ define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                     _ => {}
@@ -1778,6 +1818,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     } else {
                         // cos
@@ -1791,6 +1832,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }
@@ -1841,6 +1883,7 @@ define_rule!(
                                         after_local: None,
                                         assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                                     });
                                 } else {
                                     let half_n_expr = ctx.add(Expr::Number(half_n));
@@ -1852,6 +1895,7 @@ define_rule!(
                                         after_local: None,
                                         assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                                     });
                                 }
                             }
@@ -1965,6 +2009,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -2279,6 +2324,7 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
     }
@@ -2367,6 +2413,7 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         });
     }
 
@@ -2832,6 +2879,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
 
@@ -2856,6 +2904,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     } else if !t_half.is_positive && t_full.is_positive {
                         // -cot(u/2) + cot(u) → -1/sin(u)
@@ -2879,6 +2928,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
 
@@ -2903,6 +2953,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }

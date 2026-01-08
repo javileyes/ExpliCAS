@@ -23,6 +23,9 @@ pub struct Rewrite {
     /// These are conditions that were already implicitly required by the input expression.
     /// Used when a rewrite makes implicit domain constraints explicit (e.g., sqrt(x)^2 → x requires x ≥ 0).
     pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
+    /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
+    /// Used for didactic display of the normalization process
+    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
 }
 
 impl Rewrite {
@@ -35,6 +38,7 @@ impl Rewrite {
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         }
     }
 
@@ -53,6 +57,7 @@ impl Rewrite {
             after_local: Some(after_local),
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         }
     }
 
@@ -70,6 +75,25 @@ impl Rewrite {
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
+        }
+    }
+
+    /// Create a rewrite with polynomial proof data (for PolyZero airbag)
+    /// Used by PolynomialIdentityZeroRule to attach normalization info for didactic display
+    pub fn with_poly_proof(
+        new_expr: ExprId,
+        description: impl Into<String>,
+        poly_proof: crate::multipoly_display::PolynomialProofData,
+    ) -> Self {
+        Rewrite {
+            new_expr,
+            description: description.into(),
+            before_local: None,
+            after_local: None,
+            assumption_events: Default::default(),
+            required_conditions: vec![],
+            poly_proof: Some(poly_proof),
         }
     }
 }

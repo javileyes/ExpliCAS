@@ -553,6 +553,7 @@ define_rule!(
                             after_local: Some(new_num),
                             assumption_events: decision.assumption_events(ctx, gcd_expr),
                         required_conditions: vec![],
+            poly_proof: None,
                         });
                     }
                 }
@@ -572,6 +573,7 @@ define_rule!(
                     after_local: Some(result),
                     assumption_events: decision.assumption_events(ctx, gcd_expr),
                 required_conditions: vec![],
+            poly_proof: None,
                 });
             }
         }
@@ -661,6 +663,7 @@ define_rule!(
                     after_local: Some(result),
                     assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                 });
             }
             // No numeric content to cancel, don't simplify
@@ -697,6 +700,7 @@ define_rule!(
                     after_local: Some(new_num),
                     assumption_events: decision.assumption_events(ctx, gcd_expr),
                 required_conditions: vec![],
+            poly_proof: None,
                 });
             }
         }
@@ -715,6 +719,7 @@ define_rule!(
             after_local: Some(result),
             assumption_events: decision.assumption_events(ctx, gcd_expr),
         required_conditions: vec![],
+            poly_proof: None,
         });
     }
 );
@@ -792,6 +797,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         });
     }
 );
@@ -837,6 +843,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -862,6 +869,7 @@ define_rule!(
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -909,6 +917,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -1092,6 +1101,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
 
@@ -1182,6 +1192,7 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
     }
@@ -1262,6 +1273,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         });
     }
 );
@@ -1405,6 +1417,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -1600,6 +1613,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -1759,6 +1773,7 @@ define_rule!(
             after_local: None,
             assumption_events,
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -1876,6 +1891,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -1992,6 +2008,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
             return None;
@@ -2060,6 +2077,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
 
@@ -2389,6 +2407,7 @@ define_rule!(
                 after_local: None,
                 assumption_events,
             required_conditions: vec![],
+            poly_proof: None,
             });
         }
 
@@ -2454,6 +2473,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                         });
                     } else if diff.is_one() {
                         // Result is just the base
@@ -2464,6 +2484,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                         });
                     } else {
                         // Guard: Don't produce negative fractional exponents (anti-pattern for rationalization)
@@ -2480,6 +2501,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                         });
                     }
                 }
@@ -2504,6 +2526,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         } else {
                             let new_exp = ctx.add(Expr::Number(new_exp_val));
@@ -2515,6 +2538,7 @@ define_rule!(
                                 after_local: None,
                                 assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                             });
                         }
                     }
@@ -2542,6 +2566,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
                         });
                     }
                 }
@@ -2581,6 +2606,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             } else if r_is_const {
                 // (x * c) / y -> c * (x / y)
@@ -2593,6 +2619,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -2608,6 +2635,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
         None
@@ -2822,6 +2850,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -2969,6 +2998,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -3322,6 +3352,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -3452,6 +3483,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -3534,6 +3566,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );
@@ -3737,6 +3770,7 @@ define_rule!(
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
         })
     }
 );

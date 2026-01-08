@@ -71,6 +71,9 @@ pub struct Step {
     pub importance: ImportanceLevel,
     /// Category of step for grouping (from Rule::category() or pipeline origin)
     pub category: StepCategory,
+    /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
+    /// Propagated from Rewrite.poly_proof during step creation for didactic display
+    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
 }
 
 impl Step {
@@ -111,6 +114,7 @@ impl Step {
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
             category: StepCategory::General,  // Default, can be set by caller
         }
@@ -132,6 +136,7 @@ impl Step {
             after_local: None,
             assumption_events: Default::default(),
             required_conditions: vec![],
+            poly_proof: None,
             importance: ImportanceLevel::Low, // Default, will be overwritten by caller
             category: StepCategory::General,  // Default, can be set by caller
         }

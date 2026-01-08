@@ -95,6 +95,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
             // (b + c) * a -> b*a + c*a
@@ -145,6 +146,7 @@ define_rule!(
                     after_local: None,
                     assumption_events: Default::default(),
                     required_conditions: vec![],
+                    poly_proof: None,
                 });
             }
         }
@@ -294,6 +296,7 @@ define_rule!(
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }
@@ -681,6 +684,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                         after_local: None,
                         assumption_events: Default::default(),
                         required_conditions: vec![],
+                        poly_proof: None,
                     });
                 }
             }
@@ -767,6 +771,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }
@@ -813,6 +818,7 @@ define_rule!(
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
         None
@@ -942,6 +948,7 @@ impl crate::rule::Rule for BinomialExpansionRule {
                                 after_local: None,
                                 assumption_events: Default::default(),
                                 required_conditions: vec![],
+                                poly_proof: None,
                             });
                         }
                     }
@@ -1159,6 +1166,7 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
                             after_local: None,
                             assumption_events: Default::default(),
                             required_conditions: vec![],
+                            poly_proof: None,
                         });
                     }
                 }
@@ -1394,6 +1402,7 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
                 after_local: None,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
+                poly_proof: None,
             });
         }
 
@@ -1531,14 +1540,22 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
         // If the result is zero, we have a polynomial identity!
         if poly.is_zero() {
             let zero = ctx.num(0);
-            return Some(Rewrite {
-                new_expr: zero,
-                description: "Polynomial identity: normalize and cancel to 0".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-            });
+
+            // Generate proof data for didactic display
+            // We need to convert the *original* expression to get the expanded form
+            // Since poly is zero, we create proof data showing the input normalized to 0
+            let proof_data = crate::multipoly_display::PolynomialProofData {
+                monomials: 0, // Result is zero
+                degree: 0,
+                vars: vars.clone(),
+                normal_form_expr: None, // Zero poly has no normal form to show
+            };
+
+            return Some(Rewrite::with_poly_proof(
+                zero,
+                "Polynomial identity: normalize and cancel to 0",
+                proof_data,
+            ));
         }
 
         None
