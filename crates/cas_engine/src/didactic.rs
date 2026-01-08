@@ -106,6 +106,15 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
             sub_steps.extend(generate_gcd_factorization_substeps(ctx, step));
         }
 
+        // Add sub-steps for nested fraction simplification
+        // Match by rule_name pattern (more stable than description string)
+        let is_nested_fraction = step.rule_name.to_lowercase().contains("complex fraction")
+            || step.rule_name.to_lowercase().contains("nested fraction")
+            || step.description.to_lowercase().contains("nested fraction");
+        if is_nested_fraction {
+            sub_steps.extend(generate_nested_fraction_substeps(ctx, step));
+        }
+
         // Add sub-steps for rationalization (generalized and product)
         if step.description.contains("Rationalize") || step.rule_name.contains("Rationalize") {
             sub_steps.extend(generate_rationalization_substeps(ctx, step));
@@ -509,6 +518,321 @@ impl IsOne for BigInt {
     fn is_one(&self) -> bool {
         *self == BigInt::from(1)
     }
+}
+
+/// Pattern classification for nested fractions
+#[derive(Debug)]
+enum NestedFractionPattern {
+    /// P1: 1/(a + 1/b) → b/(a·b + 1)
+    OneOverSumWithUnitFraction,
+    /// P2: 1/(a + b/c) → c/(a·c + b)
+    OneOverSumWithFraction,
+    /// P3: A/(B + C/D) → A·D/(B·D + C)
+    FractionOverSumWithFraction,
+    /// P4: (A + 1/B)/C → (A·B + 1)/(B·C)
+    SumWithFractionOverScalar,
+    /// Fallback for complex patterns
+    General,
+}
+
+/// Check if expression contains a division (nested fraction)
+fn contains_div(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Div(_, _) => true,
+        Expr::Add(l, r) | Expr::Sub(l, r) => contains_div(ctx, *l) || contains_div(ctx, *r),
+        Expr::Mul(l, r) => contains_div(ctx, *l) || contains_div(ctx, *r),
+        Expr::Pow(b, e) => {
+            // Check for negative exponent (b^(-1) = 1/b)
+            if let Expr::Neg(_) = ctx.get(*e) {
+                return true;
+            }
+            if let Expr::Number(n) = ctx.get(*e) {
+                if n.is_negative() {
+                    return true;
+                }
+            }
+            contains_div(ctx, *b) || contains_div(ctx, *e)
+        }
+        Expr::Neg(inner) => contains_div(ctx, *inner),
+        _ => false,
+    }
+}
+
+/// Classify a nested fraction expression and return the pattern and extracted components
+fn classify_nested_fraction(ctx: &Context, expr: ExprId) -> Option<NestedFractionPattern> {
+    // Helper to check if expression is 1
+    let is_one = |id: ExprId| -> bool {
+        matches!(ctx.get(id), Expr::Number(n) if n.is_integer() && *n.numer() == BigInt::from(1))
+    };
+
+    // Helper to extract a fraction (1/x or a/b) from Add terms
+    let find_fraction_in_add = |id: ExprId| -> Option<ExprId> {
+        match ctx.get(id) {
+            Expr::Add(l, r) => {
+                if matches!(ctx.get(*l), Expr::Div(_, _)) {
+                    Some(*l)
+                } else if matches!(ctx.get(*r), Expr::Div(_, _)) {
+                    Some(*r)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        // P1/P2/P3: Something/(... + .../...)
+        if let Some(inner_frac) = find_fraction_in_add(*den) {
+            if is_one(*num) {
+                // P1 or P2: 1/(a + ?/?)
+                if let Expr::Div(n, _) = ctx.get(inner_frac) {
+                    if is_one(*n) {
+                        return Some(NestedFractionPattern::OneOverSumWithUnitFraction);
+                    }
+                }
+                return Some(NestedFractionPattern::OneOverSumWithFraction);
+            } else {
+                // P3: A/(B + C/D)
+                return Some(NestedFractionPattern::FractionOverSumWithFraction);
+            }
+        }
+
+        // P4: (A + 1/B)/C - numerator contains fraction
+        if contains_div(ctx, *num) && !contains_div(ctx, *den) {
+            return Some(NestedFractionPattern::SumWithFractionOverScalar);
+        }
+
+        // General nested: denominator has nested structure
+        if contains_div(ctx, *den) {
+            return Some(NestedFractionPattern::General);
+        }
+    }
+
+    None
+}
+
+/// Extract the combined fraction string from an Add expression containing a fraction.
+/// For example: 1 + 1/x → "(1·x + 1) / x" = "(x + 1) / x"
+fn extract_combined_fraction_str(ctx: &Context, add_expr: ExprId) -> String {
+    use cas_ast::DisplayExpr;
+
+    // Find the fraction term and non-fraction term
+    if let Expr::Add(l, r) = ctx.get(add_expr) {
+        let (frac_id, other_id) = if matches!(ctx.get(*l), Expr::Div(_, _)) {
+            (*l, *r)
+        } else if matches!(ctx.get(*r), Expr::Div(_, _)) {
+            (*r, *l)
+        } else {
+            // No fraction found, return generic
+            return "(combinado)".to_string();
+        };
+
+        // Extract numerator and denominator of the fraction
+        if let Expr::Div(frac_num, frac_den) = ctx.get(frac_id) {
+            let frac_num_str = format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: *frac_num
+                }
+            );
+            let frac_den_str = format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: *frac_den
+                }
+            );
+            let other_str = format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: other_id
+                }
+            );
+
+            // Build the combined expression: (other*den + num) / den
+            // or simplified for 1/x case: (other·x + 1) / x
+            // Add parentheses around denominator if it contains operators
+            let needs_parens = frac_den_str.contains('+')
+                || frac_den_str.contains('-')
+                || frac_den_str.contains(' ');
+            let den_display = if needs_parens {
+                format!("({})", frac_den_str)
+            } else {
+                frac_den_str.clone()
+            };
+            return format!(
+                "({} · {} + {}) / {}",
+                other_str, den_display, frac_num_str, den_display
+            );
+        }
+    }
+
+    "(combinado)".to_string()
+}
+
+/// Generate sub-steps explaining nested fraction simplification
+/// For example: 1/(1 + 1/x) shows:
+///   1. Combine terms in denominator: 1 + 1/x → (x+1)/x
+///   2. Invert the fraction: 1/((x+1)/x) → x/(x+1)
+fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    use cas_ast::DisplayExpr;
+
+    let mut sub_steps = Vec::new();
+
+    // Get the before expression (which should be a nested Div)
+    let before_expr = step.before;
+    let after_expr = step.after;
+
+    // Classify the pattern
+    let pattern = match classify_nested_fraction(ctx, before_expr) {
+        Some(p) => p,
+        None => return sub_steps, // Not a nested fraction pattern we handle
+    };
+
+    let before_str = format!(
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: before_expr
+        }
+    );
+    let after_str = format!(
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: after_expr
+        }
+    );
+
+    // Generate pattern-specific sub-steps
+    match pattern {
+        NestedFractionPattern::OneOverSumWithUnitFraction
+        | NestedFractionPattern::OneOverSumWithFraction => {
+            // P1/P2: 1/(a + b/c) → c/(a·c + b)
+            // Extract denominator for display
+            if let Expr::Div(_, den) = ctx.get(before_expr) {
+                let den_str = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *den
+                    }
+                );
+
+                // Try to extract inner fraction to show real intermediate
+                // For 1/(a + b/c), the inner fraction is b/c, and combined = (a*c + b)/c
+                let intermediate_str = extract_combined_fraction_str(ctx, *den);
+
+                // Sub-step 1: Common denominator in the denominator
+                sub_steps.push(SubStep {
+                    description: "Combinar términos del denominador (denominador común)"
+                        .to_string(),
+                    before_latex: den_str.clone(),
+                    after_latex: intermediate_str,
+                });
+
+                // Sub-step 2: Invert the fraction
+                sub_steps.push(SubStep {
+                    description: "Invertir la fracción: 1/(a/b) = b/a".to_string(),
+                    before_latex: format!("1 / ({})", den_str),
+                    after_latex: after_str,
+                });
+            }
+        }
+
+        NestedFractionPattern::FractionOverSumWithFraction => {
+            // P3: A/(B + C/D) → A·D/(B·D + C)
+            if let Expr::Div(num, den) = ctx.get(before_expr) {
+                let num_str = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *num
+                    }
+                );
+                let den_str = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *den
+                    }
+                );
+
+                // Try to extract inner fraction to show real intermediate
+                let intermediate_str = extract_combined_fraction_str(ctx, *den);
+
+                // Sub-step 1: Common denominator in the denominator
+                sub_steps.push(SubStep {
+                    description: "Combinar términos del denominador (denominador común)"
+                        .to_string(),
+                    before_latex: den_str,
+                    after_latex: intermediate_str,
+                });
+
+                // Sub-step 2: Multiply numerator by D and simplify
+                sub_steps.push(SubStep {
+                    description: format!("Multiplicar {} por el denominador interno", num_str),
+                    before_latex: before_str,
+                    after_latex: after_str,
+                });
+            }
+        }
+
+        NestedFractionPattern::SumWithFractionOverScalar => {
+            // P4: (A + 1/B)/C → (A·B + 1)/(B·C)
+            if let Expr::Div(num, den) = ctx.get(before_expr) {
+                let num_str = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *num
+                    }
+                );
+                let den_str = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *den
+                    }
+                );
+
+                // Sub-step 1: Combine the numerator
+                sub_steps.push(SubStep {
+                    description: "Combinar términos del numerador (denominador común)".to_string(),
+                    before_latex: num_str,
+                    after_latex: "(numerador combinado) / B".to_string(),
+                });
+
+                // Sub-step 2: Divide by C (multiply denominators)
+                sub_steps.push(SubStep {
+                    description: format!("Dividir por {}: multiplicar denominadores", den_str),
+                    before_latex: before_str,
+                    after_latex: after_str,
+                });
+            }
+        }
+
+        NestedFractionPattern::General => {
+            // Fallback: general algorithm explanation
+            sub_steps.push(SubStep {
+                description: "Multiplicar numerador y denominador por los denominadores internos"
+                    .to_string(),
+                before_latex: before_str.clone(),
+                after_latex: "(expresión expandida)".to_string(),
+            });
+
+            sub_steps.push(SubStep {
+                description: "Simplificar la fracción resultante".to_string(),
+                before_latex: "(expresión expandida)".to_string(),
+                after_latex: after_str,
+            });
+        }
+    }
+
+    sub_steps
 }
 
 /// Generate sub-steps explaining rationalization process

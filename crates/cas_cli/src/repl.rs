@@ -4935,64 +4935,84 @@ impl Repl {
                             }
 
                             // Didactic: Show sub-steps AFTER Before: line
-                            if !sub_steps_shown {
-                                if let Some(enriched_step) = enriched_steps.get(step_idx) {
-                                    if !enriched_step.sub_steps.is_empty() {
-                                        sub_steps_shown = true;
-                                        // Helper function for LaTeX to plain text
-                                        fn latex_to_text(s: &str) -> String {
-                                            let mut result = s.to_string();
-                                            while let Some(start) = result.find("\\frac{") {
-                                                let end_start = start + 6;
-                                                if let Some(first_close) =
-                                                    result[end_start..].find('}')
+                            // For fraction sums (global), show only once;
+                            // For per-step enrichment (nested fractions, factorization), show each time
+                            if let Some(enriched_step) = enriched_steps.get(step_idx) {
+                                if !enriched_step.sub_steps.is_empty() {
+                                    // Helper function for LaTeX to plain text
+                                    fn latex_to_text(s: &str) -> String {
+                                        let mut result = s.to_string();
+                                        while let Some(start) = result.find("\\frac{") {
+                                            let end_start = start + 6;
+                                            if let Some(first_close) = result[end_start..].find('}')
+                                            {
+                                                let numer_end = end_start + first_close;
+                                                let numer = &result[end_start..numer_end];
+                                                if result.len() > numer_end + 1
+                                                    && result.chars().nth(numer_end + 1)
+                                                        == Some('{')
                                                 {
-                                                    let numer_end = end_start + first_close;
-                                                    let numer = &result[end_start..numer_end];
-                                                    if result.len() > numer_end + 1
-                                                        && result.chars().nth(numer_end + 1)
-                                                            == Some('{')
+                                                    if let Some(second_close) =
+                                                        result[numer_end + 2..].find('}')
                                                     {
-                                                        if let Some(second_close) =
-                                                            result[numer_end + 2..].find('}')
-                                                        {
-                                                            let denom_end =
-                                                                numer_end + 2 + second_close;
-                                                            let denom =
-                                                                &result[numer_end + 2..denom_end];
-                                                            let replacement =
-                                                                format!("({}/{})", numer, denom);
-                                                            result = format!(
-                                                                "{}{}{}",
-                                                                &result[..start],
-                                                                replacement,
-                                                                &result[denom_end + 1..]
-                                                            );
-                                                            continue;
-                                                        }
+                                                        let denom_end =
+                                                            numer_end + 2 + second_close;
+                                                        let denom =
+                                                            &result[numer_end + 2..denom_end];
+                                                        let replacement =
+                                                            format!("({}/{})", numer, denom);
+                                                        result = format!(
+                                                            "{}{}{}",
+                                                            &result[..start],
+                                                            replacement,
+                                                            &result[denom_end + 1..]
+                                                        );
+                                                        continue;
                                                     }
                                                 }
-                                                break;
                                             }
-                                            result.replace("\\", "")
+                                            break;
                                         }
+                                        result.replace("\\", "")
+                                    }
 
-                                        // Show title for substeps section (detect type from description)
-                                        let has_fraction_sum =
-                                            enriched_step.sub_steps.iter().any(|s| {
-                                                s.description.contains("common denominator")
-                                                    || s.description.contains("Sum the fractions")
-                                            });
-                                        let has_factorization =
-                                            enriched_step.sub_steps.iter().any(|s| {
-                                                s.description.contains("Cancel common factor")
-                                                    || s.description.contains("Factor")
-                                            });
+                                    // Categorize sub-steps
+                                    let has_fraction_sum =
+                                        enriched_step.sub_steps.iter().any(|s| {
+                                            s.description.contains("common denominator")
+                                                || s.description.contains("Sum the fractions")
+                                        });
+                                    let has_factorization =
+                                        enriched_step.sub_steps.iter().any(|s| {
+                                            s.description.contains("Cancel common factor")
+                                                || s.description.contains("Factor")
+                                        });
+                                    let has_nested_fraction =
+                                        enriched_step.sub_steps.iter().any(|s| {
+                                            s.description.contains("Combinar términos")
+                                                || s.description.contains("Invertir la fracción")
+                                                || s.description.contains("denominadores internos")
+                                        });
 
-                                        if has_fraction_sum {
+                                    // For fraction sums (global), show only once
+                                    // For per-step enrichments, show each time
+                                    let should_show = if has_fraction_sum
+                                        && !has_nested_fraction
+                                        && !has_factorization
+                                    {
+                                        !sub_steps_shown
+                                    } else {
+                                        true // Always show per-step enrichments
+                                    };
+
+                                    if should_show {
+                                        if has_fraction_sum && !has_nested_fraction {
+                                            sub_steps_shown = true;
                                             println!("   [Suma de fracciones en exponentes]");
                                         } else if has_factorization {
                                             println!("   [Factorización de polinomios]");
+                                        } else if has_nested_fraction {
+                                            println!("   [Simplificación de fracción compleja]");
                                         }
 
                                         for sub in &enriched_step.sub_steps {
