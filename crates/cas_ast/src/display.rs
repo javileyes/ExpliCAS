@@ -293,26 +293,141 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(_, _) => {
                 // Flatten Add chain to handle mixed signs gracefully
-                let mut terms = collect_add_terms(self.context, self.id);
+                let terms = collect_add_terms(self.context, self.id);
 
-                // Reorder for display: put positive terms first, negative terms last
-                // This makes -x + √x² display as √x² - x which is cleaner
-                // Use stable_sort to preserve relative order within positive/negative groups
-                terms.sort_by(|a, b| {
+                // Separate into positive and negative terms
+                let mut pos_terms: Vec<ExprId> = Vec::new();
+                let mut neg_terms: Vec<ExprId> = Vec::new(); // Store the inner (positive) part
+
+                for term in &terms {
+                    let (is_neg, _, _) = check_negative(self.context, *term);
+                    if is_neg {
+                        // Extract the positive inner part
+                        match self.context.get(*term) {
+                            Expr::Neg(inner) => neg_terms.push(*inner),
+                            Expr::Number(_n) => {
+                                // For negative numbers, we'll handle specially
+                                neg_terms.push(*term); // Keep as-is, strip_neg will handle
+                            }
+                            Expr::Mul(a, _) => {
+                                if let Expr::Number(n) = self.context.get(*a) {
+                                    if n < &num_rational::BigRational::zero() {
+                                        neg_terms.push(*term);
+                                    }
+                                }
+                            }
+                            _ => neg_terms.push(*term),
+                        }
+                    } else {
+                        pos_terms.push(*term);
+                    }
+                }
+
+                // Human-friendly grouping: if ≥2 negatives, group as pos - (neg1 + neg2 + ...)
+                if !pos_terms.is_empty() && neg_terms.len() >= 2 {
+                    // Print positive sum
+                    for (i, term) in pos_terms.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, " + ")?;
+                        }
+                        write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *term
+                            }
+                        )?;
+                    }
+
+                    // Print grouped negatives: - (n1 + n2 + ...)
+                    write!(f, " - (")?;
+                    for (i, term) in neg_terms.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, " + ")?;
+                        }
+                        // Print the positive version of each negative term
+                        match self.context.get(*term) {
+                            Expr::Neg(inner) => {
+                                write!(
+                                    f,
+                                    "{}",
+                                    DisplayExpr {
+                                        context: self.context,
+                                        id: *inner
+                                    }
+                                )?;
+                            }
+                            Expr::Number(n) => {
+                                write!(f, "{}", -n)?;
+                            }
+                            Expr::Mul(a, b) => {
+                                if let Expr::Number(n) = self.context.get(*a) {
+                                    if n < &num_rational::BigRational::zero() {
+                                        let pos_n = -n;
+                                        write!(f, "{}{}", pos_n, mul_symbol())?;
+                                        write!(
+                                            f,
+                                            "{}",
+                                            DisplayExpr {
+                                                context: self.context,
+                                                id: *b
+                                            }
+                                        )?;
+                                    } else {
+                                        write!(
+                                            f,
+                                            "{}",
+                                            DisplayExpr {
+                                                context: self.context,
+                                                id: *term
+                                            }
+                                        )?;
+                                    }
+                                } else {
+                                    write!(
+                                        f,
+                                        "{}",
+                                        DisplayExpr {
+                                            context: self.context,
+                                            id: *term
+                                        }
+                                    )?;
+                                }
+                            }
+                            _ => {
+                                write!(
+                                    f,
+                                    "{}",
+                                    DisplayExpr {
+                                        context: self.context,
+                                        id: *term
+                                    }
+                                )?;
+                            }
+                        }
+                    }
+                    write!(f, ")")?;
+                    return Ok(());
+                }
+
+                // Fallback: original behavior for 0 or 1 negative
+                // Reorder: positive first, negative last
+                let mut sorted_terms = terms.clone();
+                sorted_terms.sort_by(|a, b| {
                     let a_neg = check_negative(self.context, *a).0;
                     let b_neg = check_negative(self.context, *b).0;
                     match (a_neg, b_neg) {
-                        (false, true) => std::cmp::Ordering::Less, // positive before negative
-                        (true, false) => std::cmp::Ordering::Greater, // negative after positive
-                        _ => std::cmp::Ordering::Equal,            // same sign: keep order
+                        (false, true) => std::cmp::Ordering::Less,
+                        (true, false) => std::cmp::Ordering::Greater,
+                        _ => std::cmp::Ordering::Equal,
                     }
                 });
 
-                for (i, term) in terms.iter().enumerate() {
+                for (i, term) in sorted_terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
 
                     if i == 0 {
-                        // First term: print as is
                         write!(
                             f,
                             "{}",
@@ -322,14 +437,9 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                             }
                         )?;
                     } else if is_neg {
-                        // Print " - " then absolute value
                         write!(f, " - ")?;
-
-                        // Re-check locally to extract positive part
                         match self.context.get(*term) {
                             Expr::Neg(inner) => {
-                                // If inner is Add/Sub, wrap in parentheses to preserve grouping
-                                // e.g., -(a - b) should display as "-(a - b)" not "-a - b"
                                 let inner_is_add_sub = matches!(
                                     self.context.get(*inner),
                                     Expr::Add(_, _) | Expr::Sub(_, _)
@@ -360,7 +470,6 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                             Expr::Mul(a, b) => {
                                 if let Expr::Number(n) = self.context.get(*a) {
                                     let pos_n = -n;
-                                    // Print pos_n * b
                                     let b_prec = precedence(self.context, *b);
                                     write!(f, "{} * ", pos_n)?;
                                     if b_prec < 2 {
@@ -383,7 +492,6 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                                         )?;
                                     }
                                 } else {
-                                    // Should not happen if check_negative is correct
                                     write!(
                                         f,
                                         "{}",
@@ -395,7 +503,6 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                                 }
                             }
                             _ => {
-                                // Should not happen
                                 write!(
                                     f,
                                     "{}",

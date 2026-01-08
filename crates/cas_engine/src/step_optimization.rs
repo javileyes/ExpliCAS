@@ -153,48 +153,51 @@ fn is_canonicalization_rule(name: &str) -> bool {
 /// Mechanical rules that can be absorbed when followed by Polynomial Identity
 /// These rules represent intermediate "grind" computation that PolyZero makes redundant
 fn is_mechanical_rule(name: &str) -> bool {
-    matches!(
+    // Explicit match for common mechanical rules
+    if matches!(
         name,
         "Distributive Property"
+            | "Distribute"
             | "Combine Like Terms"
             | "Expand"
             | "Binomial Expansion"
             | "Add Inverse"
             | "Identity Property of Addition"
-    )
+    ) {
+        return true;
+    }
+
+    // Also absorb all canonicalization rules (they're just reordering/cleanup)
+    if name.starts_with("Canonicalize") || name == "Collect" || name.starts_with("Sort") {
+        return true;
+    }
+
+    false
 }
 
 /// Absorb mechanical steps preceding a PolynomialIdentity step
-/// Returns indices of steps to absorb
+/// Uses window-based approach: absorb last K mechanical steps before PolyZero
+/// without requiring exact before/after chain matching (handles reorderings)
 pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
+    const ABSORPTION_WINDOW: usize = 8; // Max steps to look back
     let mut to_absorb = Vec::new();
 
     for (j, step) in steps.iter().enumerate() {
         // Detect PolynomialIdentity step by poly_proof data
         if step.poly_proof.is_some() {
-            // Walk backwards from j-1 and absorb mechanical steps that form a chain
-            let mut i = j as isize - 1;
-            while i >= 0 {
-                let idx = i as usize;
-                let s = &steps[idx];
-                let next = &steps[idx + 1];
+            // Walk backwards within window and absorb mechanical steps
+            let window_start = j.saturating_sub(ABSORPTION_WINDOW);
 
-                // Chain check: s.after should match next.before (using global snapshots if available)
-                let forms_chain = match (s.global_after, next.global_before) {
-                    (Some(s_after), Some(n_before)) => s_after == n_before,
-                    _ => s.after == next.before, // Fallback to local check
-                };
+            for i in (window_start..j).rev() {
+                let s = &steps[i];
 
-                if !forms_chain {
-                    break;
-                }
-
+                // Only absorb mechanical rules
                 if !is_mechanical_rule(&s.rule_name) {
+                    // Non-mechanical step breaks the absorption chain
                     break;
                 }
 
-                to_absorb.push(idx);
-                i -= 1;
+                to_absorb.push(i);
             }
         }
     }
