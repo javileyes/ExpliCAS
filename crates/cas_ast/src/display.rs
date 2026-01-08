@@ -1208,7 +1208,19 @@ impl<'a> DisplayExprWithHints<'a> {
                         // Extract positive part
                         match self.context.get(*term) {
                             Expr::Neg(inner) => {
-                                self.fmt_internal(f, *inner)?;
+                                // Add parentheses when inner is Add/Sub to preserve grouping
+                                // The "-" has already been printed above, so just print abs value
+                                let inner_is_add_sub = matches!(
+                                    self.context.get(*inner),
+                                    Expr::Add(_, _) | Expr::Sub(_, _)
+                                );
+                                if inner_is_add_sub {
+                                    write!(f, "(")?;
+                                    self.fmt_internal(f, *inner)?;
+                                    write!(f, ")")?;
+                                } else {
+                                    self.fmt_internal(f, *inner)?;
+                                }
                             }
                             Expr::Number(n) => {
                                 write!(f, "{}", -n)?;
@@ -1390,7 +1402,17 @@ impl<'a> DisplayExprWithHints<'a> {
             }
             Expr::Neg(e) => {
                 write!(f, "-")?;
-                self.fmt_internal(f, *e)
+                // Add parentheses when inner is Add/Sub to preserve grouping
+                // e.g., -(a + b) should display as "-(a + b)" not "-a + b"
+                let inner_is_add_sub =
+                    matches!(self.context.get(*e), Expr::Add(_, _) | Expr::Sub(_, _));
+                if inner_is_add_sub {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *e)?;
+                    write!(f, ")")
+                } else {
+                    self.fmt_internal(f, *e)
+                }
             }
             Expr::Function(name, args) => {
                 // Special handling for sqrt/root functions - always render as √
@@ -1874,7 +1896,19 @@ impl<'a> DisplayExprStyled<'a> {
 
     fn fmt_term_abs(&self, f: &mut fmt::Formatter<'_>, id: ExprId) -> fmt::Result {
         match self.context.get(id) {
-            Expr::Neg(inner) => self.fmt_internal(f, *inner),
+            Expr::Neg(inner) => {
+                // Add parentheses when inner is Add/Sub to preserve grouping
+                // The "-" has already been printed by the caller
+                let inner_is_add_sub =
+                    matches!(self.context.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
+                if inner_is_add_sub {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *inner)?;
+                    write!(f, ")")
+                } else {
+                    self.fmt_internal(f, *inner)
+                }
+            }
             Expr::Number(n) => {
                 let zero = num_rational::BigRational::from_integer(0.into());
                 if n < &zero {
