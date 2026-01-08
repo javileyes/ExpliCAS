@@ -157,7 +157,19 @@ pub trait LaTeXRenderer {
                 };
                 (true, positive_str)
             }
-            Expr::Neg(inner) => (true, self.expr_to_latex(*inner, true)),
+            Expr::Neg(inner) => {
+                // Add parentheses when inner is Add/Sub to preserve grouping
+                let inner_is_add_sub = matches!(
+                    self.context().get(*inner),
+                    Expr::Add(_, _) | Expr::Sub(_, _)
+                );
+                let inner_latex = self.expr_to_latex(*inner, true);
+                if inner_is_add_sub {
+                    (true, format!("({})", inner_latex))
+                } else {
+                    (true, inner_latex)
+                }
+            }
             Expr::Mul(ml, mr) => {
                 if let Expr::Number(coef) = ctx.get(*ml) {
                     if coef.is_negative() {
@@ -280,8 +292,15 @@ pub trait LaTeXRenderer {
 
     /// Format negation
     fn format_neg(&self, e: ExprId) -> String {
+        // Check if inner is Add/Sub - needs parentheses to preserve grouping
+        // e.g., -(a + b) should display as "-(a + b)" not "-a + b"
+        let inner_is_add_sub = matches!(self.context().get(e), Expr::Add(_, _) | Expr::Sub(_, _));
         let inner = self.expr_to_latex(e, true);
-        format!("-{}", inner)
+        if inner_is_add_sub {
+            format!("-({})", inner)
+        } else {
+            format!("-{}", inner)
+        }
     }
 
     /// Format function calls
