@@ -14,8 +14,78 @@
 //! The key insight is that the MATHEMATICAL result is correct, but the TRACE
 //! needs to be restructured for didactic clarity.
 
+use crate::helpers::is_one;
 use crate::solver::SolveStep;
 use cas_ast::{Context, Equation, Expr, ExprId};
+
+// =============================================================================
+// Display-only cleanup: remove "1·" identity coefficients from equations
+// =============================================================================
+
+/// Strip "1*expr" patterns from an expression for cleaner display.
+/// This is a display-only transformation - it doesn't affect the mathematical result.
+///
+/// Examples:
+/// - `1 * ln(3)` → `ln(3)`
+/// - `ln(3) * 1` → `ln(3)`
+/// - `1 * x * ln(5)` → `x * ln(5)`
+fn strip_mul_one(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let expr_data = ctx.get(expr).clone();
+
+    match expr_data {
+        Expr::Mul(l, r) => {
+            // First recursively clean both sides
+            let clean_l = strip_mul_one(ctx, l);
+            let clean_r = strip_mul_one(ctx, r);
+
+            // Then check for 1*x or x*1
+            if is_one(ctx, clean_l) {
+                return clean_r;
+            }
+            if is_one(ctx, clean_r) {
+                return clean_l;
+            }
+
+            // Neither is 1, keep the multiplication
+            ctx.add(Expr::Mul(clean_l, clean_r))
+        }
+        Expr::Add(l, r) => {
+            let clean_l = strip_mul_one(ctx, l);
+            let clean_r = strip_mul_one(ctx, r);
+            ctx.add(Expr::Add(clean_l, clean_r))
+        }
+        Expr::Sub(l, r) => {
+            let clean_l = strip_mul_one(ctx, l);
+            let clean_r = strip_mul_one(ctx, r);
+            ctx.add(Expr::Sub(clean_l, clean_r))
+        }
+        Expr::Neg(inner) => {
+            let clean_inner = strip_mul_one(ctx, inner);
+            ctx.add(Expr::Neg(clean_inner))
+        }
+        Expr::Div(l, r) => {
+            let clean_l = strip_mul_one(ctx, l);
+            let clean_r = strip_mul_one(ctx, r);
+            ctx.add(Expr::Div(clean_l, clean_r))
+        }
+        Expr::Pow(base, exp) => {
+            let clean_base = strip_mul_one(ctx, base);
+            let clean_exp = strip_mul_one(ctx, exp);
+            ctx.add(Expr::Pow(clean_base, clean_exp))
+        }
+        // Other expressions pass through unchanged
+        _ => expr,
+    }
+}
+
+/// Apply strip_mul_one to both sides of an equation.
+fn strip_equation(ctx: &mut Context, eq: &Equation) -> Equation {
+    Equation {
+        lhs: strip_mul_one(ctx, eq.lhs),
+        rhs: strip_mul_one(ctx, eq.rhs),
+        op: eq.op.clone(),
+    }
+}
 
 /// Check if a step sequence is a log-linear solve pattern.
 /// Returns true if we should rewrite the steps for better didactic display.
@@ -149,9 +219,10 @@ fn generate_detailed_collect_steps_v2(
             rhs: log_eq.rhs,
             op: cas_ast::RelOp::Eq,
         };
+        let clean_expand_eq = strip_equation(ctx, &expand_eq);
         sub_steps.push(SolveStep {
             description: "Expand distributive law".to_string(),
-            equation_after: expand_eq.clone(),
+            equation_after: clean_expand_eq,
             importance: crate::step::ImportanceLevel::Medium,
         });
 
@@ -167,9 +238,10 @@ fn generate_detailed_collect_steps_v2(
                 rhs: moved_rhs,
                 op: cas_ast::RelOp::Eq,
             };
+            let clean_move_eq = strip_equation(ctx, &move_eq);
             sub_steps.push(SolveStep {
                 description: "Move x terms to one side".to_string(),
-                equation_after: move_eq.clone(),
+                equation_after: clean_move_eq,
                 importance: crate::step::ImportanceLevel::Medium,
             });
 
@@ -182,9 +254,10 @@ fn generate_detailed_collect_steps_v2(
                     rhs: factored_rhs,
                     op: cas_ast::RelOp::Eq,
                 };
+                let clean_factor_eq = strip_equation(ctx, &factor_eq);
                 sub_steps.push(SolveStep {
                     description: "Factor out x".to_string(),
-                    equation_after: factor_eq,
+                    equation_after: clean_factor_eq,
                     importance: crate::step::ImportanceLevel::Medium,
                 });
             }
