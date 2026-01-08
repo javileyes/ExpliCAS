@@ -198,16 +198,26 @@ pub fn try_reciprocal_solve(
         });
     }
 
-    // Build solution set with guards
+    // Build solution set - may need guard for numerator ≠ 0
+    use crate::domain::Proof;
+    use crate::helpers::prove_nonzero;
     use cas_ast::{Case, ConditionPredicate, ConditionSet, SolutionSet};
 
-    // Guard: numerator ≠ 0 (OutputImplicit - from solution expression)
-    // Simplify the numerator for cleaner display (R1+R2 instead of 1·R1+1·R2)
+    // Simplify the numerator for cleaner display and proof checking
     let (simplified_numerator, _) = simplifier.simplify(numerator);
-    let guard = ConditionSet::single(ConditionPredicate::NonZero(simplified_numerator));
 
-    let case = Case::new(guard, SolutionSet::Discrete(vec![simplified_solution]));
-    let solution_set = SolutionSet::Conditional(vec![case]);
+    // Check if numerator is provably non-zero (e.g., literal 2 in "1/x = 2")
+    // If so, we can return a simple Discrete solution without conditional guard
+    let solution_set = if prove_nonzero(&simplifier.context, simplified_numerator) == Proof::Proven
+    {
+        // Trivially satisfied - no guard needed
+        SolutionSet::Discrete(vec![simplified_solution])
+    } else {
+        // Need conditional guard: numerator ≠ 0
+        let guard = ConditionSet::single(ConditionPredicate::NonZero(simplified_numerator));
+        let case = Case::new(guard, SolutionSet::Discrete(vec![simplified_solution]));
+        SolutionSet::Conditional(vec![case])
+    };
 
     Some((solution_set, steps))
 }

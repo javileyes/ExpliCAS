@@ -943,13 +943,15 @@ define_rule!(
                 let a = *a;
                 let b = *b;
 
-                // GUARD: Don't distribute fractional exponents over symbolic products
+                // GUARD: Don't distribute fractional exponents over symbolic products UNLESS
+                // the symbolic parts have powers that are exact multiples of the root index.
                 // This prevents cycles: (3V/4π)^(1/3) ↔ 3^(1/3)*V^(1/3)/(4π)^(1/3)
+                // But ALLOWS: (8*x^2)^(1/2) → 8^(1/2) * x (since x^2 is a perfect square)
                 if let Expr::Number(exp_num) = ctx.get(exp) {
                     let denom = exp_num.denom();
                     if denom > &num_bigint::BigInt::from(1) {
-                        // Fractional exponent - only distribute if base is purely numeric
-                        if !is_purely_numeric(ctx, base) {
+                        // Fractional exponent - check if distribution is safe
+                        if !can_distribute_root_safely(ctx, base, denom) {
                             return None;
                         }
                     }
@@ -992,13 +994,14 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
     // (a / b)^n -> a^n / b^n
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {
-        // GUARD: Don't distribute fractional exponents over symbolic quotients
+        // GUARD: Don't distribute fractional exponents over symbolic quotients UNLESS safe
         // This prevents cycles: (3V/(4π))^(1/3) ↔ 3^(1/3)*V^(1/3)/(4^(1/3)*π^(1/3))
+        // But ALLOWS: (8*x^2 / 4)^(1/2) → sqrt(8)*|x| / 2
         if let Expr::Number(exp_num) = ctx.get(exp) {
             let denom = exp_num.denom();
             if denom > &num_bigint::BigInt::from(1) {
-                // Fractional exponent - only distribute if base is purely numeric
-                if !is_purely_numeric(ctx, base) {
+                // Fractional exponent - check if distribution is safe
+                if !can_distribute_root_safely(ctx, base, denom) {
                     return None;
                 }
             }
@@ -1022,6 +1025,52 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
     }
     None
 });
+
+/// Check if distributing a fractional exponent (1/n) over a product is safe.
+/// Returns true if:
+/// 1. Base is purely numeric (no variables), OR
+/// 2. All variable factors have powers that are exact multiples of n
+///    (e.g., x^2 under sqrt is safe because 2 % 2 == 0)
+fn can_distribute_root_safely(
+    ctx: &Context,
+    expr: ExprId,
+    root_index: &num_bigint::BigInt,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) => true,
+        Expr::Variable(_) | Expr::Constant(_) => {
+            // Bare variable x = x^1, only safe if 1 % root_index == 0 (i.e., root_index == 1)
+            root_index == &num_bigint::BigInt::from(1)
+        }
+        Expr::Pow(base, exp) => {
+            // Check if base is symbolic and exponent is a multiple of root_index
+            if is_purely_numeric(ctx, *base) {
+                return true;
+            }
+            // Base has variables - check if exponent is integer multiple of root_index
+            if let Expr::Number(exp_num) = ctx.get(*exp) {
+                if exp_num.is_integer() {
+                    let exp_int = exp_num.to_integer();
+                    // Safe if exp is divisible by root_index (e.g., x^2 under sqrt(2), x^6 under cbrt(3))
+                    return (&exp_int % root_index).is_zero();
+                }
+            }
+            false
+        }
+        Expr::Mul(l, r) => {
+            // Product: both factors must be safe
+            can_distribute_root_safely(ctx, *l, root_index)
+                && can_distribute_root_safely(ctx, *r, root_index)
+        }
+        Expr::Div(l, r) => {
+            // Quotient: both parts must be safe
+            can_distribute_root_safely(ctx, *l, root_index)
+                && can_distribute_root_safely(ctx, *r, root_index)
+        }
+        Expr::Neg(inner) => can_distribute_root_safely(ctx, *inner, root_index),
+        _ => false, // Functions, matrices, etc. - be conservative
+    }
+}
 
 /// Check if expression is purely numeric (no variables/constants)
 fn is_purely_numeric(ctx: &Context, expr: ExprId) -> bool {

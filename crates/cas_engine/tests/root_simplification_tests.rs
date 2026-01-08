@@ -103,12 +103,14 @@ fn test_large_numbers() {
 
 #[test]
 fn test_variables_and_roots() {
-    // Note: Currently the engine doesn't fully simplify sqrt(k*x^2) → c*|x|*sqrt(r)
-    // This test verifies the operation doesn't panic and produces output
+    // sqrt(8 * x^2) = sqrt(8) * sqrt(x^2) = 2*sqrt(2) * |x|
+    // Output: 2 * |x| * 2^(1/2)
+    test_simplify("sqrt(8 * x^2)", "2 * |x| * 2^(1/2)");
 
-    // sqrt(8 * x^2) - ideally would simplify to 2 * |x| * sqrt(2)
+    // sqrt(12 * x^3) - x^3 is NOT a perfect square, so distribution is blocked
+    // The expression stays as (12 * x^3)^(1/2)
     let mut simplifier = Simplifier::with_default_rules();
-    let expr = cas_parser::parse("sqrt(8 * x^2)", &mut simplifier.context).unwrap();
+    let expr = cas_parser::parse("sqrt(12 * x^3)", &mut simplifier.context).unwrap();
     let (res, _) = simplifier.simplify(expr);
     let res_str = format!(
         "{}",
@@ -117,25 +119,7 @@ fn test_variables_and_roots() {
             id: res
         }
     );
-    println!("sqrt(8 * x^2) => {}", res_str);
-    // Accept either the simplified or unsimplified form
-    assert!(
-        res_str.contains("8") || res_str.contains("|x|") || res_str.contains("2^(1/2)"),
-        "Expected some recognizable form, got '{}'",
-        res_str
-    );
-
-    // sqrt(12 * x^3) - check it runs without panic
-    let expr2 = cas_parser::parse("sqrt(12 * x^3)", &mut simplifier.context).unwrap();
-    let (res2, _) = simplifier.simplify(expr2);
-    let res_str2 = format!(
-        "{}",
-        DisplayExpr {
-            context: &simplifier.context,
-            id: res2
-        }
-    );
-    println!("sqrt(12 * x^3) => {}", res_str2);
-    // Just verify it produces some output
-    assert!(!res_str2.is_empty(), "Expected non-empty result");
+    println!("sqrt(12 * x^3) => {}", res_str);
+    // Just verify it produces some output (not fully simplified due to odd power)
+    assert!(!res_str.is_empty(), "Expected non-empty result");
 }
