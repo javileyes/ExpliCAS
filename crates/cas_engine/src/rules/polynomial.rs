@@ -1401,6 +1401,150 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
     }
 }
 
+// =============================================================================
+// PolynomialIdentityZeroRule: Detect polynomial identities that equal 0
+// =============================================================================
+//
+// This rule normalizes any Add/Sub expression to polynomial form and checks
+// if it equals 0. Unlike AutoExpandSubCancelRule, it runs ALWAYS (not just
+// in marked contexts), but with stricter budgets to avoid explosions.
+//
+// Examples that now simplify to 0:
+// - (a+b+c)^3 - (a^3+b^3+c^3 + 3(a+b)(b+c)(c+a))
+// - Sophie-Germain identity
+// - Any polynomial identity with small degree/terms
+
+/// PolynomialIdentityZeroRule: Always-on polynomial identity detector
+/// Converts expressions to MultiPoly form and checks if result is 0.
+/// Priority 90 (lower than AutoExpandSubCancelRule at 95 to avoid duplicate work)
+pub struct PolynomialIdentityZeroRule;
+
+impl PolynomialIdentityZeroRule {
+    /// Budget limits for polynomial conversion (stricter than AutoExpandSubCancelRule)
+    fn poly_budget() -> PolyBudget {
+        PolyBudget {
+            max_terms: 50,       // Max monomials in result
+            max_total_degree: 5, // Max total degree (covers cubes)
+            max_pow_exp: 4,      // Max exponent in Pow nodes
+        }
+    }
+
+    /// Quick check: does expression look polynomial-like and worth checking?
+    /// Avoids expensive conversion for obviously non-polynomial expressions.
+    fn is_polynomial_candidate(ctx: &Context, expr: ExprId) -> bool {
+        Self::is_polynomial_candidate_inner(ctx, expr, 0)
+    }
+
+    fn is_polynomial_candidate_inner(ctx: &Context, expr: ExprId, depth: usize) -> bool {
+        if depth > 30 {
+            return false; // Too deep
+        }
+
+        match ctx.get(expr) {
+            Expr::Number(_) | Expr::Variable(_) => true,
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                Self::is_polynomial_candidate_inner(ctx, *l, depth + 1)
+                    && Self::is_polynomial_candidate_inner(ctx, *r, depth + 1)
+            }
+            Expr::Neg(inner) => Self::is_polynomial_candidate_inner(ctx, *inner, depth + 1),
+            Expr::Pow(base, exp) => {
+                // Only integer exponents, and check base
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() && !n.is_negative() {
+                        use num_traits::ToPrimitive;
+                        if let Some(e) = n.to_integer().to_u32() {
+                            if e <= 4 {
+                                // Budget limit
+                                return Self::is_polynomial_candidate_inner(ctx, *base, depth + 1);
+                            }
+                        }
+                    }
+                }
+                false
+            }
+            _ => false, // Functions, Division, etc. are not polynomial
+        }
+    }
+
+    /// Convert expression to MultiPoly (reusing AutoExpandSubCancelRule's method)
+    fn expr_to_multipoly(
+        ctx: &Context,
+        id: ExprId,
+        vars: &mut Vec<String>,
+        budget: &PolyBudget,
+    ) -> Option<MultiPoly> {
+        AutoExpandSubCancelRule::expr_to_multipoly(ctx, id, vars, budget)
+    }
+}
+
+impl crate::rule::Rule for PolynomialIdentityZeroRule {
+    fn name(&self) -> &str {
+        "Polynomial Identity"
+    }
+
+    fn priority(&self) -> i32 {
+        90 // Lower than AutoExpandSubCancelRule (95) to avoid duplicate work
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::TRANSFORM
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Skip in Solve mode - preserve structure for equation solving
+        if parent_ctx.is_solve_context() {
+            return None;
+        }
+
+        // Must be Add or Sub to be a cancellation candidate
+        let is_sub_or_add = matches!(ctx.get(expr), Expr::Sub(_, _) | Expr::Add(_, _));
+        if !is_sub_or_add {
+            return None;
+        }
+
+        // Quick node count check (avoid expensive conversion for huge expressions)
+        let node_count = cas_ast::count_nodes(ctx, expr);
+        if node_count > 100 {
+            return None; // Too big, skip
+        }
+
+        // Quick polynomial-like check
+        if !Self::is_polynomial_candidate(ctx, expr) {
+            return None;
+        }
+
+        // Try to convert to MultiPoly
+        let budget = Self::poly_budget();
+        let mut vars = Vec::new();
+        let poly = Self::expr_to_multipoly(ctx, expr, &mut vars, &budget)?;
+
+        // Check variable count
+        if vars.len() > 4 {
+            return None; // Too many variables
+        }
+
+        // If the result is zero, we have a polynomial identity!
+        if poly.is_zero() {
+            let zero = ctx.num(0);
+            return Some(Rewrite {
+                new_expr: zero,
+                description: "Polynomial identity: normalize and cancel to 0".to_string(),
+                before_local: None,
+                after_local: None,
+                assumption_events: Default::default(),
+                required_conditions: vec![],
+            });
+        }
+
+        None
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
@@ -1408,6 +1552,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(BinomialExpansionRule));
     simplifier.add_rule(Box::new(AutoExpandPowSumRule));
     simplifier.add_rule(Box::new(AutoExpandSubCancelRule));
+    simplifier.add_rule(Box::new(PolynomialIdentityZeroRule));
 }
 
 #[cfg(test)]
@@ -1548,5 +1693,78 @@ mod tests {
             ),
             "2 * ln(x)"
         );
+    }
+
+    #[test]
+    fn test_polynomial_identity_zero_rule() {
+        // Test: (a+b)^2 - (a^2 + 2ab + b^2) = 0
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+
+        // (a+b)^2
+        let a_plus_b = ctx.add(Expr::Add(a, b));
+        let two = ctx.num(2);
+        let a_plus_b_sq = ctx.add(Expr::Pow(a_plus_b, two));
+
+        // a^2 + 2ab + b^2
+        let a_sq = ctx.add(Expr::Pow(a, two));
+        let b_sq = ctx.add(Expr::Pow(b, two));
+        let ab = ctx.add(Expr::Mul(a, b));
+        let two_ab = ctx.add(Expr::Mul(two, ab));
+        let sum1 = ctx.add(Expr::Add(a_sq, two_ab));
+        let rhs = ctx.add(Expr::Add(sum1, b_sq));
+
+        // (a+b)^2 - (a^2 + 2ab + b^2)
+        let expr = ctx.add(Expr::Sub(a_plus_b_sq, rhs));
+
+        let rule = PolynomialIdentityZeroRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        // Should simplify to 0
+        assert!(rewrite.is_some(), "Polynomial identity should be detected");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.unwrap().new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn test_polynomial_identity_zero_rule_non_identity() {
+        // Test: (a+b)^2 - a^2 ≠ 0 (not an identity)
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+
+        // (a+b)^2
+        let a_plus_b = ctx.add(Expr::Add(a, b));
+        let two = ctx.num(2);
+        let a_plus_b_sq = ctx.add(Expr::Pow(a_plus_b, two));
+
+        // a^2
+        let a_sq = ctx.add(Expr::Pow(a, two));
+
+        // (a+b)^2 - a^2
+        let expr = ctx.add(Expr::Sub(a_plus_b_sq, a_sq));
+
+        let rule = PolynomialIdentityZeroRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        // Should NOT return a rewrite (not an identity to 0)
+        assert!(rewrite.is_none(), "Non-identity should not trigger rule");
     }
 }

@@ -28,6 +28,10 @@ pub struct ParentContext {
     pub(crate) root_expr: Option<ExprId>,
     /// Cached implicit domain (computed once per pass)
     pub(crate) implicit_domain: Option<crate::implicit_domain::ImplicitDomain>,
+    /// Context mode (Standard, Solve, etc.)
+    pub(crate) context_mode: crate::options::ContextMode,
+    /// Purpose of simplification (Eval, SolvePrepass, SolveTactic)
+    pub(crate) simplify_purpose: crate::solve_safety::SimplifyPurpose,
 }
 
 impl ParentContext {
@@ -46,6 +50,8 @@ impl ParentContext {
             goal: crate::semantics::NormalFormGoal::default(),
             root_expr: None,
             implicit_domain: None,
+            context_mode: crate::options::ContextMode::default(),
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
         }
     }
 
@@ -64,6 +70,8 @@ impl ParentContext {
             goal: crate::semantics::NormalFormGoal::default(),
             root_expr: None,
             implicit_domain: None,
+            context_mode: crate::options::ContextMode::default(),
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
         }
     }
 
@@ -82,6 +90,8 @@ impl ParentContext {
             goal: crate::semantics::NormalFormGoal::default(),
             root_expr: None,
             implicit_domain: None,
+            context_mode: crate::options::ContextMode::default(),
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
         }
     }
 
@@ -103,6 +113,8 @@ impl ParentContext {
             goal: crate::semantics::NormalFormGoal::default(),
             root_expr: None,
             implicit_domain: None,
+            context_mode: crate::options::ContextMode::default(),
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
         }
     }
 
@@ -124,6 +136,8 @@ impl ParentContext {
             goal: self.goal,
             root_expr: self.root_expr,
             implicit_domain: self.implicit_domain.clone(),
+            context_mode: self.context_mode,
+            simplify_purpose: self.simplify_purpose,
         }
     }
 
@@ -246,6 +260,42 @@ impl ParentContext {
     /// Get cached implicit domain
     pub fn implicit_domain(&self) -> Option<&crate::implicit_domain::ImplicitDomain> {
         self.implicit_domain.as_ref()
+    }
+
+    /// Get simplify purpose (Eval, SolvePrepass, SolveTactic)
+    pub fn simplify_purpose(&self) -> crate::solve_safety::SimplifyPurpose {
+        self.simplify_purpose
+    }
+
+    /// Set simplify purpose, returning a new context
+    pub fn with_simplify_purpose(mut self, purpose: crate::solve_safety::SimplifyPurpose) -> Self {
+        self.simplify_purpose = purpose;
+        self
+    }
+
+    /// Get context mode (Standard, Solve, etc.)
+    pub fn context_mode(&self) -> crate::options::ContextMode {
+        self.context_mode
+    }
+
+    /// Set context mode, returning a new context
+    pub fn with_context_mode(mut self, mode: crate::options::ContextMode) -> Self {
+        self.context_mode = mode;
+        self
+    }
+
+    /// Check if we're in a Solve context (via context_mode or simplify_purpose)
+    pub fn is_solve_context(&self) -> bool {
+        // Check context_mode (explicit Solve mode from options)
+        if self.context_mode == crate::options::ContextMode::Solve {
+            return true;
+        }
+        // Check simplify_purpose (solver pre-pass or tactic)
+        matches!(
+            self.simplify_purpose,
+            crate::solve_safety::SimplifyPurpose::SolvePrepass
+                | crate::solve_safety::SimplifyPurpose::SolveTactic
+        )
     }
 
     /// Get immediate parent, if exists

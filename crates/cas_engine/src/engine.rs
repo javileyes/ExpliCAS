@@ -660,6 +660,7 @@ impl Simplifier {
             crate::semantics::ValueDomain::default(),
             crate::semantics::NormalFormGoal::default(),
             crate::solve_safety::SimplifyPurpose::default(),
+            crate::options::ContextMode::default(),
         )
     }
 
@@ -679,12 +680,13 @@ impl Simplifier {
         value_domain: crate::semantics::ValueDomain,
         goal: crate::semantics::NormalFormGoal,
         simplify_purpose: crate::solve_safety::SimplifyPurpose,
+        context_mode: crate::options::ContextMode,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let steps_mode = self.steps_mode;
 
-        // Create initial ParentContext with pattern marks, expand_mode, auto-expand, domain_mode, inv_trig, value_domain, and goal
+        // Create initial ParentContext with pattern marks, expand_mode, auto-expand, domain_mode, inv_trig, value_domain, goal, simplify_purpose, and context_mode
         let initial_parent_ctx = crate::parent_context::ParentContext::with_expand_mode(
             pattern_marks.clone(),
             expand_mode,
@@ -701,6 +703,8 @@ impl Simplifier {
         .with_inv_trig(inv_trig)
         .with_value_domain(value_domain)
         .with_goal(goal)
+        .with_simplify_purpose(simplify_purpose)
+        .with_context_mode(context_mode)
         .with_root_expr(&self.context, expr_id);
 
         // Capture nodes_created BEFORE creating transformer (can't access while borrowed)

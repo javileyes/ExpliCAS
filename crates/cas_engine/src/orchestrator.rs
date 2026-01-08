@@ -100,6 +100,7 @@ impl Orchestrator {
                 self.options.value_domain,
                 self.options.goal,
                 self.options.simplify_purpose,
+                self.options.context_mode,
             );
 
             // Log budget stats for this iteration (actual charging done by caller if Budget provided)
