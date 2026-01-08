@@ -595,11 +595,14 @@ pub fn isolate(
 
                 // PEDAGOGICAL IMPROVEMENT: If LHS is 1/var, use reciprocal solve
                 // for cleaner steps: "Combine fractions" → "Take reciprocal"
-                if crate::solver::reciprocal_solve::is_simple_reciprocal(
-                    &simplifier.context,
-                    lhs,
-                    var,
-                ) {
+                // NOTE: Only for equations! Inequalities need case-splitting logic below.
+                if matches!(op, RelOp::Eq)
+                    && crate::solver::reciprocal_solve::is_simple_reciprocal(
+                        &simplifier.context,
+                        lhs,
+                        var,
+                    )
+                {
                     if let Some((solution_set, reciprocal_steps)) =
                         crate::solver::reciprocal_solve::try_reciprocal_solve(
                             lhs, rhs, var, simplifier,

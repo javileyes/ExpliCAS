@@ -378,10 +378,7 @@ fn test_rational_complex() {
 
 #[test]
 fn test_rational_inequality_positive() {
-    // 1/x > 0 → x > 0 (Continuous interval expected)
-    // KNOWN LIMITATION: Solver returns Conditional(NonZero guard) instead of Continuous(0, inf)
-    // This is a structural limitation that requires interval-aware rational inequality handling.
-    // For now, we verify the solver at least produces a non-empty result.
+    // 1/x > 0 → x ∈ (0, +∞)
     let mut s = Simplifier::with_default_rules();
     let lhs = cas_parser::parse("1 / x", &mut s.context).unwrap();
     let rhs = cas_parser::parse("0", &mut s.context).unwrap();
@@ -395,17 +392,16 @@ fn test_rational_inequality_positive() {
     assert!(result.is_ok(), "Rational inequality should solve");
 
     let (solution, _) = result.unwrap();
-    // TODO: When solver supports proper rational inequalities, change to:
-    // assert!(matches!(solution, SolutionSet::Continuous(_)));
-    assert_ne!(solution, SolutionSet::Empty, "Expected non-empty solution");
+    assert!(
+        matches!(solution, SolutionSet::Continuous(_)),
+        "1/x > 0 should return Continuous interval, got: {:?}",
+        solution
+    );
 }
 
 #[test]
 fn test_rational_inequality_negative() {
-    // 1/x < 0 → x < 0 (Continuous interval expected)
-    // KNOWN LIMITATION: Solver returns Conditional(NonZero guard) instead of Continuous(-inf, 0)
-    // This is a structural limitation that requires interval-aware rational inequality handling.
-    // For now, we verify the solver at least produces a non-empty result.
+    // 1/x < 0 → x ∈ (-∞, 0)
     let mut s = Simplifier::with_default_rules();
     let lhs = cas_parser::parse("1 / x", &mut s.context).unwrap();
     let rhs = cas_parser::parse("0", &mut s.context).unwrap();
@@ -419,9 +415,11 @@ fn test_rational_inequality_negative() {
     assert!(result.is_ok(), "Rational inequality should solve");
 
     let (solution, _) = result.unwrap();
-    // TODO: When solver supports proper rational inequalities, change to:
-    // assert!(matches!(solution, SolutionSet::Continuous(_)));
-    assert_ne!(solution, SolutionSet::Empty, "Expected non-empty solution");
+    assert!(
+        matches!(solution, SolutionSet::Continuous(_)),
+        "1/x < 0 should return Continuous interval, got: {:?}",
+        solution
+    );
 }
 
 #[test]
