@@ -1258,7 +1258,7 @@ fn check_exponential_needs_complex(
                             steps.push(SolveStep {
                                 description: msg.clone(),
                                 equation_after: eq.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
+                                importance: crate::step::ImportanceLevel::Medium,
                             });
                         }
                         return Some(Ok((SolutionSet::Empty, steps)));
@@ -1314,7 +1314,7 @@ fn check_exponential_needs_complex(
                             steps.push(SolveStep {
                                 description: msg.clone(),
                                 equation_after: eq.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
+                                importance: crate::step::ImportanceLevel::Medium,
                             });
                         }
                         return Some(Ok((SolutionSet::Empty, steps)));
@@ -1642,7 +1642,7 @@ impl SolverStrategy for UnwrapStrategy {
                     steps.push(SolveStep {
                         description: desc,
                         equation_after: new_eq.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
+                        importance: crate::step::ImportanceLevel::Medium,
                     });
                 }
                 match solve(&new_eq, var, simplifier) {
@@ -1663,7 +1663,7 @@ impl SolverStrategy for UnwrapStrategy {
                     steps.push(SolveStep {
                         description: desc,
                         equation_after: new_eq.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
+                        importance: crate::step::ImportanceLevel::Medium,
                     });
                 }
                 match solve(&new_eq, var, simplifier) {

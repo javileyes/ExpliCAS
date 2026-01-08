@@ -7,6 +7,7 @@
 //! These transformations are purely display-level and don't affect
 //! the solver's internal operation or correctness.
 
+use crate::helpers::is_zero;
 use crate::solver::SolveStep;
 use cas_ast::{Context, Expr, ExprId};
 
@@ -23,7 +24,7 @@ use cas_ast::{Context, Expr, ExprId};
 /// * `ctx` - Expression context
 /// * `steps` - Original solve steps  
 /// * `detailed` - If true, decompose into atomic sub-steps (Normal/Verbose verbosity)
-///                If false, use compact representation (Succinct verbosity)
+///   If false, use compact representation (Succinct verbosity)
 pub fn cleanup_solve_steps(
     ctx: &mut Context,
     steps: Vec<SolveStep>,
@@ -114,8 +115,7 @@ fn cleanup_step_description(desc: &str) -> String {
 
 /// Normalize signs in an expression for cleaner display.
 fn normalize_expr_signs(ctx: &mut Context, expr: ExprId) -> ExprId {
-    let result = normalize_signs_recursive(ctx, expr);
-    result
+    normalize_signs_recursive(ctx, expr)
 }
 
 fn normalize_signs_recursive(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -223,15 +223,6 @@ fn normalize_signs_recursive(ctx: &mut Context, expr: ExprId) -> ExprId {
     }
 }
 
-/// Check if expression is the number 0.
-fn is_zero(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        num_traits::Zero::is_zero(n)
-    } else {
-        false
-    }
-}
-
 /// Remove redundant step pairs from the step list.
 ///
 /// Detects patterns like:
@@ -288,10 +279,11 @@ fn is_step_undo_normalization(ctx: &Context, prev: &SolveStep, curr: &SolveStep)
 
     if prev_rhs_zero && !curr_rhs_zero {
         // Pattern 1: "Subtract X" followed by step that undoes it
-        if prev.description.contains("Subtract") && curr.description.contains("Subtract") {
-            if curr.description.contains("-(") || curr.description.contains("- -(") {
-                return true;
-            }
+        if prev.description.contains("Subtract")
+            && curr.description.contains("Subtract")
+            && (curr.description.contains("-(") || curr.description.contains("- -("))
+        {
+            return true;
         }
 
         // Pattern 2: Description got cleaned to "Move terms to one side"

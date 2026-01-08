@@ -9,6 +9,7 @@
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
 use crate::engine::Simplifier;
+use crate::helpers::is_one;
 use crate::nary::add_terms_no_sign;
 use crate::solver::{contains_var, SolveStep};
 
@@ -129,11 +130,6 @@ fn build_scale_factor(ctx: &mut Context, fractions: &[Fraction], my_den: ExprId)
         }
         product
     }
-}
-
-/// Check if an expression is the number 1
-fn is_one(ctx: &Context, expr: ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
 }
 
 /// Try to solve `1/var = expr` using pedagogical steps.

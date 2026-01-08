@@ -18,7 +18,7 @@ fn solve_perfect_square_quadratic() -> (SolutionSet, Simplifier) {
     let ctx = &mut simplifier.context;
     let x = ctx.var("x");
     let y = ctx.var("y");
-    let one = ctx.num(1);
+    let _one = ctx.num(1);
     let two = ctx.num(2);
     let four = ctx.num(4);
 

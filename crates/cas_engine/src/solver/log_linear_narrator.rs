@@ -290,20 +290,6 @@ fn expr_contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     contains_var(ctx, expr, var)
 }
 
-/// Check if expression contains ln(a/b) pattern (result of log quotient rule)
-fn contains_log_quotient(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Function(name, args) if name == "ln" && args.len() == 1 => {
-            // ln(something) - check if something is a division
-            matches!(ctx.get(args[0]), Expr::Div(_, _))
-        }
-        Expr::Mul(l, r) | Expr::Add(l, r) => {
-            contains_log_quotient(ctx, *l) || contains_log_quotient(ctx, *r)
-        }
-        _ => false,
-    }
-}
-
 /// Try to rewrite ln(a^x) → x·ln(a) for cleaner display.
 /// Returns Some(new_expr) if rewrite was done, None otherwise.
 fn try_rewrite_log_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
