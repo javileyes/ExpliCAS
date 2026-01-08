@@ -1055,8 +1055,9 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
             return None;
         }
 
-        // Get budget
-        let budget = parent_ctx.auto_expand_budget()?;
+        // Get budget - use default if in context but no explicit budget set
+        let default_budget = crate::phase::ExpandBudget::default();
+        let budget = parent_ctx.auto_expand_budget().unwrap_or(&default_budget);
 
         // Skip if expression is in canonical form
         if crate::canonical_forms::is_canonical_form(ctx, expr) {

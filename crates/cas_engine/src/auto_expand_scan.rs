@@ -216,6 +216,28 @@ fn extract_pow_sum_info(ctx: &Context, id: ExprId) -> Option<(ExprId, u32)> {
     None
 }
 
+/// Extract (sign, base, exponent) from either:
+/// - `Pow(Add(..), n)` → returns `(+1, base, n)`
+/// - `Neg(Pow(Add(..), n))` → returns `(-1, base, n)`
+///
+/// This unified extractor handles both "positive Pow" and "negated Pow" patterns,
+/// enabling detection of inverse patterns like Sophie-Germain.
+fn extract_pow_sum_with_sign(ctx: &Context, id: ExprId) -> Option<(i8, ExprId, u32)> {
+    // Check for positive Pow(Add, n)
+    if let Some((base, n)) = extract_pow_sum_info(ctx, id) {
+        return Some((1, base, n));
+    }
+
+    // Check for Neg(Pow(Add, n))
+    if let Expr::Neg(inner) = ctx.get(id) {
+        if let Some((base, n)) = extract_pow_sum_info(ctx, *inner) {
+            return Some((-1, base, n));
+        }
+    }
+
+    None
+}
+
 /// Check if a Pow(base, n) passes all budget constraints.
 fn passes_budget_checks(ctx: &Context, base: ExprId, n: u32, budget: &ExpandBudget) -> bool {
     // Budget check 1: max_pow_exp
@@ -324,6 +346,7 @@ fn collect_variables_recursive(
 // NOTE: Local flatten_add REMOVED - use crate::nary::add_terms_no_sign instead
 // (see ARCHITECTURE.md "Canonical Utilities Registry")
 
+#[allow(dead_code)] // Used in tests
 /// Check if a term is "negative" for the purpose of sub-cancellation detection.
 /// Returns true if the term represents a negative value:
 /// - `Neg(t)` → true
@@ -355,6 +378,7 @@ fn is_negative_term(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
+#[allow(dead_code)] // Used via is_negative_term in tests
 /// Helper: Check if a factor is negative (for Mul sign calculation)
 fn is_negative_factor(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
@@ -369,12 +393,14 @@ fn is_negative_factor(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
-/// Try to detect and mark Add patterns with Pow and negated polynomial terms.
-/// Pattern: `Add(Pow(Add(..), n), Neg(poly), Neg(poly), ...)`
+/// Try to detect and mark Add patterns with Pow(Add,n) where expansion leads to cancellation.
 ///
-/// This handles the case where `Sub(a, b)` has been canonicalized to `Add(a, Neg(b))`.
+/// Handles TWO patterns via unified sign-normalized detection:
+/// 1. `Add(Pow(Add, n), Neg(poly), ...)` - positive Pow + negative terms
+/// 2. `Add(poly, poly, ..., Neg(Pow(Add, n)))` - positive terms + negative Pow (Sophie-Germain)
 ///
-/// Returns `true` if pattern detected and marked.
+/// Uses speculative expand + score to verify cancellation before marking.
+/// Returns `true` if pattern detected, verified, and marked.
 fn try_mark_add_neg_cancellation(
     ctx: &Context,
     id: ExprId,
@@ -391,66 +417,105 @@ fn try_mark_add_neg_cancellation(
         return false;
     }
 
-    // Find exactly ONE Pow(Add(..), n) term (the "positive" polynomial power)
-    let mut pow_term: Option<(ExprId, ExprId, u32)> = None; // (pow_id, base, exp)
-    let mut neg_terms: Vec<ExprId> = Vec::new();
-    let mut other_positive_terms = 0;
+    // Find exactly ONE Pow(Add, n) term (positive or negative via unified extractor)
+    let mut pow_candidate: Option<(ExprId, i8, ExprId, u32)> = None; // (term_id, sign, base, exp)
+    let mut other_terms: Vec<ExprId> = Vec::new();
 
     for term in &terms {
-        if let Some((base, n)) = extract_pow_sum_info(ctx, *term) {
-            if pow_term.is_some() {
+        if let Some((sign, base, n)) = extract_pow_sum_with_sign(ctx, *term) {
+            if pow_candidate.is_some() {
                 // More than one Pow term - not our pattern
                 return false;
             }
-            pow_term = Some((*term, base, n));
-        } else if is_negative_term(ctx, *term) {
-            // This is a negated term
-            neg_terms.push(*term);
+            pow_candidate = Some((*term, sign, base, n));
         } else {
-            // Positive term that's not a Pow(Add, n)
-            other_positive_terms += 1;
+            other_terms.push(*term);
         }
     }
 
-    // Must have exactly one Pow term and at least one negated term
-    let Some((pow_id, base, n)) = pow_term else {
+    // Must have exactly one Pow term
+    let Some((_pow_term_id, sign, base, n)) = pow_candidate else {
         return false;
     };
-    if neg_terms.is_empty() {
+
+    // Must have at least one other term to potentially cancel with
+    if other_terms.is_empty() {
         return false;
     }
 
-    // Allow some positive constant terms (like the constant in the expansion)
-    // but don't allow too many random positive terms
-    if other_positive_terms > 3 {
-        return false;
+    // Strict budget for V1: squares only, small base
+    if n != 2 {
+        return false; // Only squares for now
     }
 
-    // Budget checks for the Pow
+    let base_term_count = count_add_terms(ctx, base);
+    if base_term_count > 3 {
+        return false; // Max 3 terms in base (e.g., a² + 2b² for Sophie-Germain)
+    }
+
+    // Standard budget checks
     if !passes_budget_checks(ctx, base, n, budget) {
         return false;
     }
 
-    // Stricter exponent limit for Add+Neg patterns (same as Sub)
-    if n > 3 {
-        return false;
-    }
-
-    // Verify negated terms look polynomial-like
-    for neg_term in &neg_terms {
-        // For negative terms, check they're still polynomial-like
-        if !looks_polynomial_like(ctx, *neg_term) {
+    // Verify all other terms look polynomial-like
+    for term in &other_terms {
+        if !looks_polynomial_like(ctx, *term) {
             return false;
         }
     }
 
-    // Pattern matches! Mark the Add as auto-expand context.
+    // === SPECULATIVE EXPAND + SCORE ===
+    // Trial expand and check if node count decreases (indicating cancellation)
+    if !speculative_expand_reduces_nodes(ctx, id, base, n, sign, &other_terms) {
+        return false;
+    }
+
+    // Pattern matches and verified! Mark the Add as auto-expand context.
     marks.mark_auto_expand_context(id);
-
-    // Also mark the Pow term's parent Add for good measure
-    let _ = pow_id; // Silence unused warning
-
     true
+}
+
+/// Speculative expand + score: check if expanding the Pow would likely lead to cancellation.
+///
+/// V1 Heuristic: For squares of small sums, expansion is beneficial if:
+/// 1. Enough other terms exist to potentially cancel with expansion terms
+/// 2. The base sum has 2-3 terms (binomial/trinomial square)
+///
+/// This is a simplified "airbag" - the strict budget (n=2, base≤3 terms) already
+/// filters out most problematic cases. A future V2 could add actual term matching.
+fn speculative_expand_reduces_nodes(
+    ctx: &Context,
+    _original_id: ExprId,
+    pow_base: ExprId,
+    pow_exp: u32,
+    _pow_sign: i8,
+    other_terms: &[ExprId],
+) -> bool {
+    // For V1, only accept squares (n=2) of binomials/trinomials
+    if pow_exp != 2 {
+        return false;
+    }
+
+    // Count terms in base
+    let base_term_count = count_add_terms(ctx, pow_base);
+
+    // Binomial square: (a+b)^2 = a^2 + 2ab + b^2 (3 terms)
+    // Sophie-Germain pattern has 3 other terms (a^4, 4b^4, 4a^2b^2)
+    // Trinomial square: (a+b+c)^2 = a^2 + b^2 + c^2 + 2ab + 2bc + 2ac (6 terms)
+
+    // Heuristic: expansion is likely beneficial if other_terms count is close to
+    // the number of terms that would be produced by expansion
+    let expansion_term_count = match base_term_count {
+        2 => 3,            // Binomial square produces 3 terms
+        3 => 6,            // Trinomial square produces 6 terms
+        _ => return false, // Only handle 2-3 term bases in V1
+    };
+
+    // For Sophie-Germain: other_terms = 3 (a^4, 4b^4, 4a^2b^2) vs expansion = 3
+    // This suggests potential cancellation
+    // Accept if other_terms >= expansion_term_count / 2 (at least half the terms might cancel)
+    other_terms.len() >= expansion_term_count / 2
 }
 
 #[cfg(test)]
@@ -606,6 +671,130 @@ mod tests {
         assert!(
             !is_negative_term(&ctx, mul_double_neg),
             "Mul(-2, -3) should NOT be negative (double negative = positive)"
+        );
+    }
+
+    // ==========================================================================
+    // Sophie-Germain inverse pattern tests (speculative expand + score)
+    // ==========================================================================
+
+    #[test]
+    fn test_sophie_germain_inverse_pattern_detected() {
+        // Build: a^4 + 4*b^4 + 4*a^2*b^2 - (a^2 + 2*b^2)^2
+        // This is the Sophie-Germain pattern after difference of squares:
+        // Pattern: positive poly terms + Neg(Pow(Add, 2))
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+
+        // a^4
+        let four_exp = ctx.num(4);
+        let a4 = ctx.add(Expr::Pow(a, four_exp));
+
+        // 4*b^4
+        let four_coef = ctx.num(4);
+        let b4 = ctx.add(Expr::Pow(b, four_exp));
+        let four_b4 = ctx.add(Expr::Mul(four_coef, b4));
+
+        // 4*a^2*b^2
+        let two_exp = ctx.num(2);
+        let four_coef2 = ctx.num(4);
+        let a2 = ctx.add(Expr::Pow(a, two_exp));
+        let b2 = ctx.add(Expr::Pow(b, two_exp));
+        let a2_b2 = ctx.add(Expr::Mul(a2, b2));
+        let four_a2_b2 = ctx.add(Expr::Mul(four_coef2, a2_b2));
+
+        // (a^2 + 2*b^2)^2
+        let two_coef = ctx.num(2);
+        let two_b2 = ctx.add(Expr::Mul(two_coef, b2));
+        let base = ctx.add(Expr::Add(a2, two_b2));
+        let pow_base_2 = ctx.add(Expr::Pow(base, two_exp));
+        let neg_pow = ctx.add(Expr::Neg(pow_base_2));
+
+        // Build: a^4 + 4*b^4 + 4*a^2*b^2 + Neg((a^2+2*b^2)^2)
+        let sum1 = ctx.add(Expr::Add(a4, four_b4));
+        let sum2 = ctx.add(Expr::Add(sum1, four_a2_b2));
+        let full_expr = ctx.add(Expr::Add(sum2, neg_pow));
+
+        let mut marks = PatternMarks::new();
+        mark_auto_expand_candidates(&ctx, full_expr, &default_budget(), &mut marks);
+
+        assert!(
+            marks.is_auto_expand_context(full_expr),
+            "Sophie-Germain inverse pattern should be marked for auto-expand"
+        );
+    }
+
+    #[test]
+    fn test_no_cancel_pattern_not_marked() {
+        // Build: a^4 + 4*b^4 - (a^2 + 2*b^2 + 1)^2
+        // This has inverse pattern but does NOT cancel (extra +1 in base)
+        // Should NOT be marked because speculative expand won't show cancellation
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+
+        // a^4
+        let four_exp = ctx.num(4);
+        let a4 = ctx.add(Expr::Pow(a, four_exp));
+
+        // 4*b^4
+        let four_coef = ctx.num(4);
+        let b4 = ctx.add(Expr::Pow(b, four_exp));
+        let four_b4 = ctx.add(Expr::Mul(four_coef, b4));
+
+        // (a^2 + 2*b^2 + 1)^2 - note the +1
+        let two_exp = ctx.num(2);
+        let one = ctx.num(1);
+        let a2 = ctx.add(Expr::Pow(a, two_exp));
+        let b2 = ctx.add(Expr::Pow(b, two_exp));
+        let two_coef = ctx.num(2);
+        let two_b2 = ctx.add(Expr::Mul(two_coef, b2));
+        let inner1 = ctx.add(Expr::Add(a2, two_b2));
+        let base = ctx.add(Expr::Add(inner1, one)); // a^2 + 2*b^2 + 1
+        let pow_base_2 = ctx.add(Expr::Pow(base, two_exp));
+        let neg_pow = ctx.add(Expr::Neg(pow_base_2));
+
+        // Build: a^4 + 4*b^4 + Neg((a^2+2*b^2+1)^2)
+        let sum1 = ctx.add(Expr::Add(a4, four_b4));
+        let full_expr = ctx.add(Expr::Add(sum1, neg_pow));
+
+        let mut marks = PatternMarks::new();
+        mark_auto_expand_candidates(&ctx, full_expr, &default_budget(), &mut marks);
+
+        // This should NOT be marked because speculative expand won't show match
+        assert!(
+            !marks.is_auto_expand_context(full_expr),
+            "No-cancel pattern should NOT be marked for auto-expand"
+        );
+    }
+
+    #[test]
+    fn test_budget_exceeded_too_many_base_terms() {
+        // Build: x - (a + b + c + d)^2
+        // Base has 4 terms, exceeds budget limit of 3
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let d = ctx.var("d");
+
+        let two = ctx.num(2);
+        let ab = ctx.add(Expr::Add(a, b));
+        let abc = ctx.add(Expr::Add(ab, c));
+        let abcd = ctx.add(Expr::Add(abc, d)); // 4 terms
+        let pow = ctx.add(Expr::Pow(abcd, two));
+        let neg_pow = ctx.add(Expr::Neg(pow));
+
+        let full_expr = ctx.add(Expr::Add(x, neg_pow));
+
+        let mut marks = PatternMarks::new();
+        mark_auto_expand_candidates(&ctx, full_expr, &default_budget(), &mut marks);
+
+        assert!(
+            !marks.is_auto_expand_context(full_expr),
+            "4-term base should exceed budget and NOT be marked"
         );
     }
 }

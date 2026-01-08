@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: 2\cdot (a + b + c)</title>
+    <title>CAS Steps: {a}^{4} + 4\cdot {b}^{4} - (({a}^{2} + 2\cdot {b}^{2} + 2\cdot a\cdot b)\cdot ({a}^{2} + 2\cdot {b}^{2} - (2\cdot a\cdot b)))</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -437,55 +437,223 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[2\cdot (a + b + c)\]
+            \[{a}^{4} + 4\cdot {b}^{4} - (({a}^{2} + 2\cdot {b}^{2} + 2\cdot a\cdot b)\cdot ({a}^{2} + 2\cdot {b}^{2} - (2\cdot a\cdot b)))\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Distributive Property</h3>
+                    <h3>Difference of Squares (Product to Difference)</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{2\cdot (a + b + c)}}\]
+                        \[{a}^{4} + 4\cdot {b}^{4} - {\color{red}{(({a}^{2} + 2\cdot {b}^{2} + 2\cdot a\cdot b)\cdot ({a}^{2} + 2\cdot {b}^{2} - 2\cdot a\cdot b))}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute}\)</div>
+                        <div class="rule-name">\(\text{(U+V)(U-V) = U² - V² (conjugate product)}\)</div>
                         <div class="local-change">
-                            \[2\cdot (a + b + c) \rightarrow 2\cdot c + 2\cdot (a + b)\]
+                            \[({a}^{2} + 2\cdot {b}^{2} - 2\cdot a\cdot b)\cdot ({a}^{2} + 2\cdot {b}^{2} + 2\cdot a\cdot b) \rightarrow {({a}^{2} + 2\cdot {b}^{2})}^{2} - {(2\cdot a\cdot b)}^{2}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{2\cdot c + 2\cdot (a + b)}}\]
+                        \[{a}^{4} + 4\cdot {b}^{4} - {\color{green}{{({a}^{2} + 2\cdot {b}^{2})}^{2} - {(2\cdot a\cdot b)}^{2}}}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Distributive Property</h3>
+                    <h3>Power of a Product</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[2\cdot c + {\color{red}{2\cdot (a + b)}}\]
+                        \[{a}^{4} + 4\cdot {b}^{4} - {({a}^{2} + 2\cdot {b}^{2})}^{2} - {\color{red}{{(2\cdot a\cdot b)}^{2}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute}\)</div>
+                        <div class="rule-name">\(\text{Distribute power over product}\)</div>
                         <div class="local-change">
-                            \[2\cdot (a + b) \rightarrow 2\cdot a + 2\cdot b\]
+                            \[{(2\cdot a\cdot b)}^{2} \rightarrow {2}^{2}\cdot {(a\cdot b)}^{2}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[2\cdot c + {\color{green}{2\cdot a + 2\cdot b}}\]
+                        \[{a}^{4} + 4\cdot {b}^{4} - {({a}^{2} + 2\cdot {b}^{2})}^{2} - {\color{green}{({2}^{2}\cdot {(a\cdot b)}^{2})}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Evaluate Numeric Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} - {({a}^{2} + 2\cdot {b}^{2})}^{2} - ({\color{red}{{2}^{2}}}\cdot {(a\cdot b)}^{2})\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Evaluate literal power}\)</div>
+                        <div class="local-change">
+                            \[{2}^{2} \rightarrow 4\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{a}^{{\color{green}{4}}} + {\color{green}{4}}\cdot {b}^{{\color{green}{4}}} - {({a}^{2} + 2\cdot {b}^{2})}^{2} - ({\color{green}{4}}\cdot {(a\cdot b)}^{2})\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Power of a Product</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} - {({a}^{2} + 2\cdot {b}^{2})}^{2} - (4\cdot {\color{red}{{(a\cdot b)}^{2}}})\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Distribute power over product}\)</div>
+                        <div class="local-change">
+                            \[{(a\cdot b)}^{2} \rightarrow {a}^{2}\cdot {b}^{2}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} - {({a}^{2} + 2\cdot {b}^{2})}^{2} - (4\cdot {\color{green}{{a}^{2}\cdot {b}^{2}}})\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Auto Expand Power Sum</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + 4\cdot {a}^{2}\cdot {b}^{2} - {\color{red}{{({a}^{2} + 2\cdot {b}^{2})}^{2}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Auto-expand (a+b)^2}\)</div>
+                        <div class="local-change">
+                            \[{({a}^{2} + 2\cdot {b}^{2})}^{2} \rightarrow {(2\cdot {b}^{2})}^{2} + 2\cdot {a}^{2}\cdot 2\cdot {b}^{2} + {{a}^{2}}^{2}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + 4\cdot {a}^{2}\cdot {b}^{2} - ({\color{green}{{(2\cdot {b}^{2})}^{2} + 2\cdot {a}^{2}\cdot 2\cdot {b}^{2} + {{a}^{2}}^{2}}})\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <h3>Power of a Product</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + 4\cdot {a}^{2}\cdot {b}^{2} - ({\color{red}{{(2\cdot {b}^{2})}^{2} + 2\cdot {a}^{2}\cdot 2\cdot {b}^{2} + {{a}^{2}}^{2}}})\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Distribute power over product}\)</div>
+                        <div class="local-change">
+                            \[{(2\cdot {b}^{2})}^{2} \rightarrow {2}^{2}\cdot {{b}^{2}}^{2}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + 4\cdot {a}^{2}\cdot {b}^{2} - ({\color{green}{{2}^{2}\cdot {{b}^{2}}^{2}}} + 2\cdot {a}^{2}\cdot 2\cdot {b}^{2} + {{a}^{2}}^{2})\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">7</div>
+                <div class="step-content">
+                    <h3>Evaluate Numeric Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + 4\cdot {a}^{2}\cdot {b}^{2} - ({\color{red}{{2}^{2}\cdot {{b}^{2}}^{2} + 2\cdot {a}^{2}\cdot 2\cdot {b}^{2} + {{a}^{2}}^{2}}})\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Evaluate literal power}\)</div>
+                        <div class="local-change">
+                            \[{2}^{2} \rightarrow 4\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{a}^{{\color{green}{4}}} + {\color{green}{4}}\cdot {b}^{{\color{green}{4}}} + {\color{green}{4}}\cdot {a}^{2}\cdot {b}^{2} - ({\color{green}{4}}\cdot {{b}^{2}}^{2} + 2\cdot {a}^{2}\cdot 2\cdot {b}^{2} + {{a}^{2}}^{2})\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">8</div>
+                <div class="step-content">
+                    <h3>Combine Constants</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + 4\cdot {a}^{2}\cdot {b}^{2} - ({\color{red}{4\cdot {b}^{4} + 2\cdot 2\cdot {a}^{2}\cdot {b}^{2} + {{a}^{2}}^{2}}})\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine nested constants: 2 * 2}\)</div>
+                        <div class="local-change">
+                            \[2\cdot 2\cdot {a}^{2}\cdot {b}^{2} \rightarrow 4\cdot {a}^{2}\cdot {b}^{2}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + {\color{green}{4\cdot {a}^{2}\cdot {b}^{2}}} - (4\cdot {b}^{4} + {\color{green}{4\cdot {a}^{2}\cdot {b}^{2}}} + {{a}^{2}}^{2})\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">9</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + {\color{red}{4\cdot {a}^{2}\cdot {b}^{2} - 4\cdot {a}^{2}\cdot {b}^{2} - 4\cdot {b}^{4} - {a}^{4}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine like terms}\)</div>
+                        <div class="local-change">
+                            \[4\cdot {a}^{2}\cdot {b}^{2} - {a}^{4} - 4\cdot {b}^{4} - 4\cdot {a}^{2}\cdot {b}^{2} \rightarrow -4\cdot {b}^{4} - {a}^{4}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{a}^{4} + 4\cdot {b}^{4} + {\color{green}{-4\cdot {b}^{4} - {a}^{4}}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">10</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{{a}^{4} + 4\cdot {b}^{4} - 4\cdot {b}^{4} - {a}^{4}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine like terms}\)</div>
+                        <div class="local-change">
+                            \[{a}^{4} + 4\cdot {b}^{4} - 4\cdot {b}^{4} - {a}^{4} \rightarrow 0\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{\color{green}{0}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[2\cdot a + 2\cdot b + 2\cdot c\]
+            \[0\]
         </div>
     </div>
     <footer>

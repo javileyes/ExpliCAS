@@ -72,12 +72,15 @@ impl Orchestrator {
             );
 
             // Auto-expand scanner: mark cancellation contexts (difference quotients)
-            // Only scan if ExpandPolicy::Auto is enabled AND we're not in Solve mode
-            // (Solve mode should never auto-expand to preserve structure)
+            // Only skip in Solve mode (which should never auto-expand to preserve structure)
+            // The scanner has its own strict budgets (n=2, base_terms<=3) so it's safe to always run
             let is_solve_mode = self.options.context_mode == crate::options::ContextMode::Solve;
-            let auto_expand =
+            let global_auto_expand =
                 self.options.expand_policy == crate::phase::ExpandPolicy::Auto && !is_solve_mode;
-            if auto_expand {
+
+            // Always scan for cancellation contexts (unless in Solve mode)
+            // This enables Smart Expansion: auto-expand only when it leads to cancellation
+            if !is_solve_mode {
                 crate::auto_expand_scan::mark_auto_expand_candidates(
                     &simplifier.context,
                     current,
@@ -90,7 +93,7 @@ impl Orchestrator {
                 &self.pattern_marks,
                 phase,
                 self.options.expand_mode,
-                auto_expand,
+                global_auto_expand,
                 self.options.expand_budget,
                 self.options.domain,
                 self.options.inv_trig,
