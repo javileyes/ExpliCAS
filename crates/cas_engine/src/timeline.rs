@@ -1398,7 +1398,7 @@ impl<'a> TimelineHtml<'a> {
             }
             .to_latex();
 
-            // Use LaTeXExprWithHints for proper LaTeX that respects sqrt() hints
+            // Use LaTeXExprWithHints for proper LaTeX that respects sqrt() hints (for skip-check)
             let local_before = cas_ast::LaTeXExprWithHints {
                 context: self.context,
                 id: step.before,
@@ -1418,7 +1418,32 @@ impl<'a> TimelineHtml<'a> {
                 continue;
             }
 
-            let local_change_latex = format!("{} \\rightarrow {}", local_before, local_after);
+            // Generate colored rule display: red antecedent → green consequent
+            // This matches the highlight colors used in Before/After global views
+            let mut rule_before_config = HighlightConfig::new();
+            rule_before_config.add(step.before, HighlightColor::Red);
+            let local_before_colored = cas_ast::LaTeXExprHighlightedWithHints {
+                context: self.context,
+                id: step.before,
+                highlights: &rule_before_config,
+                hints: &display_hints,
+            }
+            .to_latex();
+
+            let mut rule_after_config = HighlightConfig::new();
+            rule_after_config.add(step.after, HighlightColor::Green);
+            let local_after_colored = cas_ast::LaTeXExprHighlightedWithHints {
+                context: self.context,
+                id: step.after,
+                highlights: &rule_after_config,
+                hints: &display_hints,
+            }
+            .to_latex();
+
+            let local_change_latex = format!(
+                "{} \\rightarrow {}",
+                local_before_colored, local_after_colored
+            );
 
             // Get enriched sub-steps for this step
             // Detect enrichment type FIRST
