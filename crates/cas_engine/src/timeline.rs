@@ -1419,22 +1419,25 @@ impl<'a> TimelineHtml<'a> {
             }
 
             // Generate colored rule display: red antecedent → green consequent
-            // This matches the highlight colors used in Before/After global views
+            // Use before_local/after_local (Focus) if available, otherwise fall back to before/after
+            let focus_before = step.before_local.unwrap_or(step.before);
+            let focus_after = step.after_local.unwrap_or(step.after);
+
             let mut rule_before_config = HighlightConfig::new();
-            rule_before_config.add(step.before, HighlightColor::Red);
+            rule_before_config.add(focus_before, HighlightColor::Red);
             let local_before_colored = cas_ast::LaTeXExprHighlightedWithHints {
                 context: self.context,
-                id: step.before,
+                id: focus_before,
                 highlights: &rule_before_config,
                 hints: &display_hints,
             }
             .to_latex();
 
             let mut rule_after_config = HighlightConfig::new();
-            rule_after_config.add(step.after, HighlightColor::Green);
+            rule_after_config.add(focus_after, HighlightColor::Green);
             let local_after_colored = cas_ast::LaTeXExprHighlightedWithHints {
                 context: self.context,
-                id: step.after,
+                id: focus_after,
                 highlights: &rule_after_config,
                 hints: &display_hints,
             }
