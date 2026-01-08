@@ -145,10 +145,11 @@ fn test_rationalized_simple() {
 
 #[test]
 fn test_rationalized_with_negation() {
-    // Similar but with one negated
+    // 1/(sqrt(x)+1) - 1/(sqrt(x)-1) should simplify to -2/(x-1)
     let result = simplify_and_display("1/(sqrt(x) + 1) - 1/(sqrt(x) - 1)");
-    println!("Result: {}", result);
-    // Should simplify to something involving sqrt
+    // KNOWN LIMITATION: May not fully simplify due to rationalization limits
+    assert!(!result.is_empty(), "Should produce some output");
+    // TODO: assert!(result == "-2 / (-1 + x)" || result == "-2 / (x - 1)");
 }
 
 // ============================================================================
@@ -156,35 +157,25 @@ fn test_rationalized_with_negation() {
 // ============================================================================
 
 #[test]
+#[ignore] // Exploratory test - see test_rationalized_simple for proper assertion
 fn test_bridge_case_step_by_step() {
-    // First, verify the intermediate result
+    // This is an exploratory/debugging test for the "El Puente Conjugado" problem.
+    // Run with: cargo test test_bridge_case_step_by_step -- --ignored --nocapture
     let intermediate = simplify_and_display("1/(sqrt(x) + 1) + 1/(sqrt(x) - 1)");
-    println!(
-        "Intermediate (sum of first two fractions): {}",
-        intermediate
-    );
+    println!("Intermediate: {}", intermediate);
 
-    // The denominator should rationalize to (x-1)
-    // Numerator should be 2*sqrt(x)
-    // So we expect: 2*sqrt(x)/(x-1)
-
-    // Now the full expression
     let full = simplify_and_display("1/(sqrt(x) + 1) + 1/(sqrt(x) - 1) - (2*sqrt(x))/(x - 1)");
-    println!("Full expression result: {}", full);
-
-    // This SHOULD be 0, but may not be due to orchestration
+    println!("Full expression: {}", full);
+    // Expected: 0 (requires full rationalization pipeline)
 }
 
 #[test]
 fn test_bridge_case_direct() {
-    // The full "El Puente Conjugado" case
-    // Expected: 0 (but might fail due to orchestration)
+    // The full "El Puente Conjugado" case: should simplify to 0
+    // KNOWN LIMITATION: Currently doesn't fully simplify due to rationalization limits
     let result = simplify_and_display("1/(sqrt(x) + 1) + 1/(sqrt(x) - 1) - (2*sqrt(x))/(x - 1)");
-
-    // For now, let's just print it to see what we get
-    println!("Bridge case result: {}", result);
-
-    // Ideally this should be "0", but we know it may not fully simplify
+    assert!(!result.is_empty(), "Should produce output");
+    // TODO: When rationalization is improved, use:
     // assert_simplifies_to_zero("1/(sqrt(x) + 1) + 1/(sqrt(x) - 1) - (2*sqrt(x))/(x - 1)");
 }
 
@@ -235,10 +226,11 @@ fn test_sqrt_fraction_opposite_denom() {
 
 #[test]
 fn test_expanded_bridge_parts() {
-    // After rationalization, we should have terms like:
-    // (sqrt(x)-1)/(x-1) + (sqrt(x)+1)/(x-1) - 2*sqrt(x)/(x-1)
-    // = (sqrt(x)-1 + sqrt(x)+1 - 2*sqrt(x))/(x-1)
-    // = 0/(x-1) = 0
+    // When denominators match, combination should work: result = 0
     let result = simplify_and_display("(sqrt(x)-1)/(x-1) + (sqrt(x)+1)/(x-1) - (2*sqrt(x))/(x-1)");
-    println!("Expanded bridge parts: {}", result);
+    // This case SHOULD simplify to 0 since all denominators are the same
+    assert_eq!(
+        result, "0",
+        "Same denominator fractions should combine to 0"
+    );
 }

@@ -65,10 +65,8 @@ fn test_with_sec() {
 #[test]
 fn test_single_trig_no_conversion() {
     let result = simplify_str("tan(x) / 2");
-    // Only one trig function, pattern should NOT trigger
-    // But other rules might convert it anyway
-    println!("Result: {}", result);
-    // Just verify it doesn't crash
+    // Single trig function - should not crash and produce output
+    assert!(!result.is_empty(), "Should produce some output");
 }
 
 #[test]
@@ -82,9 +80,12 @@ fn test_no_reciprocal_trig() {
 #[test]
 fn test_only_sin_cos() {
     let result = simplify_str("(sin(x) + cos(y)) / sin(z)");
-    // Multiple sin/cos but no reciprocal trig
-    println!("Result: {}", result);
-    // Should stay relatively unchanged
+    // Multiple sin/cos but no reciprocal trig - should preserve structure
+    assert!(
+        result.contains("sin") || result.contains("cos"),
+        "Should contain sin/cos: {}",
+        result
+    );
 }
 
 // ========== Integration with test_55 ==========
@@ -92,10 +93,17 @@ fn test_only_sin_cos() {
 #[test]
 fn test_55_mixed_trig_fraction() {
     let result = simplify_str("(sin(x) + tan(x))/(cot(x) + csc(x)) - sin(x)*tan(x)");
-    // Should show improvement over before
-    println!("Test 55 Result: {}", result);
-    // Check that conversions happened
-    // Note: May not fully simplify to 0, but should be better than before
+    // Should show conversion of reciprocal trig functions
+    assert!(
+        !result.contains("csc"),
+        "Should not contain csc after conversion: {}",
+        result
+    );
+    assert!(
+        !result.contains("cot"),
+        "Should not contain cot after conversion: {}",
+        result
+    );
 }
 
 // ========== Edge Cases ==========
@@ -124,8 +132,12 @@ fn test_nested_expressions() {
 #[test]
 fn test_with_negation() {
     let result = simplify_str("(sin(x) - tan(x)) / (-cot(x))");
-    // Should handle negation correctly
-    println!("Result: {}", result);
+    // Should handle negation correctly and convert reciprocal trig
+    assert!(
+        !result.contains("cot"),
+        "Should not contain cot after conversion: {}",
+        result
+    );
 }
 
 // ========== No Regressions ==========
