@@ -4993,12 +4993,19 @@ impl Repl {
                                                 || s.description.contains("Invertir la fracción")
                                                 || s.description.contains("denominadores internos")
                                         });
+                                    let has_polynomial_identity =
+                                        enriched_step.sub_steps.iter().any(|s| {
+                                            s.description.contains("forma normal polinómica")
+                                                || s.description
+                                                    .contains("Cancelar términos semejantes")
+                                        });
 
                                     // For fraction sums (global), show only once
                                     // For per-step enrichments, show each time
                                     let should_show = if has_fraction_sum
                                         && !has_nested_fraction
                                         && !has_factorization
+                                        && !has_polynomial_identity
                                     {
                                         !sub_steps_shown
                                     } else {
@@ -5006,7 +5013,9 @@ impl Repl {
                                     };
 
                                     if should_show {
-                                        if has_fraction_sum && !has_nested_fraction {
+                                        if has_polynomial_identity {
+                                            println!("   [Normalización polinómica]");
+                                        } else if has_fraction_sum && !has_nested_fraction {
                                             sub_steps_shown = true;
                                             println!("   [Suma de fracciones en exponentes]");
                                         } else if has_factorization {

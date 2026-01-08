@@ -142,3 +142,73 @@ fn is_expansion_rule(name: &str) -> bool {
 fn is_canonicalization_rule(name: &str) -> bool {
     name.starts_with("Canonicalize") || name == "Collect" || name.starts_with("Sort")
 }
+
+/// Mechanical rules that can be absorbed when followed by Polynomial Identity
+/// These rules represent intermediate "grind" computation that PolyZero makes redundant
+fn is_mechanical_rule(name: &str) -> bool {
+    matches!(
+        name,
+        "Distributive Property"
+            | "Combine Like Terms"
+            | "Expand"
+            | "Binomial Expansion"
+            | "Add Inverse"
+            | "Identity Property of Addition"
+    )
+}
+
+/// Absorb mechanical steps preceding a PolynomialIdentity step
+/// Returns indices of steps to absorb
+pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
+    let mut to_absorb = Vec::new();
+
+    for (j, step) in steps.iter().enumerate() {
+        // Detect PolynomialIdentity step by poly_proof data
+        if step.poly_proof.is_some() {
+            // Walk backwards from j-1 and absorb mechanical steps that form a chain
+            let mut i = j as isize - 1;
+            while i >= 0 {
+                let idx = i as usize;
+                let s = &steps[idx];
+                let next = &steps[idx + 1];
+
+                // Chain check: s.after should match next.before (using global snapshots if available)
+                let forms_chain = match (s.global_after, next.global_before) {
+                    (Some(s_after), Some(n_before)) => s_after == n_before,
+                    _ => s.after == next.before, // Fallback to local check
+                };
+
+                if !forms_chain {
+                    break;
+                }
+
+                if !is_mechanical_rule(&s.rule_name) {
+                    break;
+                }
+
+                to_absorb.push(idx);
+                i -= 1;
+            }
+        }
+    }
+
+    to_absorb
+}
+
+/// Enhanced step optimization with polynomial identity absorption
+pub fn optimize_steps_with_absorption(steps: Vec<Step>) -> Vec<Step> {
+    let steps_to_absorb: std::collections::HashSet<usize> =
+        find_steps_to_absorb_for_polyzero(&steps)
+            .into_iter()
+            .collect();
+
+    let filtered: Vec<_> = steps
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !steps_to_absorb.contains(i))
+        .map(|(_, s)| s)
+        .collect();
+
+    // Apply normal optimization on the filtered steps
+    optimize_steps(filtered)
+}

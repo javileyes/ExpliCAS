@@ -120,6 +120,11 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
             sub_steps.extend(generate_rationalization_substeps(ctx, step));
         }
 
+        // Add sub-steps for polynomial identity normalization (PolyZero airbag)
+        if step.poly_proof.is_some() {
+            sub_steps.extend(generate_polynomial_identity_substeps(ctx, step));
+        }
+
         enriched.push(EnrichedStep {
             base_step: step.clone(),
             sub_steps,
@@ -993,6 +998,75 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
             }
         }
     }
+
+    sub_steps
+}
+
+/// Generate sub-steps explaining polynomial identity normalization (PolyZero airbag)
+///
+/// When a polynomial identity like `(a+b)^2 - a^2 - 2ab - b^2` is detected to equal 0,
+/// this generates explanatory sub-steps:
+///   1. "Convert to polynomial normal form" - shows the expanded/normalized polynomial or stats
+///   2. "All coefficients cancel → 0" - explains the cancellation
+///
+/// The proof data attached to the step contains:
+/// - monomials: count of monomials in the polynomial (0 for identity = 0)
+/// - degree: maximum degree of the polynomial
+/// - vars: list of variable names
+/// - normal_form_expr: the normalized expression if small enough to display
+fn generate_polynomial_identity_substeps(ctx: &Context, step: &crate::step::Step) -> Vec<SubStep> {
+    use cas_ast::DisplayExpr;
+
+    let mut sub_steps = Vec::new();
+
+    // Get the proof data (caller should have checked is_some())
+    let proof = match &step.poly_proof {
+        Some(p) => p,
+        None => return sub_steps,
+    };
+
+    // Sub-step 1: Convert to polynomial normal form
+    // Show the normalized expression if available, otherwise show stats
+    let normal_form_description = if let Some(expr_id) = proof.normal_form_expr {
+        // Expression is small enough to display
+        format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: expr_id
+            }
+        )
+    } else {
+        // Expression is too large, show stats instead
+        let vars_str = if proof.vars.is_empty() {
+            "constante".to_string()
+        } else {
+            proof.vars.join(", ")
+        };
+        format!(
+            "{} monomios, grado {}, vars: {}",
+            proof.monomials, proof.degree, vars_str
+        )
+    };
+
+    sub_steps.push(SubStep {
+        description: "Convertir a forma normal polinómica".to_string(),
+        before_latex: format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: step.before
+            }
+        ),
+        after_latex: normal_form_description,
+    });
+
+    // Sub-step 2: Cancel like terms → 0
+    sub_steps.push(SubStep {
+        description: "Cancelar términos semejantes".to_string(),
+        before_latex: "todos los coeficientes".to_string(),
+        after_latex: "0".to_string(),
+    });
 
     sub_steps
 }
