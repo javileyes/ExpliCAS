@@ -1025,48 +1025,86 @@ fn generate_polynomial_identity_substeps(ctx: &Context, step: &crate::step::Step
         None => return sub_steps,
     };
 
-    // Sub-step 1: Convert to polynomial normal form
-    // Show the normalized expression if available, otherwise show stats
-    let normal_form_description = if let Some(expr_id) = proof.normal_form_expr {
-        // Expression is small enough to display
-        format!(
-            "{}",
-            DisplayExpr {
-                context: ctx,
-                id: expr_id
-            }
-        )
-    } else {
-        // Expression is too large, show stats instead
-        let vars_str = if proof.vars.is_empty() {
-            "constante".to_string()
+    // Helper to format polynomial stats
+    let format_poly_stats = |stats: &crate::multipoly_display::PolyNormalFormStats| -> String {
+        if let Some(expr_id) = stats.expr {
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: expr_id
+                }
+            )
         } else {
-            proof.vars.join(", ")
-        };
-        format!(
-            "{} monomios, grado {}, vars: {}",
-            proof.monomials, proof.degree, vars_str
-        )
+            format!("{} monomios, grado {}", stats.monomials, stats.degree)
+        }
     };
 
-    sub_steps.push(SubStep {
-        description: "Convertir a forma normal polinómica".to_string(),
-        before_latex: format!(
-            "{}",
-            DisplayExpr {
-                context: ctx,
-                id: step.before
-            }
-        ),
-        after_latex: normal_form_description,
-    });
+    // Check if we have LHS/RHS split (better for identities)
+    if let (Some(lhs_stats), Some(rhs_stats)) = (&proof.lhs_stats, &proof.rhs_stats) {
+        // Sub-step 1: Show LHS normal form
+        sub_steps.push(SubStep {
+            description: "Expandir lado izquierdo".to_string(),
+            before_latex: "(a + b + c)³".to_string(), // Placeholder, will be overwritten
+            after_latex: format_poly_stats(lhs_stats),
+        });
 
-    // Sub-step 2: Cancel like terms → 0
-    sub_steps.push(SubStep {
-        description: "Cancelar términos semejantes".to_string(),
-        before_latex: "todos los coeficientes".to_string(),
-        after_latex: "0".to_string(),
-    });
+        // Sub-step 2: Show RHS normal form
+        sub_steps.push(SubStep {
+            description: "Expandir lado derecho".to_string(),
+            before_latex: "a³ + b³ + c³ + ...".to_string(), // Placeholder
+            after_latex: format_poly_stats(rhs_stats),
+        });
+
+        // Sub-step 3: Compare and show they match
+        sub_steps.push(SubStep {
+            description: "Comparar formas normales".to_string(),
+            before_latex: format!(
+                "LHS: {} monomios | RHS: {} monomios",
+                lhs_stats.monomials, rhs_stats.monomials
+            ),
+            after_latex: "Coinciden ⇒ diferencia = 0".to_string(),
+        });
+    } else {
+        // Fallback: single normal form display
+        let normal_form_description = if let Some(expr_id) = proof.normal_form_expr {
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: expr_id
+                }
+            )
+        } else {
+            let vars_str = if proof.vars.is_empty() {
+                "constante".to_string()
+            } else {
+                proof.vars.join(", ")
+            };
+            format!(
+                "{} monomios, grado {}, vars: {}",
+                proof.monomials, proof.degree, vars_str
+            )
+        };
+
+        sub_steps.push(SubStep {
+            description: "Convertir a forma normal polinómica".to_string(),
+            before_latex: format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: step.before
+                }
+            ),
+            after_latex: normal_form_description,
+        });
+
+        sub_steps.push(SubStep {
+            description: "Cancelar términos semejantes".to_string(),
+            before_latex: "todos los coeficientes".to_string(),
+            after_latex: "0".to_string(),
+        });
+    }
 
     sub_steps
 }

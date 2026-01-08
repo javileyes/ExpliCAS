@@ -34,8 +34,15 @@ pub fn optimize_steps_semantic(
         return StepOptimizationResult::NoSimplificationNeeded;
     }
 
-    // Otherwise, apply normal optimization
-    StepOptimizationResult::Steps(optimize_steps(steps))
+    // Check if there are polynomial identity steps - use absorption to hide mechanical steps
+    let has_poly_identity = steps.iter().any(|s| s.poly_proof.is_some());
+
+    // Otherwise, apply normal optimization (with absorption if PolyZero present)
+    if has_poly_identity {
+        StepOptimizationResult::Steps(optimize_steps_with_absorption(steps))
+    } else {
+        StepOptimizationResult::Steps(optimize_steps(steps))
+    }
 }
 
 pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {

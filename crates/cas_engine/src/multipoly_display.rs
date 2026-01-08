@@ -9,11 +9,39 @@ use num_traits::{One, Signed, Zero};
 
 use crate::multipoly::MultiPoly;
 
+/// Stats for a single polynomial normal form
+#[derive(Debug, Clone)]
+pub struct PolyNormalFormStats {
+    /// Number of monomials
+    pub monomials: usize,
+    /// Maximum degree
+    pub degree: usize,
+    /// The normalized form as an expression (if small enough)
+    pub expr: Option<ExprId>,
+}
+
+impl PolyNormalFormStats {
+    pub fn from_multipoly(ctx: &mut Context, poly: &MultiPoly) -> Self {
+        let monomials = poly.terms.len();
+        let degree = poly.total_degree() as usize;
+        let expr = if monomials <= MAX_MONOMIALS_FOR_DISPLAY && monomials > 0 {
+            multipoly_to_expr_budgeted(ctx, poly, MAX_NODES_BUILD)
+        } else {
+            None
+        };
+        PolyNormalFormStats {
+            monomials,
+            degree,
+            expr,
+        }
+    }
+}
+
 /// Proof data for polynomial identity cancellation.
 /// Attached to Step for didactic display in explain mode.
 #[derive(Debug, Clone)]
 pub struct PolynomialProofData {
-    /// Number of monomials in the normalized form
+    /// Number of monomials in the difference (result = 0)
     pub monomials: usize,
     /// Maximum degree of the polynomial
     pub degree: usize,
@@ -22,6 +50,13 @@ pub struct PolynomialProofData {
     /// The normalized form as an expression (if small enough to display)
     /// None if the polynomial is too large (> MAX_MONOMIALS_FOR_DISPLAY)
     pub normal_form_expr: Option<ExprId>,
+
+    /// LHS normal form (for Sub(lhs, rhs) patterns)
+    /// This is the "left side" before cancellation
+    pub lhs_stats: Option<PolyNormalFormStats>,
+    /// RHS normal form (for Sub(lhs, rhs) patterns)
+    /// This is the "right side" before cancellation
+    pub rhs_stats: Option<PolyNormalFormStats>,
 }
 
 /// Budget limits for display conversion
@@ -46,6 +81,28 @@ impl PolynomialProofData {
             degree,
             vars,
             normal_form_expr,
+            lhs_stats: None,
+            rhs_stats: None,
+        }
+    }
+
+    /// Create proof data for an identity with LHS and RHS normal forms
+    pub fn from_identity(
+        ctx: &mut Context,
+        lhs_poly: &MultiPoly,
+        rhs_poly: &MultiPoly,
+        vars: Vec<String>,
+    ) -> Self {
+        let lhs_stats = PolyNormalFormStats::from_multipoly(ctx, lhs_poly);
+        let rhs_stats = PolyNormalFormStats::from_multipoly(ctx, rhs_poly);
+
+        PolynomialProofData {
+            monomials: 0, // Identity means difference = 0
+            degree: 0,
+            vars,
+            normal_form_expr: Some(ctx.num(0)),
+            lhs_stats: Some(lhs_stats),
+            rhs_stats: Some(rhs_stats),
         }
     }
 

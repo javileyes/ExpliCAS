@@ -1541,14 +1541,94 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
         if poly.is_zero() {
             let zero = ctx.num(0);
 
-            // Generate proof data for didactic display
-            // We need to convert the *original* expression to get the expanded form
-            // Since poly is zero, we create proof data showing the input normalized to 0
-            let proof_data = crate::multipoly_display::PolynomialProofData {
-                monomials: 0, // Result is zero
-                degree: 0,
-                vars: vars.clone(),
-                normal_form_expr: None, // Zero poly has no normal form to show
+            // Split terms into positive and negative to show LHS/RHS normal forms
+            // For an expression like A + B - C - D, we show:
+            //   LHS (positive): A + B expanded
+            //   RHS (negative): C + D expanded
+            let (positive_terms, negative_terms) = {
+                let mut pos = Vec::new();
+                let mut neg = Vec::new();
+
+                // Collect all additive terms
+                fn collect_terms(
+                    ctx: &Context,
+                    e: ExprId,
+                    pos: &mut Vec<ExprId>,
+                    neg: &mut Vec<ExprId>,
+                ) {
+                    match ctx.get(e) {
+                        Expr::Add(a, b) => {
+                            collect_terms(ctx, *a, pos, neg);
+                            collect_terms(ctx, *b, pos, neg);
+                        }
+                        Expr::Sub(a, b) => {
+                            collect_terms(ctx, *a, pos, neg);
+                            // b is subtracted, so it goes to negative
+                            neg.push(*b);
+                        }
+                        Expr::Neg(inner) => {
+                            neg.push(*inner);
+                        }
+                        _ => {
+                            pos.push(e);
+                        }
+                    }
+                }
+                collect_terms(ctx, expr, &mut pos, &mut neg);
+                (pos, neg)
+            };
+
+            // Build proof data with LHS/RHS if we have both positive and negative terms
+            let proof_data = if !positive_terms.is_empty() && !negative_terms.is_empty() {
+                // Build polys for positive sum (LHS) and negative sum (RHS)
+                let mut lhs_poly = crate::multipoly::MultiPoly::zero(vars.clone());
+                let mut rhs_poly = crate::multipoly::MultiPoly::zero(vars.clone());
+
+                // Sum positive terms - use the same vars we already collected
+                for &term in &positive_terms {
+                    let mut _term_vars = vars.clone();
+                    if let Some(term_poly) =
+                        Self::expr_to_multipoly(ctx, term, &mut _term_vars, &budget)
+                    {
+                        // If same vars, can add directly
+                        if term_poly.vars == lhs_poly.vars {
+                            if let Ok(sum) = lhs_poly.add(&term_poly) {
+                                lhs_poly = sum;
+                            }
+                        }
+                    }
+                }
+
+                // Sum negative terms (these are the RHS that was subtracted)
+                for &term in &negative_terms {
+                    let mut _term_vars = vars.clone();
+                    if let Some(term_poly) =
+                        Self::expr_to_multipoly(ctx, term, &mut _term_vars, &budget)
+                    {
+                        if term_poly.vars == rhs_poly.vars {
+                            if let Ok(sum) = rhs_poly.add(&term_poly) {
+                                rhs_poly = sum;
+                            }
+                        }
+                    }
+                }
+
+                crate::multipoly_display::PolynomialProofData::from_identity(
+                    ctx,
+                    &lhs_poly,
+                    &rhs_poly,
+                    vars.clone(),
+                )
+            } else {
+                // No clear LHS/RHS split
+                crate::multipoly_display::PolynomialProofData {
+                    monomials: 0,
+                    degree: 0,
+                    vars: vars.clone(),
+                    normal_form_expr: Some(zero),
+                    lhs_stats: None,
+                    rhs_stats: None,
+                }
             };
 
             return Some(Rewrite::with_poly_proof(
