@@ -808,14 +808,15 @@ define_rule!(
                 return None;
             }
 
-            // Note: result.assumption contains warning about denominators
-            // but assumption_events are not emitted for this case yet
+            // Build focus from cancelled/combined groups
+            // Priority: 1) constant cancellation, 2) fewest terms, 3) first available
+            let (before_local, after_local, description) = select_best_focus(ctx, &result);
 
             return Some(Rewrite {
                 new_expr: result.new_expr,
-                description: "Combine like terms".to_string(),
-                before_local: None,
-                after_local: None,
+                description,
+                before_local,
+                after_local,
                 assumption_events: Default::default(),
                 required_conditions: vec![],
                 poly_proof: None,
@@ -824,6 +825,74 @@ define_rule!(
         None
     }
 );
+
+/// Select the best focus for didactic display from cancelled/combined groups
+/// Priority: constant cancellations > fewest terms > first available
+fn select_best_focus(
+    ctx: &mut Context,
+    result: &crate::collect::CollectResult,
+) -> (Option<ExprId>, Option<ExprId>, String) {
+    // Priority 1: Constant cancellation (most didactic)
+    if let Some(const_group) = result.cancelled.iter().find(|g| g.is_constant) {
+        let focus_before = build_additive_expr(ctx, &const_group.original_terms);
+        let zero = ctx.num(0);
+        return (
+            Some(focus_before),
+            Some(zero),
+            "Cancel opposite terms".to_string(),
+        );
+    }
+
+    // Priority 2: Any cancellation with fewest terms
+    if let Some(best_cancelled) = result
+        .cancelled
+        .iter()
+        .min_by_key(|g| g.original_terms.len())
+    {
+        let focus_before = build_additive_expr(ctx, &best_cancelled.original_terms);
+        let zero = ctx.num(0);
+        return (
+            Some(focus_before),
+            Some(zero),
+            "Cancel opposite terms".to_string(),
+        );
+    }
+
+    // Priority 3: Combined group with fewest terms
+    if let Some(best_combined) = result
+        .combined
+        .iter()
+        .min_by_key(|g| g.original_terms.len())
+    {
+        let focus_before = build_additive_expr(ctx, &best_combined.original_terms);
+        return (
+            Some(focus_before),
+            Some(best_combined.combined_term),
+            "Combine like terms".to_string(),
+        );
+    }
+
+    // Fallback: no specific focus
+    (None, None, "Combine like terms".to_string())
+}
+
+/// Build an additive expression from a list of original terms
+/// Preserves the original term structure for accurate display
+fn build_additive_expr(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
+    if terms.is_empty() {
+        return ctx.num(0);
+    }
+    if terms.len() == 1 {
+        return terms[0];
+    }
+
+    // Build Add chain from terms
+    let mut result = terms[0];
+    for &term in &terms[1..] {
+        result = ctx.add(Expr::Add(result, term));
+    }
+    result
+}
 
 /// Count the number of terms in a sum/difference expression
 /// Returns the count of additive terms (flattening nested Add/Sub)

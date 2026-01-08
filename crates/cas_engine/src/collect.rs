@@ -7,12 +7,38 @@ use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 
+/// A group of terms that cancelled to zero (e.g., 5 + (-5) → 0)
+#[derive(Debug, Clone)]
+pub struct CancelledGroup {
+    /// The canonical key (term part) that identified this group
+    pub key: ExprId,
+    /// Original terms from the input expression that cancelled
+    pub original_terms: smallvec::SmallVec<[ExprId; 4]>,
+    /// Whether this is a pure constant cancellation (prioritized for focus)
+    pub is_constant: bool,
+}
+
+/// A group of terms that were combined (e.g., x + x → 2x)
+#[derive(Debug, Clone)]
+pub struct CombinedGroup {
+    /// The canonical key (term part) that identifies this group
+    pub key: ExprId,
+    /// Original terms from the input expression
+    pub original_terms: smallvec::SmallVec<[ExprId; 4]>,
+    /// The combined result term
+    pub combined_term: ExprId,
+}
+
 /// Result of a semantics-aware collection operation.
-/// Contains the new expression and an optional domain assumption if one was made.
+/// Contains the new expression and tracking of what was cancelled/combined.
 #[derive(Debug, Clone)]
 pub struct CollectResult {
     pub new_expr: ExprId,
     pub assumption: Option<String>,
+    /// Groups of terms that cancelled to zero
+    pub cancelled: Vec<CancelledGroup>,
+    /// Groups of terms that were combined
+    pub combined: Vec<CombinedGroup>,
 }
 
 /// Check if an expression contains any Div with a denominator that is not proven non-zero.
@@ -101,16 +127,18 @@ pub fn collect_with_semantics(
     }
 
     // Run the actual collection logic
-    let new_expr = collect_impl(ctx, expr);
+    let impl_result = collect_impl(ctx, expr);
 
     // Only return if something changed
-    if new_expr == expr {
+    if impl_result.new_expr == expr {
         return None;
     }
 
     Some(CollectResult {
-        new_expr,
+        new_expr: impl_result.new_expr,
         assumption,
+        cancelled: impl_result.cancelled,
+        combined: impl_result.combined,
     })
 }
 
@@ -127,76 +155,118 @@ pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
     }
 }
 
+/// Internal result from collect_impl with tracking info
+struct CollectImplResult {
+    new_expr: ExprId,
+    cancelled: Vec<CancelledGroup>,
+    combined: Vec<CombinedGroup>,
+}
+
 /// Internal implementation of collect logic (no semantics checking)
-fn collect_impl(ctx: &mut Context, expr: ExprId) -> ExprId {
+/// Now tracks original terms per group for didactic focus display
+fn collect_impl(ctx: &mut Context, expr: ExprId) -> CollectImplResult {
     // CRITICAL: Do NOT collect non-commutative expressions (e.g., matrices)
     if !ctx.is_mul_commutative(expr) {
-        return expr;
+        return CollectImplResult {
+            new_expr: expr,
+            cancelled: vec![],
+            combined: vec![],
+        };
     }
 
     // Flatten terms (using shared helper from crate::helpers)
     let terms = flatten_add_sub_chain(ctx, expr);
 
-    // Group terms by their "non-coefficient" part
-    let mut groups: Vec<(BigRational, ExprId)> = Vec::new();
+    // Group terms by their "non-coefficient" part, tracking original terms
+    // Each group: (accumulated_coeff, key_term_part, original_terms)
+    let mut groups: Vec<(BigRational, ExprId, smallvec::SmallVec<[ExprId; 4]>)> = Vec::new();
 
     for term in terms {
         let (coeff, term_part) = extract_numerical_coeff(ctx, term);
 
         // Find if we already have this term_part in groups
         let mut found = false;
-        for (g_coeff, g_term) in groups.iter_mut() {
+        for (g_coeff, g_term, g_originals) in groups.iter_mut() {
             if are_structurally_equal(ctx, *g_term, term_part) {
                 *g_coeff += coeff.clone();
+                g_originals.push(term); // Track original term
                 found = true;
                 break;
             }
         }
 
         if !found {
-            groups.push((coeff, term_part));
+            let mut originals = smallvec::SmallVec::new();
+            originals.push(term);
+            groups.push((coeff, term_part, originals));
         }
     }
 
     // Sort groups to ensure canonical order
     groups.sort_by(|a, b| crate::ordering::compare_expr(ctx, a.1, b.1));
 
+    // Track cancelled and combined groups
+    let mut cancelled = Vec::new();
+    let mut combined = Vec::new();
+
     // Reconstruct expression
     let mut new_terms = Vec::new();
-    for (coeff, term_part) in groups {
+    for (coeff, term_part, originals) in groups {
         if coeff.is_zero() {
+            // This group cancelled to zero
+            let is_constant = is_one_term(ctx, term_part);
+            cancelled.push(CancelledGroup {
+                key: term_part,
+                original_terms: originals,
+                is_constant,
+            });
             continue;
         }
 
         let term = if is_one_term(ctx, term_part) {
             // Just the coefficient (constant term)
-            ctx.add(Expr::Number(coeff))
+            ctx.add(Expr::Number(coeff.clone()))
         } else if coeff.is_one() {
             term_part
         } else if coeff == BigRational::from_integer((-1).into()) {
             // Use Neg(x) instead of Mul(-1, x) for conciseness
             ctx.add(Expr::Neg(term_part))
         } else {
-            let coeff_expr = ctx.add(Expr::Number(coeff));
+            let coeff_expr = ctx.add(Expr::Number(coeff.clone()));
             mul2_raw(ctx, coeff_expr, term_part)
         };
+
+        // Track combined groups (more than 1 original term merged into 1)
+        if originals.len() > 1 {
+            combined.push(CombinedGroup {
+                key: term_part,
+                original_terms: originals,
+                combined_term: term,
+            });
+        }
+
         new_terms.push(term);
     }
 
     // Sort terms by global canonical order to match CanonicalizeAddRule
     new_terms.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
 
-    if new_terms.is_empty() {
-        return ctx.num(0);
-    }
+    let new_expr = if new_terms.is_empty() {
+        ctx.num(0)
+    } else {
+        // Construct Add chain (Right-Associative to match CanonicalizeAddRule)
+        let mut result = *new_terms.last().unwrap();
+        for t in new_terms.iter().rev().skip(1) {
+            result = ctx.add(Expr::Add(*t, result));
+        }
+        result
+    };
 
-    // Construct Add chain (Right-Associative to match CanonicalizeAddRule)
-    let mut result = *new_terms.last().unwrap();
-    for t in new_terms.iter().rev().skip(1) {
-        result = ctx.add(Expr::Add(*t, result));
+    CollectImplResult {
+        new_expr,
+        cancelled,
+        combined,
     }
-
-    result
 }
 
 // --- Helpers ---
