@@ -100,8 +100,251 @@ fn is_minus_one(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
     }
 }
 
+/// Check if two N-ary sums form a conjugate pair: (U+V) and (U-V)
+/// where U can be any sum of terms and V is the single differing term.
+///
+/// Returns Some((U, V)) if they are conjugates, None otherwise.
+/// U is returned as an ExprId representing the common sum.
+/// V is the term that differs by sign between the two expressions.
+///
+/// Algorithm:
+/// 1. Flatten both expressions to signed term lists
+/// 2. Normalize each term by extracting embedded signs (Neg, Mul(-1,...), Number(-n))
+/// 3. Build multisets keyed by structural equality of normalized core
+/// 4. Valid conjugate iff exactly one term has diff = +2 or -2 (sign flip)
+fn is_nary_conjugate_pair(
+    ctx: &mut cas_ast::Context,
+    l: cas_ast::ExprId,
+    r: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    use crate::nary::{add_terms_signed, build_balanced_add, Sign};
+    use crate::ordering::compare_expr;
+    use num_traits::Signed;
+
+    /// Extract the "unsigned core" of a term and its effective sign.
+    ///
+    /// This function handles:
+    /// - Neg(x) → (x, -1)
+    /// - Number(-n) → (Number(n), -1)
+    /// - Products with negative coefficients: flattens, extracts sign, sorts, rebuilds
+    ///
+    /// For products, we flatten to factors, extract any negative sign from numeric
+    /// coefficients, sort the factors canonically, and rebuild. This ensures that
+    /// `2*a*b` compares equal regardless of tree structure (left vs right associative).
+    fn normalize_term(ctx: &mut cas_ast::Context, term: cas_ast::ExprId) -> (cas_ast::ExprId, i32) {
+        use crate::helpers::flatten_mul;
+
+        match ctx.get(term).clone() {
+            Expr::Neg(inner) => {
+                // Recursively normalize the inner term
+                let (core, sign) = normalize_term(ctx, inner);
+                (core, -sign)
+            }
+            Expr::Number(n) => {
+                if n.is_negative() {
+                    let pos_n = -n.clone();
+                    let pos_term = ctx.add(Expr::Number(pos_n));
+                    (pos_term, -1)
+                } else {
+                    (term, 1)
+                }
+            }
+            Expr::Mul(_, _) => {
+                // Flatten the product to get all factors
+                let mut factors: Vec<cas_ast::ExprId> = Vec::new();
+                flatten_mul(ctx, term, &mut factors);
+
+                // Extract sign from any negative numeric coefficient
+                let mut overall_sign: i32 = 1;
+                let mut unsigned_factors: Vec<cas_ast::ExprId> = Vec::new();
+
+                for factor in factors {
+                    match ctx.get(factor).clone() {
+                        Expr::Neg(inner) => {
+                            overall_sign *= -1;
+                            // Check if inner is also negative number
+                            if let Expr::Number(n) = ctx.get(inner).clone() {
+                                if n.is_negative() {
+                                    // Neg(Number(-x)) = x
+                                    unsigned_factors.push(ctx.add(Expr::Number(-n)));
+                                } else {
+                                    unsigned_factors.push(inner);
+                                }
+                            } else {
+                                unsigned_factors.push(inner);
+                            }
+                        }
+                        Expr::Number(n) if n.is_negative() => {
+                            overall_sign *= -1;
+                            unsigned_factors.push(ctx.add(Expr::Number(-n)));
+                        }
+                        _ => {
+                            unsigned_factors.push(factor);
+                        }
+                    }
+                }
+
+                // Sort factors canonically using compare_expr
+                unsigned_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+
+                // Rebuild the product (right-associatively for consistency)
+                let canonical_core = if unsigned_factors.is_empty() {
+                    ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+                        num_bigint::BigInt::from(1),
+                    )))
+                } else if unsigned_factors.len() == 1 {
+                    unsigned_factors[0]
+                } else {
+                    // Build right-associative: a * (b * (c * ...))
+                    let mut result = *unsigned_factors.last().unwrap();
+                    for factor in unsigned_factors.iter().rev().skip(1) {
+                        result = ctx.add(Expr::Mul(*factor, result));
+                    }
+                    result
+                };
+
+                (canonical_core, overall_sign)
+            }
+            _ => (term, 1),
+        }
+    }
+
+    // Flatten both sides
+    let l_terms = add_terms_signed(ctx, l);
+    let r_terms = add_terms_signed(ctx, r);
+
+    // Must have same number of terms
+    if l_terms.len() != r_terms.len() || l_terms.is_empty() {
+        return None;
+    }
+
+    // Budget guard: don't process huge expressions
+    const MAX_TERMS: usize = 16;
+    if l_terms.len() > MAX_TERMS {
+        return None;
+    }
+
+    // Normalize all terms and compute effective signs
+    // Each entry: (normalized_core, effective_sign)
+    let l_normalized: Vec<(cas_ast::ExprId, i32)> = l_terms
+        .iter()
+        .map(|&(term, sign)| {
+            let sign_val = match sign {
+                Sign::Pos => 1,
+                Sign::Neg => -1,
+            };
+            let (core, term_sign) = normalize_term(ctx, term);
+            (core, sign_val * term_sign)
+        })
+        .collect();
+
+    let r_normalized: Vec<(cas_ast::ExprId, i32)> = r_terms
+        .iter()
+        .map(|&(term, sign)| {
+            let sign_val = match sign {
+                Sign::Pos => 1,
+                Sign::Neg => -1,
+            };
+            let (core, term_sign) = normalize_term(ctx, term);
+            (core, sign_val * term_sign)
+        })
+        .collect();
+
+    // Build multiset: group by normalized core
+    // Each group: (core, net_sign_in_L, net_sign_in_R)
+    let mut groups: Vec<(cas_ast::ExprId, i32, i32)> = Vec::new();
+
+    // Process L terms
+    for &(core, sign) in &l_normalized {
+        let mut found = false;
+        for (rep, l_count, _) in groups.iter_mut() {
+            if compare_expr(ctx, *rep, core) == Ordering::Equal {
+                *l_count += sign;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            groups.push((core, sign, 0));
+        }
+    }
+
+    // Process R terms
+    for &(core, sign) in &r_normalized {
+        let mut found = false;
+        for (rep, _, r_count) in groups.iter_mut() {
+            if compare_expr(ctx, *rep, core) == Ordering::Equal {
+                *r_count += sign;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            groups.push((core, 0, sign));
+        }
+    }
+
+    // Compute diffs and identify the differing term
+    // Conjugate pair: exactly one term with diff=+2 or diff=-2 (sign flip)
+    // All other terms must have diff=0
+    let mut v_term: Option<cas_ast::ExprId> = None;
+    let mut common_terms: Vec<(cas_ast::ExprId, i32)> = Vec::new();
+
+    for (core, l_count, r_count) in &groups {
+        let diff = l_count - r_count;
+
+        if diff == 0 {
+            // Common term - add to U with the sign from L
+            if *l_count != 0 {
+                common_terms.push((*core, *l_count));
+            }
+        } else if diff == 2 || diff == -2 {
+            // This term has opposite signs in L and R
+            // In L: +v, in R: -v → diff = 1 - (-1) = 2
+            // In L: -v, in R: +v → diff = -1 - 1 = -2
+            if v_term.is_some() {
+                // More than one differing term - not a simple conjugate
+                return None;
+            }
+            v_term = Some(*core);
+        } else {
+            // Invalid diff (not 0 or ±2) - not a conjugate pair
+            return None;
+        }
+    }
+
+    // Must have exactly one differing term
+    let v = v_term?;
+
+    // Need at least one common term for a meaningful conjugate
+    if common_terms.is_empty() {
+        return None;
+    }
+
+    // Build U as the sum of common terms with their signs
+    let u_terms: Vec<cas_ast::ExprId> = common_terms
+        .iter()
+        .map(|(term, count)| {
+            if *count > 0 {
+                *term
+            } else {
+                ctx.add(Expr::Neg(*term))
+            }
+        })
+        .collect();
+
+    let u = if u_terms.len() == 1 {
+        u_terms[0]
+    } else {
+        build_balanced_add(ctx, &u_terms)
+    };
+
+    Some((u, v))
+}
+
 // DifferenceOfSquaresRule: Expands conjugate products
 // (a - b) * (a + b) → a² - b²
+// Now supports N-ary sums: (U + V)(U - V) → U² - V²
 // Phase: CORE | POST (structural simplification, not expansion)
 define_rule!(
     DifferenceOfSquaresRule,
@@ -114,6 +357,7 @@ define_rule!(
             let l = *l;
             let r = *r;
 
+            // Try fast binary matcher first
             if let Some((a, b)) = is_conjugate_pair(ctx, l, r) {
                 // Create a² - b²
                 let two = ctx.num(2);
@@ -124,6 +368,24 @@ define_rule!(
                 return Some(Rewrite {
                     new_expr,
                     description: "(a-b)(a+b) = a² - b²".to_string(),
+                    before_local: None,
+                    after_local: None,
+                    assumption_events: Default::default(),
+                    required_conditions: vec![],
+                });
+            }
+
+            // Try N-ary matcher for sums with 3+ terms
+            if let Some((u, v)) = is_nary_conjugate_pair(ctx, l, r) {
+                // Create U² - V²
+                let two = ctx.num(2);
+                let u_squared = ctx.add(Expr::Pow(u, two));
+                let v_squared = ctx.add(Expr::Pow(v, two));
+                let new_expr = ctx.add(Expr::Sub(u_squared, v_squared));
+
+                return Some(Rewrite {
+                    new_expr,
+                    description: "(U+V)(U-V) = U² - V² (conjugate product)".to_string(),
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),
@@ -469,3 +731,241 @@ define_rule!(
         })
     }
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_parser::parse;
+
+    #[test]
+    fn test_is_nary_conjugate_pair_sophie_germain() {
+        let mut ctx = cas_ast::Context::new();
+
+        // Parse both sides of the product
+        let l = parse("a^2 + 2*b^2 + 2*a*b", &mut ctx).expect("parse L");
+        let r = parse("a^2 + 2*b^2 - 2*a*b", &mut ctx).expect("parse R");
+
+        println!(
+            "L = {}",
+            cas_ast::display::DisplayExpr {
+                context: &ctx,
+                id: l
+            }
+        );
+        println!(
+            "R = {}",
+            cas_ast::display::DisplayExpr {
+                context: &ctx,
+                id: r
+            }
+        );
+
+        let result = is_nary_conjugate_pair(&mut ctx, l, r);
+
+        println!("Result: {:?}", result);
+
+        assert!(result.is_some(), "Should detect conjugate pair");
+
+        if let Some((u, v)) = result {
+            println!(
+                "U = {}",
+                cas_ast::display::DisplayExpr {
+                    context: &ctx,
+                    id: u
+                }
+            );
+            println!(
+                "V = {}",
+                cas_ast::display::DisplayExpr {
+                    context: &ctx,
+                    id: v
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_conjugate_pair_simple() {
+        let mut ctx = cas_ast::Context::new();
+
+        let l = parse("x + 1", &mut ctx).expect("parse L");
+        let r = parse("x - 1", &mut ctx).expect("parse R");
+
+        let result = is_conjugate_pair(&ctx, l, r);
+
+        assert!(result.is_some(), "Should detect simple conjugate pair");
+    }
+
+    #[test]
+    fn test_difference_of_squares_rule_on_product() {
+        use crate::parent_context::ParentContext;
+        use crate::rule::Rule;
+
+        let mut ctx = cas_ast::Context::new();
+
+        // Parse the full product
+        let expr =
+            parse("(a^2 + 2*b^2 + 2*a*b)*(a^2 + 2*b^2 - 2*a*b)", &mut ctx).expect("parse product");
+
+        println!(
+            "Product = {}",
+            cas_ast::display::DisplayExpr {
+                context: &ctx,
+                id: expr
+            }
+        );
+
+        // Apply the rule directly
+        let rule = DifferenceOfSquaresRule;
+        let parent_ctx = ParentContext::root();
+        let result = rule.apply(&mut ctx, expr, &parent_ctx);
+
+        println!("Rule result: {:?}", result.is_some());
+
+        assert!(
+            result.is_some(),
+            "DifferenceOfSquaresRule should match the product"
+        );
+
+        if let Some(rewrite) = result {
+            println!(
+                "Rewrite: {} -> {}",
+                cas_ast::display::DisplayExpr {
+                    context: &ctx,
+                    id: expr
+                },
+                cas_ast::display::DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn test_difference_of_squares_reordered_terms() {
+        use crate::parent_context::ParentContext;
+        use crate::rule::Rule;
+
+        let mut ctx = cas_ast::Context::new();
+
+        // Parse with the order as appears after canonicalization
+        // Note: The REPL shows (a² + 2·b² - 2*a·b)·(a² + 2·b² + 2·a·b)
+        let expr =
+            parse("(a^2 + 2*b^2 - 2*a*b)*(a^2 + 2*b^2 + 2*a*b)", &mut ctx).expect("parse product");
+
+        println!(
+            "Product (reordered) = {}",
+            cas_ast::display::DisplayExpr {
+                context: &ctx,
+                id: expr
+            }
+        );
+
+        // Apply the rule directly
+        let rule = DifferenceOfSquaresRule;
+        let parent_ctx = ParentContext::root();
+        let result = rule.apply(&mut ctx, expr, &parent_ctx);
+
+        println!("Rule result: {:?}", result.is_some());
+
+        // This should also match because (U-V)(U+V) is the same as (U+V)(U-V)
+        assert!(
+            result.is_some(),
+            "DifferenceOfSquaresRule should match the reordered product"
+        );
+
+        if let Some(rewrite) = result {
+            println!(
+                "Rewrite: {} -> {}",
+                cas_ast::display::DisplayExpr {
+                    context: &ctx,
+                    id: expr
+                },
+                cas_ast::display::DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn test_simplifier_applies_difference_of_squares() {
+        use crate::parent_context::ParentContext;
+        use crate::rule::Rule;
+        use crate::Simplifier;
+
+        // Create simplifier with default rules (includes DifferenceOfSquaresRule)
+        let mut simplifier = Simplifier::with_default_rules();
+
+        // Parse the product
+        let expr = parse(
+            "(a^2 + 2*b^2 + 2*a*b)*(a^2 + 2*b^2 - 2*a*b)",
+            &mut simplifier.context,
+        )
+        .expect("parse");
+
+        println!(
+            "Input: {}",
+            cas_ast::display::DisplayExpr {
+                context: &simplifier.context,
+                id: expr
+            }
+        );
+
+        // Run simplifier
+        let (result, steps) = simplifier.simplify(expr);
+
+        println!(
+            "Output: {}",
+            cas_ast::display::DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+        println!("Number of steps: {}", steps.len());
+        for step in &steps {
+            println!("  Step: {}", step.rule_name);
+        }
+
+        // Now try to apply DifferenceOfSquaresRule directly to the OUTPUT
+        // to see if it would have matched if given a chance
+        let rule = DifferenceOfSquaresRule;
+        let parent_ctx = ParentContext::root();
+        let rule_result = rule.apply(&mut simplifier.context, result, &parent_ctx);
+
+        println!(
+            "DifferenceOfSquaresRule direct application to OUTPUT: {:?}",
+            rule_result.is_some()
+        );
+
+        // Inspect the structure of result
+        // Extract ExprIds first to avoid borrow conflicts
+        let factors = {
+            match simplifier.context.get(result) {
+                cas_ast::Expr::Mul(l, r) => Some((*l, *r)),
+                _ => None,
+            }
+        };
+
+        if let Some((l, r)) = factors {
+            // Verify that we can identify this as a conjugate pair and the rule applies
+            let conjugate = is_nary_conjugate_pair(&mut simplifier.context, l, r);
+            // After the fix, the conjugate pair should be recognized
+            assert!(
+                conjugate.is_some(),
+                "is_nary_conjugate_pair should recognize the canonicalized conjugate pair"
+            );
+        }
+
+        // Verify that DifferenceOfSquaresRule was applied (indicated by step name)
+        let dos_applied = steps
+            .iter()
+            .any(|s| s.rule_name.contains("Difference of Squares"));
+        assert!(
+            dos_applied,
+            "DifferenceOfSquaresRule should be applied during simplification"
+        );
+    }
+}

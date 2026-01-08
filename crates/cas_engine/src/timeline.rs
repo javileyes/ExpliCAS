@@ -1441,10 +1441,8 @@ impl<'a> TimelineHtml<'a> {
                     // Global enrichments (fraction sums): show only once
                     let should_show = if has_nested_fraction || has_factorization {
                         true // Per-step: always show for each relevant step
-                    } else if has_fraction_sum {
-                        !sub_steps_shown // Global: only show once
                     } else {
-                        !sub_steps_shown // Default to global behavior
+                        !sub_steps_shown // Global (fraction sums or default): only show once
                     };
 
                     if should_show {
