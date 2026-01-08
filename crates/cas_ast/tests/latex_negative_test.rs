@@ -131,3 +131,100 @@ fn test_addition_with_neg_one_times_function() {
         result
     );
 }
+
+// ============================================================================
+// Non-regression tests for Neg(Add/Sub) parenthesization
+// Bug fix: Ensures -(a + b) is rendered as "-(a + b)" not "-a + b"
+// ============================================================================
+
+/// Test that Neg(Add) in subtraction context has parentheses in LaTeX
+#[test]
+fn test_latex_neg_add_has_parentheses() {
+    let mut ctx = Context::new();
+
+    // Build: x - (a + b) as Add(x, Neg(Add(a, b)))
+    let x = ctx.var("x");
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let neg_sum = ctx.add(Expr::Neg(a_plus_b));
+    let expr = ctx.add(Expr::Add(x, neg_sum));
+
+    let latex = LaTeXExpr {
+        context: &ctx,
+        id: expr,
+    };
+
+    let result = latex.to_latex();
+    println!("LaTeX Neg(Add) test: {}", result);
+
+    // Must have parentheses around the subtracted sum
+    assert!(
+        result.contains("(a + b)") || result.contains("(b + a)"),
+        "Expected parentheses around '(a + b)' in LaTeX. Got: '{}'",
+        result
+    );
+}
+
+/// Test that unary Neg(Add) has parentheses: `-(a + b)` in LaTeX
+#[test]
+fn test_latex_unary_neg_add_has_parentheses() {
+    let mut ctx = Context::new();
+
+    // Build: -(a + b)
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let neg_sum = ctx.add(Expr::Neg(a_plus_b));
+
+    let latex = LaTeXExpr {
+        context: &ctx,
+        id: neg_sum,
+    };
+
+    let result = latex.to_latex();
+    println!("LaTeX unary Neg(Add) test: {}", result);
+
+    // Must have -(...)
+    assert!(
+        result.starts_with("-(") || result.contains("-("),
+        "Expected '-(...)' format for unary neg of sum in LaTeX. Got: '{}'",
+        result
+    );
+}
+
+/// Regression test: fraction numerator with subtracted sum in LaTeX
+#[test]
+fn test_latex_fraction_numerator_neg_sum_regression() {
+    let mut ctx = Context::new();
+
+    // Build: x + 1 - (3x + 2) - the problematic numerator from the bug report
+    let x = ctx.var("x");
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+
+    let x_plus_1 = ctx.add(Expr::Add(x, one));
+    let three_x = ctx.add(Expr::Mul(three, x));
+    let three_x_plus_2 = ctx.add(Expr::Add(three_x, two));
+    let neg_sum = ctx.add(Expr::Neg(three_x_plus_2));
+    let numerator = ctx.add(Expr::Add(x_plus_1, neg_sum));
+
+    let latex = LaTeXExpr {
+        context: &ctx,
+        id: numerator,
+    };
+
+    let result = latex.to_latex();
+    println!("LaTeX regression test result: {}", result);
+
+    // The critical check: should NOT have "+ 2" anywhere
+    assert!(
+        !result.contains("+ 2"),
+        "REGRESSION: Found '+ 2' in LaTeX, indicating missing parentheses. \
+         Expected something like 'x + 1 - (3\\cdot x + 2)'. Got: '{}'",
+        result
+    );
+}
