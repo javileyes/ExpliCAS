@@ -1420,23 +1420,42 @@ impl<'a> TimelineHtml<'a> {
 
             let local_change_latex = format!("{} \\rightarrow {}", local_before, local_after);
 
-            // Get enriched sub-steps for this step (only show once on first visible step)
-            let sub_steps_html = if !sub_steps_shown {
-                if let Some(enriched) = enriched_steps.get(step_idx) {
-                    if !enriched.sub_steps.is_empty() {
-                        sub_steps_shown = true; // Mark as shown
+            // Get enriched sub-steps for this step
+            // Detect enrichment type FIRST
+            let sub_steps_html = if let Some(enriched) = enriched_steps.get(step_idx) {
+                if !enriched.sub_steps.is_empty() {
+                    // Detect type from sub-step descriptions
+                    let has_fraction_sum = enriched.sub_steps.iter().any(|s| {
+                        s.description.contains("common denominator")
+                            || s.description.contains("Sum the fractions")
+                    });
+                    let has_factorization = enriched.sub_steps.iter().any(|s| {
+                        s.description.contains("Cancel common factor")
+                            || s.description.contains("Factor")
+                    });
+                    let has_nested_fraction = enriched.sub_steps.iter().any(|s| {
+                        s.description.contains("Invertir") || s.description.contains("denominador")
+                    });
 
-                        // Detect type from sub-step descriptions (like CLI)
-                        let has_fraction_sum = enriched.sub_steps.iter().any(|s| {
-                            s.description.contains("common denominator")
-                                || s.description.contains("Sum the fractions")
-                        });
-                        let has_factorization = enriched.sub_steps.iter().any(|s| {
-                            s.description.contains("Cancel common factor")
-                                || s.description.contains("Factor")
-                        });
+                    // Per-step enrichments (nested fractions, factorization): always show
+                    // Global enrichments (fraction sums): show only once
+                    let should_show = if has_nested_fraction || has_factorization {
+                        true // Per-step: always show for each relevant step
+                    } else if has_fraction_sum {
+                        !sub_steps_shown // Global: only show once
+                    } else {
+                        !sub_steps_shown // Default to global behavior
+                    };
 
-                        let header = if has_fraction_sum {
+                    if should_show {
+                        // Mark as shown for global enrichments only
+                        if has_fraction_sum && !has_nested_fraction && !has_factorization {
+                            sub_steps_shown = true;
+                        }
+
+                        let header = if has_nested_fraction {
+                            "Simplificación de fracción compleja"
+                        } else if has_fraction_sum {
                             "Suma de fracciones"
                         } else if has_factorization {
                             "Factorización de polinomios"
