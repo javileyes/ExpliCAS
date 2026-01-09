@@ -4,42 +4,48 @@ use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::Expr;
 use num_traits::{One, Zero};
 
-define_rule!(AddZeroRule, "Identity Property of Addition", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Add(lhs, rhs) = expr_data {
-        if let Expr::Number(n) = ctx.get(rhs) {
-            if n.is_zero() {
-                return Some(Rewrite {
-                    new_expr: lhs,
-                    description: "x + 0 = x".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+define_rule!(
+    AddZeroRule,
+    "Identity Property of Addition",
+    importance: crate::step::ImportanceLevel::Low,
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Add(lhs, rhs) = expr_data {
+            if let Expr::Number(n) = ctx.get(rhs) {
+                if n.is_zero() {
+                    return Some(Rewrite {
+                        new_expr: lhs,
+                        description: "x + 0 = x".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        assumption_events: Default::default(),
+                        required_conditions: vec![],
+                        poly_proof: None,
+                    });
+                }
+            }
+            if let Expr::Number(n) = ctx.get(lhs) {
+                if n.is_zero() {
+                    return Some(Rewrite {
+                        new_expr: rhs,
+                        description: "0 + x = x".to_string(),
+                        before_local: None,
+                        after_local: None,
+                        assumption_events: Default::default(),
+                        required_conditions: vec![],
+                        poly_proof: None,
+                    });
+                }
             }
         }
-        if let Expr::Number(n) = ctx.get(lhs) {
-            if n.is_zero() {
-                return Some(Rewrite {
-                    new_expr: rhs,
-                    description: "0 + x = x".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
-            }
-        }
+        None
     }
-    None
-});
+);
 
 define_rule!(
     MulOneRule,
     "Identity Property of Multiplication",
+    importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
@@ -730,12 +736,20 @@ mod importance_tests {
     #[test]
     fn test_mul_one_rule_importance() {
         let rule = MulOneRule;
-        assert_eq!(rule.importance(), ImportanceLevel::Medium, "MulOneRule should have Medium importance by default");
+        assert_eq!(
+            rule.importance(),
+            ImportanceLevel::Low,
+            "MulOneRule should have Low importance (hidden in normal mode)"
+        );
     }
 
     #[test]
     fn test_add_zero_rule_importance() {
         let rule = AddZeroRule;
-        assert_eq!(rule.importance(), ImportanceLevel::Medium, "AddZeroRule should have Medium importance by default");
+        assert_eq!(
+            rule.importance(),
+            ImportanceLevel::Low,
+            "AddZeroRule should have Low importance (hidden in normal mode)"
+        );
     }
 }
