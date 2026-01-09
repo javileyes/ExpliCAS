@@ -367,6 +367,12 @@ pub trait LaTeXRenderer {
                 let var = self.expr_to_latex(args[1], false);
                 format!("\\int {} \\, d{}", expr, var)
             }
+            // __eq__ is an internal equation representation - display as "lhs = rhs"
+            "__eq__" if args.len() == 2 => {
+                let lhs = self.expr_to_latex(args[0], false);
+                let rhs = self.expr_to_latex(args[1], false);
+                format!("{} = {}", lhs, rhs)
+            }
             _ => {
                 let args_str: Vec<String> =
                     args.iter().map(|&a| self.expr_to_latex(a, false)).collect();
@@ -831,6 +837,12 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                 "|{}|",
                 self.render_with_path(args[0], false, &self.child_path(path, 0))
             ),
+            // __eq__ is an internal equation representation - display as "lhs = rhs"
+            "__eq__" if args.len() == 2 => {
+                let lhs = self.render_with_path(args[0], false, &self.child_path(path, 0));
+                let rhs = self.render_with_path(args[1], false, &self.child_path(path, 1));
+                format!("{} = {}", lhs, rhs)
+            }
             _ => {
                 let args_str: Vec<String> = args
                     .iter()
