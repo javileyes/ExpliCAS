@@ -1,8 +1,86 @@
 # SEMANTICS POLICY
 
-> **Version 1.3.8** | Last updated: 2026-01-07
+> **Version 1.4.0** | Last updated: 2026-01-09
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
+
+---
+
+## Display Step Contract (V2.9.8) ✅
+
+> **Core Principle**: All display layers (Text, HTML, JSON) receive **identical, pre-processed steps**. The type system enforces this — raw steps cannot escape to consumers.
+
+### Type Hierarchy
+
+```
+                       ┌──────────────────┐
+                       │   Solver Core    │
+                       └────────┬─────────┘
+                                │ RawSolveSteps (internal)
+                                ▼
+                   ┌────────────────────────────┐
+                   │  solve_with_display_steps  │
+                   │  (cleanup + normalization) │
+                   └────────────┬───────────────┘
+                                │ DisplaySolveSteps (public)
+                ┌───────────────┼───────────────┐
+                ▼               ▼               ▼
+           CLI Text        Timeline HTML    JSON API
+```
+
+| Type | Visibility | Purpose |
+|------|------------|---------|
+| `RawSolveSteps` | `pub(crate)` | Internal solver output, pre-cleanup |
+| `DisplaySolveSteps` | `pub` | All external consumers, post-cleanup |
+
+### Allowed Cleanup Operations
+
+| Operation | Allowed | Rationale |
+|-----------|:-------:|-----------|
+| Remove redundant steps | ✅ | Steps that don't change the equation |
+| Collapse consecutive equal-result steps | ✅ | Didactic clarity |
+| Normalize sign display | ✅ | Presentation only |
+| Add narrator text | ✅ | Educational context |
+| Deduplicate identical descriptions | ✅ | Visual cleanup |
+
+### Forbidden Cleanup Operations
+
+| Operation | Allowed | Rationale |
+|-----------|:-------:|-----------|
+| Change `before`/`after` expressions mathematically | ❌ | Would alter correctness |
+| Reorder steps that change logical flow | ❌ | Would confuse derivation |
+| Invent steps that didn't happen | ❌ | Would mislead students |
+| Filter steps based on renderer type | ❌ | Would cause bifurcation |
+
+### API Contract
+
+```rust
+// ✅ CORRECT: Use public API, returns DisplaySolveSteps
+let (solution, steps) = solve_with_display_steps(&eq, "x", simplifier, opts)?;
+
+// ❌ WRONG: solve_with_options is pub(crate) only
+// let (solution, steps) = solve_with_options(&eq, "x", simplifier, opts)?;
+```
+
+### Debug Escape Hatch
+
+For debugging and testing, raw steps are available via:
+
+```rust
+#[cfg(test)]
+// Direct access to solve_with_options in test modules
+pub(crate) fn solve_with_options(...) -> Result<(SolutionSet, Vec<SolveStep>), CasError>
+```
+
+### Anti-Regression Tests
+
+The `step_renderer_parity_tests.rs` file validates:
+
+1. **Step count parity**: Text and JSON renderers see identical step counts
+2. **Description consistency**: Same descriptions across all renderers
+3. **Wrapper integrity**: `DisplaySolveSteps` methods are consistent
+
+---
 
 ## Overview
 
