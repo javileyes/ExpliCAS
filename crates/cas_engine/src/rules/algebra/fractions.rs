@@ -3763,11 +3763,33 @@ define_rule!(
             }
         }
 
+        // ===== FOCUS CONSTRUCTION =====
+        // Capture original fraction terms exactly as they appear (preserving signs)
+        // This enables didactic display showing only the combined fractions
+        let original_fractions: Vec<ExprId> = group
+            .iter()
+            .map(|&(idx, _, _)| terms[idx]) // term already has its sign
+            .collect();
+
+        // Build focus_before from original fraction terms
+        let focus_before = if original_fractions.len() == 1 {
+            original_fractions[0]
+        } else {
+            let mut acc = original_fractions[0];
+            for &term in &original_fractions[1..] {
+                acc = ctx.add(Expr::Add(acc, term));
+            }
+            acc
+        };
+
+        // focus_after is the combined fraction
+        let focus_after = combined_fraction;
+
         Some(Rewrite {
             new_expr: result,
             description: "Combine fractions with same denominator".to_string(),
-            before_local: None,
-            after_local: None,
+            before_local: Some(focus_before),
+            after_local: Some(focus_after),
             assumption_events: Default::default(),
             required_conditions: vec![],
             poly_proof: None,
