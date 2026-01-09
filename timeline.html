@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: {(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + 3\cdot (a + b)\cdot (a + c)\cdot (b + c))</title>
+    <title>CAS Steps: {(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + 3\cdot (a + b)\cdot (a + c)\cdot (b + c)\cdot (d + f))</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -112,9 +112,9 @@
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1000px;
+            max-width: 95%;
             margin: 0 auto;
-            padding: 20px 15px;
+            padding: 20px 10px;
             background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
             min-height: 100vh;
             color: var(--text-color);
@@ -275,6 +275,8 @@
             border-radius: 4px;
             font-size: 1.05em;
             transition: background 0.3s ease;
+            overflow-x: auto;
+            max-width: 100%;
         }
         .math-expr.before {
             border-left-color: var(--math-before-border);
@@ -437,39 +439,55 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + 3\cdot (a + b)\cdot (a + c)\cdot (b + c))\]
+            \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + 3\cdot (a + b)\cdot (a + c)\cdot (b + c)\cdot (d + f))\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Polynomial Identity</h3>
+                    <h3>Distributive Property</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{{(a + b + c)}^{3} - {a}^{3} - {b}^{3} - {c}^{3} - (a\cdot (b + c)\cdot (3\cdot a + 3\cdot b)) - (c\cdot (b + c)\cdot (3\cdot a + 3\cdot b))}}\]
+                        \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + {\color{red}{3\cdot (a + b)}}\cdot (a + c)\cdot (b + c)\cdot (d + f))\]
                     </div>
-                    <details class="substeps-details">
-                            <summary>Pasos intermedios</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Expandir lado izquierdo</span><div class="substep-math">\[(a + b + c)³ \rightarrow a^3 + b^3 + c^3 + 3·a·b^2 + 3·a·c^2 + 3·b·a^2 + 3·b·c^2 + 3·c·a^2 + 3·c·b^2 + 6·a·b·c\]</div></div><div class="substep">
-                                    <span class="substep-desc">Expandir lado derecho</span><div class="substep-math">\[a³ + b³ + c³ + ... \rightarrow a^3 + b^3 + c^3 + 3·a·b^2 + 3·a·c^2 + 3·b·a^2 + 3·b·c^2 + 3·c·a^2 + 3·c·b^2 + 6·a·b·c\]</div></div><div class="substep">
-                                    <span class="substep-desc">Comparar formas normales</span><div class="substep-math">\[LHS: 10 monomios | RHS: 10 monomios \rightarrow Coinciden ⇒ diferencia = 0\]</div></div></div></details>
+                    
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Polynomial identity: normalize and cancel to 0}\)</div>
+                        <div class="rule-name">\(\text{Distribute}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{{(a + b + c)}^{3} - {a}^{3} - {c}^{3} - {b}^{3} - (c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)) - (a\cdot (b + c)\cdot (3\cdot a + 3\cdot b))}} \rightarrow {\color{green}{0}}\]
+                            \[{\color{red}{3\cdot (a + b)}} \rightarrow {\color{green}{3\cdot a + 3\cdot b}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{0}}\]
+                        \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + ({\color{green}{3\cdot a + 3\cdot b}})\cdot (a + c)\cdot (b + c)\cdot (d + f))\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Distributive Property</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + {\color{red}{(a + c)\cdot (b + c)\cdot (3\cdot a + 3\cdot b)}}\cdot (d + f))\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Distribute}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{(a + c)\cdot (b + c)\cdot (3\cdot a + 3\cdot b)}} \rightarrow {\color{green}{a\cdot (b + c)\cdot (3\cdot a + 3\cdot b) + c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + ({\color{green}{a\cdot (b + c)\cdot (3\cdot a + 3\cdot b) + c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)}})\cdot (d + f))\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[0\]
+            \[{(a + b + c)}^{3} - {a}^{3} - {c}^{3} - {b}^{3} - ((d + f)\cdot (a\cdot (b + c)\cdot (3\cdot a + 3\cdot b) + c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)))\]
         </div>
     </div>
     <footer>

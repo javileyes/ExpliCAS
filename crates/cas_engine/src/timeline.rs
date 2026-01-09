@@ -1199,9 +1199,9 @@ impl<'a> TimelineHtml<'a> {
         }}
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1000px;
+            max-width: 95%;
             margin: 0 auto;
-            padding: 20px 15px;
+            padding: 20px 10px;
             background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
             min-height: 100vh;
             color: var(--text-color);
@@ -1362,6 +1362,8 @@ impl<'a> TimelineHtml<'a> {
             border-radius: 4px;
             font-size: 1.05em;
             transition: background 0.3s ease;
+            overflow-x: auto;
+            max-width: 100%;
         }}
         .math-expr.before {{
             border-left-color: var(--math-before-border);
@@ -2233,9 +2235,9 @@ impl<'a> SolveTimelineHtml<'a> {
     }}
     body {{
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        max-width: 1000px;
+        max-width: 95%;
         margin: 0 auto;
-        padding: 20px 15px;
+        padding: 20px 10px;
         background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
         min-height: 100vh;
         color: var(--text-color);
@@ -2385,6 +2387,8 @@ impl<'a> SolveTimelineHtml<'a> {
         text-align: center;
         font-size: 1.2em;
         transition: background 0.3s ease;
+        overflow-x: auto;
+        max-width: 100%;
     }}
     .final-result {{
         background: linear-gradient(135deg, var(--final-bg-start), var(--final-bg-end));
