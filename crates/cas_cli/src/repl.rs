@@ -2156,7 +2156,9 @@ impl Repl {
                         &mut temp_simplifier.context,
                     );
 
-                    (steps, expr, simplified)
+                    // V2.9.9: Apply same pipeline as engine.eval for consistency
+                    let display_steps = cas_engine::eval_step_pipeline::to_display_steps(steps);
+                    (display_steps, expr, simplified)
                 }
                 Err(e) => {
                     // Swap context back even on error
@@ -2217,13 +2219,8 @@ impl Repl {
             return;
         }
 
-        // Filter out non-productive steps (where global state doesn't change)
-        // But pass ALL steps to timeline so it can correctly compute final result
-        let _filtered_steps = cas_engine::strategies::filter_non_productive_steps(
-            &mut self.engine.simplifier.context,
-            expr_id,
-            steps.clone(),
-        );
+        // NOTE: filter_non_productive_steps removed here as timeline already handles filtering
+        // and the result was previously unused (prefixed with _)
 
         // Convert CLI verbosity to timeline verbosity
         // Use Normal level - shows important steps without low-level canonicalization
@@ -4764,7 +4761,7 @@ impl Repl {
     fn show_simplification_steps(
         &mut self,
         expr: cas_ast::ExprId,
-        steps: Vec<cas_engine::Step>,
+        steps: &[cas_engine::Step],
         style_signals: cas_ast::root_style::ParseStyleSignals,
     ) {
         use cas_ast::root_style::StylePreferences;
@@ -4842,7 +4839,7 @@ impl Repl {
             let enriched_steps = cas_engine::didactic::enrich_steps(
                 &self.engine.simplifier.context,
                 expr,
-                steps.clone(),
+                steps.to_vec(),
             );
 
             let mut current_root = expr;
@@ -5269,7 +5266,7 @@ impl Repl {
                             // trigger logic if verbosity on
                             self.show_simplification_steps(
                                 output.resolved,
-                                output.steps,
+                                &output.steps,
                                 style_signals.clone(),
                             );
                         }

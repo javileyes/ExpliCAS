@@ -219,3 +219,82 @@ mod tests {
         assert_eq!(step.get_importance(), ImportanceLevel::High);
     }
 }
+
+// =============================================================================
+// V2.9.9: Type-Safe Eval Step Wrappers
+// =============================================================================
+
+/// V2.9.9: Internal steps before cleanup/enrichment.
+/// NOT exported from crate. Use for debugging only.
+#[allow(dead_code)]
+pub(crate) struct RawEvalSteps(pub Vec<Step>);
+
+/// V2.9.9: Display-ready steps after cleanup/enrichment.
+/// The ONLY type external consumers should receive.
+///
+/// This wrapper enforces that step cleanup has been applied via
+/// `eval_step_pipeline::to_display_steps()`. No raw steps can
+/// escape to display layers (Text, HTML, JSON).
+#[derive(Debug, Clone, Default)]
+pub struct DisplayEvalSteps(pub Vec<Step>);
+
+impl DisplayEvalSteps {
+    /// Create an empty DisplayEvalSteps.
+    pub fn empty() -> Self {
+        Self(vec![])
+    }
+
+    /// Check if there are no steps.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Get the number of steps.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Iterate over steps.
+    pub fn iter(&self) -> std::slice::Iter<'_, Step> {
+        self.0.iter()
+    }
+
+    /// Get inner Vec reference.
+    pub fn as_slice(&self) -> &[Step] {
+        &self.0
+    }
+
+    /// Consume and return inner Vec.
+    pub fn into_inner(self) -> Vec<Step> {
+        self.0
+    }
+}
+
+// Deref for ergonomic slice access (enables &display_steps[..], .len(), etc.)
+impl std::ops::Deref for DisplayEvalSteps {
+    type Target = [Step];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// IntoIterator for `for step in &output.steps` pattern
+impl<'a> IntoIterator for &'a DisplayEvalSteps {
+    type Item = &'a Step;
+    type IntoIter = std::slice::Iter<'a, Step>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+// Consuming iterator for `for step in output.steps`
+impl IntoIterator for DisplayEvalSteps {
+    type Item = Step;
+    type IntoIter = std::vec::IntoIter<Step>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}

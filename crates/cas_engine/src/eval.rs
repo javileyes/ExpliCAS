@@ -132,7 +132,7 @@ pub struct EvalOutput {
     pub result: EvalResult,
     /// Domain warnings with deduplication and rule source.
     pub domain_warnings: Vec<DomainWarning>,
-    pub steps: Vec<crate::Step>,
+    pub steps: crate::step::DisplayEvalSteps,
     pub solve_steps: Vec<crate::solver::SolveStep>,
     /// Assumptions made during solver operations (for Assume mode).
     pub solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
@@ -557,13 +557,18 @@ impl Engine {
         // Tests and some code paths still use output.required_conditions
         let required_conditions = diagnostics.required_conditions();
 
+        // V2.9.9: Convert raw steps to display-ready steps via unified pipeline.
+        // This is the ONLY place DisplayEvalSteps is constructed from raw steps.
+        // The pipeline removes no-ops and prepares steps for all renderers.
+        let display_steps = crate::eval_step_pipeline::to_display_steps(steps);
+
         Ok(EvalOutput {
             stored_id,
             parsed: req.parsed,
             resolved,
             result,
             domain_warnings,
-            steps,
+            steps: display_steps,
             solve_steps,
             solver_assumptions,
             output_scopes,

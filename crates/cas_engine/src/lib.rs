@@ -17,6 +17,7 @@ pub mod domain;
 pub mod engine;
 pub mod env;
 pub mod eval;
+pub mod eval_step_pipeline;
 pub mod expand;
 pub mod factor;
 pub mod gcd_zippel_modp;
@@ -102,5 +103,5 @@ pub use semantics::{
 };
 pub use session::{resolve_session_refs, Entry, EntryId, EntryKind, ResolveError, SessionStore};
 pub use session_state::SessionState;
-pub use step::Step;
+pub use step::{DisplayEvalSteps, Step};
 pub use visitors::{DepthVisitor, VariableCollector};
