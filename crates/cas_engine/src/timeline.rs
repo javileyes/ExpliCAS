@@ -1375,7 +1375,8 @@ impl<'a> TimelineHtml<'a> {
             }
             step_number += 1;
 
-            // Generate global BEFORE with red highlight on the input (using display hints)
+            // Generate global BEFORE with red highlight on the transformed subtree
+            // Note: Using path lookup (not focus) since focus may be a synthetic expression
             let actual_target = self.find_expr_at_path(global_before_expr, &step.path);
             let mut before_config = HighlightConfig::new();
             before_config.add(actual_target, HighlightColor::Red);
@@ -1387,7 +1388,8 @@ impl<'a> TimelineHtml<'a> {
             }
             .to_latex();
 
-            // Generate global AFTER with green highlight on the result (using display hints)
+            // Generate global AFTER with green highlight on the result
+            // Note: step.after is the actual result in the global tree
             let mut after_config = HighlightConfig::new();
             after_config.add(step.after, HighlightColor::Green);
             let global_after = cas_ast::LaTeXExprHighlightedWithHints {

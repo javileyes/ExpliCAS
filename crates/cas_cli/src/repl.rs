@@ -4276,10 +4276,17 @@ impl Repl {
                             return;
                         }
 
+                        // Apply same cleanup as CLI text output for consistent didactic steps
+                        let cleaned_steps = cas_engine::solver::step_cleanup::cleanup_solve_steps(
+                            &mut self.engine.simplifier.context,
+                            steps,
+                            true, // detailed=true for full narrative
+                        );
+
                         // Generate HTML timeline for solve steps
                         let mut timeline = cas_engine::timeline::SolveTimelineHtml::new(
                             &mut self.engine.simplifier.context,
-                            &steps,
+                            &cleaned_steps,
                             &eq,
                             &solution_set,
                             var,
