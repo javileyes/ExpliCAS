@@ -3,6 +3,7 @@ pub mod display_context;
 pub mod display_transforms; // Scoped display transforms (sqrt in quadratic, etc.)
 pub mod domain;
 pub mod error; // Error types for AST operations
+pub mod expr_path; // Path-based occurrence identification (V2.9.16)
 pub mod expression;
 pub mod hold; // __hold barrier utilities (canonical implementation)
 pub mod latex;
@@ -22,10 +23,13 @@ pub use display_context::{DisplayContext, DisplayHint};
 pub use domain::{
     BoundType, Case, ConditionPredicate, ConditionSet, Interval, SolutionSet, SolveResult,
 };
+pub use expr_path::{path_to_string, ExprPath};
 pub use expression::{Constant, Context, ContextStats, Expr, ExprId, MulCommutativity};
 pub use latex::{LaTeXExpr, LaTeXExprWithHints};
+pub use latex_core::PathHighlightedLatexRenderer;
 pub use latex_highlight::{
     HighlightColor, HighlightConfig, LaTeXExprHighlighted, LaTeXExprHighlightedWithHints,
+    PathHighlightConfig,
 };
 pub use latex_no_roots::LatexNoRoots;
 pub use latex_parser::parse_latex;

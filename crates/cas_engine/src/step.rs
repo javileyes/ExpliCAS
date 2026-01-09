@@ -10,6 +10,30 @@ pub enum PathStep {
     Inner,      // Negation inner / other unary
 }
 
+impl PathStep {
+    /// Convert to child index for ExprPath (V2.9.16)
+    pub fn to_child_index(&self) -> u8 {
+        match self {
+            PathStep::Left => 0,
+            PathStep::Right => 1,
+            PathStep::Base => 0,
+            PathStep::Exponent => 1,
+            PathStep::Inner => 0,
+            PathStep::Arg(i) => *i as u8,
+        }
+    }
+}
+
+/// Convert a Vec<PathStep> to ExprPath (V2.9.16)
+///
+/// ExprPath uses numeric indices for children:
+/// - 0 = left/base/numerator/inner
+/// - 1 = right/exponent/denominator
+/// - i = function argument index
+pub fn pathsteps_to_expr_path(steps: &[PathStep]) -> cas_ast::ExprPath {
+    steps.iter().map(|s| s.to_child_index()).collect()
+}
+
 /// Importance level for step filtering
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ImportanceLevel {

@@ -66,6 +66,50 @@ impl HighlightConfig {
 }
 
 // ============================================================================
+// PathHighlightConfig - Path-based highlighting (V2.9.16)
+// ============================================================================
+
+use crate::expr_path::ExprPath;
+
+/// Configuration for highlighting specific occurrences by path.
+///
+/// Unlike `HighlightConfig` which uses ExprId (causing all identical values
+/// to be highlighted), this uses tree paths to highlight exactly one occurrence.
+#[derive(Default)]
+pub struct PathHighlightConfig {
+    /// List of (path, color) pairs. First match wins.
+    paths: Vec<(ExprPath, HighlightColor)>,
+}
+
+impl PathHighlightConfig {
+    /// Create empty path highlight configuration
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a highlight for a specific path
+    pub fn add(&mut self, path: ExprPath, color: HighlightColor) -> &mut Self {
+        self.paths.push((path, color));
+        self
+    }
+
+    /// Get the highlight color for a path, if any
+    pub fn get(&self, path: &ExprPath) -> Option<HighlightColor> {
+        for (p, color) in &self.paths {
+            if p == path {
+                return Some(*color);
+            }
+        }
+        None
+    }
+
+    /// Check if config is empty
+    pub fn is_empty(&self) -> bool {
+        self.paths.is_empty()
+    }
+}
+
+// ============================================================================
 // LaTeXExprHighlighted - LaTeX with highlighting
 // ============================================================================
 

@@ -603,3 +603,270 @@ impl<'a> LaTeXRenderer for FullLatexRenderer<'a> {
         format!("{{{}}}^{{{}}}", base_str, exp_str)
     }
 }
+
+// ============================================================================
+// Path-Highlighted LaTeX Renderer (V2.9.16)
+// ============================================================================
+
+use crate::expr_path::ExprPath;
+use crate::latex_highlight::PathHighlightConfig;
+
+/// LaTeX renderer that highlights by path instead of ExprId.
+///
+/// This solves the problem where multiple occurrences of the same value
+/// (e.g., all `4`s) would be highlighted when only one should be.
+///
+/// V2.9.16: Path-based occurrence highlighting
+pub struct PathHighlightedLatexRenderer<'a> {
+    pub context: &'a Context,
+    pub id: ExprId,
+    pub path_highlights: &'a PathHighlightConfig,
+    pub hints: Option<&'a DisplayContext>,
+}
+
+impl<'a> PathHighlightedLatexRenderer<'a> {
+    /// Generate complete LaTeX output with path-based highlighting
+    pub fn to_latex(&self) -> String {
+        let latex = self.render_with_path(self.id, false, &vec![]);
+        Self::clean_latex_negatives(&latex)
+    }
+
+    /// Post-process LaTeX to fix negative sign patterns (same as LaTeXRenderer)
+    fn clean_latex_negatives(latex: &str) -> String {
+        use regex::Regex;
+        let mut result = latex.to_string();
+
+        result = result.replace("+ -\\", "- \\");
+        result = result.replace("+ -{", "- {");
+        result = result.replace("+ -(", "- (");
+        result = result.replace("- -\\", "+ \\");
+        result = result.replace("- -{", "+ {");
+        result = result.replace("- -(", "+ (");
+
+        let re_plus_minus_digit = Regex::new(r"\+ -(\d)").unwrap();
+        result = re_plus_minus_digit.replace_all(&result, "- $1").to_string();
+
+        let re_minus_minus_digit = Regex::new(r"- -(\d)").unwrap();
+        result = re_minus_minus_digit
+            .replace_all(&result, "+ $1")
+            .to_string();
+
+        result
+    }
+
+    /// Render expression with path tracking
+    fn render_with_path(
+        &self,
+        id: ExprId,
+        parent_needs_parens: bool,
+        current_path: &ExprPath,
+    ) -> String {
+        // Check for path-based highlighting
+        if let Some(color) = self.path_highlights.get(current_path) {
+            let inner = self.format_at_path(id, parent_needs_parens, current_path);
+            return format!("{{\\color{{{}}}{{{}}}}}", color.to_latex(), inner);
+        }
+
+        self.format_at_path(id, parent_needs_parens, current_path)
+    }
+
+    /// Format expression at a given path (without checking for highlight)
+    fn format_at_path(
+        &self,
+        id: ExprId,
+        parent_needs_parens: bool,
+        current_path: &ExprPath,
+    ) -> String {
+        match self.context.get(id) {
+            Expr::Number(n) => self.format_number(n),
+            Expr::Variable(name) => name.clone(),
+            Expr::Constant(c) => self.format_constant(c),
+            Expr::Add(l, r) => self.format_add_path(*l, *r, current_path),
+            Expr::Sub(l, r) => self.format_sub_path(*l, *r, current_path),
+            Expr::Mul(l, r) => self.format_mul_path(*l, *r, parent_needs_parens, current_path),
+            Expr::Div(l, r) => self.format_div_path(*l, *r, current_path),
+            Expr::Pow(base, exp) => self.format_pow_path(*base, *exp, current_path),
+            Expr::Neg(e) => self.format_neg_path(*e, current_path),
+            Expr::Function(name, args) => self.format_function_path(name, args, current_path),
+            Expr::Matrix { rows, cols, data } => {
+                self.format_matrix_path(*rows, *cols, data, current_path)
+            }
+            Expr::SessionRef(id) => format!("\\#{}", id),
+        }
+    }
+
+    fn child_path(&self, current: &ExprPath, child_idx: u8) -> ExprPath {
+        let mut p = current.clone();
+        p.push(child_idx);
+        p
+    }
+
+    fn format_number(&self, n: &num_rational::BigRational) -> String {
+        if n.is_integer() {
+            format!("{}", n.numer())
+        } else if n.is_negative() {
+            let positive = -n;
+            format!("-\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+        } else {
+            format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom())
+        }
+    }
+
+    fn format_constant(&self, c: &Constant) -> String {
+        match c {
+            Constant::Pi => "\\pi".to_string(),
+            Constant::E => "e".to_string(),
+            Constant::Infinity => "\\infty".to_string(),
+            Constant::Undefined => "\\text{undefined}".to_string(),
+            Constant::I => "i".to_string(),
+        }
+    }
+
+    fn format_add_path(&self, l: ExprId, r: ExprId, path: &ExprPath) -> String {
+        // Simplified version - full version would handle negative detection
+        let left = self.render_with_path(l, false, &self.child_path(path, 0));
+        let right = self.render_with_path(r, false, &self.child_path(path, 1));
+        format!("{} + {}", left, right)
+    }
+
+    fn format_sub_path(&self, l: ExprId, r: ExprId, path: &ExprPath) -> String {
+        let left = self.render_with_path(l, false, &self.child_path(path, 0));
+        let r_expr = self.context.get(r);
+        let right = if matches!(r_expr, Expr::Add(_, _) | Expr::Sub(_, _)) {
+            format!(
+                "({})",
+                self.render_with_path(r, false, &self.child_path(path, 1))
+            )
+        } else {
+            self.render_with_path(r, true, &self.child_path(path, 1))
+        };
+        format!("{} - {}", left, right)
+    }
+
+    fn format_mul_path(
+        &self,
+        l: ExprId,
+        r: ExprId,
+        parent_needs_parens: bool,
+        path: &ExprPath,
+    ) -> String {
+        let left = self.render_mul_operand(l, &self.child_path(path, 0));
+        let right = self.render_mul_operand(r, &self.child_path(path, 1));
+        if parent_needs_parens {
+            format!("({}\\cdot {})", left, right)
+        } else {
+            format!("{}\\cdot {}", left, right)
+        }
+    }
+
+    fn render_mul_operand(&self, id: ExprId, path: &ExprPath) -> String {
+        match self.context.get(id) {
+            Expr::Add(_, _) | Expr::Sub(_, _) => {
+                format!("({})", self.render_with_path(id, false, path))
+            }
+            _ => self.render_with_path(id, false, path),
+        }
+    }
+
+    fn format_div_path(&self, l: ExprId, r: ExprId, path: &ExprPath) -> String {
+        let numer = self.render_with_path(l, false, &self.child_path(path, 0));
+        let denom = self.render_with_path(r, false, &self.child_path(path, 1));
+        format!("\\frac{{{}}}{{{}}}", numer, denom)
+    }
+
+    fn format_pow_path(&self, base: ExprId, exp: ExprId, path: &ExprPath) -> String {
+        let base_str = self.render_base(base, &self.child_path(path, 0));
+        let exp_str = self.render_with_path(exp, false, &self.child_path(path, 1));
+        format!("{{{}}}^{{{}}}", base_str, exp_str)
+    }
+
+    fn render_base(&self, id: ExprId, path: &ExprPath) -> String {
+        match self.context.get(id) {
+            Expr::Add(_, _)
+            | Expr::Sub(_, _)
+            | Expr::Mul(_, _)
+            | Expr::Div(_, _)
+            | Expr::Neg(_) => {
+                format!("({})", self.render_with_path(id, false, path))
+            }
+            _ => self.render_with_path(id, false, path),
+        }
+    }
+
+    fn format_neg_path(&self, e: ExprId, path: &ExprPath) -> String {
+        let inner_is_add_sub = matches!(self.context.get(e), Expr::Add(_, _) | Expr::Sub(_, _));
+        let inner = self.render_with_path(e, true, &self.child_path(path, 0));
+        if inner_is_add_sub {
+            format!("-({})", inner)
+        } else {
+            format!("-{}", inner)
+        }
+    }
+
+    fn format_function_path(&self, name: &str, args: &[ExprId], path: &ExprPath) -> String {
+        match name {
+            "sqrt" if args.len() == 1 => {
+                format!(
+                    "\\sqrt{{{}}}",
+                    self.render_with_path(args[0], false, &self.child_path(path, 0))
+                )
+            }
+            "sqrt" if args.len() == 2 => {
+                let radicand = self.render_with_path(args[0], false, &self.child_path(path, 0));
+                let index = self.render_with_path(args[1], false, &self.child_path(path, 1));
+                format!("\\sqrt[{}]{{{}}}", index, radicand)
+            }
+            "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
+                format!(
+                    "\\{}({})",
+                    name,
+                    self.render_with_path(args[0], false, &self.child_path(path, 0))
+                )
+            }
+            "ln" => format!(
+                "\\ln({})",
+                self.render_with_path(args[0], false, &self.child_path(path, 0))
+            ),
+            "abs" => format!(
+                "|{}|",
+                self.render_with_path(args[0], false, &self.child_path(path, 0))
+            ),
+            _ => {
+                let args_str: Vec<String> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &a)| self.render_with_path(a, false, &self.child_path(path, i as u8)))
+                    .collect();
+                format!("\\text{{{}}}({})", name, args_str.join(", "))
+            }
+        }
+    }
+
+    fn format_matrix_path(
+        &self,
+        rows: usize,
+        cols: usize,
+        data: &[ExprId],
+        path: &ExprPath,
+    ) -> String {
+        let mut result = String::from("\\begin{bmatrix}\n");
+        for r in 0..rows {
+            for c in 0..cols {
+                if c > 0 {
+                    result.push_str(" & ");
+                }
+                let idx = r * cols + c;
+                result.push_str(&self.render_with_path(
+                    data[idx],
+                    false,
+                    &self.child_path(path, idx as u8),
+                ));
+            }
+            if r < rows - 1 {
+                result.push_str(" \\\\\n");
+            }
+        }
+        result.push_str("\n\\end{bmatrix}");
+        result
+    }
+}
