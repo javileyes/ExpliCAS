@@ -1,16 +1,18 @@
 # SEMANTICS POLICY
 
-> **Version 1.4.0** | Last updated: 2026-01-09
+> **Version 1.5.0** | Last updated: 2026-01-09
 
 This document defines the semantic configuration axes that control how ExpliCAS evaluates and simplifies expressions. Each axis is orthogonal and controls a specific aspect of mathematical semantics.
 
 ---
 
-## Display Step Contract (V2.9.8) ✅
+## Display Step Contract (V2.9.8/V2.9.9) ✅
 
 > **Core Principle**: All display layers (Text, HTML, JSON) receive **identical, pre-processed steps**. The type system enforces this — raw steps cannot escape to consumers.
 
 ### Type Hierarchy
+
+#### Solver Steps (V2.9.8)
 
 ```
                        ┌──────────────────┐
@@ -33,11 +35,51 @@ This document defines the semantic configuration axes that control how ExpliCAS 
 | `RawSolveSteps` | `pub(crate)` | Internal solver output, pre-cleanup |
 | `DisplaySolveSteps` | `pub` | All external consumers, post-cleanup |
 
+#### Eval/Simplify Steps (V2.9.9)
+
+```
+                       ┌──────────────────┐
+                       │  Simplifier      │
+                       └────────┬─────────┘
+                                │ Vec<Step> (internal raw)
+                                ▼
+                   ┌────────────────────────────┐
+                   │ eval_step_pipeline::       │
+                   │   to_display_steps()       │
+                   └────────────┬───────────────┘
+                                │ DisplayEvalSteps (public)
+                ┌───────────────┼───────────────┐
+                ▼               ▼               ▼
+           CLI Text        Timeline HTML    JSON API
+```
+
+| Type | Visibility | Purpose |
+|------|------------|---------|
+| `RawEvalSteps` | `pub(crate)` | Internal placeholder, minimal use |
+| `DisplayEvalSteps` | `pub` | All external consumers, post-cleanup |
+| `step_optimization` | `pub(crate)` | Internal step optimization helpers |
+| `strategies` | `pub(crate)` | Internal strategy helpers |
+
+### Pipeline Independence Principle
+
+> **Critical**: The pipeline **depends on EvalOptions/Semantics** (semantic contract of result) but **NEVER on the renderer type**.
+
+| Depends On | Allowed? | Rationale |
+|------------|:--------:|-----------|
+| `EvalOptions` | ✅ | Part of semantic contract |
+| `Semantics` (DomainMode, etc.) | ✅ | Part of semantic contract |
+| `explain` flag | ✅ | User-requested verbosity |
+| Renderer type (Text/HTML/JSON) | ❌ | Would cause bifurcation |
+| Timeline-specific logic | ❌ | Would cause bifurcation |
+
+**Rule**: The renderer **never** decides which steps to show. The pipeline produces identical `DisplayEvalSteps` for all renderers; renderers only decide **how** to format.
+
 ### Allowed Cleanup Operations
 
 | Operation | Allowed | Rationale |
-|-----------|:-------:|-----------|
-| Remove redundant steps | ✅ | Steps that don't change the equation |
+|-----------|:-------:|---------:|
+| Remove no-op steps (`before == after`) | ✅ | No visible change |
+| Remove redundant steps | ✅ | Steps that don't change expression |
 | Collapse consecutive equal-result steps | ✅ | Didactic clarity |
 | Normalize sign display | ✅ | Presentation only |
 | Add narrator text | ✅ | Educational context |
@@ -52,7 +94,9 @@ This document defines the semantic configuration axes that control how ExpliCAS 
 | Invent steps that didn't happen | ❌ | Would mislead students |
 | Filter steps based on renderer type | ❌ | Would cause bifurcation |
 
-### API Contract
+### API Contracts
+
+#### Solver (V2.9.8)
 
 ```rust
 // ✅ CORRECT: Use public API, returns DisplaySolveSteps
@@ -62,23 +106,44 @@ let (solution, steps) = solve_with_display_steps(&eq, "x", simplifier, opts)?;
 // let (solution, steps) = solve_with_options(&eq, "x", simplifier, opts)?;
 ```
 
+#### Eval (V2.9.9)
+
+```rust
+// ✅ CORRECT: Use Engine::eval, returns EvalOutput with DisplayEvalSteps
+let output = engine.eval("2x + 3x")?;
+for step in &output.steps {  // DisplayEvalSteps derefs to &[Step]
+    println!("{}", step.description);
+}
+
+// ❌ WRONG: Direct access to raw steps is blocked via pub(crate).
+// step_optimization::optimize_steps() is pub(crate)
+// strategies::filter_non_productive_steps() is pub(crate)
+```
+
 ### Debug Escape Hatch
 
 For debugging and testing, raw steps are available via:
 
 ```rust
 #[cfg(test)]
-// Direct access to solve_with_options in test modules
+// Direct access to pub(crate) functions in test modules
 pub(crate) fn solve_with_options(...) -> Result<(SolutionSet, Vec<SolveStep>), CasError>
 ```
 
 ### Anti-Regression Tests
 
-The `step_renderer_parity_tests.rs` file validates:
+#### Solver (`step_renderer_parity_tests.rs`)
 
 1. **Step count parity**: Text and JSON renderers see identical step counts
 2. **Description consistency**: Same descriptions across all renderers
 3. **Wrapper integrity**: `DisplaySolveSteps` methods are consistent
+
+#### Eval (`eval_step_parity_tests.rs`) [REQUIRED]
+
+1. **Step count parity**: REPL and Timeline see identical step counts
+2. **Description/rule_name consistency**: Same across all renderers
+3. **`before_local`/`after_local` parity**: Present/absent consistently
+4. **`sub_steps` count parity**: Same nested step counts
 
 ---
 

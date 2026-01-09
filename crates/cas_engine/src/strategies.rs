@@ -13,6 +13,7 @@ use cas_ast::{Context, DisplayExpr, ExprId};
 
 /// Strategy to simplify polynomials by trying expansion and factorization.
 /// Returns the simplest form found.
+#[allow(dead_code)]
 pub fn simplify_polynomial(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step>) {
     let mut steps = Vec::new();
 
@@ -283,6 +284,7 @@ fn reconstruct_global(
     }
 }
 
+#[allow(dead_code)]
 fn apply_rules_to_tree(
     ctx: &mut Context,
     expr: ExprId,

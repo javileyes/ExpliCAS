@@ -30,6 +30,7 @@ use crate::step::{DisplayEvalSteps, Step};
 /// # Returns
 ///
 /// A `DisplayEvalSteps` wrapper guaranteeing cleanup has been applied.
+#[must_use = "the result of pipeline processing should be used"]
 pub fn to_display_steps(raw_steps: Vec<Step>) -> DisplayEvalSteps {
     // Stage 1: Remove no-op steps (before == after)
     // This is cheap and provides immediate value
