@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: 5 + {\sin(x)}^{2} - 1 + 4 - {\cos(x)}^{2}</title>
+    <title>CAS Steps: {(a + b + c)}^{3} - {a}^{3} + {b}^{3} + {c}^{3} + 3\cdot (a + b)\cdot (a + c)\cdot (b + c)</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -437,76 +437,39 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[5 + {\sin(x)}^{2} - 1 + 4 - {\cos(x)}^{2}\]
+            \[{(a + b + c)}^{3} - {a}^{3} + {b}^{3} + {c}^{3} + 3\cdot (a + b)\cdot (a + c)\cdot (b + c)\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Combine Constants</h3>
+                    <h3>Polynomial Identity</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[5 + {\sin(x)}^{2} - {\color{red}{1 + 4}} - {\cos(x)}^{2}\]
+                        \[{\color{red}{{(a + b + c)}^{3} - {a}^{3} - {c}^{3} - {b}^{3} - (c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)) - (a\cdot (b + c)\cdot (3\cdot a + 3\cdot b))}}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Pasos intermedios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Expandir lado izquierdo</span><div class="substep-math">\[(a + b + c)³ \rightarrow a^3 + b^3 + c^3 + 3·a·b^2 + 3·a·c^2 + 3·b·a^2 + 3·b·c^2 + 3·c·a^2 + 3·c·b^2 + 6·a·b·c\]</div></div><div class="substep">
+                                    <span class="substep-desc">Expandir lado derecho</span><div class="substep-math">\[a³ + b³ + c³ + ... \rightarrow a^3 + b^3 + c^3 + 3·a·b^2 + 3·a·c^2 + 3·b·a^2 + 3·b·c^2 + 3·c·a^2 + 3·c·b^2 + 6·a·b·c\]</div></div><div class="substep">
+                                    <span class="substep-desc">Comparar formas normales</span><div class="substep-math">\[LHS: 10 monomios | RHS: 10 monomios \rightarrow Coinciden ⇒ diferencia = 0\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{1 + 4 = 5}\)</div>
+                        <div class="rule-name">\(\text{Polynomial identity: normalize and cancel to 0}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{1 + 4}} \rightarrow {\color{green}{5}}\]
+                            \[{\color{red}{{(a + b + c)}^{3} - {a}^{3} - {c}^{3} - {b}^{3} - (c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)) - (a\cdot (b + c)\cdot (3\cdot a + 3\cdot b))}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{5}} + {\sin(x)}^{2} - {\color{green}{5}} - {\cos(x)}^{2}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{5 + {\sin(x)}^{2} + {\cos(x)}^{2} - 5}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{5 - 5}} \rightarrow {\color{green}{0}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{{\cos(x)}^{2} + {\sin(x)}^{2}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Pythagorean Identity</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{{\cos(x)}^{2} + {\sin(x)}^{2}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Pythagorean Identity}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{{\cos(x)}^{2} + {\sin(x)}^{2}}} \rightarrow {\color{green}{1}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{1}}\]
+                        \[{\color{green}{0}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[1\]
+            \[0\]
         </div>
     </div>
     <footer>

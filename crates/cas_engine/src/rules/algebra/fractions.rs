@@ -2403,8 +2403,8 @@ define_rule!(
             return Some(Rewrite {
                 new_expr,
                 description: "Cancel common factors".to_string(),
-                before_local: None,
-                after_local: None,
+                before_local: Some(expr),
+                after_local: Some(new_expr),
                 assumption_events,
             required_conditions: vec![],
             poly_proof: None,
