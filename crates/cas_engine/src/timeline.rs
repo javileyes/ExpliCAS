@@ -225,6 +225,65 @@ fn diff_find_all_paths_to_expr(ctx: &Context, root: ExprId, target: ExprId) -> V
     results
 }
 
+/// Find paths to a target expression by structural equivalence (V2.9.24)
+/// Unlike diff_find_all_paths_to_expr which matches by ExprId,
+/// this uses compare_expr for structural comparison.
+/// Essential for dynamically constructed before_local expressions
+/// where terms may have different ExprIds than the original tree.
+fn diff_find_paths_by_structure(ctx: &Context, root: ExprId, target: ExprId) -> Vec<ExprPath> {
+    let mut results = Vec::new();
+
+    fn search(
+        ctx: &Context,
+        current: ExprId,
+        target: ExprId,
+        path: &mut ExprPath,
+        results: &mut Vec<ExprPath>,
+    ) {
+        // Check structural equivalence using compare_expr
+        if crate::ordering::compare_expr(ctx, current, target) == std::cmp::Ordering::Equal {
+            results.push(path.clone());
+            // Don't recurse into children if we matched the whole subtree
+            return;
+        }
+
+        match ctx.get(current) {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                // Search left branch
+                path.push(0);
+                search(ctx, *l, target, path, results);
+                path.pop();
+
+                // Search right branch
+                path.push(1);
+                search(ctx, *r, target, path, results);
+                path.pop();
+            }
+            Expr::Neg(inner) => {
+                path.push(0);
+                search(ctx, *inner, target, path, results);
+                path.pop();
+            }
+            Expr::Function(_, args) => {
+                for (i, arg) in args.iter().enumerate() {
+                    path.push(i as u8);
+                    search(ctx, *arg, target, path, results);
+                    path.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut path = vec![];
+    search(ctx, root, target, &mut path, &mut results);
+    results
+}
+
 /// Navigate to the subexpression at a given path within an expression tree
 fn navigate_to_subexpr(ctx: &Context, mut current: ExprId, path: &ExprPath) -> ExprId {
     for &step in path {
@@ -1626,18 +1685,33 @@ impl<'a> TimelineHtml<'a> {
             //
             // V2.9.17: When before_local differs from step.before, try to extend path to focus area
             // If path cannot be found (before_local is dynamically constructed), use ExprId-based highlighting
+            //
+            // V2.9.25: When before_local is an Add node (representing multiple matched terms),
+            // always use multi-term highlighting. Single-path highlighting would only highlight
+            // one subtree when the matched terms may come from different parts of the expression.
             let (global_before, global_after) = if step.before_local.is_some()
                 && step.before_local != Some(step.before)
             {
+                let before_local = step.before_local.unwrap();
+
+                // V2.9.25: Check if before_local is an Add node. If so, use multi-term highlighting
+                // to ensure all terms are highlighted, not just the subtree that happens to match.
+                let before_local_is_add = matches!(self.context.get(before_local), Expr::Add(_, _));
+
                 // Try to find path from step.before to before_local
-                let focus_path =
-                    find_path_to_expr(self.context, step.before, step.before_local.unwrap());
+                let focus_path = if !before_local_is_add {
+                    find_path_to_expr(self.context, step.before, before_local)
+                } else {
+                    // Skip single-path search for Add nodes - will use multi-term highlighting
+                    Vec::new()
+                };
 
                 if !focus_path.is_empty() {
                     // Path found - extend step.path and use path-based highlighting
+                    // This branch is only used for non-Add before_local nodes
                     let mut extended = pathsteps_to_expr_path(&step.path);
-                    for ps in focus_path {
-                        extended.push(pathstep_to_u8(&ps));
+                    for ps in &focus_path {
+                        extended.push(pathstep_to_u8(ps));
                     }
                     let mut before_config = PathHighlightConfig::new();
                     before_config.add(extended.clone(), HighlightColor::Red);
@@ -1680,18 +1754,36 @@ impl<'a> TimelineHtml<'a> {
                         navigate_to_subexpr(self.context, global_before_expr, &step_path_prefix);
 
                     let mut found_paths: Vec<ExprPath> = Vec::new();
-                    for term in focus_terms {
+                    for term in &focus_terms {
+                        let paths_before = found_paths.len();
+
                         // V2.9.19: Search within the subexpression at step.path only
                         // This limits highlighting to the focused area, not ALL occurrences globally
                         for sub_path in
-                            diff_find_all_paths_to_expr(self.context, subexpr_at_path, term)
+                            diff_find_all_paths_to_expr(self.context, subexpr_at_path, *term)
                         {
                             // Prepend step.path to get the full path from root
                             let mut full_path = step_path_prefix.clone();
-                            full_path.extend(sub_path);
+                            full_path.extend(sub_path.clone());
                             // Avoid duplicate paths
                             if !found_paths.contains(&full_path) {
                                 found_paths.push(full_path);
+                            }
+                        }
+
+                        // V2.9.24: If ExprId-based search found nothing for THIS term,
+                        // try structural search. This handles dynamically constructed terms
+                        // (e.g., from inverse_trig rules) where ExprIds differ but
+                        // expressions are structurally equivalent.
+                        if found_paths.len() == paths_before {
+                            for sub_path in
+                                diff_find_paths_by_structure(self.context, subexpr_at_path, *term)
+                            {
+                                let mut full_path = step_path_prefix.clone();
+                                full_path.extend(sub_path.clone());
+                                if !found_paths.contains(&full_path) {
+                                    found_paths.push(full_path);
+                                }
                             }
                         }
                     }
@@ -1777,25 +1869,10 @@ impl<'a> TimelineHtml<'a> {
                 (before, after)
             };
 
-            // Use LaTeXExprWithHints for proper LaTeX that respects sqrt() hints (for skip-check)
-            let local_before = cas_ast::LaTeXExprWithHints {
-                context: self.context,
-                id: step.before,
-                hints: &display_hints,
-            }
-            .to_latex();
-            let local_after = cas_ast::LaTeXExprWithHints {
-                context: self.context,
-                id: step.after,
-                hints: &display_hints,
-            }
-            .to_latex();
-
-            // Skip display no-op steps where before and after render identically
-            if local_before == local_after {
-                step_number -= 1; // Undo the increment since we're skipping
-                continue;
-            }
+            // Note: We intentionally do NOT skip steps where LaTeX renders identically.
+            // The LaTeX renderer normalizes expressions (e.g., 1*x → x), which would
+            // incorrectly filter Identity Property steps. Upstream to_display_steps
+            // already removes structural no-ops (before == after ExprId).
 
             // Generate colored rule display: red antecedent → green consequent
             // Use before_local/after_local (Focus) if available, otherwise fall back to before/after

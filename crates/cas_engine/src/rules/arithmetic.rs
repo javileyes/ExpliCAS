@@ -720,3 +720,22 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyNumericExponentsRule));
     simplifier.add_rule(Box::new(AddInverseRule));
 }
+
+#[cfg(test)]
+mod importance_tests {
+    use super::*;
+    use crate::rule::SimpleRule;
+    use crate::step::ImportanceLevel;
+
+    #[test]
+    fn test_mul_one_rule_importance() {
+        let rule = MulOneRule;
+        assert_eq!(rule.importance(), ImportanceLevel::Medium, "MulOneRule should have Medium importance by default");
+    }
+
+    #[test]
+    fn test_add_zero_rule_importance() {
+        let rule = AddZeroRule;
+        assert_eq!(rule.importance(), ImportanceLevel::Medium, "AddZeroRule should have Medium importance by default");
+    }
+}
