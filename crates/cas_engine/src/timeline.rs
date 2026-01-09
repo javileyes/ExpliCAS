@@ -1378,9 +1378,9 @@ impl<'a> TimelineHtml<'a> {
             // Generate global BEFORE with red highlight on the transformed subtree
             // V2.9.16: Using PathHighlightedLatexRenderer to highlight by path, not ExprId
             // This ensures only the specific occurrence is highlighted, not all identical values
-            let before_expr_path = pathsteps_to_expr_path(&step.path);
+            let expr_path = pathsteps_to_expr_path(&step.path);
             let mut before_config = PathHighlightConfig::new();
-            before_config.add(before_expr_path, HighlightColor::Red);
+            before_config.add(expr_path.clone(), HighlightColor::Red);
             let global_before = PathHighlightedLatexRenderer {
                 context: self.context,
                 id: global_before_expr,
@@ -1390,14 +1390,15 @@ impl<'a> TimelineHtml<'a> {
             .to_latex();
 
             // Generate global AFTER with green highlight on the result
-            // Note: step.after is the actual result in the global tree
-            let mut after_config = HighlightConfig::new();
-            after_config.add(step.after, HighlightColor::Green);
-            let global_after = cas_ast::LaTeXExprHighlightedWithHints {
+            // V2.9.16: Using PathHighlightedLatexRenderer to highlight by path, not ExprId
+            // This ensures only the specific occurrence is highlighted, not all identical values
+            let mut after_config = PathHighlightConfig::new();
+            after_config.add(expr_path, HighlightColor::Green);
+            let global_after = PathHighlightedLatexRenderer {
                 context: self.context,
                 id: global_after_expr,
-                highlights: &after_config,
-                hints: &display_hints,
+                path_highlights: &after_config,
+                hints: None, // TODO: integrate hints when needed
             }
             .to_latex();
 
