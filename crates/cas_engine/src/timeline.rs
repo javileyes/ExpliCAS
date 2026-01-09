@@ -5,6 +5,106 @@ use cas_ast::{
 };
 use num_traits::Signed;
 
+/// Convert PathStep to u8 for ExprPath (V2.9.17)
+#[inline]
+fn pathstep_to_u8(ps: &PathStep) -> u8 {
+    ps.to_child_index()
+}
+
+/// Find path from root to target expression (V2.9.17)
+/// Returns empty Vec if target not found or target == root
+fn find_path_to_expr(ctx: &Context, root: ExprId, target: ExprId) -> Vec<PathStep> {
+    if root == target {
+        return vec![];
+    }
+
+    // DFS to find target within root
+    fn dfs(ctx: &Context, current: ExprId, target: ExprId, path: &mut Vec<PathStep>) -> bool {
+        if current == target {
+            return true;
+        }
+
+        match ctx.get(current) {
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                path.push(PathStep::Left);
+                if dfs(ctx, *l, target, path) {
+                    return true;
+                }
+                path.pop();
+
+                path.push(PathStep::Right);
+                if dfs(ctx, *r, target, path) {
+                    return true;
+                }
+                path.pop();
+            }
+            Expr::Pow(base, exp) => {
+                path.push(PathStep::Base);
+                if dfs(ctx, *base, target, path) {
+                    return true;
+                }
+                path.pop();
+
+                path.push(PathStep::Exponent);
+                if dfs(ctx, *exp, target, path) {
+                    return true;
+                }
+                path.pop();
+            }
+            Expr::Neg(inner) => {
+                path.push(PathStep::Inner);
+                if dfs(ctx, *inner, target, path) {
+                    return true;
+                }
+                path.pop();
+            }
+            Expr::Function(_, args) => {
+                for (i, arg) in args.iter().enumerate() {
+                    path.push(PathStep::Arg(i));
+                    if dfs(ctx, *arg, target, path) {
+                        return true;
+                    }
+                    path.pop();
+                }
+            }
+            _ => {}
+        }
+        false
+    }
+
+    let mut path = Vec::new();
+    if dfs(ctx, root, target, &mut path) {
+        path
+    } else {
+        vec![]
+    }
+}
+
+/// Extract terms from an Add/Sub chain for multi-term highlighting (V2.9.17)
+/// Returns individual ExprIds that make up the chain.
+/// Also unwraps Neg wrappers since they may be dynamically created and not exist
+/// in the original expression tree.
+fn extract_add_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut terms = Vec::new();
+    fn collect_terms(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
+        match ctx.get(id) {
+            Expr::Add(l, r) => {
+                collect_terms(ctx, *l, terms);
+                collect_terms(ctx, *r, terms);
+            }
+            Expr::Neg(inner) => {
+                // Unwrap Neg to find the underlying term (which may exist in original tree)
+                // Add both: the Neg itself (if it exists) and the inner term
+                terms.push(id); // The Neg wrapper
+                terms.push(*inner); // The inner term (more likely to exist in original)
+            }
+            _ => terms.push(id),
+        }
+    }
+    collect_terms(ctx, expr, &mut terms);
+    terms
+}
+
 /// Timeline HTML generator - exports simplification steps to interactive HTML
 pub struct TimelineHtml<'a> {
     context: &'a mut Context,
@@ -1378,29 +1478,99 @@ impl<'a> TimelineHtml<'a> {
             // Generate global BEFORE with red highlight on the transformed subtree
             // V2.9.16: Using PathHighlightedLatexRenderer to highlight by path, not ExprId
             // This ensures only the specific occurrence is highlighted, not all identical values
-            let expr_path = pathsteps_to_expr_path(&step.path);
-            let mut before_config = PathHighlightConfig::new();
-            before_config.add(expr_path.clone(), HighlightColor::Red);
-            let global_before = PathHighlightedLatexRenderer {
-                context: self.context,
-                id: global_before_expr,
-                path_highlights: &before_config,
-                hints: None, // TODO: integrate hints when needed
-            }
-            .to_latex();
+            //
+            // V2.9.17: When before_local differs from step.before, try to extend path to focus area
+            // If path cannot be found (before_local is dynamically constructed), use ExprId-based highlighting
+            let (global_before, global_after) =
+                if step.before_local.is_some() && step.before_local != Some(step.before) {
+                    // Try to find path from step.before to before_local
+                    let focus_path =
+                        find_path_to_expr(self.context, step.before, step.before_local.unwrap());
 
-            // Generate global AFTER with green highlight on the result
-            // V2.9.16: Using PathHighlightedLatexRenderer to highlight by path, not ExprId
-            // This ensures only the specific occurrence is highlighted, not all identical values
-            let mut after_config = PathHighlightConfig::new();
-            after_config.add(expr_path, HighlightColor::Green);
-            let global_after = PathHighlightedLatexRenderer {
-                context: self.context,
-                id: global_after_expr,
-                path_highlights: &after_config,
-                hints: None, // TODO: integrate hints when needed
-            }
-            .to_latex();
+                    if !focus_path.is_empty() {
+                        // Path found - extend step.path and use path-based highlighting
+                        let mut extended = pathsteps_to_expr_path(&step.path);
+                        for ps in focus_path {
+                            extended.push(pathstep_to_u8(&ps));
+                        }
+                        let mut before_config = PathHighlightConfig::new();
+                        before_config.add(extended.clone(), HighlightColor::Red);
+                        let before = PathHighlightedLatexRenderer {
+                            context: self.context,
+                            id: global_before_expr,
+                            path_highlights: &before_config,
+                            hints: None,
+                        }
+                        .to_latex();
+
+                        let mut after_config = PathHighlightConfig::new();
+                        after_config.add(extended, HighlightColor::Green);
+                        let after = PathHighlightedLatexRenderer {
+                            context: self.context,
+                            id: global_after_expr,
+                            path_highlights: &after_config,
+                            hints: None,
+                        }
+                        .to_latex();
+
+                        (before, after)
+                    } else {
+                        // Path not found (before_local is dynamically constructed)
+                        // Extract individual terms from focus_before (e.g., fractions in Add chain)
+                        // and highlight each one that exists in the original expression
+                        let focus_before = step.before_local.unwrap();
+                        let focus_after = step.after_local.unwrap_or(step.after);
+
+                        // Extract terms from focus_before if it's an Add/Sub chain
+                        let mut before_config = HighlightConfig::new();
+                        let focus_terms = extract_add_terms(self.context, focus_before);
+                        for term in focus_terms {
+                            before_config.add(term, HighlightColor::Red);
+                        }
+
+                        let before = LaTeXExprHighlighted {
+                            context: self.context,
+                            id: global_before_expr,
+                            highlights: &before_config,
+                        }
+                        .to_latex();
+
+                        let mut after_config = HighlightConfig::new();
+                        after_config.add(focus_after, HighlightColor::Green);
+                        let after = LaTeXExprHighlighted {
+                            context: self.context,
+                            id: global_after_expr,
+                            highlights: &after_config,
+                        }
+                        .to_latex();
+
+                        (before, after)
+                    }
+                } else {
+                    // Standard case: use step.path for highlighting
+                    let expr_path = pathsteps_to_expr_path(&step.path);
+                    let mut before_config = PathHighlightConfig::new();
+                    before_config.add(expr_path.clone(), HighlightColor::Red);
+                    let before = PathHighlightedLatexRenderer {
+                        context: self.context,
+                        id: global_before_expr,
+                        path_highlights: &before_config,
+                        hints: None,
+                    }
+                    .to_latex();
+
+                    let mut after_config = PathHighlightConfig::new();
+                    after_config.add(expr_path, HighlightColor::Green);
+                    let after = PathHighlightedLatexRenderer {
+                        context: self.context,
+                        id: global_after_expr,
+                        path_highlights: &after_config,
+                        hints: None,
+                    }
+                    .to_latex();
+
+                    (before, after)
+                };
 
             // Use LaTeXExprWithHints for proper LaTeX that respects sqrt() hints (for skip-check)
             let local_before = cas_ast::LaTeXExprWithHints {

@@ -808,9 +808,11 @@ define_rule!(
                 return None;
             }
 
-            // Build focus from cancelled/combined groups
-            // Priority: 1) constant cancellation, 2) fewest terms, 3) first available
-            let (before_local, after_local, description) = select_best_focus(ctx, &result);
+            // V2.9.16: Use full expression as focus to match global highlights
+            // The user expects the focus to show the same scope as the before/after highlights
+            let before_local = Some(expr);
+            let after_local = Some(result.new_expr);
+            let description = "Combine like terms".to_string();
 
             return Some(Rewrite {
                 new_expr: result.new_expr,
