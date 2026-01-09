@@ -203,3 +203,121 @@ fn focus_invariant_vars_subset() {
         }
     }
 }
+
+// =============================================================================
+// Focus invariant: informative (before_local != after_local)
+// =============================================================================
+
+#[test]
+fn focus_invariant_must_show_change() {
+    // Focus should be informative: before_local != after_local
+    // A focus that shows no change is useless
+    let test_cases = vec!["a/x + b/x", "a/x - b/x", "1 + a/d + b/d"];
+
+    for input in test_cases {
+        let mut simplifier = Simplifier::with_default_rules();
+        let ctx = &mut simplifier.context;
+        let expr = cas_parser::parse(input, ctx).expect("parse failed");
+
+        let (_, raw_steps) = simplifier.simplify(expr);
+        let display_steps = to_display_steps(raw_steps);
+
+        for step in &display_steps {
+            if step.rule_name == "Combine Same Denominator Fractions" {
+                if let (Some(before_local), Some(after_local)) =
+                    (step.before_local, step.after_local)
+                {
+                    let before_str = display(&simplifier.context, before_local);
+                    let after_str = display(&simplifier.context, after_local);
+
+                    assert_ne!(
+                        before_str, after_str,
+                        "Focus must show a change: before_local '{}' == after_local '{}' for input '{}'",
+                        before_str, after_str, input
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn focus_invariant_combines_at_least_two_fractions() {
+    // "Combine Same Denominator Fractions" should only fire when combining ≥2 fractions
+    // The focus_before should contain at least 2 fraction-like patterns
+    let test_cases = vec![
+        "a/x + b/x",       // 2 fractions
+        "a/x + b/x + c/x", // 3 fractions
+        "1 + a/x + b/x",   // 2 fractions + constant
+    ];
+
+    for input in test_cases {
+        let mut simplifier = Simplifier::with_default_rules();
+        let ctx = &mut simplifier.context;
+        let expr = cas_parser::parse(input, ctx).expect("parse failed");
+
+        let (_, raw_steps) = simplifier.simplify(expr);
+        let display_steps = to_display_steps(raw_steps);
+
+        for step in &display_steps {
+            if step.rule_name == "Combine Same Denominator Fractions" {
+                if let Some(before_local) = step.before_local {
+                    let focus_str = display(&simplifier.context, before_local);
+
+                    // Count '/' characters as proxy for fraction count
+                    let fraction_count = focus_str.matches('/').count();
+
+                    assert!(
+                        fraction_count >= 2,
+                        "Focus should combine ≥2 fractions, got {} in '{}' for input '{}'",
+                        fraction_count,
+                        focus_str,
+                        input
+                    );
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Sign preservation edge cases
+// =============================================================================
+
+#[test]
+fn sign_preservation_neg_numerator() {
+    // Input: a/x + (-b)/x - tests Neg representation in numerator
+    let steps = simplify_and_inspect_focus("a/x + (-b)/x");
+
+    let combine_step = steps
+        .iter()
+        .find(|(rule, _, _, _)| rule == "Combine Same Denominator Fractions");
+
+    if let Some((_, before_local, after_local, _)) = combine_step {
+        assert!(
+            before_local.is_some() && after_local.is_some(),
+            "Should produce focus for a/x + (-b)/x"
+        );
+    }
+}
+
+#[test]
+fn sign_preservation_mul_minus_one() {
+    // Input: a/x + (-1)*b/x - tests Mul(-1, ...) representation
+    let steps = simplify_and_inspect_focus("a/x + (-1)*b/x");
+
+    let combine_step = steps
+        .iter()
+        .find(|(rule, _, _, _)| rule == "Combine Same Denominator Fractions");
+
+    // This may or may not trigger the rule depending on canonicalization,
+    // but if it does, it should have valid focus
+    if let Some((_, before_local, after_local, _)) = combine_step {
+        if before_local.is_some() {
+            assert!(
+                after_local.is_some(),
+                "If before_local exists, after_local should too"
+            );
+        }
+    }
+}
