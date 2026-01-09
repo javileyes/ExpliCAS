@@ -211,7 +211,14 @@ pub trait LaTeXRenderer {
     /// Format subtraction
     fn format_sub(&self, l: ExprId, r: ExprId) -> String {
         let left = self.expr_to_latex(l, false);
-        let right = self.expr_to_latex(r, true);
+        // Right operand needs parentheses if it's Add or Sub to preserve precedence
+        // e.g., A - (B + C) must show parens, otherwise it looks like A - B + C
+        let r_expr = self.context().get(r);
+        let right = if matches!(r_expr, Expr::Add(_, _) | Expr::Sub(_, _)) {
+            format!("({})", self.expr_to_latex(r, false))
+        } else {
+            self.expr_to_latex(r, true)
+        };
         format!("{} - {}", left, right)
     }
 

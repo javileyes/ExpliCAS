@@ -310,4 +310,61 @@ mod tests {
         };
         assert_eq!(latex.to_latex(), "\\prod_{k=1}^{n} k");
     }
+
+    // =========================================================================
+    // Regression tests for parentheses preservation (Issue: LaTeX omits parens)
+    // =========================================================================
+
+    #[test]
+    fn test_latex_sub_with_add_rhs() {
+        // A - (B + C) must show parentheses, not A - B + C
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let b_plus_c = ctx.add(Expr::Add(b, c));
+        let expr = ctx.add(Expr::Sub(a, b_plus_c));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "a - (b + c)");
+    }
+
+    #[test]
+    fn test_latex_sub_with_sub_rhs() {
+        // A - (B - C) must show parentheses, not A - B - C
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let b_minus_c = ctx.add(Expr::Sub(b, c));
+        let expr = ctx.add(Expr::Sub(a, b_minus_c));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "a - (b - c)");
+    }
+
+    #[test]
+    fn test_latex_sub_with_complex_add_rhs() {
+        // (A + B) - (C + D) must preserve both groups
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let d = ctx.var("d");
+        let a_plus_b = ctx.add(Expr::Add(a, b));
+        let c_plus_d = ctx.add(Expr::Add(c, d));
+        let expr = ctx.add(Expr::Sub(a_plus_b, c_plus_d));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "a + b - (c + d)");
+    }
 }
