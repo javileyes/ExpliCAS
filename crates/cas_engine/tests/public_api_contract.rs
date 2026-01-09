@@ -6,7 +6,7 @@
 use cas_engine::api::{
     // Functions
     solve,
-    solve_with_options,
+    solve_with_display_steps,
     // Domain types
     BoundType,
     Case,
@@ -81,7 +81,7 @@ fn test_solver_options_default() {
 fn test_solve_functions_exist() {
     // Just verify they're callable signatures by storing function pointers
     let _ = solve as fn(&_, &str, &mut _) -> _;
-    let _ = solve_with_options as fn(&_, &str, &mut _, _) -> _;
+    let _ = solve_with_display_steps as fn(&_, &str, &mut _, _) -> _;
 }
 
 /// Test that display wrappers are accessible

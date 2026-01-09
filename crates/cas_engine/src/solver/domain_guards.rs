@@ -238,6 +238,7 @@ mod tests {
             domain_mode: mode,
             assume_scope: scope,
             budget: crate::solver::SolveBudget::default(),
+            ..Default::default()
         };
         (ctx, opts)
     }

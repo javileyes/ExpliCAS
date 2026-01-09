@@ -6,7 +6,7 @@
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
-use cas_engine::solver::{solve_with_options, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::Engine;
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
@@ -15,6 +15,7 @@ fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
         domain_mode: mode,
         assume_scope: scope,
         budget: cas_engine::solver::SolveBudget::default(),
+        ..Default::default()
     }
 }
 
@@ -44,7 +45,7 @@ fn base_one_rhs_different_is_empty() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
         Ok((SolutionSet::Empty, _)) => {} // Expected
@@ -71,7 +72,7 @@ fn base_one_rhs_one_is_all_reals() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
         Ok((SolutionSet::AllReals, _)) => {} // Expected
@@ -101,7 +102,7 @@ fn positive_base_negative_rhs_is_empty() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
         Ok((SolutionSet::Empty, _)) => {} // Expected
@@ -128,7 +129,7 @@ fn positive_base_zero_rhs_is_empty() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
         Ok((SolutionSet::Empty, _)) => {} // Expected
@@ -159,7 +160,7 @@ fn simple_exponential_still_works() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
         Ok((SolutionSet::Discrete(sols), _)) if !sols.is_empty() => {
@@ -192,7 +193,7 @@ fn assume_mode_allows_unknown_rhs() {
     };
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // In Assume mode, should produce a solution (with assumptions tracked)
     match result {
@@ -235,7 +236,7 @@ fn no_garbage_undefined_in_result() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // Now we can borrow context again for display
     if let Ok((SolutionSet::Discrete(sols), _)) = result {

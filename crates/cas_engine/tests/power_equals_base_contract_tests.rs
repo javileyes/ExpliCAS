@@ -11,7 +11,7 @@
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
-use cas_engine::solver::{solve_with_options, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::Engine;
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
@@ -20,6 +20,7 @@ fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
         domain_mode: mode,
         assume_scope: scope,
         budget: cas_engine::solver::SolveBudget::default(),
+        ..Default::default()
     }
 }
 
@@ -58,8 +59,9 @@ fn power_equals_base_symbolic_strict_mode() {
             max_branches: 2,
             max_depth: 2,
         },
+        ..Default::default()
     };
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     assert!(result.is_ok(), "Should solve a^x = a, got: {:?}", result);
 
@@ -118,7 +120,7 @@ fn power_equals_base_symbolic_generic_mode() {
 
     // Default budget (max_branches=1) → fallback to {1}
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     assert!(result.is_ok(), "Should solve a^x = a, got: {:?}", result);
 
@@ -165,7 +167,7 @@ fn power_equals_power_symbolic_gives_exponent() {
     };
 
     let opts = make_opts(DomainMode::Strict, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     assert!(result.is_ok(), "Should solve a^x = a^2, got: {:?}", result);
 
@@ -204,7 +206,7 @@ fn power_equals_power_symbolic_gives_exponent_3() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     assert!(result.is_ok(), "Should solve b^x = b^3, got: {:?}", result);
 
@@ -245,7 +247,7 @@ fn numeric_base_2_to_x_equals_2() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     assert!(result.is_ok(), "Should solve 2^x = 2, got: {:?}", result);
 
@@ -287,7 +289,7 @@ fn zero_to_x_equals_zero_gives_positive_interval() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     assert!(result.is_ok(), "Should solve 0^x = 0, got: {:?}", result);
 

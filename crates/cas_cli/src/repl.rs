@@ -4255,16 +4255,18 @@ impl Repl {
                     domain_mode: self.state.options.domain_mode,
                     assume_scope: self.state.options.assume_scope,
                     budget: self.state.options.budget,
+                    ..Default::default()
                 };
 
-                match cas_engine::solver::solve_with_options(
+                // V2.9.8: Use type-safe API that includes automatic cleanup
+                match cas_engine::solver::solve_with_display_steps(
                     &eq,
                     var,
                     &mut self.engine.simplifier,
                     solver_opts,
                 ) {
-                    Ok((solution_set, steps)) => {
-                        if steps.is_empty() {
+                    Ok((solution_set, display_steps)) => {
+                        if display_steps.0.is_empty() {
                             println!("No solving steps to visualize.");
                             println!(
                                 "Result: {}",
@@ -4276,17 +4278,11 @@ impl Repl {
                             return;
                         }
 
-                        // Apply same cleanup as CLI text output for consistent didactic steps
-                        let cleaned_steps = cas_engine::solver::step_cleanup::cleanup_solve_steps(
-                            &mut self.engine.simplifier.context,
-                            steps,
-                            true, // detailed=true for full narrative
-                        );
-
                         // Generate HTML timeline for solve steps
+                        // Use .0 to access the inner Vec<SolveStep>
                         let mut timeline = cas_engine::timeline::SolveTimelineHtml::new(
                             &mut self.engine.simplifier.context,
-                            &cleaned_steps,
+                            &display_steps.0,
                             &eq,
                             &solution_set,
                             var,
@@ -4473,17 +4469,8 @@ impl Repl {
                         if show_solve_steps {
                             println!("Steps:");
 
-                            // V2.3: Clean up steps for better didactic display
-                            // detailed=true for Normal/Verbose → 5 atomic sub-steps
-                            // detailed=false for Succinct → 3 compact steps
-                            let detailed =
-                                matches!(self.verbosity, Verbosity::Normal | Verbosity::Verbose);
-                            let cleaned_steps =
-                                cas_engine::solver::step_cleanup::cleanup_solve_steps(
-                                    &mut self.engine.simplifier.context,
-                                    output.solve_steps.clone(),
-                                    detailed,
-                                );
+                            // V2.9.8: Steps are now pre-cleaned by eval.rs via solve_with_display_steps
+                            // No manual cleanup needed - type-safe pipeline guarantees processing
 
                             // Prepare scoped renderer if scopes are present
                             let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
@@ -4498,7 +4485,7 @@ impl Repl {
                                 None
                             };
 
-                            for (i, step) in cleaned_steps.iter().enumerate() {
+                            for (i, step) in output.solve_steps.iter().enumerate() {
                                 println!("{}. {}", i + 1, step.description);
                                 // Display equation after step with scoped transforms
                                 let ctx = &self.engine.simplifier.context;

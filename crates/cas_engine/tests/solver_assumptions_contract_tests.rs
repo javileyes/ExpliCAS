@@ -14,7 +14,7 @@ use cas_ast::{Equation, Expr, RelOp};
 use cas_engine::domain::DomainMode;
 use cas_engine::implicit_domain::ImplicitCondition;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
-use cas_engine::solver::{solve_with_options, take_solver_required, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, take_solver_required, SolverOptions};
 use cas_engine::Engine;
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
@@ -23,6 +23,7 @@ fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
         domain_mode: mode,
         assume_scope: scope,
         budget: cas_engine::solver::SolveBudget::default(),
+        ..Default::default()
     }
 }
 
@@ -54,7 +55,7 @@ fn assume_mode_derives_positive_rhs_required() {
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
 
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // Get required conditions from solver (saved in TLS by clear_current_domain_env)
     let required = take_solver_required();
@@ -106,7 +107,7 @@ fn strict_mode_no_extra_requirements_for_literals() {
 
     let opts = make_opts(DomainMode::Strict, AssumeScope::Real);
 
-    let _result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let _result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // Get required conditions
     let required = take_solver_required();
@@ -157,7 +158,7 @@ fn required_conditions_are_deduplicated() {
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
 
-    let _ = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let _ = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
     let required = take_solver_required();
 
     // Count unique positive(y) conditions
@@ -223,11 +224,11 @@ fn nested_solves_have_isolated_requirements() {
     let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
 
     // Solve outer
-    let _ = solve_with_options(&eq_outer, "x", &mut engine.simplifier, opts);
+    let _ = solve_with_display_steps(&eq_outer, "x", &mut engine.simplifier, opts);
     let outer_required = take_solver_required();
 
     // Solve inner
-    let _ = solve_with_options(&eq_inner, "z", &mut engine.simplifier, opts);
+    let _ = solve_with_display_steps(&eq_inner, "z", &mut engine.simplifier, opts);
     let inner_required = take_solver_required();
 
     // Outer should have positive(y)

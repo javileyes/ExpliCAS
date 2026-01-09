@@ -96,8 +96,16 @@ pub use crate::solver::SolverOptions;
 /// ```
 pub use crate::solver::solve;
 
-/// Solve an equation with explicit options (domain mode, budget, etc.).
-pub use crate::solver::solve_with_options;
+/// Solve an equation with explicit options, returning display-ready steps.
+///
+/// V2.9.8: Type-safe API - returns `DisplaySolveSteps` which guarantees
+/// cleanup has been applied. Replaces the old `solve_with_options` for
+/// display-facing code.
+pub use crate::solver::solve_with_display_steps;
+
+/// Display-ready solve steps (post-cleanup).
+/// Wrapper type that enforces step processing has been applied.
+pub use crate::solver::DisplaySolveSteps;
 
 // =============================================================================
 // Display Traits (Human-readable output)

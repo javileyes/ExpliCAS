@@ -8,7 +8,9 @@
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::semantics::ValueDomain;
-use cas_engine::solver::{solve_with_options, take_solver_required, SolveBudget, SolverOptions};
+use cas_engine::solver::{
+    solve_with_display_steps, take_solver_required, SolveBudget, SolverOptions,
+};
 use cas_engine::Simplifier;
 
 fn make_solver_opts(mode: DomainMode) -> SolverOptions {
@@ -17,6 +19,7 @@ fn make_solver_opts(mode: DomainMode) -> SolverOptions {
         domain_mode: mode,
         assume_scope: cas_engine::semantics::AssumeScope::Real,
         budget: SolveBudget::default(),
+        ..Default::default()
     }
 }
 
@@ -41,7 +44,7 @@ fn sqrt_rhs_avoids_conditional_branch() {
     };
 
     let opts = make_solver_opts(DomainMode::Generic);
-    let result = solve_with_options(&eq, "x", &mut simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut simplifier, opts);
 
     assert!(result.is_ok(), "Solver should succeed");
     let (solution_set, _steps) = result.unwrap();
@@ -61,7 +64,7 @@ fn sqrt_rhs_avoids_conditional_branch() {
 
     // Check that y > 0 is in the required set (as Positive(y))
     let has_y_positive = required.iter().any(|c| {
-        matches!(c, cas_engine::implicit_domain::ImplicitCondition::Positive(e) 
+        matches!(c, cas_engine::implicit_domain::ImplicitCondition::Positive(e)
             if matches!(simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
     });
     assert!(
@@ -91,7 +94,7 @@ fn plain_y_rhs_requires_or_conditional() {
     };
 
     let opts = make_solver_opts(DomainMode::Generic);
-    let result = solve_with_options(&eq, "x", &mut simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut simplifier, opts);
 
     // The solver may succeed or fail depending on mode
     // In Generic mode without proof of y > 0, it should be Conditional or Unsupported
@@ -103,7 +106,7 @@ fn plain_y_rhs_requires_or_conditional() {
 
         let is_conditional = matches!(solution_set, SolutionSet::Conditional(_));
         let has_y_positive = required.iter().any(|c| {
-            matches!(c, cas_engine::implicit_domain::ImplicitCondition::Positive(e) 
+            matches!(c, cas_engine::implicit_domain::ImplicitCondition::Positive(e)
                 if matches!(simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
         });
 

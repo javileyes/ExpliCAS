@@ -5,7 +5,7 @@
 
 use cas_ast::SolutionSet;
 use cas_engine::engine::Simplifier;
-use cas_engine::solver::{solve_with_options, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 
 /// Helper to solve an equation string and return the solution set.
 fn solve_equation(eq_str: &str) -> Result<SolutionSet, cas_engine::error::CasError> {
@@ -19,7 +19,7 @@ fn solve_equation(eq_str: &str) -> Result<SolutionSet, cas_engine::error::CasErr
     };
 
     let opts = SolverOptions::default(); // RealOnly, Generic
-    let (set, _steps) = solve_with_options(&eq, "x", &mut simplifier, opts)?;
+    let (set, _steps) = solve_with_display_steps(&eq, "x", &mut simplifier, opts)?;
     Ok(set)
 }
 
@@ -35,7 +35,7 @@ fn solve_returns_error_containing(eq_str: &str, expected_substr: &str) -> bool {
     };
 
     let opts = SolverOptions::default();
-    match solve_with_options(&eq, "x", &mut simplifier, opts) {
+    match solve_with_display_steps(&eq, "x", &mut simplifier, opts) {
         Err(e) => e.to_string().contains(expected_substr),
         Ok(_) => false,
     }
@@ -87,7 +87,7 @@ fn exponential_valid_case_returns_solution() {
 
 /// Test 4: 1^x = 5 in RealOnly → Empty
 /// 1^x = 1 for all x, never equals 5.
-/// TODO: This works in REPL but solver::solve_with_options has different path.
+/// TODO: This works in REPL but solver::solve_with_display_steps has different path.
 /// The identity 1^x→1 detection requires simplification integration.
 #[test]
 #[ignore = "base=1 handling requires REPL-level identity detection"]
@@ -102,7 +102,7 @@ fn exponential_base_one_wrong_rhs_returns_empty() {
 
 /// Test 5: 1^x = 1 in RealOnly → AllReals
 /// 1^x = 1 for all real x.
-/// TODO: This works in REPL but solver::solve_with_options has different path.
+/// TODO: This works in REPL but solver::solve_with_display_steps has different path.
 #[test]
 #[ignore = "base=1 handling requires REPL-level identity detection"]
 fn exponential_base_one_rhs_one_returns_all_reals() {

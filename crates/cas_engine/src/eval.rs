@@ -359,6 +359,7 @@ impl Engine {
                     domain_mode: state.options.domain_mode,
                     assume_scope: state.options.assume_scope,
                     budget: state.options.budget,
+                    ..Default::default()
                 };
 
                 // RAII guard for assumption collection (handles nested solves safely)
@@ -367,7 +368,9 @@ impl Engine {
                 let assumption_guard =
                     crate::solver::SolveAssumptionsGuard::new(collect_assumptions);
 
-                let sol_result = crate::solver::solve_with_options(
+                // V2.9.8: Use type-safe API that guarantees cleanup is applied
+                // detailed_steps=true for Normal+ verbosity (caller's responsibility to set)
+                let sol_result = crate::solver::solve_with_display_steps(
                     &eq_to_solve,
                     &var,
                     &mut self.simplifier,
@@ -378,7 +381,11 @@ impl Engine {
                 let solver_assumptions = assumption_guard.finish();
 
                 match sol_result {
-                    Ok((solution_set, solve_steps)) => {
+                    Ok((solution_set, display_steps)) => {
+                        // V2.9.8: Extract Vec<SolveStep> from DisplaySolveSteps wrapper
+                        // Steps are guaranteed to be post-cleanup
+                        let solve_steps = display_steps.0;
+
                         // V2.0: Return the full SolutionSet preserving all variants
                         // including Conditional for proper REPL display
                         let warnings: Vec<DomainWarning> = vec![];

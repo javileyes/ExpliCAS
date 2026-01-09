@@ -29,6 +29,53 @@ pub struct SolverOptions {
     pub assume_scope: crate::semantics::AssumeScope,
     /// V2.0: Budget for conditional branching (anti-explosion)
     pub budget: SolveBudget,
+    /// V2.9.8: If true, generate detailed step narrative (5 atomic steps).
+    /// If false, generate compact narrative (3 steps for Succinct verbosity).
+    pub detailed_steps: bool,
+}
+
+// =============================================================================
+// Type-Safe Step Pipeline (V2.9.8)
+// =============================================================================
+// These newtypes enforce that renderers only consume post-processed steps.
+// This eliminates bifurcation between text/timeline outputs at compile time.
+
+/// Raw solve steps as produced by solver strategies (internal only).
+/// Contains the raw step sequence before didactic cleanup.
+/// Reserved for future internal usage when solve_with_options is deprecated.
+#[allow(dead_code)]
+pub struct RawSolveSteps(pub(crate) Vec<SolveStep>);
+
+/// Display-ready solve steps after didactic cleanup and narration.
+/// All renderers (text, timeline, JSON) consume this type only.
+#[derive(Debug, Clone)]
+pub struct DisplaySolveSteps(pub Vec<SolveStep>);
+
+impl DisplaySolveSteps {
+    /// Check if there are no steps.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Get the number of steps.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Iterate over steps.
+    pub fn iter(&self) -> std::slice::Iter<'_, SolveStep> {
+        self.0.iter()
+    }
+
+    /// Get inner Vec reference.
+    pub fn as_slice(&self) -> &[SolveStep] {
+        &self.0
+    }
+
+    /// Consume and return inner Vec.
+    pub fn into_inner(self) -> Vec<SolveStep> {
+        self.0
+    }
 }
 
 /// V2.0 Phase 2A: Budget for conditional solution branching.
@@ -82,6 +129,7 @@ impl Default for SolverOptions {
             domain_mode: crate::domain::DomainMode::Generic,
             assume_scope: crate::semantics::AssumeScope::Real,
             budget: SolveBudget::default(),
+            detailed_steps: true, // V2.9.8: Default to detailed (Normal/Verbose)
         }
     }
 }
@@ -407,13 +455,39 @@ pub fn solve(
     solve_with_options(eq, var, simplifier, SolverOptions::default())
 }
 
-/// Solve an equation with explicit semantic options.
+/// V2.9.8: Solve with type-enforced display-ready steps.
 ///
-/// This is the primary entry point for domain-aware solving.
+/// This is the PREFERRED entry point for display-facing code (REPL, timeline, JSON API).
+/// Returns `DisplaySolveSteps` which enforces that all renderers consume post-processed
+/// steps, eliminating bifurcation between text/timeline outputs at compile time.
+///
+/// The cleanup is applied automatically based on `opts.detailed_steps`:
+/// - `true` → 5 atomic sub-steps for Normal/Verbose verbosity
+/// - `false` → 3 compact steps for Succinct verbosity
+pub fn solve_with_display_steps(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: SolverOptions,
+) -> Result<(SolutionSet, DisplaySolveSteps), CasError> {
+    let (solution_set, raw_steps) = solve_with_options(eq, var, simplifier, opts)?;
+
+    // Apply didactic cleanup using opts.detailed_steps
+    let cleaned =
+        step_cleanup::cleanup_solve_steps(&mut simplifier.context, raw_steps, opts.detailed_steps);
+
+    Ok((solution_set, DisplaySolveSteps(cleaned)))
+}
+
+/// Internal: Solve an equation with explicit semantic options.
+///
+/// **For display-facing code**, use [`solve_with_display_steps`] instead.
+/// This function returns raw steps that need cleanup before display.
+///
 /// `opts` contains ValueDomain and DomainMode which control:
 /// - Whether log operations are valid (RealOnly requires positive arguments)
 /// - Whether to emit assumptions or reject operations
-pub fn solve_with_options(
+pub(crate) fn solve_with_options(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,

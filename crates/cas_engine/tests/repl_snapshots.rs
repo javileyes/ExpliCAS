@@ -18,7 +18,7 @@
 use cas_ast::{DisplayExpr, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
-use cas_engine::solver::{solve_with_options, SolveBudget, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, SolveBudget, SolverOptions};
 use cas_engine::Engine;
 
 /// Helper to solve an equation and format the result as a snapshot-friendly string
@@ -42,9 +42,10 @@ fn solve_and_format(eq_str: &str, var: &str, budget: usize, mode: DomainMode) ->
             max_branches: budget,
             max_depth: 2,
         },
+        ..Default::default()
     };
 
-    let result = solve_with_options(&eq, var, &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, var, &mut engine.simplifier, opts);
 
     match result {
         Ok((solution_set, _steps)) => {

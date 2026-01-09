@@ -12,7 +12,7 @@ use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::implicit_domain::ImplicitCondition;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
-use cas_engine::solver::{solve_with_options, take_solver_required, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, take_solver_required, SolverOptions};
 use cas_engine::Engine;
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
@@ -21,6 +21,7 @@ fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
         domain_mode: mode,
         assume_scope: scope,
         budget: cas_engine::solver::SolveBudget::default(),
+        ..Default::default()
     }
 }
 
@@ -51,7 +52,7 @@ fn strict_mode_solves_with_required_conditions() {
     };
 
     let opts = make_opts(DomainMode::Strict, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // Should succeed (not error)
     assert!(
@@ -120,7 +121,7 @@ fn generic_mode_solves_with_required_conditions() {
     };
 
     let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     assert!(result.is_ok(), "Generic mode should solve 2^x = y");
 
@@ -161,7 +162,7 @@ fn assume_real_solves_with_positive_requirement() {
     };
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // Should succeed
     assert!(result.is_ok(), "Assume mode should solve 2^x = y");
@@ -224,7 +225,7 @@ fn assume_wildcard_negative_base_returns_residual_isolation() {
     };
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Wildcard);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // Should succeed with Residual
     assert!(
@@ -291,9 +292,10 @@ fn budget_zero_still_solves_simple_exponential() {
         domain_mode: DomainMode::Generic,
         assume_scope: AssumeScope::Real,
         budget: cas_engine::solver::SolveBudget::none(),
+        ..Default::default()
     };
 
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // Should succeed - 2^x = 8 doesn't need branching
     assert!(

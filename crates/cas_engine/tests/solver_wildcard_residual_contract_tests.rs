@@ -6,7 +6,7 @@
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
-use cas_engine::solver::{solve_with_options, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::Engine;
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
@@ -15,6 +15,7 @@ fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
         domain_mode: mode,
         assume_scope: scope,
         budget: cas_engine::solver::SolveBudget::default(),
+        ..Default::default()
     }
 }
 
@@ -44,7 +45,7 @@ fn wildcard_negative_base_returns_residual() {
     };
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Wildcard);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
         Ok((SolutionSet::Residual(residual_expr), steps)) => {
@@ -108,7 +109,7 @@ fn wildcard_residual_no_ln_negative() {
     };
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Wildcard);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     if let Ok((SolutionSet::Residual(residual_expr), _)) = result {
         let expr_str = format!(
@@ -156,7 +157,7 @@ fn assume_real_negative_base_does_not_return_residual() {
     };
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
         Ok((SolutionSet::Residual(_), _)) => {
@@ -190,7 +191,7 @@ fn strict_mode_negative_base_does_not_return_residual() {
     };
 
     let opts = make_opts(DomainMode::Strict, AssumeScope::Real);
-    let result = solve_with_options(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
         Ok((SolutionSet::Residual(_), _)) => {
