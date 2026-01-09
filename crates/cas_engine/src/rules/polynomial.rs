@@ -839,54 +839,58 @@ fn build_additive_expr(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
     result
 }
 
-/// Select the best focus for didactic display from a CollectResult
-/// Prioritizes: (1) constant cancellations, (2) any cancellation, (3) combined groups
+/// Select focus for didactic display from a CollectResult
+/// Shows ALL combined and cancelled groups together for complete picture
 fn select_best_focus(
     ctx: &mut Context,
     result: &crate::collect::CollectResult,
 ) -> (Option<ExprId>, Option<ExprId>, String) {
-    // Priority 1: Constant cancellation (most didactic: "5 - 5 → 0")
-    if let Some(const_group) = result.cancelled.iter().find(|g| g.is_constant) {
-        let focus_before = build_additive_expr(ctx, &const_group.original_terms);
-        let zero = ctx.num(0);
-        return (
-            Some(focus_before),
-            Some(zero),
-            "Cancel opposite terms".to_string(),
-        );
+    // Collect all original terms and all result terms from all groups
+    let mut all_before_terms: Vec<ExprId> = Vec::new();
+    let mut all_after_terms: Vec<ExprId> = Vec::new();
+    let mut has_cancellation = false;
+    let mut has_combination = false;
+
+    // Add cancelled groups (result is 0, but we skip adding 0 since it doesn't change sum)
+    for cancelled in &result.cancelled {
+        all_before_terms.extend(&cancelled.original_terms);
+        has_cancellation = true;
+        // Don't add 0 to after terms - it's implicit
     }
 
-    // Priority 2: Any cancellation with fewest terms
-    if let Some(best_cancelled) = result
-        .cancelled
-        .iter()
-        .min_by_key(|g| g.original_terms.len())
-    {
-        let focus_before = build_additive_expr(ctx, &best_cancelled.original_terms);
-        let zero = ctx.num(0);
-        return (
-            Some(focus_before),
-            Some(zero),
-            "Cancel opposite terms".to_string(),
-        );
+    // Add combined groups
+    for combined in &result.combined {
+        all_before_terms.extend(&combined.original_terms);
+        all_after_terms.push(combined.combined_term);
+        has_combination = true;
     }
 
-    // Priority 3: Combined group with fewest terms
-    if let Some(best_combined) = result
-        .combined
-        .iter()
-        .min_by_key(|g| g.original_terms.len())
-    {
-        let focus_before = build_additive_expr(ctx, &best_combined.original_terms);
-        return (
-            Some(focus_before),
-            Some(best_combined.combined_term),
-            "Combine like terms".to_string(),
-        );
+    // If we have no groups, fallback
+    if all_before_terms.is_empty() {
+        return (None, None, "Combine like terms".to_string());
     }
 
-    // Fallback: no specific focus (use full expression)
-    (None, None, "Combine like terms".to_string())
+    // Build the before expression from all original terms
+    let focus_before = build_additive_expr(ctx, &all_before_terms);
+
+    // Build the after expression
+    let focus_after = if all_after_terms.is_empty() {
+        // Only cancellations, result is 0
+        ctx.num(0)
+    } else {
+        build_additive_expr(ctx, &all_after_terms)
+    };
+
+    // Choose appropriate description
+    let description = if has_cancellation && has_combination {
+        "Cancel and combine like terms".to_string()
+    } else if has_cancellation {
+        "Cancel opposite terms".to_string()
+    } else {
+        "Combine like terms".to_string()
+    };
+
+    (Some(focus_before), Some(focus_after), description)
 }
 
 /// Count the number of terms in a sum/difference expression
