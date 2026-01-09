@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: {(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + 3\cdot (a + b)\cdot (a + c)\cdot (b + c)\cdot (d + f))</title>
+    <title>CAS Steps: \frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -439,55 +439,103 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + 3\cdot (a + b)\cdot (a + c)\cdot (b + c)\cdot (d + f))\]
+            \[\frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Distributive Property</h3>
+                    <h3>Rationalize Denominator</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + {\color{red}{3\cdot (a + b)}}\cdot (a + c)\cdot (b + c)\cdot (d + f))\]
+                        \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Pasos intermedios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{1}{\sqrt{x} - 1} \rightarrow \text{Conjugado: } a + b \to a - b\]</div></div><div class="substep">
+                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(1) \cdot (a-b)}{(\sqrt{x} - 1) \cdot (a-b)} \rightarrow \frac{\sqrt{x} + 1}{{\sqrt{x}}^{2} - {-1}^{2}}\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute}\)</div>
+                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{3\cdot (a + b)}} \rightarrow {\color{green}{3\cdot a + 3\cdot b}}\]
+                            \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} \rightarrow {\color{green}{\frac{\sqrt{x} + 1}{{\sqrt{x}}^{2} - {-1}^{2}}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + ({\color{green}{3\cdot a + 3\cdot b}})\cdot (a + c)\cdot (b + c)\cdot (d + f))\]
+                        \[{\color{green}{\frac{1\cdot (\sqrt{x} + 1)}{{\sqrt{x}}^{2} - {-1}^{2}}}} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Distributive Property</h3>
+                    <h3>Power of a Power</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + {\color{red}{(a + c)\cdot (b + c)\cdot (3\cdot a + 3\cdot b)}}\cdot (d + f))\]
+                        \[\frac{1 + \sqrt{x}}{{\color{red}{{\sqrt{x}}^{2}}} - {-1}^{2}} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute}\)</div>
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{(a + c)\cdot (b + c)\cdot (3\cdot a + 3\cdot b)}} \rightarrow {\color{green}{a\cdot (b + c)\cdot (3\cdot a + 3\cdot b) + c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)}}\]
+                            \[{\color{red}{{\sqrt{x}}^{2}}} \rightarrow {\color{green}{x}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{(a + b + c)}^{3} - ({a}^{3} + {b}^{3} + {c}^{3} + ({\color{green}{a\cdot (b + c)\cdot (3\cdot a + 3\cdot b) + c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)}})\cdot (d + f))\]
+                        \[\frac{1 + \sqrt{x}}{{\color{green}{x}} - {-1}^{2}} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Evaluate Numeric Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{1 + \sqrt{x}}{x - {\color{red}{{-1}^{2}}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Evaluate literal power}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{{-1}^{2}}} \rightarrow {\color{green}{1}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{1 + \sqrt{x}}{x - {\color{green}{1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Add Inverse</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}} \rightarrow {\color{green}{0}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{\color{green}{0}}\]
+                    </div>
+                    <div class="domain-requires">Requires: x ≥ 0</div>
+                    <div class="domain-warning">Domain: Assumed (1 + x^(1/2)) / (x - 1) is defined</div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[{(a + b + c)}^{3} - {a}^{3} - {c}^{3} - {b}^{3} - ((d + f)\cdot (a\cdot (b + c)\cdot (3\cdot a + 3\cdot b) + c\cdot (b + c)\cdot (3\cdot a + 3\cdot b)))\]
+            \[0\]
         </div>
     </div>
     <footer>

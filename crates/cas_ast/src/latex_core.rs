@@ -781,6 +781,57 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
     }
 
     fn format_pow_path(&self, base: ExprId, exp: ExprId, path: &ExprPath) -> String {
+        // Check if exponent is 1, just return the base (no ^{1})
+        if let Expr::Number(n) = self.context.get(exp) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.render_with_path(base, false, &self.child_path(path, 0));
+            }
+        }
+
+        // Check if base is 1, just return "1" (1^n = 1)
+        if let Expr::Number(n) = self.context.get(base) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return "1".to_string();
+            }
+        }
+
+        // Check if this should be rendered as a root based on hints
+        if let Some(hints) = &self.hints {
+            if let Expr::Number(n) = self.context.get(exp) {
+                let denom = n.denom();
+                if !n.is_integer() && *denom > 1.into() {
+                    // Check if we have a matching root hint
+                    for root_idx in hints.root_indices() {
+                        if *denom == (root_idx as i64).into() {
+                            let base_str =
+                                self.render_with_path(base, false, &self.child_path(path, 0));
+                            let numer = n.numer();
+
+                            if *numer == 1.into() {
+                                // Simple root: x^(1/n) -> nth root of x
+                                if *denom == 2.into() {
+                                    return format!("\\sqrt{{{}}}", base_str);
+                                } else {
+                                    return format!("\\sqrt[{}]{{{}}}", denom, base_str);
+                                }
+                            } else {
+                                // Complex root: x^(k/n) -> nth root of x^k
+                                if *denom == 2.into() {
+                                    return format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer);
+                                } else {
+                                    return format!(
+                                        "\\sqrt[{}]{{{{{}}}^{{{}}}}}",
+                                        denom, base_str, numer
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Default power rendering
         let base_str = self.render_base(base, &self.child_path(path, 0));
         let exp_str = self.render_with_path(exp, false, &self.child_path(path, 1));
         format!("{{{}}}^{{{}}}", base_str, exp_str)

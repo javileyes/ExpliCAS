@@ -1721,7 +1721,7 @@ impl<'a> TimelineHtml<'a> {
                         context: self.context,
                         id: global_before_expr,
                         path_highlights: &before_config,
-                        hints: None,
+                        hints: Some(&display_hints),
                     }
                     .to_latex();
 
@@ -1731,7 +1731,7 @@ impl<'a> TimelineHtml<'a> {
                         context: self.context,
                         id: global_after_expr,
                         path_highlights: &after_config,
-                        hints: None,
+                        hints: Some(&display_hints),
                     }
                     .to_latex();
 
@@ -1800,7 +1800,7 @@ impl<'a> TimelineHtml<'a> {
                             context: self.context,
                             id: global_before_expr,
                             path_highlights: &before_config,
-                            hints: None,
+                            hints: Some(&display_hints),
                         }
                         .to_latex()
                     } else {
@@ -1812,7 +1812,7 @@ impl<'a> TimelineHtml<'a> {
                             context: self.context,
                             id: global_before_expr,
                             path_highlights: &before_config,
-                            hints: None,
+                            hints: Some(&display_hints),
                         }
                         .to_latex()
                     };
@@ -1828,7 +1828,7 @@ impl<'a> TimelineHtml<'a> {
                             context: self.context,
                             id: global_after_expr,
                             path_highlights: &after_config,
-                            hints: None,
+                            hints: Some(&display_hints),
                         }
                         .to_latex()
                     } else {
@@ -1854,7 +1854,7 @@ impl<'a> TimelineHtml<'a> {
                     context: self.context,
                     id: global_before_expr,
                     path_highlights: &before_config,
-                    hints: None,
+                    hints: Some(&display_hints),
                 }
                 .to_latex();
 
@@ -1864,7 +1864,7 @@ impl<'a> TimelineHtml<'a> {
                     context: self.context,
                     id: global_after_expr,
                     path_highlights: &after_config,
-                    hints: None,
+                    hints: Some(&display_hints),
                 }
                 .to_latex();
 
