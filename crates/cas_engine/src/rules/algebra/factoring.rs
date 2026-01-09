@@ -731,8 +731,8 @@ define_rule!(
         Some(Rewrite {
             new_expr,
             description: format!("Factor out {}", gcd_int),
-            before_local: None,
-            after_local: None,
+            before_local: Some(expr),
+            after_local: Some(new_expr),
             assumption_events: Default::default(),
             required_conditions: vec![],
             poly_proof: None,
