@@ -808,11 +808,10 @@ define_rule!(
                 return None;
             }
 
-            // V2.9.16: Use full expression as focus to match global highlights
-            // The user expects the focus to show the same scope as the before/after highlights
-            let before_local = Some(expr);
-            let after_local = Some(result.new_expr);
-            let description = "Combine like terms".to_string();
+            // V2.9.18: Restore granular focus using CollectResult's cancelled/combined groups
+            // This provides specific focus like "5 - 5 → 0" for didactic clarity
+            // Timeline highlighting uses step.path separately for broader context
+            let (before_local, after_local, description) = select_best_focus(ctx, &result);
 
             return Some(Rewrite {
                 new_expr: result.new_expr,
@@ -827,6 +826,68 @@ define_rule!(
         None
     }
 );
+
+/// Build an additive expression from a list of terms (for focus display)
+fn build_additive_expr(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
+    if terms.is_empty() {
+        return ctx.num(0);
+    }
+    let mut result = terms[0];
+    for &term in &terms[1..] {
+        result = ctx.add(Expr::Add(result, term));
+    }
+    result
+}
+
+/// Select the best focus for didactic display from a CollectResult
+/// Prioritizes: (1) constant cancellations, (2) any cancellation, (3) combined groups
+fn select_best_focus(
+    ctx: &mut Context,
+    result: &crate::collect::CollectResult,
+) -> (Option<ExprId>, Option<ExprId>, String) {
+    // Priority 1: Constant cancellation (most didactic: "5 - 5 → 0")
+    if let Some(const_group) = result.cancelled.iter().find(|g| g.is_constant) {
+        let focus_before = build_additive_expr(ctx, &const_group.original_terms);
+        let zero = ctx.num(0);
+        return (
+            Some(focus_before),
+            Some(zero),
+            "Cancel opposite terms".to_string(),
+        );
+    }
+
+    // Priority 2: Any cancellation with fewest terms
+    if let Some(best_cancelled) = result
+        .cancelled
+        .iter()
+        .min_by_key(|g| g.original_terms.len())
+    {
+        let focus_before = build_additive_expr(ctx, &best_cancelled.original_terms);
+        let zero = ctx.num(0);
+        return (
+            Some(focus_before),
+            Some(zero),
+            "Cancel opposite terms".to_string(),
+        );
+    }
+
+    // Priority 3: Combined group with fewest terms
+    if let Some(best_combined) = result
+        .combined
+        .iter()
+        .min_by_key(|g| g.original_terms.len())
+    {
+        let focus_before = build_additive_expr(ctx, &best_combined.original_terms);
+        return (
+            Some(focus_before),
+            Some(best_combined.combined_term),
+            "Combine like terms".to_string(),
+        );
+    }
+
+    // Fallback: no specific focus (use full expression)
+    (None, None, "Combine like terms".to_string())
+}
 
 /// Count the number of terms in a sum/difference expression
 /// Returns the count of additive terms (flattening nested Add/Sub)
