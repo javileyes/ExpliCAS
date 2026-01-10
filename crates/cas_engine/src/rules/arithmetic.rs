@@ -13,28 +13,12 @@ define_rule!(
         if let Expr::Add(lhs, rhs) = expr_data {
             if let Expr::Number(n) = ctx.get(rhs) {
                 if n.is_zero() {
-                    return Some(Rewrite {
-                        new_expr: lhs,
-                        description: "x + 0 = x".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(lhs).desc("x + 0 = x"));
                 }
             }
             if let Expr::Number(n) = ctx.get(lhs) {
                 if n.is_zero() {
-                    return Some(Rewrite {
-                        new_expr: rhs,
-                        description: "0 + x = x".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(rhs).desc("0 + x = x"));
                 }
             }
         }
@@ -51,28 +35,12 @@ define_rule!(
         if let Expr::Mul(lhs, rhs) = expr_data {
             if let Expr::Number(n) = ctx.get(rhs) {
                 if n.is_one() {
-                    return Some(Rewrite {
-                        new_expr: lhs,
-                        description: "x * 1 = x".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(lhs).desc("x * 1 = x"));
                 }
             }
             if let Expr::Number(n) = ctx.get(lhs) {
                 if n.is_one() {
-                    return Some(Rewrite {
-                        new_expr: rhs,
-                        description: "1 * x = x".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(rhs).desc("1 * x = x"));
                 }
             }
         }

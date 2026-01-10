@@ -1706,11 +1706,11 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
                 }
             };
 
-            return Some(Rewrite::with_poly_proof(
-                zero,
-                "Polynomial identity: normalize and cancel to 0",
-                proof_data,
-            ));
+            return Some(
+                Rewrite::new(zero)
+                    .desc("Polynomial identity: normalize and cancel to 0")
+                    .poly_proof(proof_data),
+            );
         }
 
         None

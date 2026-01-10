@@ -28,12 +28,11 @@ pub struct Rewrite {
     pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
 }
 
-impl Rewrite {
-    /// Create a simple rewrite (most common case - local transform = global transform)
-    pub fn simple(new_expr: ExprId, description: impl Into<String>) -> Self {
-        Rewrite {
-            new_expr,
-            description: description.into(),
+impl Default for Rewrite {
+    fn default() -> Self {
+        Self {
+            new_expr: cas_ast::ExprId::from_raw(0), // Will be set by new()
+            description: String::new(),
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
@@ -41,60 +40,130 @@ impl Rewrite {
             poly_proof: None,
         }
     }
+}
+
+impl Rewrite {
+    // =========================================================================
+    // Constructors
+    // =========================================================================
+
+    /// Create a new Rewrite with the given result expression.
+    /// Use fluent setters to add description and other fields.
+    ///
+    /// # Example
+    /// ```ignore
+    /// Some(Rewrite::new(result).desc("Simplify"))
+    /// ```
+    #[must_use]
+    pub fn new(new_expr: ExprId) -> Self {
+        Self {
+            new_expr,
+            ..Default::default()
+        }
+    }
+
+    /// Create a simple rewrite (most common case - local transform = global transform)
+    #[must_use]
+    pub fn simple(new_expr: ExprId, description: impl Into<String>) -> Self {
+        Self::new(new_expr).desc(description)
+    }
 
     /// Create a rewrite with explicit local before/after (for n-ary rules)
     /// Use when the rule transforms a subpattern within a larger expression
+    #[must_use]
     pub fn with_local(
         new_expr: ExprId,
         description: impl Into<String>,
         before_local: ExprId,
         after_local: ExprId,
     ) -> Self {
-        Rewrite {
-            new_expr,
-            description: description.into(),
-            before_local: Some(before_local),
-            after_local: Some(after_local),
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        }
+        Self::new(new_expr)
+            .desc(description)
+            .local(before_local, after_local)
     }
 
     /// Create a rewrite with domain assumption warning
-    /// DEPRECATED: Use assumption_events instead
+    /// DEPRECATED: Use `.assume()` fluent method instead
+    #[must_use]
     pub fn with_domain_assumption(
         new_expr: ExprId,
         description: impl Into<String>,
         _assumption: &'static str,
     ) -> Self {
-        Rewrite {
-            new_expr,
-            description: description.into(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        }
+        Self::new(new_expr).desc(description)
     }
 
     /// Create a rewrite with polynomial proof data (for PolyZero airbag)
     /// Used by PolynomialIdentityZeroRule to attach normalization info for didactic display
+    #[must_use]
     pub fn with_poly_proof(
         new_expr: ExprId,
         description: impl Into<String>,
         poly_proof: crate::multipoly_display::PolynomialProofData,
     ) -> Self {
-        Rewrite {
-            new_expr,
-            description: description.into(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: Some(poly_proof),
-        }
+        Self::new(new_expr).desc(description).poly_proof(poly_proof)
+    }
+
+    // =========================================================================
+    // Fluent Setters (Builder Pattern)
+    // =========================================================================
+
+    /// Set the description of this rewrite.
+    #[must_use]
+    pub fn desc(mut self, description: impl Into<String>) -> Self {
+        self.description = description.into();
+        self
+    }
+
+    /// Set explicit local before/after expressions (for n-ary rules).
+    /// Use when the rule transforms a subpattern within a larger expression.
+    #[must_use]
+    pub fn local(mut self, before: ExprId, after: ExprId) -> Self {
+        self.before_local = Some(before);
+        self.after_local = Some(after);
+        self
+    }
+
+    /// Add a required condition for validity.
+    /// These are conditions that were already implicitly required by the input expression.
+    #[must_use]
+    pub fn requires(mut self, cond: crate::implicit_domain::ImplicitCondition) -> Self {
+        self.required_conditions.push(cond);
+        self
+    }
+
+    /// Add multiple required conditions for validity.
+    #[must_use]
+    pub fn requires_all<I>(mut self, conds: I) -> Self
+    where
+        I: IntoIterator<Item = crate::implicit_domain::ImplicitCondition>,
+    {
+        self.required_conditions.extend(conds);
+        self
+    }
+
+    /// Add an assumption event (structured domain assumption).
+    #[must_use]
+    pub fn assume(mut self, ev: crate::assumptions::AssumptionEvent) -> Self {
+        self.assumption_events.push(ev);
+        self
+    }
+
+    /// Add multiple assumption events.
+    #[must_use]
+    pub fn assume_all<I>(mut self, evs: I) -> Self
+    where
+        I: IntoIterator<Item = crate::assumptions::AssumptionEvent>,
+    {
+        self.assumption_events.extend(evs);
+        self
+    }
+
+    /// Set polynomial proof data (for PolyZero airbag didactic display).
+    #[must_use]
+    pub fn poly_proof(mut self, proof: crate::multipoly_display::PolynomialProofData) -> Self {
+        self.poly_proof = Some(proof);
+        self
     }
 }
 
