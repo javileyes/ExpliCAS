@@ -14,22 +14,14 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                 if let Expr::Variable(var_name) = ctx.get(var_expr) {
                     let var_name = var_name.clone(); // Clone to drop borrow
                     if let Some(result) = integrate(ctx, integrand, &var_name) {
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: format!(
-                                "integrate({}, {})",
-                                cas_ast::DisplayExpr {
-                                    context: ctx,
-                                    id: integrand
-                                },
-                                var_name
-                            ),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(result).desc(format!(
+                            "integrate({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: integrand
+                            },
+                            var_name
+                        )));
                     }
                 }
             } else if args.len() == 1 {
@@ -37,21 +29,13 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                 // Let's assume 'x' for convenience if only 1 arg.
                 let integrand = args[0];
                 if let Some(result) = integrate(ctx, integrand, "x") {
-                    return Some(Rewrite {
-                        new_expr: result,
-                        description: format!(
-                            "integrate({}, x)",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: integrand
-                            }
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(result).desc(format!(
+                        "integrate({}, x)",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: integrand
+                        }
+                    )));
                 }
             }
         }
@@ -67,22 +51,14 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
             if let Expr::Variable(var_name) = ctx.get(var_expr) {
                 let var_name = var_name.clone();
                 if let Some(result) = differentiate(ctx, target, &var_name) {
-                    return Some(Rewrite {
-                        new_expr: result,
-                        description: format!(
-                            "diff({}, {})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: target
-                            },
-                            var_name
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(result).desc(format!(
+                        "diff({}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: target
+                        },
+                        var_name
+                    )));
                 }
             }
         }
@@ -719,30 +695,22 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
             if let Some(result) =
                 try_telescoping_rational_sum(ctx, summand, &var_name, start_expr, end_expr)
             {
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: format!(
-                        "Telescoping sum: Σ({}, {}) from {} to {}",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: summand
-                        },
-                        var_name,
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: start_expr
-                        },
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: end_expr
-                        }
-                    ),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(result).desc(format!(
+                    "Telescoping sum: Σ({}, {}) from {} to {}",
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: summand
+                    },
+                    var_name,
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: start_expr
+                    },
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: end_expr
+                    }
+                )));
             }
 
             // Try to evaluate start and end as integers for numeric evaluation
@@ -770,24 +738,16 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                     let (simplified, _) = simplifier.simplify(result);
                     *ctx = simplifier.context;
 
-                    return Some(Rewrite {
-                        new_expr: simplified,
-                        description: format!(
-                            "sum({}, {}, {}, {})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: summand
-                            },
-                            var_name,
-                            start,
-                            end
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(simplified).desc(format!(
+                        "sum({}, {}, {}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: summand
+                        },
+                        var_name,
+                        start,
+                        end
+                    )));
                 }
             }
         }
@@ -1023,30 +983,22 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
             if let Some(result) =
                 try_telescoping_product(ctx, factor, &var_name, start_expr, end_expr)
             {
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: format!(
-                        "Telescoping product: Π({}, {}) from {} to {}",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: factor
-                        },
-                        var_name,
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: start_expr
-                        },
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: end_expr
-                        }
-                    ),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(result).desc(format!(
+                    "Telescoping product: Π({}, {}) from {} to {}",
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: factor
+                    },
+                    var_name,
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: start_expr
+                    },
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: end_expr
+                    }
+                )));
             }
 
             // =====================================================================
@@ -1058,30 +1010,22 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
             if let Some(result) =
                 try_factorizable_product(ctx, factor, &var_name, start_expr, end_expr)
             {
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: format!(
-                        "Factorized telescoping product: Π({}, {}) from {} to {}",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: factor
-                        },
-                        var_name,
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: start_expr
-                        },
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: end_expr
-                        }
-                    ),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(result).desc(format!(
+                    "Factorized telescoping product: Π({}, {}) from {} to {}",
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: factor
+                    },
+                    var_name,
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: start_expr
+                    },
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: end_expr
+                    }
+                )));
             }
 
             // Try to evaluate start and end as integers for numeric evaluation
@@ -1109,24 +1053,16 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                     let (simplified, _) = simplifier.simplify(result);
                     *ctx = simplifier.context;
 
-                    return Some(Rewrite {
-                        new_expr: simplified,
-                        description: format!(
-                            "product({}, {}, {}, {})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: factor
-                            },
-                            var_name,
-                            start,
-                            end
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(simplified).desc(format!(
+                        "product({}, {}, {}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: factor
+                        },
+                        var_name,
+                        start,
+                        end
+                    )));
                 }
             }
         }
