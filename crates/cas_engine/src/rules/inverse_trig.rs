@@ -320,7 +320,9 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         let one = num_rational::BigRational::one();
                                         let neg_one = -one.clone();
                                         if *n >= neg_one && *n <= one {
-                                            return Some(Rewrite::new(x).desc("sin(arcsin(x)) = x"));
+                                            return Some(
+                                                Rewrite::new(x).desc("sin(arcsin(x)) = x"),
+                                            );
                                         }
                                     }
                                     // Variable: don't simplify in strict mode
@@ -355,7 +357,9 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         let one = num_rational::BigRational::one();
                                         let neg_one = -one.clone();
                                         if *n >= neg_one && *n <= one {
-                                            return Some(Rewrite::new(x).desc("cos(arccos(x)) = x"));
+                                            return Some(
+                                                Rewrite::new(x).desc("cos(arccos(x)) = x"),
+                                            );
                                         }
                                     }
                                     return None;

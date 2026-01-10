@@ -2808,7 +2808,9 @@ define_rule!(
                         // Reconstruct expression without the matched terms
                         if is_explicit_sub && terms.len() == 2 {
                             // Simple case: Sub(cot(u/2), cot(u)) → 1/sin(u)
-                            return Some(Rewrite::new(final_result).desc("cot(u/2) - cot(u) = 1/sin(u)"));
+                            return Some(
+                                Rewrite::new(final_result).desc("cot(u/2) - cot(u) = 1/sin(u)"),
+                            );
                         }
 
                         // N-ary case: rebuild sum without matched terms
@@ -2849,7 +2851,9 @@ define_rule!(
                         };
 
                         if is_explicit_sub && terms.len() == 2 {
-                            return Some(Rewrite::new(final_result).desc("-cot(u/2) + cot(u) = -1/sin(u)"));
+                            return Some(
+                                Rewrite::new(final_result).desc("-cot(u/2) + cot(u) = -1/sin(u)"),
+                            );
                         }
 
                         // N-ary case
