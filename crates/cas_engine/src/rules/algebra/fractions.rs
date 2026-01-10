@@ -836,15 +836,7 @@ define_rule!(
                             num_prod
                         }
                     };
-                    return Some(Rewrite {
-                        new_expr: result,
-                        description: "Cancel division: (a/b)*b -> a".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(result).desc("Cancel division: (a/b)*b -> a"));
                 }
             }
 
@@ -862,15 +854,7 @@ define_rule!(
                             num_prod
                         }
                     };
-                    return Some(Rewrite {
-                        new_expr: result,
-                        description: "Cancel division: a*(b/a) -> b".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(result).desc("Cancel division: a*(b/a) -> b"));
                 }
             }
 

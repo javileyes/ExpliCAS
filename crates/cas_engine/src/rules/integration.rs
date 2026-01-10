@@ -81,15 +81,7 @@ impl Rule for ProductToSumRule {
             let sin_diff = ctx.add(Expr::Function("sin".to_string(), vec![a_minus_b]));
             let result = ctx.add(Expr::Add(sin_sum, sin_diff));
 
-            return Some(Rewrite {
-                new_expr: result,
-                description: "2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(result).desc("2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)"));
         }
 
         None

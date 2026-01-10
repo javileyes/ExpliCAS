@@ -575,15 +575,7 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
         // Delegate literal integer power to canonical const_eval helper
         // This covers: b^n for ℚ base and ℤ exponent, including edge cases (0^0, 0^-n)
         if let Some(result) = crate::const_eval::try_eval_pow_literal(ctx, base, exp) {
-            return Some(Rewrite {
-                new_expr: result,
-                description: "Evaluate literal power".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(result).desc("Evaluate literal power"));
         }
 
         let base_data = ctx.get(base).clone();
@@ -803,15 +795,7 @@ define_rule!(
             // x^1 -> x (always safe)
             if let Expr::Number(n) = ctx.get(exp) {
                 if n.is_one() {
-                    return Some(Rewrite {
-                        new_expr: base,
-                        description: "x^1 -> x".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                    });
+                    return Some(Rewrite::new(base).desc("x^1 -> x"));
                 }
                 if n.is_zero() {
                     // x^0 -> 1 REQUIRES x ≠ 0 (because 0^0 is undefined)

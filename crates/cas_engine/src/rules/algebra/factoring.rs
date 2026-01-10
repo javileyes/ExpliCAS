@@ -414,15 +414,7 @@ define_rule!(
                     // Wrap in __hold() to prevent other rules from undoing the factorization
                     // (e.g., DifferenceOfSquaresRule converts (a-b)(a+b) back to a²-b²)
                     let held = ctx.add(Expr::Function("__hold".to_string(), vec![new_expr]));
-                    return Some(Rewrite {
-                        new_expr: held,
-                        description: "Factorization".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(held).desc("Factorization"));
                 }
             }
         }

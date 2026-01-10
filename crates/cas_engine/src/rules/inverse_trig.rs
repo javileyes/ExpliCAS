@@ -320,30 +320,14 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         let one = num_rational::BigRational::one();
                                         let neg_one = -one.clone();
                                         if *n >= neg_one && *n <= one {
-                                            return Some(Rewrite {
-                                                new_expr: x,
-                                                description: "sin(arcsin(x)) = x".to_string(),
-                                                before_local: None,
-                                                after_local: None,
-                                                assumption_events: Default::default(),
-                                                required_conditions: vec![],
-                                                poly_proof: None,
-                                            });
+                                            return Some(Rewrite::new(x).desc("sin(arcsin(x)) = x"));
                                         }
                                     }
                                     // Variable: don't simplify in strict mode
                                     return None;
                                 }
                                 crate::domain::DomainMode::Generic => {
-                                    return Some(Rewrite {
-                                        new_expr: x,
-                                        description: "sin(arcsin(x)) = x".to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-                                        required_conditions: vec![],
-                                        poly_proof: None,
-                                    });
+                                    return Some(Rewrite::new(x).desc("sin(arcsin(x)) = x"));
                                 }
                                 crate::domain::DomainMode::Assume => {
                                     return Some(Rewrite {
@@ -371,29 +355,13 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                         let one = num_rational::BigRational::one();
                                         let neg_one = -one.clone();
                                         if *n >= neg_one && *n <= one {
-                                            return Some(Rewrite {
-                                                new_expr: x,
-                                                description: "cos(arccos(x)) = x".to_string(),
-                                                before_local: None,
-                                                after_local: None,
-                                                assumption_events: Default::default(),
-                                                required_conditions: vec![],
-                                                poly_proof: None,
-                                            });
+                                            return Some(Rewrite::new(x).desc("cos(arccos(x)) = x"));
                                         }
                                     }
                                     return None;
                                 }
                                 crate::domain::DomainMode::Generic => {
-                                    return Some(Rewrite {
-                                        new_expr: x,
-                                        description: "cos(arccos(x)) = x".to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-                                        required_conditions: vec![],
-                                        poly_proof: None,
-                                    });
+                                    return Some(Rewrite::new(x).desc("cos(arccos(x)) = x"));
                                 }
                                 crate::domain::DomainMode::Assume => {
                                     return Some(Rewrite {
@@ -414,15 +382,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
 
                         // tan(arctan(x)) = x (always safe - arctan has domain R)
                         if outer_name == "tan" && (inner_name == "arctan" || inner_name == "atan") {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "tan(arctan(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(x).desc("tan(arctan(x)) = x"));
                         }
 
                         // SAFE NESTED CASE: arctan(tan(arctan(u))) = arctan(u)
@@ -868,15 +828,7 @@ define_rule!(
                 // Build arccos(1/arg)
                 let result = ctx.add(Expr::Function("arccos".to_string(), vec![reciprocal]));
 
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: "arcsec(x) → arccos(1/x)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(result).desc("arcsec(x) → arccos(1/x)"));
             }
         }
         None
@@ -900,15 +852,7 @@ define_rule!(
                 // Build arcsin(1/arg)
                 let result = ctx.add(Expr::Function("arcsin".to_string(), vec![reciprocal]));
 
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: "arccsc(x) → arcsin(1/x)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(result).desc("arccsc(x) → arcsin(1/x)"));
             }
         }
         None
@@ -933,15 +877,7 @@ define_rule!(
                 // Build arctan(1/arg)
                 let result = ctx.add(Expr::Function("arctan".to_string(), vec![reciprocal]));
 
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: "arccot(x) → arctan(1/x)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(result).desc("arccot(x) → arctan(1/x)"));
             }
         }
         None

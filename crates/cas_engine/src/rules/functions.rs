@@ -50,15 +50,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                 }
 
                 let abs_inner = ctx.add(Expr::Function("abs".to_string(), vec![*inner]));
-                return Some(Rewrite {
-                    new_expr: abs_inner,
-                    description: "abs(-x) = abs(x)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(abs_inner).desc("abs(-x) = abs(x)"));
             }
         }
     }
@@ -140,15 +132,7 @@ define_rule!(
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
                         // sqrt(base^2) -> |base|
                         let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![*base]));
-                        return Some(Rewrite {
-                            new_expr: abs_base,
-                            description: "sqrt(x^2) = |x|".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(abs_base).desc("sqrt(x^2) = |x|"));
                     }
                 }
             }
@@ -328,15 +312,7 @@ define_rule!(
                     // expand() needs to call actual expansion logic
                     "expand" => {
                         let expanded = crate::expand::expand(ctx, args[0]);
-                        return Some(Rewrite {
-                            new_expr: expanded,
-                            description: "expand(x) → expanded form".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(expanded).desc("expand(x) → expanded form"));
                     }
                     _ => {}
                 }

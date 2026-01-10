@@ -287,15 +287,7 @@ define_rule!(
                                     let abs_linear =
                                         ctx.add(Expr::Function("abs".to_string(), vec![linear]));
 
-                                    return Some(Rewrite {
-                                        new_expr: abs_linear,
-                                        description: "Simplify perfect square root".to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-                                        required_conditions: vec![],
-                                        poly_proof: None,
-                                    });
+                                    return Some(Rewrite::new(abs_linear).desc("Simplify perfect square root"));
                                 }
                             }
                         }
@@ -323,15 +315,7 @@ define_rule!(
                                 };
 
                                 if rem == 0 {
-                                    return Some(Rewrite {
-                                        new_expr: term1,
-                                        description: "Simplify perfect square root".to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-                                        required_conditions: vec![],
-                                        poly_proof: None,
-                                    });
+                                    return Some(Rewrite::new(term1).desc("Simplify perfect square root"));
                                 } else {
                                     let sqrt_base =
                                         ctx.add(Expr::Function("sqrt".to_string(), vec![base]));

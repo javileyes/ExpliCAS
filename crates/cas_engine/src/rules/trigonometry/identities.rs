@@ -36,15 +36,7 @@ define_rule!(
                             }
                             "cos" => {
                                 let one = ctx.num(1);
-                                return Some(Rewrite {
-                                    new_expr: one,
-                                    description: "cos(0) = 1".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(one).desc("cos(0) = 1"));
                             }
                             "arccos" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
@@ -80,15 +72,7 @@ define_rule!(
                             }
                             "arccos" => {
                                 let zero = ctx.num(0);
-                                return Some(Rewrite {
-                                    new_expr: zero,
-                                    description: "arccos(1) = 0".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(zero).desc("arccos(1) = 0"));
                             }
                             "arctan" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
@@ -159,15 +143,7 @@ define_rule!(
                         }
                         "cos" => {
                             let neg_one = ctx.num(-1);
-                            return Some(Rewrite {
-                                new_expr: neg_one,
-                                description: "cos(pi) = -1".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(neg_one).desc("cos(pi) = -1"));
                         }
                         _ => {}
                     }
@@ -178,39 +154,15 @@ define_rule!(
                     match name.as_str() {
                         "sin" => {
                             let one = ctx.num(1);
-                            return Some(Rewrite {
-                                new_expr: one,
-                                description: "sin(pi/2) = 1".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(one).desc("sin(pi/2) = 1"));
                         }
                         "cos" => {
                             let zero = ctx.num(0);
-                            return Some(Rewrite {
-                                new_expr: zero,
-                                description: "cos(pi/2) = 0".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(zero).desc("cos(pi/2) = 0"));
                         }
                         "tan" => {
                             let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                            return Some(Rewrite {
-                                new_expr: undefined,
-                                description: "tan(pi/2) = undefined".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(undefined).desc("tan(pi/2) = undefined"));
                         }
                         _ => {}
                     }
@@ -299,15 +251,7 @@ define_rule!(
                         "tan" => {
                             // tan(π/4) = 1
                             let one = ctx.num(1);
-                            return Some(Rewrite {
-                                new_expr: one,
-                                description: "tan(π/4) = 1".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(one).desc("tan(π/4) = 1"));
                         }
                         _ => {}
                     }
@@ -1876,15 +1820,7 @@ define_rule!(
                                 let half_n = n / num_rational::BigRational::from_integer(2.into());
 
                                 if half_n.is_one() {
-                                    return Some(Rewrite {
-                                        new_expr: base_term,
-                                        description: "cos^2(x) -> 1 - sin^2(x)".to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                                    });
+                                    return Some(Rewrite::new(base_term).desc("cos^2(x) -> 1 - sin^2(x)"));
                                 } else {
                                     let half_n_expr = ctx.add(Expr::Number(half_n));
                                     let new_expr = ctx.add(Expr::Pow(base_term, half_n_expr));
@@ -2872,15 +2808,7 @@ define_rule!(
                         // Reconstruct expression without the matched terms
                         if is_explicit_sub && terms.len() == 2 {
                             // Simple case: Sub(cot(u/2), cot(u)) → 1/sin(u)
-                            return Some(Rewrite {
-                                new_expr: final_result,
-                                description: "cot(u/2) - cot(u) = 1/sin(u)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(final_result).desc("cot(u/2) - cot(u) = 1/sin(u)"));
                         }
 
                         // N-ary case: rebuild sum without matched terms
@@ -2921,15 +2849,7 @@ define_rule!(
                         };
 
                         if is_explicit_sub && terms.len() == 2 {
-                            return Some(Rewrite {
-                                new_expr: final_result,
-                                description: "-cot(u/2) + cot(u) = -1/sin(u)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(final_result).desc("-cot(u/2) + cot(u) = -1/sin(u)"));
                         }
 
                         // N-ary case

@@ -35,40 +35,16 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
         if let Expr::Number(n) = &arg_data {
             if n.is_one() {
                 let zero = ctx.num(0);
-                return Some(Rewrite {
-                    new_expr: zero,
-                    description: "log(b, 1) = 0".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(zero).desc("log(b, 1) = 0"));
             }
             if n.is_zero() {
                 let inf = ctx.add(Expr::Constant(cas_ast::Constant::Infinity));
                 let neg_inf = ctx.add(Expr::Neg(inf));
-                return Some(Rewrite {
-                    new_expr: neg_inf,
-                    description: "log(b, 0) = -infinity".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(neg_inf).desc("log(b, 0) = -infinity"));
             }
             if *n < num_rational::BigRational::zero() {
                 let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                return Some(Rewrite {
-                    new_expr: undef,
-                    description: "log(b, neg) = undefined".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(undef).desc("log(b, neg) = undefined"));
             }
 
             // Check if n is a power of base (if base is a number)
@@ -105,15 +81,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
         // 2. log(b, b) = 1
         if base == arg || ctx.get(base) == ctx.get(arg) {
             let one = ctx.num(1);
-            return Some(Rewrite {
-                new_expr: one,
-                description: "log(b, b) = 1".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(one).desc("log(b, b) = 1"));
         }
 
         // 3. log(b, b^x) = x
@@ -132,15 +100,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
             if is_inverse_composition {
                 // log(b, b^n) where n is a number → n (always safe, like log(x, x^2) → 2)
                 if matches!(ctx.get(p_exp), Expr::Number(_)) {
-                    return Some(Rewrite {
-                        new_expr: p_exp,
-                        description: "log(b, b^n) = n".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(p_exp).desc("log(b, b^n) = n"));
                 }
                 // For variable exponents like log(e, e^x), skip and let LogExpInverseRule handle
                 // with inv_trig policy check

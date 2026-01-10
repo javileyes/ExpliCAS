@@ -113,80 +113,32 @@ define_rule!(
 
                         // sinh(asinh(x)) = x
                         if outer_name == "sinh" && inner_name == "asinh" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "sinh(asinh(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(x).desc("sinh(asinh(x)) = x"));
                         }
 
                         // cosh(acosh(x)) = x
                         if outer_name == "cosh" && inner_name == "acosh" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "cosh(acosh(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(x).desc("cosh(acosh(x)) = x"));
                         }
 
                         // tanh(atanh(x)) = x
                         if outer_name == "tanh" && inner_name == "atanh" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "tanh(atanh(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(x).desc("tanh(atanh(x)) = x"));
                         }
 
                         // asinh(sinh(x)) = x
                         if outer_name == "asinh" && inner_name == "sinh" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "asinh(sinh(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(x).desc("asinh(sinh(x)) = x"));
                         }
 
                         // acosh(cosh(x)) = x
                         if outer_name == "acosh" && inner_name == "cosh" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "acosh(cosh(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(x).desc("acosh(cosh(x)) = x"));
                         }
 
                         // atanh(tanh(x)) = x
                         if outer_name == "atanh" && inner_name == "tanh" {
-                            return Some(Rewrite {
-                                new_expr: x,
-                                description: "atanh(tanh(x)) = x".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(x).desc("atanh(tanh(x)) = x"));
                         }
                     }
                 }

@@ -285,15 +285,7 @@ define_rule!(
                     acc
                 };
 
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: "sin⁴(x) - cos⁴(x) = sin²(x) - cos²(x)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(result).desc("sin⁴(x) - cos⁴(x) = sin²(x) - cos²(x)"));
             }
         }
 

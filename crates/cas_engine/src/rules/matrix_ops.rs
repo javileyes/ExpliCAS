@@ -310,15 +310,7 @@ impl SimpleRule for TransposeProductRule {
                             vec![transposed_b, transposed_a],
                         ));
 
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: "(AB)^T = B^T·A^T".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(result).desc("(AB)^T = B^T·A^T"));
                     }
                 }
             }

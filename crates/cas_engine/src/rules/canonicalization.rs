@@ -62,15 +62,7 @@ define_rule!(
 
             // -(-x) -> x
             if let Expr::Neg(double_inner) = inner_data {
-                return Some(Rewrite {
-                    new_expr: double_inner,
-                    description: "-(-x) = x".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                });
+                return Some(Rewrite::new(double_inner).desc("-(-x) = x"));
             }
 
             // -(a + b) -> -a + -b

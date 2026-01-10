@@ -268,15 +268,7 @@ define_rule!(ISquaredMulRule, "i * i = -1", |ctx, expr, parent_ctx| {
             && matches!(ctx.get(r), Expr::Constant(Constant::I))
         {
             let neg_one = ctx.num(-1);
-            return Some(Rewrite {
-                new_expr: neg_one,
-                description: "i · i = -1".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(neg_one).desc("i · i = -1"));
         }
     }
     None
@@ -554,15 +546,7 @@ define_rule!(
                 ctx.add(Expr::Mul(i, sqrt_abs))
             };
 
-            return Some(Rewrite {
-                new_expr: result,
-                description: "sqrt(-n) = i·√n (complex mode)".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(result).desc("sqrt(-n) = i·√n (complex mode)"));
         }
 
         None

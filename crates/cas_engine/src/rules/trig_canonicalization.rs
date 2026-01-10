@@ -408,30 +408,14 @@ define_rule!(
                     let two = ctx.num(2);
                     let sec_expr = ctx.add(Expr::Function("sec".to_string(), vec![tan_arg]));
                     let sec_squared = ctx.add(Expr::Pow(sec_expr, two));
-                    return Some(Rewrite {
-                        new_expr: sec_squared,
-                        description: "1 + tan²(x) = sec²(x)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(sec_squared).desc("1 + tan²(x) = sec²(x)"));
                 }
             } else if is_one(ctx, r_val) {
                 if let Some(tan_arg) = is_function_squared(ctx, l_val, "tan") {
                     let two = ctx.num(2);
                     let sec_expr = ctx.add(Expr::Function("sec".to_string(), vec![tan_arg]));
                     let sec_squared = ctx.add(Expr::Pow(sec_expr, two));
-                    return Some(Rewrite {
-                        new_expr: sec_squared,
-                        description: "1 + tan²(x) = sec²(x)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(sec_squared).desc("1 + tan²(x) = sec²(x)"));
                 }
             }
         }
@@ -454,30 +438,14 @@ define_rule!(
                     let two = ctx.num(2);
                     let csc_expr = ctx.add(Expr::Function("csc".to_string(), vec![cot_arg]));
                     let csc_squared = ctx.add(Expr::Pow(csc_expr, two));
-                    return Some(Rewrite {
-                        new_expr: csc_squared,
-                        description: "1 + cot²(x) = csc²(x)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(csc_squared).desc("1 + cot²(x) = csc²(x)"));
                 }
             } else if is_one(ctx, r_val) {
                 if let Some(cot_arg) = is_function_squared(ctx, l_val, "cot") {
                     let two = ctx.num(2);
                     let csc_expr = ctx.add(Expr::Function("csc".to_string(), vec![cot_arg]));
                     let csc_squared = ctx.add(Expr::Pow(csc_expr, two));
-                    return Some(Rewrite {
-                        new_expr: csc_squared,
-                        description: "1 + cot²(x) = csc²(x)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(csc_squared).desc("1 + cot²(x) = csc²(x)"));
                 }
             }
         }
@@ -656,15 +624,7 @@ define_rule!(
 
                 let result = ctx.add(Expr::Div(new_num, new_den));
 
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: "Convert mixed trig fraction to sin/cos".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(result).desc("Convert mixed trig fraction to sin/cos"));
             }
         }
         None

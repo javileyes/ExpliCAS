@@ -684,15 +684,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
                     // but assumption_events are not emitted for this case yet
 
                     let zero = ctx.num(0);
-                    return Some(Rewrite {
-                        new_expr: zero,
-                        description: "x - x = 0".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(zero).desc("x - x = 0"));
                 }
             }
         }
@@ -771,15 +763,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
 
                     if all_cancel && used.iter().all(|&u| u) {
                         let zero = ctx.num(0);
-                        return Some(Rewrite {
-                            new_expr: zero,
-                            description: "__hold(sum) - sum = 0".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(zero).desc("__hold(sum) - sum = 0"));
                     }
                 }
             }
@@ -1470,15 +1454,7 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
         // If the result is zero, we have proved cancellation!
         if poly.is_zero() {
             let zero = ctx.num(0);
-            return Some(Rewrite {
-                new_expr: zero,
-                description: "Polynomial equality: expressions cancel to 0".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(zero).desc("Polynomial equality: expressions cancel to 0"));
         }
 
         None

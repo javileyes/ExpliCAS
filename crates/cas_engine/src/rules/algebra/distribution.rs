@@ -30,15 +30,7 @@ define_rule!(
                         poly_proof: None,
                     });
                 } else {
-                    return Some(Rewrite {
-                        new_expr: arg,
-                        description: "expand(atom)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(arg).desc("expand(atom)"));
                 }
             }
         }
@@ -70,15 +62,7 @@ define_rule!(
                         poly_proof: None,
                     });
                 } else {
-                    return Some(Rewrite {
-                        new_expr: arg,
-                        description: "expand(atom)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(arg).desc("expand(atom)"));
                 }
             }
         }
