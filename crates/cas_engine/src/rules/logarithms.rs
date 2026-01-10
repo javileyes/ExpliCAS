@@ -574,23 +574,21 @@ impl crate::rule::Rule for ExponentialLogRule {
                     }
 
                     // Build assumption events for unproven
-                    let assumption_events = if decision.assumption.is_some() {
+                    let assumption_events: smallvec::SmallVec<
+                        [crate::assumptions::AssumptionEvent; 1],
+                    > = if decision.assumption.is_some() {
                         smallvec::smallvec![crate::assumptions::AssumptionEvent::positive(
                             ctx, log_arg
                         )]
                     } else {
-                        Default::default()
+                        smallvec::SmallVec::new()
                     };
 
-                    return Some(crate::rule::Rewrite {
-                        new_expr: log_arg,
-                        description: "b^log(b, x) = x".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events,
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(
+                        crate::rule::Rewrite::new(log_arg)
+                            .desc("b^log(b, x) = x")
+                            .assume_all(assumption_events),
+                    );
                 }
             }
 
@@ -618,23 +616,21 @@ impl crate::rule::Rule for ExponentialLogRule {
                             let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
 
                             // Build assumption events for unproven
-                            let assumption_events = if decision.assumption.is_some() {
+                            let assumption_events: smallvec::SmallVec<
+                                [crate::assumptions::AssumptionEvent; 1],
+                            > = if decision.assumption.is_some() {
                                 smallvec::smallvec![crate::assumptions::AssumptionEvent::positive(
                                     ctx, log_arg
                                 )]
                             } else {
-                                Default::default()
+                                smallvec::SmallVec::new()
                             };
 
-                            return Some(crate::rule::Rewrite {
-                                new_expr,
-                                description: "b^(c*log(b, x)) = x^c".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events,
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                crate::rule::Rewrite::new(new_expr)
+                                    .desc("b^(c*log(b, x)) = x^c")
+                                    .assume_all(assumption_events),
+                            );
                         }
                     }
                     None
@@ -1083,19 +1079,15 @@ impl crate::rule::Rule for LogExpInverseRule {
                                     }
                                     crate::domain::DomainMode::Assume => {
                                         // Allow with assumption warning
-                                        return Some(crate::rule::Rewrite {
-                                            new_expr: p_exp,
-                                            description: "log(b, b^x) → x".to_string(),
-                                            before_local: None,
-                                            after_local: None,
-                                            assumption_events: smallvec::smallvec![
-                                                crate::assumptions::AssumptionEvent::positive(
-                                                    ctx, base
-                                                )
-                                            ],
-                                            required_conditions: vec![],
-                                            poly_proof: None,
-                                        });
+                                        return Some(
+                                            crate::rule::Rewrite::new(p_exp)
+                                                .desc("log(b, b^x) → x")
+                                                .assume(
+                                                    crate::assumptions::AssumptionEvent::positive(
+                                                        ctx, base,
+                                                    ),
+                                                ),
+                                        );
                                     }
                                 }
                             }
@@ -1108,15 +1100,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                         }
 
                         // RealOnly with valid base (proven positive): Always simplify
-                        return Some(crate::rule::Rewrite {
-                            new_expr: p_exp,
-                            description: "log(b, b^x) → x".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(), // No assumption needed
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(crate::rule::Rewrite::new(p_exp).desc("log(b, b^x) → x"));
                     }
                 }
             }
