@@ -115,9 +115,25 @@ fn clean_display_string(s: &str) -> String {
         // Handle "2 * -1 * x" -> "-2 * x" is too complex, instead handle "* -1 * " later
         result = result.replace(" * -1 * ", " * -");
 
-        // "x^2 + 1 * " -> "x^2 + " when folsuccincted by digit
-        // Need to handle "... + 1 * y" patterns more aggressively
-        // Already have " + 1 * " but it expects space after
+        // Also handle middot (·) patterns used in display output
+        // "1·x" -> "x" and "x·1" -> "x"
+        result = result.replace("(1·", "(");
+        result = result.replace("·1)", ")");
+        result = result.replace(" + 1·", " + ");
+        result = result.replace(" - 1·", " - ");
+        result = result.replace("·1 +", " +");
+        result = result.replace("·1 -", " -");
+        result = result.replace("·1 /", " /");
+        result = result.replace("·1·", "·");
+        result = result.replace("·1)", ")");
+        // Handle end of string patterns
+        if result.ends_with("·1") {
+            result = result[..result.len() - 3].to_string(); // ·1 is 3 bytes in UTF-8
+        }
+        // Handle start of string
+        if result.starts_with("1·") && result.len() > 3 {
+            result = result[3..].to_string(); // 1· is 3 bytes
+        }
 
         changed = before != result;
     }

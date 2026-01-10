@@ -792,6 +792,18 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         parent_needs_parens: bool,
         path: &ExprPath,
     ) -> String {
+        // Skip multiplication by 1: 1 * x = x, x * 1 = x
+        if let Expr::Number(n) = self.context.get(l) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.render_with_path(r, parent_needs_parens, &self.child_path(path, 1));
+            }
+        }
+        if let Expr::Number(n) = self.context.get(r) {
+            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                return self.render_with_path(l, parent_needs_parens, &self.child_path(path, 0));
+            }
+        }
+
         let left = self.render_mul_operand(l, &self.child_path(path, 0));
         let right = self.render_mul_operand(r, &self.child_path(path, 1));
         if parent_needs_parens {
