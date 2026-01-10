@@ -183,15 +183,11 @@ where
         // Build local before: Add(term_i, term_j) to show exactly what matched
         let local_before = ctx.add(Expr::Add(term_i, term_j));
 
-        return Some(Rewrite {
-            new_expr: final_result,
-            description: desc,
-            before_local: Some(local_before),
-            after_local: Some(result),
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        });
+        return Some(
+            Rewrite::new(final_result)
+                .desc(desc)
+                .local(local_before, result),
+        );
     }
 
     // Case 2: Try negated match (-f(x) - g(x) = -result)
@@ -320,18 +316,13 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                     return Some(Rewrite::new(x).desc("sin(arcsin(x)) = x"));
                                 }
                                 crate::domain::DomainMode::Assume => {
-                                    return Some(Rewrite {
-                                        new_expr: x,
-                                        description: "sin(arcsin(x)) = x (assuming x ∈ [-1, 1])"
-                                            .to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: smallvec::smallvec![
-                                            crate::assumptions::AssumptionEvent::defined(ctx, x)
-                                        ],
-                                        required_conditions: vec![],
-                                        poly_proof: None,
-                                    });
+                                    return Some(
+                                        Rewrite::new(x)
+                                            .desc("sin(arcsin(x)) = x (assuming x ∈ [-1, 1])")
+                                            .assume(crate::assumptions::AssumptionEvent::defined(
+                                                ctx, x,
+                                            )),
+                                    );
                                 }
                             }
                         }
@@ -356,18 +347,13 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                     return Some(Rewrite::new(x).desc("cos(arccos(x)) = x"));
                                 }
                                 crate::domain::DomainMode::Assume => {
-                                    return Some(Rewrite {
-                                        new_expr: x,
-                                        description: "cos(arccos(x)) = x (assuming x ∈ [-1, 1])"
-                                            .to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: smallvec::smallvec![
-                                            crate::assumptions::AssumptionEvent::defined(ctx, x)
-                                        ],
-                                        required_conditions: vec![],
-                                        poly_proof: None,
-                                    });
+                                    return Some(
+                                        Rewrite::new(x)
+                                            .desc("cos(arccos(x)) = x (assuming x ∈ [-1, 1])")
+                                            .assume(crate::assumptions::AssumptionEvent::defined(
+                                                ctx, x,
+                                            )),
+                                    );
                                 }
                             }
                         }
@@ -672,18 +658,14 @@ impl crate::rule::Rule for AtanAddRationalRule {
                             // Build local before: Add(term_i, term_j)
                             let local_before = ctx.add(Expr::Add(terms[i], terms[j]));
 
-                            return Some(crate::rule::Rewrite {
-                                new_expr: final_result,
-                                description: format!(
-                                    "arctan({}) + arctan({}) = arctan((a+b)/(1-ab))",
-                                    a, b
-                                ),
-                                before_local: Some(local_before),
-                                after_local: Some(result_atan),
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                crate::rule::Rewrite::new(final_result)
+                                    .desc(format!(
+                                        "arctan({}) + arctan({}) = arctan((a+b)/(1-ab))",
+                                        a, b
+                                    ))
+                                    .local(local_before, result_atan),
+                            );
                         }
                     }
                 }
@@ -907,19 +889,16 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                 if let Expr::Function(inner_name, inner_args) = &inner_data {
                     if inner_name == "sin" && inner_args.len() == 1 {
                         let u = inner_args[0];
-                        return Some(Rewrite {
-                            new_expr: u,
-                            description: "arcsin(sin(u)) → u (principal branch)".to_string(),
-                            before_local: Some(expr),
-                            after_local: Some(u),
-                            assumption_events: smallvec::smallvec![
-                                crate::assumptions::AssumptionEvent::inv_trig_principal_range(
-                                    ctx, "arcsin", u
-                                )
-                            ],
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(u)
+                                .desc("arcsin(sin(u)) → u (principal branch)")
+                                .local(expr, u)
+                                .assume(
+                                    crate::assumptions::AssumptionEvent::inv_trig_principal_range(
+                                        ctx, "arcsin", u,
+                                    ),
+                                ),
+                        );
                     }
                 }
             }
@@ -929,19 +908,16 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                 if let Expr::Function(inner_name, inner_args) = &inner_data {
                     if inner_name == "cos" && inner_args.len() == 1 {
                         let u = inner_args[0];
-                        return Some(Rewrite {
-                            new_expr: u,
-                            description: "arccos(cos(u)) → u (principal branch)".to_string(),
-                            before_local: Some(expr),
-                            after_local: Some(u),
-                            assumption_events: smallvec::smallvec![
-                                crate::assumptions::AssumptionEvent::inv_trig_principal_range(
-                                    ctx, "arccos", u
-                                )
-                            ],
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(u)
+                                .desc("arccos(cos(u)) → u (principal branch)")
+                                .local(expr, u)
+                                .assume(
+                                    crate::assumptions::AssumptionEvent::inv_trig_principal_range(
+                                        ctx, "arccos", u,
+                                    ),
+                                ),
+                        );
                     }
                 }
             }
@@ -951,19 +927,16 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                 if let Expr::Function(inner_name, inner_args) = &inner_data {
                     if inner_name == "tan" && inner_args.len() == 1 {
                         let u = inner_args[0];
-                        return Some(Rewrite {
-                            new_expr: u,
-                            description: "arctan(tan(u)) → u (principal branch)".to_string(),
-                            before_local: Some(expr),
-                            after_local: Some(u),
-                            assumption_events: smallvec::smallvec![
-                                crate::assumptions::AssumptionEvent::inv_trig_principal_range(
-                                    ctx, "arctan", u
-                                )
-                            ],
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(u)
+                                .desc("arctan(tan(u)) → u (principal branch)")
+                                .local(expr, u)
+                                .assume(
+                                    crate::assumptions::AssumptionEvent::inv_trig_principal_range(
+                                        ctx, "arctan", u,
+                                    ),
+                                ),
+                        );
                     }
                 }
             }
@@ -985,20 +958,10 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                                     == std::cmp::Ordering::Equal)
                         {
                             let u = n_args[0];
-                            return Some(Rewrite {
-                                new_expr: u,
-                                description: "arctan(sin(u)/cos(u)) → u (principal branch)"
-                                    .to_string(),
-                                before_local: Some(expr),
-                                after_local: Some(u),
-                                assumption_events: smallvec::smallvec![
-                                    crate::assumptions::AssumptionEvent::inv_trig_principal_range(
-                                        ctx, "arctan", u
-                                    )
-                                ],
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(u)
+                                .desc("arctan(sin(u)/cos(u)) → u (principal branch)")
+                                .local(expr, u)
+                                .assume(crate::assumptions::AssumptionEvent::inv_trig_principal_range(ctx, "arctan", u)));
                         }
                     }
                 }

@@ -158,15 +158,9 @@ define_rule!(
                             let sqrt2 = ctx.add(Expr::Pow(two, half_exp));
                             let two3 = ctx.num(2);
                             let new_expr = ctx.add(Expr::Div(sqrt2, two3));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: format!("{}(π/4) = √2/2", name),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr).desc(format!("{}(π/4) = √2/2", name)),
+                            );
                         }
                         "tan" => {
                             // tan(π/4) = 1
@@ -462,15 +456,10 @@ define_rule!(
                                     new_terms.push(result_coeff);
 
                                     if new_terms.is_empty() {
-                                        return Some(Rewrite {
-                                            new_expr: ctx.num(0),
-                                            description: "Pythagorean Identity (empty)".to_string(),
-                                            before_local: None,
-                                            after_local: None,
-                                            assumption_events: Default::default(),
-                                            required_conditions: vec![],
-                                            poly_proof: None,
-                                        });
+                                        return Some(
+                                            Rewrite::new(ctx.num(0))
+                                                .desc("Pythagorean Identity (empty)"),
+                                        );
                                     }
 
                                     let mut new_expr = new_terms[0];
@@ -730,15 +719,7 @@ define_rule!(
                         if crate::ordering::compare_expr(ctx, sec_arg, tan_arg)
                             == std::cmp::Ordering::Equal
                         {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(1),
-                                description: "sec²(x) - tan²(x) = 1".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(1)).desc("sec²(x) - tan²(x) = 1"));
                         }
                     }
                 }
@@ -770,15 +751,7 @@ define_rule!(
                         if crate::ordering::compare_expr(ctx, csc_arg, cot_arg)
                             == std::cmp::Ordering::Equal
                         {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(1),
-                                description: "csc²(x) - cot²(x) = 1".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(1)).desc("csc²(x) - cot²(x) = 1"));
                         }
                     }
                 }
@@ -1533,29 +1506,17 @@ define_rule!(
                         let t1 = smart_mul(ctx, sin_nm1, cos_x);
                         let t2 = smart_mul(ctx, cos_nm1, sin_x);
                         let new_expr = ctx.add(Expr::Add(t1, t2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: format!("sin({}x) expansion", n_val),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(new_expr).desc(format!("sin({}x) expansion", n_val)),
+                        );
                     } else {
                         // cos
                         let t1 = smart_mul(ctx, cos_nm1, cos_x);
                         let t2 = smart_mul(ctx, sin_nm1, sin_x);
                         let new_expr = ctx.add(Expr::Sub(t1, t2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: format!("cos({}x) expansion", n_val),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(new_expr).desc(format!("cos({}x) expansion", n_val)),
+                        );
                     }
                 }
             }
@@ -2015,15 +1976,7 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                 result
             };
 
-            return Some(Rewrite {
-                new_expr: final_expr,
-                description: description.to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(final_expr).desc(description));
         }
     }
     None
@@ -2104,15 +2057,9 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
             _ => "kπ/2",
         };
 
-        return Some(Rewrite {
-            new_expr,
-            description: format!("{}(x + {}) phase shift", name, shift_desc),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        });
+        return Some(
+            Rewrite::new(new_expr).desc(format!("{}(x + {}) phase shift", name, shift_desc)),
+        );
     }
 
     None

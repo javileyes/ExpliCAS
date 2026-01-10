@@ -89,15 +89,9 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
 
             if new_terms.is_empty() {
                 let zero = ctx.num(0);
-                return Some(Rewrite {
-                    new_expr: zero,
-                    description: format!("collect({}, {})", target_expr, var_name), // Debug format,
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(
+                    Rewrite::new(zero).desc(format!("collect({}, {})", target_expr, var_name)),
+                );
             }
 
             let mut result = new_terms[0];

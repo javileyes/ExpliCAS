@@ -24,167 +24,111 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
             if args.len() == 2 {
                 let gcd_result = compute_gcd(ctx, args[0], args[1], false);
                 if let Some(res) = gcd_result.value {
-                    return Some(Rewrite {
-                        new_expr: res,
-                        description: format!(
-                            "gcd({}, {})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[0]
-                            },
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[1]
-                            }
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(res).desc(format!(
+                        "gcd({}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[0]
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[1]
+                        }
+                    )));
                 }
             }
         }
         "lcm" => {
             if args.len() == 2 {
                 if let Some(res) = compute_lcm(ctx, args[0], args[1]) {
-                    return Some(Rewrite {
-                        new_expr: res,
-                        description: format!(
-                            "lcm({}, {})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[0]
-                            },
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[1]
-                            }
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(res).desc(format!(
+                        "lcm({}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[0]
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[1]
+                        }
+                    )));
                 }
             }
         }
         "mod" => {
             if args.len() == 2 {
                 if let Some(res) = compute_mod(ctx, args[0], args[1]) {
-                    return Some(Rewrite {
-                        new_expr: res,
-                        description: format!(
-                            "mod({}, {})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[0]
-                            },
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[1]
-                            }
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(res).desc(format!(
+                        "mod({}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[0]
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[1]
+                        }
+                    )));
                 }
             }
         }
         "prime_factors" | "factors" => {
             if args.len() == 1 {
                 if let Some(res) = compute_prime_factors(ctx, args[0]) {
-                    return Some(Rewrite {
-                        new_expr: res,
-                        description: format!(
-                            "factors({})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[0]
-                            }
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(res).desc(format!(
+                        "factors({})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[0]
+                        }
+                    )));
                 }
             }
         }
         "fact" | "factorial" => {
             if args.len() == 1 {
                 if let Some(res) = compute_factorial(ctx, args[0]) {
-                    return Some(Rewrite {
-                        new_expr: res,
-                        description: format!(
-                            "fact({})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[0]
-                            }
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(res).desc(format!(
+                        "fact({})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[0]
+                        }
+                    )));
                 }
             }
         }
         "choose" | "nCr" => {
             if args.len() == 2 {
                 if let Some(res) = compute_choose(ctx, args[0], args[1]) {
-                    return Some(Rewrite {
-                        new_expr: res,
-                        description: format!(
-                            "choose({}, {})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[0]
-                            },
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[1]
-                            }
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(res).desc(format!(
+                        "choose({}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[0]
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[1]
+                        }
+                    )));
                 }
             }
         }
         "perm" | "nPr" => {
             if args.len() == 2 {
                 if let Some(res) = compute_perm(ctx, args[0], args[1]) {
-                    return Some(Rewrite {
-                        new_expr: res,
-                        description: format!(
-                            "perm({}, {})",
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[0]
-                            },
-                            cas_ast::DisplayExpr {
-                                context: ctx,
-                                id: args[1]
-                            }
-                        ),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(res).desc(format!(
+                        "perm({}, {})",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[0]
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: args[1]
+                        }
+                    )));
                 }
             }
         }

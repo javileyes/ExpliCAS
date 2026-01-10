@@ -34,57 +34,25 @@ define_rule!(
                     // sinh(0) = 0, tanh(0) = 0
                     "sinh" | "tanh" => {
                         if is_zero(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: format!("{}(0) = 0", name),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
                         }
                     }
                     // cosh(0) = 1
                     "cosh" => {
                         if is_zero(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(1),
-                                description: "cosh(0) = 1".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(1)).desc("cosh(0) = 1"));
                         }
                     }
                     // asinh(0) = 0, atanh(0) = 0
                     "asinh" | "atanh" => {
                         if is_zero(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: format!("{}(0) = 0", name),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
                         }
                     }
                     // acosh(1) = 0
                     "acosh" => {
                         if is_one(ctx, arg) {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "acosh(1) = 0".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(0)).desc("acosh(1) = 0"));
                         }
                     }
                     _ => {}
@@ -229,15 +197,9 @@ define_rule!(
                             if crate::ordering::compare_expr(ctx, l_args[0], r_args[0])
                                 == Ordering::Equal
                             {
-                                return Some(Rewrite {
-                                    new_expr: ctx.num(1),
-                                    description: "cosh²(x) - sinh²(x) = 1".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(
+                                    Rewrite::new(ctx.num(1)).desc("cosh²(x) - sinh²(x) = 1"),
+                                );
                             }
                         }
 
@@ -251,15 +213,9 @@ define_rule!(
                             if crate::ordering::compare_expr(ctx, l_args[0], r_args[0])
                                 == Ordering::Equal
                             {
-                                return Some(Rewrite {
-                                    new_expr: ctx.num(-1),
-                                    description: "sinh²(x) - cosh²(x) = -1".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(
+                                    Rewrite::new(ctx.num(-1)).desc("sinh²(x) - cosh²(x) = -1"),
+                                );
                             }
                         }
                     }

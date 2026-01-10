@@ -337,15 +337,7 @@ define_rule!(
                 is_function_squared(ctx, r_val, "tan"),
             ) {
                 if sec_arg == tan_arg {
-                    return Some(Rewrite {
-                        new_expr: ctx.num(1),
-                        description: "sec²(x) - tan²(x) = 1".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(ctx.num(1)).desc("sec²(x) - tan²(x) = 1"));
                 }
             }
         }
@@ -368,15 +360,7 @@ define_rule!(
                 is_function_squared(ctx, r_val, "cot"),
             ) {
                 if csc_arg == cot_arg {
-                    return Some(Rewrite {
-                        new_expr: ctx.num(1),
-                        description: "csc²(x) - cot²(x) = 1".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(ctx.num(1)).desc("csc²(x) - cot²(x) = 1"));
                 }
             }
         }
@@ -472,15 +456,9 @@ define_rule!(
                         is_function_squared(ctx, lr_val, "tan"),
                     ) {
                         if sec_arg == tan_arg {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "sec²(x) - tan²(x) - 1 = 0".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(ctx.num(0)).desc("sec²(x) - tan²(x) - 1 = 0"),
+                            );
                         }
                     }
                 }
@@ -510,15 +488,9 @@ define_rule!(
                         is_function_squared(ctx, lr_val, "cot"),
                     ) {
                         if csc_arg == cot_arg {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "csc²(x) - cot²(x) - 1 = 0".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(ctx.num(0)).desc("csc²(x) - cot²(x) - 1 = 0"),
+                            );
                         }
                     }
                 }
@@ -559,15 +531,7 @@ define_rule!(
             let (is_reciprocal_pair, _arg) = check_reciprocal_pair(ctx, l_val, r_val);
 
             if is_reciprocal_pair {
-                return Some(Rewrite {
-                    new_expr: ctx.num(1),
-                    description: "Reciprocal trig product = 1".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(ctx.num(1)).desc("Reciprocal trig product = 1"));
             }
         }
         None

@@ -414,23 +414,11 @@ define_rule!(
                 let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
 
                 // Build assumption events
-                let assumption_events = if decision.assumption.is_some() {
-                    smallvec::smallvec![
-                        crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base)
-                    ]
-                } else {
-                    Default::default()
-                };
-
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Multiply exponents".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events,
-            required_conditions: vec![],
-            poly_proof: None,
-                });
+                let mut rewrite = Rewrite::new(new_expr).desc("Multiply exponents");
+                if decision.assumption.is_some() {
+                    rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base));
+                }
+                return Some(rewrite);
             }
 
             // Default case: no domain restriction needed
@@ -667,15 +655,7 @@ define_rule!(
                     // Check if base is literal 0 -> 0^0 = undefined
                     if let Expr::Number(b) = ctx.get(base) {
                         if b.is_zero() {
-                            return Some(Rewrite {
-                                new_expr: ctx.add(Expr::Constant(cas_ast::Constant::Undefined)),
-                                description: "0^0 -> undefined".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.add(Expr::Constant(cas_ast::Constant::Undefined))).desc("0^0 -> undefined"));
                         }
                     }
 
@@ -684,51 +664,25 @@ define_rule!(
                             // Generic mode: simplify x^0 → 1 with assumption if base is symbolic
                             // This shows the user the domain restriction (x ≠ 0) even in educational mode
                             let needs_assumption = !matches!(ctx.get(base), Expr::Number(_));
-                            return Some(Rewrite {
-                                new_expr: ctx.num(1),
-                                description: "x^0 -> 1".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: if needs_assumption {
-                                    smallvec::smallvec![
-                                        crate::assumptions::AssumptionEvent::nonzero(ctx, base)
-                                    ]
-                                } else {
-                                    Default::default()
-                                },
-                                required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            let mut rewrite = Rewrite::new(ctx.num(1)).desc("x^0 -> 1");
+                            if needs_assumption {
+                                rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonzero(ctx, base));
+                            }
+                            return Some(rewrite);
                         }
                         DomainMode::Strict => {
                             // Only simplify if base is provably non-zero
                             if proof == Proof::Proven {
-                                return Some(Rewrite {
-                                    new_expr: ctx.num(1),
-                                    description: "x^0 -> 1 (x ≠ 0 proven)".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                                });
+                                return Some(Rewrite::new(ctx.num(1)).desc("x^0 -> 1 (x ≠ 0 proven)"));
                             }
                             // Unknown or Disproven: don't simplify in Strict mode
                             return None;
                         }
                         DomainMode::Assume => {
                             // Simplify with assumption warning
-                            return Some(Rewrite {
-                                new_expr: ctx.num(1),
-                                description: "x^0 -> 1 (assuming x ≠ 0)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: smallvec::smallvec![
-                                    crate::assumptions::AssumptionEvent::nonzero(ctx, base)
-                                ],
-                                required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(1))
+                                .desc("x^0 -> 1 (assuming x ≠ 0)")
+                                .assume(crate::assumptions::AssumptionEvent::nonzero(ctx, base)));
                         }
                     }
                 }
@@ -736,30 +690,14 @@ define_rule!(
             // 1^x -> 1 (always safe - 1 raised to any power is 1)
             if let Expr::Number(n) = ctx.get(base) {
                 if n.is_one() {
-                    return Some(Rewrite {
-                        new_expr: ctx.num(1),
-                        description: "1^x -> 1".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                    });
+                    return Some(Rewrite::new(ctx.num(1)).desc("1^x -> 1"));
                 }
                 // 0^x -> 0 REQUIRES x > 0 (because 0^0 is undefined, 0^(-n) is undefined)
                 if n.is_zero() {
                     // If exponent is a literal positive number, always safe
                     if let Expr::Number(e) = ctx.get(exp) {
                         if *e > num_rational::BigRational::zero() {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "0^n -> 0 (n > 0)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(0)).desc("0^n -> 0 (n > 0)"));
                         }
                         // 0^0 and 0^(-n) are handled elsewhere as undefined
                         return None;
@@ -778,17 +716,9 @@ define_rule!(
                             return None;
                         }
                         DomainMode::Assume => {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "0^x → 0 (assuming x > 0)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: smallvec::smallvec![
-                                    crate::assumptions::AssumptionEvent::positive(ctx, exp)
-                                ],
-                                required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(ctx.num(0))
+                                .desc("0^x → 0 (assuming x > 0)")
+                                .assume(crate::assumptions::AssumptionEvent::positive(ctx, exp)));
                         }
                     }
                 }
@@ -1045,15 +975,9 @@ define_rule!(
         let new_base = ctx.add(Expr::Sub(neg_term, pos_term));
         let new_expr = ctx.add(Expr::Pow(new_base, exp));
 
-        Some(Rewrite {
-            new_expr,
-            description: "For even exponent: (a-b)² = (b-a)², normalize for cancellation"
-                .to_string(),
-            before_local: Some(base),
-            after_local: Some(new_base),            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-})
+        Some(Rewrite::new(new_expr)
+            .desc("For even exponent: (a-b)² = (b-a)², normalize for cancellation")
+            .local(base, new_base))
     }
 );
 

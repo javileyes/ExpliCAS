@@ -479,15 +479,10 @@ define_rule!(
 
                         // Rebuild Add chain
                         if new_terms.is_empty() {
-                            return Some(Rewrite {
-                                new_expr: ctx.num(0),
-                                description: "Factor difference of squares (Empty)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(ctx.num(0))
+                                    .desc("Factor difference of squares (Empty)"),
+                            );
                         }
 
                         let mut new_expr = new_terms[0];

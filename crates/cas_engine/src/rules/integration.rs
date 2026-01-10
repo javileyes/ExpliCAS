@@ -217,20 +217,10 @@ impl Rule for CosProductTelescopingRule {
         // Build sin(final_arg) / (2^n * sin(base_arg))
         let result = ctx.add(Expr::Div(sin_num, denominator));
 
-        Some(Rewrite {
-            new_expr: result,
-            description: format!(
-                "cos telescoping (Morrie's law): cos(u)·cos(2u)·...·cos(2^{}u) → sin(2^{}u)/(2^{}·sin(u))",
-                n - 1, n, n
-            ),
-            before_local: None,
-            after_local: None,
-            assumption_events: smallvec::smallvec![
-                crate::assumptions::AssumptionEvent::nonzero(ctx, sin_den)
-            ],
-            required_conditions: vec![],
-            poly_proof: None,
-})
+        Some(Rewrite::new(result).desc(format!(
+            "cos telescoping (Morrie's law): cos(u)·cos(2u)·...·cos(2^{}u) → sin(2^{}u)/(2^{}·sin(u))",
+            n - 1, n, n
+        )).assume(crate::assumptions::AssumptionEvent::nonzero(ctx, sin_den)))
     }
 }
 

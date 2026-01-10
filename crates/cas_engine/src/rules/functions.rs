@@ -15,15 +15,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
             if let Expr::Number(n) = arg_data {
                 // Always evaluate to positive number
                 let abs_val = ctx.add(Expr::Number(n.abs()));
-                return Some(Rewrite {
-                    new_expr: abs_val,
-                    description: format!("abs({}) = {}", n, n.abs()),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(abs_val).desc(format!("abs({}) = {}", n, n.abs())));
             }
 
             // Case 2: abs(-x) -> abs(x)
@@ -277,15 +269,10 @@ define_rule!(
                 match name.as_str() {
                     // simplify() and factor() are transparent - argument already processed
                     "simplify" | "factor" => {
-                        return Some(Rewrite {
-                            new_expr: args[0],
-                            description: format!("{}(x) = x (already processed)", name),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(args[0])
+                                .desc(format!("{}(x) = x (already processed)", name)),
+                        );
                     }
                     // expand() needs to call actual expansion logic
                     "expand" => {

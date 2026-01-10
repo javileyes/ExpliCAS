@@ -228,15 +228,7 @@ define_rule!(
                 for (outer, inner_variants, transform, description) in EXPANSIONS {
                     if outer_name == *outer && inner_variants.contains(&inner_name.as_str()) {
                         let result = apply_transform(ctx, x, *transform);
-                        return Some(Rewrite {
-                            new_expr: result,
-                            description: description.to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(result).desc(*description));
                     }
                 }
             }

@@ -682,15 +682,10 @@ define_rule!(
         // Success! Return the root as the result
         let result = ctx.add(Expr::Number(root.clone()));
 
-        Some(Rewrite {
-            new_expr: result,
-            description: format!("Cubic conjugate identity: ∛(m+t) + ∛(m-t) = {}", root),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(result).desc(format!(
+            "Cubic conjugate identity: ∛(m+t) + ∛(m-t) = {}",
+            root
+        )))
     }
 );
 
@@ -893,15 +888,10 @@ define_rule!(
 
         let result = ctx.add(Expr::Add(sqrt_m, sqrt_n));
 
-        Some(Rewrite {
-            new_expr: result,
-            description: format!("Denest nested square root: √(a+√b) = √({}) + √({})", m, n),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(result).desc(format!(
+            "Denest nested square root: √(a+√b) = √({}) + √({})",
+            m, n
+        )))
     }
 );
 
@@ -1144,18 +1134,10 @@ define_rule!(
             ctx.add(Expr::Add(x_expr, y_sqrt_n))
         };
 
-        Some(Rewrite {
-            new_expr: result,
-            description: format!(
-                "Denest cube root in quadratic field: ∛(A+B√n) = {} + {}√{}",
-                x, y, n
-            ),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(result).desc(format!(
+            "Denest cube root in quadratic field: ∛(A+B√n) = {} + {}√{}",
+            x, y, n
+        )))
     }
 );
 

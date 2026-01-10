@@ -25,20 +25,12 @@ define_rule!(
                     // Look up the value in our static table
                     if let Some(trig_value) = lookup_trig_value(&name, angle) {
                         let new_expr = trig_value.to_expr(ctx);
-                        return Some(Rewrite {
-                            new_expr,
-                            description: format!(
-                                "{}({}) = {}",
-                                name,
-                                angle.display(),
-                                trig_value.display()
-                            ),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(new_expr).desc(format!(
+                            "{}({}) = {}",
+                            name,
+                            angle.display(),
+                            trig_value.display()
+                        )));
                     }
                 }
 
@@ -46,20 +38,12 @@ define_rule!(
                 if let Some(input) = detect_inverse_trig_input(ctx, arg) {
                     if let Some(trig_value) = lookup_inverse_trig_value(&name, input) {
                         let new_expr = trig_value.to_expr(ctx);
-                        return Some(Rewrite {
-                            new_expr,
-                            description: format!(
-                                "{}({}) = {}",
-                                name,
-                                input.display(),
-                                trig_value.display()
-                            ),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(new_expr).desc(format!(
+                            "{}({}) = {}",
+                            name,
+                            input.display(),
+                            trig_value.display()
+                        )));
                     }
                 }
 

@@ -80,15 +80,7 @@ define_rule!(
                 let arg = args[0];
                 for (func, check, build, desc) in EVAL_RULES {
                     if name == *func && check(ctx, arg) {
-                        return Some(Rewrite {
-                            new_expr: build(ctx),
-                            description: desc.to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(build(ctx)).desc(*desc));
                     }
                 }
             }
@@ -183,15 +175,7 @@ define_rule!(
                                     )
                                 }
                             };
-                            return Some(Rewrite {
-                                new_expr,
-                                description: desc,
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc(desc));
                         }
                     }
                 }

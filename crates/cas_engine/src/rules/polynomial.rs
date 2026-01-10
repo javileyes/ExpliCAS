@@ -792,15 +792,11 @@ define_rule!(
             // Timeline highlighting uses step.path separately for broader context
             let (before_local, after_local, description) = select_best_focus(ctx, &result);
 
-            return Some(Rewrite {
-                new_expr: result.new_expr,
-                description,
-                before_local,
-                after_local,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            let mut rewrite = Rewrite::new(result.new_expr).desc(description);
+            if let (Some(before), Some(after)) = (before_local, after_local) {
+                rewrite = rewrite.local(before, after);
+            }
+            return Some(rewrite);
         }
         None
     }

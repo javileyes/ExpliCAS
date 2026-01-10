@@ -185,15 +185,7 @@ pub fn add_infinity_absorption(ctx: &mut Context, expr: ExprId) -> Option<Rewrit
         (false, false) => return None,
     };
 
-    Some(Rewrite {
-        new_expr,
-        description,
-        before_local: None,
-        after_local: None,
-        assumption_events: Default::default(),
-        required_conditions: vec![],
-        poly_proof: None,
-    })
+    Some(Rewrite::new(new_expr).desc(description))
 }
 
 /// Collect additive terms with their signs (iterative, handles Sub).
@@ -235,15 +227,7 @@ pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     };
 
     if inf_sign(ctx, den).is_some() && is_finite_literal(ctx, num) {
-        return Some(Rewrite {
-            new_expr: mk_zero(ctx),
-            description: "finite / ∞ → 0".to_string(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        });
+        return Some(Rewrite::new(mk_zero(ctx)).desc("finite / ∞ → 0"));
     }
     None
 }
@@ -264,15 +248,7 @@ pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let b_zero = is_zero(ctx, b);
 
     if (a_zero && b_inf) || (b_zero && a_inf) {
-        return Some(Rewrite {
-            new_expr: mk_undefined(ctx),
-            description: "0 · ∞ is indeterminate".to_string(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        });
+        return Some(Rewrite::new(mk_undefined(ctx)).desc("0 · ∞ is indeterminate"));
     }
     None
 }
@@ -324,15 +300,10 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
             } else {
                 inf_s
             };
-            return Some(Rewrite {
-                new_expr: mk_infinity(ctx, result_sign),
-                description: format!("finite * ∞ → {:?}∞", result_sign),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(
+                Rewrite::new(mk_infinity(ctx, result_sign))
+                    .desc(format!("finite * ∞ → {:?}∞", result_sign)),
+            );
         }
     }
 
@@ -348,15 +319,10 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
             } else {
                 inf_s
             };
-            return Some(Rewrite {
-                new_expr: mk_infinity(ctx, result_sign),
-                description: format!("finite * ∞ → {:?}∞", result_sign),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(
+                Rewrite::new(mk_infinity(ctx, result_sign))
+                    .desc(format!("finite * ∞ → {:?}∞", result_sign)),
+            );
         }
     }
 
@@ -391,15 +357,10 @@ pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         inf_s
     };
 
-    Some(Rewrite {
-        new_expr: mk_infinity(ctx, result_sign),
-        description: format!("∞ / finite → {:?}∞", result_sign),
-        before_local: None,
-        after_local: None,
-        assumption_events: Default::default(),
-        required_conditions: vec![],
-        poly_proof: None,
-    })
+    Some(
+        Rewrite::new(mk_infinity(ctx, result_sign))
+            .desc(format!("∞ / finite → {:?}∞", result_sign)),
+    )
 }
 
 // ============================================================

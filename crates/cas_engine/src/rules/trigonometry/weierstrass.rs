@@ -119,15 +119,7 @@ define_rule!(
             _ => return None,
         };
 
-        Some(crate::rule::Rewrite {
-            new_expr,
-            description: desc,
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(crate::rule::Rewrite::new(new_expr).desc(desc))
     }
 );
 
@@ -252,21 +244,13 @@ define_rule!(
 
         // Match! This is sin(x)
         let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![original_angle]));
-        Some(crate::rule::Rewrite {
-            new_expr: sin_x,
-            description: format!(
-                "Reverse Weierstrass: 2t/(1+t²) = sin({})",
-                DisplayExpr {
-                    context: ctx,
-                    id: original_angle
-                }
-            ),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(crate::rule::Rewrite::new(sin_x).desc(format!(
+            "Reverse Weierstrass: 2t/(1+t²) = sin({})",
+            DisplayExpr {
+                context: ctx,
+                id: original_angle
+            }
+        )))
     }
 );
 
