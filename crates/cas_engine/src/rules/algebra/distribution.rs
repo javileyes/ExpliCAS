@@ -20,15 +20,7 @@ define_rule!(
                 // Strip all nested __hold wrappers so user sees clean result
                 let new_expr = crate::strip_all_holds(ctx, expanded);
                 if new_expr != expr {
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "expand()".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(new_expr).desc("expand()"));
                 } else {
                     return Some(Rewrite::new(arg).desc("expand(atom)"));
                 }
@@ -52,15 +44,7 @@ define_rule!(
                 // Strip all nested __hold wrappers so user sees clean result
                 let new_expr = crate::strip_all_holds(ctx, expanded);
                 if new_expr != expr {
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "expand()".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(new_expr).desc("expand()"));
                 } else {
                     return Some(Rewrite::new(arg).desc("expand(atom)"));
                 }
@@ -80,15 +64,7 @@ define_rule!(
                 if crate::ordering::compare_expr(ctx, new_expr, expr) == std::cmp::Ordering::Equal {
                     return None;
                 }
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Conservative Expansion".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(new_expr).desc("Conservative Expansion"));
             }
         }
         None
@@ -112,29 +88,13 @@ define_rule!(
             if matches!(ctx.get(r_id), Expr::Add(_, _) | Expr::Sub(_, _)) {
                 let new_expr = distribute(ctx, r_id, l_id);
                 if new_expr != expr {
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Distribute (RHS)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(new_expr).desc("Distribute (RHS)"));
                 }
             }
             if matches!(ctx.get(l_id), Expr::Add(_, _) | Expr::Sub(_, _)) {
                 let new_expr = distribute(ctx, l_id, r_id);
                 if new_expr != expr {
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "Distribute (LHS)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(new_expr).desc("Distribute (LHS)"));
                 }
             }
         }

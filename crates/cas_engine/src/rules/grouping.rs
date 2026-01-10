@@ -105,15 +105,9 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
                 result = ctx.add(Expr::Add(result, t));
             }
 
-            return Some(Rewrite {
-                new_expr: result,
-                description: format!("collect({}, {})", target_expr, var_name),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(
+                Rewrite::new(result).desc(format!("collect({}, {})", target_expr, var_name)),
+            );
         }
     }
     None

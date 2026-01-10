@@ -121,15 +121,9 @@ define_rule!(
                         let x = inner_args[0];
                         for (outer, inner) in COMPOSITION_PAIRS {
                             if outer_name == *outer && inner_name == *inner {
-                                return Some(Rewrite {
-                                    new_expr: x,
-                                    description: format!("{}({}(x)) = x", outer, inner),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(
+                                    Rewrite::new(x).desc(format!("{}({}(x)) = x", outer, inner)),
+                                );
                             }
                         }
                     }

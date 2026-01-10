@@ -24,15 +24,7 @@ define_rule!(
                         match name.as_str() {
                             "sin" | "tan" | "arcsin" | "arctan" => {
                                 let zero = ctx.num(0);
-                                return Some(Rewrite {
-                                    new_expr: zero,
-                                    description: format!("{}(0) = 0", name),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(zero).desc(format!("{}(0) = 0", name)));
                             }
                             "cos" => {
                                 let one = ctx.num(1);
@@ -42,15 +34,7 @@ define_rule!(
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let two = ctx.num(2);
                                 let new_expr = ctx.add(Expr::Div(pi, two));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "arccos(0) = pi/2".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(new_expr).desc("arccos(0) = pi/2"));
                             }
                             _ => {}
                         }
@@ -60,15 +44,7 @@ define_rule!(
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let two = ctx.num(2);
                                 let new_expr = ctx.add(Expr::Div(pi, two));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "arcsin(1) = pi/2".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(new_expr).desc("arcsin(1) = pi/2"));
                             }
                             "arccos" => {
                                 let zero = ctx.num(0);
@@ -78,15 +54,7 @@ define_rule!(
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let four = ctx.num(4);
                                 let new_expr = ctx.add(Expr::Div(pi, four));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "arctan(1) = pi/4".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(new_expr).desc("arctan(1) = pi/4"));
                             }
                             _ => {}
                         }
@@ -97,29 +65,13 @@ define_rule!(
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let six = ctx.num(6);
                                 let new_expr = ctx.add(Expr::Div(pi, six));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "arcsin(1/2) = pi/6".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(new_expr).desc("arcsin(1/2) = pi/6"));
                             }
                             "arccos" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let three = ctx.num(3);
                                 let new_expr = ctx.add(Expr::Div(pi, three));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description: "arccos(1/2) = pi/3".to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(new_expr).desc("arccos(1/2) = pi/3"));
                             }
                             _ => {}
                         }
@@ -131,15 +83,7 @@ define_rule!(
                     match name.as_str() {
                         "sin" | "tan" => {
                             let zero = ctx.num(0);
-                            return Some(Rewrite {
-                                new_expr: zero,
-                                description: format!("{}(pi) = 0", name),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(zero).desc(format!("{}(pi) = 0", name)));
                         }
                         "cos" => {
                             let neg_one = ctx.num(-1);
@@ -180,30 +124,14 @@ define_rule!(
                             let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
                             let two2 = ctx.num(2);
                             let new_expr = ctx.add(Expr::Div(sqrt3, two2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sin(π/3) = √3/2".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("sin(π/3) = √3/2"));
                         }
                         "cos" => {
                             // cos(π/3) = 1/2
                             let one = ctx.num(1);
                             let two = ctx.num(2);
                             let new_expr = ctx.add(Expr::Div(one, two));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos(π/3) = 1/2".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("cos(π/3) = 1/2"));
                         }
                         "tan" => {
                             // tan(π/3) = √3
@@ -212,15 +140,7 @@ define_rule!(
                             let two = ctx.num(2);
                             let half_exp = ctx.add(Expr::Div(one, two));
                             let new_expr = ctx.add(Expr::Pow(three, half_exp));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "tan(π/3) = √3".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("tan(π/3) = √3"));
                         }
                         _ => {}
                     }
@@ -265,15 +185,7 @@ define_rule!(
                             let one = ctx.num(1);
                             let two = ctx.num(2);
                             let new_expr = ctx.add(Expr::Div(one, two));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sin(π/6) = 1/2".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("sin(π/6) = 1/2"));
                         }
                         "cos" => {
                             // cos(π/6) = √3/2
@@ -284,15 +196,7 @@ define_rule!(
                             let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
                             let two2 = ctx.num(2);
                             let new_expr = ctx.add(Expr::Div(sqrt3, two2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos(π/6) = √3/2".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("cos(π/6) = √3/2"));
                         }
                         "tan" => {
                             // tan(π/6) = 1/√3
@@ -303,15 +207,7 @@ define_rule!(
                             let sqrt3 = ctx.add(Expr::Pow(three, half_exp));
                             let one2 = ctx.num(1);
                             let new_expr = ctx.add(Expr::Div(one2, sqrt3));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "tan(π/6) = 1/√3".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("tan(π/6) = 1/√3"));
                         }
                         _ => {}
                     }
@@ -346,40 +242,16 @@ define_rule!(
                         "sin" => {
                             let sin_inner = ctx.add(Expr::Function("sin".to_string(), vec![inner]));
                             let new_expr = ctx.add(Expr::Neg(sin_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sin(-x) = -sin(x)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("sin(-x) = -sin(x)"));
                         }
                         "cos" => {
                             let new_expr = ctx.add(Expr::Function("cos".to_string(), vec![inner]));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos(-x) = cos(x)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("cos(-x) = cos(x)"));
                         }
                         "tan" => {
                             let tan_inner = ctx.add(Expr::Function("tan".to_string(), vec![inner]));
                             let new_expr = ctx.add(Expr::Neg(tan_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "tan(-x) = -tan(x)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("tan(-x) = -tan(x)"));
                         }
                         _ => {}
                     }
@@ -612,15 +484,7 @@ define_rule!(
                                         "Pythagorean Identity".to_string()
                                     };
 
-                                    return Some(Rewrite {
-                                        new_expr,
-                                        description,
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-                                        required_conditions: vec![],
-                                        poly_proof: None,
-                                    });
+                                    return Some(Rewrite::new(new_expr).desc(description));
                                 }
                             }
                         }
@@ -679,16 +543,10 @@ impl crate::rule::Rule for AngleIdentityRule {
                             let term2 = smart_mul(ctx, cos_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Add(term1, term2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)"
-                                    .to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc("sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)"),
+                            );
                         } else if let Expr::Sub(lhs, rhs) = inner_data {
                             // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
                             let sin_a = ctx.add(Expr::Function("sin".to_string(), vec![lhs]));
@@ -700,16 +558,10 @@ impl crate::rule::Rule for AngleIdentityRule {
                             let term2 = smart_mul(ctx, cos_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Sub(term1, term2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)"
-                                    .to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc("sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)"),
+                            );
                         } else if let Expr::Div(num, den) = inner_data {
                             // sin((a + b) / c) -> sin(a/c + b/c) -> ...
                             let num_data = ctx.get(num).clone();
@@ -726,17 +578,9 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 let term2 = smart_mul(ctx, cos_a, sin_b);
 
                                 let new_expr = ctx.add(Expr::Add(term1, term2));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description:
-                                        "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)"
-                                            .to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(new_expr).desc(
+                                    "sin((a + b)/c) -> sin(a/c)cos(b/c) + cos(a/c)sin(b/c)",
+                                ));
                             }
                         }
                     }
@@ -753,16 +597,10 @@ impl crate::rule::Rule for AngleIdentityRule {
                             let term2 = smart_mul(ctx, sin_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Sub(term1, term2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)"
-                                    .to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc("cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)"),
+                            );
                         } else if let Expr::Sub(lhs, rhs) = inner_data {
                             // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
                             let cos_a = ctx.add(Expr::Function("cos".to_string(), vec![lhs]));
@@ -774,16 +612,10 @@ impl crate::rule::Rule for AngleIdentityRule {
                             let term2 = smart_mul(ctx, sin_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Add(term1, term2));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)"
-                                    .to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc("cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)"),
+                            );
                         } else if let Expr::Div(num, den) = inner_data {
                             // cos((a + b) / c) -> cos(a/c + b/c) -> ...
                             let num_data = ctx.get(num).clone();
@@ -800,17 +632,9 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 let term2 = smart_mul(ctx, sin_a, sin_b);
 
                                 let new_expr = ctx.add(Expr::Sub(term1, term2));
-                                return Some(Rewrite {
-                                    new_expr,
-                                    description:
-                                        "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)"
-                                            .to_string(),
-                                    before_local: None,
-                                    after_local: None,
-                                    assumption_events: Default::default(),
-                                    required_conditions: vec![],
-                                    poly_proof: None,
-                                });
+                                return Some(Rewrite::new(new_expr).desc(
+                                    "cos((a + b)/c) -> cos(a/c)cos(b/c) - sin(a/c)sin(b/c)",
+                                ));
                             }
                         }
                     }
@@ -1213,15 +1037,7 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                         let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
                         let sin_cos = smart_mul(ctx, sin_x, cos_x);
                         let new_expr = smart_mul(ctx, two, sin_cos);
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "sin(2x) -> 2sin(x)cos(x)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(new_expr).desc("sin(2x) -> 2sin(x)cos(x)"));
                     }
                     "cos" => {
                         // cos(2x) -> cos^2(x) - sin^2(x)
@@ -1233,15 +1049,7 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
                         let sin2 = ctx.add(Expr::Pow(sin_x, two));
 
                         let new_expr = ctx.add(Expr::Sub(cos2, sin2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "cos(2x) -> cos^2(x) - sin^2(x)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(new_expr).desc("cos(2x) -> cos^2(x) - sin^2(x)"));
                     }
                     _ => {}
                 }
@@ -1277,15 +1085,7 @@ define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
 
                         // 3sin(x) - 4sin³(x)
                         let new_expr = ctx.add(Expr::Sub(term1, term2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "sin(3x) → 3sin(x) - 4sin³(x)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(new_expr).desc("sin(3x) → 3sin(x) - 4sin³(x)"));
                     }
                     "cos" => {
                         // cos(3x) → 4cos³(x) - 3cos(x)
@@ -1304,15 +1104,7 @@ define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
 
                         // 4cos³(x) - 3cos(x)
                         let new_expr = ctx.add(Expr::Sub(term1, term2));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "cos(3x) → 4cos³(x) - 3cos(x)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(new_expr).desc("cos(3x) → 4cos³(x) - 3cos(x)"));
                     }
                     _ => {}
                 }
@@ -1824,15 +1616,7 @@ define_rule!(
                                 } else {
                                     let half_n_expr = ctx.add(Expr::Number(half_n));
                                     let new_expr = ctx.add(Expr::Pow(base_term, half_n_expr));
-                                    return Some(Rewrite {
-                                        new_expr,
-                                        description: "cos^2k(x) -> (1 - sin^2(x))^k".to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                                    });
+                                    return Some(Rewrite::new(new_expr).desc("cos^2k(x) -> (1 - sin^2(x))^k"));
                                 }
                             }
                         }
@@ -1938,15 +1722,7 @@ define_rule!(
             // We need a recursive replacement helper
             let new_expr = expand_trig_angle(ctx, expr, large_angle, small_angle);
             if new_expr != expr {
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Half-Angle Expansion".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(new_expr).desc("Half-Angle Expansion"));
             }
         }
 
@@ -2827,15 +2603,7 @@ define_rule!(
                             new_expr = ctx.add(Expr::Add(new_expr, term));
                         }
 
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "cot(u/2) - cot(u) = 1/sin(u)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(new_expr).desc("cot(u/2) - cot(u) = 1/sin(u)"));
                     } else if !t_half.is_positive && t_full.is_positive {
                         // -cot(u/2) + cot(u) → -1/sin(u)
                         let one = ctx.num(1);
@@ -2870,15 +2638,7 @@ define_rule!(
                             new_expr = ctx.add(Expr::Add(new_expr, term));
                         }
 
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "-cot(u/2) + cot(u) = -1/sin(u)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(new_expr).desc("-cot(u/2) + cot(u) = -1/sin(u)"));
                     }
                 }
             }

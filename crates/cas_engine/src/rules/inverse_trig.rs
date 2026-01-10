@@ -208,15 +208,11 @@ where
             // Build local before: Add(term_i, term_j) to show exactly what matched
             let local_before = ctx.add(Expr::Add(term_i, term_j));
 
-            return Some(Rewrite {
-                new_expr: final_result,
-                description: format!("-[{}]", desc),
-                before_local: Some(local_before),
-                after_local: Some(neg_result),
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(
+                Rewrite::new(final_result)
+                    .desc(format!("-[{}]", desc))
+                    .local(local_before, neg_result),
+            );
         }
     }
 
@@ -236,15 +232,11 @@ where
 
                 let local_before = ctx.add(Expr::Add(term_i, term_j));
 
-                return Some(Rewrite {
-                    new_expr: final_result,
-                    description: format!("k·[{}]", desc),
-                    before_local: Some(local_before),
-                    after_local: Some(scaled_result),
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(
+                    Rewrite::new(final_result)
+                        .desc(format!("k·[{}]", desc))
+                        .local(local_before, scaled_result),
+                );
             }
         }
     }
@@ -265,15 +257,11 @@ where
 
                     let local_before = ctx.add(Expr::Add(term_i, term_j));
 
-                    return Some(Rewrite {
-                        new_expr: final_result,
-                        description: format!("-k·[{}]", desc),
-                        before_local: Some(local_before),
-                        after_local: Some(neg_scaled),
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(
+                        Rewrite::new(final_result)
+                            .desc(format!("-k·[{}]", desc))
+                            .local(local_before, neg_scaled),
+                    );
                 }
             }
         }
@@ -399,17 +387,9 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                                 {
                                     // atan(tan(atan(u))) → atan(u)
                                     let atan_u = x; // x is already atan(u)
-                                    return Some(Rewrite {
-                                        new_expr: atan_u,
-                                        description:
-                                            "arctan(tan(arctan(u))) = arctan(u) (principal branch)"
-                                                .to_string(),
-                                        before_local: None,
-                                        after_local: None,
-                                        assumption_events: Default::default(),
-                                        required_conditions: vec![],
-                                        poly_proof: None,
-                                    });
+                                    return Some(Rewrite::new(atan_u).desc(
+                                        "arctan(tan(arctan(u))) = arctan(u) (principal branch)",
+                                    ));
                                 }
                             }
                         }
@@ -762,30 +742,14 @@ define_rule!(
                             let arcsin_inner =
                                 ctx.add(Expr::Function("arcsin".to_string(), vec![inner]));
                             let new_expr = ctx.add(Expr::Neg(arcsin_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "arcsin(-x) = -arcsin(x)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("arcsin(-x) = -arcsin(x)"));
                         }
                         "arctan" => {
                             // arctan(-x) = -arctan(x)
                             let arctan_inner =
                                 ctx.add(Expr::Function("arctan".to_string(), vec![inner]));
                             let new_expr = ctx.add(Expr::Neg(arctan_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "arctan(-x) = -arctan(x)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("arctan(-x) = -arctan(x)"));
                         }
                         "arccos" => {
                             // arccos(-x) = π - arccos(x)
@@ -793,15 +757,7 @@ define_rule!(
                                 ctx.add(Expr::Function("arccos".to_string(), vec![inner]));
                             let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                             let new_expr = ctx.add(Expr::Sub(pi, arccos_inner));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: "arccos(-x) = π - arccos(x)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(Rewrite::new(new_expr).desc("arccos(-x) = π - arccos(x)"));
                         }
                         _ => {}
                     }

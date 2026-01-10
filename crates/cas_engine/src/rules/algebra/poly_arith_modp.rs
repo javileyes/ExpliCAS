@@ -64,16 +64,10 @@ define_rule!(
         if pa == pb {
             // P - P = 0 (up to scalar multiple)
             let zero = ctx.num(0);
-            return Some(Rewrite {
-                new_expr: zero,
-                description: "__hold(P) - __hold(Q) = 0 (equal polynomials mod p, up to scalar)"
-                    .to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(
+                Rewrite::new(zero)
+                    .desc("__hold(P) - __hold(Q) = 0 (equal polynomials mod p, up to scalar)"),
+            );
         }
 
         // If not equal, skip (conservative behavior)

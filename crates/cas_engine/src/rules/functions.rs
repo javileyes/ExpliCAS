@@ -38,15 +38,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                                                                     // Expr::Number(-5) is a single node.
                                                                     // Expr::Neg(Expr::Number(5)) is also possible depending on parser/simplifier.
                                                                     // Let's handle it.
-                    return Some(Rewrite {
-                        new_expr: abs_val,
-                        description: format!("abs(-{}) = {}", n, n),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(abs_val).desc(format!("abs(-{}) = {}", n, n)));
                 }
 
                 let abs_inner = ctx.add(Expr::Function("abs".to_string(), vec![*inner]));
@@ -78,15 +70,9 @@ define_rule!(
                         if n.is_integer() && n.to_integer().is_even() {
                             // abs(x)^even -> x^even
                             let new_expr = ctx.add(Expr::Pow(inner, exp));
-                            return Some(Rewrite {
-                                new_expr,
-                                description: format!("|x|^{} = x^{}", n, n),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr).desc(format!("|x|^{} = x^{}", n, n)),
+                            );
                         }
                     }
                 }
@@ -193,15 +179,7 @@ define_rule!(
                 ctx.add(Expr::Mul(abs_pow_k, sqrt_base))
             };
 
-            return Some(Rewrite {
-                new_expr: result,
-                description: format!("x^({}/2) = |x|^{} * √x", n, k),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(result).desc(format!("x^({}/2) = |x|^{} * √x", n, k)));
         }
 
         None

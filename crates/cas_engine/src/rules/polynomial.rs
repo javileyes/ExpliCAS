@@ -1000,15 +1000,10 @@ impl crate::rule::Rule for BinomialExpansionRule {
                                 expanded = ctx.add(Expr::Add(expanded, term));
                             }
 
-                            return Some(Rewrite {
-                                new_expr: expanded,
-                                description: format!("Expand binomial power ^{}", n_val),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(expanded)
+                                    .desc(format!("Expand binomial power ^{}", n_val)),
+                            );
                         }
                     }
                 }
@@ -1218,15 +1213,9 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
                             expanded = ctx.add(Expr::Add(expanded, term));
                         }
 
-                        return Some(Rewrite {
-                            new_expr: expanded,
-                            description: format!("Auto-expand (a+b)^{}", n_val),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(expanded).desc(format!("Auto-expand (a+b)^{}", n_val)),
+                        );
                     }
                 }
 

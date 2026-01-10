@@ -33,26 +33,10 @@ define_rule!(
 
         // Try both orderings: (c_term, trig_term) or (trig_term, c_term)
         if let Some((result, desc)) = check_pythagorean_pattern(ctx, t1, t2) {
-            return Some(Rewrite {
-                new_expr: result,
-                description: desc,
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(result).desc(desc));
         }
         if let Some((result, desc)) = check_pythagorean_pattern(ctx, t2, t1) {
-            return Some(Rewrite {
-                new_expr: result,
-                description: desc,
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(result).desc(desc));
         }
 
         None
