@@ -123,10 +123,10 @@ define_rule!(
             }
 
             // Build assumption events if has risk and allowed
-            let assumption_events = if has_risk {
+            let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if has_risk {
                 smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, other)]
             } else {
-                Default::default()
+                smallvec::SmallVec::new()
             };
 
             let description = if lhs_is_zero {
@@ -136,15 +136,7 @@ define_rule!(
             };
 
             let zero = ctx.num(0);
-            return Some(Rewrite {
-                new_expr: zero,
-                description,
-                before_local: None,
-                after_local: None,
-                assumption_events,
-            required_conditions: vec![],
-            poly_proof: None,
-            });
+            return Some(Rewrite::new(zero).desc(description).assume_all(assumption_events));
         }
         None
     }
@@ -178,15 +170,7 @@ define_rule!(
             if let Expr::Number(d) = ctx.get(den) {
                 if d.is_zero() {
                     let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                    return Some(Rewrite {
-                        new_expr: undef,
-                        description: "0/0 is undefined".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                    });
+                    return Some(Rewrite::new(undef).desc("0/0 is undefined"));
                 }
             }
 
@@ -206,22 +190,14 @@ define_rule!(
             }
 
             // Build assumption events if needed
-            let assumption_events = if decision.assumption.is_some() && den_proof != Proof::Proven {
+            let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if decision.assumption.is_some() && den_proof != Proof::Proven {
                 smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
             } else {
-                Default::default()
+                smallvec::SmallVec::new()
             };
 
             let zero = ctx.num(0);
-            return Some(Rewrite {
-                new_expr: zero,
-                description: "0 / d = 0".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events,
-            required_conditions: vec![],
-            poly_proof: None,
-            });
+            return Some(Rewrite::new(zero).desc("0 / d = 0").assume_all(assumption_events));
         }
         None
     }
@@ -244,15 +220,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                 } else {
                     format!("{} + {} = {}", n1, n2, sum)
                 };
-                return Some(Rewrite {
-                    new_expr,
-                    description,
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(new_expr).desc(description));
             }
             // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
             if let Expr::Number(n1) = lhs_data {
@@ -262,15 +230,10 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         let sum = &n1 + &n2;
                         let sum_expr = ctx.add(Expr::Number(sum));
                         let new_expr = ctx.add(Expr::Add(sum_expr, rr));
-                        return Some(Rewrite {
-                            new_expr,
-                            description: format!("Combine nested constants: {} + {}", n1, n2),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(new_expr)
+                                .desc(format!("Combine nested constants: {} + {}", n1, n2)),
+                        );
                     }
                 }
             }
@@ -281,15 +244,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
             if let (Expr::Number(n1), Expr::Number(n2)) = (&lhs_data, &rhs_data) {
                 let prod = n1 * n2;
                 let new_expr = ctx.add(Expr::Number(prod.clone()));
-                return Some(Rewrite {
-                    new_expr,
-                    description: format!("{} * {} = {}", n1, n2, prod),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(new_expr).desc(format!("{} * {} = {}", n1, n2, prod)));
             }
             // Handle nested: c1 * (c2 * x) -> (c1*c2) * x
             if let Expr::Number(ref n1) = lhs_data {
@@ -299,15 +254,10 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                         let prod = n1 * &n2;
                         let prod_expr = ctx.add(Expr::Number(prod));
                         let new_expr = smart_mul(ctx, prod_expr, rr);
-                        return Some(Rewrite {
-                            new_expr,
-                            description: format!("Combine nested constants: {} * {}", n1, n2),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(new_expr)
+                                .desc(format!("Combine nested constants: {} * {}", n1, n2)),
+                        );
                     }
                 }
             }
@@ -321,18 +271,12 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             let ratio = n1 / &n2;
                             let ratio_expr = ctx.add(Expr::Number(ratio));
                             let new_expr = smart_mul(ctx, ratio_expr, num);
-                            return Some(Rewrite {
-                                new_expr,
-                                description: format!(
+                            return Some(
+                                Rewrite::new(new_expr).desc(format!(
                                     "{} * (x / {}) -> ({} / {}) * x",
                                     n1, n2, n1, n2
-                                ),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                                )),
+                            );
                         }
                     }
                 }
@@ -344,15 +288,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
             if let (Expr::Number(n1), Expr::Number(n2)) = (&lhs_data, &rhs_data) {
                 let diff = n1 - n2;
                 let new_expr = ctx.add(Expr::Number(diff.clone()));
-                return Some(Rewrite {
-                    new_expr,
-                    description: format!("{} - {} = {}", n1, n2, diff),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(new_expr).desc(format!("{} - {} = {}", n1, n2, diff)));
             }
         }
         Expr::Div(lhs, rhs) => {
@@ -362,26 +298,12 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                 if !n2.is_zero() {
                     let quot = n1 / n2;
                     let new_expr = ctx.add(Expr::Number(quot.clone()));
-                    return Some(Rewrite {
-                        new_expr,
-                        description: format!("{} / {} = {}", n1, n2, quot),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(
+                        Rewrite::new(new_expr).desc(format!("{} / {} = {}", n1, n2, quot)),
+                    );
                 } else {
                     let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                    return Some(Rewrite {
-                        new_expr: undef,
-                        description: "Division by zero".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(Rewrite::new(undef).desc("Division by zero"));
                 }
             }
 
@@ -397,15 +319,10 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             let ratio = &c / &d;
                             let ratio_expr = ctx.add(Expr::Number(ratio));
                             let new_expr = smart_mul(ctx, ratio_expr, mr);
-                            return Some(Rewrite {
-                                new_expr,
-                                description: format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc(format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d)),
+                            );
                         }
 
                         // Case 2: (x * c) / d
@@ -413,15 +330,10 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
                             let ratio = &c / &d;
                             let ratio_expr = ctx.add(Expr::Number(ratio));
                             let new_expr = smart_mul(ctx, ratio_expr, ml);
-                            return Some(Rewrite {
-                                new_expr,
-                                description: format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc(format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d)),
+                            );
                         }
                     }
                 }
@@ -588,19 +500,17 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
             let has_risk = has_undefined_risk(ctx, inner);
             let needs_warning = has_risk && domain_mode != crate::DomainMode::Strict;
 
-            return Some(Rewrite {
-                new_expr: ctx.num(0),
-                description: "a + (-a) = 0".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: if needs_warning {
+            let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> =
+                if needs_warning {
                     smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, inner)]
                 } else {
-                    Default::default()
-                },
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+                    smallvec::SmallVec::new()
+                };
+            return Some(
+                Rewrite::new(ctx.num(0))
+                    .desc("a + (-a) = 0")
+                    .assume_all(assumption_events),
+            );
         }
     }
     None
@@ -677,15 +587,11 @@ define_rule!(
                     format!("{}/{}", sum.numer(), sum.denom())
                 };
 
-                return Some(Rewrite {
-                    new_expr: new_pow,
-                    description: format!("{} = {}", addend_strs.join(" + "), sum_str),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(Rewrite::new(new_pow).desc(format!(
+                    "{} = {}",
+                    addend_strs.join(" + "),
+                    sum_str
+                )));
             }
         }
         None
