@@ -279,15 +279,7 @@ define_rule!(CollectLikeTermsRule, "Collect Like Terms", |ctx, expr| {
         && crate::ordering::compare_expr(ctx, new_expr, expr) != std::cmp::Ordering::Equal
     {
         // eprintln!("CollectLikeTermsRule applied: {:?} -> {:?}", expr, new_expr);
-        Some(Rewrite {
-            new_expr,
-            description: "Collect like terms".to_string(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc("Collect like terms"))
     } else {
         None
     }

@@ -790,15 +790,11 @@ define_rule!(
             return None;
         }
 
-        return Some(Rewrite {
-            new_expr,
-            description: "Simplify nested fraction".to_string(),
-            before_local: Some(expr),
-            after_local: Some(new_expr),
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        });
+        return Some(
+            Rewrite::new(new_expr)
+                .desc("Simplify nested fraction")
+                .local(expr, new_expr),
+        );
     }
 );
 
@@ -2781,15 +2777,7 @@ define_rule!(
         // Create the combined fraction
         let new_expr = ctx.add(Expr::Div(total_num, lcd));
 
-        Some(Rewrite {
-            new_expr,
-            description: "Combine fractions with factor-based LCD".to_string(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc("Combine fractions with factor-based LCD"))
     }
 );
 
@@ -2911,33 +2899,25 @@ define_rule!(
             return None;
         }
 
-        Some(Rewrite {
-            new_expr,
-            description: format!(
-                "{} / {} -> {} / {}",
-                DisplayExpr {
-                    context: ctx,
-                    id: num
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: den
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: new_num
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: new_den
-                }
-            ),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc(format!(
+            "{} / {} -> {} / {}",
+            DisplayExpr {
+                context: ctx,
+                id: num
+            },
+            DisplayExpr {
+                context: ctx,
+                id: den
+            },
+            DisplayExpr {
+                context: ctx,
+                id: new_num
+            },
+            DisplayExpr {
+                context: ctx,
+                id: new_den
+            }
+        )))
     }
 );
 
@@ -3265,33 +3245,25 @@ define_rule!(
             return None;
         }
 
-        Some(Rewrite {
-            new_expr,
-            description: format!(
-                "{} / {} -> {} / {}",
-                DisplayExpr {
-                    context: ctx,
-                    id: num
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: den
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: new_num
-                },
-                DisplayExpr {
-                    context: ctx,
-                    id: new_den
-                }
-            ),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc(format!(
+            "{} / {} -> {} / {}",
+            DisplayExpr {
+                context: ctx,
+                id: num
+            },
+            DisplayExpr {
+                context: ctx,
+                id: den
+            },
+            DisplayExpr {
+                context: ctx,
+                id: new_num
+            },
+            DisplayExpr {
+                context: ctx,
+                id: new_den
+            }
+        )))
     }
 );
 
@@ -3414,15 +3386,7 @@ define_rule!(
 
         let new_expr = ctx.add(Expr::Div(new_num, new_den));
 
-        Some(Rewrite {
-            new_expr,
-            description: "Absorb negation into difference factor".to_string(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc("Absorb negation into difference factor"))
     }
 );
 
@@ -3497,15 +3461,7 @@ define_rule!(
 
         let new_expr = ctx.add(Expr::Div(num, new_den));
 
-        Some(Rewrite {
-            new_expr,
-            description: "Canonicalize same-tail difference product".to_string(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc("Canonicalize same-tail difference product"))
     }
 );
 
@@ -3723,14 +3679,10 @@ define_rule!(
         // focus_after is the combined fraction
         let focus_after = combined_fraction;
 
-        Some(Rewrite {
-            new_expr: result,
-            description: "Combine fractions with same denominator".to_string(),
-            before_local: Some(focus_before),
-            after_local: Some(focus_after),
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(
+            Rewrite::new(result)
+                .desc("Combine fractions with same denominator")
+                .local(focus_before, focus_after),
+        )
     }
 );

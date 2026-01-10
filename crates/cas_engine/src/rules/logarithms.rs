@@ -457,15 +457,9 @@ impl crate::rule::Rule for LogContractionRule {
                     } else {
                         make_log(ctx, base_l, product)
                     };
-                    return Some(crate::rule::Rewrite {
-                        new_expr,
-                        description: "ln(a) + ln(b) = ln(a*b)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(
+                        crate::rule::Rewrite::new(new_expr).desc("ln(a) + ln(b) = ln(a*b)"),
+                    );
                 }
             }
         }
@@ -485,15 +479,9 @@ impl crate::rule::Rule for LogContractionRule {
                     } else {
                         make_log(ctx, base_l, quotient)
                     };
-                    return Some(crate::rule::Rewrite {
-                        new_expr,
-                        description: "ln(a) - ln(b) = ln(a/b)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: Default::default(),
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(
+                        crate::rule::Rewrite::new(new_expr).desc("ln(a) - ln(b) = ln(a/b)"),
+                    );
                 }
             }
         }
@@ -1092,15 +1080,7 @@ impl crate::rule::Rule for LogExpInverseRule {
 
                     if is_numeric_exponent {
                         // Always safe: log(b, b^n) = n for any numeric n
-                        return Some(crate::rule::Rewrite {
-                            new_expr: p_exp,
-                            description: "log(b, b^n) = n".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(crate::rule::Rewrite::new(p_exp).desc("log(b, b^n) = n"));
                     } else {
                         // For variable exponents like log(e, e^x) → x
                         //

@@ -538,14 +538,7 @@ define_rule!(
         // -(a-b) where a > b => (b-a) which is canonical form
         let new_expr = build_sub_like(ctx, b, a);
 
-        Some(Rewrite {
-            new_expr,
-            description: "-(a - b) → (b - a) (canonical orientation)".to_string(),
-            before_local: Some(inner_id),
-            after_local: Some(new_expr),assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc("-(a - b) → (b - a) (canonical orientation)").local(inner_id, new_expr))
     }
 );
 

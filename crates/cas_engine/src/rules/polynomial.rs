@@ -95,15 +95,11 @@ define_rule!(
                 let ab = smart_mul(ctx, l, b);
                 let ac = smart_mul(ctx, l, c);
                 let new_expr = ctx.add(Expr::Add(ab, ac));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Distribute".to_string(),
-                    before_local: Some(expr),
-                    after_local: Some(new_expr),
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(
+                    Rewrite::new(new_expr)
+                        .desc("Distribute")
+                        .local(expr, new_expr),
+                );
             }
             // (b + c) * a -> b*a + c*a
             let l_data = ctx.get(l).clone();
@@ -146,15 +142,11 @@ define_rule!(
                 let ba = smart_mul(ctx, b, r);
                 let ca = smart_mul(ctx, c, r);
                 let new_expr = ctx.add(Expr::Add(ba, ca));
-                return Some(Rewrite {
-                    new_expr,
-                    description: "Distribute".to_string(),
-                    before_local: Some(expr),
-                    after_local: Some(new_expr),
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(
+                    Rewrite::new(new_expr)
+                        .desc("Distribute")
+                        .local(expr, new_expr),
+                );
             }
         }
 
@@ -296,15 +288,11 @@ define_rule!(
 
                     // Allow if predicted complexity (after simplification) is not worse
                     if new_complexity <= old_complexity + total_reduction {
-                        return Some(Rewrite {
-                            new_expr,
-                            description: "Distribute division (simplifying)".to_string(),
-                            before_local: Some(expr),
-                            after_local: Some(new_expr),
-                            assumption_events: Default::default(),
-                            required_conditions: vec![],
-                            poly_proof: None,
-                        });
+                        return Some(
+                            Rewrite::new(new_expr)
+                                .desc("Distribute division (simplifying)")
+                                .local(expr, new_expr),
+                        );
                     }
                 }
             }

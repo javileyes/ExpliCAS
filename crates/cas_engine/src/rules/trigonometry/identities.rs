@@ -696,15 +696,7 @@ impl crate::rule::Rule for TanToSinCosRule {
                 let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![args[0]]));
                 let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![args[0]]));
                 let new_expr = ctx.add(Expr::Div(sin_x, cos_x));
-                return Some(crate::rule::Rewrite {
-                    new_expr,
-                    description: "tan(x) -> sin(x)/cos(x)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(crate::rule::Rewrite::new(new_expr).desc("tan(x) -> sin(x)/cos(x)"));
             }
         }
         None
@@ -1011,15 +1003,9 @@ define_rule!(
         let sum = ctx.add(Expr::Add(sin2, cos2));
         let result = ctx.add(Expr::Pow(sum, three));
 
-        Some(Rewrite {
-            new_expr: result,
-            description: "sin⁶(x) + cos⁶(x) + 3sin²(x)cos²(x) = (sin²(x) + cos²(x))³".to_string(),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(
+            Rewrite::new(result).desc("sin⁶(x) + cos⁶(x) + 3sin²(x)cos²(x) = (sin²(x) + cos²(x))³"),
+        )
     }
 );
 
