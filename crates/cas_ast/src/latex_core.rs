@@ -38,23 +38,37 @@ pub trait LaTeXRenderer {
 
         // Fix "+ -" → "-" in all contexts
         result = result.replace("+ -\\", "- \\");
-        result = result.replace("+ -{", "- {");
         result = result.replace("+ -(", "- (");
 
         // Fix "- -" → "+" (double negative)
         result = result.replace("- -\\", "+ \\");
-        result = result.replace("- -{", "+ {");
         result = result.replace("- -(", "+ (");
 
-        // Fix "+ -" before digits
-        let re_plus_minus_digit = Regex::new(r"\+ -(\d)").unwrap();
-        result = re_plus_minus_digit.replace_all(&result, "- $1").to_string();
+        // Fix "+ -" before digits or letters (e.g., "+ -x" → "- x")
+        let re_plus_minus = Regex::new(r"\+ -([0-9a-zA-Z])").unwrap();
+        result = re_plus_minus.replace_all(&result, "- $1").to_string();
 
-        // Fix "- -" before digits
-        let re_minus_minus_digit = Regex::new(r"- -(\d)").unwrap();
-        result = re_minus_minus_digit
+        // Fix "- -" before digits or letters (e.g., "- -x" → "+ x")
+        let re_minus_minus = Regex::new(r"- -([0-9a-zA-Z])").unwrap();
+        result = re_minus_minus.replace_all(&result, "+ $1").to_string();
+
+        // Fix "+ {color command}{-" patterns (highlighted negatives)
+        // e.g., "+ {\color{red}{-..." → "- {\color{red}{"
+        // Note: Absorbs only the leading minus of the highlighted expression
+        let re_plus_color_minus = Regex::new(r"\+ (\{\\color\{[^}]+\}\{)-").unwrap();
+        result = re_plus_color_minus.replace_all(&result, "- $1").to_string();
+
+        // Fix "- {color command}{-" patterns (double negative with highlight)
+        let re_minus_color_minus = Regex::new(r"- (\{\\color\{[^}]+\}\{)-").unwrap();
+        result = re_minus_color_minus
             .replace_all(&result, "+ $1")
             .to_string();
+
+        // Fix "+ -{" → "- {" (when minus precedes a brace group)
+        result = result.replace("+ -{", "- {");
+
+        // Fix "- -{" → "+ {" (double negative before brace)
+        result = result.replace("- -{", "+ {");
 
         result
     }
@@ -646,20 +660,38 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         use regex::Regex;
         let mut result = latex.to_string();
 
+        // Fix "+ -" → "-" in all contexts
         result = result.replace("+ -\\", "- \\");
-        result = result.replace("+ -{", "- {");
         result = result.replace("+ -(", "- (");
+
+        // Fix "- -" → "+" (double negative)
         result = result.replace("- -\\", "+ \\");
-        result = result.replace("- -{", "+ {");
         result = result.replace("- -(", "+ (");
 
-        let re_plus_minus_digit = Regex::new(r"\+ -(\d)").unwrap();
-        result = re_plus_minus_digit.replace_all(&result, "- $1").to_string();
+        // Fix "+ -" before digits or letters (e.g., "+ -x" → "- x")
+        let re_plus_minus = Regex::new(r"\+ -([0-9a-zA-Z])").unwrap();
+        result = re_plus_minus.replace_all(&result, "- $1").to_string();
 
-        let re_minus_minus_digit = Regex::new(r"- -(\d)").unwrap();
-        result = re_minus_minus_digit
+        // Fix "- -" before digits or letters (e.g., "- -x" → "+ x")
+        let re_minus_minus = Regex::new(r"- -([0-9a-zA-Z])").unwrap();
+        result = re_minus_minus.replace_all(&result, "+ $1").to_string();
+
+        // Fix "+ {color command}{-" patterns (highlighted negatives)
+        // e.g., "+ {\color{red}{-..." → "- {\color{red}{"
+        let re_plus_color_minus = Regex::new(r"\+ (\{\\color\{[^}]+\}\{)-").unwrap();
+        result = re_plus_color_minus.replace_all(&result, "- $1").to_string();
+
+        // Fix "- {color command}{-" patterns (double negative with highlight)
+        let re_minus_color_minus = Regex::new(r"- (\{\\color\{[^}]+\}\{)-").unwrap();
+        result = re_minus_color_minus
             .replace_all(&result, "+ $1")
             .to_string();
+
+        // Fix "+ -{" → "- {" (when minus precedes a brace group)
+        result = result.replace("+ -{", "- {");
+
+        // Fix "- -{" → "+ {" (double negative before brace)
+        result = result.replace("- -{", "+ {");
 
         result
     }

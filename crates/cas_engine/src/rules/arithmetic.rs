@@ -269,9 +269,16 @@ define_rule!(CombineConstantsRule, "Combine Constants", |ctx, expr| {
             if let (Expr::Number(n1), Expr::Number(n2)) = (&lhs_data, &rhs_data) {
                 let sum = n1 + n2;
                 let new_expr = ctx.add(Expr::Number(sum.clone()));
+                // Format description cleanly: "1 + -1" → "1 - 1"
+                let description = if n2 < &num_rational::BigRational::from_integer(0.into()) {
+                    let abs_n2 = -n2;
+                    format!("{} - {} = {}", n1, abs_n2, sum)
+                } else {
+                    format!("{} + {} = {}", n1, n2, sum)
+                };
                 return Some(Rewrite {
                     new_expr,
-                    description: format!("{} + {} = {}", n1, n2, sum),
+                    description,
                     before_local: None,
                     after_local: None,
                     assumption_events: Default::default(),

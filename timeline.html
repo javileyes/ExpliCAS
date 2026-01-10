@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}</title>
+    <title>CAS Steps: 1 + \frac{1}{1 + \frac{1}{1 + \frac{1}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -439,97 +439,166 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+            \[1 + \frac{1}{1 + \frac{1}{1 + \frac{1}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Rationalize Denominator</h3>
+                    <h3>Simplify Complex Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[1 + \frac{1}{1 + {\color{red}{\frac{1}{1 + \frac{1}{x}}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                     <details class="substeps-details">
-                            <summary>Pasos intermedios</summary>
+                            <summary>Simplificación de fracción compleja</summary>
                             <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{1}{\sqrt{x} - 1} \rightarrow \text{Conjugado: } a + b \to a - b\]</div></div><div class="substep">
-                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(1) \cdot (a-b)}{(\sqrt{x} - 1) \cdot (a-b)} \rightarrow \frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}\]</div></div></div></details>
+                                    <span class="substep-desc">Combinar términos del denominador (denominador común)</span><div class="substep-math">\[1 + 1 / x \rightarrow (1 · x + 1) / x\]</div></div><div class="substep">
+                                    <span class="substep-desc">Invertir la fracción: 1/(a/b) = b/a</span><div class="substep-math">\[1 / (1 + 1 / x) \rightarrow x / (1 + x)\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
+                        <div class="rule-name">\(\text{Simplify nested fraction}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} \rightarrow {\color{green}{\frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}}}\]
+                            \[{\color{red}{\frac{1}{1 + \frac{1}{x}}}} \rightarrow {\color{green}{\frac{x}{1 + x}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{1\cdot (1 + \sqrt{x})}{{\sqrt{x}}^{2} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[1 + \frac{1}{1 + {\color{green}{\frac{x}{1 + x}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Distributive Property</h3>
+                    <h3>Simplify Complex Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{1\cdot (1 + \sqrt{x})}}}{{\sqrt{x}}^{2} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[1 + {\color{red}{\frac{1}{1 + \frac{x}{1 + x}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Simplificación de fracción compleja</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Combinar términos del denominador (denominador común)</span><div class="substep-math">\[1 + x / (1 + x) \rightarrow (1 · (1 + x) + x) / (1 + x)\]</div></div><div class="substep">
+                                    <span class="substep-desc">Invertir la fracción: 1/(a/b) = b/a</span><div class="substep-math">\[1 / (1 + x / (1 + x)) \rightarrow (1 + x) / (1 + x + x)\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute}\)</div>
+                        <div class="rule-name">\(\text{Simplify nested fraction}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{1 + \sqrt{x}}} \rightarrow {\color{green}{1 + \sqrt{x}}}\]
+                            \[{\color{red}{\frac{1}{1 + \frac{x}{1 + x}}}} \rightarrow {\color{green}{\frac{1 + x}{1 + x + x}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{{\color{green}{1 + \sqrt{x}}}}{{\sqrt{x}}^{2} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[1 + {\color{green}{\frac{1 + x}{1 + x + x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Power of a Power</h3>
+                    <h3>Combine Like Terms</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{1 + \sqrt{x}}{{\color{red}{{\sqrt{x}}^{2}}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[1 + \frac{1 + x}{1 + {\color{red}{x}} + {\color{red}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="rule-name">\(\text{Combine like terms}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{{\sqrt{x}}^{2}}} \rightarrow {\color{green}{x}}\]
+                            \[{\color{red}{x + x}} \rightarrow {\color{green}{2\cdot x}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{1 + \sqrt{x}}{{\color{green}{x}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[1 + \frac{1 + x}{1 + {\color{green}{2\cdot x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">4</div>
                 <div class="step-content">
-                    <h3>Add Inverse</h3>
+                    <h3>Combine Same Denominator Fractions</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}}\]
+                        \[1 + {\color{red}{\frac{1 + x}{1 + 2\cdot x}}} - {\color{red}{{\color{red}{\frac{2 + 3\cdot x}{1 + 2\cdot x}}}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
+                        <div class="rule-name">\(\text{Combine fractions with same denominator}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}} \rightarrow {\color{green}{0}}\]
+                            \[{\color{red}{\frac{1 + x}{1 + 2\cdot x} - \frac{2 + 3\cdot x}{1 + 2\cdot x}}} \rightarrow {\color{green}{\frac{1 + x - (2 + 3\cdot x)}{1 + 2\cdot x}}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[1 + {\color{green}{\frac{1 + x - (2 + 3\cdot x)}{1 + 2\cdot x}}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[1 + \frac{{\color{red}{1 + x - 2 - 3\cdot x}}}{1 + 2\cdot x}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine like terms}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{1 + x - 3\cdot x - 2}} \rightarrow {\color{green}{-2\cdot x - 1}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[1 + \frac{{\color{green}{-1 - 2\cdot x}}}{1 + 2\cdot x}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <h3>Simplify Nested Fraction</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[1 + {\color{red}{\frac{-1 - 2\cdot x}{1 + 2\cdot x}}}\]
+                    </div>
+                    <details class="substeps-details">
+                            <summary>Factorización de polinomios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Cancel common factor: 1 + 2·x</span><div class="substep-math">\[(-1 - 2 * x) / (1 + 2·x) \rightarrow -1\]</div></div></div></details>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Simplified fraction by GCD: 1 + 2·x}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{\frac{-1\cdot (1 + 2\cdot x)}{1 + 2\cdot x}}} \rightarrow {\color{green}{-1}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[1 - {\color{green}{1}}\]
+                    </div>
+                    <div class="domain-warning">Domain: Assumed 1 + 2·x ≠ 0</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">7</div>
+                <div class="step-content">
+                    <h3>Combine Constants</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{1 - 1}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{1 - 1 = 0}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{1 - 1}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
                         \[{\color{green}{0}}\]
                     </div>
-                    <div class="domain-requires">Requires: x ≥ 0</div>
-                    <div class="domain-warning">Domain: Assumed (1 + x^(1/2)) / (x - 1) is defined</div>
                 </div>
             </div>
         </div>

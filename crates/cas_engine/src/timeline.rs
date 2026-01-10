@@ -473,29 +473,41 @@ impl<'a> TimelineHtml<'a> {
     /// Post-process LaTeX to fix negative sign patterns
     /// Handles cases like "+ -" → "-" and "- -" → "+"
     fn clean_latex_negatives(latex: &str) -> String {
+        use regex::Regex;
         let mut result = latex.to_string();
 
         // Fix "+ -" → "-" in all contexts
-        // Even "+ -(" is simplified to "-(" since +(-(x)) = -(x)
         result = result.replace("+ -\\", "- \\"); // Before LaTeX commands
-        result = result.replace("+ -{", "- {"); // Before braces
         result = result.replace("+ -(", "- ("); // Before parentheses
 
         // Fix "- -" → "+" (double negative)
         result = result.replace("- -\\", "+ \\"); // Before LaTeX commands
-        result = result.replace("- -{", "+ {"); // Before braces
         result = result.replace("- -(", "+ ("); // Before parentheses
 
-        // Fix "+ -" before digits (e.g., "+ -4" → "- 4")
-        use regex::Regex;
-        let re_plus_minus_digit = Regex::new(r"\+ -(\d)").unwrap();
-        result = re_plus_minus_digit.replace_all(&result, "- $1").to_string();
+        // Fix "+ -" before digits or letters (e.g., "+ -x" → "- x")
+        let re_plus_minus = Regex::new(r"\+ -([0-9a-zA-Z])").unwrap();
+        result = re_plus_minus.replace_all(&result, "- $1").to_string();
 
-        // Fix "- -" before digits (e.g., "- -4" → "+ 4")
-        let re_minus_minus_digit = Regex::new(r"- -(\d)").unwrap();
-        result = re_minus_minus_digit
+        // Fix "- -" before digits or letters (e.g., "- -x" → "+ x")
+        let re_minus_minus = Regex::new(r"- -([0-9a-zA-Z])").unwrap();
+        result = re_minus_minus.replace_all(&result, "+ $1").to_string();
+
+        // Fix "+ {color command}{-" patterns (highlighted negatives)
+        // e.g., "+ {\color{red}{-..." → "- {\color{red}{"
+        let re_plus_color_minus = Regex::new(r"\+ (\{\\color\{[^}]+\}\{)-").unwrap();
+        result = re_plus_color_minus.replace_all(&result, "- $1").to_string();
+
+        // Fix "- {color command}{-" patterns (double negative with highlight)
+        let re_minus_color_minus = Regex::new(r"- (\{\\color\{[^}]+\}\{)-").unwrap();
+        result = re_minus_color_minus
             .replace_all(&result, "+ $1")
             .to_string();
+
+        // Fix "+ -{" → "- {" (when minus precedes a brace group)
+        result = result.replace("+ -{", "- {");
+
+        // Fix "- -{" → "+ {" (double negative before brace)
+        result = result.replace("- -{", "+ {");
 
         result
     }
