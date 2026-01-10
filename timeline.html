@@ -454,26 +454,47 @@
                             <summary>Pasos intermedios</summary>
                             <div class="substeps-content"><div class="substep">
                                     <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{1}{\sqrt{x} - 1} \rightarrow \text{Conjugado: } a + b \to a - b\]</div></div><div class="substep">
-                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(1) \cdot (a-b)}{(\sqrt{x} - 1) \cdot (a-b)} \rightarrow \frac{\sqrt{x} + 1}{{\sqrt{x}}^{2} - {-1}^{2}}\]</div></div></div></details>
+                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(1) \cdot (a-b)}{(\sqrt{x} - 1) \cdot (a-b)} \rightarrow \frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}\]</div></div></div></details>
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} \rightarrow {\color{green}{\frac{\sqrt{x} + 1}{{\sqrt{x}}^{2} - {-1}^{2}}}}\]
+                            \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} \rightarrow {\color{green}{\frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{1\cdot (\sqrt{x} + 1)}{{\sqrt{x}}^{2} - {-1}^{2}}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[{\color{green}{\frac{1\cdot (1 + \sqrt{x})}{{\sqrt{x}}^{2} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
+                    <h3>Distributive Property</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{{\color{red}{1\cdot (1 + \sqrt{x})}}}{{\sqrt{x}}^{2} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Distribute}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{1 + \sqrt{x}}} \rightarrow {\color{green}{1 + \sqrt{x}}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{{\color{green}{1 + \sqrt{x}}}}{{\sqrt{x}}^{2} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
                     <h3>Power of a Power</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{1 + \sqrt{x}}{{\color{red}{{\sqrt{x}}^{2}}} - {-1}^{2}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[\frac{1 + \sqrt{x}}{{\color{red}{{\sqrt{x}}^{2}}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                     
                     <div class="rule-description">
@@ -484,28 +505,7 @@
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{1 + \sqrt{x}}{{\color{green}{x}} - {-1}^{2}} - \frac{1 + \sqrt{x}}{x - 1}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Evaluate Numeric Power</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{1 + \sqrt{x}}{x - {\color{red}{{-1}^{2}}}} - \frac{1 + \sqrt{x}}{x - 1}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Evaluate literal power}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{{-1}^{2}}} \rightarrow {\color{green}{1}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{1 + \sqrt{x}}{x - {\color{green}{1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[\frac{1 + \sqrt{x}}{{\color{green}{x}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                 </div>
             </div>

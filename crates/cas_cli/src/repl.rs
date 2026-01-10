@@ -149,6 +149,37 @@ fn clean_display_string(s: &str) -> String {
         }
     }
 
+    // Clean sign patterns (matches LaTeX cleanup logic)
+    clean_sign_patterns(result)
+}
+
+/// Clean sign patterns from display strings.
+/// Converts `+ -` to `-` and `- -` to `+` only when followed by a digit or variable,
+/// NOT when followed by `(` (which indicates a grouped subexpression like `(-1)²`).
+/// This mirrors the LaTeX cleanup logic in clean_latex_negatives.
+fn clean_sign_patterns(s: String) -> String {
+    use regex::Regex;
+    let mut result = s;
+
+    // Only clean "+ -" and "- -" when followed by a digit, letter, or √/^ symbol,
+    // NOT when followed by ( which indicates a parenthesized expression like (-1)²
+    let re_plus_minus = Regex::new(r"\+ -([0-9a-zA-Z√^])").unwrap();
+    result = re_plus_minus.replace_all(&result, "- $1").to_string();
+
+    let re_minus_minus = Regex::new(r"- -([0-9a-zA-Z√^])").unwrap();
+    result = re_minus_minus.replace_all(&result, "+ $1").to_string();
+
+    // Also handle without space variants, but only before digits/letters
+    let re_plus_minus_compact = Regex::new(r"\+-([0-9a-zA-Z])").unwrap();
+    result = re_plus_minus_compact
+        .replace_all(&result, "-$1")
+        .to_string();
+
+    let re_minus_minus_compact = Regex::new(r"--([0-9a-zA-Z])").unwrap();
+    result = re_minus_minus_compact
+        .replace_all(&result, "+$1")
+        .to_string();
+
     result
 }
 

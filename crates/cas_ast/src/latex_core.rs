@@ -420,6 +420,10 @@ pub trait LaTeXRenderer {
             | Expr::Neg(_) => {
                 format!("({})", self.expr_to_latex(id, false))
             }
+            // Negative numbers also need parentheses: (-1)^2 not -1^2
+            Expr::Number(n) if n.is_negative() => {
+                format!("({})", self.expr_to_latex(id, false))
+            }
             _ => self.expr_to_latex(id, false),
         }
     }
@@ -844,6 +848,10 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             | Expr::Mul(_, _)
             | Expr::Div(_, _)
             | Expr::Neg(_) => {
+                format!("({})", self.render_with_path(id, false, path))
+            }
+            // Negative numbers also need parentheses: (-1)^2 not -1^2
+            Expr::Number(n) if n.is_negative() => {
                 format!("({})", self.render_with_path(id, false, path))
             }
             _ => self.render_with_path(id, false, path),

@@ -1199,6 +1199,53 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
     None
 });
 
+/// Recognizes ±1 in various AST forms
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SignOne {
+    PlusOne,
+    MinusOne,
+}
+
+/// Check if expr is +1 or -1 (in any AST form)
+fn sign_one(ctx: &Context, id: ExprId) -> Option<SignOne> {
+    use num_rational::BigRational;
+    match ctx.get(id) {
+        Expr::Number(n) => {
+            if n == &BigRational::from_integer((-1).into()) {
+                Some(SignOne::MinusOne)
+            } else if n.is_one() {
+                Some(SignOne::PlusOne)
+            } else {
+                None
+            }
+        }
+        Expr::Neg(inner) => match ctx.get(*inner) {
+            Expr::Number(n) if n.is_one() => Some(SignOne::MinusOne),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Normalize binomial denominator: canonicalize Add(l, Neg(1)) to conceptual Sub(l, 1)
+/// Returns (left_term, right_term_normalized, is_add_normalized, right_is_abs_one)
+fn split_binomial_den(ctx: &mut Context, den: ExprId) -> Option<(ExprId, ExprId, bool, bool)> {
+    let one = ctx.num(1);
+    match ctx.get(den).clone() {
+        Expr::Add(l, r) => match sign_one(ctx, r) {
+            Some(SignOne::PlusOne) => Some((l, one, true, true)), // l + 1
+            Some(SignOne::MinusOne) => Some((l, one, false, true)), // l + (-1) → l - 1
+            None => Some((l, r, true, false)),                    // l + r
+        },
+        Expr::Sub(l, r) => match sign_one(ctx, r) {
+            Some(SignOne::PlusOne) => Some((l, one, false, true)), // l - 1
+            Some(SignOne::MinusOne) => Some((l, one, true, true)), // l - (-1) → l + 1
+            None => Some((l, r, false, false)),                    // l - r
+        },
+        _ => None,
+    }
+}
+
 define_rule!(
     RationalizeDenominatorRule,
     "Rationalize Denominator",
@@ -1215,12 +1262,9 @@ define_rule!(
 
         let (num, den, _) = fp.to_num_den(ctx);
 
-        let den_data = ctx.get(den).clone();
-        let (l, r, is_add) = match den_data {
-            Expr::Add(l, r) => (l, r, true),
-            Expr::Sub(l, r) => (l, r, false),
-            _ => return None,
-        };
+        // Use split_binomial_den to normalize the denominator
+        // This canonicalizes Add(√x, Neg(1)) to conceptual Sub(√x, 1)
+        let (l, r, is_add, r_is_abs_one) = split_binomial_den(ctx, den)?;
 
         // Check for sqrt roots (degree 2 only - diff squares only works for sqrt)
         // For nth roots (n >= 3), use RationalizeNthRootBinomialRule instead
@@ -1249,7 +1293,7 @@ define_rule!(
             return None;
         }
 
-        // Construct conjugate
+        // Construct conjugate using normalized terms
         let conjugate = if is_add {
             ctx.add(Expr::Sub(l, r))
         } else {
@@ -1260,9 +1304,15 @@ define_rule!(
         let new_num = mul2_raw(ctx, num, conjugate);
 
         // Compute new den = l^2 - r^2
+        // Key fix: if r is ±1, use literal 1 instead of Pow(-1, 2)
         let two = ctx.num(2);
+        let one = ctx.num(1);
         let l_sq = ctx.add(Expr::Pow(l, two));
-        let r_sq = ctx.add(Expr::Pow(r, two));
+        let r_sq = if r_is_abs_one {
+            one // 1² = 1, avoid (-1)²
+        } else {
+            ctx.add(Expr::Pow(r, two))
+        };
         let new_den = ctx.add(Expr::Sub(l_sq, r_sq));
 
         let new_expr = ctx.add(Expr::Div(new_num, new_den));

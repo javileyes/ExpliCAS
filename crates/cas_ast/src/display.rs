@@ -729,7 +729,11 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 let base_prec = precedence(self.context, *b);
                 let op_prec = 3; // Pow precedence
 
-                if base_prec < op_prec {
+                // Check if base is "negative" (Neg expr, negative number, or leading negative factor)
+                // These need parentheses: (-1)² not -1², (-x)² not -x²
+                let (base_is_negative, _, _) = check_negative(self.context, *b);
+
+                if base_prec < op_prec || base_is_negative {
                     write!(
                         f,
                         "({})",
@@ -1973,7 +1977,11 @@ impl<'a> DisplayExprStyled<'a> {
 
         // Format base with parens if needed
         let base_prec = precedence(self.context, base);
-        if base_prec < 3 {
+        // Check if base is "negative" (Neg expr, negative number, or leading negative factor)
+        // These need parentheses: (-1)² not -1², (-x)² not -x²
+        let (base_is_negative, _, _) = check_negative(self.context, base);
+
+        if base_prec < 3 || base_is_negative {
             write!(f, "(")?;
             self.fmt_internal(f, base)?;
             write!(f, ")")?;
