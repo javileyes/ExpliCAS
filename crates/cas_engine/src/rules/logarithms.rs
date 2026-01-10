@@ -63,15 +63,10 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                         }
                         if temp == n_int {
                             let new_expr = ctx.num(power);
-                            return Some(Rewrite {
-                                new_expr,
-                                description: format!("log({}, {}) = {}", b, n, power),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-                                required_conditions: vec![],
-                                poly_proof: None,
-                            });
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc(format!("log({}, {}) = {}", b, n, power)),
+                            );
                         }
                     }
                 }
@@ -135,17 +130,11 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     // Only allow in Generic/Assume modes, block in Strict
                     let log_inner = make_log(ctx, base, p_base);
                     let new_expr = smart_mul(ctx, p_exp, log_inner);
-                    return Some(Rewrite {
-                        new_expr,
-                        description: "log(b, x^y) = y * log(b, x)".to_string(),
-                        before_local: None,
-                        after_local: None,
-                        assumption_events: smallvec::smallvec![
-                            crate::assumptions::AssumptionEvent::positive(ctx, p_base)
-                        ],
-                        required_conditions: vec![],
-                        poly_proof: None,
-                    });
+                    return Some(
+                        Rewrite::new(new_expr)
+                            .desc("log(b, x^y) = y * log(b, x)")
+                            .assume(crate::assumptions::AssumptionEvent::positive(ctx, p_base)),
+                    );
                 }
             }
         }
@@ -223,7 +212,8 @@ impl crate::rule::Rule for LogExpansionRule {
                 let new_expr = ctx.add(Expr::Add(log_lhs, log_rhs));
 
                 // Build assumption events for unproven factors
-                let mut events = smallvec::SmallVec::new();
+                let mut events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 2]> =
+                    smallvec::SmallVec::new();
                 if lhs_decision.assumption.is_some() {
                     events.push(crate::assumptions::AssumptionEvent::positive(ctx, lhs));
                 }
@@ -231,15 +221,11 @@ impl crate::rule::Rule for LogExpansionRule {
                     events.push(crate::assumptions::AssumptionEvent::positive(ctx, rhs));
                 }
 
-                return Some(crate::rule::Rewrite {
-                    new_expr,
-                    description: "log(b, x*y) = log(b, x) + log(b, y)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: events,
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(
+                    crate::rule::Rewrite::new(new_expr)
+                        .desc("log(b, x*y) = log(b, x) + log(b, y)")
+                        .assume_all(events),
+                );
             }
 
             // log(b, x/y) → log(b, x) - log(b, y)
@@ -263,7 +249,8 @@ impl crate::rule::Rule for LogExpansionRule {
                 let new_expr = ctx.add(Expr::Sub(log_num, log_den));
 
                 // Build assumption events for unproven factors
-                let mut events = smallvec::SmallVec::new();
+                let mut events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 2]> =
+                    smallvec::SmallVec::new();
                 if num_decision.assumption.is_some() {
                     events.push(crate::assumptions::AssumptionEvent::positive(ctx, num));
                 }
@@ -271,15 +258,11 @@ impl crate::rule::Rule for LogExpansionRule {
                     events.push(crate::assumptions::AssumptionEvent::positive(ctx, den));
                 }
 
-                return Some(crate::rule::Rewrite {
-                    new_expr,
-                    description: "log(b, x/y) = log(b, x) - log(b, y)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: events,
-                    required_conditions: vec![],
-                    poly_proof: None,
-                });
+                return Some(
+                    crate::rule::Rewrite::new(new_expr)
+                        .desc("log(b, x/y) = log(b, x) - log(b, y)")
+                        .assume_all(events),
+                );
             }
         }
         None
@@ -358,15 +341,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
             if pos != Proof::Proven {
                 return None;
             }
-            return Some(Rewrite {
-                new_expr: mk_log(ctx),
-                description: "ln(|x|) = ln(x) for x > 0".to_string(),
-                before_local: None,
-                after_local: None,
-                assumption_events: Default::default(),
-                required_conditions: vec![],
-                poly_proof: None,
-            });
+            return Some(Rewrite::new(mk_log(ctx)).desc("ln(|x|) = ln(x) for x > 0"));
         }
 
         // RealOnly: DomainMode policy
@@ -379,29 +354,15 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
                 if pos != Proof::Proven {
                     return None;
                 }
-                Some(Rewrite {
-                    new_expr: mk_log(ctx),
-                    description: "ln(|x|) = ln(x) for x > 0".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
-                })
+                Some(Rewrite::new(mk_log(ctx)).desc("ln(|x|) = ln(x) for x > 0"))
             }
             DomainMode::Assume => {
                 // In Assume mode: simplify with warning (assumption traceability)
-                let events =
-                    smallvec::smallvec![crate::assumptions::AssumptionEvent::positive(ctx, inner)];
-                Some(Rewrite {
-                    new_expr: mk_log(ctx),
-                    description: "ln(|x|) = ln(x) (assuming x > 0)".to_string(),
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: events,
-                    required_conditions: vec![],
-                    poly_proof: None,
-                })
+                Some(
+                    Rewrite::new(mk_log(ctx))
+                        .desc("ln(|x|) = ln(x) (assuming x > 0)")
+                        .assume(crate::assumptions::AssumptionEvent::positive(ctx, inner)),
+                )
             }
         }
     }

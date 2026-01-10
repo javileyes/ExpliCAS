@@ -688,15 +688,11 @@ define_rule!(
         // Note: We intentionally allow node count to increase for GCD factoring
         // because 2*(3 + 2*√5) is mathematically cleaner than 6 + 4*√5
 
-        Some(Rewrite {
-            new_expr,
-            description: format!("Factor out {}", gcd_int),
-            before_local: Some(expr),
-            after_local: Some(new_expr),
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(
+            Rewrite::new(new_expr)
+                .desc(format!("Factor out {}", gcd_int))
+                .local(expr, new_expr),
+        )
     }
 );
 

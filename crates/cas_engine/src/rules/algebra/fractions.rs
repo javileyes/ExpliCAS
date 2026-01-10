@@ -539,42 +539,26 @@ define_rule!(
                 // If denominator is 1, return just numerator
                 if let Expr::Number(n) = ctx.get(new_den) {
                     if n.is_one() {
-                        return Some(Rewrite {
-                            new_expr: new_num,
-                            description: format!(
+                        return Some(Rewrite::new(new_num)
+                            .desc(format!(
                                 "Simplified fraction by GCD: {} [{}]",
-                                DisplayExpr {
-                                    context: ctx,
-                                    id: gcd_expr
-                                },
+                                DisplayExpr { context: ctx, id: gcd_expr },
                                 layer_tag
-                            ),
-                            before_local: Some(factored_form),
-                            after_local: Some(new_num),
-                            assumption_events: decision.assumption_events(ctx, gcd_expr),
-                        required_conditions: vec![],
-            poly_proof: None,
-                        });
+                            ))
+                            .local(factored_form, new_num)
+                            .assume_all(decision.assumption_events(ctx, gcd_expr)));
                     }
                 }
 
                 let result = ctx.add(Expr::Div(new_num, new_den));
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: format!(
+                return Some(Rewrite::new(result)
+                    .desc(format!(
                         "Simplified fraction by GCD: {} [{}]",
-                        DisplayExpr {
-                            context: ctx,
-                            id: gcd_expr
-                        },
+                        DisplayExpr { context: ctx, id: gcd_expr },
                         layer_tag
-                    ),
-                    before_local: Some(factored_form),
-                    after_local: Some(result),
-                    assumption_events: decision.assumption_events(ctx, gcd_expr),
-                required_conditions: vec![],
-            poly_proof: None,
-                });
+                    ))
+                    .local(factored_form, result)
+                    .assume_all(decision.assumption_events(ctx, gcd_expr)));
             }
         }
 
@@ -653,18 +637,9 @@ define_rule!(
                 let new_den_expr = new_den_partial.to_expr(ctx);
                 let result = ctx.add(Expr::Div(new_num_expr, new_den_expr));
 
-                return Some(Rewrite {
-                    new_expr: result,
-                    description: format!(
-                        "Reduced numeric content by gcd {} (strict-safe)",
-                        numeric_gcd
-                    ),
-                    before_local: Some(expr),
-                    after_local: Some(result),
-                    assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                });
+                return Some(Rewrite::new(result)
+                    .desc(format!("Reduced numeric content by gcd {} (strict-safe)", numeric_gcd))
+                    .local(expr, result));
             }
             // No numeric content to cancel, don't simplify
             return None;
@@ -687,40 +662,18 @@ define_rule!(
         // If denominator is 1, return numerator
         if let Expr::Number(n) = ctx.get(new_den) {
             if n.is_one() {
-                return Some(Rewrite {
-                    new_expr: new_num,
-                    description: format!(
-                        "Simplified fraction by GCD: {}",
-                        DisplayExpr {
-                            context: ctx,
-                            id: gcd_expr
-                        }
-                    ),
-                    before_local: Some(factored_form),
-                    after_local: Some(new_num),
-                    assumption_events: decision.assumption_events(ctx, gcd_expr),
-                required_conditions: vec![],
-            poly_proof: None,
-                });
+                return Some(Rewrite::new(new_num)
+                    .desc(format!("Simplified fraction by GCD: {}", DisplayExpr { context: ctx, id: gcd_expr }))
+                    .local(factored_form, new_num)
+                    .assume_all(decision.assumption_events(ctx, gcd_expr)));
             }
         }
 
         let result = ctx.add(Expr::Div(new_num, new_den));
-        return Some(Rewrite {
-            new_expr: result,
-            description: format!(
-                "Simplified fraction by GCD: {}",
-                DisplayExpr {
-                    context: ctx,
-                    id: gcd_expr
-                }
-            ),
-            before_local: Some(factored_form),
-            after_local: Some(result),
-            assumption_events: decision.assumption_events(ctx, gcd_expr),
-        required_conditions: vec![],
-            poly_proof: None,
-        });
+        return Some(Rewrite::new(result)
+            .desc(format!("Simplified fraction by GCD: {}", DisplayExpr { context: ctx, id: gcd_expr }))
+            .local(factored_form, result)
+            .assume_all(decision.assumption_events(ctx, gcd_expr)));
     }
 );
 
@@ -1408,15 +1361,10 @@ define_rule!(
 
         let new_expr = ctx.add(Expr::Div(new_num, new_den));
 
-        Some(Rewrite {
-            new_expr,
-            description: format!("Rationalize {} root binomial (geometric sum)", ordinal(n)),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc(format!(
+            "Rationalize {} root binomial (geometric sum)",
+            ordinal(n)
+        )))
     }
 );
 
@@ -1604,15 +1552,7 @@ define_rule!(
         // Build result as sum
         let result = build_sum(ctx, &terms);
 
-        Some(Rewrite {
-            new_expr: result,
-            description: format!("Cancel {} root binomial factor", ordinal(n)),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(result).desc(format!("Cancel {} root binomial factor", ordinal(n))))
     }
 );
 
@@ -1758,21 +1698,13 @@ define_rule!(
         let result = ctx.add(Expr::Pow(other, half));
 
         // Build assumption event if we assumed NonNegative
-        let assumption_events = if decision.assumption.is_some() {
+        let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if decision.assumption.is_some() {
             smallvec::smallvec![crate::assumptions::AssumptionEvent::nonnegative(ctx, other)]
         } else {
-            Default::default()
+            smallvec::SmallVec::new()
         };
 
-        Some(Rewrite {
-            new_expr: result,
-            description: "Lift conjugate into sqrt".to_string(),
-            before_local: None,
-            after_local: None,
-            assumption_events,
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(result).desc("Lift conjugate into sqrt").assume_all(assumption_events))
     }
 );
 
@@ -1879,18 +1811,10 @@ define_rule!(
 
         let new_expr = ctx.add(Expr::Div(new_num, new_den_expanded));
 
-        Some(Rewrite {
-            new_expr,
-            description: format!(
-                "Rationalize: group {} terms and multiply by conjugate",
-                terms.len()
-            ),
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-        })
+        Some(Rewrite::new(new_expr).desc(format!(
+            "Rationalize: group {} terms and multiply by conjugate",
+            terms.len()
+        )))
     }
 );
 
@@ -2382,15 +2306,10 @@ define_rule!(
             };
 
             let new_expr = ctx.add(Expr::Div(new_num, new_den));
-            return Some(Rewrite {
-                new_expr,
-                description: "Cancel common factors".to_string(),
-                before_local: Some(expr),
-                after_local: Some(new_expr),
-                assumption_events,
-            required_conditions: vec![],
-            poly_proof: None,
-            });
+            return Some(Rewrite::new(new_expr)
+                .desc("Cancel common factors")
+                .local(expr, new_expr)
+                .assume_all(assumption_events));
         }
 
         None
@@ -2448,26 +2367,10 @@ define_rule!(
                         if !decision.allow {
                             return None; // In Strict mode, don't cancel unknown factors
                         }
-                        return Some(Rewrite {
-                            new_expr: ctx.num(1),
-                            description: "a^n / a^n = 1".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(ctx.num(1)).desc("a^n / a^n = 1"));
                     } else if diff.is_one() {
                         // Result is just the base
-                        return Some(Rewrite {
-                            new_expr: *b_n,
-                            description: "a^n / a^m = a^(n-m)".to_string(),
-                            before_local: None,
-                            after_local: None,
-                            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                        });
+                        return Some(Rewrite::new(*b_n).desc("a^n / a^m = a^(n-m)"));
                     } else {
                         // Guard: Don't produce negative fractional exponents (anti-pattern for rationalization)
                         // E.g., sqrt(x)/x should NOT become x^(-1/2) as it undoes rationalization
@@ -2493,15 +2396,7 @@ define_rule!(
                             return None;
                         }
                         if new_exp_val.is_one() {
-                            return Some(Rewrite {
-                                new_expr: *b_n,
-                                description: "a^n / a = a^(n-1)".to_string(),
-                                before_local: None,
-                                after_local: None,
-                                assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
-                            });
+                            return Some(Rewrite::new(*b_n).desc("a^n / a = a^(n-1)"));
                         } else {
                             let new_exp = ctx.add(Expr::Number(new_exp_val));
                             let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
