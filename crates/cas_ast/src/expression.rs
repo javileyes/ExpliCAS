@@ -269,6 +269,7 @@ impl Context {
 
         let id = ExprId::new(index, tag);
         self.nodes.push(canonical_expr);
+        self.stats.nodes_created += 1; // Track real creation (not cache hit)
 
         // Add to bucket (create new bucket if needed)
         self.interner.entry(hash).or_default().push(id);
