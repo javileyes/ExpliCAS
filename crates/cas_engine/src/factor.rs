@@ -25,7 +25,12 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
         return res;
     }
 
-    // 4. Recursive factorization?
+    // 4. Try perfect square trinomial: a² ± 2ab + b² = (a ± b)²
+    if let Some(res) = factor_perfect_square_trinomial(ctx, expr) {
+        return res;
+    }
+
+    // 5. Recursive factorization?
     // For now, just return original if no top-level factorization applies.
     // Ideally we should factor sub-expressions too.
     // But `factor` usually means "factor this polynomial".
@@ -234,6 +239,119 @@ pub fn factor_sophie_germain(ctx: &mut Context, expr: ExprId) -> Option<ExprId> 
 
     // Result: factor1 * factor2
     Some(mul2_raw(ctx, factor1, factor2))
+}
+
+/// Factors perfect square trinomials: a² ± 2ab + b² = (a ± b)²
+/// Examples:
+///   x² + 2xy + y² = (x + y)²
+///   x² - 2xy + y² = (x - y)²
+pub fn factor_perfect_square_trinomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    use crate::nary::{AddView, Sign};
+
+    // Collect all additive terms
+    let add_view = AddView::from_expr(ctx, expr);
+
+    if add_view.terms.len() != 3 {
+        return None;
+    }
+
+    // We need to find: a², b², and ±2ab
+    // Strategy: try each pair as (a², b²) and see if third term is ±2ab
+
+    for i in 0..3 {
+        for j in 0..3 {
+            if i == j {
+                continue;
+            }
+            let k = 3 - i - j; // the remaining index
+
+            // Get terms with their signs
+            let (term_i, sign_i) = add_view.terms[i];
+            let (term_j, sign_j) = add_view.terms[j];
+            let (term_k, sign_k) = add_view.terms[k];
+
+            // Both squared terms should be positive
+            if sign_i != Sign::Pos || sign_j != Sign::Pos {
+                continue;
+            }
+
+            // Extract square roots if they exist
+            let a = match get_square_root_base(ctx, term_i) {
+                Some(a) => a,
+                None => continue,
+            };
+            let b = match get_square_root_base(ctx, term_j) {
+                Some(b) => b,
+                None => continue,
+            };
+
+            // Check if term_k is 2ab (structurally)
+            if !is_2ab_term(ctx, term_k, a, b) {
+                continue;
+            }
+
+            // Found! Build (a ± b)²
+            let two = ctx.num(2);
+            let sum_or_diff = if sign_k == Sign::Pos {
+                ctx.add(Expr::Add(a, b))
+            } else {
+                ctx.add(Expr::Sub(a, b))
+            };
+
+            return Some(ctx.add(Expr::Pow(sum_or_diff, two)));
+        }
+    }
+
+    None
+}
+
+/// Helper: if expr is x^2, return x; otherwise None
+fn get_square_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() && *n.numer() == 2.into() {
+                    return Some(*base);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Helper: check if expr is 2*a*b (in any order)
+fn is_2ab_term(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> bool {
+    use crate::nary::MulView;
+
+    let mul_view = MulView::from_expr(ctx, expr);
+    let factors = &mul_view.factors;
+
+    // We expect 3 factors: 2, a, b
+    if factors.len() != 3 {
+        return false;
+    }
+
+    // Check if one factor is 2
+    let mut has_two = false;
+    let mut has_a = false;
+    let mut has_b = false;
+
+    for &f in factors.iter() {
+        if let Expr::Number(n) = ctx.get(f) {
+            if n.is_integer() && *n.numer() == 2.into() {
+                has_two = true;
+                continue;
+            }
+        }
+        if crate::ordering::compare_expr(ctx, f, a) == std::cmp::Ordering::Equal {
+            has_a = true;
+        } else if crate::ordering::compare_expr(ctx, f, b) == std::cmp::Ordering::Equal {
+            has_b = true;
+        }
+    }
+
+    has_two && has_a && has_b
 }
 
 // Helpers
