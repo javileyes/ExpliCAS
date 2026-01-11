@@ -935,171 +935,170 @@ fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
 define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
     use cas_ast::views::FractionParts;
 
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Add(l, r) = expr_data {
-        // First try FractionParts (handles direct Div and complex multiplicative patterns)
-        let fp_l = FractionParts::from(&*ctx, l);
-        let fp_r = FractionParts::from(&*ctx, r);
+    // Use zero-clone destructuring
+    let (l, r) = crate::helpers::as_add(ctx, expr)?;
 
-        let (n1, d1, is_frac1) = fp_l.to_num_den(ctx);
-        let (n2, d2, is_frac2) = fp_r.to_num_den(ctx);
+    // First try FractionParts (handles direct Div and complex multiplicative patterns)
+    let fp_l = FractionParts::from(&*ctx, l);
+    let fp_r = FractionParts::from(&*ctx, r);
 
-        // If FractionParts didn't detect fractions, try extract_as_fraction as fallback
-        // This handles Mul(1/n, x) pattern that FractionParts misses
-        let (n1, d1, is_frac1) = if !is_frac1 {
-            extract_as_fraction(ctx, l)
+    let (n1, d1, is_frac1) = fp_l.to_num_den(ctx);
+    let (n2, d2, is_frac2) = fp_r.to_num_den(ctx);
+
+    // If FractionParts didn't detect fractions, try extract_as_fraction as fallback
+    // This handles Mul(1/n, x) pattern that FractionParts misses
+    let (n1, d1, is_frac1) = if !is_frac1 {
+        extract_as_fraction(ctx, l)
+    } else {
+        (n1, d1, is_frac1)
+    };
+    let (n2, d2, is_frac2) = if !is_frac2 {
+        extract_as_fraction(ctx, r)
+    } else {
+        (n2, d2, is_frac2)
+    };
+
+    if !is_frac1 && !is_frac2 {
+        return None;
+    }
+
+    // Check if d2 = -d1 or d2 == d1 (semantic comparison for cross-tree equality)
+    let (n2, d2, opposite_denom, same_denom) = {
+        // Use semantic comparison: denominators from different subexpressions may have same value but different ExprIds
+        let cmp = crate::ordering::compare_expr(ctx, d1, d2);
+        if d1 == d2 || cmp == Ordering::Equal {
+            (n2, d2, false, true)
+        } else if are_denominators_opposite(ctx, d1, d2) {
+            // Convert d2 -> d1, n2 -> -n2
+            let minus_n2 = ctx.add(Expr::Neg(n2));
+            (minus_n2, d1, true, false)
         } else {
-            (n1, d1, is_frac1)
-        };
-        let (n2, d2, is_frac2) = if !is_frac2 {
-            extract_as_fraction(ctx, r)
-        } else {
-            (n2, d2, is_frac2)
-        };
+            (n2, d2, false, false)
+        }
+    };
 
-        if !is_frac1 && !is_frac2 {
-            return None;
+    // Check if one denominator divides the other (d2 = k * d1 or d1 = k * d2)
+    // This allows combining 1/2 + 1/(2n) = n/(2n) + 1/(2n) = (n+1)/(2n)
+    let (n1, n2, common_den, divisible_denom) = check_divisible_denominators(ctx, n1, n2, d1, d2);
+    let same_denom = same_denom || divisible_denom;
+
+    // Complexity heuristic
+    let old_complexity = count_nodes(ctx, expr);
+
+    // a/b + c/d = (ad + bc) / bd
+    let ad = mul2_raw(ctx, n1, d2);
+    let bc = mul2_raw(ctx, n2, d1);
+
+    let new_num = if opposite_denom || same_denom {
+        ctx.add(Expr::Add(n1, n2))
+    } else {
+        ctx.add(Expr::Add(ad, bc))
+    };
+
+    let new_den = if opposite_denom || same_denom {
+        common_den
+    } else {
+        mul2_raw(ctx, d1, d2)
+    };
+
+    // Try to simplify common den
+    let common_den = if same_denom || opposite_denom {
+        common_den
+    } else {
+        new_den
+    };
+
+    let new_expr = ctx.add(Expr::Div(new_num, common_den));
+    let new_complexity = count_nodes(ctx, new_expr);
+
+    // If complexity explodes, avoid adding fractions unless denominators are related
+    // Exception: if denominators are numbers, always combine: 1/2 + 1/3 = 5/6
+    let is_numeric = |e: ExprId| matches!(ctx.get(e), Expr::Number(_));
+    if is_numeric(d1) && is_numeric(d2) {
+        return Some(Rewrite::new(new_expr).desc("Add numeric fractions"));
+    }
+
+    let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> (bool, bool) {
+        // Heuristics to see if new fraction simplifies
+        // e.g. cancellation of factors
+        // or algebraic simplification
+        // Just checking if we reduced node count isn't enough,
+        // because un-added fractions might be smaller locally but harder to work with.
+        // But we don't want to create massive expressions.
+
+        // Factor cancellation check would be good.
+        // Is there a factor F in num and den?
+
+        // Check if num is 0
+        if let Expr::Number(n) = ctx.get(num) {
+            if n.is_zero() {
+                return (true, true);
+            }
         }
 
-        // Check if d2 = -d1 or d2 == d1 (semantic comparison for cross-tree equality)
-        let (n2, d2, opposite_denom, same_denom) = {
-            // Use semantic comparison: denominators from different subexpressions may have same value but different ExprIds
-            let cmp = crate::ordering::compare_expr(ctx, d1, d2);
-            if d1 == d2 || cmp == Ordering::Equal {
-                (n2, d2, false, true)
-            } else if are_denominators_opposite(ctx, d1, d2) {
-                // Convert d2 -> d1, n2 -> -n2
-                let minus_n2 = ctx.add(Expr::Neg(n2));
-                (minus_n2, d1, true, false)
+        // Check negation
+        let is_negation = |ctx: &Context, a: ExprId, b: ExprId| -> bool {
+            if let Expr::Neg(n) = ctx.get(a) {
+                *n == b
+            } else if let Expr::Neg(n) = ctx.get(b) {
+                *n == a
+            } else if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(a), ctx.get(b)) {
+                n1 == &-n2
             } else {
-                (n2, d2, false, false)
+                false
             }
         };
 
-        // Check if one denominator divides the other (d2 = k * d1 or d1 = k * d2)
-        // This allows combining 1/2 + 1/(2n) = n/(2n) + 1/(2n) = (n+1)/(2n)
-        let (n1, n2, common_den, divisible_denom) =
-            check_divisible_denominators(ctx, n1, n2, d1, d2);
-        let same_denom = same_denom || divisible_denom;
-
-        // Complexity heuristic
-        let old_complexity = count_nodes(ctx, expr);
-
-        // a/b + c/d = (ad + bc) / bd
-        let ad = mul2_raw(ctx, n1, d2);
-        let bc = mul2_raw(ctx, n2, d1);
-
-        let new_num = if opposite_denom || same_denom {
-            ctx.add(Expr::Add(n1, n2))
-        } else {
-            ctx.add(Expr::Add(ad, bc))
-        };
-
-        let new_den = if opposite_denom || same_denom {
-            common_den
-        } else {
-            mul2_raw(ctx, d1, d2)
-        };
-
-        // Try to simplify common den
-        let common_den = if same_denom || opposite_denom {
-            common_den
-        } else {
-            new_den
-        };
-
-        let new_expr = ctx.add(Expr::Div(new_num, common_den));
-        let new_complexity = count_nodes(ctx, new_expr);
-
-        // If complexity explodes, avoid adding fractions unless denominators are related
-        // Exception: if denominators are numbers, always combine: 1/2 + 1/3 = 5/6
-        let is_numeric = |e: ExprId| matches!(ctx.get(e), Expr::Number(_));
-        if is_numeric(d1) && is_numeric(d2) {
-            return Some(Rewrite::new(new_expr).desc("Add numeric fractions"));
+        if is_negation(ctx, num, den) {
+            return (true, false);
         }
 
-        let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> (bool, bool) {
-            // Heuristics to see if new fraction simplifies
-            // e.g. cancellation of factors
-            // or algebraic simplification
-            // Just checking if we reduced node count isn't enough,
-            // because un-added fractions might be smaller locally but harder to work with.
-            // But we don't want to create massive expressions.
-
-            // Factor cancellation check would be good.
-            // Is there a factor F in num and den?
-
-            // Check if num is 0
-            if let Expr::Number(n) = ctx.get(num) {
-                if n.is_zero() {
-                    return (true, true);
-                }
-            }
-
-            // Check negation
-            let is_negation = |ctx: &Context, a: ExprId, b: ExprId| -> bool {
-                if let Expr::Neg(n) = ctx.get(a) {
-                    *n == b
-                } else if let Expr::Neg(n) = ctx.get(b) {
-                    *n == a
-                } else if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(a), ctx.get(b)) {
-                    n1 == &-n2
-                } else {
-                    false
-                }
-            };
-
-            if is_negation(ctx, num, den) {
-                return (true, false);
-            }
-
-            // Try Polynomial GCD Check
-            let vars = collect_variables(ctx, new_num);
-            if vars.len() == 1 {
-                if let Some(var) = vars.iter().next() {
-                    if let Ok(p_num) = Polynomial::from_expr(ctx, new_num, var) {
-                        if let Ok(p_den) = Polynomial::from_expr(ctx, common_den, var) {
-                            if !p_den.is_zero() {
-                                let gcd = p_num.gcd(&p_den);
-                                if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
-                                    // println!(
-                                    //     "  -> Simplifies via GCD! deg={} lc={}",
-                                    //     gcd.degree(),
-                                    //     gcd.leading_coeff()
-                                    // );
-                                    let is_proper = p_num.degree() < p_den.degree();
-                                    return (true, is_proper);
-                                }
+        // Try Polynomial GCD Check
+        let vars = collect_variables(ctx, new_num);
+        if vars.len() == 1 {
+            if let Some(var) = vars.iter().next() {
+                if let Ok(p_num) = Polynomial::from_expr(ctx, new_num, var) {
+                    if let Ok(p_den) = Polynomial::from_expr(ctx, common_den, var) {
+                        if !p_den.is_zero() {
+                            let gcd = p_num.gcd(&p_den);
+                            if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
+                                // println!(
+                                //     "  -> Simplifies via GCD! deg={} lc={}",
+                                //     gcd.degree(),
+                                //     gcd.leading_coeff()
+                                // );
+                                let is_proper = p_num.degree() < p_den.degree();
+                                return (true, is_proper);
                             }
                         }
                     }
                 }
             }
-
-            (false, false)
-        };
-
-        let (does_simplify, is_proper) = simplifies(ctx, new_num, common_den);
-
-        // println!(
-        //     "AddFractions check: old={} new={} simplify={} limit={}",
-        //     old_complexity,
-        //     new_complexity,
-        //     does_simplify,
-        //     (old_complexity * 3) / 2
-        // );
-
-        // Allow complexity growth if we found a simplification (GCD)
-        // BUT strict check against improper fractions to prevent loops with polynomial division
-        // (DividePolynomialsRule splits improper fractions, AddFractions combines them -> loop)
-        if opposite_denom
-            || same_denom
-            || new_complexity <= old_complexity
-            || (does_simplify && is_proper && new_complexity < (old_complexity * 2))
-        {
-            // println!("AddFractions APPLIED: old={} new={} simplify={}", old_complexity, new_complexity, does_simplify);
-            return Some(Rewrite::new(new_expr).desc("Add fractions: a/b + c/d -> (ad+bc)/bd"));
         }
+
+        (false, false)
+    };
+
+    let (does_simplify, is_proper) = simplifies(ctx, new_num, common_den);
+
+    // println!(
+    //     "AddFractions check: old={} new={} simplify={} limit={}",
+    //     old_complexity,
+    //     new_complexity,
+    //     does_simplify,
+    //     (old_complexity * 3) / 2
+    // );
+
+    // Allow complexity growth if we found a simplification (GCD)
+    // BUT strict check against improper fractions to prevent loops with polynomial division
+    // (DividePolynomialsRule splits improper fractions, AddFractions combines them -> loop)
+    if opposite_denom
+        || same_denom
+        || new_complexity <= old_complexity
+        || (does_simplify && is_proper && new_complexity < (old_complexity * 2))
+    {
+        // println!("AddFractions APPLIED: old={} new={} simplify={}", old_complexity, new_complexity, does_simplify);
+        return Some(Rewrite::new(new_expr).desc("Add fractions: a/b + c/d -> (ad+bc)/bd"));
     }
     None
 });
@@ -1136,19 +1135,23 @@ fn sign_one(ctx: &Context, id: ExprId) -> Option<SignOne> {
 /// Returns (left_term, right_term_normalized, is_add_normalized, right_is_abs_one)
 fn split_binomial_den(ctx: &mut Context, den: ExprId) -> Option<(ExprId, ExprId, bool, bool)> {
     let one = ctx.num(1);
-    match ctx.get(den).clone() {
-        Expr::Add(l, r) => match sign_one(ctx, r) {
+
+    // Use zero-clone helpers
+    if let Some((l, r)) = crate::helpers::as_add(ctx, den) {
+        return match sign_one(ctx, r) {
             Some(SignOne::PlusOne) => Some((l, one, true, true)), // l + 1
             Some(SignOne::MinusOne) => Some((l, one, false, true)), // l + (-1) → l - 1
             None => Some((l, r, true, false)),                    // l + r
-        },
-        Expr::Sub(l, r) => match sign_one(ctx, r) {
+        };
+    }
+    if let Some((l, r)) = crate::helpers::as_sub(ctx, den) {
+        return match sign_one(ctx, r) {
             Some(SignOne::PlusOne) => Some((l, one, false, true)), // l - 1
             Some(SignOne::MinusOne) => Some((l, one, true, true)), // l - (-1) → l + 1
             None => Some((l, r, false, false)),                    // l - r
-        },
-        _ => None,
+        };
     }
+    None
 }
 
 define_rule!(
@@ -1836,33 +1839,35 @@ fn collect_factors_recursive(ctx: &Context, expr: ExprId, factors: &mut Vec<Expr
 /// Extract root from expression: sqrt(n) or n^(1/k)
 /// Returns (radicand, index) where expr = radicand^(1/index)
 fn extract_root_base(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
-    match ctx.get(expr).clone() {
-        Expr::Function(name, args) if name == "sqrt" && !args.is_empty() => {
-            // sqrt(n) = n^(1/2), return (n, 2)
-            let two = ctx.num(2);
-            Some((args[0], two))
-        }
-        Expr::Pow(base, exp) => {
-            if let Expr::Number(n) = ctx.get(exp).clone() {
-                if !n.is_integer() && n.numer().is_one() {
-                    // n^(1/k) - return (n, k)
-                    let k_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
-                        n.denom().clone(),
-                    )));
-                    return Some((base, k_expr));
-                }
-            }
-            if let Expr::Div(num_exp, den_exp) = ctx.get(exp).clone() {
-                if let Expr::Number(n) = ctx.get(num_exp).clone() {
-                    if n.is_one() {
-                        return Some((base, den_exp));
-                    }
-                }
-            }
-            None
-        }
-        _ => None,
+    // Check for sqrt(n) function - use zero-clone helper
+    if let Some(arg) = crate::helpers::as_fn1(ctx, expr, "sqrt") {
+        // sqrt(n) = n^(1/2), return (n, 2)
+        let two = ctx.num(2);
+        return Some((arg, two));
     }
+
+    // Check for Pow(base, exp) - use zero-clone helper
+    if let Some((base, exp)) = crate::helpers::as_pow(ctx, expr) {
+        // Check if exp is a Number like 1/k
+        if let Some(n) = crate::helpers::as_number(ctx, exp) {
+            if !n.is_integer() && n.numer().is_one() {
+                // n^(1/k) - return (n, k)
+                let k_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+                    n.denom().clone(),
+                )));
+                return Some((base, k_expr));
+            }
+        }
+        // Check if exp is Div(1, k)
+        if let Some((num_exp, den_exp)) = crate::helpers::as_div(ctx, exp) {
+            if let Some(n) = crate::helpers::as_number(ctx, num_exp) {
+                if n.is_one() {
+                    return Some((base, den_exp));
+                }
+            }
+        }
+    }
+    None
 }
 
 define_rule!(
