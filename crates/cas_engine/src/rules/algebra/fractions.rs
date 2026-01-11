@@ -1249,11 +1249,13 @@ define_rule!(
         let (num, den, _) = fp.to_num_den(ctx);
 
         // Match den = t ± r where t = base^(1/n) with n >= 3
-        let den_data = ctx.get(den).clone();
-        let (t, r, is_sub) = match den_data {
-            Expr::Add(l, r) => (l, r, false),
-            Expr::Sub(l, r) => (l, r, true),
-            _ => return None,
+        // Use zero-clone destructuring
+        let (t, r, is_sub) = if let Some((l, r)) = crate::helpers::as_add(ctx, den) {
+            (l, r, false)
+        } else if let Some((l, r)) = crate::helpers::as_sub(ctx, den) {
+            (l, r, true)
+        } else {
+            return None;
         };
 
         // Check if t is a^(1/n) with n >= 3
@@ -1402,11 +1404,13 @@ define_rule!(
         let (num, den, _) = fp.to_num_den(ctx);
 
         // Match den = t ± r where t = u^(1/n)
-        let den_data = ctx.get(den).clone();
-        let (left, right, den_is_add) = match den_data {
-            Expr::Add(l, r) => (l, r, true),
-            Expr::Sub(l, r) => (l, r, false),
-            _ => return None,
+        // Use zero-clone destructuring
+        let (left, right, den_is_add) = if let Some((l, r)) = crate::helpers::as_add(ctx, den) {
+            (l, r, true)
+        } else if let Some((l, r)) = crate::helpers::as_sub(ctx, den) {
+            (l, r, false)
+        } else {
+            return None;
         };
 
         // Helper to extract (base, n) from u^(1/n)
@@ -1470,12 +1474,15 @@ define_rule!(
         };
 
         // Check if numerator matches expected pattern
-        let num_data = ctx.get(num).clone();
-        let (num_left, num_right, num_is_add) = match num_data {
-            Expr::Add(l, rr) => (l, rr, true),
-            Expr::Sub(l, rr) => (l, rr, false),
-            _ => return None,
-        };
+        // Use zero-clone destructuring
+        let (num_left, num_right, num_is_add) =
+            if let Some((l, rr)) = crate::helpers::as_add(ctx, num) {
+                (l, rr, true)
+            } else if let Some((l, rr)) = crate::helpers::as_sub(ctx, num) {
+                (l, rr, false)
+            } else {
+                return None;
+            };
 
         if num_is_add != expected_num_is_add {
             return None;
@@ -2694,11 +2701,8 @@ define_rule!(
         use num_rational::BigRational;
         use num_traits::ToPrimitive;
 
-        // Only match Div expressions
-        let (num, den) = match ctx.get(expr).clone() {
-            Expr::Div(n, d) => (n, d),
-            _ => return None,
-        };
+        // Only match Div expressions - use zero-clone helper
+        let (num, den) = crate::helpers::as_div(ctx, expr)?;
 
         // Check denominator for Pow(Number(n), 1/2) patterns
         // We need to find exactly one surd in the denominator factors
@@ -2835,10 +2839,10 @@ define_rule!(
         use num_rational::BigRational;
         use num_traits::ToPrimitive;
 
-        // Only match Div expressions
-        let (num, den) = match ctx.get(expr).clone() {
-            Expr::Div(n, d) => (n, d),
-            _ => {
+        // Only match Div expressions - use zero-clone helper
+        let (num, den) = match crate::helpers::as_div(ctx, expr) {
+            Some((n, d)) => (n, d),
+            None => {
                 tracing::trace!(target: "rationalize", "skipped: not a division");
                 return None;
             }
