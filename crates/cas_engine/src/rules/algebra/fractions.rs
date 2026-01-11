@@ -386,15 +386,13 @@ fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool
     use num_rational::BigRational;
     use num_traits::Signed;
 
-    let expr_data = ctx.get(expr).clone();
-
-    // Case 1: Direct Div
-    if let Expr::Div(num, den) = expr_data {
+    // Case 1: Direct Div - use zero-clone destructuring
+    if let Some((num, den)) = crate::helpers::as_div(ctx, expr) {
         return (num, den, true);
     }
 
     // Case 2 & 3: Mul with fractional coefficient
-    if let Expr::Mul(l, r) = expr_data {
+    if let Some((l, r)) = crate::helpers::as_mul(ctx, expr) {
         // Helper to check if a Number is ±1/n and extract denominator
         let check_unit_fraction = |n: &BigRational| -> Option<(BigInt, bool)> {
             if n.is_integer() {
@@ -415,24 +413,22 @@ fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool
 
         // Helper to check if expression is Div(1, den) or Div(-1, den)
         let check_unit_div = |factor: ExprId| -> Option<(ExprId, bool)> {
-            if let Expr::Div(num, den) = ctx.get(factor).clone() {
-                if let Expr::Number(n) = ctx.get(num) {
-                    if n.is_integer() {
-                        let n_val = n.numer();
-                        if *n_val == BigInt::from(1) {
-                            return Some((den, false));
-                        } else if *n_val == BigInt::from(-1) {
-                            return Some((den, true));
-                        }
-                    }
+            let (num, den) = crate::helpers::as_div(ctx, factor)?;
+            let n = crate::helpers::as_number(ctx, num)?;
+            if n.is_integer() {
+                let n_val = n.numer();
+                if *n_val == BigInt::from(1) {
+                    return Some((den, false));
+                } else if *n_val == BigInt::from(-1) {
+                    return Some((den, true));
                 }
             }
             None
         };
 
         // Case 2: Check for Number(±1/n)
-        if let Expr::Number(n) = ctx.get(l).clone() {
-            if let Some((denom, is_neg)) = check_unit_fraction(&n) {
+        if let Some(n) = crate::helpers::as_number(ctx, l) {
+            if let Some((denom, is_neg)) = check_unit_fraction(n) {
                 let denom_expr = ctx.add(Expr::Number(BigRational::from_integer(denom)));
                 if is_neg {
                     let neg_r = ctx.add(Expr::Neg(r));
@@ -441,8 +437,8 @@ fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool
                 return (r, denom_expr, true);
             }
         }
-        if let Expr::Number(n) = ctx.get(r).clone() {
-            if let Some((denom, is_neg)) = check_unit_fraction(&n) {
+        if let Some(n) = crate::helpers::as_number(ctx, r) {
+            if let Some((denom, is_neg)) = check_unit_fraction(n) {
                 let denom_expr = ctx.add(Expr::Number(BigRational::from_integer(denom)));
                 if is_neg {
                     let neg_l = ctx.add(Expr::Neg(l));
@@ -757,94 +753,94 @@ define_rule!(
     |ctx, expr| {
         use cas_ast::views::FractionParts;
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Mul(l, r) = expr_data {
-            // Use FractionParts to detect any fraction-like structure
-            let fp_l = FractionParts::from(&*ctx, l);
-            let fp_r = FractionParts::from(&*ctx, r);
+        // Use zero-clone destructuring
+        let (l, r) = crate::helpers::as_mul(ctx, expr)?;
 
-            // If neither side has denominators, nothing to do
-            if !fp_l.is_fraction() && !fp_r.is_fraction() {
-                return None;
-            }
+        // Use FractionParts to detect any fraction-like structure
+        let fp_l = FractionParts::from(&*ctx, l);
+        let fp_r = FractionParts::from(&*ctx, r);
 
-            // Check for simple cancellation: (a/b) * b -> a
-            // Only for simple cases to avoid over-simplification
-            if fp_l.is_fraction() && fp_l.den.len() == 1 && fp_l.den[0].exp == 1 {
-                let den_base = fp_l.den[0].base;
-                // Check if r equals the denominator
-                if crate::ordering::compare_expr(ctx, den_base, r) == std::cmp::Ordering::Equal {
-                    // Cancel: (a/b) * b -> a
-                    let result = if fp_l.num.is_empty() {
-                        ctx.num(fp_l.sign as i64)
+        // If neither side has denominators, nothing to do
+        if !fp_l.is_fraction() && !fp_r.is_fraction() {
+            return None;
+        }
+
+        // Check for simple cancellation: (a/b) * b -> a
+        // Only for simple cases to avoid over-simplification
+        if fp_l.is_fraction() && fp_l.den.len() == 1 && fp_l.den[0].exp == 1 {
+            let den_base = fp_l.den[0].base;
+            // Check if r equals the denominator
+            if crate::ordering::compare_expr(ctx, den_base, r) == std::cmp::Ordering::Equal {
+                // Cancel: (a/b) * b -> a
+                let result = if fp_l.num.is_empty() {
+                    ctx.num(fp_l.sign as i64)
+                } else {
+                    let num_prod = FractionParts::build_product_static(ctx, &fp_l.num);
+                    if fp_l.sign < 0 {
+                        ctx.add(Expr::Neg(num_prod))
                     } else {
-                        let num_prod = FractionParts::build_product_static(ctx, &fp_l.num);
-                        if fp_l.sign < 0 {
-                            ctx.add(Expr::Neg(num_prod))
-                        } else {
-                            num_prod
-                        }
-                    };
-                    return Some(Rewrite::new(result).desc("Cancel division: (a/b)*b -> a"));
-                }
-            }
-
-            // Check for simple cancellation: a * (b/a) -> b
-            if fp_r.is_fraction() && fp_r.den.len() == 1 && fp_r.den[0].exp == 1 {
-                let den_base = fp_r.den[0].base;
-                if crate::ordering::compare_expr(ctx, den_base, l) == std::cmp::Ordering::Equal {
-                    let result = if fp_r.num.is_empty() {
-                        ctx.num(fp_r.sign as i64)
-                    } else {
-                        let num_prod = FractionParts::build_product_static(ctx, &fp_r.num);
-                        if fp_r.sign < 0 {
-                            ctx.add(Expr::Neg(num_prod))
-                        } else {
-                            num_prod
-                        }
-                    };
-                    return Some(Rewrite::new(result).desc("Cancel division: a*(b/a) -> b"));
-                }
-            }
-
-            // Avoid combining if either side is just a constant (prefer k * (a/b) for CombineLikeTerms)
-            if matches!(ctx.get(l), Expr::Number(_) | Expr::Constant(_))
-                || matches!(ctx.get(r), Expr::Number(_) | Expr::Constant(_))
-            {
-                return None;
-            }
-
-            // Combine into single fraction: (n1/d1) * (n2/d2) -> (n1*n2)/(d1*d2)
-            // Only do this if at least one side is an actual fraction
-            if fp_l.is_fraction() || fp_r.is_fraction() {
-                // Build combined numerator: products of all num factors
-                let mut combined_num = Vec::new();
-                combined_num.extend(fp_l.num.iter().cloned());
-                combined_num.extend(fp_r.num.iter().cloned());
-
-                // Build combined denominator
-                let mut combined_den = Vec::new();
-                combined_den.extend(fp_l.den.iter().cloned());
-                combined_den.extend(fp_r.den.iter().cloned());
-
-                let combined_sign = (fp_l.sign as i16 * fp_r.sign as i16) as i8;
-
-                let result_fp = FractionParts {
-                    sign: combined_sign,
-                    num: combined_num,
-                    den: combined_den,
+                        num_prod
+                    }
                 };
-
-                // Build as division for didactic output
-                let new_expr = result_fp.build_as_div(ctx);
-
-                // Avoid no-op rewrites
-                if new_expr == expr {
-                    return None;
-                }
-
-                return Some(Rewrite::new(new_expr).desc("Combine fractions in multiplication"));
+                return Some(Rewrite::new(result).desc("Cancel division: (a/b)*b -> a"));
             }
+        }
+
+        // Check for simple cancellation: a * (b/a) -> b
+        if fp_r.is_fraction() && fp_r.den.len() == 1 && fp_r.den[0].exp == 1 {
+            let den_base = fp_r.den[0].base;
+            if crate::ordering::compare_expr(ctx, den_base, l) == std::cmp::Ordering::Equal {
+                let result = if fp_r.num.is_empty() {
+                    ctx.num(fp_r.sign as i64)
+                } else {
+                    let num_prod = FractionParts::build_product_static(ctx, &fp_r.num);
+                    if fp_r.sign < 0 {
+                        ctx.add(Expr::Neg(num_prod))
+                    } else {
+                        num_prod
+                    }
+                };
+                return Some(Rewrite::new(result).desc("Cancel division: a*(b/a) -> b"));
+            }
+        }
+
+        // Avoid combining if either side is just a constant (prefer k * (a/b) for CombineLikeTerms)
+        if matches!(ctx.get(l), Expr::Number(_) | Expr::Constant(_))
+            || matches!(ctx.get(r), Expr::Number(_) | Expr::Constant(_))
+        {
+            return None;
+        }
+
+        // Combine into single fraction: (n1/d1) * (n2/d2) -> (n1*n2)/(d1*d2)
+        // Only do this if at least one side is an actual fraction
+        if fp_l.is_fraction() || fp_r.is_fraction() {
+            // Build combined numerator: products of all num factors
+            let mut combined_num = Vec::new();
+            combined_num.extend(fp_l.num.iter().cloned());
+            combined_num.extend(fp_r.num.iter().cloned());
+
+            // Build combined denominator
+            let mut combined_den = Vec::new();
+            combined_den.extend(fp_l.den.iter().cloned());
+            combined_den.extend(fp_r.den.iter().cloned());
+
+            let combined_sign = (fp_l.sign as i16 * fp_r.sign as i16) as i8;
+
+            let result_fp = FractionParts {
+                sign: combined_sign,
+                num: combined_num,
+                den: combined_den,
+            };
+
+            // Build as division for didactic output
+            let new_expr = result_fp.build_as_div(ctx);
+
+            // Avoid no-op rewrites
+            if new_expr == expr {
+                return None;
+            }
+
+            return Some(Rewrite::new(new_expr).desc("Combine fractions in multiplication"));
         }
         None
     }
