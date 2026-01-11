@@ -4634,9 +4634,9 @@ impl Repl {
                             println!("ℹ️ Requires:");
                             for item in requires_to_show {
                                 if self.debug_mode {
-                                    println!("  - {}", item.display_with_origin(ctx));
+                                    println!("  • {}", item.display_with_origin(ctx));
                                 } else {
-                                    println!("  - {}", item.cond.display(ctx));
+                                    println!("  • {}", item.cond.display(ctx));
                                 }
                             }
                         }
@@ -5266,9 +5266,9 @@ impl Repl {
                                 for item in &filtered {
                                     if debug_mode {
                                         // Show with origins for pedagogical transparency
-                                        println!("  - {}", item.display_with_origin(ctx));
+                                        println!("  • {}", item.display_with_origin(ctx));
                                     } else {
-                                        println!("  - {}", item.cond.display(ctx));
+                                        println!("  • {}", item.cond.display(ctx));
                                     }
                                 }
                             }
