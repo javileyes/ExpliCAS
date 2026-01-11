@@ -20,7 +20,12 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
         return res;
     }
 
-    // 3. Recursive factorization?
+    // 3. Try Sophie Germain identity: a^4 + 4b^4 = (a² + 2ab + 2b²)(a² - 2ab + 2b²)
+    if let Some(res) = factor_sophie_germain(ctx, expr) {
+        return res;
+    }
+
+    // 4. Recursive factorization?
     // For now, just return original if no top-level factorization applies.
     // Ideally we should factor sub-expressions too.
     // But `factor` usually means "factor this polynomial".
@@ -142,6 +147,93 @@ pub fn factor_difference_squares(ctx: &mut Context, expr: ExprId) -> Option<Expr
         return Some(new_expr);
     }
     None
+}
+
+/// Factors Sophie Germain identity: a^4 + 4b^4 = (a² + 2ab + 2b²)(a² - 2ab + 2b²)
+/// Example: x^4 + 64 = x^4 + 4·16 = x^4 + 4·2^4 → (x² + 4x + 8)(x² - 4x + 8)
+pub fn factor_sophie_germain(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    // Match a^4 + k where k = 4b^4 for some integer b
+    let expr_data = ctx.get(expr).clone();
+
+    let (left, right) = match expr_data {
+        Expr::Add(l, r) => (l, r),
+        _ => return None,
+    };
+
+    // Helper: check if one term is a^4 and other is 4b^4
+    fn try_match(ctx: &Context, term_pow: ExprId, term_num: ExprId) -> Option<(ExprId, i64)> {
+        // Check if term_pow is a^4
+        let a = match ctx.get(term_pow) {
+            Expr::Pow(base, exp) => {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() && *n.numer() == 4.into() {
+                        *base
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // Check if term_num is 4b^4 for integer b
+        if let Expr::Number(n) = ctx.get(term_num) {
+            if !n.is_integer() || !n.is_positive() {
+                return None;
+            }
+            let k = n.numer().to_i64()?;
+
+            // k = 4·b^4, so k must be divisible by 4
+            if k % 4 != 0 {
+                return None;
+            }
+            let b4 = k / 4;
+
+            // Check if b4 is a perfect 4th power
+            let b_f64 = (b4 as f64).powf(0.25);
+            let b_int = b_f64.round() as i64;
+            if b_int.pow(4) != b4 {
+                return None;
+            }
+
+            return Some((a, b_int));
+        }
+        None
+    }
+
+    // Try both orders: (a^4, k) or (k, a^4)
+    let (a, b_val) = try_match(ctx, left, right).or_else(|| try_match(ctx, right, left))?;
+
+    // Now build: (a² + 2ab + 2b²)(a² - 2ab + 2b²)
+    let b = ctx.num(b_val);
+    let two = ctx.num(2);
+
+    // a²
+    let a_sq = ctx.add(Expr::Pow(a, two));
+
+    // b²
+    let b_sq = ctx.add(Expr::Pow(b, two));
+
+    // 2b²
+    let two_b_sq = mul2_raw(ctx, two, b_sq);
+
+    // 2ab (split to avoid nested mutable borrow)
+    let ab = mul2_raw(ctx, a, b);
+    let two_ab = mul2_raw(ctx, two, ab);
+
+    // a² + 2b² (common part)
+    let a_sq_plus_2b_sq = ctx.add(Expr::Add(a_sq, two_b_sq));
+
+    // First factor: a² + 2ab + 2b² = (a² + 2b²) + 2ab
+    let factor1 = ctx.add(Expr::Add(a_sq_plus_2b_sq, two_ab));
+
+    // Second factor: a² - 2ab + 2b² = (a² + 2b²) - 2ab
+    let factor2 = ctx.add(Expr::Sub(a_sq_plus_2b_sq, two_ab));
+
+    // Result: factor1 * factor2
+    Some(mul2_raw(ctx, factor1, factor2))
 }
 
 // Helpers

@@ -264,19 +264,26 @@ define_rule!(
     "Evaluate Meta Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(name, args) = ctx.get(expr).clone() {
             if args.len() == 1 {
+                let arg = args[0];
                 match name.as_str() {
-                    // simplify() and factor() are transparent - argument already processed
-                    "simplify" | "factor" => {
-                        return Some(
-                            Rewrite::new(args[0])
-                                .desc(format!("{}(x) = x (already processed)", name)),
-                        );
+                    // simplify() is transparent - argument already processed
+                    "simplify" => {
+                        return Some(Rewrite::new(arg).desc("simplify(x) = x (already processed)"));
+                    }
+                    // factor() calls actual factorization logic
+                    "factor" => {
+                        let factored = crate::factor::factor(ctx, arg);
+                        if factored != arg {
+                            return Some(Rewrite::new(factored).desc("factor(x) → factored form"));
+                        }
+                        // No change - return as-is (irreducible)
+                        return Some(Rewrite::new(arg).desc("factor(x) = x (irreducible)"));
                     }
                     // expand() needs to call actual expansion logic
                     "expand" => {
-                        let expanded = crate::expand::expand(ctx, args[0]);
+                        let expanded = crate::expand::expand(ctx, arg);
                         return Some(Rewrite::new(expanded).desc("expand(x) → expanded form"));
                     }
                     _ => {}
