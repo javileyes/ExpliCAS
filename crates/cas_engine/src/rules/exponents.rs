@@ -706,21 +706,29 @@ define_rule!(
                     // NOTE: 0^x → 0 requires x > 0 (0^0 undefined, 0^(-n) undefined)
                     // This is a Type C "domain pruning" rule - dangerous for solvers
                     // because it destroys the x > 0 constraint needed for correct solution sets.
-                    // Only apply in Assume mode with explicit assumption.
+                    // Use the canonical Analytic gate with pedagogical hint for Generic mode.
                     let mode = parent_ctx.domain_mode();
-                    match mode {
-                        DomainMode::Generic | DomainMode::Strict => {
-                            // Don't simplify - preserve the structure for solver
-                            // In Generic: we could assume, but prefer to keep branch info
-                            // In Strict: can't assume x > 0
-                            return None;
+                    let vd = parent_ctx.value_domain();
+                    let proof = crate::helpers::prove_positive(ctx, exp, vd);
+                    let key = crate::assumptions::AssumptionKey::positive_key(ctx, exp);
+                    let decision = crate::domain::can_apply_analytic_with_hint(
+                        mode,
+                        proof,
+                        key,
+                        exp,
+                        "Evaluate Power",
+                    );
+
+                    if decision.allow {
+                        let mut rewrite = Rewrite::new(ctx.num(0)).desc("0^x → 0");
+                        // Add assumption events if any
+                        for event in decision.assumption_events(ctx, exp) {
+                            rewrite = rewrite.assume(event);
                         }
-                        DomainMode::Assume => {
-                            return Some(Rewrite::new(ctx.num(0))
-                                .desc("0^x → 0 (assuming x > 0)")
-                                .assume(crate::assumptions::AssumptionEvent::positive(ctx, exp)));
-                        }
+                        return Some(rewrite);
                     }
+                    // Blocked: hint already registered by can_apply_analytic_with_hint
+                    return None;
                 }
             }
         }

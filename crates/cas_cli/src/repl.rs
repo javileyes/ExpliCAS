@@ -5367,7 +5367,8 @@ impl Repl {
 
                         // Display blocked hints (pedagogical warnings for Generic mode)
                         // Respects hints_enabled option (can be toggled with `semantics set hints off`)
-                        let hints = self.engine.simplifier.take_blocked_hints();
+                        // NOTE: Use output.blocked_hints which were collected by eval() from thread-local
+                        let hints = &output.blocked_hints;
                         if !hints.is_empty() && self.state.options.hints_enabled {
                             let ctx = &self.engine.simplifier.context;
 
@@ -5389,7 +5390,7 @@ impl Repl {
                             // Group hints by rule name
                             let mut grouped: std::collections::HashMap<&str, Vec<String>> =
                                 std::collections::HashMap::new();
-                            for hint in &hints {
+                            for hint in hints {
                                 grouped
                                     .entry(hint.rule)
                                     .or_default()

@@ -75,15 +75,32 @@ impl ImplicitCondition {
         }
     }
 
-    /// Check if this condition is trivial (on a constant expression).
-    /// Trivial conditions like "2 > 0" should be filtered from display.
+    /// Check if this condition is trivial (always true or on a constant expression).
+    /// Trivial conditions like "2 > 0" or "x² ≥ 0" should be filtered from display.
     pub fn is_trivial(&self, ctx: &Context) -> bool {
         let expr = match self {
             ImplicitCondition::NonNegative(e) => *e,
             ImplicitCondition::Positive(e) => *e,
             ImplicitCondition::NonZero(e) => *e,
         };
-        !contains_variable(ctx, expr)
+
+        // Case 1: No variables = fully numeric constant (always trivial)
+        if !contains_variable(ctx, expr) {
+            return true;
+        }
+
+        // Case 2: For NonNegative, check if expression is always ≥ 0 (like x²)
+        if let ImplicitCondition::NonNegative(e) = self {
+            // Check for patterns that are always non-negative:
+            // - x² (even power of variable)
+            // - |x| (absolute value)
+            // - x² + y² (sum of squares)
+            if is_always_nonnegative(ctx, *e) {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Check if this condition's witness survives in the output expression.
@@ -687,6 +704,53 @@ fn contains_variable(ctx: &Context, expr: ExprId) -> bool {
         Expr::Neg(inner) => contains_variable(ctx, *inner),
         Expr::Function(_, args) => args.iter().any(|a| contains_variable(ctx, *a)),
         Expr::Matrix { data, .. } => data.iter().any(|e| contains_variable(ctx, *e)),
+    }
+}
+
+/// Check if an expression is always non-negative for real values.
+/// Returns true for patterns like:
+/// - x² (x^2 for any even exponent)
+/// - |x| (absolute value)
+/// - x⁴, x⁶, etc. (any even power)
+fn is_always_nonnegative(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        // Numeric constants: check if ≥ 0
+        Expr::Number(n) => *n >= BigRational::from_integer(0.into()),
+
+        // x^n where n is an even positive integer
+        Expr::Pow(_base, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                // Even integer exponent means always non-negative for real base
+                if n.is_integer() {
+                    let numer = n.numer();
+                    if numer.is_even() && *numer > num_bigint::BigInt::from(0) {
+                        return true;
+                    }
+                }
+            }
+            // Fallback: check if base is non-negative and exponent is positive
+            false
+        }
+
+        // |x| is always non-negative
+        Expr::Function(name, args) if name == "abs" && args.len() == 1 => true,
+
+        // sqrt(x) is non-negative by definition (for real)
+        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => true,
+
+        // x * x where both sides are the same = x², always non-negative
+        Expr::Mul(l, r) => {
+            if *l == *r {
+                return true; // x * x = x²
+            }
+            // Product of two non-negatives is non-negative
+            is_always_nonnegative(ctx, *l) && is_always_nonnegative(ctx, *r)
+        }
+
+        // Sum of non-negatives is non-negative
+        Expr::Add(l, r) => is_always_nonnegative(ctx, *l) && is_always_nonnegative(ctx, *r),
+
+        _ => false,
     }
 }
 
