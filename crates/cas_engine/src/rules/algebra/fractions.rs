@@ -473,6 +473,74 @@ fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool
 // ========== Micro-API for safe Mul construction ==========
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.
 
+// =============================================================================
+// EARLY RETURN: Didactic expansion of perfect-square denominators for cancellation
+// =============================================================================
+
+/// Try to detect and cancel `(a^2 + 2ab + b^2) / (a+b)^2 → 1` with visible expansion step.
+///
+/// This avoids the "magic" GCD path by showing the user that (a+b)^2 = a^2 + 2ab + b^2.
+/// Returns Some(Rewrite) if the pattern matches, None otherwise to fall through to GCD.
+fn try_expand_binomial_square_in_den_for_cancel(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    _domain_mode: crate::domain::DomainMode,
+    _parent_ctx: &crate::parent_context::ParentContext,
+) -> Option<Rewrite> {
+    use crate::implicit_domain::ImplicitCondition;
+    use crate::rules::algebra::helpers::smart_mul;
+
+    // STEP 1: Check if den = Pow(base, 2) where base = Add(a, b)
+    let (base, exp) = crate::helpers::as_pow(ctx, den)?;
+
+    // Exponent must be exactly 2 (integer)
+    let exp_val = crate::helpers::as_i64(ctx, exp)?;
+    if exp_val != 2 {
+        return None;
+    }
+
+    // Base must be a binomial (a + b)
+    let (a, b) = crate::helpers::as_add(ctx, base)?;
+
+    // STEP 2: Build expanded form: a^2 + 2*a*b + b^2
+    // Using right-associative Add: Add(a^2, Add(2*a*b, b^2)) to match typical parser output
+    let two = ctx.num(2);
+    let exp_two = ctx.num(2);
+
+    let a_sq = ctx.add(Expr::Pow(a, exp_two));
+    let exp_two_b = ctx.num(2);
+    let b_sq = ctx.add(Expr::Pow(b, exp_two_b));
+    // Split smart_mul calls to avoid nested mutable borrows
+    let a_times_b = smart_mul(ctx, a, b);
+    let two_ab = smart_mul(ctx, two, a_times_b);
+
+    // Build: a^2 + 2*a*b + b^2  (right-associative)
+    let middle_sum = ctx.add(Expr::Add(two_ab, b_sq));
+    let expanded = ctx.add(Expr::Add(a_sq, middle_sum));
+
+    // STEP 3: Check if num equals expanded structurally
+    // Use compare_expr for canonical comparison
+    if crate::ordering::compare_expr(ctx, num, expanded) != std::cmp::Ordering::Equal {
+        return None;
+    }
+
+    // STEP 4: Match! Create didactic rewrite
+    // Result is 1 (numerator equals denominator after expansion)
+    let one = ctx.num(1);
+
+    // Create the rewrite with:
+    // - before_local = den (the (a+b)^2)
+    // - after_local = expanded (a^2 + 2ab + b^2)
+    // - requires = den ≠ 0 (not assumption_events!)
+    let rewrite = Rewrite::new(one)
+        .desc("Expand and cancel: (a+b)² = a² + 2ab + b²")
+        .local(den, expanded)
+        .requires(ImplicitCondition::NonZero(den));
+
+    Some(rewrite)
+}
+
 define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
@@ -489,6 +557,12 @@ define_rule!(
         // Use RationalFnView to detect any fraction form while preserving structure
         let view = RationalFnView::from(ctx, expr)?;
         let (num, den) = (view.num, view.den);
+
+        // EARLY RETURN: Check for didactic perfect-square cancellation
+        // (a^2 + 2ab + b^2) / (a+b)^2 → 1 with visible expansion step
+        if let Some(rewrite) = try_expand_binomial_square_in_den_for_cancel(ctx, num, den, domain_mode, parent_ctx) {
+            return Some(rewrite);
+        }
 
         // 0. Try multivariate GCD first (Layer 1: monomial + content)
         let vars = collect_variables(ctx, expr);

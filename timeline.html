@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: {x}^{2} + {y}^{2} + 2\cdot x\cdot y - {(x + y)}^{2}</title>
+    <title>CAS Steps: \frac{{x}^{2} + {y}^{2} + 2\cdot x\cdot y}{{(x + y)}^{2}}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -439,55 +439,35 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[{x}^{2} + {y}^{2} + 2\cdot x\cdot y - {(x + y)}^{2}\]
+            \[\frac{{x}^{2} + {y}^{2} + 2\cdot x\cdot y}{{(x + y)}^{2}}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Simplify Nested Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{x}^{2} + {y}^{2} + {\color{red}{2\cdot x\cdot y}} - {\color{red}{2\cdot x\cdot y}} - {x}^{2} - {y}^{2}\]
+                        \[\frac{{x}^{2} + {y}^{2} + 2\cdot x\cdot y}{{\color{red}{{(x + y)}^{2}}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
+                        <div class="rule-name">\(\text{Expand and cancel: (a+b)² = a² + 2ab + b²}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{2\cdot x\cdot y - 2\cdot x\cdot y}} \rightarrow {\color{green}{0}}\]
+                            \[{\color{red}{{(x + y)}^{2}}} \rightarrow {\color{green}{{x}^{2} + {y}^{2} + 2\cdot x\cdot y}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{x}^{2} + {y}^{2} - {y}^{2} - {x}^{2}\]
+                        \[1\]
                     </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{{x}^{2} + {y}^{2} - {x}^{2} - {y}^{2}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{{x}^{2} + {y}^{2} - {y}^{2} - {x}^{2}}} \rightarrow {\color{green}{0}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{0}}\]
-                    </div>
+                    <div class="domain-requires">Requires: (x + y)^2 ≠ 0</div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[0\]
+            \[1\]
         </div>
     </div>
     <footer>
