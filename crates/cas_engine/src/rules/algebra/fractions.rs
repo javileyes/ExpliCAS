@@ -2011,6 +2011,7 @@ define_rule!(
         // Capture domain mode once at start
         let domain_mode = parent_ctx.domain_mode();
 
+        // CLONE_OK: Multi-branch match on Div/Pow/Mul requires owned Expr
         let expr_data = ctx.get(expr).clone();
 
         // Helper to collect factors
@@ -2345,7 +2346,9 @@ define_rule!(
         }
 
         let (num, den, _) = fp.to_num_den(ctx);
+        // CLONE_OK: Multi-branch match on Add/Mul/Pow patterns
         let num_data = ctx.get(num).clone();
+        // CLONE_OK: Denominator inspection for sign normalization
         let den_data = ctx.get(den).clone();
 
         // Case 1: a^n / a^m where both are Pow
@@ -2450,6 +2453,7 @@ define_rule!(
             return None;
         };
 
+        // CLONE_OK: Multi-branch match on Add/Mul/Number patterns
         let num_data = ctx.get(n).clone();
         if let Expr::Mul(l, r) = num_data {
             // Check if l or r is a number/constant
@@ -2727,6 +2731,7 @@ define_rule!(
         }
 
         // Try different denominator patterns
+        // CLONE_OK: Multi-branch match extracting sqrt value from Mul product
         let (sqrt_n_value, other_den_factors): (i64, Vec<ExprId>) = match ctx.get(den).clone() {
             // Case 1: Denominator is just √n
             Expr::Pow(_, _) => {

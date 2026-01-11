@@ -626,6 +626,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
     }
 
     // Only process Add/Sub expressions
+    // CLONE_OK: Multi-branch match on Mul/Add/Sub/Pow requires owned Expr
     let expr_data = ctx.get(expr).clone();
     if !matches!(expr_data, Expr::Add(_, _) | Expr::Sub(_, _)) {
         return None;
@@ -911,8 +912,10 @@ impl crate::rule::Rule for BinomialExpansionRule {
         }
 
         // (a + b)^n - ONLY true binomials (exactly 2 terms)
+        // CLONE_OK: Multi-branch match on Pow followed by nested Number checks
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
+            // CLONE_OK: Nested Add inspection after Pow destructuring
             let base_data = ctx.get(base).clone();
 
             // CRITICAL GUARD: Only expand if base has exactly 2 terms
@@ -932,6 +935,7 @@ impl crate::rule::Rule for BinomialExpansionRule {
                 _ => return None,
             };
 
+            // CLONE_OK: Exponent inspection for Neg/Number patterns
             let exp_data = ctx.get(exp).clone();
             if let Expr::Number(n) = exp_data {
                 if n.is_integer() && !n.is_negative() {
