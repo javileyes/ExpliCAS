@@ -41,6 +41,38 @@ fn poly_eq(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     pa == pb
 }
 
+/// Relation between two polynomial expressions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SignRelation {
+    Same,    // a == b
+    Negated, // a == -b (e.g., x-y vs y-x)
+}
+
+/// Compare two expressions to detect if they are equal or negated.
+/// Returns Some(Same) if a == b, Some(Negated) if a == -b, None otherwise.
+fn poly_relation(ctx: &Context, a: ExprId, b: ExprId) -> Option<SignRelation> {
+    let budget = PolyBudget {
+        max_terms: 100,
+        max_total_degree: 10,
+        max_pow_exp: 5,
+    };
+
+    let pa = multipoly_from_expr(ctx, a, &budget).ok()?;
+    let pb = multipoly_from_expr(ctx, b, &budget).ok()?;
+
+    if pa == pb {
+        return Some(SignRelation::Same);
+    }
+
+    // Check if pa == -pb
+    let neg_pb = pb.neg();
+    if pa == neg_pb {
+        return Some(SignRelation::Negated);
+    }
+
+    None
+}
+
 // =============================================================================
 // A1: Structural Factor Cancellation (without polynomial expansion)
 // =============================================================================
@@ -568,15 +600,13 @@ define_rule!(
         let (num, den) = crate::helpers::as_div(ctx, expr)?;
         let (base, exp) = crate::helpers::as_pow(ctx, num)?;
 
-        // Check if base == den using poly_eq
-        if !poly_eq(ctx, base, den) {
-            return None;
-        }
+        // Check if base == den OR base == -den using poly_relation
+        let relation = poly_relation(ctx, base, den)?;
 
         // Get exponent as integer
         let exp_val = crate::helpers::as_i64(ctx, exp)?;
-        if exp_val < 2 {
-            return None; // Only handle exp >= 2
+        if exp_val < 1 {
+            return None; // Only handle exp >= 1
         }
 
         // DOMAIN GATE
@@ -595,16 +625,31 @@ define_rule!(
             return None;
         }
 
-        // Result: P^(n-1) or P if n=2
-        let result = if exp_val == 2 {
+        // Build base result: P^(n-1) or 1 if n=1
+        let base_result = if exp_val == 1 {
+            ctx.num(1)
+        } else if exp_val == 2 {
             base
         } else {
             let new_exp = ctx.num(exp_val - 1);
             ctx.add(Expr::Pow(base, new_exp))
         };
 
+        // Apply sign based on relation
+        let (result, desc) = match relation {
+            SignRelation::Same => (
+                base_result,
+                "Cancel: P^n/P → P^(n-1)"
+            ),
+            SignRelation::Negated => {
+                // P^n / (-P) = -P^(n-1)
+                let negated = ctx.add(Expr::Neg(base_result));
+                (negated, "Cancel: P^n/(-P) → -P^(n-1)")
+            }
+        };
+
         Some(Rewrite::new(result)
-            .desc("Cancel: P^n/P → P^(n-1)")
+            .desc(desc)
             .local(expr, result)
             .requires(ImplicitCondition::NonZero(den))
             .assume_all(decision.assumption_events(ctx, den)))
