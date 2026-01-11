@@ -31,6 +31,8 @@ pub use poly_arith_modp::*;
 pub fn register(simplifier: &mut crate::Simplifier) {
     // Step 2 of didactic expansion: Cancel P/P → 1 (must fire after expansion rules)
     simplifier.add_rule(Box::new(CancelIdenticalFractionRule));
+    // Step 2 variant: Cancel P^n/P → P^(n-1) (for perfect squares and similar)
+    simplifier.add_rule(Box::new(CancelPowerFractionRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));

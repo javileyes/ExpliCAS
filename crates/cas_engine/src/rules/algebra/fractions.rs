@@ -552,6 +552,65 @@ define_rule!(
     }
 );
 
+// Rule to cancel P^n / P → P^(n-1) (didactic step 2 for perfect squares and similar)
+// Handles patterns like (x-y)²/(x-y) → x-y
+define_rule!(
+    CancelPowerFractionRule,
+    "Cancel Power Fraction",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
+    |ctx, expr, parent_ctx| {
+        use crate::helpers::prove_nonzero;
+        use crate::implicit_domain::ImplicitCondition;
+
+        // Match Div(Pow(base, exp), den)
+        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (base, exp) = crate::helpers::as_pow(ctx, num)?;
+
+        // Check if base == den using poly_eq
+        if !poly_eq(ctx, base, den) {
+            return None;
+        }
+
+        // Get exponent as integer
+        let exp_val = crate::helpers::as_i64(ctx, exp)?;
+        if exp_val < 2 {
+            return None; // Only handle exp >= 2
+        }
+
+        // DOMAIN GATE
+        let domain_mode = parent_ctx.domain_mode();
+        let proof = prove_nonzero(ctx, den);
+        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, den);
+        let decision = crate::domain::can_cancel_factor_with_hint(
+            domain_mode,
+            proof,
+            key,
+            den,
+            "Cancel Power Fraction",
+        );
+
+        if !decision.allow {
+            return None;
+        }
+
+        // Result: P^(n-1) or P if n=2
+        let result = if exp_val == 2 {
+            base
+        } else {
+            let new_exp = ctx.num(exp_val - 1);
+            ctx.add(Expr::Pow(base, new_exp))
+        };
+
+        Some(Rewrite::new(result)
+            .desc("Cancel: P^n/P → P^(n-1)")
+            .local(expr, result)
+            .requires(ImplicitCondition::NonZero(den))
+            .assume_all(decision.assumption_events(ctx, den)))
+    }
+);
+
 // =============================================================================
 // EARLY RETURN: Didactic expansion of perfect-square denominators for cancellation
 // =============================================================================
@@ -780,11 +839,12 @@ fn try_perfect_square_minus_in_num(
     let exp_for_square = ctx.num(2);
     let factored_num = ctx.add(Expr::Pow(a_minus_b, exp_for_square));
 
-    // Result is (a-b) after cancellation
-    let result = a_minus_b;
+    // Return the INTERMEDIATE form: (a-b)² / (a-b)
+    // This allows CancelCommonFactorRule to fire as Step 2
+    let after = ctx.add(Expr::Div(factored_num, den));
 
-    let rewrite = Rewrite::new(result)
-        .desc("Recognize and cancel: a² - 2ab + b² = (a-b)²")
+    let rewrite = Rewrite::new(after)
+        .desc("Recognize: a² - 2ab + b² = (a-b)²")
         .local(num, factored_num)
         .requires(ImplicitCondition::NonZero(den));
 
@@ -910,13 +970,17 @@ fn try_sum_diff_of_cubes_in_num(
     };
     let factored_num = smart_mul(ctx, linear_factor, result);
 
+    // Return INTERMEDIATE form: (a-b)(a²+ab+b²) / (a-b) or (a+b)(...) / (a+b)
+    // This allows CancelCommonFactorRule to fire as Step 2
+    let after = ctx.add(Expr::Div(factored_num, den));
+
     let desc = if is_difference {
-        "Factor and cancel: a³ - b³ = (a-b)(a² + ab + b²)"
+        "Factor: a³ - b³ = (a-b)(a² + ab + b²)"
     } else {
-        "Factor and cancel: a³ + b³ = (a+b)(a² - ab + b²)"
+        "Factor: a³ + b³ = (a+b)(a² - ab + b²)"
     };
 
-    let rewrite = Rewrite::new(result)
+    let rewrite = Rewrite::new(after)
         .desc(desc)
         .local(num, factored_num)
         .requires(ImplicitCondition::NonZero(den));
