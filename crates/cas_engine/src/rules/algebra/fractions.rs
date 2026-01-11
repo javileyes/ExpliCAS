@@ -695,6 +695,181 @@ fn try_difference_of_squares_in_num(
     Some(rewrite)
 }
 
+// =============================================================================
+// EARLY RETURN: Perfect square minus factorization (a-b)²
+// =============================================================================
+
+// Detects (a² - 2ab + b²) / (a-b) and recognizes it as (a-b)²/(a-b) = a-b
+fn try_perfect_square_minus_in_num(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    _domain_mode: crate::domain::DomainMode,
+    _parent_ctx: &crate::parent_context::ParentContext,
+) -> Option<Rewrite> {
+    use crate::implicit_domain::ImplicitCondition;
+    use crate::rules::algebra::helpers::smart_mul;
+
+    // STEP 1: Check if den is (a - b)
+    let (a, b) = crate::helpers::as_sub(ctx, den)?;
+
+    // STEP 2: Build expected numerator: a² - 2ab + b²
+    let two = ctx.num(2);
+    let exp_two = ctx.num(2);
+    let a_sq = ctx.add(Expr::Pow(a, exp_two));
+    let exp_two_b = ctx.num(2);
+    let b_sq = ctx.add(Expr::Pow(b, exp_two_b));
+    let a_b = smart_mul(ctx, a, b);
+    let two_ab = smart_mul(ctx, two, a_b);
+    let neg_two_ab = ctx.add(Expr::Neg(two_ab));
+
+    // Build a² + (-2ab) + b² (canonical form for a² - 2ab + b²)
+    // Right-associative: Add(a², Add(Neg(2ab), b²))
+    let inner_sum = ctx.add(Expr::Add(neg_two_ab, b_sq));
+    let expected_num = ctx.add(Expr::Add(a_sq, inner_sum));
+
+    // STEP 3: Check if num equals expected structurally
+    if crate::ordering::compare_expr(ctx, num, expected_num) != std::cmp::Ordering::Equal {
+        return None;
+    }
+
+    // STEP 4: Build factored form (a-b)² for display
+    let a_minus_b = ctx.add(Expr::Sub(a, b));
+    let exp_for_square = ctx.num(2);
+    let factored_num = ctx.add(Expr::Pow(a_minus_b, exp_for_square));
+
+    // Result is (a-b) after cancellation
+    let result = a_minus_b;
+
+    let rewrite = Rewrite::new(result)
+        .desc("Recognize and cancel: a² - 2ab + b² = (a-b)²")
+        .local(num, factored_num)
+        .requires(ImplicitCondition::NonZero(den));
+
+    Some(rewrite)
+}
+
+// =============================================================================
+// EARLY RETURN: Sum/Difference of cubes factorization
+// =============================================================================
+
+// Detects (a³ - b³) / (a-b) and recognizes it as (a-b)(a²+ab+b²)/(a-b) = a²+ab+b²
+// Also handles (a³ + b³) / (a+b) = (a+b)(a²-ab+b²)/(a+b) = a²-ab+b²
+fn try_sum_diff_of_cubes_in_num(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    _domain_mode: crate::domain::DomainMode,
+    _parent_ctx: &crate::parent_context::ParentContext,
+) -> Option<Rewrite> {
+    use crate::implicit_domain::ImplicitCondition;
+    use crate::rules::algebra::helpers::smart_mul;
+
+    // Check if num is a³ - b³ (as Sub or Add with Neg)
+    let (a, b, is_difference) = if let Some((left, right)) = crate::helpers::as_sub(ctx, num) {
+        // a³ - b³
+        let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
+        if crate::helpers::as_i64(ctx, exp_a)? != 3 {
+            return None;
+        }
+
+        let (b, exp_b) = crate::helpers::as_pow(ctx, right)?;
+        if crate::helpers::as_i64(ctx, exp_b)? != 3 {
+            return None;
+        }
+
+        (a, b, true)
+    } else if let Some((left, right)) = crate::helpers::as_add(ctx, num) {
+        // Try a³ + (-b³) for difference, or a³ + b³ for sum
+        let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
+        if crate::helpers::as_i64(ctx, exp_a)? != 3 {
+            return None;
+        }
+
+        if let Some(neg_inner) = crate::helpers::as_neg(ctx, right) {
+            // a³ + (-b³) = a³ - b³
+            let (b, exp_b) = crate::helpers::as_pow(ctx, neg_inner)?;
+            if crate::helpers::as_i64(ctx, exp_b)? != 3 {
+                return None;
+            }
+            (a, b, true)
+        } else {
+            // a³ + b³
+            let (b, exp_b) = crate::helpers::as_pow(ctx, right)?;
+            if crate::helpers::as_i64(ctx, exp_b)? != 3 {
+                return None;
+            }
+            (a, b, false)
+        }
+    } else {
+        return None;
+    };
+
+    // Check if den matches the expected factor
+    let den_is_a_minus_b = if let Some((da, db)) = crate::helpers::as_sub(ctx, den) {
+        crate::ordering::compare_expr(ctx, da, a) == std::cmp::Ordering::Equal
+            && crate::ordering::compare_expr(ctx, db, b) == std::cmp::Ordering::Equal
+    } else {
+        false
+    };
+
+    let den_is_a_plus_b = if let Some((da, db)) = crate::helpers::as_add(ctx, den) {
+        (crate::ordering::compare_expr(ctx, da, a) == std::cmp::Ordering::Equal
+            && crate::ordering::compare_expr(ctx, db, b) == std::cmp::Ordering::Equal)
+            || (crate::ordering::compare_expr(ctx, da, b) == std::cmp::Ordering::Equal
+                && crate::ordering::compare_expr(ctx, db, a) == std::cmp::Ordering::Equal)
+    } else {
+        false
+    };
+
+    // For a³ - b³, factor is (a-b); for a³ + b³, factor is (a+b)
+    if is_difference && !den_is_a_minus_b {
+        return None;
+    }
+    if !is_difference && !den_is_a_plus_b {
+        return None;
+    }
+
+    // Build the result: a² ± ab + b²
+    let exp_two = ctx.num(2);
+    let a_sq = ctx.add(Expr::Pow(a, exp_two));
+    let exp_two_b = ctx.num(2);
+    let b_sq = ctx.add(Expr::Pow(b, exp_two_b));
+    let ab = smart_mul(ctx, a, b);
+
+    let result = if is_difference {
+        // a³ - b³ = (a-b)(a² + ab + b²), so result is a² + ab + b²
+        let inner = ctx.add(Expr::Add(ab, b_sq));
+        ctx.add(Expr::Add(a_sq, inner))
+    } else {
+        // a³ + b³ = (a+b)(a² - ab + b²), so result is a² - ab + b²
+        let neg_ab = ctx.add(Expr::Neg(ab));
+        let inner = ctx.add(Expr::Add(neg_ab, b_sq));
+        ctx.add(Expr::Add(a_sq, inner))
+    };
+
+    // Build factored form for display
+    let linear_factor = if is_difference {
+        ctx.add(Expr::Sub(a, b))
+    } else {
+        ctx.add(Expr::Add(a, b))
+    };
+    let factored_num = smart_mul(ctx, linear_factor, result);
+
+    let desc = if is_difference {
+        "Factor and cancel: a³ - b³ = (a-b)(a² + ab + b²)"
+    } else {
+        "Factor and cancel: a³ + b³ = (a+b)(a² - ab + b²)"
+    };
+
+    let rewrite = Rewrite::new(result)
+        .desc(desc)
+        .local(num, factored_num)
+        .requires(ImplicitCondition::NonZero(den));
+
+    Some(rewrite)
+}
+
 define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
@@ -721,6 +896,18 @@ define_rule!(
         // EARLY RETURN: Check for difference of squares factorization
         // (a² - b²) / (a+b) → (a-b)(a+b) / (a+b) with visible factorization step
         if let Some(rewrite) = try_difference_of_squares_in_num(ctx, num, den, domain_mode, parent_ctx) {
+            return Some(rewrite);
+        }
+
+        // EARLY RETURN: Check for perfect square minus recognition
+        // (a² - 2ab + b²) / (a-b) → (a-b)²/(a-b) = a-b
+        if let Some(rewrite) = try_perfect_square_minus_in_num(ctx, num, den, domain_mode, parent_ctx) {
+            return Some(rewrite);
+        }
+
+        // EARLY RETURN: Check for sum/difference of cubes factorization
+        // (a³ - b³) / (a-b) → (a-b)(a²+ab+b²) / (a-b) = a²+ab+b²
+        if let Some(rewrite) = try_sum_diff_of_cubes_in_num(ctx, num, den, domain_mode, parent_ctx) {
             return Some(rewrite);
         }
 
