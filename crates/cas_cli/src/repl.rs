@@ -2148,10 +2148,13 @@ impl Repl {
         }
         println!(
             "Result: {}",
-            DisplayExpr {
-                context: &self.engine.simplifier.context,
-                id: result
-            }
+            clean_display_string(&format!(
+                "{}",
+                DisplayExpr {
+                    context: &self.engine.simplifier.context,
+                    id: result
+                }
+            ))
         );
     }
 
@@ -2364,10 +2367,13 @@ impl Repl {
                                 if let Some(result_expr) = result.value {
                                     println!(
                                         "Result: {}",
-                                        DisplayExpr {
-                                            context: &self.engine.simplifier.context,
-                                            id: result_expr
-                                        }
+                                        clean_display_string(&format!(
+                                            "{}",
+                                            DisplayExpr {
+                                                context: &self.engine.simplifier.context,
+                                                id: result_expr
+                                            }
+                                        ))
                                     );
                                 } else {
                                     println!("Could not compute GCD");
@@ -3821,10 +3827,13 @@ impl Repl {
 
                 println!(
                     "Result: {}",
-                    DisplayExpr {
-                        context: &self.engine.simplifier.context,
-                        id: result
-                    }
+                    clean_display_string(&format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &self.engine.simplifier.context,
+                            id: result
+                        }
+                    ))
                 );
             }
             Err(e) => println!("Parse error: {}", e),
@@ -3897,10 +3906,13 @@ impl Repl {
 
                 println!(
                     "Result: {}",
-                    DisplayExpr {
-                        context: &self.engine.simplifier.context,
-                        id: result
-                    }
+                    clean_display_string(&format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &self.engine.simplifier.context,
+                            id: result
+                        }
+                    ))
                 );
             }
             Err(e) => println!("Parse error: {}", e),
@@ -3966,10 +3978,13 @@ impl Repl {
 
                 println!(
                     "Result: {}",
-                    DisplayExpr {
-                        context: &self.engine.simplifier.context,
-                        id: simplified
-                    }
+                    clean_display_string(&format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &self.engine.simplifier.context,
+                            id: simplified
+                        }
+                    ))
                 );
             }
             Err(e) => println!("Parse error: {:?}", e),
@@ -4012,10 +4027,13 @@ impl Repl {
 
                 println!(
                     "Result: {}",
-                    DisplayExpr {
-                        context: &self.engine.simplifier.context,
-                        id: expanded
-                    }
+                    clean_display_string(&format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &self.engine.simplifier.context,
+                            id: expanded
+                        }
+                    ))
                 );
             }
             Err(e) => println!("Parse error: {:?}", e),
@@ -4126,13 +4144,13 @@ impl Repl {
                 println!();
                 println!("Simplifying...");
                 let (simplified, _steps) = self.engine.simplifier.simplify(result);
-                let simplified_str = format!(
+                let simplified_str = clean_display_string(&format!(
                     "{}",
                     DisplayExpr {
                         context: &self.engine.simplifier.context,
                         id: simplified
                     }
-                );
+                ));
                 println!("Result: {}", simplified_str);
             }
             Err(e) => println!("Parse error: {}", e),
@@ -5333,16 +5351,22 @@ impl Repl {
                                     if name == "Equal" && args.len() == 2 {
                                         println!(
                                             "Result: {} = {}",
-                                            cas_ast::DisplayExprStyled::new(
-                                                context,
-                                                args[0],
-                                                &style_prefs
-                                            ),
-                                            cas_ast::DisplayExprStyled::new(
-                                                context,
-                                                args[1],
-                                                &style_prefs
-                                            )
+                                            clean_display_string(&format!(
+                                                "{}",
+                                                cas_ast::DisplayExprStyled::new(
+                                                    context,
+                                                    args[0],
+                                                    &style_prefs
+                                                )
+                                            )),
+                                            clean_display_string(&format!(
+                                                "{}",
+                                                cas_ast::DisplayExprStyled::new(
+                                                    context,
+                                                    args[1],
+                                                    &style_prefs
+                                                )
+                                            ))
                                         );
                                         return;
                                     }
@@ -5703,7 +5727,10 @@ impl Repl {
                 // Use DisplayExprStyled with detected preferences for consistent output
                 println!(
                     "Result: {}",
-                    DisplayExprStyled::new(&temp_simplifier.context, simplified, &style_prefs)
+                    clean_display_string(&format!(
+                        "{}",
+                        DisplayExprStyled::new(&temp_simplifier.context, simplified, &style_prefs)
+                    ))
                 );
             }
             Err(e) => println!("Error: {}", e),
