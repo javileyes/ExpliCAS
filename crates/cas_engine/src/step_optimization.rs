@@ -74,12 +74,19 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
         }
 
         // === Canonicalization Coalescing ===
-        if is_canonicalization_rule(&current.rule_name) {
+        // Only coalesce Low-importance canonicalization steps; Medium+ are didactic barriers
+        if is_canonicalization_rule(&current.rule_name)
+            && current.importance < crate::step::ImportanceLevel::Medium
+        {
             let mut j = i + 1;
             let mut last_same_path_idx = i;
 
             while j < steps.len() {
                 let next = &steps[j];
+                // Stop coalescing if we hit a Medium+ importance step
+                if next.importance >= crate::step::ImportanceLevel::Medium {
+                    break;
+                }
                 if is_canonicalization_rule(&next.rule_name) && next.path == current.path {
                     last_same_path_idx = j;
                     j += 1;
@@ -178,7 +185,12 @@ fn is_mechanical_rule(name: &str) -> bool {
 /// Absorb mechanical steps preceding a PolynomialIdentity step
 /// Uses window-based approach: absorb last K mechanical steps before PolyZero
 /// without requiring exact before/after chain matching (handles reorderings)
+///
+/// IMPORTANT: Steps with importance >= Medium are NEVER absorbed.
+/// Medium/High importance means "didactically important - user should see this".
 pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
+    use crate::step::ImportanceLevel;
+
     const ABSORPTION_WINDOW: usize = 8; // Max steps to look back
     let mut to_absorb = Vec::new();
 
@@ -190,6 +202,12 @@ pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
 
             for i in (window_start..j).rev() {
                 let s = &steps[i];
+
+                // GUARD: Never absorb steps with Medium+ importance
+                // These are marked as "didactically important" and should always be visible
+                if s.importance >= ImportanceLevel::Medium {
+                    break; // Stop absorption chain - this step is a barrier
+                }
 
                 // Only absorb mechanical rules
                 if !is_mechanical_rule(&s.rule_name) {

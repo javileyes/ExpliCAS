@@ -1223,6 +1223,11 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
             | crate::phase::PhaseMask::TRANSFORM
             | crate::phase::PhaseMask::RATIONALIZE
     }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        // Auto-expand steps are didactically important: users should see the expansion
+        crate::step::ImportanceLevel::Medium
+    }
 }
 
 // =============================================================================

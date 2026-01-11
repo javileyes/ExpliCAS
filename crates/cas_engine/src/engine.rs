@@ -1154,11 +1154,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
             Expr::Sub(l, r) => {
                 self.current_path.push(crate::step::PathStep::Left);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_l = self.transform_expr_recursive(l);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 self.current_path.push(crate::step::PathStep::Right);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_r = self.transform_expr_recursive(r);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 if new_l != l || new_r != r {
