@@ -285,14 +285,27 @@ pub fn factor_perfect_square_trinomial(ctx: &mut Context, expr: ExprId) -> Optio
                 None => continue,
             };
 
-            // Check if term_k is 2ab (structurally)
-            if !is_2ab_term(ctx, term_k, a, b) {
-                continue;
-            }
+            // Check if term_k is ±2ab (structurally) and get the embedded sign
+            let embedded_positive = match is_2ab_term(ctx, term_k, a, b) {
+                Some(positive) => positive,
+                None => continue,
+            };
+
+            // Determine final sign: combine AddView sign with embedded coefficient sign
+            // - If sign_k is Neg AND embedded is positive (+2): result is negative → (a-b)²
+            // - If sign_k is Pos AND embedded is positive (+2): result is positive → (a+b)²
+            // - If sign_k is Pos AND embedded is negative (-2): result is negative → (a-b)²
+            // - If sign_k is Neg AND embedded is negative (-2): result is positive → (a+b)²
+            let is_positive_term = match (sign_k, embedded_positive) {
+                (Sign::Pos, true) => true,   // +2ab
+                (Sign::Neg, true) => false,  // -(+2ab) = -2ab
+                (Sign::Pos, false) => false, // -2ab
+                (Sign::Neg, false) => true,  // -(-2ab) = +2ab
+            };
 
             // Found! Build (a ± b)²
             let two = ctx.num(2);
-            let sum_or_diff = if sign_k == Sign::Pos {
+            let sum_or_diff = if is_positive_term {
                 ctx.add(Expr::Add(a, b))
             } else {
                 ctx.add(Expr::Sub(a, b))
@@ -320,38 +333,64 @@ fn get_square_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
-/// Helper: check if expr is 2*a*b (in any order)
-fn is_2ab_term(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> bool {
+/// Helper: check if expr is ±2*a*b OR a*b (when 2 is the coefficient in AddView)
+/// Returns Some(true) for positive coef (+2), Some(false) for negative coef (-2), None if no match
+fn is_2ab_term(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> Option<bool> {
     use crate::nary::MulView;
 
     let mul_view = MulView::from_expr(ctx, expr);
     let factors = &mul_view.factors;
 
-    // We expect 3 factors: 2, a, b
-    if factors.len() != 3 {
-        return false;
-    }
+    // Case 1: 3 factors - ±2, a, b (all combined)
+    if factors.len() == 3 {
+        let mut coef_sign: Option<bool> = None;
+        let mut has_a = false;
+        let mut has_b = false;
 
-    // Check if one factor is 2
-    let mut has_two = false;
-    let mut has_a = false;
-    let mut has_b = false;
-
-    for &f in factors.iter() {
-        if let Expr::Number(n) = ctx.get(f) {
-            if n.is_integer() && *n.numer() == 2.into() {
-                has_two = true;
-                continue;
+        for &f in factors.iter() {
+            if let Expr::Number(n) = ctx.get(f) {
+                if n.is_integer() {
+                    if *n.numer() == 2.into() {
+                        coef_sign = Some(true); // positive
+                        continue;
+                    } else if *n.numer() == (-2).into() {
+                        coef_sign = Some(false); // negative
+                        continue;
+                    }
+                }
+            }
+            if crate::ordering::compare_expr(ctx, f, a) == std::cmp::Ordering::Equal {
+                has_a = true;
+            } else if crate::ordering::compare_expr(ctx, f, b) == std::cmp::Ordering::Equal {
+                has_b = true;
             }
         }
-        if crate::ordering::compare_expr(ctx, f, a) == std::cmp::Ordering::Equal {
-            has_a = true;
-        } else if crate::ordering::compare_expr(ctx, f, b) == std::cmp::Ordering::Equal {
-            has_b = true;
+
+        if coef_sign.is_some() && has_a && has_b {
+            return coef_sign;
         }
     }
 
-    has_two && has_a && has_b
+    // Case 2: 2 factors - a, b (the "2" coefficient is handled separately by AddView)
+    // This happens when expression is like "2·x·y" where AddView extracts the 2
+    if factors.len() == 2 {
+        let f0 = factors[0];
+        let f1 = factors[1];
+
+        // Check if factors are a and b in any order
+        let match_ab = crate::ordering::compare_expr(ctx, f0, a) == std::cmp::Ordering::Equal
+            && crate::ordering::compare_expr(ctx, f1, b) == std::cmp::Ordering::Equal;
+        let match_ba = crate::ordering::compare_expr(ctx, f0, b) == std::cmp::Ordering::Equal
+            && crate::ordering::compare_expr(ctx, f1, a) == std::cmp::Ordering::Equal;
+
+        if match_ab || match_ba {
+            // When we reach here, AddView handles the coefficient - we don't know the sign
+            // So return true (positive) and let caller use sign_k from AddView
+            return Some(true);
+        }
+    }
+
+    None
 }
 
 // Helpers
