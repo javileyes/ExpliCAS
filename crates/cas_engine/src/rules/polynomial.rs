@@ -43,116 +43,115 @@ define_rule!(
             return None;
         }
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Mul(l, r) = expr_data {
-            // GUARD: Skip distribution when a factor is 1.
-            // 1*(a+b) -> 1*a + 1*b is a visual no-op (MulOne is applied in rendering),
-            // and produces confusing "Before/After identical" steps.
-            if crate::helpers::is_one(ctx, l) || crate::helpers::is_one(ctx, r) {
+        // Use zero-clone destructuring pattern
+        let (l, r) = crate::helpers::as_mul(ctx, expr)?;
+
+        // GUARD: Skip distribution when a factor is 1.
+        // 1*(a+b) -> 1*a + 1*b is a visual no-op (MulOne is applied in rendering),
+        // and produces confusing "Before/After identical" steps.
+        if crate::helpers::is_one(ctx, l) || crate::helpers::is_one(ctx, r) {
+            return None;
+        }
+
+        // a * (b + c) -> a*b + a*c
+        if let Some((b, c)) = crate::helpers::as_add(ctx, r) {
+            // Distribute if 'l' is a Number, Function, Add/Sub, Pow, Mul, or Div.
+            // We exclude Var to keep x(x+1) factored, but allow x^2(x+1) to expand.
+            let l_expr = ctx.get(l);
+            let should_distribute = matches!(l_expr, Expr::Number(_))
+                || matches!(l_expr, Expr::Function(_, _))
+                || matches!(l_expr, Expr::Add(_, _))
+                || matches!(l_expr, Expr::Sub(_, _))
+                || matches!(l_expr, Expr::Pow(_, _))
+                || matches!(l_expr, Expr::Mul(_, _))
+                || matches!(l_expr, Expr::Div(_, _))
+                || (matches!(l_expr, Expr::Variable(_))
+                    && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
+
+            if !should_distribute {
                 return None;
             }
 
-            // a * (b + c) -> a*b + a*c
-            let r_data = ctx.get(r).clone();
-            if let Expr::Add(b, c) = r_data {
-                // Distribute if 'l' is a Number, Function, Add/Sub, Pow, Mul, or Div.
-                // We exclude Var to keep x(x+1) factored, but allow x^2(x+1) to expand.
-                let l_expr = ctx.get(l);
-                let should_distribute = matches!(l_expr, Expr::Number(_))
-                    || matches!(l_expr, Expr::Function(_, _))
-                    || matches!(l_expr, Expr::Add(_, _))
-                    || matches!(l_expr, Expr::Sub(_, _))
-                    || matches!(l_expr, Expr::Pow(_, _))
-                    || matches!(l_expr, Expr::Mul(_, _))
-                    || matches!(l_expr, Expr::Div(_, _))
-                    || (matches!(l_expr, Expr::Variable(_))
-                        && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
-
-                if !should_distribute {
-                    return None;
-                }
-
-                // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
-                // If we have (A+B)(A-B), do NOT distribute.
-                if is_conjugate(ctx, l, r) {
-                    return None;
-                }
-
-                // CRITICAL: Don't expand binomial*binomial products like (a-b)*(a-c)
-                // This preserves factored form for opposite denominator detection
-                if is_binomial(ctx, l) && is_binomial(ctx, r) {
-                    return None;
-                }
-
-                // EDUCATIONAL: Don't distribute fractional coefficient over binomial
-                // Preserves clean form like 1/2*(√2-1) instead of √2/2 - 1/2
-                if let Expr::Number(n) = ctx.get(l) {
-                    if !n.is_integer() && is_binomial(ctx, r) {
-                        return None;
-                    }
-                }
-
-                let ab = smart_mul(ctx, l, b);
-                let ac = smart_mul(ctx, l, c);
-                let new_expr = ctx.add(Expr::Add(ab, ac));
-                return Some(
-                    Rewrite::new(new_expr)
-                        .desc("Distribute")
-                        .local(expr, new_expr),
-                );
+            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
+            // If we have (A+B)(A-B), do NOT distribute.
+            if is_conjugate(ctx, l, r) {
+                return None;
             }
-            // (b + c) * a -> b*a + c*a
-            let l_data = ctx.get(l).clone();
-            if let Expr::Add(b, c) = l_data {
-                // Same logic for 'r'
-                let r_expr = ctx.get(r);
-                let should_distribute = matches!(r_expr, Expr::Number(_))
-                    || matches!(r_expr, Expr::Function(_, _))
-                    || matches!(r_expr, Expr::Add(_, _))
-                    || matches!(r_expr, Expr::Sub(_, _))
-                    || matches!(r_expr, Expr::Pow(_, _))
-                    || matches!(r_expr, Expr::Mul(_, _))
-                    || matches!(r_expr, Expr::Div(_, _))
-                    || (matches!(r_expr, Expr::Variable(_))
-                        && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
 
-                if !should_distribute {
-                    return None;
-                }
-
-                // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
-                if is_conjugate(ctx, l, r) {
-                    return None;
-                }
-
-                // CRITICAL: Don't expand binomial*binomial products (Policy A+)
-                // This preserves factored form like (a+b)*(c+d)
-                if is_binomial(ctx, l) && is_binomial(ctx, r) {
-                    return None;
-                }
-
-                // EDUCATIONAL: Don't distribute fractional coefficient over binomial
-                // Preserves clean form like (√2-1)/2 instead of √2/2 - 1/2
-                if let Expr::Number(n) = ctx.get(r) {
-                    if !n.is_integer() && is_binomial(ctx, l) {
-                        return None;
-                    }
-                }
-
-                let ba = smart_mul(ctx, b, r);
-                let ca = smart_mul(ctx, c, r);
-                let new_expr = ctx.add(Expr::Add(ba, ca));
-                return Some(
-                    Rewrite::new(new_expr)
-                        .desc("Distribute")
-                        .local(expr, new_expr),
-                );
+            // CRITICAL: Don't expand binomial*binomial products like (a-b)*(a-c)
+            // This preserves factored form for opposite denominator detection
+            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+                return None;
             }
+
+            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
+            // Preserves clean form like 1/2*(√2-1) instead of √2/2 - 1/2
+            if let Expr::Number(n) = ctx.get(l) {
+                if !n.is_integer() && is_binomial(ctx, r) {
+                    return None;
+                }
+            }
+
+            let ab = smart_mul(ctx, l, b);
+            let ac = smart_mul(ctx, l, c);
+            let new_expr = ctx.add(Expr::Add(ab, ac));
+            return Some(
+                Rewrite::new(new_expr)
+                    .desc("Distribute")
+                    .local(expr, new_expr),
+            );
+        }
+
+        // (b + c) * a -> b*a + c*a
+        if let Some((b, c)) = crate::helpers::as_add(ctx, l) {
+            // Same logic for 'r'
+            let r_expr = ctx.get(r);
+            let should_distribute = matches!(r_expr, Expr::Number(_))
+                || matches!(r_expr, Expr::Function(_, _))
+                || matches!(r_expr, Expr::Add(_, _))
+                || matches!(r_expr, Expr::Sub(_, _))
+                || matches!(r_expr, Expr::Pow(_, _))
+                || matches!(r_expr, Expr::Mul(_, _))
+                || matches!(r_expr, Expr::Div(_, _))
+                || (matches!(r_expr, Expr::Variable(_))
+                    && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
+
+            if !should_distribute {
+                return None;
+            }
+
+            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
+            if is_conjugate(ctx, l, r) {
+                return None;
+            }
+
+            // CRITICAL: Don't expand binomial*binomial products (Policy A+)
+            // This preserves factored form like (a+b)*(c+d)
+            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+                return None;
+            }
+
+            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
+            // Preserves clean form like (√2-1)/2 instead of √2/2 - 1/2
+            if let Expr::Number(n) = ctx.get(r) {
+                if !n.is_integer() && is_binomial(ctx, l) {
+                    return None;
+                }
+            }
+
+            let ba = smart_mul(ctx, b, r);
+            let ca = smart_mul(ctx, c, r);
+            let new_expr = ctx.add(Expr::Add(ba, ca));
+            return Some(
+                Rewrite::new(new_expr)
+                    .desc("Distribute")
+                    .local(expr, new_expr),
+            );
         }
 
         // Handle Division Distribution: (a + b) / c -> a/c + b/c
         // Using AddView for shape-independent n-ary handling
-        if let Expr::Div(l, r) = expr_data {
+        if let Some((numer, denom)) = crate::helpers::as_div(ctx, expr) {
             // Helper to check if division simplifies (shares factors) and return factor size
             let get_simplification_reduction = |ctx: &Context, num: ExprId, den: ExprId| -> usize {
                 if num == den {
@@ -248,7 +247,7 @@ define_rule!(
 
             // N-ARY: Use AddView for shape-independent handling of sums
             // This correctly handles ((a+b)+c), (a+(b+c)), and balanced trees
-            let num_view = AddView::from_expr(ctx, l);
+            let num_view = AddView::from_expr(ctx, numer);
 
             // Check if it's actually a sum (more than 1 term)
             if num_view.terms.len() > 1 {
@@ -257,7 +256,7 @@ define_rule!(
                 let mut any_simplifies = false;
 
                 for &(term, _sign) in &num_view.terms {
-                    let red = get_simplification_reduction(ctx, term, r);
+                    let red = get_simplification_reduction(ctx, term, denom);
                     if red > 0 {
                         any_simplifies = true;
                         total_reduction += red;
@@ -271,7 +270,7 @@ define_rule!(
                         .terms
                         .iter()
                         .map(|&(term, sign)| {
-                            let div_term = ctx.add(Expr::Div(term, r));
+                            let div_term = ctx.add(Expr::Div(term, denom));
                             match sign {
                                 Sign::Pos => div_term,
                                 Sign::Neg => ctx.add(Expr::Neg(div_term)),
@@ -1109,105 +1108,100 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
             return None;
         }
 
-        // Pattern: Pow(Add(...), n)
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Pow(base, exp) = expr_data {
-            // Check exponent is a small positive integer
-            let exp_data = ctx.get(exp).clone();
-            if let Expr::Number(n) = exp_data {
-                if !n.is_integer() || n.is_negative() {
-                    return None;
-                }
-                let n_val = n.to_integer().to_u32()?;
+        // Pattern: Pow(Add(...), n) - use zero-clone destructuring
+        let (base, exp) = crate::helpers::as_pow(ctx, expr)?;
 
-                // Budget check 1: max_pow_exp
-                if n_val > budget.max_pow_exp {
-                    return None;
-                }
-                // At least square to be useful
-                if n_val < 2 {
-                    return None;
-                }
-
-                // Check base is an Add
-                let base_data = ctx.get(base).clone();
-                if !matches!(base_data, Expr::Add(_, _)) {
-                    return None;
-                }
-
-                // Budget check 2: max_base_terms
-                let num_terms = Self::count_add_terms(ctx, base);
-                if num_terms > budget.max_base_terms {
-                    return None;
-                }
-
-                // Budget check 3: max_generated_terms
-                let estimated_result_terms = Self::estimate_terms(num_terms, n_val);
-                if estimated_result_terms > budget.max_generated_terms {
-                    return None;
-                }
-
-                // Budget check 4: max_vars
-                let mut vars = std::collections::HashSet::new();
-                Self::count_variables(ctx, base, &mut vars);
-                if vars.len() as u32 > budget.max_vars {
-                    return None;
-                }
-
-                // All budget checks passed!
-                // For binomials (2 terms), use binomial expansion
-                if num_terms == 2 {
-                    // Extract a and b from Add(a, b)
-                    if let Expr::Add(a, b) = base_data {
-                        let mut terms = Vec::new();
-                        for k in 0..=n_val {
-                            let coeff = binomial_coeff(n_val, k);
-                            let exp_a = n_val - k;
-                            let exp_b = k;
-
-                            let term_a = if exp_a == 0 {
-                                ctx.num(1)
-                            } else if exp_a == 1 {
-                                a
-                            } else {
-                                let exp_a_id = ctx.num(exp_a as i64);
-                                ctx.add(Expr::Pow(a, exp_a_id))
-                            };
-
-                            let term_b = if exp_b == 0 {
-                                ctx.num(1)
-                            } else if exp_b == 1 {
-                                b
-                            } else {
-                                let exp_b_id = ctx.num(exp_b as i64);
-                                ctx.add(Expr::Pow(b, exp_b_id))
-                            };
-
-                            let mut term = mul2_raw(ctx, term_a, term_b);
-                            if coeff > 1 {
-                                let c = ctx.num(coeff as i64);
-                                term = mul2_raw(ctx, c, term);
-                            }
-                            terms.push(term);
-                        }
-
-                        // Sum up terms
-                        let mut expanded = terms[0];
-                        for &term in terms.iter().skip(1) {
-                            expanded = ctx.add(Expr::Add(expanded, term));
-                        }
-
-                        return Some(
-                            Rewrite::new(expanded).desc(format!("Auto-expand (a+b)^{}", n_val)),
-                        );
-                    }
-                }
-
-                // For trinomials and higher, use general multinomial expansion
-                // (more complex, skip for now - only binomials are auto-expanded)
-                // Users can use explicit expand() for higher-order polynomials
+        // Check exponent is a small positive integer
+        let n_val = {
+            let exp_expr = ctx.get(exp);
+            match exp_expr {
+                Expr::Number(n) if n.is_integer() && !n.is_negative() => n.to_integer().to_u32()?,
+                _ => return None,
             }
+        };
+
+        // Budget check 1: max_pow_exp
+        if n_val > budget.max_pow_exp {
+            return None;
         }
+        // At least square to be useful
+        if n_val < 2 {
+            return None;
+        }
+
+        // Check base is an Add and extract terms
+        let (a, b) = match crate::helpers::as_add(ctx, base) {
+            Some((a, b)) => (a, b),
+            None => return None,
+        };
+
+        // Budget check 2: max_base_terms
+        let num_terms = Self::count_add_terms(ctx, base);
+        if num_terms > budget.max_base_terms {
+            return None;
+        }
+
+        // Budget check 3: max_generated_terms
+        let estimated_result_terms = Self::estimate_terms(num_terms, n_val);
+        if estimated_result_terms > budget.max_generated_terms {
+            return None;
+        }
+
+        // Budget check 4: max_vars
+        let mut vars = std::collections::HashSet::new();
+        Self::count_variables(ctx, base, &mut vars);
+        if vars.len() as u32 > budget.max_vars {
+            return None;
+        }
+
+        // All budget checks passed!
+        // For binomials (2 terms), use binomial expansion
+        if num_terms == 2 {
+            // Use a and b extracted above
+            let mut terms = Vec::new();
+            for k in 0..=n_val {
+                let coeff = binomial_coeff(n_val, k);
+                let exp_a = n_val - k;
+                let exp_b = k;
+
+                let term_a = if exp_a == 0 {
+                    ctx.num(1)
+                } else if exp_a == 1 {
+                    a
+                } else {
+                    let exp_a_id = ctx.num(exp_a as i64);
+                    ctx.add(Expr::Pow(a, exp_a_id))
+                };
+
+                let term_b = if exp_b == 0 {
+                    ctx.num(1)
+                } else if exp_b == 1 {
+                    b
+                } else {
+                    let exp_b_id = ctx.num(exp_b as i64);
+                    ctx.add(Expr::Pow(b, exp_b_id))
+                };
+
+                let mut term = mul2_raw(ctx, term_a, term_b);
+                if coeff > 1 {
+                    let c = ctx.num(coeff as i64);
+                    term = mul2_raw(ctx, c, term);
+                }
+                terms.push(term);
+            }
+
+            // Sum up terms
+            let mut expanded = terms[0];
+            for &term in terms.iter().skip(1) {
+                expanded = ctx.add(Expr::Add(expanded, term));
+            }
+
+            return Some(Rewrite::new(expanded).desc(format!("Auto-expand (a+b)^{}", n_val)));
+        }
+
+        // For trinomials and higher, use general multinomial expansion
+        // (more complex, skip for now - only binomials are auto-expanded)
+        // Users can use explicit expand() for higher-order polynomials
 
         None
     }

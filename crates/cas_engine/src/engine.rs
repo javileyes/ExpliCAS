@@ -967,6 +967,24 @@ struct LocalSimplificationTransformer<'a> {
 
 use cas_ast::visitor::Transformer;
 
+// NOTE on ancestor_stack pattern:
+//
+// We cannot use RAII guards (like AncestorScope) for push/pop because:
+// 1. AncestorScope would borrow &mut self.ancestor_stack
+// 2. transform_expr_recursive needs &mut self
+// 3. Rust doesn't allow split borrows of struct fields through methods
+//
+// REQUIRED PATTERN for all operator cases that recurse into children:
+// ```
+// self.ancestor_stack.push(id);  // Before transform_expr_recursive
+// let result = self.transform_expr_recursive(child);
+// self.ancestor_stack.pop();     // After transform_expr_recursive (balanced!)
+// ```
+//
+// This is critical for context-aware rules (like AutoExpandPowSumRule) that check
+// in_auto_expand_context() - they need to see their ancestor chain.
+// Test: test_auto_expand_step_visible_in_sub_context
+
 impl<'a> Transformer for LocalSimplificationTransformer<'a> {
     fn transform_expr(&mut self, _context: &mut Context, id: ExprId) -> ExprId {
         self.transform_expr_recursive(id)
