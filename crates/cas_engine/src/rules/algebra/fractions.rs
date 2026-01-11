@@ -474,6 +474,58 @@ fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.
 
 // =============================================================================
+// STEP 2: Cancel identical numerator/denominator (P/P → 1)
+// =============================================================================
+
+// Cancels P/P → 1 when numerator equals denominator structurally.
+// This is Step 2 after didactic expansion rules (e.g., (a+b)² → a² + 2ab + b²).
+define_rule!(
+    CancelIdenticalFractionRule,
+    "Cancel Identical Numerator/Denominator",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
+    |ctx, expr, parent_ctx| {
+        use crate::helpers::prove_nonzero;
+        use crate::implicit_domain::ImplicitCondition;
+
+        // Match Div(num, den)
+        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+
+        // Check if num == den structurally
+        if crate::ordering::compare_expr(ctx, num, den) != std::cmp::Ordering::Equal {
+            return None;
+        }
+
+        // DOMAIN GATE: In Strict mode, only cancel if den is provably non-zero
+        let domain_mode = parent_ctx.domain_mode();
+        let proof = prove_nonzero(ctx, den);
+        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, den);
+        let decision = crate::domain::can_cancel_factor_with_hint(
+            domain_mode,
+            proof,
+            key,
+            den,
+            "Cancel Identical Numerator/Denominator",
+        );
+
+        if !decision.allow {
+            // Strict mode + Unknown proof: don't simplify (e.g., x/x stays)
+            return None;
+        }
+
+        // Match! P/P → 1
+        let one = ctx.num(1);
+
+        Some(Rewrite::new(one)
+            .desc("Cancel: P/P → 1")
+            .local(expr, one)
+            .requires(ImplicitCondition::NonZero(den))
+            .assume_all(decision.assumption_events(ctx, den)))
+    }
+);
+
+// =============================================================================
 // EARLY RETURN: Didactic expansion of perfect-square denominators for cancellation
 // =============================================================================
 
@@ -526,15 +578,16 @@ fn try_expand_binomial_square_in_den_for_cancel(
     }
 
     // STEP 4: Match! Create didactic rewrite
-    // Result is 1 (numerator equals denominator after expansion)
-    let one = ctx.num(1);
+    // Return Div(num, expanded_den) - NOT `1` directly!
+    // This allows a separate CancelIdenticalFractionRule to fire and show P/P → 1
+    let after = ctx.add(Expr::Div(num, expanded));
 
     // Create the rewrite with:
     // - before_local = den (the (a+b)^2)
     // - after_local = expanded (a^2 + 2ab + b^2)
     // - requires = den ≠ 0 (not assumption_events!)
-    let rewrite = Rewrite::new(one)
-        .desc("Expand and cancel: (a+b)² = a² + 2ab + b²")
+    let rewrite = Rewrite::new(after)
+        .desc("Expand: (a+b)² → a² + 2ab + b²")
         .local(den, expanded)
         .requires(ImplicitCondition::NonZero(den));
 

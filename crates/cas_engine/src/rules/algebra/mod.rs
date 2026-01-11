@@ -29,6 +29,8 @@ pub mod poly_arith_modp;
 pub use poly_arith_modp::*;
 
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // Step 2 of didactic expansion: Cancel P/P → 1 (must fire after expansion rules)
+    simplifier.add_rule(Box::new(CancelIdenticalFractionRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
