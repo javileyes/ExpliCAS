@@ -1173,11 +1173,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
             Expr::Mul(l, r) => {
                 self.current_path.push(crate::step::PathStep::Left);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_l = self.transform_expr_recursive(l);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 self.current_path.push(crate::step::PathStep::Right);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_r = self.transform_expr_recursive(r);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 if new_l != l || new_r != r {
@@ -1188,11 +1192,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
             Expr::Div(l, r) => {
                 self.current_path.push(crate::step::PathStep::Left);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_l = self.transform_expr_recursive(l);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 self.current_path.push(crate::step::PathStep::Right);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_r = self.transform_expr_recursive(r);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 if new_l != l || new_r != r {
@@ -1274,11 +1282,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     id // Return as-is without recursing
                 } else {
                     self.current_path.push(crate::step::PathStep::Base);
+                    self.ancestor_stack.push(id); // Track current node as parent for children
                     let new_b = self.transform_expr_recursive(b);
+                    self.ancestor_stack.pop();
                     self.current_path.pop();
 
                     self.current_path.push(crate::step::PathStep::Exponent);
+                    self.ancestor_stack.push(id); // Track current node as parent for children
                     let new_e = self.transform_expr_recursive(e);
+                    self.ancestor_stack.pop();
                     self.current_path.pop();
 
                     if new_b != b || new_e != e {
@@ -1290,7 +1302,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
             Expr::Neg(e) => {
                 self.current_path.push(crate::step::PathStep::Inner);
+                self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_e = self.transform_expr_recursive(e);
+                self.ancestor_stack.pop();
                 self.current_path.pop();
 
                 if new_e != e {
@@ -1323,7 +1337,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     let mut changed = false;
                     for (i, arg) in args.iter().enumerate() {
                         self.current_path.push(crate::step::PathStep::Arg(i));
+                        self.ancestor_stack.push(id); // Track current node as parent for children
                         let new_arg = self.transform_expr_recursive(*arg);
+                        self.ancestor_stack.pop();
                         self.current_path.pop();
 
                         if new_arg != *arg {
@@ -1344,7 +1360,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 let mut changed = false;
                 for (i, elem) in data.iter().enumerate() {
                     self.current_path.push(crate::step::PathStep::Arg(i));
+                    self.ancestor_stack.push(id); // Track current node as parent for children
                     let new_elem = self.transform_expr_recursive(*elem);
+                    self.ancestor_stack.pop();
                     self.current_path.pop();
                     if new_elem != *elem {
                         changed = true;
