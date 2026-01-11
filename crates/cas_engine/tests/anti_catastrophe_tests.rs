@@ -259,12 +259,15 @@ fn test_layer1_monomial_content_labeling() {
 #[test]
 fn test_layer2_heuristic_labeling() {
     // Layer 2 case: difference of squares (requires polynomial GCD)
+    // OR pre-order detection "Factor and cancel" step
     let descriptions = simplify_with_steps("(x^2 - y^2)/(x - y)");
     let has_layer2 = descriptions.iter().any(|d| d.contains("Layer 2"));
-    // Layer 2 should be triggered for this case
+    let has_gcd = descriptions.iter().any(|d| d.contains("GCD"));
+    let has_factor = descriptions.iter().any(|d| d.contains("Factor"));
+    // Either Layer 2, GCD, or Factor step is valid
     assert!(
-        has_layer2 || descriptions.iter().any(|d| d.contains("GCD")),
-        "Should have Layer 2 or GCD step for diff of squares, got: {:?}",
+        has_layer2 || has_gcd || has_factor,
+        "Should have Layer 2, GCD, or Factor step for diff of squares, got: {:?}",
         descriptions
     );
 }

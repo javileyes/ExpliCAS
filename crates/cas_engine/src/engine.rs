@@ -1209,6 +1209,24 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 }
             }
             Expr::Div(l, r) => {
+                // EARLY DETECTION: (A² - B²) / (A ± B) pattern
+                // Must check BEFORE recursing into children to prevent auto-expand from destroying the pattern
+                // This enables didactic "Factor and cancel: A² - B² = (A-B)(A+B)" output
+                if let Some(early_result) =
+                    crate::rules::algebra::try_difference_of_squares_preorder(
+                        self.context,
+                        id,
+                        l,
+                        r,
+                        self.steps_mode != StepsMode::Off,
+                        &mut self.steps,
+                        &self.current_path,
+                    )
+                {
+                    self.current_depth -= 1;
+                    return self.transform_expr_recursive(early_result);
+                }
+
                 self.current_path.push(crate::step::PathStep::Left);
                 self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_l = self.transform_expr_recursive(l);

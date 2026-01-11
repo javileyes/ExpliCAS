@@ -1809,9 +1809,19 @@ impl<'a> DisplayExprStyled<'a> {
             }
 
             Expr::Sub(l, r) => {
+                // Check if RHS needs parens (same logic as DisplayExpr):
+                // RHS is Add/Sub: a - (b + c) or a - (b - c) needs parens to preserve associativity
+                let rhs_is_add_sub =
+                    matches!(self.context.get(*r), Expr::Add(_, _) | Expr::Sub(_, _));
                 self.fmt_internal(f, *l)?;
                 write!(f, " - ")?;
-                self.fmt_internal(f, *r)
+                if rhs_is_add_sub {
+                    write!(f, "(")?;
+                    self.fmt_internal(f, *r)?;
+                    write!(f, ")")
+                } else {
+                    self.fmt_internal(f, *r)
+                }
             }
 
             Expr::Mul(l, r) => {
