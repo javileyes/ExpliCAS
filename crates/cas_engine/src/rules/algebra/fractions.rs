@@ -594,6 +594,107 @@ fn try_expand_binomial_square_in_den_for_cancel(
     Some(rewrite)
 }
 
+// =============================================================================
+// EARLY RETURN: Difference of squares factorization for cancellation
+// =============================================================================
+
+// Detects (a² - b²) / (a+b) or (a² - b²) / (a-b) and factors the numerator.
+// Returns Div((a-b)(a+b), den) to allow visible cancellation step.
+fn try_difference_of_squares_in_num(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    _domain_mode: crate::domain::DomainMode,
+    _parent_ctx: &crate::parent_context::ParentContext,
+) -> Option<Rewrite> {
+    use crate::implicit_domain::ImplicitCondition;
+    use crate::rules::algebra::helpers::smart_mul;
+
+    // STEP 1: Check if num is a² - b² form
+    // Try Sub(Pow(a,2), Pow(b,2)) first
+    let (a, b) = if let Some((left, right)) = crate::helpers::as_sub(ctx, num) {
+        // left - right, check if both are squares
+        let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
+        let exp_a_val = crate::helpers::as_i64(ctx, exp_a)?;
+        if exp_a_val != 2 {
+            return None;
+        }
+
+        let (b, exp_b) = crate::helpers::as_pow(ctx, right)?;
+        let exp_b_val = crate::helpers::as_i64(ctx, exp_b)?;
+        if exp_b_val != 2 {
+            return None;
+        }
+
+        (a, b)
+    } else if let Some((left, right)) = crate::helpers::as_add(ctx, num) {
+        // Try Add(Pow(a,2), Neg(Pow(b,2))) which is how parser represents a² - b²
+        let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
+        let exp_a_val = crate::helpers::as_i64(ctx, exp_a)?;
+        if exp_a_val != 2 {
+            return None;
+        }
+
+        // right must be Neg(Pow(b,2))
+        let neg_inner = crate::helpers::as_neg(ctx, right)?;
+        let (b, exp_b) = crate::helpers::as_pow(ctx, neg_inner)?;
+        let exp_b_val = crate::helpers::as_i64(ctx, exp_b)?;
+        if exp_b_val != 2 {
+            return None;
+        }
+
+        (a, b)
+    } else {
+        return None; // Not a subtraction
+    };
+
+    // STEP 2: Check if den matches (a+b) or (a-b)
+    let den_matches_a_plus_b = if let Some((da, db)) = crate::helpers::as_add(ctx, den) {
+        // Check if {da, db} == {a, b} in some order
+        (crate::ordering::compare_expr(ctx, da, a) == std::cmp::Ordering::Equal
+            && crate::ordering::compare_expr(ctx, db, b) == std::cmp::Ordering::Equal)
+            || (crate::ordering::compare_expr(ctx, da, b) == std::cmp::Ordering::Equal
+                && crate::ordering::compare_expr(ctx, db, a) == std::cmp::Ordering::Equal)
+    } else {
+        false
+    };
+
+    let den_matches_a_minus_b = if let Some((da, db)) = crate::helpers::as_sub(ctx, den) {
+        // Check if den = a - b
+        crate::ordering::compare_expr(ctx, da, a) == std::cmp::Ordering::Equal
+            && crate::ordering::compare_expr(ctx, db, b) == std::cmp::Ordering::Equal
+    } else {
+        false
+    };
+
+    if !den_matches_a_plus_b && !den_matches_a_minus_b {
+        return None;
+    }
+
+    // STEP 3: Build factored form (a-b)(a+b) for display
+    let a_minus_b = ctx.add(Expr::Sub(a, b));
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let factored_num = smart_mul(ctx, a_minus_b, a_plus_b);
+
+    // STEP 4: Determine the result after cancellation
+    // If den matches (a+b), result is (a-b)
+    // If den matches (a-b), result is (a+b)
+    let result = if den_matches_a_plus_b {
+        a_minus_b
+    } else {
+        a_plus_b
+    };
+
+    // Create the rewrite showing factorization AND cancellation in one step
+    // local shows: a² - b² → (a-b)(a+b)
+    let rewrite = Rewrite::new(result)
+        .desc("Factor and cancel: a² - b² = (a-b)(a+b)")
+        .local(num, factored_num)
+        .requires(ImplicitCondition::NonZero(den));
+
+    Some(rewrite)
+}
+
 define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
@@ -614,6 +715,12 @@ define_rule!(
         // EARLY RETURN: Check for didactic perfect-square cancellation
         // (a^2 + 2ab + b^2) / (a+b)^2 → 1 with visible expansion step
         if let Some(rewrite) = try_expand_binomial_square_in_den_for_cancel(ctx, num, den, domain_mode, parent_ctx) {
+            return Some(rewrite);
+        }
+
+        // EARLY RETURN: Check for difference of squares factorization
+        // (a² - b²) / (a+b) → (a-b)(a+b) / (a+b) with visible factorization step
+        if let Some(rewrite) = try_difference_of_squares_in_num(ctx, num, den, domain_mode, parent_ctx) {
             return Some(rewrite);
         }
 
