@@ -15,6 +15,33 @@ use std::cmp::Ordering;
 use super::helpers::*;
 
 // =============================================================================
+// Polynomial equality helper (for canonical comparison ignoring AST order)
+// =============================================================================
+
+/// Compare two expressions as polynomials (ignoring AST structure/order).
+/// Returns true if both convert to the same canonical polynomial form.
+/// Falls back to false if either is not a polynomial (budget exceeded, non-poly, etc).
+fn poly_eq(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    // Use a tight budget for recognizer comparisons
+    let budget = PolyBudget {
+        max_terms: 100,
+        max_total_degree: 10,
+        max_pow_exp: 5,
+    };
+
+    let pa = match multipoly_from_expr(ctx, a, &budget) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let pb = match multipoly_from_expr(ctx, b, &budget) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+
+    pa == pb
+}
+
+// =============================================================================
 // A1: Structural Factor Cancellation (without polynomial expansion)
 // =============================================================================
 
@@ -571,9 +598,9 @@ fn try_expand_binomial_square_in_den_for_cancel(
     let middle_sum = ctx.add(Expr::Add(two_ab, b_sq));
     let expanded = ctx.add(Expr::Add(a_sq, middle_sum));
 
-    // STEP 3: Check if num equals expanded structurally
-    // Use compare_expr for canonical comparison
-    if crate::ordering::compare_expr(ctx, num, expanded) != std::cmp::Ordering::Equal {
+    // STEP 3: Check if num equals expanded using polynomial comparison
+    // This handles reordering by parser
+    if !poly_eq(ctx, num, expanded) {
         return None;
     }
 
@@ -710,8 +737,22 @@ fn try_perfect_square_minus_in_num(
     use crate::implicit_domain::ImplicitCondition;
     use crate::rules::algebra::helpers::smart_mul;
 
-    // STEP 1: Check if den is (a - b)
-    let (a, b) = crate::helpers::as_sub(ctx, den)?;
+    // STEP 1: Check if den is (a - b) - try Sub first, then Add(a, Neg(b))
+    let (a, b) = if let Some((a, b)) = crate::helpers::as_sub(ctx, den) {
+        (a, b)
+    } else if let Some((left, right)) = crate::helpers::as_add(ctx, den) {
+        // Try Add(a, Neg(b)) which is how parser represents a - b
+        if let Some(neg_inner) = crate::helpers::as_neg(ctx, right) {
+            (left, neg_inner)
+        } else if let Some(neg_inner) = crate::helpers::as_neg(ctx, left) {
+            // Try Add(Neg(b), a) = a - b = -(b - a)
+            (right, neg_inner) // This gives (a, b) = (right, inner) which is b - (inner)
+        } else {
+            return None;
+        }
+    } else {
+        return None;
+    };
 
     // STEP 2: Build expected numerator: a² - 2ab + b²
     let two = ctx.num(2);
@@ -728,8 +769,9 @@ fn try_perfect_square_minus_in_num(
     let inner_sum = ctx.add(Expr::Add(neg_two_ab, b_sq));
     let expected_num = ctx.add(Expr::Add(a_sq, inner_sum));
 
-    // STEP 3: Check if num equals expected structurally
-    if crate::ordering::compare_expr(ctx, num, expected_num) != std::cmp::Ordering::Equal {
+    // STEP 3: Check if num equals expected using polynomial comparison
+    // This handles reordering by parser (e.g., y² + x² - 2xy vs x² - 2xy + y²)
+    if !poly_eq(ctx, num, expected_num) {
         return None;
     }
 
@@ -806,18 +848,30 @@ fn try_sum_diff_of_cubes_in_num(
     };
 
     // Check if den matches the expected factor
+    // Try Sub(a,b) first, then Add(a, Neg(b))
     let den_is_a_minus_b = if let Some((da, db)) = crate::helpers::as_sub(ctx, den) {
-        crate::ordering::compare_expr(ctx, da, a) == std::cmp::Ordering::Equal
-            && crate::ordering::compare_expr(ctx, db, b) == std::cmp::Ordering::Equal
+        poly_eq(ctx, da, a) && poly_eq(ctx, db, b)
+    } else if let Some((left, right)) = crate::helpers::as_add(ctx, den) {
+        // Try Add(a, Neg(b)) = a - b
+        if let Some(neg_inner) = crate::helpers::as_neg(ctx, right) {
+            poly_eq(ctx, left, a) && poly_eq(ctx, neg_inner, b)
+        } else if let Some(neg_inner) = crate::helpers::as_neg(ctx, left) {
+            poly_eq(ctx, right, a) && poly_eq(ctx, neg_inner, b)
+        } else {
+            false
+        }
     } else {
         false
     };
 
     let den_is_a_plus_b = if let Some((da, db)) = crate::helpers::as_add(ctx, den) {
-        (crate::ordering::compare_expr(ctx, da, a) == std::cmp::Ordering::Equal
-            && crate::ordering::compare_expr(ctx, db, b) == std::cmp::Ordering::Equal)
-            || (crate::ordering::compare_expr(ctx, da, b) == std::cmp::Ordering::Equal
-                && crate::ordering::compare_expr(ctx, db, a) == std::cmp::Ordering::Equal)
+        // Skip if it's actually a subtraction (Add with Neg)
+        if crate::helpers::as_neg(ctx, da).is_some() || crate::helpers::as_neg(ctx, db).is_some() {
+            false // This is actually a subtraction, not a+b
+        } else {
+            (poly_eq(ctx, da, a) && poly_eq(ctx, db, b))
+                || (poly_eq(ctx, da, b) && poly_eq(ctx, db, a))
+        }
     } else {
         false
     };
