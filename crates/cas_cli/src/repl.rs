@@ -5350,7 +5350,10 @@ impl Repl {
 
                                 println!(
                                     "Result: {}",
-                                    cas_ast::DisplayExprStyled::new(context, res, &style_prefs)
+                                    clean_display_string(&format!(
+                                        "{}",
+                                        cas_ast::DisplayExprStyled::new(context, res, &style_prefs)
+                                    ))
                                 );
                             }
                             EvalResult::SolutionSet(ref solution_set) => {
