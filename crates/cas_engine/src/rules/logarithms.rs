@@ -549,6 +549,12 @@ impl crate::rule::Rule for LogContractionRule {
             return None;
         }
 
+        // GATE: Don't contract logs when in auto-expand mode
+        // This prevents cycle with AutoExpandLogRule (expand→contract→expand→...)
+        if parent_ctx.is_auto_expand() || parent_ctx.in_auto_expand_context() {
+            return None;
+        }
+
         let expr_data = ctx.get(expr).clone();
 
         // Case 1: ln(a) + ln(b) → ln(a*b) or log(b,x) + log(b,y) → log(b, x*y)
@@ -1346,7 +1352,6 @@ fn count_mul_factors(ctx: &Context, expr: ExprId) -> u32 {
 
 /// Check if an expression is provably positive (for Generic mode proof).
 /// Returns true for positive literals and known-positive expressions.
-#[allow(dead_code)] // Will be used when AutoExpandLogRule is activated
 fn is_provably_positive(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => *n > num_rational::BigRational::zero(),
@@ -1390,26 +1395,119 @@ impl crate::rule::Rule for AutoExpandLogRule {
 
     fn apply(
         &self,
-        _ctx: &mut Context,
-        _expr: ExprId,
-        _parent_ctx: &crate::parent_context::ParentContext,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        // GATE: log_expand_policy must be Auto for this rule to apply.
-        // Since log_expand_policy is not yet accessible from parent_ctx,
-        // we disable this rule by default (Off = no auto-expansion).
-        // TODO: Add parent_ctx.log_expand_policy() accessor when integrating fully.
-        // For now, return None to prevent infinite expand/contract cycles.
-        // The user can use the explicit `expand_log(...)` command instead.
-        None
+        // GATE: Expand if global auto-expand mode OR inside a marked cancellation context
+        // This mirrors AutoExpandPowSumRule behavior exactly
+        let in_expand_context = parent_ctx.in_auto_expand_context();
+        if !(parent_ctx.is_auto_expand() || in_expand_context) {
+            return None;
+        }
+
+        // Match log(arg) or ln(arg)
+        let arg = match ctx.get(expr) {
+            Expr::Function(name, args) if (name == "log" || name == "ln") && args.len() == 1 => {
+                args[0]
+            }
+            Expr::Function(name, args) if name == "log" && args.len() == 2 => {
+                args[1] // log(base, arg)
+            }
+            _ => return None,
+        };
+
+        // Check if expandable and get term estimates
+        let (base_terms, gen_terms, pow_exp) = estimate_log_terms(ctx, arg)?;
+
+        // Get budget - use default if in context but no explicit budget set
+        let default_budget = crate::phase::ExpandBudget::default();
+        let budget = parent_ctx.auto_expand_budget().unwrap_or(&default_budget);
+
+        // Budget check
+        if !budget.allows_log_expansion(base_terms, gen_terms, pow_exp) {
+            return None;
+        }
+
+        // Don't expand if it wouldn't help (gen_terms <= 1)
+        if gen_terms <= 1 {
+            return None;
+        }
+
+        // Get domain mode from parent context
+        let domain_mode = parent_ctx.domain_mode();
+
+        // For Generic/Strict mode, we need to check if factors are provably positive
+        // For Assume mode, we proceed and emit HeuristicAssumption events
+        match domain_mode {
+            crate::domain::DomainMode::Strict => {
+                // In Strict, never auto-expand unless proven
+                let factors = collect_mul_factors(ctx, arg);
+                let all_positive = factors.iter().all(|&f| is_provably_positive(ctx, f));
+                if !all_positive {
+                    return None; // Block silently in Strict
+                }
+                // Expand without assumption events (proven)
+                expand_log_for_rule(ctx, expr, arg, &[])
+            }
+            crate::domain::DomainMode::Generic => {
+                // In Generic, block if not proven, but register hint
+                let factors = collect_mul_factors(ctx, arg);
+                let all_positive = factors.iter().all(|&f| is_provably_positive(ctx, f));
+                if !all_positive {
+                    // Register blocked hint for user feedback
+                    if let Some(&factor) = factors.iter().find(|&&f| !is_provably_positive(ctx, f))
+                    {
+                        let hint = crate::domain::BlockedHint {
+                            key: crate::assumptions::AssumptionKey::Positive {
+                                expr_fingerprint: crate::assumptions::expr_fingerprint(ctx, factor),
+                            },
+                            expr_id: factor,
+                            rule: "AutoExpandLogRule",
+                            suggestion:
+                                "Use 'semantics set domain assume' to enable log expansion.",
+                        };
+                        crate::domain::register_blocked_hint(hint);
+                    }
+                    return None;
+                }
+                // All factors proven positive, expand without events
+                expand_log_for_rule(ctx, expr, arg, &[])
+            }
+            crate::domain::DomainMode::Assume => {
+                // In Assume mode, expand and emit HeuristicAssumption events
+                let factors = collect_mul_factors(ctx, arg);
+                let mut events = Vec::new();
+                for &factor in &factors {
+                    if !is_provably_positive(ctx, factor) {
+                        events.push(crate::assumptions::AssumptionEvent::positive_assumed(
+                            ctx, factor,
+                        ));
+                    }
+                }
+                expand_log_for_rule(ctx, expr, arg, &events)
+            }
+        }
     }
 
     fn target_types(&self) -> Option<Vec<&str>> {
         Some(vec!["Function"])
     }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        // Same as AutoExpandPowSumRule: CORE, TRANSFORM, RATIONALIZE
+        crate::phase::PhaseMask::CORE
+            | crate::phase::PhaseMask::TRANSFORM
+            | crate::phase::PhaseMask::RATIONALIZE
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        // Didactically important: users should see log expansions
+        crate::step::ImportanceLevel::Medium
+    }
 }
 
 /// Collect all multiplicative factors from a Mul expression (flattened).
-#[allow(dead_code)] // Will be used when AutoExpandLogRule is activated
 fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     match ctx.get(expr) {
         Expr::Mul(a, b) => {
@@ -1422,7 +1520,6 @@ fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
 }
 
 /// Perform the log expansion for AutoExpandLogRule.
-#[allow(dead_code)] // Will be used when AutoExpandLogRule is activated
 fn expand_log_for_rule(
     ctx: &mut Context,
     _original: ExprId,

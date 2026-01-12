@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{x\cdot (\frac{1}{x} + \frac{2}{x})}{3}</title>
+    <title>CAS Steps: \frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,79 +451,83 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{x\cdot (\frac{1}{x} + \frac{2}{x})}{3}\]
+            \[\frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Add Fractions</h3>
+                    <h3>Rationalize Denominator</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{x\cdot ({\color{red}{\frac{1}{x} + \frac{2}{x}}})}{3}\]
+                        \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Pasos intermedios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{1}{\sqrt{x} - 1} \rightarrow \text{Conjugado: } \sqrt{x} + 1\]</div></div><div class="substep">
+                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(1) \cdot (\sqrt{x} + 1)}{\sqrt{x} - 1 \cdot (\sqrt{x} + 1)} \rightarrow \frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
+                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{1}{x} + \frac{2}{x}}} \rightarrow {\color{green}{\frac{1 + 2}{x}}}\]
+                            \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} \rightarrow {\color{green}{\frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{x\cdot {\color{green}{\frac{1 + 2}{x}}}}{3}\]
+                        \[{\color{green}{\frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Combine Constants</h3>
+                    <h3>Power of a Power</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{x\cdot \frac{{\color{red}{1 + 2}}}{x}}{3}\]
+                        \[\frac{1 + \sqrt{x}}{{\color{red}{{\sqrt{x}}^{2}}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{1 + 2 = 3}\)</div>
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{1 + 2}} \rightarrow {\color{green}{3}}\]
+                            \[{\color{red}{{\sqrt{x}}^{2}}} \rightarrow {\color{green}{x}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{x\cdot \frac{{\color{green}{3}}}{x}}{3}\]
+                        \[\frac{1 + \sqrt{x}}{{\color{green}{x}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Simplify Multiplication with Division</h3>
+                    <h3>Add Inverse</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{x\cdot \frac{3}{x}}}}{3}\]
+                        \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel division: a*(b/a) -> b}\)</div>
+                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{x\cdot \frac{3}{x}}} \rightarrow {\color{green}{3}}\]
+                            \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{{\color{green}{3}}}{3}\]
+                        \[{\color{green}{0}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[1\]
+            \[0\]
         </div>
         <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> 3 ≠ 0, x ≠ 0
+            <strong>ℹ️ Requires:</strong> sqrt(x) - 1 ≠ 0, x - 1 ≠ 0, x ≥ 0
         </div>
     </div>
     <footer>
