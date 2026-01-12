@@ -59,6 +59,136 @@ The CAS engine makes **mathematical assumptions** during simplification (e.g., "
 | `principal_range` | InvTrig composition | `arctan(tan(x)) → x` assumes x ∈ (-π/2, π/2) |
 | `principal_branch` | Complex multi-valued | `√-1 → i` in ComplexEnabled |
 
+## V2.12.13: AssumptionKind Classification System
+
+The `AssumptionKind` enum classifies assumptions for **display filtering** and **semantic accuracy**.
+
+### The 6 Categories
+
+| Kind | Icon | Display? | Meaning |
+|------|------|----------|---------|
+| `DerivedFromRequires` | - | ❌ NO | Redundant with input domain |
+| `RequiresIntroduced` | ℹ️ | ✅ YES | New constraint for equivalence |
+| `BranchChoice` | 🔀 | ✅ YES | Multi-valued function branch |
+| `DomainExtension` | 🧿 | ✅ YES | Domain change (ℝ→ℂ) |
+| `HeuristicAssumption` | ⚠️ | ✅ YES | Simplification heuristic |
+
+### Definitions
+
+#### 1. Requires (input)
+Conditions **inferred from the original expression** that are necessary for it to be defined.
+
+```
+Input: 1/(x-1)
+Requires (input): x-1 ≠ 0
+```
+
+#### 2. DerivedFromRequires
+An assumption emitted by a rule that is **already implied** by `Requires (input)` or previously introduced requires. **NOT displayed** to avoid redundancy.
+
+```
+Input: (x²-1)/(x-1)
+Requires (input): x-1 ≠ 0
+
+Step: Cancel (x-1)
+→ Assumption "x-1 ≠ 0" would be DerivedFromRequires (not shown)
+```
+
+#### 3. RequiresIntroduced
+A **new constraint** introduced by a step that was **not deducible** from the input. This narrows the domain of validity.
+
+```
+Input: log(a·b)
+Step: log(a·b) → log(a) + log(b)
+→ RequiresIntroduced: a > 0, b > 0
+   (the input only required a·b > 0)
+```
+
+#### 4. BranchChoice
+The engine **chose one branch** of a multi-valued function. This is an explicit choice, not a logical necessity.
+
+```
+Input: √(x²)
+Step: √(x²) → x  (instead of |x|)
+→ BranchChoice: "Choosing x ≥ 0 branch"
+```
+
+> **Contract**: BranchChoice is **NEVER promoted** to RequiresIntroduced. It stays as a branch indicator.
+
+#### 5. DomainExtension
+The engine **extended the domain** (typically ℝ → ℂ) to continue simplification.
+
+```
+Input: (-1)^(1/2)
+Step: → i
+→ DomainExtension: ℝ → ℂ
+```
+
+#### 6. HeuristicAssumption
+The engine applied a **simplification heuristic** that is convenient but not strictly required for validity.
+
+```
+Step: Combined terms assuming specific form
+→ HeuristicAssumption: "Applied heuristic grouping"
+```
+
+### Mathematical Contracts
+
+#### When NO Branch/Assume/Extension appears:
+
+> Under `Requires_input ∪ Requires_introduced`, the result is **equivalent** to the input (same value where defined).
+
+#### When BranchChoice appears:
+
+> The result is valid **under the stated branch condition**. The general identity may differ (e.g., `|x|` vs `x`).
+
+#### When HeuristicAssumption appears:
+
+> The simplification is for **convenience/aesthetics**. Equivalence may not hold generally.
+
+### Canonical Examples
+
+| Input | Step | Category | Display |
+|-------|------|----------|---------|
+| `(x²-4)/(x-2)` | Cancel | DerivedFromRequires | *(hidden)* |
+| `log(a·b)` | Split | RequiresIntroduced | ℹ️ `a>0, b>0` |
+| `√(x²)` | Simplify to x | BranchChoice | 🔀 `x≥0` |
+| `(-1)^(1/2)` | → i | DomainExtension | 🧿 `ℝ→ℂ` |
+| `sin(arcsin(x))` | → x | BranchChoice | 🔀 Principal range |
+| `√x · √x` | → x | DerivedFromRequires | *(hidden)* |
+
+### Rule Authoring Checklist
+
+When writing a new rule that emits assumptions:
+
+1. **Does the condition come from division in input?**
+   - YES → Use `AssumptionEvent::nonzero()` (default: DerivedFromRequires)
+
+2. **Does the rule introduce a NEW constraint not in input?**
+   - YES → Use `positive()` with default RequiresIntroduced
+   - Example: log rules that require each argument positive
+
+3. **Does the rule choose a branch?**
+   - YES → Use `inv_trig_principal_range()` or `complex_principal_branch()`
+   - These default to BranchChoice
+
+4. **Is this a heuristic simplification?**
+   - YES → Manually set `kind: AssumptionKind::HeuristicAssumption`
+
+5. **Does the rule extend domain?**
+   - YES → Manually set `kind: AssumptionKind::DomainExtension`
+
+### DomainContext and Classification
+
+The `DomainContext` struct tracks:
+- `global_requires`: Inferred from input expression
+- `introduced_requires`: Accumulated from steps
+
+The `classify_assumption()` function reclassifies events:
+1. BranchChoice/Heuristic/DomainExtension → **Keep as-is**
+2. Condition **implied** by known requires → `DerivedFromRequires`
+3. Condition **not implied** → Promote to `RequiresIntroduced`
+
 ## Solver Assumptions (Added Dec 2025)
 
 When solving exponential equations like `2^x = y`, the solver may emit assumptions if `DomainMode = Assume`. These are collected via a **thread-local `SolveAssumptionsGuard`** RAII pattern.

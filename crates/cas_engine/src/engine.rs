@@ -1493,6 +1493,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         ctx = ctx.with_inv_trig(self.initial_parent_ctx.inv_trig_policy());
                         // Copy value_domain from initial context for log expansion rules
                         ctx = ctx.with_value_domain(self.initial_parent_ctx.value_domain());
+                        // Copy goal from initial context for expand_log and collect gating
+                        ctx = ctx.with_goal(self.initial_parent_ctx.goal());
                         // Build ancestor chain from stack
                         for &ancestor in &self.ancestor_stack {
                             ctx = ctx.extend(ancestor);

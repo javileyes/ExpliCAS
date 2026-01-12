@@ -321,7 +321,7 @@ impl AssumptionEvent {
                 expr_fingerprint: fp,
             },
             expr_display: display.clone(),
-            message: format!("Assumed {} ≠ 0", display),
+            message: format!("{} ≠ 0", display),
             kind: AssumptionKind::DerivedFromRequires,
             expr_id: Some(expr),
         }
@@ -342,7 +342,7 @@ impl AssumptionEvent {
                 expr_fingerprint: fp,
             },
             expr_display: display.clone(),
-            message: format!("Assumed {} > 0", display),
+            message: format!("{} > 0", display),
             kind: AssumptionKind::RequiresIntroduced,
             expr_id: Some(expr),
         }
@@ -363,7 +363,7 @@ impl AssumptionEvent {
                 expr_fingerprint: fp,
             },
             expr_display: display.clone(),
-            message: format!("Assumed {} ≥ 0", display),
+            message: format!("{} ≥ 0", display),
             kind: AssumptionKind::DerivedFromRequires,
             expr_id: Some(expr),
         }
@@ -384,7 +384,7 @@ impl AssumptionEvent {
                 expr_fingerprint: fp,
             },
             expr_display: display.clone(),
-            message: format!("Assumed {} is defined", display),
+            message: format!("{} is defined", display),
             kind: AssumptionKind::DerivedFromRequires,
             expr_id: Some(expr),
         }
@@ -406,7 +406,7 @@ impl AssumptionEvent {
                 arg_fingerprint: fp,
             },
             expr_display: display.clone(),
-            message: format!("Assumed {} is in principal range of {}", display, func),
+            message: format!("{} in {} principal range", display, func),
             kind: AssumptionKind::BranchChoice,
             expr_id: Some(arg),
         }
@@ -428,7 +428,7 @@ impl AssumptionEvent {
                 arg_fingerprint: fp,
             },
             expr_display: display.clone(),
-            message: format!("Used principal branch of {}({})", func, display),
+            message: format!("{}({}) principal branch", func, display),
             kind: AssumptionKind::BranchChoice,
             expr_id: Some(arg),
         }

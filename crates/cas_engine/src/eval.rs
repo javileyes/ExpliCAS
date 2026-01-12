@@ -229,20 +229,32 @@ impl Engine {
 
                 // TOOL DISPATCHER: Detect tool functions and set appropriate goal
                 // This prevents inverse rules from undoing the effect of collect/expand_log
-                if let Expr::Function(name, _args) = ctx_simplifier.context.get(resolved) {
+                let expr_to_simplify = if let Expr::Function(name, args) =
+                    ctx_simplifier.context.get(resolved).clone()
+                {
                     match name.as_str() {
                         "collect" => {
                             simplify_opts.goal = crate::semantics::NormalFormGoal::Collected;
+                            resolved
                         }
-                        "expand_log" => {
+                        "expand_log" if args.len() == 1 => {
+                            // V2.12.14: Apply log expansion BEFORE simplification
+                            // This ensures the result is simplified with goal=ExpandedLog
+                            // which blocks LogContractionRule from undoing the expansion
                             simplify_opts.goal = crate::semantics::NormalFormGoal::ExpandedLog;
+                            crate::rules::logarithms::expand_logs(
+                                &mut ctx_simplifier.context,
+                                args[0],
+                            )
                         }
-                        _ => {}
+                        _ => resolved,
                     }
-                }
+                } else {
+                    resolved
+                };
 
                 let (mut res, steps, _stats) =
-                    ctx_simplifier.simplify_with_stats(resolved, simplify_opts);
+                    ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts);
 
                 if effective_opts.const_fold == crate::const_fold::ConstFoldMode::Safe {
                     let mut budget = crate::budget::Budget::preset_cli();

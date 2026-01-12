@@ -8,7 +8,13 @@ use std::cmp::Ordering;
 
 /// Helper: create log(base, arg) or ln(arg) depending on base.
 /// If base is Constant::E, returns ln(arg) to preserve natural log notation.
+/// If base is the sentinel for log10 (u32::MAX - 1), returns log(arg) with 1 arg.
 fn make_log(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
+    // Check for log10 sentinel first (before accessing ctx.get which would panic)
+    let sentinel_log10 = ExprId::from_raw(u32::MAX - 1);
+    if base == sentinel_log10 {
+        return ctx.add(Expr::Function("log".to_string(), vec![arg]));
+    }
     if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
         ctx.add(Expr::Function("ln".to_string(), vec![arg]))
     } else {
@@ -279,7 +285,100 @@ impl crate::rule::Rule for LogExpansionRule {
     }
 }
 
-/// LogAbsSimplifyRule: Simplifies ln(|expr|) → ln(expr) when expr > 0.
+/// Recursively expand logarithms throughout an expression tree.
+///
+/// This is a specialized expansion function that applies log expansion rules:
+/// - log(x*y) → log(x) + log(y)
+/// - log(x/y) → log(x) - log(y)
+///
+/// Used by the `expand_log()` meta-function.
+pub fn expand_logs(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> cas_ast::ExprId {
+    let expr_data = ctx.get(expr).clone();
+
+    match expr_data {
+        Expr::Function(ref name, ref args) if (name == "ln" || name == "log") => {
+            // Try to expand this log
+            // Sentinel: base-10 log uses ExprId::from_raw(u32::MAX - 1) as base indicator
+            let sentinel_log10 = cas_ast::ExprId::from_raw(u32::MAX - 1);
+            let (base, arg) = if name == "ln" && args.len() == 1 {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                (e, args[0])
+            } else if name == "log" && args.len() == 2 {
+                (args[0], args[1])
+            } else if name == "log" && args.len() == 1 {
+                // log(x) = base-10 log
+                (sentinel_log10, args[0])
+            } else {
+                // Not a recognized log form, recurse into args
+                let new_args: Vec<_> = args.iter().map(|a| expand_logs(ctx, *a)).collect();
+                return ctx.add(Expr::Function(name.clone(), new_args));
+            };
+
+            // First expand logs in the argument recursively
+            let expanded_arg = expand_logs(ctx, arg);
+            let arg_data = ctx.get(expanded_arg).clone();
+
+            // Try to expand log(x*y) → log(x) + log(y)
+            if let Expr::Mul(lhs, rhs) = arg_data {
+                // In Assume mode: always expand with assumptions
+                // Create the expanded form
+                let log_lhs = make_log(ctx, base, lhs);
+                let log_rhs = make_log(ctx, base, rhs);
+                let sum = ctx.add(Expr::Add(log_lhs, log_rhs));
+                // Recursively expand the result
+                return expand_logs(ctx, sum);
+            }
+
+            // Try to expand log(x/y) → log(x) - log(y)
+            if let Expr::Div(num, den) = arg_data {
+                let log_num = make_log(ctx, base, num);
+                let log_den = make_log(ctx, base, den);
+                let diff = ctx.add(Expr::Sub(log_num, log_den));
+                return expand_logs(ctx, diff);
+            }
+
+            // No expansion possible, return with expanded arg
+            make_log(ctx, base, expanded_arg)
+        }
+
+        // Recurse through structural nodes
+        Expr::Add(l, r) => {
+            let el = expand_logs(ctx, l);
+            let er = expand_logs(ctx, r);
+            ctx.add(Expr::Add(el, er))
+        }
+        Expr::Sub(l, r) => {
+            let el = expand_logs(ctx, l);
+            let er = expand_logs(ctx, r);
+            ctx.add(Expr::Sub(el, er))
+        }
+        Expr::Mul(l, r) => {
+            let el = expand_logs(ctx, l);
+            let er = expand_logs(ctx, r);
+            ctx.add(Expr::Mul(el, er))
+        }
+        Expr::Div(l, r) => {
+            let el = expand_logs(ctx, l);
+            let er = expand_logs(ctx, r);
+            ctx.add(Expr::Div(el, er))
+        }
+        Expr::Pow(b, e) => {
+            let eb = expand_logs(ctx, b);
+            let ee = expand_logs(ctx, e);
+            ctx.add(Expr::Pow(eb, ee))
+        }
+        Expr::Neg(e) => {
+            let ee = expand_logs(ctx, e);
+            ctx.add(Expr::Neg(ee))
+        }
+        Expr::Function(name, args) => {
+            let new_args: Vec<_> = args.iter().map(|a| expand_logs(ctx, *a)).collect();
+            ctx.add(Expr::Function(name, new_args))
+        }
+        // Base cases - return as-is
+        _ => expr,
+    }
+}
 ///
 /// Domain-aware:
 /// - Strict: only if prove_positive(expr) == Proven
