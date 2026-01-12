@@ -379,6 +379,9 @@ pub struct TimelineHtml<'a> {
     simplified_result: Option<ExprId>, // Optional: the final simplified result
     title: String,
     verbosity_level: VerbosityLevel,
+    /// V2.12.13: Global requires inferred from input expression.
+    /// Shown at the end of the timeline, after final result.
+    global_requires: Vec<crate::implicit_domain::ImplicitCondition>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -420,11 +423,20 @@ impl<'a> TimelineHtml<'a> {
         simplified_result: Option<ExprId>,
         verbosity: VerbosityLevel,
     ) -> Self {
+        use crate::implicit_domain::infer_implicit_domain;
+        use crate::semantics::ValueDomain;
+
         let title = LaTeXExpr {
             context,
             id: original_expr,
         }
         .to_latex();
+
+        // V2.12.13: Infer global requires from input expression
+        // This ensures timeline shows the same requires as REPL
+        let input_domain = infer_implicit_domain(context, original_expr, ValueDomain::RealOnly);
+        let global_requires: Vec<_> = input_domain.conditions().iter().cloned().collect();
+
         Self {
             context,
             steps,
@@ -432,6 +444,7 @@ impl<'a> TimelineHtml<'a> {
             simplified_result,
             title,
             verbosity_level: verbosity,
+            global_requires,
         }
     }
 
@@ -1575,6 +1588,18 @@ impl<'a> TimelineHtml<'a> {
         .domain-requires::before {{
             content: 'ℹ️ ';
         }}
+        .global-requires {{
+            margin-top: 15px;
+            padding: 12px 16px;
+            background: rgba(33, 150, 243, 0.1);
+            border: 2px solid rgba(33, 150, 243, 0.5);
+            border-radius: 8px;
+            color: #90caf9;
+            font-size: 1em;
+        }}
+        .global-requires strong {{
+            color: #64b5f6;
+        }}
     </style>
 </head>
 <body>
@@ -2072,17 +2097,25 @@ impl<'a> TimelineHtml<'a> {
             };
 
             // Build requires HTML from required_conditions (implicit domain constraints)
+            // Apply normalization (canonical form + sign + dedupe) for consistent display
             let requires_html = if !step.required_conditions.is_empty() {
-                let messages: Vec<String> = step
-                    .required_conditions
-                    .iter()
-                    .map(|c| html_escape(&c.display(self.context)))
-                    .collect();
-                format!(
-                    r#"                    <div class="domain-requires">Requires: {}</div>
-"#,
-                    messages.join(", ")
+                let messages: Vec<String> = crate::implicit_domain::render_conditions_normalized(
+                    self.context,
+                    &step.required_conditions,
                 )
+                .into_iter()
+                .map(|s| html_escape(&s))
+                .collect();
+
+                if messages.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        r#"                    <div class="domain-requires">Requires: {}</div>
+"#,
+                        messages.join(", ")
+                    )
+                }
             } else {
                 String::new()
             };
@@ -2141,7 +2174,28 @@ impl<'a> TimelineHtml<'a> {
         html.push_str(
             r#"\]
         </div>
-    </div>
+"#,
+        );
+
+        // V2.12.13: Add global requires section (inferred from input expression)
+        // This ensures timeline shows the same requires as REPL
+        if !self.global_requires.is_empty() {
+            let requires_messages = crate::implicit_domain::render_conditions_normalized(
+                self.context,
+                &self.global_requires,
+            );
+            if !requires_messages.is_empty() {
+                html.push_str(r#"        <div class="global-requires">"#);
+                html.push_str("\n            <strong>ℹ️ Requires:</strong> ");
+                let escaped: Vec<String> =
+                    requires_messages.iter().map(|s| html_escape(s)).collect();
+                html.push_str(&escaped.join(", "));
+                html.push_str("\n        </div>\n");
+            }
+        }
+
+        html.push_str(
+            r#"    </div>
 "#,
         );
         html

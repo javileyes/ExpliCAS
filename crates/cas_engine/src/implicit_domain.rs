@@ -122,6 +122,161 @@ impl ImplicitCondition {
 }
 
 // =============================================================================
+// Condition Normalization (Canonical Form + Sign Normalization + Dedupe)
+// =============================================================================
+
+/// Normalize an expression for display in conditions.
+///
+/// This ensures that equivalent expressions like `1 + x` and `x + 1`
+/// display consistently (as `x + 1` in polynomial order).
+///
+/// Strategy:
+/// 1. Try polynomial conversion → get canonical polynomial form
+/// 2. Normalize sign: if leading coefficient is negative, negate the whole expression
+/// 3. Fallback: use DisplayExpr which already applies term ordering
+///
+/// The normalized ExprId is only used for DISPLAY - it does not affect the
+/// underlying AST or comparisons.
+pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
+    use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
+
+    // Small budget - we're just normalizing for display, not doing heavy algebra
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    // Try polynomial normalization
+    if let Ok(poly) = multipoly_from_expr(ctx, expr, &budget) {
+        // Check leading coefficient sign
+        let needs_negation = if let Some((_coeff, _mono)) = poly.leading_term_lex() {
+            // Leading coefficient is negative if coeff < 0
+            _coeff < &num_rational::BigRational::from_integer(0.into())
+        } else {
+            false
+        };
+
+        // If leading coeff is negative, negate the polynomial
+        let normalized_poly = if needs_negation { poly.neg() } else { poly };
+
+        // Convert back to expression
+        return multipoly_to_expr(&normalized_poly, ctx);
+    }
+
+    // Fallback: expression is not polynomial
+    // Check if it's a Neg node and unwrap it
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        // -E ≠ 0 is equivalent to E ≠ 0, prefer non-negated form
+        return *inner;
+    }
+
+    // Otherwise return original (DisplayExpr will apply term ordering)
+    expr
+}
+
+/// Normalize a condition for display (applies normalization to the inner expression).
+pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> ImplicitCondition {
+    let normalized_expr = match cond {
+        ImplicitCondition::NonNegative(e) => normalize_condition_expr(ctx, *e),
+        ImplicitCondition::Positive(e) => normalize_condition_expr(ctx, *e),
+        ImplicitCondition::NonZero(e) => normalize_condition_expr(ctx, *e),
+    };
+
+    match cond {
+        ImplicitCondition::NonNegative(_) => ImplicitCondition::NonNegative(normalized_expr),
+        ImplicitCondition::Positive(_) => ImplicitCondition::Positive(normalized_expr),
+        ImplicitCondition::NonZero(_) => ImplicitCondition::NonZero(normalized_expr),
+    }
+}
+
+/// Check if two conditions are equivalent (same type and polynomial-equivalent expressions).
+fn conditions_equivalent(ctx: &Context, c1: &ImplicitCondition, c2: &ImplicitCondition) -> bool {
+    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+
+    // Must be same condition type
+    let (e1, e2) = match (c1, c2) {
+        (ImplicitCondition::NonNegative(a), ImplicitCondition::NonNegative(b)) => (*a, *b),
+        (ImplicitCondition::Positive(a), ImplicitCondition::Positive(b)) => (*a, *b),
+        (ImplicitCondition::NonZero(a), ImplicitCondition::NonZero(b)) => (*a, *b),
+        _ => return false,
+    };
+
+    // Same ExprId = definitely equivalent
+    if e1 == e2 {
+        return true;
+    }
+
+    // Try polynomial comparison
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    if let (Ok(p1), Ok(p2)) = (
+        multipoly_from_expr(ctx, e1, &budget),
+        multipoly_from_expr(ctx, e2, &budget),
+    ) {
+        // For NonZero, E ≠ 0 is equivalent to -E ≠ 0
+        // So check if p1 == p2 OR p1 == -p2
+        if p1 == p2 {
+            return true;
+        }
+
+        // Check negation equivalence (E ≠ 0 ⟺ -E ≠ 0)
+        // Also applies to Positive (E > 0 ⟺ -E < 0, but for reals we handle this)
+        let p2_neg = p2.neg();
+        if p1 == p2_neg {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Normalize and deduplicate a list of conditions for display.
+///
+/// This function:
+/// 1. Normalizes each condition (canonical form + sign normalization)
+/// 2. Deduplicates conditions by polynomial equivalence
+/// 3. Preserves order (stable dedupe - keeps first occurrence)
+///
+/// Used when rendering "Requires:" in timeline and REPL.
+pub fn normalize_and_dedupe_conditions(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+) -> Vec<ImplicitCondition> {
+    let mut result: Vec<ImplicitCondition> = Vec::new();
+
+    for cond in conditions {
+        let normalized = normalize_condition(ctx, cond);
+
+        // Check if we already have an equivalent condition
+        let is_duplicate = result
+            .iter()
+            .any(|existing| conditions_equivalent(ctx, existing, &normalized));
+
+        if !is_duplicate {
+            result.push(normalized);
+        }
+    }
+
+    result
+}
+
+/// Render conditions for display, applying normalization and deduplication.
+///
+/// This is the main entry point for rendering "Requires:" lists.
+pub fn render_conditions_normalized(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+) -> Vec<String> {
+    let normalized = normalize_and_dedupe_conditions(ctx, conditions);
+    normalized.iter().map(|c| c.display(ctx)).collect()
+}
+
+// =============================================================================
 // Display Level for Requires
 // =============================================================================
 

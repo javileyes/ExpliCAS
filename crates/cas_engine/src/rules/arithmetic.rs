@@ -436,6 +436,10 @@ mod tests {
 // - Strict: only if `a` contains no potentially-undefined subexpressions (no variable denominator)
 // - Assume: always apply (educational mode assumption: all expressions are defined)
 // - Generic: same as Assume
+//
+// V2.12.13: REMOVED redundant "is defined" assumption event.
+// The individual Div operations already emit NonZero(denominator) as Requires.
+// Showing "a is defined" here is redundant and confusing.
 define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
     use crate::domain::Proof;
     use crate::helpers::prove_nonzero;
@@ -496,21 +500,10 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
                 return None;
             }
 
-            // Determine warning for Assume/Generic modes with undefined risk
-            let has_risk = has_undefined_risk(ctx, inner);
-            let needs_warning = has_risk && domain_mode != crate::DomainMode::Strict;
-
-            let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> =
-                if needs_warning {
-                    smallvec::smallvec![crate::assumptions::AssumptionEvent::defined(ctx, inner)]
-                } else {
-                    smallvec::SmallVec::new()
-                };
-            return Some(
-                Rewrite::new(ctx.num(0))
-                    .desc("a + (-a) = 0")
-                    .assume_all(assumption_events),
-            );
+            // V2.12.13: No assumption events - the division conditions are already
+            // tracked as Requires from the original Div operations.
+            // Adding "a is defined" here is redundant and clutters the output.
+            return Some(Rewrite::new(ctx.num(0)).desc("a + (-a) = 0"));
         }
     }
     None

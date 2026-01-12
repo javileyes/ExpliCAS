@@ -238,14 +238,17 @@ fn strict_add_inverse_risky_stays_unchanged() {
 }
 
 #[test]
-fn generic_add_inverse_risky_simplifies_with_warning() {
-    // (1/(x+1)) + (-(1/(x+1))) should simplify to 0 WITH warning in Generic mode
+fn generic_add_inverse_risky_simplifies_no_warning() {
+    // V2.12.13: (1/(x+1)) + (-(1/(x+1))) should simplify to 0 WITHOUT warning
+    // The division 1/(x+1) already emits a NonZero(x+1) require, so the
+    // AddInverseRule doesn't need to emit a redundant "is defined" assumption.
+    // This was previously expected to emit a warning, but that was redundant.
     let (result, warnings) = simplify_generic("(1/(x+1)) + (-(1/(x+1)))");
 
     assert_eq!(result, "0", "Generic mode should simplify to 0");
     assert!(
-        !warnings.is_empty(),
-        "Generic mode should emit warning for risky a+(-a), got: {:?}",
+        warnings.is_empty(),
+        "Generic mode should NOT emit warning for a+(-a) - the Requires from division cover this. Got: {:?}",
         warnings
     );
 }
