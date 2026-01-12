@@ -6,7 +6,7 @@ use crate::multipoly::{
 };
 use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
-use crate::rule::Rewrite;
+use crate::rule::{ChainedRewrite, Rewrite};
 use cas_ast::count_nodes;
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Signed, Zero};
@@ -1109,36 +1109,45 @@ define_rule!(
                 };
                 let factored_form = ctx.add(Expr::Div(factored_num, factored_den));
 
-                // Layer tag for description
-                let layer_tag = match layer {
+                // Layer tag for verbose description (omit for clean didactic display)
+                let _layer_tag = match layer {
                     GcdLayer::Layer1MonomialContent => "Layer 1: monomial+content",
                     GcdLayer::Layer2HeuristicSeeds => "Layer 2: heuristic seeds",
                     GcdLayer::Layer25TensorGrid => "Layer 2.5: tensor grid",
                 };
 
-                // If denominator is 1, return just numerator
-                if let Expr::Number(n) = ctx.get(new_den) {
+                // Compute final result
+                let result = if let Expr::Number(n) = ctx.get(new_den) {
                     if n.is_one() {
-                        return Some(Rewrite::new(new_num)
-                            .desc(format!(
-                                "Simplified fraction by GCD: {} [{}]",
-                                DisplayExpr { context: ctx, id: gcd_expr },
-                                layer_tag
-                            ))
-                            .local(factored_form, new_num)
-                            .assume_all(decision.assumption_events(ctx, gcd_expr)));
+                        new_num // Denominator simplified to 1
+                    } else {
+                        ctx.add(Expr::Div(new_num, new_den))
                     }
-                }
+                } else {
+                    ctx.add(Expr::Div(new_num, new_den))
+                };
 
-                let result = ctx.add(Expr::Div(new_num, new_den));
-                return Some(Rewrite::new(result)
-                    .desc(format!(
-                        "Simplified fraction by GCD: {} [{}]",
-                        DisplayExpr { context: ctx, id: gcd_expr },
-                        layer_tag
-                    ))
-                    .local(factored_form, result)
-                    .assume_all(decision.assumption_events(ctx, gcd_expr)));
+                // Normalize expressions to ensure Rule: and After: display consistently
+                use crate::canonical_forms::normalize_core;
+                let factored_form_norm = normalize_core(ctx, factored_form);
+                let result_norm = normalize_core(ctx, result);
+
+                // === ChainedRewrite Pattern: Factor -> Cancel ===
+                // Step 1 (main): Factor - show the factored form
+                // Use requires (not assume) to avoid duplicate Requires/Assumed display
+                use crate::implicit_domain::ImplicitCondition;
+                let gcd_display = format!("{}", DisplayExpr { context: ctx, id: gcd_expr });
+                let factor_rw = Rewrite::new(factored_form_norm)
+                    .desc(format!("Factor by GCD: {}", gcd_display))
+                    .local(expr, factored_form_norm)
+                    .requires(ImplicitCondition::NonZero(den));
+
+                // Step 2 (chained): Cancel - reduce to final result
+                let cancel = ChainedRewrite::new(result_norm)
+                    .desc("Cancel common factor")
+                    .local(factored_form_norm, result_norm);
+
+                return Some(factor_rw.chain(cancel));
             }
         }
 
@@ -1239,21 +1248,38 @@ define_rule!(
         };
         let factored_form = ctx.add(Expr::Div(factored_num, factored_den));
 
-        // If denominator is 1, return numerator
-        if let Expr::Number(n) = ctx.get(new_den) {
+        // Compute final result
+        let result = if let Expr::Number(n) = ctx.get(new_den) {
             if n.is_one() {
-                return Some(Rewrite::new(new_num)
-                    .desc(format!("Simplified fraction by GCD: {}", DisplayExpr { context: ctx, id: gcd_expr }))
-                    .local(factored_form, new_num)
-                    .assume_all(decision.assumption_events(ctx, gcd_expr)));
+                new_num // Denominator simplified to 1
+            } else {
+                ctx.add(Expr::Div(new_num, new_den))
             }
-        }
+        } else {
+            ctx.add(Expr::Div(new_num, new_den))
+        };
 
-        let result = ctx.add(Expr::Div(new_num, new_den));
-        return Some(Rewrite::new(result)
-            .desc(format!("Simplified fraction by GCD: {}", DisplayExpr { context: ctx, id: gcd_expr }))
-            .local(factored_form, result)
-            .assume_all(decision.assumption_events(ctx, gcd_expr)));
+        // Normalize expressions to ensure Rule: and After: display consistently
+        use crate::canonical_forms::normalize_core;
+        let factored_form_norm = normalize_core(ctx, factored_form);
+        let result_norm = normalize_core(ctx, result);
+
+        // === ChainedRewrite Pattern: Factor -> Cancel ===
+        // Step 1 (main): Factor - show the factored form
+        // Use requires (not assume) to avoid duplicate Requires/Assumed display
+        use crate::implicit_domain::ImplicitCondition;
+        let gcd_display = format!("{}", DisplayExpr { context: ctx, id: gcd_expr });
+        let factor_rw = Rewrite::new(factored_form_norm)
+            .desc(format!("Factor by GCD: {}", gcd_display))
+            .local(expr, factored_form_norm)
+            .requires(ImplicitCondition::NonZero(den));
+
+        // Step 2 (chained): Cancel - reduce to final result
+        let cancel = ChainedRewrite::new(result_norm)
+            .desc("Cancel common factor")
+            .local(factored_form_norm, result_norm);
+
+        return Some(factor_rw.chain(cancel));
     }
 );
 

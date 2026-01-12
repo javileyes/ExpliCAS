@@ -1621,30 +1621,82 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             rewrite.new_expr
                         );
                         if self.steps_mode != StepsMode::Off {
+                            // Extract rewrite fields to avoid borrow conflicts with self methods
+                            let main_new_expr = rewrite.new_expr;
+                            let main_description = rewrite.description.clone();
+                            let main_before_local = rewrite.before_local;
+                            let main_after_local = rewrite.after_local;
+                            let main_assumptions = rewrite.assumption_events.clone();
+                            let main_required = rewrite.required_conditions.clone();
+                            let main_poly_proof = rewrite.poly_proof.clone();
+                            let chained_rewrites = rewrite.chained.clone();
+
+                            // Determine final result (last of chained, or main rewrite)
+                            let final_result = chained_rewrites
+                                .last()
+                                .map(|c| c.after)
+                                .unwrap_or(main_new_expr);
+
                             let global_before = self.root_expr;
-                            let global_after = self.reconstruct_at_path(rewrite.new_expr);
+                            let main_global_after = self.reconstruct_at_path(main_new_expr);
+
+                            // Main step: before=expr_id, after=main_new_expr
                             let mut step = Step::with_snapshots(
-                                &rewrite.description,
+                                &main_description,
                                 rule.name(),
                                 expr_id,
-                                rewrite.new_expr,
+                                main_new_expr,
                                 self.current_path.clone(),
                                 Some(self.context),
                                 global_before,
-                                global_after,
+                                main_global_after,
                             );
-                            // Propagate local before/after from Rewrite for accurate Rule display
-                            step.before_local = rewrite.before_local;
-                            step.after_local = rewrite.after_local;
-                            step.assumption_events = rewrite.assumption_events.clone();
-                            step.required_conditions = rewrite.required_conditions.clone();
-                            // Propagate polynomial proof data for didactic display
-                            step.poly_proof = rewrite.poly_proof.clone();
-                            // Use declarative importance from the Rule
+                            step.before_local = main_before_local;
+                            step.after_local = main_after_local;
+                            step.assumption_events = main_assumptions;
+                            step.required_conditions = main_required;
+                            step.poly_proof = main_poly_proof;
                             step.importance = rule.importance();
                             self.steps.push(step);
+
+                            // Process chained rewrites sequentially
+                            // Invariant: each step's before equals previous step's after
+                            let mut current = main_new_expr;
+                            for chain_rw in chained_rewrites {
+                                let chain_global_before = self.reconstruct_at_path(current);
+                                let chain_global_after = self.reconstruct_at_path(chain_rw.after);
+
+                                let mut chain_step = Step::with_snapshots(
+                                    &chain_rw.description,
+                                    rule.name(),
+                                    current,
+                                    chain_rw.after,
+                                    self.current_path.clone(),
+                                    Some(self.context),
+                                    chain_global_before,
+                                    chain_global_after,
+                                );
+                                chain_step.before_local = chain_rw.before_local;
+                                chain_step.after_local = chain_rw.after_local;
+                                chain_step.assumption_events = chain_rw.assumption_events;
+                                chain_step.required_conditions = chain_rw.required_conditions;
+                                chain_step.poly_proof = chain_rw.poly_proof;
+                                chain_step.importance =
+                                    chain_rw.importance.unwrap_or_else(|| rule.importance());
+                                self.steps.push(chain_step);
+
+                                current = chain_rw.after;
+                            }
+
+                            expr_id = final_result;
+                        } else {
+                            // Without steps, just use final result
+                            expr_id = rewrite
+                                .chained
+                                .last()
+                                .map(|c| c.after)
+                                .unwrap_or(rewrite.new_expr);
                         }
-                        expr_id = rewrite.new_expr;
 
                         // Budget tracking: count this rewrite (charged at end of pass)
                         self.rewrite_count += 1;
@@ -1813,30 +1865,78 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         rewrite.new_expr
                     );
                     if self.steps_mode != StepsMode::Off {
+                        // Extract rewrite fields to avoid borrow conflicts
+                        let main_new_expr = rewrite.new_expr;
+                        let main_description = rewrite.description.clone();
+                        let main_before_local = rewrite.before_local;
+                        let main_after_local = rewrite.after_local;
+                        let main_assumptions = rewrite.assumption_events.clone();
+                        let main_required = rewrite.required_conditions.clone();
+                        let main_poly_proof = rewrite.poly_proof.clone();
+                        let chained_rewrites = rewrite.chained.clone();
+
+                        let final_result = chained_rewrites
+                            .last()
+                            .map(|c| c.after)
+                            .unwrap_or(main_new_expr);
+
                         let global_before = self.root_expr;
-                        let global_after = self.reconstruct_at_path(rewrite.new_expr);
+                        let main_global_after = self.reconstruct_at_path(main_new_expr);
+
                         let mut step = Step::with_snapshots(
-                            &rewrite.description,
+                            &main_description,
                             rule.name(),
                             expr_id,
-                            rewrite.new_expr,
+                            main_new_expr,
                             self.current_path.clone(),
                             Some(self.context),
                             global_before,
-                            global_after,
+                            main_global_after,
                         );
-                        // Propagate local before/after from Rewrite for accurate Rule display
-                        step.before_local = rewrite.before_local;
-                        step.after_local = rewrite.after_local;
-                        step.assumption_events = rewrite.assumption_events.clone();
-                        step.required_conditions = rewrite.required_conditions.clone();
-                        // Propagate polynomial proof data for didactic display
-                        step.poly_proof = rewrite.poly_proof.clone();
-                        // Use declarative importance from the Rule
+                        step.before_local = main_before_local;
+                        step.after_local = main_after_local;
+                        step.assumption_events = main_assumptions;
+                        step.required_conditions = main_required;
+                        step.poly_proof = main_poly_proof;
                         step.importance = rule.importance();
                         self.steps.push(step);
+
+                        // Process chained rewrites
+                        let mut current = main_new_expr;
+                        for chain_rw in chained_rewrites {
+                            let chain_global_before = self.reconstruct_at_path(current);
+                            let chain_global_after = self.reconstruct_at_path(chain_rw.after);
+
+                            let mut chain_step = Step::with_snapshots(
+                                &chain_rw.description,
+                                rule.name(),
+                                current,
+                                chain_rw.after,
+                                self.current_path.clone(),
+                                Some(self.context),
+                                chain_global_before,
+                                chain_global_after,
+                            );
+                            chain_step.before_local = chain_rw.before_local;
+                            chain_step.after_local = chain_rw.after_local;
+                            chain_step.assumption_events = chain_rw.assumption_events;
+                            chain_step.required_conditions = chain_rw.required_conditions;
+                            chain_step.poly_proof = chain_rw.poly_proof;
+                            chain_step.importance =
+                                chain_rw.importance.unwrap_or_else(|| rule.importance());
+                            self.steps.push(chain_step);
+
+                            current = chain_rw.after;
+                        }
+
+                        expr_id = final_result;
+                    } else {
+                        expr_id = rewrite
+                            .chained
+                            .last()
+                            .map(|c| c.after)
+                            .unwrap_or(rewrite.new_expr);
                     }
-                    expr_id = rewrite.new_expr;
 
                     // Budget tracking: count this rewrite (charged at end of pass)
                     self.rewrite_count += 1;

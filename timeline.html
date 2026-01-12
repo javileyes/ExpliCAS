@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{{(x + 2\cdot y)}^{2} - {(3\cdot x - y)}^{2}}{x + 2\cdot y - (3\cdot x - y)}</title>
+    <title>CAS Steps: \frac{{x}^{3} - 8}{x - 2}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -439,77 +439,56 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{{(x + 2\cdot y)}^{2} - {(3\cdot x - y)}^{2}}{x + 2\cdot y - (3\cdot x - y)}\]
+            \[\frac{{x}^{3} - 8}{x - 2}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Pre-order Difference of Squares</h3>
+                    <h3>Simplify Nested Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{{(x + 2\cdot y)}^{2} - {(3\cdot x - y)}^{2}}}}{x + 2\cdot y - (3\cdot x - y)}\]
+                        \[{\color{red}{\frac{{x}^{3} - 8}{x - 2}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Factor: A² - B² = (A-B)(A+B)}\)</div>
+                        <div class="rule-name">\(\text{Factor by GCD: x - 2}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{{(x + 2\cdot y)}^{2} - {(3\cdot x - y)}^{2}}} \rightarrow {\color{green}{(y + 4\cdot x)\cdot (3\cdot y - 2\cdot x)}}\]
+                            \[{\color{red}{\frac{{x}^{3} - 8}{x - 2}}} \rightarrow {\color{green}{\frac{(4 + {x}^{2} + 2\cdot x)\cdot (x - 2)}{x - 2}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{{\color{green}{(y + 4\cdot x)\cdot (3\cdot y - 2\cdot x)}}}{x + 2\cdot y - (3\cdot x - y)}\]
+                        \[{\color{green}{\frac{(4 + {x}^{2} + 2\cdot x)\cdot (x - 2)}{x - 2}}}\]
                     </div>
-                    <div class="domain-requires">Requires: x + 2·y - (3·x - y) ≠ 0</div>
+                    <div class="domain-warning">Domain: Assumed x - 2 ≠ 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Simplify Nested Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{(y + 4\cdot x)\cdot (3\cdot y - 2\cdot x)}{{\color{red}{x + 2\cdot y - (3\cdot x - y)}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine like terms}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{x + 2\cdot y - (3\cdot x - y)}} \rightarrow {\color{green}{3\cdot y - 2\cdot x}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{(y + 4\cdot x)\cdot (3\cdot y - 2\cdot x)}{{\color{green}{3\cdot y - 2\cdot x}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Pre-order Difference of Squares Cancel</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{(y + 4\cdot x)\cdot (3\cdot y - 2\cdot x)}{3\cdot y - 2\cdot x}}}\]
+                        \[{\color{red}{\frac{(4 + {x}^{2} + 2\cdot x)\cdot (x - 2)}{x - 2}}}\]
                     </div>
                     
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Cancel common factor}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{(y + 4\cdot x)\cdot (3\cdot y - 2\cdot x)}{3\cdot y - 2\cdot x}}} \rightarrow {\color{green}{y + 4\cdot x}}\]
+                            \[{\color{red}{\frac{(4 + {x}^{2} + 2\cdot x)\cdot (x - 2)}{x - 2}}} \rightarrow {\color{green}{4 + {x}^{2} + 2\cdot x}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{y + 4\cdot x}}\]
+                        \[{\color{green}{4 + {x}^{2} + 2\cdot x}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[y + 4\cdot x\]
+            \[4 + {x}^{2} + 2\cdot x\]
         </div>
     </div>
     <footer>

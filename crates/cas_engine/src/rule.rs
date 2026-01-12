@@ -3,6 +3,95 @@ use crate::phase::PhaseMask;
 use crate::step::{ImportanceLevel, StepCategory};
 use cas_ast::{Context, ExprId};
 
+// =============================================================================
+// ChainedRewrite: A subsequent transformation following the main Rewrite
+// =============================================================================
+
+/// A chained transformation following the main Rewrite.
+///
+/// The engine constructs Steps from this with correct before/after:
+/// - Main Rewrite: before=original, after=rewrite.new_expr
+/// - ChainedRewrite[0]: before=rewrite.new_expr, after=chain[0].after
+/// - ChainedRewrite[n]: before=chain[n-1].after, after=chain[n].after
+///
+/// This guarantees sequential coherence: each step's `after` equals the next step's `before`.
+#[derive(Debug, Clone)]
+pub struct ChainedRewrite {
+    /// The result expression after this transformation
+    pub after: ExprId,
+    /// Human-readable description of this step
+    pub description: String,
+    /// Optional: Focus the "Rule:" line on this sub-expression
+    pub before_local: Option<ExprId>,
+    /// Optional: Focus the "Rule:" line on this result
+    pub after_local: Option<ExprId>,
+    /// Required conditions for this step
+    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
+    /// Assumptions made by this step
+    pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
+    /// Optional polynomial proof data
+    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    /// Optional importance override (defaults to rule's importance)
+    pub importance: Option<ImportanceLevel>,
+}
+
+impl ChainedRewrite {
+    /// Create a new ChainedRewrite with the given result expression.
+    #[must_use]
+    pub fn new(after: ExprId) -> Self {
+        Self {
+            after,
+            description: String::new(),
+            before_local: None,
+            after_local: None,
+            required_conditions: vec![],
+            assumption_events: Default::default(),
+            poly_proof: None,
+            importance: None,
+        }
+    }
+
+    /// Set the description of this chained step.
+    #[must_use]
+    pub fn desc(mut self, description: impl Into<String>) -> Self {
+        self.description = description.into();
+        self
+    }
+
+    /// Set explicit local before/after expressions for the "Rule:" line.
+    #[must_use]
+    pub fn local(mut self, before: ExprId, after: ExprId) -> Self {
+        self.before_local = Some(before);
+        self.after_local = Some(after);
+        self
+    }
+
+    /// Set importance level (overrides rule's default).
+    #[must_use]
+    pub fn importance(mut self, level: ImportanceLevel) -> Self {
+        self.importance = Some(level);
+        self
+    }
+
+    /// Add a required condition.
+    #[must_use]
+    pub fn requires(mut self, cond: crate::implicit_domain::ImplicitCondition) -> Self {
+        self.required_conditions.push(cond);
+        self
+    }
+
+    /// Add an assumption event.
+    #[must_use]
+    pub fn assume(mut self, ev: crate::assumptions::AssumptionEvent) -> Self {
+        self.assumption_events.push(ev);
+        self
+    }
+}
+
+// =============================================================================
+// Rewrite: Result of a rule application
+// =============================================================================
+
 /// Result of a rule application containing the new expression and metadata
 pub struct Rewrite {
     /// The transformed expression
@@ -26,6 +115,10 @@ pub struct Rewrite {
     /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
     /// Used for didactic display of the normalization process
     pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    /// Chained sequential rewrites following this one.
+    /// Engine processes these in order, constructing Steps with correct before/after.
+    /// See `ChainedRewrite` documentation for the sequential coherence guarantee.
+    pub chained: Vec<ChainedRewrite>,
 }
 
 impl Default for Rewrite {
@@ -38,6 +131,7 @@ impl Default for Rewrite {
             assumption_events: Default::default(),
             required_conditions: vec![],
             poly_proof: None,
+            chained: vec![],
         }
     }
 }
@@ -163,6 +257,15 @@ impl Rewrite {
     #[must_use]
     pub fn poly_proof(mut self, proof: crate::multipoly_display::PolynomialProofData) -> Self {
         self.poly_proof = Some(proof);
+        self
+    }
+
+    /// Add a chained sequential rewrite.
+    /// The engine will process these in order, creating separate Steps with correct before/after.
+    /// Example: Factor step followed by Cancel step.
+    #[must_use]
+    pub fn chain(mut self, r: ChainedRewrite) -> Self {
+        self.chained.push(r);
         self
     }
 }
