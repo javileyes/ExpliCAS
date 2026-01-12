@@ -3820,7 +3820,14 @@ impl Repl {
                     for (i, step) in steps.iter().enumerate() {
                         println!("{}. {}  [{}]", i + 1, step.description, step.rule_name);
                         for event in &step.assumption_events {
-                            println!("   ⚠ Domain: {}", event.message);
+                            if event.kind.should_display() {
+                                println!(
+                                    "   {} {}: {}",
+                                    event.kind.icon(),
+                                    event.kind.label(),
+                                    event.message
+                                );
+                            }
                         }
                     }
                 }
@@ -5155,7 +5162,14 @@ impl Repl {
                             );
 
                             for event in &step.assumption_events {
-                                println!("   ⚠ Domain: {}", event.message);
+                                if event.kind.should_display() {
+                                    println!(
+                                        "   {} {}: {}",
+                                        event.kind.icon(),
+                                        event.kind.label(),
+                                        event.message
+                                    );
+                                }
                             }
                         }
                     }
@@ -5705,7 +5719,14 @@ impl Repl {
                                     );
 
                                     for event in &step.assumption_events {
-                                        println!("   ⚠ Domain: {}", event.message);
+                                        if event.kind.should_display() {
+                                            println!(
+                                                "   {} {}: {}",
+                                                event.kind.icon(),
+                                                event.kind.label(),
+                                                event.message
+                                            );
+                                        }
                                     }
                                 }
                             } else {

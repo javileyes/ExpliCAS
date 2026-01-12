@@ -2080,18 +2080,69 @@ impl<'a> TimelineHtml<'a> {
                 String::new()
             };
 
-            // Build domain warning HTML from assumption_events
+            // V2.12.13: Build assumption HTML from assumption_events, filtered and grouped by kind
             let domain_html = if !step.assumption_events.is_empty() {
-                let messages: Vec<String> = step
+                use crate::assumptions::AssumptionKind;
+
+                // Filter to displayable events only
+                let displayable: Vec<_> = step
                     .assumption_events
                     .iter()
-                    .map(|e| html_escape(&e.message))
+                    .filter(|e| e.kind.should_display())
                     .collect();
-                format!(
-                    r#"                    <div class="domain-warning">Domain: {}</div>
+
+                if displayable.is_empty() {
+                    String::new()
+                } else {
+                    let mut parts = Vec::new();
+
+                    // Group by kind and format with icons
+                    let requires: Vec<_> = displayable
+                        .iter()
+                        .filter(|e| matches!(e.kind, AssumptionKind::RequiresIntroduced))
+                        .map(|e| html_escape(&e.message))
+                        .collect();
+                    if !requires.is_empty() {
+                        parts.push(format!("ℹ️ Requires: {}", requires.join(", ")));
+                    }
+
+                    let branches: Vec<_> = displayable
+                        .iter()
+                        .filter(|e| matches!(e.kind, AssumptionKind::BranchChoice))
+                        .map(|e| html_escape(&e.message))
+                        .collect();
+                    if !branches.is_empty() {
+                        parts.push(format!("🔀 Branch: {}", branches.join(", ")));
+                    }
+
+                    let domain_ext: Vec<_> = displayable
+                        .iter()
+                        .filter(|e| matches!(e.kind, AssumptionKind::DomainExtension))
+                        .map(|e| html_escape(&e.message))
+                        .collect();
+                    if !domain_ext.is_empty() {
+                        parts.push(format!("🧿 Domain: {}", domain_ext.join(", ")));
+                    }
+
+                    let assumes: Vec<_> = displayable
+                        .iter()
+                        .filter(|e| matches!(e.kind, AssumptionKind::HeuristicAssumption))
+                        .map(|e| html_escape(&e.message))
+                        .collect();
+                    if !assumes.is_empty() {
+                        parts.push(format!("⚠️ Assumes: {}", assumes.join(", ")));
+                    }
+
+                    if parts.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            r#"                    <div class="domain-assumptions">{}</div>
 "#,
-                    messages.join(", ")
-                )
+                            parts.join("<br/>")
+                        )
+                    }
+                }
             } else {
                 String::new()
             };
