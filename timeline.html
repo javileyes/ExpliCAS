@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \ln({a}^{2}\cdot {b}^{3}) - (2\cdot \ln(a)) - (3\cdot \ln(b))</title>
+    <title>CAS Steps: \atan(3) + \atan(\frac{1}{3}) - \frac{\pi}{2}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,126 +451,118 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\ln({a}^{2}\cdot {b}^{3}) - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
+            \[\atan(3) + \atan(\frac{1}{3}) - \frac{\pi}{2}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>AutoExpandLogRule</h3>
+                    <h3>Add Fractions</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\ln({a}^{2}\cdot {b}^{3})}} - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
+                        \[\text{arctan}(3) + {\color{red}{\text{arctan}(\frac{1}{3}) - \frac{1}{2}\cdot \pi}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Auto-expand log product}\)</div>
+                        <div class="rule-name">\(\text{Add numeric fractions}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\ln({a}^{2}\cdot {b}^{3})}} \rightarrow {\color{green}{\ln({a}^{2}) + \ln({b}^{3})}}\]
+                            \[{\color{red}{\text{arctan}(\frac{1}{3}) - \frac{1}{2}\cdot \pi}} \rightarrow {\color{green}{\frac{\text{arctan}(\frac{1}{3})\cdot 2 - \pi}{2}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\ln({a}^{2}) + \ln({b}^{3})}} - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
+                        \[\text{arctan}(3) + {\color{green}{\frac{\text{arctan}(\frac{1}{3})\cdot 2 - \pi}{2}}}\]
                     </div>
-                    <div class="domain-assumptions">⚠️ Assumes: b^3 &gt; 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Evaluate Logarithms</h3>
+                    <h3>Add Fractions</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\ln({a}^{2})}} + \ln({b}^{3}) - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
+                        \[{\color{red}{\text{arctan}(3) + \frac{1}{2}\cdot (2\cdot \text{arctan}(\frac{1}{3}) - \pi)}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{log(b, x^(even)) = even·log(b, |x|)}\)</div>
+                        <div class="rule-name">\(\text{Add numeric fractions}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\ln({a}^{2})}} \rightarrow {\color{green}{2\cdot \ln(|a|)}}\]
+                            \[{\color{red}{\text{arctan}(3) + \frac{1}{2}\cdot (2\cdot \text{arctan}(\frac{1}{3}) - \pi)}} \rightarrow {\color{green}{\frac{\text{arctan}(3)\cdot 2 + 2\cdot \text{arctan}(\frac{1}{3}) - \pi}{2}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{2\cdot \ln(|a|)}} + \ln({b}^{3}) - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
+                        \[{\color{green}{\frac{\text{arctan}(3)\cdot 2 + 2\cdot \text{arctan}(\frac{1}{3}) - \pi}{2}}}\]
                     </div>
-                    <div class="domain-assumptions">ℹ️ Requires: a^2 &gt; 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Evaluate Logarithms</h3>
+                    <h3>Inverse Tan Relations</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[2\cdot \ln(a) + {\color{red}{\ln({b}^{3})}} - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
+                        \[\frac{{\color{red}{2\cdot \text{arctan}(3)}} + {\color{red}{2\cdot \text{arctan}(\frac{1}{3})}} - \pi}{2}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{log(b, x^y) = y * log(b, x)}\)</div>
+                        <div class="rule-name">\(\text{k·[arctan(x) + arctan(1/x) = π/2]}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\ln({b}^{3})}} \rightarrow {\color{green}{3\cdot \ln(b)}}\]
+                            \[{\color{red}{2\cdot \text{arctan}(\frac{1}{3}) + 2\cdot \text{arctan}(3)}} \rightarrow {\color{green}{2\cdot \frac{\pi}{2}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[2\cdot \ln(a) + {\color{green}{3\cdot \ln(b)}} - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
+                        \[\frac{{\color{green}{2\cdot \frac{\pi}{2}}} - \pi}{2}\]
                     </div>
-                    <div class="domain-assumptions">ℹ️ Requires: b^3 &gt; 0<br/>⚠️ Assumes: b &gt; 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">4</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Combine Constants</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{2\cdot \ln(a)}} + 3\cdot \ln(b) - {\color{red}{2\cdot \ln(a)}} - (3\cdot \ln(b))\]
+                        \[\frac{{\color{red}{2\cdot \frac{\pi}{2}}} - \pi}{2}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
+                        <div class="rule-name">\(\text{Combine nested constants: 1/2 * 2}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{2\cdot \ln(a) - 2\cdot \ln(a)}} \rightarrow {\color{green}{0}}\]
+                            \[{\color{red}{\frac{1}{2}\cdot 2\cdot \pi}} \rightarrow {\color{green}{\pi}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[3\cdot \ln(b) - (3\cdot \ln(b))\]
+                        \[\frac{{\color{green}{\pi}} - \pi}{2}\]
                     </div>
-                    <div class="domain-assumptions">ℹ️ Requires: a &gt; 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">5</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
+                    <h3>Add Inverse</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{3\cdot \ln(b) - 3\cdot \ln(b)}}\]
+                        \[\frac{{\color{red}{\pi - \pi}}}{2}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
+                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{3\cdot \ln(b) - 3\cdot \ln(b)}} \rightarrow {\color{green}{0}}\]
+                            \[{\color{red}{\pi - \pi}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{0}}\]
+                        \[\frac{{\color{green}{0}}}{2}\]
                     </div>
-                    <div class="domain-assumptions">ℹ️ Requires: b &gt; 0</div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
             \[0\]
-        </div>
-        <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> a^2·b^3 &gt; 0, a &gt; 0, b &gt; 0
         </div>
     </div>
     <footer>

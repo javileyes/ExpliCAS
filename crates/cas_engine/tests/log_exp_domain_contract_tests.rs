@@ -562,3 +562,55 @@ mod general_log_base {
         );
     }
 }
+
+// ============================================================================
+// V2.14.21: Log Product Expansion & ChainedRewrite Tests
+// ============================================================================
+
+mod log_product_expansion {
+    use super::*;
+
+    /// REGRESSION TEST: ln(a^2 * b^3) - 2*ln(a) - 3*ln(b) → 0 in Generic mode
+    ///
+    /// This tests three fixes:
+    /// 1. AutoExpandLogRule uses is_condition_implied to recognize b^3 > 0 implied by b > 0
+    /// 2. LogEvenPowerWithChainedAbsRule produces ChainedRewrite |a| → a when a > 0 in requires
+    /// 3. Result simplifies to 0 (not blocked)
+    #[test]
+    fn log_product_generic_simplifies_to_zero() {
+        let r = simplify_with_config(
+            "ln(a^2 * b^3) - 2*ln(a) - 3*ln(b)",
+            ValueDomain::RealOnly,
+            DomainMode::Generic,
+        );
+
+        assert_eq!(
+            r.result, "0",
+            "Generic: ln(a^2*b^3) - 2*ln(a) - 3*ln(b) should simplify to 0, got: {}",
+            r.result
+        );
+
+        // No warnings expected - all conditions come from requires
+        assert!(
+            !r.has_warning,
+            "Generic: No warning expected (a > 0, b > 0 from ln(a), ln(b)), got: {:?}",
+            r.warning_messages
+        );
+    }
+
+    /// Same test in Assume mode - should also work
+    #[test]
+    fn log_product_assume_simplifies_to_zero() {
+        let r = simplify_with_config(
+            "ln(a^2 * b^3) - 2*ln(a) - 3*ln(b)",
+            ValueDomain::RealOnly,
+            DomainMode::Assume,
+        );
+
+        assert_eq!(
+            r.result, "0",
+            "Assume: ln(a^2*b^3) - 2*ln(a) - 3*ln(b) should simplify to 0, got: {}",
+            r.result
+        );
+    }
+}
