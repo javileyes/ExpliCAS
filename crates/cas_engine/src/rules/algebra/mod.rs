@@ -195,6 +195,10 @@ pub fn try_difference_of_squares_preorder(
 
     // Build factored numerator and compute final result based on den match
     let factored_num = ctx.add(Expr::Mul(a_minus_b, a_plus_b));
+    // Two intermediate states for proper didactic step sequence:
+    // 1. Factored numerator with ORIGINAL denominator (for Factor step)
+    // 2. Factored numerator with SIMPLIFIED denominator (for Combine step → Cancel step)
+    let intermediate_with_orig_den = ctx.add(Expr::Div(factored_num, den));
     let intermediate = ctx.add(Expr::Div(factored_num, den_simplified));
 
     let final_result = match _den_match {
@@ -209,6 +213,7 @@ pub fn try_difference_of_squares_preorder(
     // STEP 4: Record steps if needed (Factor step + optional Simplify Denominator + Cancel step)
     if collect_steps {
         // Step 1: Factor - focus on numerator only
+        // Before: original expression, After: factored num with ORIGINAL denominator
         let mut factor_step = crate::step::Step::new(
             "Factor: A² - B² = (A-B)(A+B)",
             "Pre-order Difference of Squares",
@@ -218,9 +223,9 @@ pub fn try_difference_of_squares_preorder(
             Some(ctx),
         );
         factor_step.before = expr_id;
-        factor_step.after = intermediate;
+        factor_step.after = intermediate_with_orig_den;
         factor_step.global_before = Some(expr_id);
-        factor_step.global_after = Some(intermediate);
+        factor_step.global_after = Some(intermediate_with_orig_den);
         // Focus Rule line on numerator transformation only
         factor_step.before_local = Some(num);
         factor_step.after_local = Some(factored_num);
@@ -231,8 +236,7 @@ pub fn try_difference_of_squares_preorder(
         steps.push(factor_step);
 
         // Step 1.5 (conditional): Show denominator simplification if it changed
-        // This is a generic pattern: show "Combine like terms" when polynomial
-        // canonicalization produces a different expression
+        // Before: factored num with orig den, After: factored num with simplified den
         if den != den_simplified {
             let mut simplify_den_step = crate::step::Step::new(
                 "Combine like terms",
@@ -242,6 +246,10 @@ pub fn try_difference_of_squares_preorder(
                 current_path.to_vec(),
                 Some(ctx),
             );
+            simplify_den_step.before = intermediate_with_orig_den;
+            simplify_den_step.after = intermediate;
+            simplify_den_step.global_before = Some(intermediate_with_orig_den);
+            simplify_den_step.global_after = Some(intermediate);
             simplify_den_step.before_local = Some(den);
             simplify_den_step.after_local = Some(den_simplified);
             simplify_den_step.importance = crate::step::ImportanceLevel::Medium;
