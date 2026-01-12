@@ -99,6 +99,8 @@ pub struct EvalOptions {
     pub expand_policy: crate::phase::ExpandPolicy,
     /// Budget for auto-expand (only used when expand_policy=Auto)
     pub expand_budget: crate::phase::ExpandBudget,
+    /// Auto-expand policy for logarithms: Off (default) or Auto
+    pub log_expand_policy: crate::phase::ExpandPolicy,
     /// Domain mode for cancellation rules (Strict, Generic, Assume)
     pub domain_mode: crate::DomainMode,
     /// Inverse trig composition policy
@@ -176,6 +178,7 @@ impl EvalOptions {
         crate::phase::SimplifyOptions {
             expand_policy: self.expand_policy,
             expand_budget: self.expand_budget,
+            log_expand_policy: self.log_expand_policy,
             context_mode: self.context_mode,
             collect_steps: !matches!(self.steps_mode, StepsMode::Off),
             domain: self.domain_mode,
@@ -201,6 +204,7 @@ impl Default for EvalOptions {
             steps_mode: StepsMode::default(),
             expand_policy: crate::phase::ExpandPolicy::default(),
             expand_budget: crate::phase::ExpandBudget::default(),
+            log_expand_policy: crate::phase::ExpandPolicy::Off, // Off by default to avoid surprises
             domain_mode: crate::DomainMode::default(),
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),

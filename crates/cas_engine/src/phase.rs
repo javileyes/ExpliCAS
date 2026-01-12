@@ -249,6 +249,30 @@ impl Default for ExpandBudget {
     }
 }
 
+impl ExpandBudget {
+    /// Check if a log expansion is allowed by budget.
+    /// Returns true if base_terms, gen_terms, and pow_exp are all within limits.
+    pub fn allows_log_expansion(
+        &self,
+        base_terms: u32,
+        gen_terms: u32,
+        pow_exp: Option<u32>,
+    ) -> bool {
+        if base_terms > self.max_base_terms {
+            return false;
+        }
+        if gen_terms > self.max_generated_terms {
+            return false;
+        }
+        if let Some(n) = pow_exp {
+            if n > self.max_pow_exp {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 /// Options controlling the simplification pipeline.
 #[derive(Debug, Clone)]
 pub struct SimplifyOptions {
@@ -275,6 +299,9 @@ pub struct SimplifyOptions {
 
     /// Budget limits for auto-expansion (only used when expand_policy=Auto).
     pub expand_budget: ExpandBudget,
+
+    /// Auto-expand policy for logarithms: Off (default) or Auto.
+    pub log_expand_policy: ExpandPolicy,
 
     /// Context mode (Standard, Solve, etc.) - Solve mode blocks auto-expand.
     pub context_mode: crate::options::ContextMode,
@@ -331,6 +358,7 @@ impl Default for SimplifyOptions {
             expand_mode: false,
             expand_policy: ExpandPolicy::default(),
             expand_budget: ExpandBudget::default(),
+            log_expand_policy: ExpandPolicy::Off, // Off by default to avoid surprises
             context_mode: crate::options::ContextMode::default(),
             domain: crate::domain::DomainMode::default(), // Generic
             inv_trig: crate::semantics::InverseTrigPolicy::default(), // Strict

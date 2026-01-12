@@ -1281,4 +1281,208 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(LogInversePowerRule));
     simplifier.add_rule(Box::new(LogExpInverseRule));
+
+    // AutoExpandLogRule: auto-expand log products/quotients when log_expand_policy=Auto
+    simplifier.add_rule(Box::new(AutoExpandLogRule));
+}
+
+// ============================================================================
+// Auto Expand Log Rule with ExpandBudget Integration
+// ============================================================================
+
+/// Estimates the number of terms that would result from expanding a log expression.
+/// Returns `(base_terms, gen_terms, pow_exp)`:
+/// - base_terms: number of factors in the log argument
+/// - gen_terms: number of log terms that would be generated
+/// - pow_exp: if the argument is u^n, returns Some(n) for integer n
+///
+/// Returns None if the expression is not expandable (not Mul/Div/Pow).
+pub fn estimate_log_terms(ctx: &Context, arg: ExprId) -> Option<(u32, u32, Option<u32>)> {
+    match ctx.get(arg) {
+        // Mul(a, b) - could be nested, so we flatten
+        Expr::Mul(_, _) => {
+            let factors = count_mul_factors(ctx, arg);
+            if factors <= 1 {
+                return None; // No benefit from expanding
+            }
+            Some((factors, factors, None))
+        }
+        // Div(num, den) - expands to log(num) - log(den)
+        Expr::Div(num, den) => {
+            let num_factors = count_mul_factors(ctx, *num);
+            let den_factors = count_mul_factors(ctx, *den);
+            let total = num_factors + den_factors;
+            if total <= 1 {
+                return None;
+            }
+            Some((total, total, None))
+        }
+        // Pow(base, exp) - expands to exp * log(base) if exp is integer
+        Expr::Pow(_, exp) => {
+            // Only expand if exponent is a positive integer
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() {
+                    let exp_i64: i64 = n.to_integer().try_into().ok()?;
+                    if exp_i64 > 0 {
+                        let exp_u32 = exp_i64 as u32;
+                        // log(u^n) -> n*log(u): base_terms=1, gen_terms=1
+                        return Some((1, 1, Some(exp_u32)));
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Count the number of multiplicative factors in a flattened Mul expression.
+fn count_mul_factors(ctx: &Context, expr: ExprId) -> u32 {
+    match ctx.get(expr) {
+        Expr::Mul(a, b) => count_mul_factors(ctx, *a) + count_mul_factors(ctx, *b),
+        _ => 1,
+    }
+}
+
+/// Check if an expression is provably positive (for Generic mode proof).
+/// Returns true for positive literals and known-positive expressions.
+#[allow(dead_code)] // Will be used when AutoExpandLogRule is activated
+fn is_provably_positive(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(n) => *n > num_rational::BigRational::zero(),
+        Expr::Constant(cas_ast::Constant::E) => true,
+        Expr::Constant(cas_ast::Constant::Pi) => true,
+        Expr::Function(name, args) if name == "exp" && args.len() == 1 => true, // e^x > 0 always
+        Expr::Function(name, args) if name == "abs" && args.len() == 1 => {
+            // abs(x) >= 0, but only > 0 if x != 0; we'll be conservative
+            false
+        }
+        Expr::Pow(base, exp) => {
+            // x^2 > 0 if x != 0 (we'll be conservative here)
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() {
+                    let exp_int = n.to_integer();
+                    if &exp_int % 2 == num_bigint::BigInt::from(0) {
+                        // Even power: need base != 0 to be positive
+                        return false; // Conservative
+                    }
+                }
+            }
+            is_provably_positive(ctx, *base)
+        }
+        _ => false,
+    }
+}
+
+/// AutoExpandLogRule: Automatically expand log(a*b) -> log(a) + log(b) during simplify
+/// when log_expand_policy = Auto and the expansion passes budget checks.
+///
+/// This rule uses domain gating:
+/// - Assume mode: expands with HeuristicAssumption (⚠️) for a>0, b>0
+/// - Generic mode: blocks and registers hint if positivity not proven
+/// - Strict mode: blocks without hint
+pub struct AutoExpandLogRule;
+
+impl crate::rule::Rule for AutoExpandLogRule {
+    fn name(&self) -> &'static str {
+        "AutoExpandLogRule"
+    }
+
+    fn apply(
+        &self,
+        _ctx: &mut Context,
+        _expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // GATE: log_expand_policy must be Auto for this rule to apply.
+        // Since log_expand_policy is not yet accessible from parent_ctx,
+        // we disable this rule by default (Off = no auto-expansion).
+        // TODO: Add parent_ctx.log_expand_policy() accessor when integrating fully.
+        // For now, return None to prevent infinite expand/contract cycles.
+        // The user can use the explicit `expand_log(...)` command instead.
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+}
+
+/// Collect all multiplicative factors from a Mul expression (flattened).
+#[allow(dead_code)] // Will be used when AutoExpandLogRule is activated
+fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    match ctx.get(expr) {
+        Expr::Mul(a, b) => {
+            let mut factors = collect_mul_factors(ctx, *a);
+            factors.extend(collect_mul_factors(ctx, *b));
+            factors
+        }
+        _ => vec![expr],
+    }
+}
+
+/// Perform the log expansion for AutoExpandLogRule.
+#[allow(dead_code)] // Will be used when AutoExpandLogRule is activated
+fn expand_log_for_rule(
+    ctx: &mut Context,
+    _original: ExprId,
+    arg: ExprId,
+    events: &[crate::assumptions::AssumptionEvent],
+) -> Option<Rewrite> {
+    // Get base (ln = natural log, log with 1 arg = base 10)
+    let base = match ctx.get(_original) {
+        Expr::Function(name, _) if name == "ln" => ctx.add(Expr::Constant(cas_ast::Constant::E)),
+        Expr::Function(name, args) if name == "log" && args.len() == 2 => args[0],
+        Expr::Function(_, _) => {
+            // log with 1 arg = base 10, use sentinel
+            ExprId::from_raw(u32::MAX - 1)
+        }
+        _ => return None,
+    };
+
+    match ctx.get(arg).clone() {
+        Expr::Mul(_, _) => {
+            // Expand log(a*b*c) -> log(a) + log(b) + log(c)
+            let factors = collect_mul_factors(ctx, arg);
+            if factors.len() <= 1 {
+                return None;
+            }
+
+            let mut sum = make_log(ctx, base, factors[0]);
+            for &factor in &factors[1..] {
+                let log_f = make_log(ctx, base, factor);
+                sum = ctx.add(Expr::Add(sum, log_f));
+            }
+
+            let mut rewrite = Rewrite::new(sum).desc("Auto-expand log product");
+            for event in events {
+                rewrite = rewrite.assume(event.clone());
+            }
+            Some(rewrite)
+        }
+        Expr::Div(num, den) => {
+            // Expand log(a/b) -> log(a) - log(b)
+            let log_num = make_log(ctx, base, num);
+            let log_den = make_log(ctx, base, den);
+            let result = ctx.add(Expr::Sub(log_num, log_den));
+
+            let mut rewrite = Rewrite::new(result).desc("Auto-expand log quotient");
+            for event in events {
+                rewrite = rewrite.assume(event.clone());
+            }
+            Some(rewrite)
+        }
+        Expr::Pow(pow_base, exp) => {
+            // Expand log(u^n) -> n * log(u)
+            let log_base = make_log(ctx, base, pow_base);
+            let result = smart_mul(ctx, exp, log_base);
+
+            let mut rewrite = Rewrite::new(result).desc("Auto-expand log power");
+            for event in events {
+                rewrite = rewrite.assume(event.clone());
+            }
+            Some(rewrite)
+        }
+        _ => None,
+    }
 }

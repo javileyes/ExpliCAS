@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \text{expand_log}(\log(a\cdot b) + \frac{1}{a - 1})</title>
+    <title>CAS Steps: \frac{x\cdot (\frac{1}{x} + \frac{2}{x})}{3}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,38 +451,79 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\text{expand_log}(\log(a\cdot b) + \frac{1}{a - 1})\]
+            \[\frac{x\cdot (\frac{1}{x} + \frac{2}{x})}{3}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>expand_log</h3>
+                    <h3>Add Fractions</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\text{expand_log}(\text{log}(a\cdot b) + \frac{1}{a - 1})}}\]
+                        \[\frac{x\cdot ({\color{red}{\frac{1}{x} + \frac{2}{x}}})}{3}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Log expansion}\)</div>
+                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\text{expand_log}(\log(a\cdot b) + \frac{1}{a - 1})}} \rightarrow {\color{green}{\log(a) + \log(b) + \frac{1}{a - 1}}}\]
+                            \[{\color{red}{\frac{1}{x} + \frac{2}{x}}} \rightarrow {\color{green}{\frac{1 + 2}{x}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\text{log}(a) + \text{log}(b) + \frac{1}{a - 1}}}\]
+                        \[\frac{x\cdot {\color{green}{\frac{1 + 2}{x}}}}{3}\]
                     </div>
-                    <div class="domain-assumptions">ℹ️ Requires: a &gt; 0, b &gt; 0</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Combine Constants</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{x\cdot \frac{{\color{red}{1 + 2}}}{x}}{3}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{1 + 2 = 3}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{1 + 2}} \rightarrow {\color{green}{3}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{x\cdot \frac{{\color{green}{3}}}{x}}{3}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Simplify Multiplication with Division</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{{\color{red}{x\cdot \frac{3}{x}}}}{3}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Cancel division: a*(b/a) -> b}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{x\cdot \frac{3}{x}}} \rightarrow {\color{green}{3}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{{\color{green}{3}}}{3}\]
+                    </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[\log(a) + \log(b) + \frac{1}{a - 1}\]
+            \[1\]
         </div>
         <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> a·b &gt; 0, a - 1 ≠ 0
+            <strong>ℹ️ Requires:</strong> 3 ≠ 0, x ≠ 0
         </div>
     </div>
     <footer>
