@@ -108,6 +108,64 @@ pub fn unicode_root_prefix(index: u64) -> String {
     }
 }
 
+// ============================================================================
+// Unified Term Ordering for Add/Mul Display
+// ============================================================================
+
+/// Ordering mode for commutative operations (Add, Mul) in display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OrderingMode {
+    /// Robust canonical ordering: polynomial degree (desc) + compare_expr fallback
+    #[default]
+    Canonical,
+    /// No reordering (debug: display in AST creation order)
+    None,
+}
+
+/// Fast polynomial degree heuristic (returns None for non-polynomial terms).
+/// Does NOT recurse into Add - treats Add terms as atomic.
+fn poly_degree_fast(ctx: &Context, id: ExprId) -> Option<i32> {
+    match ctx.get(id) {
+        Expr::Number(_) | Expr::Constant(_) => Some(0),
+        Expr::Variable(_) => Some(1),
+        Expr::Pow(base, exp) => {
+            // Only integer exponents on variables
+            if let Expr::Variable(_) = ctx.get(*base) {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() {
+                        return n.to_i32();
+                    }
+                }
+            }
+            None // Non-integer exponent or non-variable base
+        }
+        Expr::Mul(a, b) => {
+            // Sum of degrees
+            match (poly_degree_fast(ctx, *a), poly_degree_fast(ctx, *b)) {
+                (Some(da), Some(db)) => Some(da + db),
+                _ => None,
+            }
+        }
+        Expr::Neg(inner) => poly_degree_fast(ctx, *inner),
+        // Everything else: not polynomial for display purposes
+        _ => None,
+    }
+}
+
+/// Compare terms for display ordering.
+/// Uses polynomial degree (descending) when both are polynomial, otherwise compare_expr.
+pub fn cmp_term_for_display(ctx: &Context, a: ExprId, b: ExprId) -> std::cmp::Ordering {
+    use crate::ordering::compare_expr;
+
+    let deg_a = poly_degree_fast(ctx, a);
+    let deg_b = poly_degree_fast(ctx, b);
+
+    match (deg_a, deg_b) {
+        (Some(da), Some(db)) if da != db => db.cmp(&da), // Descending by degree
+        _ => compare_expr(ctx, a, b),                    // Fallback: total structural order
+    }
+}
+
 // We need a way to display Expr with Context, or just Expr if it doesn't recurse.
 // But Expr DOES recurse via IDs. So we can't implement Display for Expr easily without Context.
 // We can implement a helper struct for display.
@@ -293,7 +351,10 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(_, _) => {
                 // Flatten Add chain to handle mixed signs gracefully
-                let terms = collect_add_terms(self.context, self.id);
+                let mut terms = collect_add_terms(self.context, self.id);
+
+                // Unified canonical ordering: polynomial degree descending + compare_expr fallback
+                terms.sort_by(|a, b| cmp_term_for_display(self.context, *a, *b));
 
                 // Separate into positive and negative terms
                 let mut pos_terms: Vec<ExprId> = Vec::new();

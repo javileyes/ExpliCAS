@@ -586,7 +586,7 @@ mod tests {
                     id: q_expr
                 }
             ),
-            "1 + x" // Canonical: numbers before variables
+            "x + 1" // Canonical: polynomial order (variables before constants)
         );
     }
 

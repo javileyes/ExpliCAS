@@ -1714,7 +1714,7 @@ mod tests {
                     id: rewrite.new_expr
                 }
             ),
-            "x^2 * 3 + x^2 * x" // Exact Distribute output before simplification
+            "x^2 * x + x^2 * 3" // Canonical: polynomial order (x terms before constants)
         );
     }
 

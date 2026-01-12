@@ -146,7 +146,7 @@ fn test_with_negation() {
 fn test_composition_still_works() {
     let result = simplify_str("tan(arctan(x + 3))");
     // Composition should still simplify
-    assert_eq!(result, "3 + x", "Composition broken! Got: {}", result);
+    assert_eq!(result, "x + 3", "Composition broken! Got: {}", result);
 }
 
 #[test]

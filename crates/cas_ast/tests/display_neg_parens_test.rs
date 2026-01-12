@@ -46,10 +46,11 @@ fn test_neg_add_has_parentheses_displayexpr() {
         display
     );
 
-    // Should NOT have "+ 2" (which would indicate missing parens causing sign error)
+    // The subtracted sum should be in parentheses: look for "- (" pattern
+    // which indicates the subtraction is followed by a parenthesized group
     assert!(
-        !display.contains("+ 2"),
-        "Found '+ 2' which indicates missing parentheses. Got: '{}'",
+        display.contains("- ("),
+        "Expected '- (' indicating parenthesized subtraction. Got: '{}'",
         display
     );
 }
@@ -182,11 +183,11 @@ fn test_fraction_combination_display_regression() {
 
     println!("Numerator display: {}", display);
 
-    // The critical check: should NOT have "+ 2" anywhere
-    // If we see "+ 2", it means the parentheses are missing and 2 is being added instead of subtracted
+    // The critical check: the subtracted sum should be in parentheses
+    // Look for "- (" pattern which indicates proper parenthesization
     assert!(
-        !display.contains("+ 2"),
-        "REGRESSION: Found '+ 2' which indicates missing parentheses. \
+        display.contains("- ("),
+        "REGRESSION: Expected '- (' indicating parenthesized subtraction. \
          Expected something like 'x + 1 - (3 * x + 2)'. Got: '{}'",
         display
     );

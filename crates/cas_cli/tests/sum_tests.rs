@@ -72,9 +72,9 @@ fn test_sum_with_trig() {
 fn test_sum_telescoping_symbolic() {
     // sum(1/(k*(k+1)), k, 1, n) = 1 - 1/(n+1) via partial fractions
     let result = parse_and_simplify("sum(1/(k*(k+1)), k, 1, n)");
-    // Result should be 1 - 1/(1+n) which equals n/(n+1)
+    // Result should be 1 - 1/(n+1) which equals n/(n+1)
     assert!(
-        result.contains("1 - 1 / (1 + n)") || result.contains("n / (1 + n)"),
+        result.contains("1 - 1 / (n + 1)") || result.contains("n / (n + 1)"),
         "Expected telescoping result, got: {}",
         result
     );

@@ -924,7 +924,7 @@ fn test_enhanced_integration() {
                 id: result2
             }
         ),
-        "1/3 * e^(1 + 3 * x)"
+        "1/3 * e^(3 * x + 1)"
     );
 
     // Test 3: integrate(1/(2*x + 1), x) -> ln(2*x + 1)/2
@@ -957,7 +957,7 @@ fn test_enhanced_integration() {
                 id: result3
             }
         ),
-        "1/2 * ln(1 + 2 * x)"
+        "1/2 * ln(2 * x + 1)"
     );
 
     // Test 4: integrate((3*x)^2, x) -> (3*x)^3 / (3*3) -> (3*x)^3 / 9

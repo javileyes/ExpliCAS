@@ -634,7 +634,7 @@ mod tests {
                     id: rewrite.new_expr
                 }
             ),
-            "(1 + 2 * x)^(1 + 2) / ((0 + 2) * (1 + 2))" // Canonical: 1 before 2*x, 0 before 2, 1 before 2
+            "(2 * x + 1)^(1 + 2) / ((0 + 2) * (1 + 2))" // Canonical: polynomial order (2*x before 1)
         );
     }
 

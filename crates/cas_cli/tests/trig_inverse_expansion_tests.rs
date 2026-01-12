@@ -216,7 +216,7 @@ fn test_composition_still_works() {
     let result = simplify_str("tan(arctan(x + 5))");
     // Should still simplify to x + 5
     assert_eq!(
-        result, "5 + x",
+        result, "x + 5",
         "Composition broken! Expected x + 5, got: {}",
         result
     );

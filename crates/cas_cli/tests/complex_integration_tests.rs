@@ -172,8 +172,7 @@ fn test_complex_solver_distribution() {
         op: eq.op.clone(),
     };
 
-    // Verify distribution: 2x + 2 (or 2 + 2x)
-    // Canonical order: Number < Product. So 2 + 2*x
+    // Verify distribution: 2x + 2 (higher degree term first in polynomial display order)
     assert_eq!(
         format!(
             "{}",
@@ -182,7 +181,7 @@ fn test_complex_solver_distribution() {
                 id: sim_eq.lhs
             }
         ),
-        "2 + 2 * x"
+        "2 * x + 2"
     );
 
     let (result, _) = solve(&sim_eq, "x", &mut simplifier).expect("Failed to solve");
