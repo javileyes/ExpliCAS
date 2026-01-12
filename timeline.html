@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}</title>
+    <title>CAS Steps: \ln({a}^{2}\cdot {b}^{3}) - (2\cdot \ln(a)) - (3\cdot \ln(b))</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,74 +451,117 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+            \[\ln({a}^{2}\cdot {b}^{3}) - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Rationalize Denominator</h3>
+                    <h3>AutoExpandLogRule</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[{\color{red}{\ln({a}^{2}\cdot {b}^{3})}} - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
                     </div>
-                    <details class="substeps-details">
-                            <summary>Pasos intermedios</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{1}{\sqrt{x} - 1} \rightarrow \text{Conjugado: } \sqrt{x} + 1\]</div></div><div class="substep">
-                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(1) \cdot (\sqrt{x} + 1)}{\sqrt{x} - 1 \cdot (\sqrt{x} + 1)} \rightarrow \frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}\]</div></div></div></details>
+                    
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
+                        <div class="rule-name">\(\text{Auto-expand log product}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} \rightarrow {\color{green}{\frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}}}\]
+                            \[{\color{red}{\ln({a}^{2}\cdot {b}^{3})}} \rightarrow {\color{green}{\ln({a}^{2}) + \ln({b}^{3})}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[{\color{green}{\ln({a}^{2}) + \ln({b}^{3})}} - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
                     </div>
+                    <div class="domain-assumptions">⚠️ Assumes: b^3 &gt; 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Power of a Power</h3>
+                    <h3>Evaluate Logarithms</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{1 + \sqrt{x}}{{\color{red}{{\sqrt{x}}^{2}}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[{\color{red}{\ln({a}^{2})}} + \ln({b}^{3}) - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
+                        <div class="rule-name">\(\text{log(b, x^(even)) = even·log(b, |x|)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{{\sqrt{x}}^{2}}} \rightarrow {\color{green}{x}}\]
+                            \[{\color{red}{\ln({a}^{2})}} \rightarrow {\color{green}{2\cdot \ln(|a|)}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{1 + \sqrt{x}}{{\color{green}{x}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                        \[{\color{green}{2\cdot \ln(|a|)}} + \ln({b}^{3}) - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
                     </div>
+                    <div class="domain-assumptions">ℹ️ Requires: a^2 &gt; 0</div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Add Inverse</h3>
+                    <h3>Evaluate Logarithms</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}}\]
+                        \[2\cdot \ln(a) + {\color{red}{\ln({b}^{3})}} - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
+                        <div class="rule-name">\(\text{log(b, x^y) = y * log(b, x)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}} \rightarrow {\color{green}{0}}\]
+                            \[{\color{red}{\ln({b}^{3})}} \rightarrow {\color{green}{3\cdot \ln(b)}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[2\cdot \ln(a) + {\color{green}{3\cdot \ln(b)}} - (2\cdot \ln(a)) - (3\cdot \ln(b))\]
+                    </div>
+                    <div class="domain-assumptions">ℹ️ Requires: b^3 &gt; 0<br/>⚠️ Assumes: b &gt; 0</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{2\cdot \ln(a)}} + 3\cdot \ln(b) - {\color{red}{2\cdot \ln(a)}} - (3\cdot \ln(b))\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{2\cdot \ln(a) - 2\cdot \ln(a)}} \rightarrow {\color{green}{0}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[3\cdot \ln(b) - (3\cdot \ln(b))\]
+                    </div>
+                    <div class="domain-assumptions">ℹ️ Requires: a &gt; 0</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{3\cdot \ln(b) - 3\cdot \ln(b)}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{3\cdot \ln(b) - 3\cdot \ln(b)}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
                         \[{\color{green}{0}}\]
                     </div>
+                    <div class="domain-assumptions">ℹ️ Requires: b &gt; 0</div>
                 </div>
             </div>
         </div>
@@ -527,7 +570,7 @@
             \[0\]
         </div>
         <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> sqrt(x) - 1 ≠ 0, x - 1 ≠ 0, x ≥ 0
+            <strong>ℹ️ Requires:</strong> a^2·b^3 &gt; 0, a &gt; 0, b &gt; 0
         </div>
     </div>
     <footer>

@@ -1363,16 +1363,20 @@ fn is_provably_positive(ctx: &Context, expr: ExprId) -> bool {
             false
         }
         Expr::Pow(base, exp) => {
-            // x^2 > 0 if x != 0 (we'll be conservative here)
+            // Check exponent type
             if let Expr::Number(n) = ctx.get(*exp) {
                 if n.is_integer() {
                     let exp_int = n.to_integer();
-                    if &exp_int % 2 == num_bigint::BigInt::from(0) {
-                        // Even power: need base != 0 to be positive
-                        return false; // Conservative
+                    // x^(even positive) > 0 for all real x ≠ 0
+                    // Since log(x^n) already requires x^n > 0, we can assume x ≠ 0
+                    if &exp_int % 2 == num_bigint::BigInt::from(0)
+                        && exp_int >= num_bigint::BigInt::from(0)
+                    {
+                        return true; // x^2, x^4, etc. are always positive for x ≠ 0
                     }
                 }
             }
+            // For odd powers or non-integer exponents, check if base is positive
             is_provably_positive(ctx, *base)
         }
         _ => false,

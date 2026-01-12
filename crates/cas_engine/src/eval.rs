@@ -164,9 +164,11 @@ fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
         // Collect structured assumption_events
         for event in &step.assumption_events {
             // Skip RequiresIntroduced - these show in steps with ℹ️ icon, not as ⚠️ warnings
+            // Skip DerivedFromRequires - these are implied by existing requires, don't show
             if matches!(
                 event.kind,
                 crate::assumptions::AssumptionKind::RequiresIntroduced
+                    | crate::assumptions::AssumptionKind::DerivedFromRequires
             ) {
                 continue;
             }
@@ -310,7 +312,34 @@ impl Engine {
                     .extend_blocked_hints(ctx_simplifier.take_blocked_hints());
                 self.simplifier.context = ctx_simplifier.context;
 
-                // Collect domain assumptions from steps with deduplication
+                // V2.14.15: Classify assumptions against global requires before collecting warnings
+                // This suppresses warnings (⚠) for conditions already in Requires (ℹ)
+                {
+                    use crate::implicit_domain::{
+                        classify_assumptions_in_place, infer_implicit_domain, DomainContext,
+                    };
+
+                    // Infer global requires from original input
+                    let input_domain = infer_implicit_domain(
+                        &self.simplifier.context,
+                        resolved,
+                        effective_opts.value_domain,
+                    );
+                    let global_requires: Vec<_> =
+                        input_domain.conditions().iter().cloned().collect();
+                    let mut dc = DomainContext::new(global_requires);
+
+                    // Classify each step's assumption events
+                    for step in steps.iter_mut() {
+                        classify_assumptions_in_place(
+                            &self.simplifier.context,
+                            &mut dc,
+                            &mut step.assumption_events,
+                        );
+                    }
+                }
+
+                // Collect domain warnings (now filtered by classification)
                 let mut warnings = collect_domain_warnings(&steps);
 
                 // Add warning if i is used in RealOnly mode

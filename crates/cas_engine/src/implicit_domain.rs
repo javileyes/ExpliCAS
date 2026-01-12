@@ -176,7 +176,24 @@ pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
 }
 
 /// Normalize a condition for display (applies normalization to the inner expression).
+///
+/// Special cases:
+/// - `Positive(x^(even))` → `NonZero(x)` because x^(2k) > 0 ⟺ x ≠ 0 for reals
 pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> ImplicitCondition {
+    // Special case: Positive(x^even) → NonZero(x)
+    // Because x^(2k) > 0 is equivalent to x ≠ 0 for real numbers
+    if let ImplicitCondition::Positive(e) = cond {
+        if let Some((base, normalized_to_nonzero)) =
+            try_convert_even_power_positive_to_nonzero(ctx, *e)
+        {
+            if normalized_to_nonzero {
+                let normalized_base = normalize_condition_expr(ctx, base);
+                return ImplicitCondition::NonZero(normalized_base);
+            }
+        }
+    }
+
+    // Standard normalization
     let normalized_expr = match cond {
         ImplicitCondition::NonNegative(e) => normalize_condition_expr(ctx, *e),
         ImplicitCondition::Positive(e) => normalize_condition_expr(ctx, *e),
@@ -188,6 +205,28 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
         ImplicitCondition::Positive(_) => ImplicitCondition::Positive(normalized_expr),
         ImplicitCondition::NonZero(_) => ImplicitCondition::NonZero(normalized_expr),
     }
+}
+
+/// Check if expression is x^(even positive integer) and should be converted to NonZero(x).
+/// Returns Some((base, true)) if conversion should happen, None otherwise.
+fn try_convert_even_power_positive_to_nonzero(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, bool)> {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if n.is_integer() {
+                let exp_int = n.to_integer();
+                let two: num_bigint::BigInt = 2.into();
+                let zero: num_bigint::BigInt = 0.into();
+                // Check: even AND positive (not zero)
+                if &exp_int % &two == zero && exp_int > zero {
+                    return Some((*base, true));
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Check if two conditions are equivalent (same type and polynomial-equivalent expressions).
@@ -235,12 +274,67 @@ fn conditions_equivalent(ctx: &Context, c1: &ImplicitCondition, c2: &ImplicitCon
     false
 }
 
+/// Check if two expressions are equivalent using polynomial comparison.
+fn exprs_equivalent(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+
+    if e1 == e2 {
+        return true;
+    }
+
+    // Quick check: same variable name
+    if let (Expr::Variable(name1), Expr::Variable(name2)) = (ctx.get(e1), ctx.get(e2)) {
+        if name1 == name2 {
+            return true;
+        }
+    }
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    if let (Ok(p1), Ok(p2)) = (
+        multipoly_from_expr(ctx, e1, &budget),
+        multipoly_from_expr(ctx, e2, &budget),
+    ) {
+        return p1 == p2;
+    }
+
+    false
+}
+
+/// Check if `source` is `target^(odd positive integer)`.
+/// E.g., is_odd_power_of(ctx, b^3, b) = true
+fn is_odd_power_of(ctx: &Context, source: ExprId, target: ExprId) -> bool {
+    if let Expr::Pow(base, exp) = ctx.get(source) {
+        // Check if exp is an odd positive integer
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if n.is_integer() {
+                let exp_int = n.to_integer();
+                let two: num_bigint::BigInt = 2.into();
+                let zero: num_bigint::BigInt = 0.into();
+                let one: num_bigint::BigInt = 1.into();
+                // Odd: exp % 2 == 1, positive: exp > 0
+                if &exp_int % &two == one && exp_int > zero {
+                    // Check if base equals target
+                    return exprs_equivalent(ctx, *base, target);
+                }
+            }
+        }
+    }
+    false
+}
 /// Normalize and deduplicate a list of conditions for display.
 ///
 /// This function:
 /// 1. Normalizes each condition (canonical form + sign normalization)
 /// 2. Deduplicates conditions by polynomial equivalence
-/// 3. Preserves order (stable dedupe - keeps first occurrence)
+/// 3. Removes dominated conditions via dominance rules:
+///    - x > 0 or x < 0 dominates x ≠ 0
+///    - x > 0 dominates x ≥ 0 and |x| > 0
+/// 4. Preserves order (stable dedupe - keeps first occurrence)
 ///
 /// Used when rendering "Requires:" in timeline and REPL.
 pub fn normalize_and_dedupe_conditions(
@@ -262,7 +356,81 @@ pub fn normalize_and_dedupe_conditions(
         }
     }
 
+    // Apply dominance rules to remove redundant conditions
+    apply_dominance_rules(ctx, &mut result);
+
     result
+}
+
+/// Apply dominance rules to remove redundant conditions.
+///
+/// Rules:
+/// 1. x > 0 dominates x ≠ 0 (remove x ≠ 0)
+/// 2. x > 0 dominates |x| > 0 (remove |x| > 0)  
+/// 3. x > 0 dominates x ≥ 0 (remove x ≥ 0)
+fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>) {
+    // Collect indices to remove
+    let mut to_remove: Vec<usize> = Vec::new();
+
+    for (i, cond) in conditions.iter().enumerate() {
+        // Check if this condition is dominated by another
+        for (j, other) in conditions.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+
+            match (cond, other) {
+                // x ≠ 0 dominated by x > 0
+                (ImplicitCondition::NonZero(nz_expr), ImplicitCondition::Positive(pos_expr)) => {
+                    if exprs_equivalent(ctx, *nz_expr, *pos_expr) {
+                        to_remove.push(i);
+                        break;
+                    }
+                    // Also check if nz_expr is |x| and pos_expr is x
+                    if is_abs_of(ctx, *nz_expr, *pos_expr) {
+                        to_remove.push(i);
+                        break;
+                    }
+                }
+                // |x| > 0 dominated by x > 0
+                (ImplicitCondition::Positive(abs_expr), ImplicitCondition::Positive(pos_expr)) => {
+                    // Check if abs_expr is |pos_expr|
+                    if is_abs_of(ctx, *abs_expr, *pos_expr) {
+                        to_remove.push(i);
+                        break;
+                    }
+                }
+                // x ≥ 0 dominated by x > 0
+                (
+                    ImplicitCondition::NonNegative(nn_expr),
+                    ImplicitCondition::Positive(pos_expr),
+                ) => {
+                    if exprs_equivalent(ctx, *nn_expr, *pos_expr) {
+                        to_remove.push(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Remove dominated conditions in reverse order to preserve indices
+    to_remove.sort();
+    to_remove.dedup();
+    for i in to_remove.into_iter().rev() {
+        conditions.remove(i);
+    }
+}
+
+/// Check if expr is Abs(inner_expr), i.e., |inner_expr|
+fn is_abs_of(ctx: &Context, expr: ExprId, inner: ExprId) -> bool {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "abs" && args.len() == 1 {
+            return exprs_equivalent(ctx, args[0], inner);
+        }
+    }
+    false
 }
 
 /// Render conditions for display, applying normalization and deduplication.
@@ -1202,17 +1370,40 @@ impl DomainContext {
     }
 
     /// Check if a condition is implied by the known requires (global ∪ introduced).
+    ///
+    /// Implication rules:
+    /// - Exact polynomial equivalence
+    /// - x > 0 is implied by x^(odd positive) > 0  
+    /// - x ≠ 0 is implied by x > 0
     pub fn is_condition_implied(&self, ctx: &Context, cond: &ImplicitCondition) -> bool {
-        // Check against global requires
-        for known in &self.global_requires {
+        let all_known: Vec<_> = self
+            .global_requires
+            .iter()
+            .chain(self.introduced_requires.iter())
+            .collect();
+
+        for known in all_known {
+            // Direct equivalence check
             if conditions_equivalent(ctx, cond, known) {
                 return true;
             }
-        }
-        // Check against introduced requires
-        for known in &self.introduced_requires {
-            if conditions_equivalent(ctx, cond, known) {
-                return true;
+
+            // Implication rules
+            match (cond, known) {
+                // x ≠ 0 is implied by x > 0 or x ≥ 0 (for our purposes, x > 0)
+                (ImplicitCondition::NonZero(target), ImplicitCondition::Positive(source)) => {
+                    if exprs_equivalent(ctx, *target, *source) {
+                        return true;
+                    }
+                }
+                // x > 0 is implied by x^(positive odd) > 0 (e.g., b > 0 implied by b^3 > 0)
+                (ImplicitCondition::Positive(target), ImplicitCondition::Positive(source)) => {
+                    // Check if source is target^(odd positive)
+                    if is_odd_power_of(ctx, *source, *target) {
+                        return true;
+                    }
+                }
+                _ => {}
             }
         }
         false
@@ -1249,11 +1440,9 @@ pub fn classify_assumption(
 ) {
     use crate::assumptions::AssumptionKind;
 
-    // Rule 1: Branch/Heuristic/Domain never get reclassified
+    // Rule 1: Branch/Domain never get reclassified (they are structural, not algebraic)
     match event.kind {
-        AssumptionKind::BranchChoice
-        | AssumptionKind::HeuristicAssumption
-        | AssumptionKind::DomainExtension => {
+        AssumptionKind::BranchChoice | AssumptionKind::DomainExtension => {
             return (event.kind, None);
         }
         _ => {}
@@ -1264,12 +1453,23 @@ pub fn classify_assumption(
 
     match implicit_cond {
         Some(cond) => {
-            // Rule 2: Check if implied
+            // Check if this condition is already implied by global/introduced requires
             if dc.is_condition_implied(ctx, &cond) {
+                // If it was HeuristicAssumption but is implied, downgrade to DerivedFromRequires
+                // This prevents showing ⚠ b > 0 when b > 0 is already in Requires
                 (AssumptionKind::DerivedFromRequires, None)
             } else {
-                // Rule 3: Not implied → promote to RequiresIntroduced
-                (AssumptionKind::RequiresIntroduced, Some(cond))
+                // Not implied - behavior depends on original kind
+                match event.kind {
+                    AssumptionKind::HeuristicAssumption => {
+                        // Keep as HeuristicAssumption (shows ⚠) since it's a new assumption
+                        (AssumptionKind::HeuristicAssumption, None)
+                    }
+                    _ => {
+                        // Promote to RequiresIntroduced
+                        (AssumptionKind::RequiresIntroduced, Some(cond))
+                    }
+                }
             }
         }
         None => {

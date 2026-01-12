@@ -4624,26 +4624,40 @@ impl Repl {
 
                         // V2.2+: Show Requires (implicit domain conditions from solver)
                         // Using unified diagnostics with origin tracking
-                        let ctx = &self.engine.simplifier.context;
+                        // First pass: filter with immutable context
                         let result_expr_id = match &output.result {
                             EvalResult::Expr(e) => *e,
                             EvalResult::Set(v) => *v.first().unwrap_or(&output.resolved),
                             _ => output.resolved,
                         };
                         let display_level = self.state.options.requires_display;
-                        let requires_to_show = output.diagnostics.filter_requires_for_display(
-                            ctx,
-                            result_expr_id,
-                            display_level,
-                        );
+                        let requires_to_show = {
+                            let ctx = &self.engine.simplifier.context;
+                            output.diagnostics.filter_requires_for_display(
+                                ctx,
+                                result_expr_id,
+                                display_level,
+                            )
+                        };
 
                         if !requires_to_show.is_empty() {
                             println!("ℹ️ Requires:");
-                            for item in requires_to_show {
+                            // Batch normalize and apply dominance rules
+                            let conditions: Vec<_> = requires_to_show
+                                .iter()
+                                .map(|item| item.cond.clone())
+                                .collect();
+                            let ctx_mut = &mut self.engine.simplifier.context;
+                            let normalized_conditions =
+                                cas_engine::implicit_domain::normalize_and_dedupe_conditions(
+                                    ctx_mut,
+                                    &conditions,
+                                );
+                            for cond in &normalized_conditions {
                                 if self.debug_mode {
-                                    println!("  • {}", item.display_with_origin(ctx));
+                                    println!("  • {} (normalized)", cond.display(ctx_mut));
                                 } else {
-                                    println!("  • {}", item.cond.display(ctx));
+                                    println!("  • {}", cond.display(ctx_mut));
                                 }
                             }
                         }
@@ -5277,12 +5291,20 @@ impl Repl {
 
                             if !filtered.is_empty() {
                                 println!("ℹ️ Requires:");
-                                for item in &filtered {
+                                // Batch normalize and apply dominance rules
+                                let conditions: Vec<_> =
+                                    filtered.iter().map(|item| item.cond.clone()).collect();
+                                let ctx_mut = &mut self.engine.simplifier.context;
+                                let normalized_conditions =
+                                    cas_engine::implicit_domain::normalize_and_dedupe_conditions(
+                                        ctx_mut,
+                                        &conditions,
+                                    );
+                                for cond in &normalized_conditions {
                                     if debug_mode {
-                                        // Show with origins for pedagogical transparency
-                                        println!("  • {}", item.display_with_origin(ctx));
+                                        println!("  • {} (normalized)", cond.display(ctx_mut));
                                     } else {
-                                        println!("  • {}", item.cond.display(ctx));
+                                        println!("  • {}", cond.display(ctx_mut));
                                     }
                                 }
                             }
