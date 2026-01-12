@@ -1177,6 +1177,151 @@ fn search_witness_in_context(
 }
 
 // =============================================================================
+// Assumption Classification (V2.12.13)
+// =============================================================================
+
+/// Context for domain condition tracking during step processing.
+///
+/// Used by the central classifier to determine whether conditions are
+/// derived from input requires or newly introduced.
+#[derive(Debug, Clone, Default)]
+pub struct DomainContext {
+    /// Conditions inferred from the original input expression
+    pub global_requires: Vec<ImplicitCondition>,
+    /// Conditions introduced by previous steps (accumulated)
+    pub introduced_requires: Vec<ImplicitCondition>,
+}
+
+impl DomainContext {
+    /// Create a new DomainContext with global requires from the input expression.
+    pub fn new(global_requires: Vec<ImplicitCondition>) -> Self {
+        Self {
+            global_requires,
+            introduced_requires: Vec::new(),
+        }
+    }
+
+    /// Check if a condition is implied by the known requires (global ∪ introduced).
+    pub fn is_condition_implied(&self, ctx: &Context, cond: &ImplicitCondition) -> bool {
+        // Check against global requires
+        for known in &self.global_requires {
+            if conditions_equivalent(ctx, cond, known) {
+                return true;
+            }
+        }
+        // Check against introduced requires
+        for known in &self.introduced_requires {
+            if conditions_equivalent(ctx, cond, known) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Add a newly introduced condition (from a step that introduces constraints).
+    pub fn add_introduced(&mut self, cond: ImplicitCondition) {
+        self.introduced_requires.push(cond);
+    }
+}
+
+/// Classify an AssumptionEvent based on whether its condition is implied by known requires.
+///
+/// # Reclassification Logic (V2.12.13)
+///
+/// 1. If the event has kind `BranchChoice`, `HeuristicAssumption`, or `DomainExtension`:
+///    **Keep as-is** (never promote to requires)
+///
+/// 2. If the event's condition IS implied by `global ∪ introduced`:
+///    Reclassify to `DerivedFromRequires` (will not be displayed)
+///
+/// 3. If NOT implied AND kind was `DerivedFromRequires` or `RequiresIntroduced`:
+///    Promote to `RequiresIntroduced` (will be displayed, add to introduced)
+///
+/// # Returns
+/// The new kind for the event, and whether to add to introduced_requires.
+pub fn classify_assumption(
+    ctx: &Context,
+    dc: &DomainContext,
+    event: &crate::assumptions::AssumptionEvent,
+) -> (
+    crate::assumptions::AssumptionKind,
+    Option<ImplicitCondition>,
+) {
+    use crate::assumptions::AssumptionKind;
+
+    // Rule 1: Branch/Heuristic/Domain never get reclassified
+    match event.kind {
+        AssumptionKind::BranchChoice
+        | AssumptionKind::HeuristicAssumption
+        | AssumptionKind::DomainExtension => {
+            return (event.kind, None);
+        }
+        _ => {}
+    }
+
+    // Try to convert the event to an ImplicitCondition
+    let implicit_cond = assumption_to_condition(event);
+
+    match implicit_cond {
+        Some(cond) => {
+            // Rule 2: Check if implied
+            if dc.is_condition_implied(ctx, &cond) {
+                (AssumptionKind::DerivedFromRequires, None)
+            } else {
+                // Rule 3: Not implied → promote to RequiresIntroduced
+                (AssumptionKind::RequiresIntroduced, Some(cond))
+            }
+        }
+        None => {
+            // Cannot convert to condition (e.g., InvTrigPrincipalRange)
+            // Keep original kind
+            (event.kind, None)
+        }
+    }
+}
+
+/// Convert an AssumptionEvent to an ImplicitCondition if possible.
+///
+/// Uses the `expr_id` field (V2.12.13) for proper condition comparison.
+fn assumption_to_condition(
+    event: &crate::assumptions::AssumptionEvent,
+) -> Option<ImplicitCondition> {
+    use crate::assumptions::AssumptionKey;
+
+    // V2.12.13: Use expr_id if available for proper condition creation
+    let expr_id = event.expr_id?;
+
+    match &event.key {
+        AssumptionKey::NonZero { .. } => Some(ImplicitCondition::NonZero(expr_id)),
+        AssumptionKey::Positive { .. } => Some(ImplicitCondition::Positive(expr_id)),
+        AssumptionKey::NonNegative { .. } => Some(ImplicitCondition::NonNegative(expr_id)),
+        // Defined has no direct ImplicitCondition counterpart
+        AssumptionKey::Defined { .. } => None,
+        // Branch choices are not conditions
+        AssumptionKey::InvTrigPrincipalRange { .. } => None,
+        AssumptionKey::ComplexPrincipalBranch { .. } => None,
+    }
+}
+
+/// Filter and reclassify a list of AssumptionEvents in place.
+///
+/// After calling, events have updated `kind` fields.
+/// Use `event.kind.should_display()` to determine which to show.
+pub fn classify_assumptions_in_place(
+    ctx: &Context,
+    dc: &mut DomainContext,
+    events: &mut [crate::assumptions::AssumptionEvent],
+) {
+    for event in events.iter_mut() {
+        let (new_kind, new_cond) = classify_assumption(ctx, dc, event);
+        event.kind = new_kind;
+        if let Some(cond) = new_cond {
+            dc.add_introduced(cond);
+        }
+    }
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 

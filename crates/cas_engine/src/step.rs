@@ -291,6 +291,7 @@ mod tests {
                 expr_display: "x".to_string(),
                 message: "Assuming x ≠ 0".to_string(),
                 kind: crate::assumptions::AssumptionKind::RequiresIntroduced,
+                expr_id: None, // Test doesn't need real ExprId
             });
         assert_eq!(step.get_importance(), ImportanceLevel::Medium);
 

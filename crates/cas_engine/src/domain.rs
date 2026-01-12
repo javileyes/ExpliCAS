@@ -305,8 +305,8 @@ impl CancelDecision {
                     key: key.clone(),
                     expr_display,
                     message,
-                    // Assumptions from CancelDecision are typically derived from input
                     kind: crate::assumptions::AssumptionKind::DerivedFromRequires,
+                    expr_id: Some(expr_id),
                 }
             })
             .collect()

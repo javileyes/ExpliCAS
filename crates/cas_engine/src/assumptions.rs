@@ -300,6 +300,9 @@ pub struct AssumptionEvent {
     /// V2.12.13: Classification for display filtering
     /// Rules can set this explicitly, or it defaults to RequiresIntroduced
     pub kind: AssumptionKind,
+    /// V2.12.13: The expression ID for condition comparison (if available)
+    /// Used by the central classifier to check if this condition is implied
+    pub expr_id: Option<ExprId>,
 }
 
 impl AssumptionEvent {
@@ -319,8 +322,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} ≠ 0", display),
-            // NonZero is typically deducible from division in input
             kind: AssumptionKind::DerivedFromRequires,
+            expr_id: Some(expr),
         }
     }
 
@@ -340,8 +343,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} > 0", display),
-            // Positive for log rules narrows domain
             kind: AssumptionKind::RequiresIntroduced,
+            expr_id: Some(expr),
         }
     }
 
@@ -361,8 +364,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} ≥ 0", display),
-            // NonNegative from sqrt is typically derived from input having sqrt
             kind: AssumptionKind::DerivedFromRequires,
+            expr_id: Some(expr),
         }
     }
 
@@ -382,8 +385,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} is defined", display),
-            // Defined is typically deducible from input expression
             kind: AssumptionKind::DerivedFromRequires,
+            expr_id: Some(expr),
         }
     }
 
@@ -404,8 +407,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} is in principal range of {}", display, func),
-            // Principal range is a branch choice
             kind: AssumptionKind::BranchChoice,
+            expr_id: Some(arg),
         }
     }
 
@@ -426,8 +429,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Used principal branch of {}({})", func, display),
-            // Complex branch is a branch choice
             kind: AssumptionKind::BranchChoice,
+            expr_id: Some(arg),
         }
     }
 
@@ -490,8 +493,8 @@ impl AssumptionEvent {
             key,
             expr_display,
             message: message.to_string(),
-            // Legacy strings default to RequiresIntroduced
             kind: AssumptionKind::RequiresIntroduced,
+            expr_id: None, // Legacy strings don't have ExprId
         }
     }
 }
