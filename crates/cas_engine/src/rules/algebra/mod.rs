@@ -206,9 +206,9 @@ pub fn try_difference_of_squares_preorder(
         DenMatch::APlusB | DenMatch::BPlusA => a_minus_b, // cancel (A+B) -> A-B
     };
 
-    // STEP 4: Record steps if needed (Factor step + Cancel step)
+    // STEP 4: Record steps if needed (Factor step + optional Simplify Denominator + Cancel step)
     if collect_steps {
-        // Step 1: Factor
+        // Step 1: Factor - focus on numerator only
         let mut factor_step = crate::step::Step::new(
             "Factor: A² - B² = (A-B)(A+B)",
             "Pre-order Difference of Squares",
@@ -221,11 +221,32 @@ pub fn try_difference_of_squares_preorder(
         factor_step.after = intermediate;
         factor_step.global_before = Some(expr_id);
         factor_step.global_after = Some(intermediate);
+        // Focus Rule line on numerator transformation only
+        factor_step.before_local = Some(num);
+        factor_step.after_local = Some(factored_num);
         factor_step.importance = crate::step::ImportanceLevel::High;
         factor_step
             .required_conditions
             .push(crate::implicit_domain::ImplicitCondition::NonZero(den));
         steps.push(factor_step);
+
+        // Step 1.5 (conditional): Show denominator simplification if it changed
+        // This is a generic pattern: show "Combine like terms" when polynomial
+        // canonicalization produces a different expression
+        if den != den_simplified {
+            let mut simplify_den_step = crate::step::Step::new(
+                "Combine like terms",
+                "Combine Like Terms",
+                den,
+                den_simplified,
+                current_path.to_vec(),
+                Some(ctx),
+            );
+            simplify_den_step.before_local = Some(den);
+            simplify_den_step.after_local = Some(den_simplified);
+            simplify_den_step.importance = crate::step::ImportanceLevel::Medium;
+            steps.push(simplify_den_step);
+        }
 
         // Step 2: Cancel
         let mut cancel_step = crate::step::Step::new(
