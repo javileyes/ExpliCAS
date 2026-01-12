@@ -194,6 +194,8 @@ impl Diagnostics {
     /// - Always show items with "strong" origins (EquationDerived, RewriteAirbag)
     /// - Show items whose witness does NOT survive in the result
     /// - Hide items whose witness survives (redundant visually)
+    /// - EXCEPTION: Always show Positive conditions when there are ≥2 such conditions
+    ///   (prevents hiding a>0 while showing a≠0, enables dominance to work)
     ///
     /// In `All` mode: show everything.
     pub fn filter_requires_for_display<'a>(
@@ -202,17 +204,26 @@ impl Diagnostics {
         result: cas_ast::ExprId,
         level: crate::implicit_domain::RequiresDisplayLevel,
     ) -> Vec<&'a RequiredItem> {
-        use crate::implicit_domain::RequiresDisplayLevel;
+        use crate::implicit_domain::{ImplicitCondition, RequiresDisplayLevel};
+
+        // All mode: show everything
+        if level == RequiresDisplayLevel::All {
+            return self.requires.iter().collect();
+        }
+
+        // Essential mode: count Positive conditions (log witnesses)
+        // If ≥2, we show all Positive so dominance can work correctly
+        let positive_count = self
+            .requires
+            .iter()
+            .filter(|item| matches!(item.cond, ImplicitCondition::Positive(_)))
+            .count();
+        let has_multiple_log_witnesses = positive_count >= 2;
 
         self.requires
             .iter()
             .filter(|item| {
-                // Always show if level is All
-                if level == RequiresDisplayLevel::All {
-                    return true;
-                }
-
-                // Essential mode: show if strong origin OR witness consumed
+                // Strong origin always shows
                 let has_strong_origin = item.origins.iter().any(|o| {
                     matches!(
                         o,
@@ -221,6 +232,12 @@ impl Diagnostics {
                 });
 
                 if has_strong_origin {
+                    return true;
+                }
+
+                // V2.14.15: Always show Positive when multiple log witnesses
+                if has_multiple_log_witnesses && matches!(item.cond, ImplicitCondition::Positive(_))
+                {
                     return true;
                 }
 

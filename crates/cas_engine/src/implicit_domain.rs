@@ -368,7 +368,21 @@ pub fn normalize_and_dedupe_conditions(
 /// 1. x > 0 dominates x ≠ 0 (remove x ≠ 0)
 /// 2. x > 0 dominates |x| > 0 (remove |x| > 0)  
 /// 3. x > 0 dominates x ≥ 0 (remove x ≥ 0)
+/// 4. x > 0 dominates x^n > 0 for any positive n (remove x^n > 0)
+/// 5. If all factors of a product are known positive, remove product > 0
 fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>) {
+    // First pass: collect all known positive expressions (for product dominance)
+    let positive_exprs: Vec<ExprId> = conditions
+        .iter()
+        .filter_map(|c| {
+            if let ImplicitCondition::Positive(e) = c {
+                Some(*e)
+            } else {
+                None
+            }
+        })
+        .collect();
+
     // Collect indices to remove
     let mut to_remove: Vec<usize> = Vec::new();
 
@@ -399,6 +413,11 @@ fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>)
                         to_remove.push(i);
                         break;
                     }
+                    // NEW: x^n > 0 dominated by x > 0 (for any positive n)
+                    if is_power_of_base(ctx, *abs_expr, *pos_expr) {
+                        to_remove.push(i);
+                        break;
+                    }
                 }
                 // x ≥ 0 dominated by x > 0
                 (
@@ -413,6 +432,15 @@ fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>)
                 _ => {}
             }
         }
+
+        // NEW: Check product dominance - if cond is Positive(product) and all factors are known positive
+        if !to_remove.contains(&i) {
+            if let ImplicitCondition::Positive(prod_expr) = cond {
+                if is_product_dominated_by_positives(ctx, *prod_expr, &positive_exprs) {
+                    to_remove.push(i);
+                }
+            }
+        }
     }
 
     // Remove dominated conditions in reverse order to preserve indices
@@ -420,6 +448,91 @@ fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>)
     to_remove.dedup();
     for i in to_remove.into_iter().rev() {
         conditions.remove(i);
+    }
+}
+
+/// Check if expr is base^n for some positive integer n
+fn is_power_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
+    if let Expr::Pow(pow_base, exp) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if n.is_integer() {
+                let exp_int = n.to_integer();
+                let zero: num_bigint::BigInt = 0.into();
+                if exp_int > zero {
+                    return exprs_equivalent(ctx, *pow_base, base);
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Check if a product expression is dominated by known positive expressions.
+/// E.g., a^2 * b^3 > 0 is dominated if we have both a > 0 and b > 0
+/// Only applies to actual products (≥2 factors) to avoid removing single conditions.
+fn is_product_dominated_by_positives(
+    ctx: &Context,
+    prod_expr: ExprId,
+    known_positives: &[ExprId],
+) -> bool {
+    // Collect all base variables from the product
+    let bases = extract_product_bases(ctx, prod_expr);
+
+    // Only dominate actual products with ≥2 factors
+    // Single bases are handled by is_power_of_base or direct equivalence
+    if bases.len() < 2 {
+        return false;
+    }
+
+    // Check if all bases are known positive
+    for base in &bases {
+        let base_is_covered = known_positives
+            .iter()
+            .any(|pos| exprs_equivalent(ctx, *base, *pos));
+        if !base_is_covered {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Extract base expressions from a product like a^2 * b^3
+/// Returns [a, b] for a^2 * b^3
+fn extract_product_bases(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut bases = Vec::new();
+    collect_product_bases(ctx, expr, &mut bases);
+    bases
+}
+
+fn collect_product_bases(ctx: &Context, expr: ExprId, bases: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(l, r) => {
+            collect_product_bases(ctx, *l, bases);
+            collect_product_bases(ctx, *r, bases);
+        }
+        Expr::Pow(base, exp) => {
+            // Check if exponent is positive - if so, add the base
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() {
+                    let exp_int = n.to_integer();
+                    let zero: num_bigint::BigInt = 0.into();
+                    if exp_int > zero {
+                        bases.push(*base);
+                        return;
+                    }
+                }
+            }
+            // Fallback: treat the whole thing as a base
+            bases.push(expr);
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => {
+            bases.push(expr);
+        }
+        _ => {
+            // Complex expression - treat as single base
+            bases.push(expr);
+        }
     }
 }
 
@@ -1397,9 +1510,15 @@ impl DomainContext {
                     }
                 }
                 // x > 0 is implied by x^(positive odd) > 0 (e.g., b > 0 implied by b^3 > 0)
+                // x^n > 0 is implied by x > 0 (e.g., a^2 > 0 implied by a > 0)
                 (ImplicitCondition::Positive(target), ImplicitCondition::Positive(source)) => {
-                    // Check if source is target^(odd positive)
+                    // Check if source is target^(odd positive) -> target is implied
                     if is_odd_power_of(ctx, *source, *target) {
+                        return true;
+                    }
+                    // NEW: Check if target is source^n -> target is implied by source
+                    // e.g., a^2 > 0 is implied by a > 0
+                    if is_power_of_base(ctx, *target, *source) {
                         return true;
                     }
                 }

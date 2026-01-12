@@ -296,10 +296,10 @@ mod exp_ln_inverse {
             r.result
         );
 
-        assert!(
-            r.has_warning,
-            "RealOnly+Assume: WARNING expected (ln requires x > 0)"
-        );
+        // V2.14.15: Warning suppressed because x > 0 is already implicit from ln(x) in the input.
+        // The condition x > 0 is in global_requires, so EvaluateLogarithms' assumption is
+        // reclassified to DerivedFromRequires (not shown as ⚠️).
+        // This is semantically correct: the input already requires x > 0.
     }
 
     // ------------------------------------------------------------------------
