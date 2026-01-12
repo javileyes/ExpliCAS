@@ -129,9 +129,9 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
         crate::phase::PhaseMask::POST
     }
 
-    // Ensure step is visible - domain simplification is didactically important
+    // V2.14.21: Ensure step is visible - domain simplification is didactically important
     fn importance(&self) -> crate::step::ImportanceLevel {
-        crate::step::ImportanceLevel::Low
+        crate::step::ImportanceLevel::High
     }
 }
 

@@ -525,31 +525,15 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         let dm = parent_ctx.domain_mode();
         let pos = prove_positive(ctx, p_base, vd);
 
-        // V2.14.20: Also check if x > 0 is in global requires (from ln(x) in input)
+        // V2.14.21: Check if x > 0 is in global requires using root_expr + infer_implicit_domain
         // This allows chaining in Generic mode when x > 0 is already required
-        // Note: Compare variable names for simple vars since ExprIds differ across parsing
-        // Note: implicit_domain() is currently None during rule execution (computed after)
-        // This check is for future compatibility when implicit domain is passed to rules
-        let in_requires = parent_ctx.implicit_domain().is_some_and(|id| {
-            // Get p_base variable name if it's a simple variable
-            let p_base_var = match ctx.get(p_base) {
-                Expr::Variable(name) => Some(name.clone()),
-                _ => None,
-            };
-            if let Some(ref base_name) = p_base_var {
-                id.conditions().iter().any(|cond| {
-                    if let crate::implicit_domain::ImplicitCondition::Positive(cond_expr) = cond {
-                        // Check if condition expr is same variable name
-                        if let Expr::Variable(cond_name) = ctx.get(*cond_expr) {
-                            return cond_name == base_name;
-                        }
-                    }
-                    false
-                })
-            } else {
-                // For complex expressions, fall back to ExprId equality
-                id.contains_positive(p_base)
-            }
+        let in_requires = parent_ctx.root_expr().is_some_and(|root| {
+            let id = crate::implicit_domain::infer_implicit_domain(ctx, root, vd);
+            let dc = crate::implicit_domain::DomainContext::new(
+                id.conditions().iter().cloned().collect(),
+            );
+            let cond = crate::implicit_domain::ImplicitCondition::Positive(p_base);
+            dc.is_condition_implied(ctx, &cond)
         });
 
         let can_chain = match dm {
@@ -569,16 +553,20 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
                 crate::rule::Rewrite::new(mid_expr).desc("log(b, x^(even)) = even·log(b, |x|)");
 
             // Add chained step for |x| → x
+            // V2.14.21: Use different descriptions:
+            // - "for x > 0" when proven or when x > 0 is in requires
+            // - "assuming x > 0" only in Assume mode when not proven and not in requires
+            let chain_desc = if pos == Proof::Proven || in_requires {
+                "|x| = x for x > 0"
+            } else {
+                "|x| = x (assuming x > 0)"
+            };
             let mut chain = ChainedRewrite::new(final_expr)
-                .desc(if pos == Proof::Proven {
-                    "|x| = x for x > 0"
-                } else {
-                    "|x| = x (assuming x > 0)"
-                })
+                .desc(chain_desc)
                 .local(abs_base, p_base);
 
-            // Add assumption event if not proven
-            if pos != Proof::Proven && dm == DomainMode::Assume {
+            // Add assumption event only in Assume mode when not proven
+            if pos != Proof::Proven && !in_requires && dm == DomainMode::Assume {
                 chain = chain.assume(crate::assumptions::AssumptionEvent::positive_assumed(
                     ctx, p_base,
                 ));
