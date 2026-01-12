@@ -1683,6 +1683,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 chain_step.poly_proof = chain_rw.poly_proof;
                                 chain_step.importance =
                                     chain_rw.importance.unwrap_or_else(|| rule.importance());
+                                chain_step.is_chained = true; // V2.12.13: Gate didactic substeps
                                 self.steps.push(chain_step);
 
                                 current = chain_rw.after;
@@ -1924,6 +1925,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             chain_step.poly_proof = chain_rw.poly_proof;
                             chain_step.importance =
                                 chain_rw.importance.unwrap_or_else(|| rule.importance());
+                            chain_step.is_chained = true; // V2.12.13: Gate didactic substeps
                             self.steps.push(chain_step);
 
                             current = chain_rw.after;

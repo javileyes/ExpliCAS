@@ -9,6 +9,21 @@
 //! - Optional: can be enabled/disabled via verbosity
 //! - Extensible: easy to add new enrichers
 //!
+//! # Contract (V2.12.13)
+//!
+//! **SubSteps explain techniques within a Step. They MUST NOT duplicate
+//! decompositions that already exist as chained Steps via ChainedRewrite.**
+//!
+//! When `step.is_chained == true`, the Step was created from a ChainedRewrite
+//! and already has proper before/after expressions. Skip substep generation
+//! that would duplicate this information (e.g., GCD factorization substeps).
+//!
+//! # When to use which:
+//!
+//! - **ChainedRewrite**: Multi-step algebraic decomposition with real ExprIds
+//!   (e.g., Factor → Cancel as separate visible Steps)
+//! - **SubSteps**: Educational annotation explaining technique (e.g., "Find conjugate")
+//!
 //! # Example
 //! ```ignore
 //! let enriched = didactic::enrich_steps(&ctx, original_expr, steps);
@@ -102,7 +117,9 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
         }
 
         // Add factorization sub-steps for fraction GCD simplification
-        if step.description.starts_with("Simplified fraction by GCD") {
+        // V2.12.13: Gate by is_chained - if this step came from ChainedRewrite,
+        // the Factor→Cancel decomposition already exists as separate Steps
+        if step.description.starts_with("Simplified fraction by GCD") && !step.is_chained {
             sub_steps.extend(generate_gcd_factorization_substeps(ctx, step));
         }
 

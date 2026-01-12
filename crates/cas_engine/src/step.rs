@@ -152,6 +152,10 @@ pub struct Step {
     /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
     /// Propagated from Rewrite.poly_proof during step creation for didactic display
     pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    /// V2.12.13: True if this Step was created from a ChainedRewrite.
+    /// Used to gate didactic substep generation to avoid duplicating explanations
+    /// that are already expressed as separate engine Steps.
+    pub is_chained: bool,
 }
 
 impl Step {
@@ -193,8 +197,9 @@ impl Step {
             assumption_events: Default::default(),
             required_conditions: vec![],
             poly_proof: None,
-            importance: ImportanceLevel::Low, // Default, will be overwritten by caller
-            category: StepCategory::General,  // Default, can be set by caller
+            importance: ImportanceLevel::Low,
+            category: StepCategory::General,
+            is_chained: false, // Default: not from ChainedRewrite
         }
     }
 
@@ -215,8 +220,9 @@ impl Step {
             assumption_events: Default::default(),
             required_conditions: vec![],
             poly_proof: None,
-            importance: ImportanceLevel::Low, // Default, will be overwritten by caller
-            category: StepCategory::General,  // Default, can be set by caller
+            importance: ImportanceLevel::Low,
+            category: StepCategory::General,
+            is_chained: false,
         }
     }
 

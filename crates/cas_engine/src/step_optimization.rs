@@ -111,8 +111,9 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     assumption_events: Default::default(),
                     required_conditions: vec![],
                     poly_proof: None,
-                    importance: crate::step::ImportanceLevel::Low, // Coalesced canonicalization is low
-                    category: crate::step::StepCategory::Canonicalize, // Category for coalesced steps
+                    importance: crate::step::ImportanceLevel::Low,
+                    category: crate::step::StepCategory::Canonicalize,
+                    is_chained: false, // Coalesced step is not from ChainedRewrite
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;
