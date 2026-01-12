@@ -175,7 +175,8 @@ impl Polynomial {
 
         let mut res = terms[0];
         for term in terms.into_iter().skip(1) {
-            res = context.add(Expr::Add(res, term));
+            // Use add_raw to preserve descending degree order (from .rev() above)
+            res = context.add_raw(Expr::Add(res, term));
         }
         res
     }

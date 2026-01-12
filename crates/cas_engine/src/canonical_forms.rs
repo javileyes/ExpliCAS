@@ -362,9 +362,12 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
                 Expr::Add(l, r) => {
                     let l_norm = *cache.get(l).unwrap_or(l);
                     let r_norm = *cache.get(r).unwrap_or(r);
-                    // ALWAYS rebuild Add to trigger auto-flatten in Context::add()
-                    // This ensures nested Add structures get properly canonicalized
-                    ctx.add(Expr::Add(l_norm, r_norm))
+                    // Use add_raw to preserve term order (e.g., polynomial descending degree)
+                    if l_norm == *l && r_norm == *r {
+                        id
+                    } else {
+                        ctx.add_raw(Expr::Add(l_norm, r_norm))
+                    }
                 }
 
                 Expr::Sub(l, r) => {

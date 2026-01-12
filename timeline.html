@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \atan(3) + \atan(\frac{1}{3}) - \frac{\pi}{2}</title>
+    <title>CAS Steps: \frac{64 + {x}^{4}}{8 + {x}^{2} + 4\cdot x}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,118 +451,58 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\atan(3) + \atan(\frac{1}{3}) - \frac{\pi}{2}\]
+            \[\frac{64 + {x}^{4}}{8 + {x}^{2} + 4\cdot x}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Add Fractions</h3>
+                    <h3>Simplify Nested Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\text{arctan}(3) + {\color{red}{\text{arctan}(\frac{1}{3}) - \frac{1}{2}\cdot \pi}}\]
+                        \[{\color{red}{\frac{64 + {x}^{4}}{8 + {x}^{2} + 4\cdot x}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Add numeric fractions}\)</div>
+                        <div class="rule-name">\(\text{Factor by GCD: x^2 + 4·x + 8}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\text{arctan}(\frac{1}{3}) - \frac{1}{2}\cdot \pi}} \rightarrow {\color{green}{\frac{\text{arctan}(\frac{1}{3})\cdot 2 - \pi}{2}}}\]
+                            \[{\color{red}{\frac{64 + {x}^{4}}{8 + {x}^{2} + 4\cdot x}}} \rightarrow {\color{green}{\frac{({x}^{2} - 4\cdot x + 8)\cdot ({x}^{2} + 4\cdot x + 8)}{{x}^{2} + 4\cdot x + 8}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\text{arctan}(3) + {\color{green}{\frac{\text{arctan}(\frac{1}{3})\cdot 2 - \pi}{2}}}\]
+                        \[{\color{green}{\frac{({x}^{2} - 4\cdot x + 8)\cdot ({x}^{2} + 4\cdot x + 8)}{{x}^{2} + 4\cdot x + 8}}}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Add Fractions</h3>
+                    <h3>Simplify Nested Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\text{arctan}(3) + \frac{1}{2}\cdot (2\cdot \text{arctan}(\frac{1}{3}) - \pi)}}\]
+                        \[{\color{red}{\frac{({x}^{2} - 4\cdot x + 8)\cdot ({x}^{2} + 4\cdot x + 8)}{{x}^{2} + 4\cdot x + 8}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Add numeric fractions}\)</div>
+                        <div class="rule-name">\(\text{Cancel common factor}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\text{arctan}(3) + \frac{1}{2}\cdot (2\cdot \text{arctan}(\frac{1}{3}) - \pi)}} \rightarrow {\color{green}{\frac{\text{arctan}(3)\cdot 2 + 2\cdot \text{arctan}(\frac{1}{3}) - \pi}{2}}}\]
+                            \[{\color{red}{\frac{({x}^{2} - 4\cdot x + 8)\cdot ({x}^{2} + 4\cdot x + 8)}{{x}^{2} + 4\cdot x + 8}}} \rightarrow {\color{green}{{x}^{2} - 4\cdot x + 8}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{\text{arctan}(3)\cdot 2 + 2\cdot \text{arctan}(\frac{1}{3}) - \pi}{2}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Inverse Tan Relations</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{2\cdot \text{arctan}(3)}} + {\color{red}{2\cdot \text{arctan}(\frac{1}{3})}} - \pi}{2}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{k·[arctan(x) + arctan(1/x) = π/2]}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{2\cdot \text{arctan}(\frac{1}{3}) + 2\cdot \text{arctan}(3)}} \rightarrow {\color{green}{2\cdot \frac{\pi}{2}}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{{\color{green}{2\cdot \frac{\pi}{2}}} - \pi}{2}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Combine Constants</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{2\cdot \frac{\pi}{2}}} - \pi}{2}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine nested constants: 1/2 * 2}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{1}{2}\cdot 2\cdot \pi}} \rightarrow {\color{green}{\pi}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{{\color{green}{\pi}} - \pi}{2}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
-                    <h3>Add Inverse</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{\pi - \pi}}}{2}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\pi - \pi}} \rightarrow {\color{green}{0}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{{\color{green}{0}}}{2}\]
+                        \[{\color{green}{{x}^{2} - 4\cdot x + 8}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[0\]
+            \[8 + {x}^{2} - 4\cdot x\]
+        </div>
+        <div class="global-requires">
+            <strong>ℹ️ Requires:</strong> x^2 + 4·x + 8 ≠ 0
         </div>
     </div>
     <footer>

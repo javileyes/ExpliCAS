@@ -1872,17 +1872,22 @@ pub fn multipoly_to_expr(p: &MultiPoly, ctx: &mut Context) -> ExprId {
         return ctx.num(0);
     }
 
-    let mut term_exprs: Vec<ExprId> = Vec::new();
+    // Collect terms with their total degree for sorting
+    let mut terms_with_degree: Vec<(usize, ExprId)> = Vec::new();
 
     for (coeff, mono) in &p.terms {
         let term = build_term_expr(ctx, coeff, mono, &p.vars);
-        term_exprs.push(term);
+        let total_deg: usize = mono.iter().map(|&e| e as usize).sum();
+        terms_with_degree.push((total_deg, term));
     }
 
+    // Sort by descending total degree for canonical polynomial form (x² - 4x + 8)
+    terms_with_degree.sort_by(|a, b| b.0.cmp(&a.0));
+
     // Sum all terms
-    let mut result = term_exprs[0];
-    for &t in &term_exprs[1..] {
-        result = ctx.add_raw(Expr::Add(result, t));
+    let mut result = terms_with_degree[0].1;
+    for (_, t) in &terms_with_degree[1..] {
+        result = ctx.add_raw(Expr::Add(result, *t));
     }
 
     result

@@ -153,17 +153,33 @@ fn poly_degree_fast(ctx: &Context, id: ExprId) -> Option<i32> {
 }
 
 /// Compare terms for display ordering.
-/// Uses polynomial degree (descending) when both are polynomial, otherwise compare_expr.
+/// Primary: polynomial degree descending (x² before x before constants)
+/// Secondary: positive terms before negative (for same degree)
+/// Tertiary: compare_expr for structural tie-breaking
 pub fn cmp_term_for_display(ctx: &Context, a: ExprId, b: ExprId) -> std::cmp::Ordering {
     use crate::ordering::compare_expr;
+    use std::cmp::Ordering;
 
     let deg_a = poly_degree_fast(ctx, a);
     let deg_b = poly_degree_fast(ctx, b);
 
+    // Primary: descending degree
     match (deg_a, deg_b) {
-        (Some(da), Some(db)) if da != db => db.cmp(&da), // Descending by degree
-        _ => compare_expr(ctx, a, b),                    // Fallback: total structural order
+        (Some(da), Some(db)) if da != db => return db.cmp(&da),
+        _ => {}
     }
+
+    // Secondary: positive before negative (for same degree or non-polynomial)
+    let (a_neg, _, _) = check_negative(ctx, a);
+    let (b_neg, _, _) = check_negative(ctx, b);
+    match (a_neg, b_neg) {
+        (false, true) => return Ordering::Less, // positive < negative
+        (true, false) => return Ordering::Greater, // negative > positive
+        _ => {}
+    }
+
+    // Tertiary: structural comparison
+    compare_expr(ctx, a, b)
 }
 
 // We need a way to display Expr with Context, or just Expr if it doesn't recurse.
@@ -473,17 +489,8 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 }
 
                 // Fallback: original behavior for 0 or 1 negative
-                // Reorder: positive first, negative last
-                let mut sorted_terms = terms.clone();
-                sorted_terms.sort_by(|a, b| {
-                    let a_neg = check_negative(self.context, *a).0;
-                    let b_neg = check_negative(self.context, *b).0;
-                    match (a_neg, b_neg) {
-                        (false, true) => std::cmp::Ordering::Less,
-                        (true, false) => std::cmp::Ordering::Greater,
-                        _ => std::cmp::Ordering::Equal,
-                    }
-                });
+                // cmp_term_for_display already handles degree+sign ordering, use terms directly
+                let sorted_terms = terms;
 
                 for (i, term) in sorted_terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
@@ -1096,61 +1103,6 @@ fn check_negative(ctx: &Context, id: ExprId) -> (bool, Option<ExprId>, Option<Bi
     }
 }
 
-/// Compute the "polynomial degree" of a term for display ordering.
-///
-/// Returns the total degree of all power terms (sum of exponents).
-/// Constants and numbers have degree 0, variables have degree 1.
-/// Used to sort polynomial sums: x^3, x^2, x, 1
-fn polynomial_degree(ctx: &Context, id: ExprId) -> i32 {
-    match ctx.get(id) {
-        // Constants have degree 0
-        Expr::Number(_) | Expr::Constant(_) => 0,
-
-        // Variables have degree 1
-        Expr::Variable(_) => 1,
-
-        // Power: get degree from exponent
-        Expr::Pow(base, exp) => {
-            // Check if exponent is numeric
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if let Some(exp_int) = n.to_integer().to_i32() {
-                    // For x^n, if base is variable, degree = n
-                    // For expression^n, degree = base_degree * n
-                    let base_deg = polynomial_degree(ctx, *base);
-                    if base_deg > 0 {
-                        return base_deg * exp_int;
-                    }
-                    // If base is number/constant, this is just a constant
-                    return 0;
-                }
-            }
-            // Non-integer exponent: treat base as having its own degree
-            polynomial_degree(ctx, *base)
-        }
-
-        // Mul: sum the degrees (c * x^2 * y has degree 3 if y is variable)
-        Expr::Mul(l, r) => {
-            let ld = polynomial_degree(ctx, *l);
-            let rd = polynomial_degree(ctx, *r);
-            ld + rd
-        }
-
-        // Neg: same degree as inner
-        Expr::Neg(inner) => polynomial_degree(ctx, *inner),
-
-        // Div: numerator degree minus denominator degree
-        Expr::Div(num, den) => polynomial_degree(ctx, *num) - polynomial_degree(ctx, *den),
-
-        // Add/Sub: take max degree (shouldn't happen for terms, but just in case)
-        Expr::Add(l, r) | Expr::Sub(l, r) => {
-            std::cmp::max(polynomial_degree(ctx, *l), polynomial_degree(ctx, *r))
-        }
-
-        // Functions: treat as degree 0 for ordering purposes
-        Expr::Function(_, _) | Expr::Matrix { .. } | Expr::SessionRef(_) => 0,
-    }
-}
-
 /// Count all nodes in an expression tree.
 ///
 /// Wrapper calling canonical `crate::traversal::count_all_nodes`.
@@ -1356,17 +1308,8 @@ impl<'a> DisplayExprWithHints<'a> {
                 // Flatten Add chain to handle mixed signs gracefully
                 let mut terms = collect_add_terms(self.context, id);
 
-                // Reorder for display: put positive terms first, negative terms last
-                // This makes -x + |x| display as |x| - x which is cleaner
-                terms.sort_by(|a, b| {
-                    let a_neg = check_negative(self.context, *a).0;
-                    let b_neg = check_negative(self.context, *b).0;
-                    match (a_neg, b_neg) {
-                        (false, true) => std::cmp::Ordering::Less, // positive before negative
-                        (true, false) => std::cmp::Ordering::Greater, // negative after positive
-                        _ => std::cmp::Ordering::Equal,            // same sign: keep order
-                    }
-                });
+                // Sort by degree (descending) then sign (positive first) for polynomial order
+                terms.sort_by(|a, b| cmp_term_for_display(self.context, *a, *b));
 
                 for (i, term) in terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
@@ -1832,27 +1775,9 @@ impl<'a> DisplayExprStyled<'a> {
                 // Collect terms and display with proper signs
                 let mut terms = collect_add_terms(self.context, id);
 
-                // Polynomial ordering: sort by degree descending (x^3, x^2, x, constant)
-                // Applied FIRST since positive-first should take priority for display
-                if resolved_style.polynomial_order {
-                    terms.sort_by(|a, b| {
-                        let deg_a = polynomial_degree(self.context, *a);
-                        let deg_b = polynomial_degree(self.context, *b);
-                        deg_b.cmp(&deg_a) // Descending
-                    });
-                }
-
-                // Reorder for display: put positive terms first, negative terms last
-                // This is applied LAST so it takes priority - makes -x + |x| display as |x| - x
-                terms.sort_by(|a, b| {
-                    let a_neg = check_negative(self.context, *a).0;
-                    let b_neg = check_negative(self.context, *b).0;
-                    match (a_neg, b_neg) {
-                        (false, true) => std::cmp::Ordering::Less, // positive before negative
-                        (true, false) => std::cmp::Ordering::Greater, // negative after positive
-                        _ => std::cmp::Ordering::Equal,            // same sign: keep order
-                    }
-                });
+                // Sort by degree (descending) then sign (positive first) for polynomial order
+                // cmp_term_for_display combines both criteria
+                terms.sort_by(|a, b| cmp_term_for_display(self.context, *a, *b));
 
                 for (i, term) in terms.iter().enumerate() {
                     let (is_neg, _, _) = check_negative(self.context, *term);
