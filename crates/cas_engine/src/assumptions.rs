@@ -61,6 +61,79 @@ impl std::fmt::Display for AssumptionReporting {
 }
 
 // =============================================================================
+// AssumptionKind - Classification for Display (V2.12.13)
+// =============================================================================
+
+/// Classification of assumptions for display filtering and UI presentation.
+///
+/// This taxonomy determines how assumptions are presented to the user:
+/// - **DerivedFromRequires**: Redundant with input domain, NOT displayed
+/// - **RequiresIntroduced**: New constraint necessary for equivalence (ℹ️)
+/// - **HeuristicAssumption**: Simplification heuristic, not required (⚠️)
+/// - **BranchChoice**: Multi-valued function branch selection (🔀)
+/// - **DomainExtension**: Extending domain ℝ→ℂ (🧿)
+///
+/// # Contract
+/// - Log rules (log(ab) → log(a)+log(b)) use **RequiresIntroduced** (narrows domain)
+/// - sqrt(x)^2 → x uses **DerivedFromRequires** (sqrt already implies x≥0)
+/// - sqrt(x²) → x uses **BranchChoice** (choosing x over |x|)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssumptionKind {
+    /// Redundant with requires from input - NOT displayed
+    /// Example: "x ≠ 0" when input expression was 1/x
+    DerivedFromRequires,
+
+    /// New constraint necessary for equivalence, not deducible from input
+    /// Display: "ℹ️ Requires (introduced)"
+    /// Example: log(a*b) → log(a)+log(b) introduces a>0, b>0
+    #[default]
+    RequiresIntroduced,
+
+    /// Heuristic for simplification, user convenience choice
+    /// Display: "⚠️ Assumes"
+    HeuristicAssumption,
+
+    /// Choosing one branch of multi-valued function
+    /// Example: sqrt(x²) → x instead of |x|
+    /// Display: "🔀 Branch"
+    BranchChoice,
+
+    /// Extending domain (ℝ → ℂ, etc.)
+    /// Display: "🧿 Domain"
+    DomainExtension,
+}
+
+impl AssumptionKind {
+    /// Should this assumption be displayed to the user?
+    pub fn should_display(&self) -> bool {
+        !matches!(self, Self::DerivedFromRequires)
+    }
+
+    /// Get the display icon for this kind
+    pub fn icon(&self) -> &'static str {
+        match self {
+            Self::DerivedFromRequires => "",
+            Self::RequiresIntroduced => "ℹ️",
+            Self::HeuristicAssumption => "⚠️",
+            Self::BranchChoice => "🔀",
+            Self::DomainExtension => "🧿",
+        }
+    }
+
+    /// Get the display label for this kind
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::DerivedFromRequires => "Derived",
+            Self::RequiresIntroduced => "Requires",
+            Self::HeuristicAssumption => "Assumes",
+            Self::BranchChoice => "Branch",
+            Self::DomainExtension => "Domain",
+        }
+    }
+}
+
+// =============================================================================
 // ConditionClass - Side Condition Taxonomy for DomainMode Gating
 // =============================================================================
 
@@ -224,6 +297,9 @@ pub struct AssumptionEvent {
     pub expr_display: String,
     /// Human-readable message (not used for dedup)
     pub message: String,
+    /// V2.12.13: Classification for display filtering
+    /// Rules can set this explicitly, or it defaults to RequiresIntroduced
+    pub kind: AssumptionKind,
 }
 
 impl AssumptionEvent {
@@ -243,6 +319,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} ≠ 0", display),
+            // NonZero is typically deducible from division in input
+            kind: AssumptionKind::DerivedFromRequires,
         }
     }
 
@@ -262,6 +340,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} > 0", display),
+            // Positive for log rules narrows domain
+            kind: AssumptionKind::RequiresIntroduced,
         }
     }
 
@@ -281,6 +361,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} ≥ 0", display),
+            // NonNegative from sqrt is typically derived from input having sqrt
+            kind: AssumptionKind::DerivedFromRequires,
         }
     }
 
@@ -300,6 +382,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} is defined", display),
+            // Defined is typically deducible from input expression
+            kind: AssumptionKind::DerivedFromRequires,
         }
     }
 
@@ -320,6 +404,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Assumed {} is in principal range of {}", display, func),
+            // Principal range is a branch choice
+            kind: AssumptionKind::BranchChoice,
         }
     }
 
@@ -340,6 +426,8 @@ impl AssumptionEvent {
             },
             expr_display: display.clone(),
             message: format!("Used principal branch of {}({})", func, display),
+            // Complex branch is a branch choice
+            kind: AssumptionKind::BranchChoice,
         }
     }
 
@@ -402,6 +490,8 @@ impl AssumptionEvent {
             key,
             expr_display,
             message: message.to_string(),
+            // Legacy strings default to RequiresIntroduced
+            kind: AssumptionKind::RequiresIntroduced,
         }
     }
 }

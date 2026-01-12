@@ -290,6 +290,7 @@ mod tests {
                 },
                 expr_display: "x".to_string(),
                 message: "Assuming x ≠ 0".to_string(),
+                kind: crate::assumptions::AssumptionKind::RequiresIntroduced,
             });
         assert_eq!(step.get_importance(), ImportanceLevel::Medium);
 
