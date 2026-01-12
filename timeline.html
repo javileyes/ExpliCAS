@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \sin(\text{arcsin}(x)) + \frac{1}{x}</title>
+    <title>CAS Steps: \text{expand_log}(\log(a\cdot b) + \frac{1}{a - 1})</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,37 +451,38 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\sin(\text{arcsin}(x)) + \frac{1}{x}\]
+            \[\text{expand_log}(\log(a\cdot b) + \frac{1}{a - 1})\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Inverse Trig Composition</h3>
+                    <h3>expand_log</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\sin(\text{arcsin}(x))}} + \frac{1}{x}\]
+                        \[{\color{red}{\text{expand_log}(\text{log}(a\cdot b) + \frac{1}{a - 1})}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{sin(arcsin(x)) = x}\)</div>
+                        <div class="rule-name">\(\text{Log expansion}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\sin(\text{arcsin}(x))}} \rightarrow {\color{green}{x}}\]
+                            \[{\color{red}{\text{expand_log}(\log(a\cdot b) + \frac{1}{a - 1})}} \rightarrow {\color{green}{\log(a) + \log(b) + \frac{1}{a - 1}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{x}} + \frac{1}{x}\]
+                        \[{\color{green}{\text{log}(a) + \text{log}(b) + \frac{1}{a - 1}}}\]
                     </div>
+                    <div class="domain-assumptions">ℹ️ Requires: a &gt; 0, b &gt; 0</div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[x + \frac{1}{x}\]
+            \[\log(a) + \log(b) + \frac{1}{a - 1}\]
         </div>
         <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> x ≠ 0
+            <strong>ℹ️ Requires:</strong> a·b &gt; 0, a - 1 ≠ 0
         </div>
     </div>
     <footer>

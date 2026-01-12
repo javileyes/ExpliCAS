@@ -152,6 +152,8 @@ pub struct EvalOutput {
 
 /// Collect domain warnings from steps with deduplication.
 /// Collects structured assumption_events from each step.
+/// Note: Only events that are NOT RequiresIntroduced become DomainWarnings (⚠️).
+/// RequiresIntroduced events are displayed in steps with ℹ️ icon instead.
 fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
     use std::collections::HashSet;
 
@@ -161,6 +163,13 @@ fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
     for step in steps {
         // Collect structured assumption_events
         for event in &step.assumption_events {
+            // Skip RequiresIntroduced - these show in steps with ℹ️ icon, not as ⚠️ warnings
+            if matches!(
+                event.kind,
+                crate::assumptions::AssumptionKind::RequiresIntroduced
+            ) {
+                continue;
+            }
             let msg_str = event.message.clone();
             if !seen.contains(&msg_str) {
                 seen.insert(msg_str.clone());
@@ -229,32 +238,52 @@ impl Engine {
 
                 // TOOL DISPATCHER: Detect tool functions and set appropriate goal
                 // This prevents inverse rules from undoing the effect of collect/expand_log
-                let expr_to_simplify = if let Expr::Function(name, args) =
+                let (expr_to_simplify, expand_log_events) = if let Expr::Function(name, args) =
                     ctx_simplifier.context.get(resolved).clone()
                 {
                     match name.as_str() {
                         "collect" => {
                             simplify_opts.goal = crate::semantics::NormalFormGoal::Collected;
-                            resolved
+                            (resolved, Vec::new())
                         }
                         "expand_log" if args.len() == 1 => {
                             // V2.12.14: Apply log expansion BEFORE simplification
                             // This ensures the result is simplified with goal=ExpandedLog
                             // which blocks LogContractionRule from undoing the expansion
                             simplify_opts.goal = crate::semantics::NormalFormGoal::ExpandedLog;
-                            crate::rules::logarithms::expand_logs(
+                            crate::rules::logarithms::expand_logs_with_assumptions(
                                 &mut ctx_simplifier.context,
                                 args[0],
                             )
                         }
-                        _ => resolved,
+                        _ => (resolved, Vec::new()),
                     }
                 } else {
-                    resolved
+                    (resolved, Vec::new())
                 };
 
-                let (mut res, steps, _stats) =
+                let (mut res, mut steps, _stats) =
                     ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts);
+
+                // Inject expand_log assumption events into the first step (or create one if needed)
+                if !expand_log_events.is_empty() {
+                    if steps.is_empty() {
+                        // Create a placeholder step to hold the assumptions
+                        let mut step = crate::Step::new(
+                            "Log expansion",
+                            "expand_log",
+                            resolved, // Before: the original expand_log(...) expression
+                            res,      // After: the expanded result
+                            Vec::new(),
+                            Some(&ctx_simplifier.context),
+                        );
+                        step.assumption_events.extend(expand_log_events);
+                        steps.push(step);
+                    } else {
+                        // Add events to first step
+                        steps[0].assumption_events.extend(expand_log_events);
+                    }
+                }
 
                 if effective_opts.const_fold == crate::const_fold::ConstFoldMode::Safe {
                     let mut budget = crate::budget::Budget::preset_cli();

@@ -327,7 +327,9 @@ impl AssumptionEvent {
         }
     }
 
-    /// Create a Positive assumption event
+    /// Create a Positive assumption event with RequiresIntroduced kind.
+    /// Use this for user-requested transformations (like expand_log) where
+    /// the transformation introduces a new domain restriction.
     pub fn positive(ctx: &Context, expr: ExprId) -> Self {
         let fp = expr_fingerprint(ctx, expr);
         let display = format!(
@@ -344,6 +346,29 @@ impl AssumptionEvent {
             expr_display: display.clone(),
             message: format!("{} > 0", display),
             kind: AssumptionKind::RequiresIntroduced,
+            expr_id: Some(expr),
+        }
+    }
+
+    /// Create a Positive assumption event with HeuristicAssumption kind.
+    /// Use this for rules in Assume mode that cannot prove positivity
+    /// but proceed anyway by assuming it. This produces ⚠️ warnings.
+    pub fn positive_assumed(ctx: &Context, expr: ExprId) -> Self {
+        let fp = expr_fingerprint(ctx, expr);
+        let display = format!(
+            "{}",
+            cas_ast::display::DisplayExpr {
+                context: ctx,
+                id: expr
+            }
+        );
+        Self {
+            key: AssumptionKey::Positive {
+                expr_fingerprint: fp,
+            },
+            expr_display: display.clone(),
+            message: format!("{} > 0", display),
+            kind: AssumptionKind::HeuristicAssumption,
             expr_id: Some(expr),
         }
     }

@@ -286,11 +286,8 @@ define_rule!(
                         let expanded = crate::expand::expand(ctx, arg);
                         return Some(Rewrite::new(expanded).desc("expand(x) → expanded form"));
                     }
-                    // expand_log() applies log expansion recursively
-                    "expand_log" => {
-                        let expanded = crate::rules::logarithms::expand_logs(ctx, arg);
-                        return Some(Rewrite::new(expanded).desc("expand_log(x) → expanded logs"));
-                    }
+                    // expand_log is handled in eval.rs BEFORE simplification to ensure
+                    // goal=ExpandedLog is set before any rules run
                     _ => {}
                 }
             }
