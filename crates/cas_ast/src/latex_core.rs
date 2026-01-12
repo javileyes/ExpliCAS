@@ -132,36 +132,64 @@ pub trait LaTeXRenderer {
         }
     }
 
-    /// Format addition, detecting negative right operand
+    /// Format addition - flatten chain, sort by degree, render with proper signs
     fn format_add(&self, l: ExprId, r: ExprId) -> String {
         let ctx = self.context();
 
-        // Check if left side is negative - canonicalization may swap operands
-        // Handle Neg(expr) case
-        if let Expr::Neg(left_inner) = ctx.get(l) {
-            let inner_latex = self.expr_to_latex(*left_inner, true);
-            let right_latex = self.expr_to_latex(r, false);
-            return format!("{} - {}", right_latex, inner_latex);
-        }
+        // Flatten the Add chain into individual terms
+        let mut terms = Vec::new();
+        Self::collect_add_terms_static(ctx, l, &mut terms);
+        Self::collect_add_terms_static(ctx, r, &mut terms);
 
-        // Handle negative number on left: -2 + x -> x - 2
-        if let Expr::Number(n) = ctx.get(l) {
-            if n.is_negative() {
-                let positive = -n;
-                let positive_str = if positive.is_integer() {
-                    format!("{}", positive.numer())
+        // Sort by polynomial degree (descending) then sign (positive first)
+        terms.sort_by(|a, b| crate::display::cmp_term_for_display(ctx, *a, *b));
+
+        // Render terms with proper sign handling
+        let mut result = String::new();
+        for (i, term) in terms.iter().enumerate() {
+            let (is_neg, term_str) = self.term_to_latex_with_sign(*term);
+
+            if i == 0 {
+                // First term: include sign only if negative
+                if is_neg {
+                    result.push_str(&format!("-{}", term_str));
                 } else {
-                    format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
-                };
-                let right_latex = self.expr_to_latex(r, false);
-                return format!("{} - {}", right_latex, positive_str);
+                    result.push_str(&term_str);
+                }
+            } else if is_neg {
+                result.push_str(&format!(" - {}", term_str));
+            } else {
+                result.push_str(&format!(" + {}", term_str));
             }
         }
 
-        let left = self.expr_to_latex(l, false);
+        result
+    }
 
-        // Check if right side is negative
-        let (is_negative, right_str) = match ctx.get(r) {
+    /// Collect all additive terms by flattening nested Add
+    fn collect_add_terms_static(ctx: &Context, id: ExprId, terms: &mut Vec<ExprId>) {
+        match ctx.get(id) {
+            Expr::Add(l, r) => {
+                Self::collect_add_terms_static(ctx, *l, terms);
+                Self::collect_add_terms_static(ctx, *r, terms);
+            }
+            _ => terms.push(id),
+        }
+    }
+
+    /// Convert a term to LaTeX, returning (is_negative, positive_latex)
+    fn term_to_latex_with_sign(&self, id: ExprId) -> (bool, String) {
+        let ctx = self.context();
+        match ctx.get(id) {
+            Expr::Neg(inner) => {
+                let inner_is_add_sub = matches!(ctx.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
+                let latex = self.expr_to_latex(*inner, true);
+                if inner_is_add_sub {
+                    (true, format!("({})", latex))
+                } else {
+                    (true, latex)
+                }
+            }
             Expr::Number(n) if n.is_negative() => {
                 let positive = -n;
                 let positive_str = if positive.is_integer() {
@@ -170,19 +198,6 @@ pub trait LaTeXRenderer {
                     format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
                 };
                 (true, positive_str)
-            }
-            Expr::Neg(inner) => {
-                // Add parentheses when inner is Add/Sub to preserve grouping
-                let inner_is_add_sub = matches!(
-                    self.context().get(*inner),
-                    Expr::Add(_, _) | Expr::Sub(_, _)
-                );
-                let inner_latex = self.expr_to_latex(*inner, true);
-                if inner_is_add_sub {
-                    (true, format!("({})", inner_latex))
-                } else {
-                    (true, inner_latex)
-                }
             }
             Expr::Mul(ml, mr) => {
                 if let Expr::Number(coef) = ctx.get(*ml) {
@@ -202,23 +217,16 @@ pub trait LaTeXRenderer {
                                     positive_coef.denom()
                                 )
                             };
-                            // Always use cdot
                             (true, format!("{}\\cdot {}", coef_str, rest_latex))
                         }
                     } else {
-                        (false, self.expr_to_latex(r, false))
+                        (false, self.expr_to_latex(id, false))
                     }
                 } else {
-                    (false, self.expr_to_latex(r, false))
+                    (false, self.expr_to_latex(id, false))
                 }
             }
-            _ => (false, self.expr_to_latex(r, false)),
-        };
-
-        if is_negative {
-            format!("{} - {}", left, right_str)
-        } else {
-            format!("{} + {}", left, right_str)
+            _ => (false, self.expr_to_latex(id, false)),
         }
     }
 

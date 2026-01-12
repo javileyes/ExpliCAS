@@ -220,10 +220,12 @@ fn test_latex_fraction_numerator_neg_sum_regression() {
     let result = latex.to_latex();
     println!("LaTeX regression test result: {}", result);
 
-    // The critical check: should NOT have "+ 2" anywhere
+    // The critical check: should NOT have unparenthesized "+ 2"
+    // Pattern "- 3" followed by "+ 2" (without parens) indicates missing parentheses
+    // Correct output has "+ 2" INSIDE parentheses like "- (3\cdot x + 2)"
     assert!(
-        !result.contains("+ 2"),
-        "REGRESSION: Found '+ 2' in LaTeX, indicating missing parentheses. \
+        result.contains("(3\\cdot x + 2)") || result.contains("(2 + 3\\cdot x)"),
+        "REGRESSION: Missing parentheses around '3x + 2'. \
          Expected something like 'x + 1 - (3\\cdot x + 2)'. Got: '{}'",
         result
     );

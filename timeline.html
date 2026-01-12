@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{64 + {x}^{4}}{8 + {x}^{2} + 4\cdot x}</title>
+    <title>CAS Steps: \frac{{x}^{4} + 64}{{x}^{2} + 4\cdot x + 8}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,7 +451,7 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{64 + {x}^{4}}{8 + {x}^{2} + 4\cdot x}\]
+            \[\frac{{x}^{4} + 64}{{x}^{2} + 4\cdot x + 8}\]
         </div>
         <div class="timeline">
             <div class="step">
@@ -466,7 +466,7 @@
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Factor by GCD: x^2 + 4·x + 8}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{64 + {x}^{4}}{8 + {x}^{2} + 4\cdot x}}} \rightarrow {\color{green}{\frac{({x}^{2} - 4\cdot x + 8)\cdot ({x}^{2} + 4\cdot x + 8)}{{x}^{2} + 4\cdot x + 8}}}\]
+                            \[{\color{red}{\frac{{x}^{4} + 64}{{x}^{2} + 4\cdot x + 8}}} \rightarrow {\color{green}{\frac{({x}^{2} - 4\cdot x + 8)\cdot ({x}^{2} + 4\cdot x + 8)}{{x}^{2} + 4\cdot x + 8}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
@@ -499,7 +499,7 @@
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[8 + {x}^{2} - 4\cdot x\]
+            \[{x}^{2} - 4\cdot x + 8\]
         </div>
         <div class="global-requires">
             <strong>ℹ️ Requires:</strong> x^2 + 4·x + 8 ≠ 0
