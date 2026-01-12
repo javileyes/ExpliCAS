@@ -1542,6 +1542,33 @@ fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     }
 }
 
+/// Check if expression contains inverse trig functions (arctan, arcsin, arccos, etc.)
+/// Used to let inverse trig identity rules fire before AddFractionsRule transforms the expression
+fn contains_inverse_trig(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Function(name, _) => matches!(
+            name.as_str(),
+            "arctan"
+                | "atan"
+                | "arcsin"
+                | "asin"
+                | "arccos"
+                | "acos"
+                | "arcsec"
+                | "asec"
+                | "arccsc"
+                | "acsc"
+                | "arccot"
+                | "acot"
+        ),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            contains_inverse_trig(ctx, *l) || contains_inverse_trig(ctx, *r)
+        }
+        Expr::Neg(e) | Expr::Pow(e, _) => contains_inverse_trig(ctx, *e),
+        _ => false,
+    }
+}
+
 define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
     use cas_ast::views::FractionParts;
 
@@ -1569,6 +1596,12 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
     };
 
     if !is_frac1 && !is_frac2 {
+        return None;
+    }
+
+    // Guard: Skip when inverse trig functions are involved
+    // Let inverse trig identity rules fire first (arctan(x) + arctan(1/x) = π/2, etc.)
+    if contains_inverse_trig(ctx, l) || contains_inverse_trig(ctx, r) {
         return None;
     }
 

@@ -92,11 +92,12 @@ fn test_atan_expression_step_importance() {
         identity_shown
     );
 
-    // Normal mode should show 5 steps for this expression
+    // Normal mode should show 2 steps for this expression (improved didactics)
+    // Previously 5 steps before atan identity fix - AddFractionsRule fired first
     assert_eq!(
         shown_in_normal.len(),
-        5,
-        "Normal verbosity should show 5 steps, got {}",
+        2,
+        "Normal verbosity should show 2 steps (improved didactics), got {}",
         shown_in_normal.len()
     );
 }

@@ -123,25 +123,40 @@ fn build_sum_without(
     }
 }
 
-/// Collect all additive terms from an expression (flattens Add tree)
-/// For example: Add(Add(a, b), Add(c, d)) → [a, b, c, d]
-/// Uses iterative stack-based traversal to work with any tree structure (balanced or right-assoc)
-fn collect_add_terms_flat(ctx: &Context, expr_id: ExprId) -> Vec<ExprId> {
+/// Collect additive terms, handling Sub and Neg as sign inversions
+/// For example: Add(a, Sub(b, c)) → [a, b, -c]
+/// This allows inverse trig rules to see all terms in expressions like arctan(x) - pi/2
+fn collect_add_terms_with_sub(ctx: &mut Context, expr_id: ExprId) -> Vec<ExprId> {
     let mut terms = Vec::new();
-    let mut stack = vec![expr_id];
+    let mut stack: Vec<(ExprId, bool)> = vec![(expr_id, false)]; // (id, negate)
 
-    while let Some(current) = stack.pop() {
-        match ctx.get(current) {
+    while let Some((id, neg)) = stack.pop() {
+        match ctx.get(id) {
             Expr::Add(l, r) => {
-                // Push right first so left is processed first (maintains left-to-right order)
-                stack.push(*r);
-                stack.push(*l);
+                stack.push((*r, neg));
+                stack.push((*l, neg));
+            }
+            Expr::Sub(l, r) => {
+                stack.push((*l, neg));
+                stack.push((*r, !neg)); // RHS is negated
+            }
+            Expr::Neg(inner) => {
+                stack.push((*inner, !neg)); // Flip sign
             }
             _ => {
-                terms.push(current);
+                if neg {
+                    // Avoid Neg(Neg(x)) by checking if id is already Neg
+                    match ctx.get(id) {
+                        Expr::Neg(inner) => terms.push(*inner), // --x => x
+                        _ => terms.push(ctx.add(Expr::Neg(id))),
+                    }
+                } else {
+                    terms.push(id);
+                }
             }
         }
     }
+
     terms
 }
 
@@ -406,7 +421,7 @@ define_rule!(
     Some(vec!["Add"]),
     |ctx, expr| {
         // Flatten Add tree to get all terms
-        let terms = collect_add_terms_flat(ctx, expr);
+        let terms = collect_add_terms_with_sub(ctx, expr);
 
         // Search for asin/acos pairs among all terms
         for i in 0..terms.len() {
@@ -500,7 +515,7 @@ impl crate::rule::Rule for InverseTrigAtanRule {
         }
 
         // Collect all additive terms (flattens nested Add nodes)
-        let terms = collect_add_terms_flat(ctx, expr);
+        let terms = collect_add_terms_with_sub(ctx, expr);
 
         // Need at least 2 terms to find a pair
         if terms.len() < 2 {
@@ -594,7 +609,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
         }
 
         // Collect all additive terms
-        let terms = collect_add_terms_flat(ctx, expr);
+        let terms = collect_add_terms_with_sub(ctx, expr);
 
         // Need at least 2 terms
         if terms.len() < 2 {

@@ -28,8 +28,12 @@ fn test_timeline_renders_all_medium_importance_steps() {
         expected_count
     );
 
-    // Should be 5 steps (Identity Property steps are now Low importance)
-    assert_eq!(expected_count, 5, "Expected 5 steps in Normal verbosity");
+    // Should be 2 steps: Inverse Tan Identity + Cancel opposite terms
+    // (Previously 5 steps before atan identity improvement - AddFractionsRule fired first)
+    assert_eq!(
+        expected_count, 2,
+        "Expected 2 steps in Normal verbosity (improved didactics)"
+    );
 
     // Create timeline with Normal verbosity
     let mut timeline = TimelineHtml::new_with_result(
