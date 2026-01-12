@@ -360,8 +360,15 @@ pub trait LaTeXRenderer {
             "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
                 format!("\\{}({})", name, self.expr_to_latex(args[0], false))
             }
-            "asin" | "acos" | "atan" => {
-                format!("\\{}({})", name, self.expr_to_latex(args[0], false))
+            // Inverse trig: use \arcsin, \arccos, \arctan (MathJax-compatible)
+            "asin" | "arcsin" => {
+                format!("\\arcsin({})", self.expr_to_latex(args[0], false))
+            }
+            "acos" | "arccos" => {
+                format!("\\arccos({})", self.expr_to_latex(args[0], false))
+            }
+            "atan" | "arctan" => {
+                format!("\\arctan({})", self.expr_to_latex(args[0], false))
             }
             "sinh" | "cosh" | "tanh" => {
                 format!("\\{}({})", name, self.expr_to_latex(args[0], false))
