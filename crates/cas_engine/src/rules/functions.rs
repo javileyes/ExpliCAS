@@ -41,6 +41,86 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
     None
 });
 
+/// V2.14.20: Simplify absolute value under positivity
+/// |x| → x when x > 0 is proven or assumed (depending on DomainMode)
+pub struct AbsPositiveSimplifyRule;
+
+impl crate::rule::Rule for AbsPositiveSimplifyRule {
+    fn name(&self) -> &str {
+        "Abs Under Positivity"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::domain::{DomainMode, Proof};
+        use crate::helpers::prove_positive;
+
+        // Match abs(inner)
+        let inner = match ctx.get(expr).clone() {
+            Expr::Function(name, args) if name == "abs" && args.len() == 1 => args[0],
+            _ => return None,
+        };
+
+        let vd = parent_ctx.value_domain();
+        let dm = parent_ctx.domain_mode();
+        let pos = prove_positive(ctx, inner, vd);
+
+        match dm {
+            DomainMode::Strict | DomainMode::Generic => {
+                // Only simplify if proven positive (no silent assumptions)
+                if pos != Proof::Proven {
+                    return None;
+                }
+                // V2.14.20: .local(abs_id, inner_id) to capture correct step focus
+                Some(
+                    Rewrite::new(inner)
+                        .desc("|x| = x for x > 0")
+                        .local(expr, inner),
+                )
+            }
+            DomainMode::Assume => {
+                // In Assume mode: if proven, no warning; if not, emit assumption
+                if pos == Proof::Proven {
+                    Some(
+                        Rewrite::new(inner)
+                            .desc("|x| = x for x > 0")
+                            .local(expr, inner),
+                    )
+                } else {
+                    // Emit positive_assumed warning
+                    // V2.14.20: .local(abs_id, inner_id) to capture correct step focus
+                    Some(
+                        Rewrite::new(inner)
+                            .desc("|x| = x (assuming x > 0)")
+                            .local(expr, inner)
+                            .assume(crate::assumptions::AssumptionEvent::positive_assumed(
+                                ctx, inner,
+                            )),
+                    )
+                }
+            }
+        }
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    // V2.14.20: Run in POST phase only so |a| created by LogPowerRule exists first
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::POST
+    }
+
+    // Ensure step is visible - domain simplification is didactically important
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Low
+    }
+}
+
 define_rule!(
     AbsSquaredRule,
     "Abs Squared Identity",
@@ -300,6 +380,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
     simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
     simplifier.add_rule(Box::new(EvaluateAbsRule));
+    simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
     simplifier.add_rule(Box::new(AbsSquaredRule));
     simplifier.add_rule(Box::new(EvaluateMetaFunctionsRule)); // Make simplify/factor/expand transparent
 }

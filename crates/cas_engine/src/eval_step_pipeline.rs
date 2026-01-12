@@ -32,11 +32,21 @@ use crate::step::{DisplayEvalSteps, Step};
 /// A `DisplayEvalSteps` wrapper guaranteeing cleanup has been applied.
 #[must_use = "the result of pipeline processing should be used"]
 pub fn to_display_steps(raw_steps: Vec<Step>) -> DisplayEvalSteps {
-    // Stage 1: Remove no-op steps (before == after)
-    // This is cheap and provides immediate value
+    // Stage 1: Remove no-op steps
+    // V2.14.20: A step is a no-op only if:
+    //   - before == after (root level), AND
+    //   - before_local == after_local OR no local focus set
+    // This preserves steps with local changes (e.g., abs(x) -> x in nested context)
     let mut cleaned: Vec<Step> = raw_steps
         .into_iter()
-        .filter(|step| step.before != step.after)
+        .filter(|step| {
+            let global_changed = step.before != step.after;
+            let local_changed = match (step.before_local, step.after_local) {
+                (Some(bl), Some(al)) => bl != al,
+                _ => false, // No local focus means rely on global
+            };
+            global_changed || local_changed
+        })
         .collect();
 
     // V2.14.20: Trace coherence fix

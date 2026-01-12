@@ -519,6 +519,11 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         Some(vec!["Function"])
     }
 
+    // V2.14.20: Run in POST phase only so ln(|a|) created by LogPowerRule exists first
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::POST
+    }
+
     // Ensure step is visible - domain simplification is didactically important
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::Low

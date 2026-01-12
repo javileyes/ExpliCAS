@@ -42,6 +42,9 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
+    simplifier.add_rule(Box::new(
+        cas_engine::rules::functions::AbsPositiveSimplifyRule,
+    )); // V2.14.20: |x| → x when x > 0 (POST phase)
     simplifier.add_rule(Box::new(EvaluateTrigRule));
     simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
