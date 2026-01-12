@@ -47,6 +47,10 @@ fn scan_recursive(ctx: &Context, id: ExprId, budget: &ExpandBudget, marks: &mut 
     else if try_mark_add_neg_cancellation(ctx, id, budget, marks) {
         // Marked as Add context (trinomial/multivar case), continue to recurse
     }
+    // Then try log expansion patterns: ln(a*b) ± k*ln(a) ± m*ln(b)
+    else if try_mark_log_cancellation(ctx, id, marks) {
+        // Marked as Add/Sub context for log expansion
+    }
 
     // Recurse into children
     match ctx.get(id) {
@@ -516,6 +520,122 @@ fn speculative_expand_reduces_nodes(
     // This suggests potential cancellation
     // Accept if other_terms >= expansion_term_count / 2 (at least half the terms might cancel)
     other_terms.len() >= expansion_term_count / 2
+}
+
+// =============================================================================
+// Log expansion pattern detection (for log cancellation)
+// =============================================================================
+
+/// Try to detect and mark log expansion patterns where expanding leads to cancellation.
+///
+/// Pattern: `log(product) ± k*log(a) ± m*log(b)` where expanding log(product) might cancel
+/// with the explicit log terms.
+///
+/// Examples:
+/// - `ln(a^2 * b^3) - 2*ln(a) - 3*ln(b)` → expands to 0
+/// - `ln(a*b) - ln(a) - ln(b)` → expands to 0
+/// - `2*ln(a) + 3*ln(b) - ln(a^2 * b^3)` → expands to 0
+///
+/// Returns `true` if pattern detected and marked.
+fn try_mark_log_cancellation(ctx: &Context, id: ExprId, marks: &mut PatternMarks) -> bool {
+    // Only process Add/Sub nodes (log terms combined additively)
+    if !matches!(ctx.get(id), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    // Collect all additive terms
+    let terms = crate::nary::add_terms_no_sign(ctx, id);
+    if terms.len() < 2 {
+        return false;
+    }
+
+    // Count log terms and check if one is "expandable" (has Mul/Div/Pow inside)
+    let mut expandable_log_count = 0;
+    let mut simple_log_count = 0;
+
+    for term in &terms {
+        if let Some(info) = extract_log_info(ctx, *term) {
+            if is_expandable_log_arg(ctx, info.arg) {
+                expandable_log_count += 1;
+            } else {
+                simple_log_count += 1;
+            }
+        } else if is_coefficient_times_log(ctx, *term) {
+            simple_log_count += 1;
+        }
+    }
+
+    // We need at least one expandable log and at least one simple log for cancellation
+    if expandable_log_count == 0 || simple_log_count == 0 {
+        return false;
+    }
+
+    // Pattern matches! Mark the Add/Sub as auto-expand context for logs.
+    marks.mark_auto_expand_context(id);
+    true
+}
+
+/// Info about a log expression: the argument and base
+struct LogInfo {
+    arg: ExprId,
+    #[allow(dead_code)]
+    base: Option<ExprId>, // None for ln, Some(base) for log(base, arg)
+}
+
+/// Extract log info from a Function node
+fn extract_log_info(ctx: &Context, id: ExprId) -> Option<LogInfo> {
+    match ctx.get(id) {
+        Expr::Function(name, args) if name == "ln" && args.len() == 1 => Some(LogInfo {
+            arg: args[0],
+            base: None,
+        }),
+        Expr::Function(name, args) if name == "log" && args.len() == 1 => Some(LogInfo {
+            arg: args[0],
+            base: None,
+        }),
+        Expr::Function(name, args) if name == "log" && args.len() == 2 => Some(LogInfo {
+            arg: args[1],
+            base: Some(args[0]),
+        }),
+        Expr::Neg(inner) => extract_log_info(ctx, *inner),
+        _ => None,
+    }
+}
+
+/// Check if a log argument is "expandable" (contains Mul, Div, or Pow)
+fn is_expandable_log_arg(ctx: &Context, arg: ExprId) -> bool {
+    match ctx.get(arg) {
+        Expr::Mul(_, _) => true, // ln(a*b) can expand
+        Expr::Div(_, _) => true, // ln(a/b) can expand
+        Expr::Pow(_, exp) => {
+            // ln(a^n) can expand if n is not 1
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() {
+                    let n_int = n.to_integer();
+                    return n_int != num_bigint::BigInt::from(1);
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// Check if term is of form `k * log(x)` or `k * ln(x)` (coefficient times log)
+fn is_coefficient_times_log(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Mul(l, r) => {
+            // Check if one side is a number and the other is a log
+            let l_is_num = matches!(ctx.get(*l), Expr::Number(_));
+            let r_is_num = matches!(ctx.get(*r), Expr::Number(_));
+            let l_is_log = extract_log_info(ctx, *l).is_some();
+            let r_is_log = extract_log_info(ctx, *r).is_some();
+
+            (l_is_num && r_is_log) || (r_is_num && l_is_log)
+        }
+        Expr::Neg(inner) => is_coefficient_times_log(ctx, *inner),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
