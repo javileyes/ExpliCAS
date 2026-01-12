@@ -879,8 +879,10 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
     }
 
     // Extract before/after expressions
-    let before = step.before;
-    let after = step.after;
+    // Use before_local/after_local if available (the focused sub-expression)
+    // Otherwise fall back to global before/after
+    let before = step.before_local.unwrap_or(step.before);
+    let after = step.after_local.unwrap_or(step.after);
 
     // Check if it's a generalized rationalization (3+ terms)
     if step.description.contains("group") {
@@ -978,20 +980,67 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
             let num_latex = to_latex(*num);
             let den_latex = to_latex(*den);
 
+            // Try to extract the actual terms (a ± b) from denominator
+            // For √x - 1 (stored as Add(√x, Neg(1))), terms are √x and 1, conjugate is √x + 1
+            // For √x + 1, conjugate is √x - 1
+            let (term_a, term_b, is_original_minus) = match ctx.get(*den) {
+                Expr::Add(l, r) => {
+                    // Check if r is negative (could be Neg(x) or Number(-n))
+                    match ctx.get(*r) {
+                        Expr::Neg(inner) => {
+                            // a + (-b) => original is "a - b", conjugate is "a + b"
+                            (to_latex(*l), to_latex(*inner), true)
+                        }
+                        Expr::Number(n) if n.is_negative() => {
+                            // a + (-1) stored as Add(a, Number(-1))
+                            // original is "a - 1", conjugate is "a + 1"
+                            // Format the absolute value directly
+                            let abs_n = -n;
+                            let abs_str = if abs_n.is_integer() {
+                                format!("{}", abs_n.numer())
+                            } else {
+                                format!("\\frac{{{}}}{{{}}}", abs_n.numer(), abs_n.denom())
+                            };
+                            (to_latex(*l), abs_str, true)
+                        }
+                        _ => {
+                            // a + b => conjugate is "a - b"
+                            (to_latex(*l), to_latex(*r), false)
+                        }
+                    }
+                }
+                Expr::Sub(l, r) => (to_latex(*l), to_latex(*r), true),
+                _ => (den_latex.clone(), String::new(), false),
+            };
+
+            // Build conjugate string (flip the sign)
+            let conjugate = if term_b.is_empty() {
+                den_latex.clone()
+            } else if is_original_minus {
+                // Original was a - b, conjugate is a + b
+                format!("{} + {}", term_a, term_b)
+            } else {
+                // Original was a + b, conjugate is a - b
+                format!("{} - {}", term_a, term_b)
+            };
+
+            // Sub-step 1: Identify binomial and conjugate
             sub_steps.push(SubStep {
                 description: "Denominador binomial con radical".to_string(),
                 before_latex: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
-                after_latex: "\\text{Conjugado: } a + b \\to a - b".to_string(),
+                after_latex: format!("\\text{{Conjugado: }} {}", conjugate),
             });
 
+            // Sub-step 2: Apply difference of squares
             if let Expr::Div(new_num, new_den) = ctx.get(after) {
                 let after_num_latex = to_latex(*new_num);
                 let after_den_latex = to_latex(*new_den);
+
                 sub_steps.push(SubStep {
                     description: "(a+b)(a-b) = a² - b²".to_string(),
                     before_latex: format!(
-                        "\\frac{{({}) \\cdot (a-b)}}{{({}) \\cdot (a-b)}}",
-                        num_latex, den_latex
+                        "\\frac{{({}) \\cdot ({})}}{{{} \\cdot ({})}}",
+                        num_latex, conjugate, den_latex, conjugate
                     ),
                     after_latex: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
                 });
