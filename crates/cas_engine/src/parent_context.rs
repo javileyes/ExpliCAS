@@ -257,9 +257,26 @@ impl ParentContext {
         self
     }
 
+    /// Set root expression only (without computing implicit domain)
+    /// V2.14.21: Used for propagation to rules that need root_expr for lazy computation
+    pub fn with_root_expr_only(mut self, root: ExprId) -> Self {
+        self.root_expr = Some(root);
+        self
+    }
+
     /// Get cached implicit domain
     pub fn implicit_domain(&self) -> Option<&crate::implicit_domain::ImplicitDomain> {
         self.implicit_domain.as_ref()
+    }
+
+    /// Set implicit domain (for propagation during rule execution)
+    /// V2.14.20: Used to propagate pre-computed implicit domain from initial context
+    pub fn with_implicit_domain(
+        mut self,
+        domain: Option<crate::implicit_domain::ImplicitDomain>,
+    ) -> Self {
+        self.implicit_domain = domain;
+        self
     }
 
     /// Get simplify purpose (Eval, SolvePrepass, SolveTactic)

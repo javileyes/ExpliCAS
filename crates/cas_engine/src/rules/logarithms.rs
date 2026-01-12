@@ -491,6 +491,16 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
             return None;
         }
 
+        // V2.14.20: Also skip if this is ln(exp(...)^n) - let LogExpInverseRule handle first
+        // This prevents matching ln(exp(x)) which should simplify to x directly
+        if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
+            if let Expr::Function(fname, _) = ctx.get(p_base) {
+                if fname == "exp" {
+                    return None;
+                }
+            }
+        }
+
         // Check if exponent is even integer
         let is_even_integer = match ctx.get(p_exp) {
             Expr::Number(n) if n.is_integer() => {
@@ -515,8 +525,35 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         let dm = parent_ctx.domain_mode();
         let pos = prove_positive(ctx, p_base, vd);
 
+        // V2.14.20: Also check if x > 0 is in global requires (from ln(x) in input)
+        // This allows chaining in Generic mode when x > 0 is already required
+        // Note: Compare variable names for simple vars since ExprIds differ across parsing
+        // Note: implicit_domain() is currently None during rule execution (computed after)
+        // This check is for future compatibility when implicit domain is passed to rules
+        let in_requires = parent_ctx.implicit_domain().is_some_and(|id| {
+            // Get p_base variable name if it's a simple variable
+            let p_base_var = match ctx.get(p_base) {
+                Expr::Variable(name) => Some(name.clone()),
+                _ => None,
+            };
+            if let Some(ref base_name) = p_base_var {
+                id.conditions().iter().any(|cond| {
+                    if let crate::implicit_domain::ImplicitCondition::Positive(cond_expr) = cond {
+                        // Check if condition expr is same variable name
+                        if let Expr::Variable(cond_name) = ctx.get(*cond_expr) {
+                            return cond_name == base_name;
+                        }
+                    }
+                    false
+                })
+            } else {
+                // For complex expressions, fall back to ExprId equality
+                id.contains_positive(p_base)
+            }
+        });
+
         let can_chain = match dm {
-            DomainMode::Strict | DomainMode::Generic => pos == Proof::Proven,
+            DomainMode::Strict | DomainMode::Generic => pos == Proof::Proven || in_requires,
             DomainMode::Assume => pos != Proof::Disproven, // In Assume: chain unless disproven
         };
 
@@ -1598,27 +1635,54 @@ impl crate::rule::Rule for AutoExpandLogRule {
                 expand_log_for_rule(ctx, expr, arg, &[])
             }
             crate::domain::DomainMode::Generic => {
-                // In Generic, block if not proven, but register hint
+                // In Generic, block if not proven AND not implied by global requires
                 let factors = collect_mul_factors(ctx, arg);
-                let all_positive = factors.iter().all(|&f| is_provably_positive(ctx, f));
-                if !all_positive {
-                    // Register blocked hint for user feedback
-                    if let Some(&factor) = factors.iter().find(|&&f| !is_provably_positive(ctx, f))
-                    {
-                        let hint = crate::domain::BlockedHint {
-                            key: crate::assumptions::AssumptionKey::Positive {
-                                expr_fingerprint: crate::assumptions::expr_fingerprint(ctx, factor),
-                            },
-                            expr_id: factor,
-                            rule: "AutoExpandLogRule",
-                            suggestion:
-                                "Use 'semantics set domain assume' to enable log expansion.",
-                        };
-                        crate::domain::register_blocked_hint(hint);
+
+                // V2.14.21: Before blocking, check if each factor's positivity is
+                // implied by global requires (e.g., b^3 > 0 is implied by b > 0)
+                // Compute implicit_domain directly from root_expr since parent_ctx doesn't propagate it
+                let vd = parent_ctx.value_domain();
+                let implicit_domain = parent_ctx
+                    .root_expr()
+                    .map(|root| crate::implicit_domain::infer_implicit_domain(ctx, root, vd));
+
+                let mut unproven_factor: Option<ExprId> = None;
+                for &factor in &factors {
+                    if is_provably_positive(ctx, factor) {
+                        continue; // Algebraically proven
                     }
+
+                    // Check if Positive(factor) is implied by global requires
+                    let cond = crate::implicit_domain::ImplicitCondition::Positive(factor);
+                    let is_implied = implicit_domain.as_ref().is_some_and(|id| {
+                        // Create a temporary DomainContext to use is_condition_implied
+                        let dc = crate::implicit_domain::DomainContext::new(
+                            id.conditions().iter().cloned().collect(),
+                        );
+                        dc.is_condition_implied(ctx, &cond)
+                    });
+
+                    if !is_implied {
+                        unproven_factor = Some(factor);
+                        break;
+                    }
+                }
+
+                if let Some(factor) = unproven_factor {
+                    // Register blocked hint for user feedback
+                    let hint = crate::domain::BlockedHint {
+                        key: crate::assumptions::AssumptionKey::Positive {
+                            expr_fingerprint: crate::assumptions::expr_fingerprint(ctx, factor),
+                        },
+                        expr_id: factor,
+                        rule: "AutoExpandLogRule",
+                        suggestion: "Use 'semantics set domain assume' to enable log expansion.",
+                    };
+                    crate::domain::register_blocked_hint(hint);
                     return None;
                 }
-                // All factors proven positive, expand without events
+
+                // All factors proven or implied positive, expand without events
                 expand_log_for_rule(ctx, expr, arg, &[])
             }
             crate::domain::DomainMode::Assume => {

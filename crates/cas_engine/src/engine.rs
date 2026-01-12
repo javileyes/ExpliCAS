@@ -1495,6 +1495,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         ctx = ctx.with_value_domain(self.initial_parent_ctx.value_domain());
                         // Copy goal from initial context for expand_log and collect gating
                         ctx = ctx.with_goal(self.initial_parent_ctx.goal());
+                        // V2.14.21: Copy root_expr for lazy implicit_domain computation in rules
+                        if let Some(root) = self.initial_parent_ctx.root_expr() {
+                            ctx = ctx.with_root_expr_only(root);
+                        }
+                        // NOTE: We intentionally do NOT propagate implicit_domain here.
+                        // Doing so would trigger check_analytic_expansion gates that would
+                        // block valid simplifications like ln(exp(x)) → x in Strict mode.
                         // Build ancestor chain from stack
                         for &ancestor in &self.ancestor_stack {
                             ctx = ctx.extend(ancestor);

@@ -71,8 +71,22 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
 
         match dm {
             DomainMode::Strict | DomainMode::Generic => {
-                // Only simplify if proven positive (no silent assumptions)
-                if pos != Proof::Proven {
+                // Only simplify if proven positive or implied by global requires
+                let is_implied = if pos != Proof::Proven {
+                    // V2.14.21: Check if Positive(inner) is implied by global requires
+                    parent_ctx.root_expr().is_some_and(|root| {
+                        let id = crate::implicit_domain::infer_implicit_domain(ctx, root, vd);
+                        let dc = crate::implicit_domain::DomainContext::new(
+                            id.conditions().iter().cloned().collect(),
+                        );
+                        let cond = crate::implicit_domain::ImplicitCondition::Positive(inner);
+                        dc.is_condition_implied(ctx, &cond)
+                    })
+                } else {
+                    true
+                };
+
+                if !is_implied {
                     return None;
                 }
                 // V2.14.20: .local(abs_id, inner_id) to capture correct step focus
