@@ -2096,29 +2096,10 @@ impl<'a> TimelineHtml<'a> {
                 String::new()
             };
 
-            // Build requires HTML from required_conditions (implicit domain constraints)
-            // Apply normalization (canonical form + sign + dedupe) for consistent display
-            let requires_html = if !step.required_conditions.is_empty() {
-                let messages: Vec<String> = crate::implicit_domain::render_conditions_normalized(
-                    self.context,
-                    &step.required_conditions,
-                )
-                .into_iter()
-                .map(|s| html_escape(&s))
-                .collect();
-
-                if messages.is_empty() {
-                    String::new()
-                } else {
-                    format!(
-                        r#"                    <div class="domain-requires">Requires: {}</div>
-"#,
-                        messages.join(", ")
-                    )
-                }
-            } else {
-                String::new()
-            };
+            // V2.12.13: Per-step requires removed - they are now shown once in the
+            // global-requires section at the end of the timeline. This avoids redundancy
+            // when the same conditions appear on multiple steps.
+            let requires_html = String::new();
 
             html.push_str(&format!(
                 r#"            <div class="step">
