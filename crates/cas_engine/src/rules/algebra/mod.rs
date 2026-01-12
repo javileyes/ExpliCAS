@@ -82,6 +82,30 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 
 /// Pre-order detection of (A² - B²) / (A ± B) pattern
 /// Called BEFORE recursing into children to prevent auto-expand from destroying the pattern.
+/// Pre-order rule to recognize and simplify (A² - B²) / (A ± B) → (A ∓ B)
+///
+/// This function intercepts the pattern BEFORE children are simplified,
+/// preventing auto-expand from destroying the algebraic structure.
+///
+/// # Pre-order Didactic Step Pattern (Reference Implementation)
+///
+/// This function demonstrates the correct pattern for creating coherent
+/// didactic steps in pre-order rules. Key techniques:
+///
+/// 1. **Create intermediate expressions** for each transformation state:
+///    - `intermediate_with_orig_den`: factored numerator, original denominator
+///    - `intermediate`: factored numerator, simplified denominator
+///
+/// 2. **Use `before_local`/`after_local`** to focus the "Rule:" line on
+///    the specific sub-expression being transformed, not the whole expression.
+///
+/// 3. **Chain steps correctly**: Each step's `after` equals next step's `before`.
+///
+/// 4. **Add conditional steps** (like "Combine like terms") only when the
+///    sub-expression actually changes.
+///
+/// See `crate::step` module documentation for the full pattern description.
+///
 /// Returns Some(result) if the pattern matches, None otherwise.
 #[allow(clippy::too_many_arguments)]
 pub fn try_difference_of_squares_preorder(

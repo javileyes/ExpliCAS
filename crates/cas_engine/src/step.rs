@@ -1,3 +1,57 @@
+//! # Step Module - Didactic Simplification Steps
+//!
+//! This module defines the `Step` struct for recording transformation steps
+//! during expression simplification.
+//!
+//! ## Pre-order Didactic Step Pattern (V2.12+)
+//!
+//! For pre-order rules (rules that intercept before children are simplified),
+//! follow this pattern to create coherent, didactically correct step sequences:
+//!
+//! ### 1. Create Intermediate Expressions for Each State
+//!
+//! ```rust,ignore
+//! // Example: Difference of Squares in a fraction
+//! let factored_num = ctx.add(Expr::Mul(a_minus_b, a_plus_b));
+//! let intermediate_orig_den = ctx.add(Expr::Div(factored_num, den));      // State after Factor
+//! let intermediate_simplified = ctx.add(Expr::Div(factored_num, den_simplified)); // State after Combine
+//! ```
+//!
+//! This creates snapshots for each transformation step.
+//!
+//! ### 2. Use `before_local` / `after_local` to Focus the Rule Line
+//!
+//! ```rust,ignore
+//! factor_step.before_local = Some(numerator);       // Only show: numerator -> factored
+//! factor_step.after_local = Some(factored_num);
+//! ```
+//!
+//! - `before`/`after`: Full expression state (for Before/After display)
+//! - `before_local`/`after_local`: Focused sub-expression (for Rule: X -> Y line)
+//!
+//! ### 3. Chain Steps Correctly
+//!
+//! Each step's `after` must equal the next step's `before`:
+//!
+//! - Step 1: `before=expr_id`, `after=intermediate_orig_den`
+//! - Step 2: `before=intermediate_orig_den`, `after=intermediate_simplified`
+//! - Step 3: `before=intermediate_simplified`, `after=final_result`
+//!
+//! ### 4. Add Conditional Steps Only When Needed
+//!
+//! ```rust,ignore
+//! if den != den_simplified {
+//!     // Add "Combine like terms" step only if denominator actually changed
+//!     let mut step = Step::new(...);
+//!     step.before_local = Some(den);
+//!     step.after_local = Some(den_simplified);
+//!     steps.push(step);
+//! }
+//! ```
+//!
+//! See `rules/algebra/mod.rs::try_difference_of_squares_preorder` for a complete
+//! implementation example.
+
 use cas_ast::ExprId;
 
 #[derive(Debug, Clone, PartialEq)]
