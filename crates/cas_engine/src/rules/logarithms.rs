@@ -438,6 +438,136 @@ pub fn expand_logs(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> cas_ast
 ///
 /// NOTE: This rule should be registered BEFORE LogContractionRule to catch
 /// `ln(|x|) - ln(x)` before it becomes `ln(|x|/x)`.
+///
+/// V2.14.20: LogEvenPowerWithChainedAbsRule
+/// Handles ln(x^even) → even·ln(|x|) with optional ChainedRewrite for |x|→x
+/// when x > 0 is provable or in requires.
+///
+/// This produces TWO contiguous steps:
+/// 1. ln(x^even) → even·ln(|x|)
+/// 2. |x| → x (if x > 0 provable)
+///
+/// Priority: higher than EvaluateLogRule to match first.
+pub struct LogEvenPowerWithChainedAbsRule;
+
+impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
+    fn name(&self) -> &str {
+        "Log Even Power" // Distinct from EvaluateLogRule for engine registration
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::domain::{DomainMode, Proof};
+        use crate::helpers::prove_positive;
+        use crate::rule::ChainedRewrite;
+
+        let expr_data = ctx.get(expr).clone();
+        let Expr::Function(name, args) = expr_data else {
+            return None;
+        };
+
+        // Handle ln(x) or log(base, x)
+        let (base, arg) = if name == "ln" && args.len() == 1 {
+            let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+            (e, args[0])
+        } else if name == "log" && args.len() == 2 {
+            (args[0], args[1])
+        } else {
+            return None;
+        };
+
+        // Match log(base, x^exp) where exp is even integer
+        let arg_data = ctx.get(arg).clone();
+        let Expr::Pow(p_base, p_exp) = arg_data else {
+            return None;
+        };
+
+        // Check if base == p_base (inverse composition like log(b, b^x)) - skip
+        if p_base == base || ctx.get(p_base) == ctx.get(base) {
+            return None;
+        }
+
+        // Check if exponent is even integer
+        let is_even_integer = match ctx.get(p_exp) {
+            Expr::Number(n) if n.is_integer() => {
+                let int_val = n.to_integer();
+                let two: num_bigint::BigInt = 2.into();
+                &int_val % &two == 0.into() && int_val != 0.into()
+            }
+            _ => false,
+        };
+
+        if !is_even_integer {
+            return None;
+        }
+
+        // Even exponent: ln(x^(2k)) = 2k·ln(|x|)
+        let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![p_base]));
+        let log_abs = make_log(ctx, base, abs_base);
+        let mid_expr = smart_mul(ctx, p_exp, log_abs);
+
+        // Check if we can simplify |x| → x
+        let vd = parent_ctx.value_domain();
+        let dm = parent_ctx.domain_mode();
+        let pos = prove_positive(ctx, p_base, vd);
+
+        let can_chain = match dm {
+            DomainMode::Strict | DomainMode::Generic => pos == Proof::Proven,
+            DomainMode::Assume => pos != Proof::Disproven, // In Assume: chain unless disproven
+        };
+
+        if can_chain {
+            // Build the simplified version: even·ln(x) (without abs)
+            let log_base = make_log(ctx, base, p_base);
+            let final_expr = smart_mul(ctx, p_exp, log_base);
+
+            // V2.14.20: Main rewrite produces mid_expr (with |x|)
+            // ChainedRewrite then produces final_expr (without |x|)
+            // This ensures engine creates two distinct steps
+            let mut rw =
+                crate::rule::Rewrite::new(mid_expr).desc("log(b, x^(even)) = even·log(b, |x|)");
+
+            // Add chained step for |x| → x
+            let mut chain = ChainedRewrite::new(final_expr)
+                .desc(if pos == Proof::Proven {
+                    "|x| = x for x > 0"
+                } else {
+                    "|x| = x (assuming x > 0)"
+                })
+                .local(abs_base, p_base);
+
+            // Add assumption event if not proven
+            if pos != Proof::Proven && dm == DomainMode::Assume {
+                chain = chain.assume(crate::assumptions::AssumptionEvent::positive_assumed(
+                    ctx, p_base,
+                ));
+            }
+
+            rw = rw.chain(chain);
+            Some(rw)
+        } else {
+            // Cannot chain: just produce even·ln(|x|)
+            Some(crate::rule::Rewrite::new(mid_expr).desc("log(b, x^(even)) = even·log(b, |x|)"))
+        }
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn priority(&self) -> i32 {
+        10 // Higher priority than EvaluateLogRule (default 0)
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
+}
+
 pub struct LogAbsSimplifyRule;
 
 impl crate::rule::Rule for LogAbsSimplifyRule {
@@ -1280,6 +1410,9 @@ impl crate::rule::Rule for LogExpInverseRule {
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // V2.14.20: LogEvenPowerWithChainedAbsRule handles ln(x^even) with ChainedRewrite
+    // Has higher priority (10) than EvaluateLogRule (0) so matches first
+    simplifier.add_rule(Box::new(LogEvenPowerWithChainedAbsRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
     // NOTE: LogExpansionRule removed from auto-registration.
     // Log expansion increases node count (ln(xy) → ln(x) + ln(y)) and is not always desirable.
