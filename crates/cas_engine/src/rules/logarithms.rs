@@ -518,6 +518,11 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
     fn target_types(&self) -> Option<Vec<&str>> {
         Some(vec!["Function"])
     }
+
+    // Ensure step is visible - domain simplification is didactically important
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Low
+    }
 }
 
 /// LogContractionRule: Contracts sums/differences of logs into single logs.

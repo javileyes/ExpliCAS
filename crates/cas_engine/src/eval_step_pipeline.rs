@@ -34,10 +34,23 @@ use crate::step::{DisplayEvalSteps, Step};
 pub fn to_display_steps(raw_steps: Vec<Step>) -> DisplayEvalSteps {
     // Stage 1: Remove no-op steps (before == after)
     // This is cheap and provides immediate value
-    let cleaned: Vec<Step> = raw_steps
+    let mut cleaned: Vec<Step> = raw_steps
         .into_iter()
         .filter(|step| step.before != step.after)
         .collect();
+
+    // V2.14.20: Trace coherence fix
+    // Due to recursive step generation, global_before may use stale root_expr.
+    // Fix: For consecutive steps, step[i+1].global_before = step[i].global_after
+    // This ensures the trace invariant: what we show as "After" in step N
+    // is exactly what we show as "Before" in step N+1
+    for i in 0..cleaned.len().saturating_sub(1) {
+        // Get the global_after from step i (immutably first)
+        if let Some(after_i) = cleaned[i].global_after {
+            // Then mutate step i+1's global_before
+            cleaned[i + 1].global_before = Some(after_i);
+        }
+    }
 
     // Stage 2: Future - collapse consecutive duplicates
     // Stage 3: Future - normalize descriptions

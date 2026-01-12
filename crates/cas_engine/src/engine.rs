@@ -1661,6 +1661,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             step.importance = rule.importance();
                             self.steps.push(step);
 
+                            // V2.14.20: Trace coherence verification
+                            // Verify that the step's global_after matches the updated root_expr
+                            // This catches mismatches where subsequent steps might have stale global_before
+                            debug_assert_eq!(
+                                main_global_after, self.root_expr,
+                                "[Trace Coherence] Step global_after doesn't match updated root_expr. \
+                                 Rule: {}, This will cause trace mismatch for next step.",
+                                rule.name()
+                            );
+
                             // Process chained rewrites sequentially
                             // Invariant: each step's before equals previous step's after
                             let mut current = main_new_expr;
@@ -1903,6 +1913,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         step.poly_proof = main_poly_proof;
                         step.importance = rule.importance();
                         self.steps.push(step);
+
+                        // V2.14.20: Trace coherence verification (global rules)
+                        debug_assert_eq!(
+                            main_global_after, self.root_expr,
+                            "[Trace Coherence] Global rule step global_after doesn't match updated root_expr. \
+                             Rule: {}, This will cause trace mismatch for next step.",
+                            rule.name()
+                        );
 
                         // Process chained rewrites
                         let mut current = main_new_expr;
