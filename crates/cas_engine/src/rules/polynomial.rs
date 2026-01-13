@@ -787,6 +787,13 @@ define_rule!(
                 return None;
             }
 
+            // V2.14.26: Skip trivial changes that only normalize -1 coefficients
+            // without actually combining or cancelling any terms.
+            // This avoids noisy steps like "-1·x → -x" that don't add didactic value.
+            if result.cancelled.is_empty() && result.combined.is_empty() {
+                return None;
+            }
+
             // V2.9.18: Restore granular focus using CollectResult's cancelled/combined groups
             // This provides specific focus like "5 - 5 → 0" for didactic clarity
             // Timeline highlighting uses step.path separately for broader context
