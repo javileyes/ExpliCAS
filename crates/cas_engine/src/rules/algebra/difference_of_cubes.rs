@@ -270,6 +270,9 @@ define_rule!(
             use crate::implicit_domain::ImplicitCondition;
             use crate::rule::ChainedRewrite;
 
+            // V2.14.32: .local() now works correctly thanks to scoped search in timeline.rs
+            // The engine limits highlight search to before_local subtree, avoiding
+            // incorrect highlights in denominator from shared ExprIds.
             let factor_rw = Rewrite::new(intermediate)
                 .desc(format!(
                     "Factor difference of cubes: x - {} = (x^(1/3) - {})·(x^(2/3) + {}·x^(1/3) + {})",

@@ -1856,17 +1856,38 @@ impl<'a> TimelineHtml<'a> {
                     let subexpr_at_path =
                         navigate_to_subexpr(self.context, global_before_expr, &step_path_prefix);
 
+                    // V2.14.32: Find the path to before_local within subexpr_at_path
+                    // This limits the search scope to only the part that's actually being transformed.
+                    // For example, when transforming a numerator, we should not highlight
+                    // occurrences in the denominator that happen to share an ExprId.
+                    let before_local_path =
+                        diff_find_path_to_expr(self.context, subexpr_at_path, focus_before);
+
+                    // Determine the actual scope: either before_local subtree or full subexpr_at_path
+                    let (search_scope, scope_path_prefix) =
+                        if let Some(path_to_local) = &before_local_path {
+                            // before_local exists in the tree - limit search to that subtree
+                            let local_scope =
+                                navigate_to_subexpr(self.context, subexpr_at_path, path_to_local);
+                            let mut full_prefix = step_path_prefix.clone();
+                            full_prefix.extend(path_to_local.clone());
+                            (local_scope, full_prefix)
+                        } else {
+                            // before_local is dynamically constructed - use full subexpr_at_path
+                            (subexpr_at_path, step_path_prefix.clone())
+                        };
+
                     let mut found_paths: Vec<ExprPath> = Vec::new();
                     for term in &focus_terms {
                         let paths_before = found_paths.len();
 
-                        // V2.9.19: Search within the subexpression at step.path only
+                        // V2.14.32: Search within the scoped subtree only
                         // This limits highlighting to the focused area, not ALL occurrences globally
                         for sub_path in
-                            diff_find_all_paths_to_expr(self.context, subexpr_at_path, *term)
+                            diff_find_all_paths_to_expr(self.context, search_scope, *term)
                         {
-                            // Prepend step.path to get the full path from root
-                            let mut full_path = step_path_prefix.clone();
+                            // Prepend scope_path_prefix to get the full path from root
+                            let mut full_path = scope_path_prefix.clone();
                             full_path.extend(sub_path.clone());
                             // Avoid duplicate paths
                             if !found_paths.contains(&full_path) {
@@ -1880,9 +1901,9 @@ impl<'a> TimelineHtml<'a> {
                         // expressions are structurally equivalent.
                         if found_paths.len() == paths_before {
                             for sub_path in
-                                diff_find_paths_by_structure(self.context, subexpr_at_path, *term)
+                                diff_find_paths_by_structure(self.context, search_scope, *term)
                             {
-                                let mut full_path = step_path_prefix.clone();
+                                let mut full_path = scope_path_prefix.clone();
                                 full_path.extend(sub_path.clone());
                                 if !found_paths.contains(&full_path) {
                                     found_paths.push(full_path);
