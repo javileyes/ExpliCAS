@@ -63,6 +63,10 @@ pub mod timeline_templates;
 pub mod unipoly_modp;
 pub mod visualizer;
 
+// Property-based numeric tests for rewrite correctness
+#[cfg(test)]
+mod numeric_property_tests;
+
 /// V2.1 Issue #4: Stable Public API
 ///
 /// This module contains the stable, versioned API for external integrators.

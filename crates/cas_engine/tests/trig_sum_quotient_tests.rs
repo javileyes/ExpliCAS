@@ -134,14 +134,10 @@ fn test_didactic_steps_exist() {
 #[test]
 fn test_sin_cos_diff_quotient() {
     // This tests the difference pattern: (sin(A)-sin(B))/(cos(A)+cos(B)) → tan((A-B)/2)
+    // For A=5x, B=3x: half_diff = (5x-3x)/2 = x, so result should be tan(x)
     let (result, steps) = eval_with_steps("(sin(5*x) - sin(3*x)) / (cos(5*x) + cos(3*x))");
 
     let rule_names: Vec<&str> = steps.iter().map(|s| s.rule_name.as_str()).collect();
-
-    // Debug printing
-    for step in &steps {
-        eprintln!("Step: {} [{}]", step.description, step.rule_name);
-    }
 
     // Should use Sum-to-Product Quotient
     assert!(
@@ -150,17 +146,43 @@ fn test_sin_cos_diff_quotient() {
         rule_names
     );
 
-    // Should NOT use Recursive Trig Expansion
+    // Should NOT use Recursive Trig Expansion (didactic regression)
     assert!(
         !rule_names.contains(&"Recursive Trig Expansion"),
         "Should NOT use Recursive Trig Expansion; rules: {:?}",
         rule_names
     );
 
-    // Result should be tan(x) - since (5x-3x)/2 = x
+    // CRITICAL: Result must be tan(x), NOT -tan(x) or tan(-x)
+    // This is the exact bug that was fixed - binding A,B from numerator order
     assert!(
-        result.contains("tan") && result.contains("x"),
-        "Final result should be tan(x); got: {}",
+        result == "tan(x)",
+        "Result should be exactly 'tan(x)'; got: '{}'. Sign bug detected!",
         result
+    );
+}
+
+/// Regression test for sign correctness in sum-to-product difference case
+/// This guards against the bug where canonical ordering of half_diff
+/// inverted the sign when numerator was sin(A)-sin(B)
+#[test]
+fn test_sin_diff_sign_correctness() {
+    // Case 1: sin(5x) - sin(3x) with A=5x, B=3x should give tan(x)
+    let (result1, _) = eval_with_steps("(sin(5*x) - sin(3*x)) / (cos(5*x) + cos(3*x))");
+    assert_eq!(
+        result1, "tan(x)",
+        "Bug: wrong sign. Expected tan(x), got {}",
+        result1
+    );
+
+    // Case 2: sin(3x) - sin(5x) with A=3x, B=5x should give tan(-x) or -tan(x)
+    let (result2, _) = eval_with_steps("(sin(3*x) - sin(5*x)) / (cos(3*x) + cos(5*x))");
+    // Since (3x-5x)/2 = -x, result should be tan(-x) or equivalently -tan(x)
+    assert!(
+        result2 == "tan(-x)"
+            || result2 == "-tan(x)"
+            || result2.contains("-1") && result2.contains("tan"),
+        "Bug: wrong sign. Expected tan(-x) or -tan(x), got {}",
+        result2
     );
 }

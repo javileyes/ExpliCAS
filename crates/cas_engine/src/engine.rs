@@ -833,7 +833,9 @@ impl Simplifier {
     }
 }
 
-fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Option<f64> {
+/// Evaluate an expression numerically with f64 values.
+/// Used for numeric property testing to verify rewrite correctness.
+pub(crate) fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Option<f64> {
     match ctx.get(expr) {
         Expr::Number(n) => n.to_f64(),
         Expr::Variable(v) => var_map.get(v).cloned(),
