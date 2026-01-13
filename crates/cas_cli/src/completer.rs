@@ -21,9 +21,6 @@ impl CasHelper {
                 "equiv".to_string(),
                 "solve".to_string(),
                 "diff".to_string(),
-                "gcd".to_string(),
-                "lcm".to_string(),
-                "mod".to_string(),
                 "factors".to_string(),
                 "fact".to_string(),
                 "choose".to_string(),
@@ -77,6 +74,8 @@ impl CasHelper {
                 // Polynomial functions
                 "poly_gcd".to_string(),
                 "poly_gcd_exact".to_string(),
+                "poly_gcd_modp".to_string(),
+                "poly_eq_modp".to_string(),
                 "pgcd".to_string(),
                 "pgcdx".to_string(),
             ],
