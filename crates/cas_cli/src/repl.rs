@@ -3956,8 +3956,6 @@ impl Repl {
     /// Handle the 'expand' command for aggressive polynomial expansion
     /// Uses cas_engine::expand::expand() which distributes without educational guards
     fn handle_expand(&mut self, line: &str) {
-        use cas_ast::DisplayExpr;
-
         let rest = line.strip_prefix("expand").unwrap_or(line).trim();
         if rest.is_empty() {
             println!("Usage: expand <expr>");
@@ -3966,36 +3964,10 @@ impl Repl {
             return;
         }
 
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
-            Ok(expr) => {
-                println!(
-                    "Parsed: {}",
-                    DisplayExpr {
-                        context: &self.engine.simplifier.context,
-                        id: expr
-                    }
-                );
-
-                // Use the expansion module directly (bypasses DistributeRule guards)
-                let expanded =
-                    cas_engine::expand::expand(&mut self.engine.simplifier.context, expr);
-
-                // Simplify to clean up the result
-                let (simplified, _steps) = self.engine.simplifier.simplify(expanded);
-
-                println!(
-                    "Result: {}",
-                    clean_display_string(&format!(
-                        "{}",
-                        DisplayExpr {
-                            context: &self.engine.simplifier.context,
-                            id: simplified
-                        }
-                    ))
-                );
-            }
-            Err(e) => println!("Parse error: {:?}", e),
-        }
+        // V2.14.34: Delegate to normal line processing with expand() function wrapper
+        // This ensures steps are shown, consistent with using expand() as a function
+        let wrapped = format!("expand({})", rest);
+        self.handle_eval(&wrapped);
     }
 
     /// Handle the 'expand_log' command for explicit logarithm expansion
