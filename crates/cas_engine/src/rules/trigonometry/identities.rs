@@ -1117,6 +1117,39 @@ fn extract_trig_two_term_sum(
     Some((arg1, arg2))
 }
 
+/// Extract two trig function args from a 2-term difference: sin(A) - sin(B) → Some((A, B))
+/// Handles both Sub(sin(A), sin(B)) and Add(sin(A), Neg(sin(B)))
+fn extract_trig_two_term_diff(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    fn_name: &str,
+) -> Option<(ExprId, ExprId)> {
+    // Pattern 1: Sub(sin(A), sin(B))
+    if let Expr::Sub(l, r) = ctx.get(expr) {
+        let arg1 = extract_trig_arg(ctx, *l, fn_name)?;
+        let arg2 = extract_trig_arg(ctx, *r, fn_name)?;
+        return Some((arg1, arg2));
+    }
+
+    // Pattern 2: Add(sin(A), Neg(sin(B))) - normalized form
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        // Check if one is Neg(sin(B))
+        if let Expr::Neg(inner) = ctx.get(*r) {
+            let arg1 = extract_trig_arg(ctx, *l, fn_name)?;
+            let arg2 = extract_trig_arg(ctx, *inner, fn_name)?;
+            return Some((arg1, arg2));
+        }
+        if let Expr::Neg(inner) = ctx.get(*l) {
+            let arg1 = extract_trig_arg(ctx, *r, fn_name)?;
+            let arg2 = extract_trig_arg(ctx, *inner, fn_name)?;
+            // Note: sin(A) - sin(B) vs -sin(B) + sin(A) = sin(A) - sin(B)
+            return Some((arg1, arg2));
+        }
+    }
+
+    None
+}
+
 /// Check if two pairs of args match as multisets: {A,B} == {C,D}
 fn args_match_as_multiset(
     ctx: &cas_ast::Context,
@@ -1139,10 +1172,23 @@ fn args_match_as_multiset(
     direct || crossed
 }
 
-/// Build canonical half_diff = (A-B)/2 with consistent ordering
+/// Build half_diff = (A-B)/2 preserving the order of A and B.
+/// Use this for sin((A-B)/2) where the sign matters.
+/// Pre-simplifies the difference to produce cleaner output.
+fn build_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
+    let diff = ctx.add(Expr::Sub(a, b));
+    // Pre-simplify the difference (e.g., 5x - 3x → 2x)
+    let diff_simplified = crate::collect::collect(ctx, diff);
+    let two = ctx.num(2);
+    let result = ctx.add(Expr::Div(diff_simplified, two));
+    // Try to simplify the division (e.g., 2x/2 → x)
+    simplify_numeric_div(ctx, result)
+}
+
+/// Build canonical half_diff = (A-B)/2 with consistent ordering.
 /// Since cos((A-B)/2) == cos((B-A)/2), we use canonical order to ensure
 /// numerator and denominator produce identical expressions for cancellation.
-/// Pre-simplifies the difference to produce cleaner output.
+/// Use this for cos((A-B)/2) where the sign doesn't matter.
 fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
     use crate::ordering::compare_expr;
     use std::cmp::Ordering;
@@ -1257,11 +1303,17 @@ fn simplify_numeric_div(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
     expr
 }
 
-// SinCosSumQuotientRule: (sin(A)+sin(B))/(cos(A)+cos(B)) → sin((A+B)/2)/cos((A+B)/2)
-// Uses sum-to-product identities:
+// SinCosSumQuotientRule: Handles two patterns:
+// 1. (sin(A)+sin(B))/(cos(A)+cos(B)) → tan((A+B)/2)  [uses sin sum identity]
+// 2. (sin(A)-sin(B))/(cos(A)+cos(B)) → tan((A-B)/2)  [uses sin diff identity]
+//
+// Sum-to-product identities:
 //   sin(A) + sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)
+//   sin(A) - sin(B) = 2·cos((A+B)/2)·sin((A-B)/2)
 //   cos(A) + cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)
-// The common factor 2·cos((A-B)/2) cancels.
+//
+// For sum case: common factor is 2·cos((A-B)/2) → result is tan((A+B)/2)
+// For diff case: common factor is 2·cos((A+B)/2) → result is tan((A-B)/2)
 //
 // This rule runs BEFORE TripleAngleRule to avoid polynomial explosion.
 define_rule!(
@@ -1273,78 +1325,147 @@ define_rule!(
             return None;
         };
 
-        // Extract sin(A) + sin(B) from numerator
-        let (sin_a, sin_b) = extract_trig_two_term_sum(ctx, num_id, "sin")?;
-
-        // Extract cos(C) + cos(D) from denominator
+        // Extract cos(C) + cos(D) from denominator (required for both cases)
         let (cos_c, cos_d) = extract_trig_two_term_sum(ctx, den_id, "cos")?;
+
+        // Try both patterns for numerator
+        enum NumeratorPattern {
+            Sum { sin_a: ExprId, sin_b: ExprId },
+            Diff { sin_a: ExprId, sin_b: ExprId },
+        }
+
+        let pattern = if let Some((sin_a, sin_b)) = extract_trig_two_term_sum(ctx, num_id, "sin") {
+            // Pattern 1: sin(A) + sin(B)
+            NumeratorPattern::Sum { sin_a, sin_b }
+        } else if let Some((sin_a, sin_b)) = extract_trig_two_term_diff(ctx, num_id, "sin") {
+            // Pattern 2: sin(A) - sin(B)
+            NumeratorPattern::Diff { sin_a, sin_b }
+        } else {
+            return None;
+        };
+
+        // Extract the sin arguments
+        let (sin_a, sin_b, is_diff) = match pattern {
+            NumeratorPattern::Sum { sin_a, sin_b } => (sin_a, sin_b, false),
+            NumeratorPattern::Diff { sin_a, sin_b } => (sin_a, sin_b, true),
+        };
 
         // Verify {A,B} == {C,D} as multisets
         if !args_match_as_multiset(ctx, sin_a, sin_b, cos_c, cos_d) {
             return None;
         }
 
-        // Build avg = (A+B)/2 and half_diff = (A-B)/2 with canonical ordering
+        // Build avg = (A+B)/2 (commutative, order doesn't matter)
         let avg = build_avg(ctx, sin_a, sin_b);
-        let half_diff = build_canonical_half_diff(ctx, sin_a, sin_b);
 
-        // Build the final result: sin(avg)/cos(avg)
-        let sin_avg = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
-        let cos_avg = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
-        let final_result = ctx.add(Expr::Div(sin_avg, cos_avg));
+        // Normalize avg for even functions (cos)
+        let avg_normalized = normalize_for_even_fn(ctx, avg);
 
-        // Build intermediate states for didactic display
-        let two = ctx.num(2);
-        // Normalize half_diff for cos (even function): cos(-x) = cos(x)
-        let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
-        let cos_half_diff = ctx.add(Expr::Function(
-            "cos".to_string(),
-            vec![half_diff_normalized],
-        ));
-
-        // Intermediate numerator: 2·sin(avg)·cos(half_diff)
-        let sin_avg_for_num = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
-        let num_product = smart_mul(ctx, sin_avg_for_num, cos_half_diff);
-        let intermediate_num = smart_mul(ctx, two, num_product);
-
-        // Intermediate denominator: 2·cos(avg)·cos(half_diff)
-        let two_2 = ctx.num(2);
-        let cos_avg_for_den = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
-        // Reuse normalized half_diff for cos_half_diff_2
-        let cos_half_diff_2 = ctx.add(Expr::Function(
-            "cos".to_string(),
-            vec![half_diff_normalized],
-        ));
-        let den_product = smart_mul(ctx, cos_avg_for_den, cos_half_diff_2);
-        let intermediate_den = smart_mul(ctx, two_2, den_product);
-
-        // STATE AFTER STEP 1: numerator transformed, denominator original
-        // This is the correct intermediate: 2·sin(avg)·cos(half_diff) / (cos(A)+cos(B))
-        let state_after_step1 = ctx.add(Expr::Div(intermediate_num, den_id));
-
-        // STATE AFTER STEP 2: both numerator and denominator transformed
-        // (2·sin(avg)·cos(half_diff)) / (2·cos(avg)·cos(half_diff))
-        let state_after_step2 = ctx.add(Expr::Div(intermediate_num, intermediate_den));
-
-        // Build rewrite with chained steps for didactic display
-        // CRITICAL: Main Rewrite produces state_after_step1, not final_result!
         use crate::rule::ChainedRewrite;
 
-        let rewrite = Rewrite::new(state_after_step1)
-            .desc("sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)")
-            .local(num_id, intermediate_num)
-            .chain(
-                ChainedRewrite::new(state_after_step2)
-                    .desc("cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)")
-                    .local(den_id, intermediate_den),
-            )
-            .chain(
-                ChainedRewrite::new(final_result)
-                    .desc("Cancel common factors 2 and cos(half_diff)")
-                    .local(state_after_step2, final_result),
-            );
+        if is_diff {
+            // DIFFERENCE CASE: sin(A) - sin(B) = 2·cos(avg)·sin(half_diff)
+            // half_diff = (A-B)/2 - ORDER MATTERS for sin! Use build_half_diff.
+            let half_diff = build_half_diff(ctx, sin_a, sin_b);
+            // For cos(half_diff), we can normalize since cos is even
+            let half_diff_for_cos = normalize_for_even_fn(ctx, half_diff);
+            // DIFFERENCE CASE: sin(A) - sin(B) = 2·cos(avg)·sin(half_diff)
+            // cos(A) + cos(B) = 2·cos(avg)·cos(half_diff)
+            // Cancel 2·cos(avg) → sin(half_diff)/cos(half_diff) = tan(half_diff)
+            // Build sin/cos quotient form for intermediate display
 
-        Some(rewrite)
+            let sin_half_diff = ctx.add(Expr::Function("sin".to_string(), vec![half_diff]));
+            let cos_half_diff = ctx.add(Expr::Function("cos".to_string(), vec![half_diff_for_cos]));
+            let quotient_result = ctx.add(Expr::Div(sin_half_diff, cos_half_diff));
+
+            // Intermediate states
+            let two = ctx.num(2);
+            let cos_avg = ctx.add(Expr::Function("cos".to_string(), vec![avg_normalized]));
+            let sin_half = ctx.add(Expr::Function("sin".to_string(), vec![half_diff]));
+
+            // Intermediate numerator: 2·cos(avg)·sin(half_diff)
+            let num_product = smart_mul(ctx, cos_avg, sin_half);
+            let intermediate_num = smart_mul(ctx, two, num_product);
+
+            // Intermediate denominator: 2·cos(avg)·cos(half_diff)
+            let two_2 = ctx.num(2);
+            let cos_avg_2 = ctx.add(Expr::Function("cos".to_string(), vec![avg_normalized]));
+            let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![half_diff_for_cos]));
+            let den_product = smart_mul(ctx, cos_avg_2, cos_half);
+            let intermediate_den = smart_mul(ctx, two_2, den_product);
+
+            let state_after_step1 = ctx.add(Expr::Div(intermediate_num, den_id));
+            let state_after_step2 = ctx.add(Expr::Div(intermediate_num, intermediate_den));
+
+            let rewrite = Rewrite::new(state_after_step1)
+                .desc("sin(A)−sin(B) = 2·cos((A+B)/2)·sin((A-B)/2)")
+                .local(num_id, intermediate_num)
+                .chain(
+                    ChainedRewrite::new(state_after_step2)
+                        .desc("cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)")
+                        .local(den_id, intermediate_den),
+                )
+                .chain(
+                    ChainedRewrite::new(quotient_result)
+                        .desc("Cancel common factors 2 and cos(avg)")
+                        .local(state_after_step2, quotient_result),
+                );
+
+            Some(rewrite)
+        } else {
+            // SUM CASE: sin(A) + sin(B) = 2·sin(avg)·cos(half_diff)
+            // cos(A) + cos(B) = 2·cos(avg)·cos(half_diff)
+            // Cancel 2·cos(half_diff) → sin(avg)/cos(avg) = tan(avg)
+            // For sum case, we use canonical half_diff since only cos uses it (even function)
+            let half_diff = build_canonical_half_diff(ctx, sin_a, sin_b);
+            let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
+
+            // Final result: sin(avg)/cos(avg)
+            let sin_avg = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
+            let cos_avg = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
+            let final_result = ctx.add(Expr::Div(sin_avg, cos_avg));
+
+            // Intermediate states
+            let two = ctx.num(2);
+            let cos_half_diff = ctx.add(Expr::Function(
+                "cos".to_string(),
+                vec![half_diff_normalized],
+            ));
+
+            // Intermediate numerator: 2·sin(avg)·cos(half_diff)
+            let sin_avg_for_num = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
+            let num_product = smart_mul(ctx, sin_avg_for_num, cos_half_diff);
+            let intermediate_num = smart_mul(ctx, two, num_product);
+
+            // Intermediate denominator: 2·cos(avg)·cos(half_diff)
+            let two_2 = ctx.num(2);
+            let cos_avg_for_den = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
+            let cos_half_diff_2 = ctx.add(Expr::Function(
+                "cos".to_string(),
+                vec![half_diff_normalized],
+            ));
+            let den_product = smart_mul(ctx, cos_avg_for_den, cos_half_diff_2);
+            let intermediate_den = smart_mul(ctx, two_2, den_product);
+
+            let state_after_step1 = ctx.add(Expr::Div(intermediate_num, den_id));
+            let state_after_step2 = ctx.add(Expr::Div(intermediate_num, intermediate_den));
+
+            let rewrite = Rewrite::new(state_after_step1)
+                .desc("sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)")
+                .local(num_id, intermediate_num)
+                .chain(
+                    ChainedRewrite::new(state_after_step2)
+                        .desc("cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)")
+                        .local(den_id, intermediate_den),
+                )
+                .chain(
+                    ChainedRewrite::new(final_result)
+                        .desc("Cancel common factors 2 and cos(half_diff)")
+                        .local(state_after_step2, final_result),
+                );
+
+            Some(rewrite)
+        }
     }
 );
 
@@ -1406,12 +1527,16 @@ define_rule!(
     TripleAngleRule,
     "Triple Angle Identity",
     |ctx, expr, parent_ctx| {
-        // GUARD: Skip if this trig function is marked for protection (part of sum-quotient pattern)
-        // This allows SinCosSumQuotientRule to apply sum-to-product identities instead
+        // GUARD 1: Skip if marked for protection
         if let Some(marks) = parent_ctx.pattern_marks() {
             if marks.is_sum_quotient_protected(expr) {
                 return None;
             }
+        }
+
+        // GUARD 2: Skip if inside sum-quotient pattern (defer to SinCosSumQuotientRule)
+        if is_inside_trig_quotient_pattern(ctx, expr, parent_ctx) {
+            return None;
         }
 
         if let Expr::Function(name, args) = ctx.get(expr) {
@@ -1851,16 +1976,89 @@ mod tests {
     }
 }
 
+/// Check if a trig function is inside a potential sum-quotient pattern
+/// (sin(A)±sin(B)) / (cos(A)±cos(B))
+/// Returns true if expansion should be deferred to SinCosSumQuotientRule
+fn is_inside_trig_quotient_pattern(
+    ctx: &cas_ast::Context,
+    _expr: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    // Check if any ancestor is a Div with the sum-quotient pattern
+    parent_ctx.has_ancestor_matching(ctx, |c, id| {
+        if let Expr::Div(num, den) = c.get(id) {
+            // Check if numerator is Add or Sub of sin functions
+            let num_is_sin_sum_or_diff = is_binary_trig_op(c, *num, "sin");
+            // Check if denominator is Add of cos functions
+            let den_is_cos_sum = is_trig_sum(c, *den, "cos");
+            num_is_sin_sum_or_diff && den_is_cos_sum
+        } else {
+            false
+        }
+    })
+}
+
+/// Check if expr is Add(trig(A), trig(B)) or Sub(trig(A), trig(B)) or Add(trig(A), Neg(trig(B)))
+fn is_binary_trig_op(ctx: &cas_ast::Context, expr: ExprId, fn_name: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            // Check for Add(sin(A), sin(B))
+            if extract_trig_arg(ctx, *l, fn_name).is_some()
+                && extract_trig_arg(ctx, *r, fn_name).is_some()
+            {
+                return true;
+            }
+            // Check for Add(sin(A), Neg(sin(B)))
+            if let Expr::Neg(inner) = ctx.get(*r) {
+                if extract_trig_arg(ctx, *l, fn_name).is_some()
+                    && extract_trig_arg(ctx, *inner, fn_name).is_some()
+                {
+                    return true;
+                }
+            }
+            if let Expr::Neg(inner) = ctx.get(*l) {
+                if extract_trig_arg(ctx, *r, fn_name).is_some()
+                    && extract_trig_arg(ctx, *inner, fn_name).is_some()
+                {
+                    return true;
+                }
+            }
+            false
+        }
+        Expr::Sub(l, r) => {
+            extract_trig_arg(ctx, *l, fn_name).is_some()
+                && extract_trig_arg(ctx, *r, fn_name).is_some()
+        }
+        _ => false,
+    }
+}
+
+/// Check if expr is Add(trig(A), trig(B))
+fn is_trig_sum(ctx: &cas_ast::Context, expr: ExprId, fn_name: &str) -> bool {
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        return extract_trig_arg(ctx, *l, fn_name).is_some()
+            && extract_trig_arg(ctx, *r, fn_name).is_some();
+    }
+    false
+}
+
 define_rule!(
     RecursiveTrigExpansionRule,
     "Recursive Trig Expansion",
     |ctx, expr, parent_ctx| {
-        // GUARD: Skip if this trig function is marked for protection (part of sum-quotient pattern)
-        // This allows SinCosSumQuotientRule to apply sum-to-product identities instead
+        // GUARD 1: Skip if this trig function is marked for protection
         if let Some(marks) = parent_ctx.pattern_marks() {
             if marks.is_sum_quotient_protected(expr) {
                 return None;
             }
+        }
+
+        // GUARD 2: Skip if we're inside a potential sum-quotient pattern
+        // This heuristic checks: if the trig function is inside a Div, and both
+        // numerator and denominator are Add/Sub of trig functions, defer to
+        // SinCosSumQuotientRule instead of expanding.
+        if is_inside_trig_quotient_pattern(ctx, expr, parent_ctx) {
+            return None;
         }
 
         let expr_data = ctx.get(expr).clone();

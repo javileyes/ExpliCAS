@@ -130,3 +130,37 @@ fn test_didactic_steps_exist() {
         result
     );
 }
+
+#[test]
+fn test_sin_cos_diff_quotient() {
+    // This tests the difference pattern: (sin(A)-sin(B))/(cos(A)+cos(B)) → tan((A-B)/2)
+    let (result, steps) = eval_with_steps("(sin(5*x) - sin(3*x)) / (cos(5*x) + cos(3*x))");
+
+    let rule_names: Vec<&str> = steps.iter().map(|s| s.rule_name.as_str()).collect();
+
+    // Debug printing
+    for step in &steps {
+        eprintln!("Step: {} [{}]", step.description, step.rule_name);
+    }
+
+    // Should use Sum-to-Product Quotient
+    assert!(
+        rule_names.contains(&"Sum-to-Product Quotient"),
+        "Should use Sum-to-Product Quotient rule; rules: {:?}",
+        rule_names
+    );
+
+    // Should NOT use Recursive Trig Expansion
+    assert!(
+        !rule_names.contains(&"Recursive Trig Expansion"),
+        "Should NOT use Recursive Trig Expansion; rules: {:?}",
+        rule_names
+    );
+
+    // Result should be tan(x) - since (5x-3x)/2 = x
+    assert!(
+        result.contains("tan") && result.contains("x"),
+        "Final result should be tan(x); got: {}",
+        result
+    );
+}
