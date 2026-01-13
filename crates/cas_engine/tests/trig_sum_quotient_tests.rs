@@ -60,10 +60,10 @@ fn test_sin_cos_sum_quotient_uses_sum_to_product() {
         rule_names
     );
 
-    // Result should contain sin and cos with matching args
+    // Result should be tan form (sin/cos converted to tan by TrigQuotientRule)
     assert!(
-        result.contains("sin") && result.contains("cos"),
-        "Result should be sin/cos form; got: {}",
+        result.contains("tan"),
+        "Result should be tan form; got: {}",
         result
     );
 }
@@ -82,10 +82,10 @@ fn test_sin_cos_sum_quotient_reversed_order() {
         rule_names
     );
 
-    // Result should be sin/cos form
+    // Result should be tan form
     assert!(
-        result.contains("sin") && result.contains("cos"),
-        "Reversed order: result should be sin/cos form; got: {}",
+        result.contains("tan"),
+        "Reversed order: result should be tan form; got: {}",
         result
     );
 }

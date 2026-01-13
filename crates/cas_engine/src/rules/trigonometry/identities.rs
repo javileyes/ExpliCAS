@@ -694,6 +694,102 @@ impl crate::rule::Rule for TanToSinCosRule {
     fn target_types(&self) -> Option<Vec<&str>> {
         Some(vec!["Function"])
     }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        // Exclude PostCleanup to avoid cycle with TrigQuotientRule
+        // TanToSinCos expands for algebra, TrigQuotient reconverts to canonical form
+        crate::phase::PhaseMask::CORE
+            | crate::phase::PhaseMask::TRANSFORM
+            | crate::phase::PhaseMask::RATIONALIZE
+    }
+}
+
+/// Convert trig quotients to their canonical function forms:
+/// - sin(x)/cos(x) → tan(x)
+/// - cos(x)/sin(x) → cot(x)
+/// - 1/sin(x) → csc(x)
+/// - 1/cos(x) → sec(x)
+/// - 1/tan(x) → cot(x)
+pub struct TrigQuotientRule;
+
+impl crate::rule::Rule for TrigQuotientRule {
+    fn name(&self) -> &str {
+        "Trig Quotient"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use cas_ast::Expr;
+
+        let expr_data = ctx.get(expr).clone();
+
+        if let Expr::Div(num, den) = expr_data {
+            // Extract function names and arguments from numerator and denominator
+            let num_data = ctx.get(num).clone();
+            let den_data = ctx.get(den).clone();
+
+            // Pattern: sin(x)/cos(x) → tan(x)
+            if let (Expr::Function(num_name, num_args), Expr::Function(den_name, den_args)) =
+                (&num_data, &den_data)
+            {
+                if num_name == "sin"
+                    && den_name == "cos"
+                    && num_args.len() == 1
+                    && den_args.len() == 1
+                    && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
+                        == std::cmp::Ordering::Equal
+                {
+                    let tan_x = ctx.add(Expr::Function("tan".to_string(), vec![num_args[0]]));
+                    return Some(crate::rule::Rewrite::new(tan_x).desc("sin(x)/cos(x) → tan(x)"));
+                }
+
+                // Pattern: cos(x)/sin(x) → cot(x)
+                if num_name == "cos"
+                    && den_name == "sin"
+                    && num_args.len() == 1
+                    && den_args.len() == 1
+                    && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
+                        == std::cmp::Ordering::Equal
+                {
+                    let cot_x = ctx.add(Expr::Function("cot".to_string(), vec![num_args[0]]));
+                    return Some(crate::rule::Rewrite::new(cot_x).desc("cos(x)/sin(x) → cot(x)"));
+                }
+            }
+
+            // Pattern: 1/sin(x) → csc(x)
+            if crate::helpers::is_one(ctx, num) {
+                if let Expr::Function(den_name, den_args) = &den_data {
+                    if den_name == "sin" && den_args.len() == 1 {
+                        let csc_x = ctx.add(Expr::Function("csc".to_string(), vec![den_args[0]]));
+                        return Some(crate::rule::Rewrite::new(csc_x).desc("1/sin(x) → csc(x)"));
+                    }
+                    if den_name == "cos" && den_args.len() == 1 {
+                        let sec_x = ctx.add(Expr::Function("sec".to_string(), vec![den_args[0]]));
+                        return Some(crate::rule::Rewrite::new(sec_x).desc("1/cos(x) → sec(x)"));
+                    }
+                    if den_name == "tan" && den_args.len() == 1 {
+                        let cot_x = ctx.add(Expr::Function("cot".to_string(), vec![den_args[0]]));
+                        return Some(crate::rule::Rewrite::new(cot_x).desc("1/tan(x) → cot(x)"));
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Div"])
+    }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        // Only run in PostCleanup to avoid cycle with TanToSinCosRule
+        crate::phase::PhaseMask::POST
+    }
 }
 
 // Secant-Tangent Pythagorean Identity: sec²(x) - tan²(x) = 1
@@ -1796,6 +1892,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
     simplifier.add_rule(Box::new(TripleAngleRule)); // Shortcut: sin(3x), cos(3x)
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
+    // Trig Quotient: sin(x)/cos(x) → tan(x) - runs after sum-to-product
+    simplifier.add_rule(Box::new(TrigQuotientRule));
 
     // DISABLED: ProductToSumRule conflicts with AngleIdentityRule creating infinite loops
     // ProductToSumRule: 2*sin(a)*cos(b) → sin(a+b) + sin(a-b)
