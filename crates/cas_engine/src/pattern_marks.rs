@@ -21,6 +21,9 @@ pub struct PatternMarks {
     /// ExprIds of tan/sin/cos nodes that are inside arctan(tan(x)) or similar inverse-trig patterns.
     /// Protected from conversion to sin/cos to allow principal value simplification.
     pub inverse_trig_protected: HashSet<ExprId>,
+    /// ExprIds of sin/cos Function nodes inside (sin(A)+sin(B))/(cos(A)+cos(B)) patterns.
+    /// Protected from TripleAngleRule to allow sum-to-product simplification.
+    pub sum_quotient_protected: HashSet<ExprId>,
 }
 
 impl PatternMarks {
@@ -31,6 +34,7 @@ impl PatternMarks {
             trig_square_protected: HashSet::new(),
             auto_expand_contexts: HashSet::new(),
             inverse_trig_protected: HashSet::new(),
+            sum_quotient_protected: HashSet::new(),
         }
     }
 
@@ -92,5 +96,16 @@ impl PatternMarks {
     /// Mark an expression as part of inverse-trig pattern
     pub fn mark_inverse_trig(&mut self, expr: ExprId) {
         self.inverse_trig_protected.insert(expr);
+    }
+
+    /// Check if an expression is protected as part of sum-quotient pattern
+    /// (e.g., sin(3x) in (sin(x)+sin(3x))/(cos(x)+cos(3x)) should not be expanded by TripleAngleRule)
+    pub fn is_sum_quotient_protected(&self, expr: ExprId) -> bool {
+        self.sum_quotient_protected.contains(&expr)
+    }
+
+    /// Mark an expression as part of sum-quotient pattern
+    pub fn mark_sum_quotient(&mut self, expr: ExprId) {
+        self.sum_quotient_protected.insert(expr);
     }
 }

@@ -982,6 +982,170 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// SUM-TO-PRODUCT QUOTIENT RULE
+// (sin(A)+sin(B))/(cos(A)+cos(B)) → sin((A+B)/2)/cos((A+B)/2)
+// =============================================================================
+
+/// Extract the argument from a trig function: sin(arg) → Some(arg), else None
+fn extract_trig_arg(ctx: &cas_ast::Context, id: ExprId, fn_name: &str) -> Option<ExprId> {
+    if let Expr::Function(name, args) = ctx.get(id) {
+        if name == fn_name && args.len() == 1 {
+            return Some(args[0]);
+        }
+    }
+    None
+}
+
+/// Extract two trig function args from a 2-term sum: sin(A) + sin(B) → Some((A, B))
+/// Uses flatten_add for robustness against nested Add structures
+fn extract_trig_two_term_sum(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    fn_name: &str,
+) -> Option<(ExprId, ExprId)> {
+    use crate::helpers::flatten_add;
+
+    let mut terms = Vec::new();
+    flatten_add(ctx, expr, &mut terms);
+
+    // Must have exactly 2 terms (both same trig function)
+    if terms.len() != 2 {
+        return None;
+    }
+
+    // Check both are the target function (sin or cos)
+    let arg1 = extract_trig_arg(ctx, terms[0], fn_name)?;
+    let arg2 = extract_trig_arg(ctx, terms[1], fn_name)?;
+
+    Some((arg1, arg2))
+}
+
+/// Check if two pairs of args match as multisets: {A,B} == {C,D}
+fn args_match_as_multiset(
+    ctx: &cas_ast::Context,
+    a1: ExprId,
+    a2: ExprId,
+    b1: ExprId,
+    b2: ExprId,
+) -> bool {
+    use crate::ordering::compare_expr;
+    use std::cmp::Ordering;
+
+    // Direct match: (A,B) == (C,D)
+    let direct = compare_expr(ctx, a1, b1) == Ordering::Equal
+        && compare_expr(ctx, a2, b2) == Ordering::Equal;
+
+    // Crossed match: (A,B) == (D,C)
+    let crossed = compare_expr(ctx, a1, b2) == Ordering::Equal
+        && compare_expr(ctx, a2, b1) == Ordering::Equal;
+
+    direct || crossed
+}
+
+/// Build canonical half_diff = (A-B)/2 with consistent ordering
+/// Since cos((A-B)/2) == cos((B-A)/2), we use canonical order to ensure
+/// numerator and denominator produce identical expressions for cancellation.
+fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
+    use crate::ordering::compare_expr;
+    use std::cmp::Ordering;
+
+    // Use canonical order: if A > B, swap to (B-A)/2
+    // This ensures consistent expression for cos(half_diff) in num and den
+    let (first, second) = if compare_expr(ctx, a, b) == Ordering::Greater {
+        (b, a)
+    } else {
+        (a, b)
+    };
+
+    let diff = ctx.add(Expr::Sub(first, second));
+    let two = ctx.num(2);
+    ctx.add(Expr::Div(diff, two))
+}
+
+/// Build avg = (A+B)/2
+fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
+    let sum = ctx.add(Expr::Add(a, b));
+    let two = ctx.num(2);
+    ctx.add(Expr::Div(sum, two))
+}
+
+// SinCosSumQuotientRule: (sin(A)+sin(B))/(cos(A)+cos(B)) → sin((A+B)/2)/cos((A+B)/2)
+// Uses sum-to-product identities:
+//   sin(A) + sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)
+//   cos(A) + cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)
+// The common factor 2·cos((A-B)/2) cancels.
+//
+// This rule runs BEFORE TripleAngleRule to avoid polynomial explosion.
+define_rule!(
+    SinCosSumQuotientRule,
+    "Sum-to-Product Quotient",
+    |ctx, expr| {
+        // Only match Div nodes
+        let Expr::Div(num_id, den_id) = ctx.get(expr).clone() else {
+            return None;
+        };
+
+        // Extract sin(A) + sin(B) from numerator
+        let (sin_a, sin_b) = extract_trig_two_term_sum(ctx, num_id, "sin")?;
+
+        // Extract cos(C) + cos(D) from denominator
+        let (cos_c, cos_d) = extract_trig_two_term_sum(ctx, den_id, "cos")?;
+
+        // Verify {A,B} == {C,D} as multisets
+        if !args_match_as_multiset(ctx, sin_a, sin_b, cos_c, cos_d) {
+            return None;
+        }
+
+        // Build avg = (A+B)/2 and half_diff = (A-B)/2 with canonical ordering
+        let avg = build_avg(ctx, sin_a, sin_b);
+        let half_diff = build_canonical_half_diff(ctx, sin_a, sin_b);
+
+        // Build the final result: sin(avg)/cos(avg)
+        let sin_avg = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
+        let cos_avg = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
+        let final_result = ctx.add(Expr::Div(sin_avg, cos_avg));
+
+        // Build intermediate states for didactic display
+        let two = ctx.num(2);
+        let cos_half_diff = ctx.add(Expr::Function("cos".to_string(), vec![half_diff]));
+
+        // Intermediate numerator: 2·sin(avg)·cos(half_diff)
+        let sin_avg_2 = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
+        let num_product = smart_mul(ctx, sin_avg_2, cos_half_diff);
+        let intermediate_num = smart_mul(ctx, two, num_product);
+
+        // Intermediate denominator: 2·cos(avg)·cos(half_diff)
+        let two_2 = ctx.num(2);
+        let cos_avg_2 = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
+        let cos_half_diff_2 = ctx.add(Expr::Function("cos".to_string(), vec![half_diff]));
+        let den_product = smart_mul(ctx, cos_avg_2, cos_half_diff_2);
+        let intermediate_den = smart_mul(ctx, two_2, den_product);
+
+        // State after step 2: (2·sin(avg)·cos(half_diff)) / (2·cos(avg)·cos(half_diff))
+        let state_after_step2 = ctx.add(Expr::Div(intermediate_num, intermediate_den));
+
+        // Build rewrite with chained steps for didactic display
+        use crate::rule::ChainedRewrite;
+
+        let rewrite = Rewrite::new(final_result)
+            .desc("sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)")
+            .local(num_id, intermediate_num)
+            .chain(
+                ChainedRewrite::new(state_after_step2)
+                    .desc("cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)")
+                    .local(den_id, intermediate_den),
+            )
+            .chain(
+                ChainedRewrite::new(final_result)
+                    .desc("Cancel common factor 2·cos((A-B)/2)")
+                    .local(state_after_step2, final_result),
+            );
+
+        Some(rewrite)
+    }
+);
+
 define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
     if let Expr::Function(name, args) = ctx.get(expr) {
         if args.len() == 1 {
@@ -1021,57 +1185,73 @@ define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
 // This is a performance optimization to avoid recursive expansion via double-angle rules.
 // Reduces ~23 rewrites to ~3-5 for triple angle expressions.
-define_rule!(TripleAngleRule, "Triple Angle Identity", |ctx, expr| {
-    if let Expr::Function(name, args) = ctx.get(expr) {
-        if args.len() == 1 {
-            // Check if arg is 3*x or x*3
-            if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
-                match name.as_str() {
-                    "sin" => {
-                        // sin(3x) → 3sin(x) - 4sin³(x)
-                        let three = ctx.num(3);
-                        let four = ctx.num(4);
-                        let exp_three = ctx.num(3); // Separate for Pow exponent
-                        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+define_rule!(
+    TripleAngleRule,
+    "Triple Angle Identity",
+    |ctx, expr, parent_ctx| {
+        // GUARD: Skip if this trig function is marked for protection (part of sum-quotient pattern)
+        // This allows SinCosSumQuotientRule to apply sum-to-product identities instead
+        if let Some(marks) = parent_ctx.pattern_marks() {
+            if marks.is_sum_quotient_protected(expr) {
+                return None;
+            }
+        }
 
-                        // 3*sin(x)
-                        let term1 = smart_mul(ctx, three, sin_x);
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if args.len() == 1 {
+                // Check if arg is 3*x or x*3
+                if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
+                    match name.as_str() {
+                        "sin" => {
+                            // sin(3x) → 3sin(x) - 4sin³(x)
+                            let three = ctx.num(3);
+                            let four = ctx.num(4);
+                            let exp_three = ctx.num(3); // Separate for Pow exponent
+                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
 
-                        // sin³(x) = sin(x)^3
-                        let sin_cubed = ctx.add(Expr::Pow(sin_x, exp_three));
-                        // 4*sin³(x)
-                        let term2 = smart_mul(ctx, four, sin_cubed);
+                            // 3*sin(x)
+                            let term1 = smart_mul(ctx, three, sin_x);
 
-                        // 3sin(x) - 4sin³(x)
-                        let new_expr = ctx.add(Expr::Sub(term1, term2));
-                        return Some(Rewrite::new(new_expr).desc("sin(3x) → 3sin(x) - 4sin³(x)"));
+                            // sin³(x) = sin(x)^3
+                            let sin_cubed = ctx.add(Expr::Pow(sin_x, exp_three));
+                            // 4*sin³(x)
+                            let term2 = smart_mul(ctx, four, sin_cubed);
+
+                            // 3sin(x) - 4sin³(x)
+                            let new_expr = ctx.add(Expr::Sub(term1, term2));
+                            return Some(
+                                Rewrite::new(new_expr).desc("sin(3x) → 3sin(x) - 4sin³(x)"),
+                            );
+                        }
+                        "cos" => {
+                            // cos(3x) → 4cos³(x) - 3cos(x)
+                            let three = ctx.num(3);
+                            let four = ctx.num(4);
+                            let exp_three = ctx.num(3); // Separate for Pow exponent
+                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+
+                            // cos³(x) = cos(x)^3
+                            let cos_cubed = ctx.add(Expr::Pow(cos_x, exp_three));
+                            // 4*cos³(x)
+                            let term1 = smart_mul(ctx, four, cos_cubed);
+
+                            // 3*cos(x)
+                            let term2 = smart_mul(ctx, three, cos_x);
+
+                            // 4cos³(x) - 3cos(x)
+                            let new_expr = ctx.add(Expr::Sub(term1, term2));
+                            return Some(
+                                Rewrite::new(new_expr).desc("cos(3x) → 4cos³(x) - 3cos(x)"),
+                            );
+                        }
+                        _ => {}
                     }
-                    "cos" => {
-                        // cos(3x) → 4cos³(x) - 3cos(x)
-                        let three = ctx.num(3);
-                        let four = ctx.num(4);
-                        let exp_three = ctx.num(3); // Separate for Pow exponent
-                        let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
-
-                        // cos³(x) = cos(x)^3
-                        let cos_cubed = ctx.add(Expr::Pow(cos_x, exp_three));
-                        // 4*cos³(x)
-                        let term1 = smart_mul(ctx, four, cos_cubed);
-
-                        // 3*cos(x)
-                        let term2 = smart_mul(ctx, three, cos_x);
-
-                        // 4cos³(x) - 3cos(x)
-                        let new_expr = ctx.add(Expr::Sub(term1, term2));
-                        return Some(Rewrite::new(new_expr).desc("cos(3x) → 4cos³(x) - 3cos(x)"));
-                    }
-                    _ => {}
                 }
             }
         }
+        None
     }
-    None
-});
+);
 
 #[cfg(test)]
 mod tests {
@@ -1457,7 +1637,15 @@ mod tests {
 define_rule!(
     RecursiveTrigExpansionRule,
     "Recursive Trig Expansion",
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // GUARD: Skip if this trig function is marked for protection (part of sum-quotient pattern)
+        // This allows SinCosSumQuotientRule to apply sum-to-product identities instead
+        if let Some(marks) = parent_ctx.pattern_marks() {
+            if marks.is_sum_quotient_protected(expr) {
+                return None;
+            }
+        }
+
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(name, args) = expr_data {
             if args.len() == 1 && (name == "sin" || name == "cos") {
@@ -1589,6 +1777,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
+    // Sum-to-Product Quotient: runs BEFORE TripleAngleRule to avoid polynomial explosion
+    simplifier.add_rule(Box::new(SinCosSumQuotientRule));
     simplifier.add_rule(Box::new(TripleAngleRule)); // Shortcut: sin(3x), cos(3x)
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
 

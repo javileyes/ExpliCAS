@@ -36,6 +36,7 @@ fn scan_recursive(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
     check_and_mark_sqrt_square_pattern(ctx, expr_id, marks);
     check_and_mark_trig_square_pattern(ctx, expr_id, marks);
     check_and_mark_inverse_trig_pattern(ctx, expr_id, marks);
+    check_and_mark_sum_quotient_pattern(ctx, expr_id, marks);
 }
 
 fn check_and_mark_pythagorean_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
@@ -234,6 +235,78 @@ fn check_and_mark_inverse_trig_pattern(ctx: &Context, expr_id: ExprId, marks: &m
                 }
             }
         }
+    }
+}
+
+/// Detect (sin(A)+sin(B))/(cos(C)+cos(D)) patterns where {A,B} == {C,D}.
+/// Mark all sin/cos function nodes for protection so TripleAngleRule won't expand them.
+/// This allows SinCosSumQuotientRule to fire and apply sum-to-product identities.
+fn check_and_mark_sum_quotient_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
+    // Only check Div nodes
+    let Expr::Div(num_id, den_id) = ctx.get(expr_id) else {
+        return;
+    };
+    let num_id = *num_id;
+    let den_id = *den_id;
+
+    // Helper: extract sin/cos function nodes from a 2-term sum
+    fn extract_trig_sum_nodes(
+        ctx: &Context,
+        expr: ExprId,
+        fn_name: &str,
+    ) -> Option<(ExprId, ExprId, ExprId, ExprId)> {
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        if terms.len() != 2 {
+            return None;
+        }
+
+        // Extract function nodes and their args
+        let (func_id1, arg1) = extract_trig_func_and_arg(ctx, terms[0], fn_name)?;
+        let (func_id2, arg2) = extract_trig_func_and_arg(ctx, terms[1], fn_name)?;
+
+        Some((func_id1, arg1, func_id2, arg2))
+    }
+
+    fn extract_trig_func_and_arg(
+        ctx: &Context,
+        id: ExprId,
+        fn_name: &str,
+    ) -> Option<(ExprId, ExprId)> {
+        if let Expr::Function(name, args) = ctx.get(id) {
+            if name == fn_name && args.len() == 1 {
+                return Some((id, args[0]));
+            }
+        }
+        None
+    }
+
+    // Try to extract sin(A) + sin(B) from numerator
+    let Some((sin_func1, sin_a, sin_func2, sin_b)) = extract_trig_sum_nodes(ctx, num_id, "sin")
+    else {
+        return;
+    };
+
+    // Try to extract cos(C) + cos(D) from denominator
+    let Some((cos_func1, cos_c, cos_func2, cos_d)) = extract_trig_sum_nodes(ctx, den_id, "cos")
+    else {
+        return;
+    };
+
+    // Check if {A,B} == {C,D} as multisets
+    use std::cmp::Ordering;
+    let direct = crate::ordering::compare_expr(ctx, sin_a, cos_c) == Ordering::Equal
+        && crate::ordering::compare_expr(ctx, sin_b, cos_d) == Ordering::Equal;
+    let crossed = crate::ordering::compare_expr(ctx, sin_a, cos_d) == Ordering::Equal
+        && crate::ordering::compare_expr(ctx, sin_b, cos_c) == Ordering::Equal;
+
+    if direct || crossed {
+        // Mark all four function nodes for protection
+        marks.mark_sum_quotient(sin_func1);
+        marks.mark_sum_quotient(sin_func2);
+        marks.mark_sum_quotient(cos_func1);
+        marks.mark_sum_quotient(cos_func2);
     }
 }
 
