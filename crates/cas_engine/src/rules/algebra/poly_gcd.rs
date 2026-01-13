@@ -430,6 +430,116 @@ fn poly_gcd_structural(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
 }
 
 // =============================================================================
+// Shallow GCD for fraction cancellation (stack-safe)
+// =============================================================================
+
+/// Shallow GCD for fraction cancellation - designed to be called from SimplifyFractionRule.
+///
+/// Unlike the full `compute_poly_gcd_unified`, this function:
+/// - Does NOT recurse deeply (O(1) stack depth)
+/// - Does NOT call `pre_evaluate_for_gcd` (no simplifier invocations)
+/// - Only does structural matching at top level
+/// - Handles power bases: (x+y)^10 / (x+y)^9 → GCD = (x+y)^9
+///
+/// Returns (gcd, description) where gcd=1 means "no common factor found".
+pub fn gcd_shallow_for_fraction(ctx: &mut Context, num: ExprId, den: ExprId) -> (ExprId, String) {
+    // Strip __hold wrappers first (shallow, no recursion)
+    let num = strip_hold(ctx, num);
+    let den = strip_hold(ctx, den);
+
+    // 1. Check for identical expressions → GCD = itself
+    if num == den {
+        return (num, "gcd(a, a) = a".to_string());
+    }
+
+    // 2. Extract power base/exponent from num and den
+    let (num_base, num_exp) = extract_power_base_exp(ctx, num);
+    let (den_base, den_exp) = extract_power_base_exp(ctx, den);
+
+    // 3. If bases are structurally equal (shallow comparison), GCD is base^min(exp)
+    // Use shallow structural equality that checks 1 level without deep recursion
+    if expr_equal_shallow(ctx, num_base, den_base) {
+        let min_exp = num_exp.min(den_exp);
+        if min_exp > 0 {
+            let gcd = if min_exp == 1 {
+                num_base
+            } else {
+                let exp_expr = ctx.num(min_exp);
+                ctx.add(Expr::Pow(num_base, exp_expr))
+            };
+            return (
+                gcd,
+                format!(
+                    "Common power base: min({}, {}) = {}",
+                    num_exp, den_exp, min_exp
+                ),
+            );
+        }
+    }
+
+    // 4. No common factor found (no recursive calls to avoid stack overflow)
+    // The univariate/multivar paths in SimplifyFractionRule handle more complex cases
+    (ctx.num(1), "No common factor (shallow)".to_string())
+}
+
+/// Shallow structural equality: compares expressions at 1-2 levels depth.
+/// Returns true if structurally equivalent without deep recursion.
+/// This is safe for stack-constrained contexts.
+fn expr_equal_shallow(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    // Fast path: identical ExprId
+    if a == b {
+        return true;
+    }
+
+    match (ctx.get(a), ctx.get(b)) {
+        // Both numbers: compare values
+        (Expr::Number(n1), Expr::Number(n2)) => n1 == n2,
+
+        // Both variables: compare names
+        (Expr::Variable(v1), Expr::Variable(v2)) => v1 == v2,
+
+        // Both Add: compare children by ExprId
+        (Expr::Add(l1, r1), Expr::Add(l2, r2)) => (l1 == l2 && r1 == r2) || (l1 == r2 && r1 == l2),
+
+        // Both Mul: compare children by ExprId
+        (Expr::Mul(l1, r1), Expr::Mul(l2, r2)) => (l1 == l2 && r1 == r2) || (l1 == r2 && r1 == l2),
+
+        // Both Sub: compare children by ExprId (order matters)
+        (Expr::Sub(l1, r1), Expr::Sub(l2, r2)) => l1 == l2 && r1 == r2,
+
+        // Both Div: compare children by ExprId (order matters)
+        (Expr::Div(n1, d1), Expr::Div(n2, d2)) => n1 == n2 && d1 == d2,
+
+        // Both Pow: compare children by ExprId (order matters)
+        (Expr::Pow(b1, e1), Expr::Pow(b2, e2)) => b1 == b2 && e1 == e2,
+
+        // Both Neg: compare inner
+        (Expr::Neg(i1), Expr::Neg(i2)) => i1 == i2,
+
+        // Different types: not equal
+        _ => false,
+    }
+}
+
+/// Extract base and integer exponent from a Pow expression.
+/// For non-Pow expressions, returns (expr, 1).
+fn extract_power_base_exp(ctx: &Context, expr: ExprId) -> (ExprId, i64) {
+    let expr = strip_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            if let Some(k) = get_integer_exp(ctx, *exp) {
+                if k > 0 {
+                    return (*base, k);
+                }
+            }
+            // Non-integer or negative exponent - treat whole as base^1
+            (expr, 1)
+        }
+        _ => (expr, 1),
+    }
+}
+
+// =============================================================================
 // Unified GCD dispatcher
 // =============================================================================
 

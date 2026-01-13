@@ -36,6 +36,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // (x - b³) / (x^(2/3) + b·x^(1/3) + b²) → x^(1/3) - b
     simplifier.add_rule(Box::new(CancelCubeRootDifferenceRule));
 
+    // V2.14.35: Ultra-light P^m/P^n → P^(m-n) rule (shallow ExprId comparison)
+    // Must fire BEFORE heavier fraction rules to avoid stack overflow on large powers
+    simplifier.add_rule(Box::new(CancelPowersDivisionRule));
     // Step 2 of didactic expansion: Cancel P/P → 1 (must fire after expansion rules)
     simplifier.add_rule(Box::new(CancelIdenticalFractionRule));
     // Step 2 variant: Cancel P^n/P → P^(n-1) (for perfect squares and similar)

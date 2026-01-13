@@ -533,6 +533,76 @@ fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.
 
 // =============================================================================
+// STEP 1.5: Cancel same-base power fractions P^m/P^n → P^(m-n) (shallow, PRE-ORDER)
+// =============================================================================
+
+// V2.14.35: Ultra-light rule for Pow(base,m)/Pow(base,n) → base^(m-n)
+// Uses shallow ExprId comparison to avoid recursion/stack depth issues.
+// This handles cases like ((x+y)^10)/((x+y)^9) that would otherwise overflow stack.
+define_rule!(
+    CancelPowersDivisionRule,
+    "Cancel Same-Base Powers",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
+    |ctx, expr, parent_ctx| {
+        use crate::helpers::prove_nonzero;
+        use crate::implicit_domain::ImplicitCondition;
+
+        // Match Div(Pow(base_num, exp_num), Pow(base_den, exp_den))
+        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (base_num, exp_num) = crate::helpers::as_pow(ctx, num)?;
+        let (base_den, exp_den) = crate::helpers::as_pow(ctx, den)?;
+
+        // STRUCTURAL COMPARISON: Use compare_expr to check if bases are structurally equal
+        // This handles cases where (x+y) is parsed separately in num and den
+        if crate::ordering::compare_expr(ctx, base_num, base_den) != std::cmp::Ordering::Equal {
+            return None;
+        }
+
+        // Get exponents as integers
+        let m = crate::helpers::as_i64(ctx, exp_num)?;
+        let n = crate::helpers::as_i64(ctx, exp_den)?;
+
+        // Only handle positive exponents with m > n
+        if m <= 0 || n <= 0 || m <= n {
+            return None;
+        }
+
+        // DOMAIN GATE: need base ≠ 0
+        let domain_mode = parent_ctx.domain_mode();
+        let proof = prove_nonzero(ctx, base_num);
+        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, base_num);
+        let decision = crate::domain::can_cancel_factor_with_hint(
+            domain_mode,
+            proof,
+            key,
+            base_num,
+            "Cancel Same-Base Powers",
+        );
+
+        if !decision.allow {
+            return None;
+        }
+
+        // Build result: base^(m-n)
+        let diff = m - n;
+        let result = if diff == 1 {
+            base_num
+        } else {
+            let new_exp = ctx.num(diff);
+            ctx.add(Expr::Pow(base_num, new_exp))
+        };
+
+        Some(Rewrite::new(result)
+            .desc(format!("Cancel: P^{}/P^{} → P^{}", m, n, diff))
+            .local(expr, result)
+            .requires(ImplicitCondition::NonZero(base_num))
+            .assume_all(decision.assumption_events(ctx, base_num)))
+    }
+);
+
+// =============================================================================
 // STEP 2: Cancel identical numerator/denominator (P/P → 1)
 // =============================================================================
 
@@ -1073,8 +1143,12 @@ define_rule!(
         if let Some(rewrite) = try_sum_diff_of_cubes_in_num(ctx, num, den, domain_mode, parent_ctx) {
             return Some(rewrite);
         }
+        // NOTE: PR-2 shallow GCD integration deferred.
+        // The gcd_shallow_for_fraction function exists in poly_gcd.rs but calling it
+        // here adds stack depth that causes overflow on complex expressions.
+        // Future work: investigate stack-safe approach for power cancellation.
 
-        // 0. Try multivariate GCD first (Layer 1: monomial + content)
+        // 0. Try multivariate GCD (Layer 1: monomial + content)
         let vars = collect_variables(ctx, expr);
         if vars.len() > 1 {
             if let Some((new_num, new_den, gcd_expr, layer)) = try_multivar_gcd(ctx, num, den) {
@@ -1150,6 +1224,7 @@ define_rule!(
                 return Some(factor_rw.chain(cancel));
             }
         }
+
 
         // 1. Univariate path: require single variable
         if vars.len() != 1 {
