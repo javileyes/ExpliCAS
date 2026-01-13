@@ -313,7 +313,7 @@ impl Simplifier {
         let mut hints = std::mem::take(&mut self.last_blocked_hints);
         // Dedup by (rule, key) preserving first occurrence order
         let mut seen = std::collections::HashSet::new();
-        hints.retain(|h| seen.insert((h.rule, h.key.clone())));
+        hints.retain(|h| seen.insert((h.rule.clone(), h.key.clone())));
         hints
     }
 
@@ -548,8 +548,10 @@ impl Simplifier {
             root_expr: expr_id,
             current_phase: phase,
             cycle_detector: None,
+            cycle_phase: None,
             fp_memo: std::collections::HashMap::new(),
             last_cycle: None,
+            blocked_rules: std::collections::HashSet::new(),
             current_depth: 0,
             depth_overflow_warned: false,
             ancestor_stack: Vec::new(),
@@ -726,8 +728,10 @@ impl Simplifier {
             root_expr: expr_id,
             current_phase: phase,
             cycle_detector: None,
+            cycle_phase: None,
             fp_memo: std::collections::HashMap::new(),
             last_cycle: None,
+            blocked_rules: std::collections::HashSet::new(),
             current_depth: 0,
             depth_overflow_warned: false,
             ancestor_stack: Vec::new(),
@@ -942,12 +946,16 @@ struct LocalSimplificationTransformer<'a> {
     root_expr: ExprId,
     /// Current phase of the simplification pipeline (controls which rules can run)
     current_phase: crate::phase::SimplifyPhase,
-    /// Cycle detector for ping-pong detection (health mode only)
+    /// Cycle detector for ping-pong detection (always-on as of V2.14.30)
     cycle_detector: Option<crate::cycle_detector::CycleDetector>,
+    /// Phase that the cycle detector was initialized for (reset when phase changes)
+    cycle_phase: Option<crate::phase::SimplifyPhase>,
     /// Fingerprint memoization cache (cleared per phase)
     fp_memo: crate::cycle_detector::FingerprintMemo,
     /// Last detected cycle info (for PhaseStats)
     last_cycle: Option<crate::cycle_detector::CycleInfo>,
+    /// Blocked (fingerprint, rule) pairs to prevent cycle re-entry
+    blocked_rules: std::collections::HashSet<(u64, String)>,
     /// Current recursion depth for stack overflow prevention
     current_depth: usize,
     /// Flag to track if we already warned about depth overflow (to avoid spamming)
@@ -1727,26 +1735,40 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // Apply canonical normalization to prevent loops
                         expr_id = normalize_core(self.context, expr_id);
 
-                        // Cycle detection (health mode only) - detect ping-pong patterns
-                        if self.profiler.is_health_enabled() {
-                            // Initialize detector if needed
-                            if self.cycle_detector.is_none() {
-                                self.cycle_detector = Some(
-                                    crate::cycle_detector::CycleDetector::new(self.current_phase),
-                                );
-                            }
+                        // V2.14.30: Always-On Cycle Detection with blocklist
+                        // Reset detector if phase changed since last initialization
+                        if self.cycle_phase != Some(self.current_phase) {
+                            self.cycle_detector = Some(crate::cycle_detector::CycleDetector::new(
+                                self.current_phase,
+                            ));
+                            self.cycle_phase = Some(self.current_phase);
+                            self.fp_memo.clear();
+                            // Note: blocked_rules persists across phases (conservative)
+                        }
 
-                            let h = crate::cycle_detector::expr_fingerprint(
-                                self.context,
-                                expr_id,
-                                &mut self.fp_memo,
-                            );
-                            if let Some(info) = self.cycle_detector.as_mut().unwrap().observe(h) {
-                                self.last_cycle = Some(info);
-                                // Treat as fixed-point: stop this phase early
-                                self.current_depth -= 1;
-                                return expr_id;
+                        let h = crate::cycle_detector::expr_fingerprint(
+                            self.context,
+                            expr_id,
+                            &mut self.fp_memo,
+                        );
+                        if let Some(info) = self.cycle_detector.as_mut().unwrap().observe(h) {
+                            // Add to blocklist to prevent re-entry
+                            let rule_name_static = rule.name();
+                            if self.blocked_rules.insert((h, rule_name_static.to_string())) {
+                                // First time seeing this (fingerprint, rule) - emit hint
+                                crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                                    key: crate::assumptions::AssumptionKey::Defined {
+                                        expr_fingerprint: h,
+                                    },
+                                    expr_id,
+                                    rule: rule_name_static.to_string(),
+                                    suggestion: "cycle detected; consider disabling heuristic rules or tightening budget",
+                                });
                             }
+                            self.last_cycle = Some(info);
+                            // Treat as fixed-point: stop this phase early
+                            self.current_depth -= 1;
+                            return expr_id;
                         }
 
                         changed = true;

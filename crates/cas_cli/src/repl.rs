@@ -5560,11 +5560,11 @@ impl Repl {
                             };
 
                             // Group hints by rule name
-                            let mut grouped: std::collections::HashMap<&str, Vec<String>> =
+                            let mut grouped: std::collections::HashMap<String, Vec<String>> =
                                 std::collections::HashMap::new();
                             for hint in hints {
                                 grouped
-                                    .entry(hint.rule)
+                                    .entry(hint.rule.clone())
                                     .or_default()
                                     .push(format_condition(hint));
                             }

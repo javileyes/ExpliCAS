@@ -1663,7 +1663,7 @@ impl crate::rule::Rule for AutoExpandLogRule {
                             expr_fingerprint: crate::assumptions::expr_fingerprint(ctx, factor),
                         },
                         expr_id: factor,
-                        rule: "AutoExpandLogRule",
+                        rule: "AutoExpandLogRule".to_string(),
                         suggestion: "Use 'semantics set domain assume' to enable log expansion.",
                     };
                     crate::domain::register_blocked_hint(hint);

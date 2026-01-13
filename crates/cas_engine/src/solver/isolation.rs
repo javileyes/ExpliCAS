@@ -1228,7 +1228,7 @@ pub fn isolate(
                             crate::domain::register_blocked_hint(crate::domain::BlockedHint {
                                 key: event.key,
                                 expr_id,
-                                rule: "Take log of both sides",
+                                rule: "Take log of both sides".to_string(),
                                 suggestion: "use `semantics set domain assume`",
                             });
                         }

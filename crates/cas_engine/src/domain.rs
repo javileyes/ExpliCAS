@@ -176,7 +176,7 @@ pub struct BlockedHint {
     /// The original expression ID for pretty-printing (display only)
     pub expr_id: cas_ast::ExprId,
     /// Name of the rule that was blocked
-    pub rule: &'static str,
+    pub rule: String,
     /// Suggestion for the user
     pub suggestion: &'static str,
 }
@@ -234,7 +234,7 @@ impl CancelDecision {
             blocked_hint: Some(BlockedHint {
                 key,
                 expr_id,
-                rule,
+                rule: rule.to_string(),
                 suggestion: "use `semantics set domain assume` to allow analytic assumptions",
             }),
             assumed_keys: smallvec::SmallVec::new(),
@@ -400,7 +400,7 @@ pub fn can_cancel_factor_with_hint(
                 let hint = BlockedHint {
                     key: key.clone(),
                     expr_id,
-                    rule,
+                    rule: rule.to_string(),
                     suggestion: "use `domain generic` to allow definability assumptions",
                 };
                 register_blocked_hint(hint);
@@ -504,7 +504,7 @@ pub fn can_apply_analytic_with_hint(
                 let hint = BlockedHint {
                     key: key.clone(),
                     expr_id,
-                    rule,
+                    rule: rule.to_string(),
                     suggestion: "use `semantics set domain assume` to allow analytic assumptions",
                 };
                 register_blocked_hint(hint);
