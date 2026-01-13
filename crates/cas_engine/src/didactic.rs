@@ -635,9 +635,21 @@ fn classify_nested_fraction(ctx: &Context, expr: ExprId) -> Option<NestedFractio
 }
 
 /// Extract the combined fraction string from an Add expression containing a fraction.
-/// For example: 1 + 1/x → "(1·x + 1) / x" = "(x + 1) / x"
+/// For example: 1 + 1/x → "\frac{x + 1}{x}" in LaTeX
 fn extract_combined_fraction_str(ctx: &Context, add_expr: ExprId) -> String {
-    use cas_ast::DisplayExpr;
+    use cas_ast::display_context::DisplayContext;
+    use cas_ast::LaTeXExprWithHints;
+
+    // Helper to convert expression to LaTeX
+    let hints = DisplayContext::default();
+    let to_latex = |id: ExprId| -> String {
+        LaTeXExprWithHints {
+            context: ctx,
+            id,
+            hints: &hints,
+        }
+        .to_latex()
+    };
 
     // Find the fraction term and non-fraction term
     if let Expr::Add(l, r) = ctx.get(add_expr) {
@@ -647,52 +659,24 @@ fn extract_combined_fraction_str(ctx: &Context, add_expr: ExprId) -> String {
             (*r, *l)
         } else {
             // No fraction found, return generic
-            return "(combinado)".to_string();
+            return "\\text{(combinado)}".to_string();
         };
 
         // Extract numerator and denominator of the fraction
         if let Expr::Div(frac_num, frac_den) = ctx.get(frac_id) {
-            let frac_num_str = format!(
-                "{}",
-                DisplayExpr {
-                    context: ctx,
-                    id: *frac_num
-                }
-            );
-            let frac_den_str = format!(
-                "{}",
-                DisplayExpr {
-                    context: ctx,
-                    id: *frac_den
-                }
-            );
-            let other_str = format!(
-                "{}",
-                DisplayExpr {
-                    context: ctx,
-                    id: other_id
-                }
-            );
+            let frac_num_latex = to_latex(*frac_num);
+            let frac_den_latex = to_latex(*frac_den);
+            let other_latex = to_latex(other_id);
 
-            // Build the combined expression: (other*den + num) / den
-            // or simplified for 1/x case: (other·x + 1) / x
-            // Add parentheses around denominator if it contains operators
-            let needs_parens = frac_den_str.contains('+')
-                || frac_den_str.contains('-')
-                || frac_den_str.contains(' ');
-            let den_display = if needs_parens {
-                format!("({})", frac_den_str)
-            } else {
-                frac_den_str.clone()
-            };
+            // Build the combined expression in LaTeX: \frac{other·den + num}{den}
             return format!(
-                "({} · {} + {}) / {}",
-                other_str, den_display, frac_num_str, den_display
+                "\\frac{{{} \\cdot {} + {}}}{{{}}}",
+                other_latex, frac_den_latex, frac_num_latex, frac_den_latex
             );
         }
     }
 
-    "(combinado)".to_string()
+    "\\text{(combinado)}".to_string()
 }
 
 /// Generate sub-steps explaining nested fraction simplification
@@ -700,7 +684,8 @@ fn extract_combined_fraction_str(ctx: &Context, add_expr: ExprId) -> String {
 ///   1. Combine terms in denominator: 1 + 1/x → (x+1)/x
 ///   2. Invert the fraction: 1/((x+1)/x) → x/(x+1)
 fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    use cas_ast::DisplayExpr;
+    use cas_ast::display_context::DisplayContext;
+    use cas_ast::LaTeXExprWithHints;
 
     let mut sub_steps = Vec::new();
 
@@ -714,20 +699,21 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
         None => return sub_steps, // Not a nested fraction pattern we handle
     };
 
-    let before_str = format!(
-        "{}",
-        DisplayExpr {
+    // Build display hints for proper notation
+    let hints = DisplayContext::default();
+
+    // Helper to convert expression to LaTeX
+    let to_latex = |id: ExprId| -> String {
+        LaTeXExprWithHints {
             context: ctx,
-            id: before_expr
+            id,
+            hints: &hints,
         }
-    );
-    let after_str = format!(
-        "{}",
-        DisplayExpr {
-            context: ctx,
-            id: after_expr
-        }
-    );
+        .to_latex()
+    };
+
+    let before_str = to_latex(before_expr);
+    let after_str = to_latex(after_expr);
 
     // Generate pattern-specific sub-steps
     match pattern {
@@ -736,13 +722,7 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
             // P1/P2: 1/(a + b/c) → c/(a·c + b)
             // Extract denominator for display
             if let Expr::Div(_, den) = ctx.get(before_expr) {
-                let den_str = format!(
-                    "{}",
-                    DisplayExpr {
-                        context: ctx,
-                        id: *den
-                    }
-                );
+                let den_str = to_latex(*den);
 
                 // Try to extract inner fraction to show real intermediate
                 // For 1/(a + b/c), the inner fraction is b/c, and combined = (a*c + b)/c
@@ -753,13 +733,13 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                     description: "Combinar términos del denominador (denominador común)"
                         .to_string(),
                     before_latex: den_str.clone(),
-                    after_latex: intermediate_str,
+                    after_latex: intermediate_str.clone(),
                 });
 
-                // Sub-step 2: Invert the fraction
+                // Sub-step 2: Invert the fraction (use intermediate_str from step 1)
                 sub_steps.push(SubStep {
                     description: "Invertir la fracción: 1/(a/b) = b/a".to_string(),
-                    before_latex: format!("1 / ({})", den_str),
+                    before_latex: format!("\\frac{{1}}{{{}}}", intermediate_str),
                     after_latex: after_str,
                 });
             }
@@ -768,20 +748,8 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
         NestedFractionPattern::FractionOverSumWithFraction => {
             // P3: A/(B + C/D) → A·D/(B·D + C)
             if let Expr::Div(num, den) = ctx.get(before_expr) {
-                let num_str = format!(
-                    "{}",
-                    DisplayExpr {
-                        context: ctx,
-                        id: *num
-                    }
-                );
-                let den_str = format!(
-                    "{}",
-                    DisplayExpr {
-                        context: ctx,
-                        id: *den
-                    }
-                );
+                let num_str = to_latex(*num);
+                let den_str = to_latex(*den);
 
                 // Try to extract inner fraction to show real intermediate
                 let intermediate_str = extract_combined_fraction_str(ctx, *den);
@@ -806,20 +774,8 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
         NestedFractionPattern::SumWithFractionOverScalar => {
             // P4: (A + 1/B)/C → (A·B + 1)/(B·C)
             if let Expr::Div(num, den) = ctx.get(before_expr) {
-                let num_str = format!(
-                    "{}",
-                    DisplayExpr {
-                        context: ctx,
-                        id: *num
-                    }
-                );
-                let den_str = format!(
-                    "{}",
-                    DisplayExpr {
-                        context: ctx,
-                        id: *den
-                    }
-                );
+                let num_str = to_latex(*num);
+                let den_str = to_latex(*den);
 
                 // Sub-step 1: Combine the numerator
                 sub_steps.push(SubStep {
@@ -1276,7 +1232,7 @@ mod tests {
 
     #[test]
     fn test_extract_combined_fraction_complex_denominator() {
-        // 1 + x/(x+1) → "(1 · (x + 1) + x) / (x + 1)"
+        // 1 + x/(x+1) → LaTeX format: \frac{1 \cdot (x + 1) + x}{x + 1}
         let mut ctx = Context::new();
         let x = ctx.add(Expr::Variable("x".to_string()));
         let one = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(1))));
@@ -1285,10 +1241,15 @@ mod tests {
         let add_expr = ctx.add(Expr::Add(one, x_over_xplus1));
 
         let result = extract_combined_fraction_str(&ctx, add_expr);
-        // Should have parentheses around denominator
+        // Should be LaTeX format with \frac
         assert!(
-            result.contains("(1 + x)") || result.contains("(x + 1)"),
-            "Should have parentheses around complex denominator: {}",
+            result.contains("\\frac"),
+            "Should contain LaTeX \\frac: {}",
+            result
+        );
+        assert!(
+            result.contains("\\cdot"),
+            "Should contain LaTeX \\cdot for multiplication: {}",
             result
         );
     }

@@ -145,7 +145,7 @@ fn substep_intermediate_shows_real_values() {
     }
 }
 
-/// Verify parentheses are added around complex denominators
+/// Verify LaTeX format is used for complex denominators (with \frac)
 #[test]
 fn substep_has_parentheses_around_complex_denominator() {
     let (_, enriched) = simplify_and_enrich("1/(1 + x/(x+1))");
@@ -157,13 +157,11 @@ fn substep_has_parentheses_around_complex_denominator() {
     if let Some(step) = nested {
         if !step.sub_steps.is_empty() {
             let first_substep = &step.sub_steps[0];
-            // Complex denominators should have parentheses
-            // e.g., "(1 · (x + 1) + x) / (x + 1)"
-            let has_parens = first_substep.after_latex.contains("(x + 1)")
-                || first_substep.after_latex.contains("(1 + x)");
+            // Should be LaTeX format with \frac (no need for parentheses in \frac{}{})
+            let has_latex_frac = first_substep.after_latex.contains("\\frac");
             assert!(
-                has_parens,
-                "Complex denominator should have parentheses: {}",
+                has_latex_frac,
+                "Complex denominator should use LaTeX \\frac format: {}",
                 first_substep.after_latex
             );
         }
