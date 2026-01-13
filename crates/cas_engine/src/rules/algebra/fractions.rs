@@ -564,12 +564,12 @@ define_rule!(
         let m = crate::helpers::as_i64(ctx, exp_num)?;
         let n = crate::helpers::as_i64(ctx, exp_den)?;
 
-        // Only handle positive exponents with m > n
-        if m <= 0 || n <= 0 || m <= n {
+        // Skip if both are zero (undefined)
+        if m == 0 && n == 0 {
             return None;
         }
 
-        // DOMAIN GATE: need base ≠ 0
+        // DOMAIN GATE: need base ≠ 0 (derived from original denominator P^n ≠ 0)
         let domain_mode = parent_ctx.domain_mode();
         let proof = prove_nonzero(ctx, base_num);
         let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, base_num);
@@ -585,17 +585,38 @@ define_rule!(
             return None;
         }
 
-        // Build result: base^(m-n)
+        // Compute effective exponent difference: P^m / P^n = P^(m-n)
         let diff = m - n;
-        let result = if diff == 1 {
-            base_num
-        } else {
+
+        // Build result based on diff
+        let (result, desc) = if diff == 0 {
+            // P^n / P^n → 1
+            (ctx.num(1), format!("Cancel: P^{}/P^{} → 1", m, n))
+        } else if diff == 1 {
+            // P^(n+1) / P^n → P
+            (base_num, format!("Cancel: P^{}/P^{} → P", m, n))
+        } else if diff == -1 {
+            // P^n / P^(n+1) → 1/P
+            let one = ctx.num(1);
+            let result = ctx.add(Expr::Div(one, base_num));
+            (result, format!("Cancel: P^{}/P^{} → 1/P", m, n))
+        } else if diff > 0 {
+            // P^m / P^n → P^(m-n) where m > n
             let new_exp = ctx.num(diff);
-            ctx.add(Expr::Pow(base_num, new_exp))
+            let result = ctx.add(Expr::Pow(base_num, new_exp));
+            (result, format!("Cancel: P^{}/P^{} → P^{}", m, n, diff))
+        } else {
+            // P^m / P^n → 1/P^(n-m) where m < n
+            let pos_diff = -diff;
+            let new_exp = ctx.num(pos_diff);
+            let pow_result = ctx.add(Expr::Pow(base_num, new_exp));
+            let one = ctx.num(1);
+            let result = ctx.add(Expr::Div(one, pow_result));
+            (result, format!("Cancel: P^{}/P^{} → 1/P^{}", m, n, pos_diff))
         };
 
         Some(Rewrite::new(result)
-            .desc(format!("Cancel: P^{}/P^{} → P^{}", m, n, diff))
+            .desc(&desc)
             .local(expr, result)
             .requires(ImplicitCondition::NonZero(base_num))
             .assume_all(decision.assumption_events(ctx, base_num)))

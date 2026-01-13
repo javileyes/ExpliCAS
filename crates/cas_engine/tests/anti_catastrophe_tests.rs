@@ -53,6 +53,55 @@ fn test_budget_bailout_complex_fraction() {
 }
 
 // =============================================================================
+// A3.1.1: Power cancellation edge cases (CancelPowersDivisionRule)
+// =============================================================================
+
+#[test]
+fn test_power_cancel_equal_exponents() {
+    // P^n / P^n → 1
+    let result = simplify("((x+y)^10)/((x+y)^10)");
+    assert!(
+        result.contains("1") && !result.contains("+"),
+        "P^n/P^n should simplify to 1, got: {}",
+        result
+    );
+}
+
+#[test]
+fn test_power_cancel_smaller_numerator() {
+    // P^9 / P^10 → 1/(x+y)
+    let result = simplify("((x+y)^9)/((x+y)^10)");
+    assert!(
+        result.contains("1") && result.contains("/"),
+        "P^9/P^10 should give 1/P form, got: {}",
+        result
+    );
+}
+
+#[test]
+fn test_power_cancel_zero_numerator_exp() {
+    // P^0 / P^9 → 1/P^9
+    let result = simplify("((x+y)^0)/((x+y)^9)");
+    // P^0 = 1, so 1/P^9
+    assert!(
+        result.contains("1") && result.contains("/"),
+        "P^0/P^9 should give 1/P^9 form, got: {}",
+        result
+    );
+}
+
+#[test]
+fn test_power_cancel_negative_exponents() {
+    // P^(-2) / P^(-5) → P^3
+    let result = simplify("((x+y)^(-2))/((x+y)^(-5))");
+    assert!(
+        result.contains("x + y") || result.contains("3"),
+        "P^-2/P^-5 should give P^3 form, got: {}",
+        result
+    );
+}
+
+// =============================================================================
 // A3.2: Determinism (same input → same output)
 // =============================================================================
 
