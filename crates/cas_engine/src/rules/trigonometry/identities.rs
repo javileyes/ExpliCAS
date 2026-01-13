@@ -1142,6 +1142,7 @@ fn args_match_as_multiset(
 /// Build canonical half_diff = (A-B)/2 with consistent ordering
 /// Since cos((A-B)/2) == cos((B-A)/2), we use canonical order to ensure
 /// numerator and denominator produce identical expressions for cancellation.
+/// Pre-simplifies the difference to produce cleaner output.
 fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
     use crate::ordering::compare_expr;
     use std::cmp::Ordering;
@@ -1155,15 +1156,77 @@ fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -
     };
 
     let diff = ctx.add(Expr::Sub(first, second));
+    // Pre-simplify the difference (e.g., x - 3x → -2x)
+    let diff_simplified = crate::collect::collect(ctx, diff);
     let two = ctx.num(2);
-    ctx.add(Expr::Div(diff, two))
+    let result = ctx.add(Expr::Div(diff_simplified, two));
+    // Try to simplify the division (e.g., -2x/2 → -x)
+    simplify_numeric_div(ctx, result)
 }
 
-/// Build avg = (A+B)/2
+/// Build avg = (A+B)/2, pre-simplifying sum for cleaner output
+/// This eliminates the need for a separate "Combine Like Terms" step
 fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
     let sum = ctx.add(Expr::Add(a, b));
+    // Pre-simplify the sum (e.g., x + 3x → 4x)
+    let sum_simplified = crate::collect::collect(ctx, sum);
     let two = ctx.num(2);
-    ctx.add(Expr::Div(sum, two))
+    let result = ctx.add(Expr::Div(sum_simplified, two));
+    // Try to simplify the division (e.g., 4x/2 → 2x)
+    simplify_numeric_div(ctx, result)
+}
+
+/// Try to simplify a division when numerator has a coefficient divisible by denominator
+/// e.g., 4x/2 → 2x, -2x/2 → -x
+fn simplify_numeric_div(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
+    use crate::helpers::as_i64;
+
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        // Check if denominator is a small integer
+        if let Some(den_val) = as_i64(ctx, den) {
+            if den_val == 0 {
+                return expr; // Avoid division by zero
+            }
+
+            // Check if numerator is a product k*x where k is divisible by den
+            if let Expr::Mul(l, r) = ctx.get(num).clone() {
+                if let Some(coeff) = as_i64(ctx, l) {
+                    if coeff % den_val == 0 {
+                        let new_coeff = coeff / den_val;
+                        if new_coeff == 1 {
+                            return r; // 2x/2 → x
+                        } else if new_coeff == -1 {
+                            return ctx.add(Expr::Neg(r)); // -2x/2 → -x
+                        } else {
+                            let new_coeff_expr = ctx.num(new_coeff);
+                            return ctx.add(Expr::Mul(new_coeff_expr, r)); // 4x/2 → 2x
+                        }
+                    }
+                }
+                if let Some(coeff) = as_i64(ctx, r) {
+                    if coeff % den_val == 0 {
+                        let new_coeff = coeff / den_val;
+                        if new_coeff == 1 {
+                            return l; // x*2/2 → x
+                        } else if new_coeff == -1 {
+                            return ctx.add(Expr::Neg(l)); // x*(-2)/2 → -x
+                        } else {
+                            let new_coeff_expr = ctx.num(new_coeff);
+                            return ctx.add(Expr::Mul(l, new_coeff_expr)); // x*4/2 → x*2
+                        }
+                    }
+                }
+            }
+
+            // Check if numerator is a plain number divisible by den
+            if let Some(num_val) = as_i64(ctx, num) {
+                if num_val % den_val == 0 {
+                    return ctx.num(num_val / den_val); // 4/2 → 2
+                }
+            }
+        }
+    }
+    expr
 }
 
 // SinCosSumQuotientRule: (sin(A)+sin(B))/(cos(A)+cos(B)) → sin((A+B)/2)/cos((A+B)/2)

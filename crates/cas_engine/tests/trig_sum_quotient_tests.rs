@@ -92,8 +92,9 @@ fn test_sin_cos_sum_quotient_reversed_order() {
 
 #[test]
 fn test_didactic_steps_exist() {
-    let (_, steps) = eval_with_steps("(sin(x) + sin(3*x)) / (cos(x) + cos(3*x))");
+    let (result, steps) = eval_with_steps("(sin(x) + sin(3*x)) / (cos(x) + cos(3*x))");
 
+    let rule_names: Vec<&str> = steps.iter().map(|s| s.rule_name.as_str()).collect();
     let descriptions: Vec<&str> = steps.iter().map(|s| s.description.as_str()).collect();
     let all_descs = descriptions.join(" | ");
 
@@ -112,5 +113,20 @@ fn test_didactic_steps_exist() {
         all_descs.contains("Cancel"),
         "Should show cancellation step; descs: {}",
         all_descs
+    );
+
+    // V2.14.27: Verify NO "Combine Like Terms" step
+    // Pre-simplification in build_avg should eliminate this step
+    assert!(
+        !rule_names.contains(&"Combine Like Terms"),
+        "Should NOT have Combine Like Terms step (pre-simplified); rules: {:?}",
+        rule_names
+    );
+
+    // Verify final result is clean tan(2x)
+    assert!(
+        result.contains("tan") && result.contains("2"),
+        "Final result should be tan(2·x); got: {}",
+        result
     );
 }

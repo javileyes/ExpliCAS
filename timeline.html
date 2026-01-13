@@ -466,12 +466,12 @@
                     <div class="rule-description">
                         <div class="rule-name">\(\text{sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\sin(x) + \sin(3\cdot x)}} \rightarrow {\color{green}{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}\]
+                            \[{\color{red}{\sin(x) + \sin(3\cdot x)}} \rightarrow {\color{green}{2\cdot \sin(2\cdot x)\cdot \cos(-x)}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{{\color{green}{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}}{\cos(x) + \cos(3\cdot x)}\]
+                        \[\frac{{\color{green}{2\cdot \sin(2\cdot x)\cdot \cos(-x)}}}{\cos(x) + \cos(3\cdot x)}\]
                     </div>
                 </div>
             </div>
@@ -481,18 +481,18 @@
                     <h3>Sum-to-Product Quotient</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}{{\color{red}{\cos(x)}} + {\color{red}{\cos(3\cdot x)}}}\]
+                        \[\frac{2\cdot \sin(2\cdot x)\cdot \cos(-x)}{{\color{red}{\cos(x)}} + {\color{red}{\cos(3\cdot x)}}}\]
                     </div>
                     
                     <div class="rule-description">
                         <div class="rule-name">\(\text{cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\cos(x) + \cos(3\cdot x)}} \rightarrow {\color{green}{2\cdot \cos(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}\]
+                            \[{\color{red}{\cos(x) + \cos(3\cdot x)}} \rightarrow {\color{green}{2\cdot \cos(2\cdot x)\cdot \cos(-x)}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}{{\color{green}{2\cdot \cos(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}}\]
+                        \[\frac{2\cdot \sin(2\cdot x)\cdot \cos(-x)}{{\color{green}{2\cdot \cos(2\cdot x)\cdot \cos(-x)}}}\]
                     </div>
                 </div>
             </div>
@@ -502,49 +502,28 @@
                     <h3>Sum-to-Product Quotient</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}{2\cdot \cos(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}}\]
+                        \[{\color{red}{\frac{2\cdot \sin(2\cdot x)\cdot \cos(-x)}{2\cdot \cos(2\cdot x)\cdot \cos(-x)}}}\]
                     </div>
                     
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Cancel common factor 2·cos((A-B)/2)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}{2\cdot \cos(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}} \rightarrow {\color{green}{\frac{\sin(\frac{x + 3\cdot x}{2})}{\cos(\frac{x + 3\cdot x}{2})}}}\]
+                            \[{\color{red}{\frac{2\cdot \sin(2\cdot x)\cdot \cos(-x)}{2\cdot \cos(2\cdot x)\cdot \cos(-x)}}} \rightarrow {\color{green}{\frac{\sin(2\cdot x)}{\cos(2\cdot x)}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{\sin(\frac{x + 3\cdot x}{2})}{\cos(\frac{x + 3\cdot x}{2})}}}\]
+                        \[{\color{green}{\frac{\sin(2\cdot x)}{\cos(2\cdot x)}}}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">4</div>
                 <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{\sin(\frac{{\color{red}{x + 3\cdot x}}}{2})}{\cos(\frac{x + 3\cdot x}{2})}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine like terms}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{x + 3\cdot x}} \rightarrow {\color{green}{4\cdot x}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{\sin(\frac{{\color{green}{4\cdot x}}}{2})}{\cos(\frac{x + 3\cdot x}{2})}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
                     <h3>Trig Quotient</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{\sin(2\cdot x)}{\cos(\frac{x + 3\cdot x}{2})}}}\]
+                        \[{\color{red}{\frac{\sin(2\cdot x)}{\cos(2\cdot x)}}}\]
                     </div>
                     
                     <div class="rule-description">
