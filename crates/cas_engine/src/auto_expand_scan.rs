@@ -10,7 +10,7 @@
 use crate::pattern_marks::PatternMarks;
 use crate::phase::ExpandBudget;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::{Signed, ToPrimitive};
+use num_traits::{Signed, ToPrimitive, Zero};
 
 /// Scan expression tree and mark auto-expand contexts where expansion is beneficial.
 ///
@@ -442,7 +442,14 @@ fn try_mark_add_neg_cancellation(
         return false;
     };
 
-    // Must have at least one other term to potentially cancel with
+    // Filter out literal zeros from other_terms - they should not count as "real" terms
+    // This prevents e+0 from triggering expansion when e alone wouldn't
+    let other_terms: Vec<ExprId> = other_terms
+        .into_iter()
+        .filter(|term| !matches!(ctx.get(*term), Expr::Number(n) if n.is_zero()))
+        .collect();
+
+    // Must have at least one REAL other term to potentially cancel with
     if other_terms.is_empty() {
         return false;
     }

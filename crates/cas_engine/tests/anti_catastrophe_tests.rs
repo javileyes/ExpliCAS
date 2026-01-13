@@ -102,6 +102,23 @@ fn test_power_cancel_negative_exponents() {
 }
 
 // =============================================================================
+// A3.1.2: Identity neutral preservation (e+0 should equal e)
+// =============================================================================
+
+#[test]
+fn test_identity_neutral_add_zero() {
+    // simplify(e + 0) should equal simplify(e)
+    // This caught a bug where +0 triggered auto-expand heuristics incorrectly
+    let e = simplify("(a + pi)^2");
+    let e_plus_zero = simplify("(a + pi)^2 + 0");
+    assert_eq!(
+        e, e_plus_zero,
+        "simplify(e+0) should equal simplify(e), got: '{}' vs '{}'",
+        e, e_plus_zero
+    );
+}
+
+// =============================================================================
 // A3.2: Determinism (same input → same output)
 // =============================================================================
 
