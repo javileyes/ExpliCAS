@@ -52,6 +52,7 @@
 //! See `rules/algebra/mod.rs::try_difference_of_squares_preorder` for a complete
 //! implementation example.
 
+use crate::rule::SoundnessLabel;
 use cas_ast::ExprId;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -156,6 +157,9 @@ pub struct Step {
     /// Used to gate didactic substep generation to avoid duplicating explanations
     /// that are already expressed as separate engine Steps.
     pub is_chained: bool,
+    /// V2.14.30: Mathematical soundness classification of this step's transformation.
+    /// Propagated from Rule::soundness() or elevated based on assumption_events.
+    pub soundness: SoundnessLabel,
 }
 
 impl Step {
@@ -199,7 +203,8 @@ impl Step {
             poly_proof: None,
             importance: ImportanceLevel::Low,
             category: StepCategory::General,
-            is_chained: false, // Default: not from ChainedRewrite
+            is_chained: false,
+            soundness: SoundnessLabel::Equivalence,
         }
     }
 
@@ -223,6 +228,7 @@ impl Step {
             importance: ImportanceLevel::Low,
             category: StepCategory::General,
             is_chained: false,
+            soundness: SoundnessLabel::Equivalence,
         }
     }
 

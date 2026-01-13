@@ -113,7 +113,8 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     poly_proof: None,
                     importance: crate::step::ImportanceLevel::Low,
                     category: crate::step::StepCategory::Canonicalize,
-                    is_chained: false, // Coalesced step is not from ChainedRewrite
+                    is_chained: false,
+                    soundness: crate::rule::SoundnessLabel::Equivalence,
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;

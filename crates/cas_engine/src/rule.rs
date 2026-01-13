@@ -4,6 +4,44 @@ use crate::step::{ImportanceLevel, StepCategory};
 use cas_ast::{Context, ExprId};
 
 // =============================================================================
+// SoundnessLabel: Mathematical soundness classification for Rule transformations
+// =============================================================================
+
+/// Mathematical soundness classification for rules.
+///
+/// This enum classifies how a rule transformation relates to mathematical equivalence,
+/// used for:
+/// - Auditing rules during review
+/// - Property-based testing (only Equivalence* rules should preserve numeric value)
+/// - Per-step numeric validation in debug mode
+/// - UX feedback (showing assumption types to users)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SoundnessLabel {
+    /// Equivalence for all values in the implicit domain of the input.
+    /// The transformation preserves mathematical identity.
+    /// Example: x + 0 → x, sin²(x) + cos²(x) → 1
+    #[default]
+    Equivalence,
+
+    /// Equivalence, but requires additional conditions (typically RequiresIntroduced).
+    /// Example: log(ab) → log(a) + log(b) (requires a > 0, b > 0)
+    EquivalenceUnderIntroducedRequires,
+
+    /// The rule chooses one branch of a multi-valued expression (principal branch).
+    /// Example: sqrt(x²) → x (choosing positive root), arcsin(sin(x)) → x
+    BranchChoice,
+
+    /// Extends the domain (R → C, or similar).
+    /// Example: (-1)^(1/2) → i (moving from real to complex)
+    DomainExtension,
+
+    /// Heuristic: aims to "improve" the expression but doesn't guarantee
+    /// global equivalence. Used for simplification strategies.
+    /// Example: auto-expand with budget decisions
+    Heuristic,
+}
+
+// =============================================================================
 // ChainedRewrite: A subsequent transformation following the main Rewrite
 // =============================================================================
 
@@ -337,6 +375,13 @@ pub trait SimpleRule {
     fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
         crate::solve_safety::SolveSafety::Always
     }
+
+    /// Mathematical soundness classification for this rule.
+    /// Default: Equivalence (preserves mathematical identity).
+    /// Override for rules that introduce requirements, choose branches, etc.
+    fn soundness(&self) -> SoundnessLabel {
+        SoundnessLabel::Equivalence
+    }
 }
 
 /// Main Rule trait with parent-context awareness
@@ -386,6 +431,12 @@ pub trait Rule {
     fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
         crate::solve_safety::SolveSafety::Always
     }
+
+    /// Mathematical soundness classification for this rule.
+    /// Default: Equivalence (preserves mathematical identity).
+    fn soundness(&self) -> SoundnessLabel {
+        SoundnessLabel::Equivalence
+    }
 }
 
 /// Auto-implement Rule for any SimpleRule
@@ -427,5 +478,9 @@ impl<T: SimpleRule> Rule for T {
 
     fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
         SimpleRule::solve_safety(self)
+    }
+
+    fn soundness(&self) -> SoundnessLabel {
+        SimpleRule::soundness(self)
     }
 }

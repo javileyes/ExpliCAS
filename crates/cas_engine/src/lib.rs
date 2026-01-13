@@ -101,7 +101,7 @@ pub use phase::{
     SimplifyPhase,
 };
 pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
-pub use rule::Rule;
+pub use rule::{Rule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
