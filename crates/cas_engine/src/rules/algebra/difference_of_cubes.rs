@@ -260,12 +260,30 @@ define_rule!(
             let cbrt_x = ctx.add(Expr::Pow(base_x, one_third));
             let b_expr = ctx.add(Expr::Number(b_val.clone()));
             let neg_b = ctx.add(Expr::Neg(b_expr));
-            let result = ctx.add(Expr::Add(cbrt_x, neg_b));
+            let factor = ctx.add(Expr::Add(cbrt_x, neg_b)); // x^(1/3) - b
 
-            return Some(Rewrite::new(result).desc(format!(
-                "Factor difference of cubes x - {} = (x^(1/3) - {})·(denominator), then cancel",
-                cube_val, b_val
-            )));
+            // === ChainedRewrite Pattern: Factor → Cancel ===
+            // Step 1 (main): Build intermediate form ((x^(1/3) - b)·den) / den
+            let factored_num = ctx.add(Expr::Mul(factor, den));
+            let intermediate = ctx.add(Expr::Div(factored_num, den));
+
+            use crate::implicit_domain::ImplicitCondition;
+            use crate::rule::ChainedRewrite;
+
+            let factor_rw = Rewrite::new(intermediate)
+                .desc(format!(
+                    "Factor difference of cubes: x - {} = (x^(1/3) - {})·(x^(2/3) + {}·x^(1/3) + {})",
+                    cube_val, b_val, b_val, &b_val * &b_val
+                ))
+                .local(num, factored_num)
+                .requires(ImplicitCondition::NonZero(den));
+
+            // Step 2 (chained): Cancel common factor - reduce to final result
+            let cancel = ChainedRewrite::new(factor)
+                .desc("Cancel common factor")
+                .local(intermediate, factor);
+
+            return Some(factor_rw.chain(cancel));
         }
         None
     }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{\sin(x) + \sin(3\cdot x)}{\cos(x) + \cos(3\cdot x)}</title>
+    <title>CAS Steps: \frac{x - 27}{9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}}}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,100 +451,58 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{\sin(x) + \sin(3\cdot x)}{\cos(x) + \cos(3\cdot x)}\]
+            \[\frac{x - 27}{9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}}}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Sum-to-Product Quotient</h3>
+                    <h3>Cancel Cube Root Difference</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{\sin(x)}} + {\color{red}{\sin(3\cdot x)}}}{\cos(x) + \cos(3\cdot x)}\]
+                        \[\frac{{\color{red}{x}} - {\color{red}{27}}}{9 + {{\color{red}{x}}}^{\frac{2}{3}} + 3\cdot {{\color{red}{x}}}^{\frac{1}{3}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)}\)</div>
+                        <div class="rule-name">\(\text{Factor difference of cubes: x - 27 = (x^(1/3) - 3)·(x^(2/3) + 3·x^(1/3) + 9)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\sin(x) + \sin(3\cdot x)}} \rightarrow {\color{green}{2\cdot \sin(2\cdot x)\cdot \cos(x)}}\]
+                            \[{\color{red}{x - 27}} \rightarrow {\color{green}{({x}^{\frac{1}{3}} - 3)\cdot (9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}})}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{{\color{green}{2\cdot \sin(2\cdot x)\cdot \cos(x)}}}{\cos(x) + \cos(3\cdot x)}\]
+                        \[\frac{{\color{green}{({x}^{\frac{1}{3}} - 3)\cdot (9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}})}}}{9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}}}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Sum-to-Product Quotient</h3>
+                    <h3>Cancel Cube Root Difference</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{2\cdot \sin(2\cdot x)\cdot {\color{red}{\cos(x)}}}{{\color{red}{\cos(x)}} + {\color{red}{\cos(3\cdot x)}}}\]
+                        \[{\color{red}{\frac{({x}^{\frac{1}{3}} - 3)\cdot (9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}})}{9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}}}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)}\)</div>
+                        <div class="rule-name">\(\text{Cancel common factor}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\cos(x) + \cos(3\cdot x)}} \rightarrow {\color{green}{2\cdot \cos(2\cdot x)\cdot \cos(x)}}\]
+                            \[{\color{red}{\frac{({x}^{\frac{1}{3}} - 3)\cdot (9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}})}{9 + {x}^{\frac{2}{3}} + 3\cdot {x}^{\frac{1}{3}}}}} \rightarrow {\color{green}{{x}^{\frac{1}{3}} - 3}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{2\cdot \sin(2\cdot x)\cdot \cos(x)}{{\color{green}{2\cdot \cos(2\cdot x)\cdot \cos(x)}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Sum-to-Product Quotient</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{2\cdot \sin(2\cdot x)\cdot \cos(x)}{2\cdot \cos(2\cdot x)\cdot \cos(x)}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel common factors 2 and cos(half_diff)}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{2\cdot \sin(2\cdot x)\cdot \cos(x)}{2\cdot \cos(2\cdot x)\cdot \cos(x)}}} \rightarrow {\color{green}{\frac{\sin(2\cdot x)}{\cos(2\cdot x)}}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{\sin(2\cdot x)}{\cos(2\cdot x)}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Trig Quotient</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{\sin(2\cdot x)}{\cos(2\cdot x)}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{sin(x)/cos(x) → tan(x)}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{\sin(2\cdot x)}{\cos(2\cdot x)}}} \rightarrow {\color{green}{\tan(2\cdot x)}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\tan(2\cdot x)}}\]
+                        \[{\color{green}{{x}^{\frac{1}{3}} - 3}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[\tan(2\cdot x)\]
+            \[{x}^{\frac{1}{3}} - 3\]
         </div>
         <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> cos(x) + cos(3·x) ≠ 0
+            <strong>ℹ️ Requires:</strong> 9 + x^(2 / 3) + 3·x^(1 / 3) ≠ 0, 3 ≠ 0
         </div>
     </div>
     <footer>
