@@ -499,48 +499,6 @@
             <div class="step">
                 <div class="step-number">3</div>
                 <div class="step-content">
-                    <h3>Combine Constants</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{x}^{4} + 4\cdot {x}^{3} + 4\cdot x + 6\cdot {x}^{2} + 1 - (1 + {\color{red}{4\cdot x\cdot -1}} + 4\cdot {x}^{3}\cdot -1 + 6\cdot {x}^{2}\cdot {(-1)}^{2} + {x}^{4})}{8\cdot x + 8\cdot {x}^{3}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine nested constants: -1 * 4}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{-1\cdot 4\cdot x}} \rightarrow {\color{green}{-4\cdot x}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{{x}^{4} + 4\cdot {x}^{3} + 4\cdot x + 6\cdot {x}^{2} + 1 - (1 - {\color{green}{4\cdot x}} + 4\cdot {x}^{3}\cdot -1 + 6\cdot {x}^{2}\cdot {(-1)}^{2} + {x}^{4})}{8\cdot x + 8\cdot {x}^{3}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Combine Constants</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{x}^{4} + 4\cdot {x}^{3} + 4\cdot x + 6\cdot {x}^{2} + 1 - (1 - 4\cdot x + {\color{red}{4\cdot {x}^{3}\cdot -1}} + 6\cdot {x}^{2}\cdot {(-1)}^{2} + {x}^{4})}{8\cdot x + 8\cdot {x}^{3}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine nested constants: -1 * 4}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{-1\cdot 4\cdot {x}^{3}}} \rightarrow {\color{green}{-4\cdot {x}^{3}}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{{x}^{4} + 4\cdot {x}^{3} + 4\cdot x + 6\cdot {x}^{2} + 1 - (1 - 4\cdot x - {\color{green}{4\cdot {x}^{3}}} + 6\cdot {x}^{2}\cdot {(-1)}^{2} + {x}^{4})}{8\cdot x + 8\cdot {x}^{3}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
                     <h3>Combine Like Terms</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
@@ -560,7 +518,7 @@
                 </div>
             </div>
             <div class="step">
-                <div class="step-number">6</div>
+                <div class="step-number">4</div>
                 <div class="step-content">
                     <h3>Combine Like Terms</h3>
                     <div class="math-expr before">
@@ -581,7 +539,7 @@
                 </div>
             </div>
             <div class="step">
-                <div class="step-number">7</div>
+                <div class="step-number">5</div>
                 <div class="step-content">
                     <h3>Cancel Identical Numerator/Denominator</h3>
                     <div class="math-expr before">
