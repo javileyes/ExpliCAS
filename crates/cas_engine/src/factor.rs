@@ -212,24 +212,26 @@ pub fn factor_sophie_germain(ctx: &mut Context, expr: ExprId) -> Option<ExprId> 
     let (a, b_val) = try_match(ctx, left, right).or_else(|| try_match(ctx, right, left))?;
 
     // Now build: (a² + 2ab + 2b²)(a² - 2ab + 2b²)
-    let b = ctx.num(b_val);
+    // V2.14.33: Pre-compute numeric values to produce simplified output
+    // e.g., for b=2: b²=4, 2b²=8, 2b=4 → (x²+4x+8)(x²-4x+8)
+    let b_squared = b_val * b_val; // e.g., 4
+    let two_b_squared = 2 * b_squared; // e.g., 8
+    let two_b = 2 * b_val; // e.g., 4
+
     let two = ctx.num(2);
 
     // a²
     let a_sq = ctx.add(Expr::Pow(a, two));
 
-    // b²
-    let b_sq = ctx.add(Expr::Pow(b, two));
+    // 2b² as a number
+    let two_b_sq_num = ctx.num(two_b_squared);
 
-    // 2b²
-    let two_b_sq = mul2_raw(ctx, two, b_sq);
-
-    // 2ab (split to avoid nested mutable borrow)
-    let ab = mul2_raw(ctx, a, b);
-    let two_ab = mul2_raw(ctx, two, ab);
+    // 2b·a = (2b)·a as coefficient * variable
+    let two_b_expr = ctx.num(two_b);
+    let two_ab = mul2_raw(ctx, two_b_expr, a);
 
     // a² + 2b² (common part)
-    let a_sq_plus_2b_sq = ctx.add(Expr::Add(a_sq, two_b_sq));
+    let a_sq_plus_2b_sq = ctx.add(Expr::Add(a_sq, two_b_sq_num));
 
     // First factor: a² + 2ab + 2b² = (a² + 2b²) + 2ab
     let factor1 = ctx.add(Expr::Add(a_sq_plus_2b_sq, two_ab));
