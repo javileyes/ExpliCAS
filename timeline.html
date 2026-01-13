@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \frac{{a}^{4} + {b}^{4} + {a}^{2}\cdot {b}^{2}}{{a}^{2} + {b}^{2} + a\cdot b}</title>
+    <title>CAS Steps: \frac{\sin(x) + \sin(3\cdot x)}{\cos(x) + \cos(3\cdot x)}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,58 +451,100 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\frac{{a}^{4} + {b}^{4} + {a}^{2}\cdot {b}^{2}}{{a}^{2} + {b}^{2} + a\cdot b}\]
+            \[\frac{\sin(x) + \sin(3\cdot x)}{\cos(x) + \cos(3\cdot x)}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
+                    <h3>Sum-to-Product Quotient</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{{a}^{4} + {b}^{4} + {a}^{2}\cdot {b}^{2}}{{a}^{2} + {b}^{2} + a\cdot b}}}\]
+                        \[\frac{{\color{red}{\sin(x)}} + {\color{red}{\sin(3\cdot x)}}}{\cos(x) + \cos(3\cdot x)}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Factor by GCD: a^2 + b^2 + a·b}\)</div>
+                        <div class="rule-name">\(\text{sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{{a}^{4} + {b}^{4} + {a}^{2}\cdot {b}^{2}}{{a}^{2} + {b}^{2} + a\cdot b}}} \rightarrow {\color{green}{\frac{({a}^{2} + {b}^{2} - (a\cdot b))\cdot ({a}^{2} + {b}^{2} + a\cdot b)}{{a}^{2} + {b}^{2} + a\cdot b}}}\]
+                            \[{\color{red}{\sin(x) + \sin(3\cdot x)}} \rightarrow {\color{green}{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{({b}^{2} - (a\cdot b) + {a}^{2})\cdot ({b}^{2} + a\cdot b + {a}^{2})}{{b}^{2} + a\cdot b + {a}^{2}}}}\]
+                        \[\frac{\sin(\frac{x + 3\cdot x}{2})}{\cos(\frac{x + 3\cdot x}{2})}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
+                    <h3>Sum-to-Product Quotient</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{({b}^{2} - (a\cdot b) + {a}^{2})\cdot ({b}^{2} + a\cdot b + {a}^{2})}{{b}^{2} + a\cdot b + {a}^{2}}}}\]
+                        \[{\color{red}{\frac{\sin(\frac{x + 3\cdot x}{2})}{\cos(\frac{x + 3\cdot x}{2})}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel common factor}\)</div>
+                        <div class="rule-name">\(\text{cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{({a}^{2} + {b}^{2} - (a\cdot b))\cdot ({a}^{2} + {b}^{2} + a\cdot b)}{{a}^{2} + {b}^{2} + a\cdot b}}} \rightarrow {\color{green}{{a}^{2} + {b}^{2} - (a\cdot b)}}\]
+                            \[{\color{red}{\cos(x) + \cos(3\cdot x)}} \rightarrow {\color{green}{2\cdot \cos(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{{b}^{2} - (a\cdot b) + {a}^{2}}}\]
+                        \[\frac{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}{{\color{green}{2\cdot \cos(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Sum-to-Product Quotient</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{\frac{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}{2\cdot \cos(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Cancel common factor 2·cos((A-B)/2)}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{\frac{2\cdot \sin(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}{2\cdot \cos(\frac{x + 3\cdot x}{2})\cdot \cos(\frac{x - (3\cdot x)}{2})}}} \rightarrow {\color{green}{\frac{\sin(\frac{x + 3\cdot x}{2})}{\cos(\frac{x + 3\cdot x}{2})}}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{\color{green}{\frac{\sin(\frac{x + 3\cdot x}{2})}{\cos(\frac{x + 3\cdot x}{2})}}}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Combine Like Terms</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{\sin(\frac{{\color{red}{x + 3\cdot x}}}{2})}{\cos(\frac{x + 3\cdot x}{2})}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Combine like terms}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{x + 3\cdot x}} \rightarrow {\color{green}{4\cdot x}}\]
+                        </div>
+                    </div>
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[\frac{\sin(\frac{{\color{green}{4\cdot x}}}{2})}{\cos(\frac{x + 3\cdot x}{2})}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[{a}^{2} + {b}^{2} - (a\cdot b)\]
+            \[\frac{\sin(2\cdot x)}{\cos(2\cdot x)}\]
         </div>
         <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> a^2 + b^2 + a·b ≠ 0
+            <strong>ℹ️ Requires:</strong> cos(x) + cos(3·x) ≠ 0
         </div>
     </div>
     <footer>

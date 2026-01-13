@@ -1502,9 +1502,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // NOTE: We intentionally do NOT propagate implicit_domain here.
                         // Doing so would trigger check_analytic_expansion gates that would
                         // block valid simplifications like ln(exp(x)) → x in Strict mode.
-                        // Build ancestor chain from stack
+                        // Build ancestor chain from stack (for Div tracking)
                         for &ancestor in &self.ancestor_stack {
-                            ctx = ctx.extend(ancestor);
+                            ctx = ctx.extend_with_div_check(ancestor, self.context);
                         }
                         ctx
                     };
@@ -1770,11 +1770,45 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     continue;
                 }
 
-                // Apply rule with initial_parent_ctx which contains pattern_marks
-                // CRITICAL: Must use initial_parent_ctx for pattern-aware guards (like AngleIdentityRule)
-                if let Some(mut rewrite) =
-                    rule.apply(self.context, expr_id, &self.initial_parent_ctx)
-                {
+                // Apply rule with parent_ctx containing ancestorsfrom traversal stack
+                // V2.14.27: Update to use full parent_ctx with ancestors for Div tracking guards
+                let parent_ctx = {
+                    let mut ctx = crate::parent_context::ParentContext::root();
+                    // Copy pattern marks from initial context
+                    if let Some(marks) = self.initial_parent_ctx.pattern_marks() {
+                        ctx = crate::parent_context::ParentContext::with_marks(marks.clone());
+                    }
+                    // Copy other settings from initial context
+                    if self.initial_parent_ctx.is_expand_mode() {
+                        ctx = ctx.with_expand_mode_flag(true);
+                    }
+                    if self.initial_parent_ctx.is_auto_expand() {
+                        ctx = ctx.with_auto_expand_flag(
+                            true,
+                            self.initial_parent_ctx.auto_expand_budget().cloned(),
+                        );
+                    }
+                    ctx = ctx.with_domain_mode(self.initial_parent_ctx.domain_mode());
+                    ctx = ctx.with_inv_trig(self.initial_parent_ctx.inv_trig_policy());
+                    ctx = ctx.with_value_domain(self.initial_parent_ctx.value_domain());
+                    ctx = ctx.with_goal(self.initial_parent_ctx.goal());
+                    if let Some(root) = self.initial_parent_ctx.root_expr() {
+                        ctx = ctx.with_root_expr_only(root);
+                    }
+                    // V2.14.27: Propagate context_mode and simplify_purpose for Solve mode blocking
+                    ctx = ctx.with_context_mode(self.initial_parent_ctx.context_mode());
+                    ctx = ctx.with_simplify_purpose(self.initial_parent_ctx.simplify_purpose());
+                    // V2.14.27: Propagate implicit_domain for domain-aware simplifications
+                    // This is needed for sqrt(x)^2 → x in Generic mode
+                    ctx = ctx
+                        .with_implicit_domain(self.initial_parent_ctx.implicit_domain().cloned());
+                    // Build ancestor chain from stack (for Div tracking)
+                    for &ancestor in &self.ancestor_stack {
+                        ctx = ctx.extend_with_div_check(ancestor, self.context);
+                    }
+                    ctx
+                };
+                if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
                     // Fast path: if rewrite produces identical ExprId, skip entirely
                     if rewrite.new_expr == expr_id {
                         continue;

@@ -32,6 +32,8 @@ pub struct ParentContext {
     pub(crate) context_mode: crate::options::ContextMode,
     /// Purpose of simplification (Eval, SolvePrepass, SolveTactic)
     pub(crate) simplify_purpose: crate::solve_safety::SimplifyPurpose,
+    /// Count of Div ancestors - used to guard trig expansions in quotients
+    pub(crate) div_ancestor_count: usize,
 }
 
 impl ParentContext {
@@ -52,6 +54,7 @@ impl ParentContext {
             implicit_domain: None,
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            div_ancestor_count: 0,
         }
     }
 
@@ -72,6 +75,7 @@ impl ParentContext {
             implicit_domain: None,
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            div_ancestor_count: 0,
         }
     }
 
@@ -92,6 +96,7 @@ impl ParentContext {
             implicit_domain: None,
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            div_ancestor_count: 0,
         }
     }
 
@@ -115,6 +120,7 @@ impl ParentContext {
             implicit_domain: None,
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            div_ancestor_count: 0,
         }
     }
 
@@ -138,6 +144,7 @@ impl ParentContext {
             implicit_domain: self.implicit_domain.clone(),
             context_mode: self.context_mode,
             simplify_purpose: self.simplify_purpose,
+            div_ancestor_count: self.div_ancestor_count,
         }
     }
 
@@ -356,6 +363,46 @@ impl ParentContext {
                 .any(|id| marks.is_auto_expand_context(*id))
         } else {
             false
+        }
+    }
+
+    /// Check if we're inside a Div (any ancestor is Expr::Div).
+    /// Used to prevent trig expansions like sin(2x)->2sin(x)cos(x) inside quotients.
+    pub fn is_inside_division(&self) -> bool {
+        self.div_ancestor_count > 0
+    }
+
+    /// Extend context with a new parent, checking if it's a Div node.
+    /// Use this when you have access to Context to properly track Div ancestors.
+    pub fn extend_with_div_check(&self, parent_id: ExprId, ctx: &Context) -> Self {
+        use cas_ast::Expr;
+
+        let mut new_ancestors = self.ancestors.clone();
+        new_ancestors.push(parent_id);
+
+        // Check if the new parent is a Div
+        let is_div = matches!(ctx.get(parent_id), Expr::Div(_, _));
+
+        Self {
+            ancestors: new_ancestors,
+            pattern_marks: self.pattern_marks.clone(),
+            expand_mode: self.expand_mode,
+            auto_expand: self.auto_expand,
+            auto_expand_budget: self.auto_expand_budget,
+            domain_mode: self.domain_mode,
+            inv_trig: self.inv_trig,
+            value_domain: self.value_domain,
+            branch: self.branch,
+            goal: self.goal,
+            root_expr: self.root_expr,
+            implicit_domain: self.implicit_domain.clone(),
+            context_mode: self.context_mode,
+            simplify_purpose: self.simplify_purpose,
+            div_ancestor_count: if is_div {
+                self.div_ancestor_count + 1
+            } else {
+                self.div_ancestor_count
+            },
         }
     }
 }

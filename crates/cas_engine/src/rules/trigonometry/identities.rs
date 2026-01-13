@@ -1146,41 +1146,56 @@ define_rule!(
     }
 );
 
-define_rule!(DoubleAngleRule, "Double Angle Identity", |ctx, expr| {
-    if let Expr::Function(name, args) = ctx.get(expr) {
-        if args.len() == 1 {
-            // Check if arg is 2*x or x*2
-            // We need to match "2 * x"
-            if let Some(inner_var) = extract_double_angle_arg(ctx, args[0]) {
-                match name.as_str() {
-                    "sin" => {
-                        // sin(2x) -> 2sin(x)cos(x)
-                        let two = ctx.num(2);
-                        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
-                        let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
-                        let sin_cos = smart_mul(ctx, sin_x, cos_x);
-                        let new_expr = smart_mul(ctx, two, sin_cos);
-                        return Some(Rewrite::new(new_expr).desc("sin(2x) -> 2sin(x)cos(x)"));
-                    }
-                    "cos" => {
-                        // cos(2x) -> cos^2(x) - sin^2(x)
-                        let two = ctx.num(2);
-                        let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
-                        let cos2 = ctx.add(Expr::Pow(cos_x, two));
+define_rule!(
+    DoubleAngleRule,
+    "Double Angle Identity",
+    |ctx, expr, parent_ctx| {
+        // GUARD: Don't expand double angle inside a Div context
+        // This prevents sin(2x)/cos(2x) from being "polinomized" to a worse form.
+        // Expansion should only happen when it helps simplification, not in canonical quotients.
+        if parent_ctx
+            .has_ancestor_matching(ctx, |c, id| matches!(c.get(id), cas_ast::Expr::Div(_, _)))
+        {
+            return None;
+        }
 
-                        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
-                        let sin2 = ctx.add(Expr::Pow(sin_x, two));
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if args.len() == 1 {
+                // Check if arg is 2*x or x*2
+                // We need to match "2 * x"
+                if let Some(inner_var) = extract_double_angle_arg(ctx, args[0]) {
+                    match name.as_str() {
+                        "sin" => {
+                            // sin(2x) -> 2sin(x)cos(x)
+                            let two = ctx.num(2);
+                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+                            let sin_cos = smart_mul(ctx, sin_x, cos_x);
+                            let new_expr = smart_mul(ctx, two, sin_cos);
+                            return Some(Rewrite::new(new_expr).desc("sin(2x) -> 2sin(x)cos(x)"));
+                        }
+                        "cos" => {
+                            // cos(2x) -> cos^2(x) - sin^2(x)
+                            let two = ctx.num(2);
+                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+                            let cos2 = ctx.add(Expr::Pow(cos_x, two));
 
-                        let new_expr = ctx.add(Expr::Sub(cos2, sin2));
-                        return Some(Rewrite::new(new_expr).desc("cos(2x) -> cos^2(x) - sin^2(x)"));
+                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+                            let sin2 = ctx.add(Expr::Pow(sin_x, two));
+
+                            let new_expr = ctx.add(Expr::Sub(cos2, sin2));
+                            return Some(
+                                Rewrite::new(new_expr).desc("cos(2x) -> cos^2(x) - sin^2(x)"),
+                            );
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
         }
+        None
     }
-    None
-});
+);
 
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
 // This is a performance optimization to avoid recursive expansion via double-angle rules.
