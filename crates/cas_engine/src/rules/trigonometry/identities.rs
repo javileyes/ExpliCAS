@@ -1207,24 +1207,30 @@ define_rule!(
         let cos_half_diff = ctx.add(Expr::Function("cos".to_string(), vec![half_diff]));
 
         // Intermediate numerator: 2·sin(avg)·cos(half_diff)
-        let sin_avg_2 = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
-        let num_product = smart_mul(ctx, sin_avg_2, cos_half_diff);
+        let sin_avg_for_num = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
+        let num_product = smart_mul(ctx, sin_avg_for_num, cos_half_diff);
         let intermediate_num = smart_mul(ctx, two, num_product);
 
         // Intermediate denominator: 2·cos(avg)·cos(half_diff)
         let two_2 = ctx.num(2);
-        let cos_avg_2 = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
+        let cos_avg_for_den = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
         let cos_half_diff_2 = ctx.add(Expr::Function("cos".to_string(), vec![half_diff]));
-        let den_product = smart_mul(ctx, cos_avg_2, cos_half_diff_2);
+        let den_product = smart_mul(ctx, cos_avg_for_den, cos_half_diff_2);
         let intermediate_den = smart_mul(ctx, two_2, den_product);
 
-        // State after step 2: (2·sin(avg)·cos(half_diff)) / (2·cos(avg)·cos(half_diff))
+        // STATE AFTER STEP 1: numerator transformed, denominator original
+        // This is the correct intermediate: 2·sin(avg)·cos(half_diff) / (cos(A)+cos(B))
+        let state_after_step1 = ctx.add(Expr::Div(intermediate_num, den_id));
+
+        // STATE AFTER STEP 2: both numerator and denominator transformed
+        // (2·sin(avg)·cos(half_diff)) / (2·cos(avg)·cos(half_diff))
         let state_after_step2 = ctx.add(Expr::Div(intermediate_num, intermediate_den));
 
         // Build rewrite with chained steps for didactic display
+        // CRITICAL: Main Rewrite produces state_after_step1, not final_result!
         use crate::rule::ChainedRewrite;
 
-        let rewrite = Rewrite::new(final_result)
+        let rewrite = Rewrite::new(state_after_step1)
             .desc("sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)")
             .local(num_id, intermediate_num)
             .chain(
