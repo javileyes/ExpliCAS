@@ -92,8 +92,18 @@ pub enum GcdMode {
     Modp,
 }
 
+/// Goal/context for GCD computation - determines allowed methods
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GcdGoal {
+    /// User explicitly asked for GCD (full pipeline allowed including modp)
+    UserPolyGcd,
+    /// Simplifier canceling fractions (safe methods only: Structural → Exact)
+    /// Modp is BLOCKED for soundness - fraction cancellation must be deterministic
+    CancelFraction,
+}
+
 /// Parse GcdMode from expression (Variable token)
-fn parse_gcd_mode(ctx: &Context, expr: ExprId) -> GcdMode {
+pub fn parse_gcd_mode(ctx: &Context, expr: ExprId) -> GcdMode {
     if let Expr::Variable(s) = ctx.get(expr) {
         match s.to_lowercase().as_str() {
             "auto" => GcdMode::Auto,
@@ -424,10 +434,15 @@ fn poly_gcd_structural(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
 // =============================================================================
 
 /// Compute GCD using specified mode, returning (result, description).
-fn compute_poly_gcd_unified(
+///
+/// The `goal` parameter determines allowed methods:
+/// - `UserPolyGcd`: Full pipeline (Structural → Exact → Modp)
+/// - `CancelFraction`: Safe methods only (Structural → Exact), modp BLOCKED
+pub fn compute_poly_gcd_unified(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
+    goal: GcdGoal,
     mode: GcdMode,
     modp_preset: Option<ZippelPreset>,
     modp_main_var: Option<usize>,
@@ -471,6 +486,16 @@ fn compute_poly_gcd_unified(
         }
 
         GcdMode::Modp => {
+            // V2.14.35: Block modp for CancelFraction goal (soundness)
+            if goal == GcdGoal::CancelFraction {
+                // Return gcd=1 (no cancellation) - this is safe
+                let one = ctx.num(1);
+                return (
+                    one,
+                    "poly_gcd(..., modp) [blocked for soundness]".to_string(),
+                );
+            }
+
             // Pre-evaluate arguments to handle expand(), factor(), etc.
             let eval_a = pre_evaluate_for_gcd(ctx, a);
             let eval_b = pre_evaluate_for_gcd(ctx, b);
@@ -500,10 +525,10 @@ fn compute_poly_gcd_unified(
                     );
                     (result, desc)
                 }
-                Err(e) => {
-                    eprintln!("[poly_gcd:modp] Error: {}", e);
+                Err(_e) => {
+                    // V2.14.35: Remove eprintln - just return gcd=1 on error
                     let one = ctx.num(1);
-                    (one, format!("poly_gcd(..., modp) [error: {}]", e))
+                    (one, "poly_gcd(..., modp) [error]".to_string())
                 }
             }
         }
@@ -553,10 +578,18 @@ fn compute_poly_gcd_unified(
                 return (exact_result.gcd, desc);
             }
 
+            // V2.14.35: Block modp fallback for CancelFraction goal (soundness)
+            if goal == GcdGoal::CancelFraction {
+                // Return gcd=1 (no cancellation) - safe, may miss some simplifications
+                let one = ctx.num(1);
+                return (
+                    one,
+                    "poly_gcd(..., auto) [exact exceeded budget, modp blocked for soundness]"
+                        .to_string(),
+                );
+            }
+
             // Fallback to modp (already have eval_a, eval_b)
-            eprintln!(
-                "[poly_gcd:auto] Exact exceeded budget, falling back to modp (probabilistic)"
-            );
             use crate::rules::algebra::gcd_modp::{compute_gcd_modp_with_options, DEFAULT_PRIME};
             let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
             match compute_gcd_modp_with_options(
@@ -582,10 +615,10 @@ fn compute_poly_gcd_unified(
                     );
                     (result, desc)
                 }
-                Err(e) => {
-                    eprintln!("[poly_gcd:auto:modp] Error: {}", e);
+                Err(_e) => {
+                    // V2.14.35: Remove eprintln - just return gcd=1 on error
                     let one = ctx.num(1);
-                    (one, format!("poly_gcd(..., auto) [modp error: {}]", e))
+                    (one, "poly_gcd(..., auto) [modp error]".to_string())
                 }
             }
         }
@@ -650,8 +683,15 @@ impl Rule for PolyGcdRule {
                     (None, None)
                 };
 
-                let (result, description) =
-                    compute_poly_gcd_unified(ctx, a, b, mode, modp_preset, modp_main_var);
+                let (result, description) = compute_poly_gcd_unified(
+                    ctx,
+                    a,
+                    b,
+                    GcdGoal::UserPolyGcd,
+                    mode,
+                    modp_preset,
+                    modp_main_var,
+                );
 
                 // Wrap result in __hold() to prevent further simplification
                 let held_gcd = ctx.add(Expr::Function("__hold".to_string(), vec![result]));

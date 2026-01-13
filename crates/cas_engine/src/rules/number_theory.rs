@@ -21,21 +21,57 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
 
     match name.as_str() {
         "gcd" => {
-            if args.len() == 2 {
-                let gcd_result = compute_gcd(ctx, args[0], args[1], false);
-                if let Some(res) = gcd_result.value {
-                    return Some(Rewrite::new(res).desc(format!(
-                        "gcd({}, {})",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[0]
-                        },
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[1]
-                        }
-                    )));
+            // V2.14.35: Unified GCD dispatcher
+            // gcd(int, int) -> integer GCD (Euclid)
+            // gcd(poly, poly [, mode]) -> polynomial GCD via router
+            if args.len() >= 2 {
+                // Try integer GCD first (if both are integers)
+                if let (Some(val_a), Some(val_b)) =
+                    (get_integer(ctx, args[0]), get_integer(ctx, args[1]))
+                {
+                    use num_integer::Integer;
+                    let gcd = val_a.gcd(&val_b);
+                    return Some(
+                        Rewrite::new(ctx.add(Expr::Number(BigRational::from_integer(gcd)))).desc(
+                            format!(
+                                "gcd({}, {})",
+                                cas_ast::DisplayExpr {
+                                    context: ctx,
+                                    id: args[0]
+                                },
+                                cas_ast::DisplayExpr {
+                                    context: ctx,
+                                    id: args[1]
+                                }
+                            ),
+                        ),
+                    );
                 }
+
+                // Not integers - delegate to poly_gcd router
+                use crate::rules::algebra::poly_gcd::{
+                    compute_poly_gcd_unified, parse_gcd_mode, GcdGoal, GcdMode,
+                };
+
+                let mode = if args.len() >= 3 {
+                    parse_gcd_mode(ctx, args[2])
+                } else {
+                    GcdMode::Structural
+                };
+
+                let (result, desc) = compute_poly_gcd_unified(
+                    ctx,
+                    args[0],
+                    args[1],
+                    GcdGoal::UserPolyGcd,
+                    mode,
+                    None, // modp_preset
+                    None, // modp_main_var
+                );
+
+                // Wrap in __hold to prevent further simplification
+                let held = ctx.add(Expr::Function("__hold".to_string(), vec![result]));
+                return Some(Rewrite::new(held).desc(desc));
             }
         }
         "lcm" => {
