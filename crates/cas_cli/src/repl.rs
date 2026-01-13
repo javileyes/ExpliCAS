@@ -4876,31 +4876,87 @@ impl Repl {
                 // Helper function for LaTeX to plain text
                 fn latex_to_text(s: &str) -> String {
                     let mut result = s.to_string();
-                    while let Some(start) = result.find("\\frac{") {
-                        let end_start = start + 6;
-                        if let Some(first_close) = result[end_start..].find('}') {
-                            let numer_end = end_start + first_close;
-                            let numer = &result[end_start..numer_end];
-                            if result.len() > numer_end + 1
-                                && result.chars().nth(numer_end + 1) == Some('{')
-                            {
-                                if let Some(second_close) = result[numer_end + 2..].find('}') {
-                                    let denom_end = numer_end + 2 + second_close;
-                                    let denom = &result[numer_end + 2..denom_end];
-                                    let replacement = format!("({}/{})", numer, denom);
-                                    result = format!(
-                                        "{}{}{}",
-                                        &result[..start],
-                                        replacement,
-                                        &result[denom_end + 1..]
-                                    );
-                                    continue;
+
+                    // Replace \cdot with · (multiplication dot)
+                    result = result.replace("\\cdot", " · ");
+
+                    // Replace \text{...} with content without wrapper
+                    while let Some(start) = result.find("\\text{") {
+                        if let Some(end) = result[start + 6..].find('}') {
+                            let content = &result[start + 6..start + 6 + end];
+                            result = format!(
+                                "{}{}{}",
+                                &result[..start],
+                                content,
+                                &result[start + 7 + end..]
+                            );
+                        } else {
+                            break;
+                        }
+                    }
+
+                    // Recursively replace \frac{num}{den} with (num/den)
+                    // Handle nested fractions by processing innermost first
+                    let mut iterations = 0;
+                    while result.contains("\\frac{") && iterations < 10 {
+                        iterations += 1;
+                        if let Some(start) = result.rfind("\\frac{") {
+                            let rest = &result[start + 5..]; // +5 = \frac, not including trailing {
+                                                             // Find matching braces for numerator
+                            if let Some((numer, numer_end)) = find_balanced_braces(rest) {
+                                let after_numer = &rest[numer_end + 1..];
+                                if after_numer.starts_with('{') {
+                                    if let Some((denom, denom_end)) =
+                                        find_balanced_braces(after_numer)
+                                    {
+                                        let total_end = start + 5 + numer_end + 1 + denom_end + 1;
+                                        let replacement = format!("({}/{})", numer, denom);
+                                        result = format!(
+                                            "{}{}{}",
+                                            &result[..start],
+                                            replacement,
+                                            &result[total_end..]
+                                        );
+                                        continue;
+                                    }
                                 }
                             }
                         }
                         break;
                     }
-                    result.replace("\\", "")
+
+                    // Clean remaining backslashes
+                    result = result.replace("\\", "");
+                    result
+                }
+
+                // Helper to find content within balanced braces
+                fn find_balanced_braces(s: &str) -> Option<(String, usize)> {
+                    let mut depth = 0;
+                    let mut content = String::new();
+                    for (i, c) in s.chars().enumerate() {
+                        match c {
+                            '{' => {
+                                if depth > 0 {
+                                    content.push(c);
+                                }
+                                depth += 1;
+                            }
+                            '}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return Some((content, i));
+                                }
+                                content.push(c);
+                            }
+                            _ => {
+                                if depth > 0 {
+                                    content.push(c);
+                                }
+                            }
+                        }
+                    }
+                    None
                 }
 
                 for sub in &standalone_substeps {
@@ -5019,38 +5075,91 @@ impl Repl {
                                     // Helper function for LaTeX to plain text
                                     fn latex_to_text(s: &str) -> String {
                                         let mut result = s.to_string();
-                                        while let Some(start) = result.find("\\frac{") {
-                                            let end_start = start + 6;
-                                            if let Some(first_close) = result[end_start..].find('}')
-                                            {
-                                                let numer_end = end_start + first_close;
-                                                let numer = &result[end_start..numer_end];
-                                                if result.len() > numer_end + 1
-                                                    && result.chars().nth(numer_end + 1)
-                                                        == Some('{')
+
+                                        // Replace \cdot with · (multiplication dot)
+                                        result = result.replace("\\cdot", " · ");
+
+                                        // Replace \text{...} with content without wrapper
+                                        while let Some(start) = result.find("\\text{") {
+                                            if let Some(end) = result[start + 6..].find('}') {
+                                                let content = &result[start + 6..start + 6 + end];
+                                                result = format!(
+                                                    "{}{}{}",
+                                                    &result[..start],
+                                                    content,
+                                                    &result[start + 7 + end..]
+                                                );
+                                            } else {
+                                                break;
+                                            }
+                                        }
+
+                                        // Recursively replace \frac{num}{den} with (num/den)
+                                        let mut iterations = 0;
+                                        while result.contains("\\frac{") && iterations < 10 {
+                                            iterations += 1;
+                                            if let Some(start) = result.rfind("\\frac{") {
+                                                let rest = &result[start + 5..]; // +5 = \frac
+                                                if let Some((numer, numer_end)) =
+                                                    find_brace_content(rest)
                                                 {
-                                                    if let Some(second_close) =
-                                                        result[numer_end + 2..].find('}')
-                                                    {
-                                                        let denom_end =
-                                                            numer_end + 2 + second_close;
-                                                        let denom =
-                                                            &result[numer_end + 2..denom_end];
-                                                        let replacement =
-                                                            format!("({}/{})", numer, denom);
-                                                        result = format!(
-                                                            "{}{}{}",
-                                                            &result[..start],
-                                                            replacement,
-                                                            &result[denom_end + 1..]
-                                                        );
-                                                        continue;
+                                                    let after_numer = &rest[numer_end + 1..];
+                                                    if after_numer.starts_with('{') {
+                                                        if let Some((denom, denom_end)) =
+                                                            find_brace_content(after_numer)
+                                                        {
+                                                            let total_end = start
+                                                                + 5
+                                                                + numer_end
+                                                                + 1
+                                                                + denom_end
+                                                                + 1;
+                                                            let replacement =
+                                                                format!("({}/{})", numer, denom);
+                                                            result = format!(
+                                                                "{}{}{}",
+                                                                &result[..start],
+                                                                replacement,
+                                                                &result[total_end..]
+                                                            );
+                                                            continue;
+                                                        }
                                                     }
                                                 }
                                             }
                                             break;
                                         }
-                                        result.replace("\\", "")
+
+                                        result = result.replace("\\", "");
+                                        result
+                                    }
+
+                                    fn find_brace_content(s: &str) -> Option<(String, usize)> {
+                                        let mut depth = 0;
+                                        let mut content = String::new();
+                                        for (i, c) in s.chars().enumerate() {
+                                            match c {
+                                                '{' => {
+                                                    if depth > 0 {
+                                                        content.push(c);
+                                                    }
+                                                    depth += 1;
+                                                }
+                                                '}' => {
+                                                    depth -= 1;
+                                                    if depth == 0 {
+                                                        return Some((content, i));
+                                                    }
+                                                    content.push(c);
+                                                }
+                                                _ => {
+                                                    if depth > 0 {
+                                                        content.push(c);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        None
                                     }
 
                                     // Categorize sub-steps
