@@ -430,7 +430,7 @@ define_rule!(
     None
 });
 
-define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", |ctx, expr| {
+define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {
         // Delegate literal integer power to canonical const_eval helper
