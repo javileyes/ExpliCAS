@@ -28,7 +28,14 @@ pub use gcd_modp::*;
 pub mod poly_arith_modp;
 pub use poly_arith_modp::*;
 
+pub mod difference_of_cubes;
+pub use difference_of_cubes::*;
+
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // Pre-order: Cancel cube root difference pattern BEFORE GCD/fraction rules
+    // (x - b³) / (x^(2/3) + b·x^(1/3) + b²) → x^(1/3) - b
+    simplifier.add_rule(Box::new(CancelCubeRootDifferenceRule));
+
     // Step 2 of didactic expansion: Cancel P/P → 1 (must fire after expansion rules)
     simplifier.add_rule(Box::new(CancelIdenticalFractionRule));
     // Step 2 variant: Cancel P^n/P → P^(n-1) (for perfect squares and similar)
