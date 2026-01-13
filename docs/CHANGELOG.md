@@ -5,6 +5,38 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.30] - 2026-01-13 - Always-On Cycle Defense
+
+### Added
+
+- **Always-On Cycle Detection**: Cycle detection now runs in all modes, not just "health mode"
+  - Removed health-mode guard from `LocalSimplificationTransformer`
+  - Detects ping-pong patterns (A↔B) and self-loops in any phase
+
+- **Per-Phase Reset**: `CycleDetector` resets when `SimplifyPhase` changes
+  - Prevents false positives across phase boundaries
+  - New field `cycle_phase: Option<SimplifyPhase>` tracks active phase
+
+- **Blocklist for Cycle Prevention**: `HashSet<(u64, String)>` tracks `(fingerprint, rule_name)` pairs
+  - Prevents re-entry into states known to cause cycles
+  - Persists across phases (conservative approach)
+
+- **BlockedHint Emission**: On first cycle detection, emits pedagogical hint
+  - Suggestion: "cycle detected; consider disabling heuristic rules or tightening budget"
+  - Deduplicated by (fingerprint, rule) - only one hint per pattern
+
+- **Regression Tests** (`cycle_defense_tests.rs`):
+  - `test_cycle_defense_fractional_powers_terminates`
+  - `test_cycle_defense_terminates_not_hangs`
+  - `test_cycle_detection_phase_reset`
+
+### Changed
+
+- `BlockedHint.rule` changed from `&'static str` to `String` to support dynamic rule names
+- Updated affected files: `domain.rs`, `logarithms.rs`, `isolation.rs`, `repl.rs`
+
+---
+
 ## [2.1.0] - 2026-01-05 - Education-First Polish
 
 ### Added

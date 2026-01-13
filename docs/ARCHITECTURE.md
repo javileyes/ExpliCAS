@@ -3187,7 +3187,7 @@ profiler.top_applied_for_phase(Transform, 3)     // Top 3 rules in Transform
 
 **Zero overhead by default:** `count_all_nodes()` and fingerprinting only run if `health_enabled == true`.
 
-#### Cycle Detection (H2) ★★★ (2025-12)
+#### Cycle Detection (H2) ★★★ (2025-12, Updated 2026-01)
 
 Detects "ping-pong" patterns where rules A↔B undo each other:
 
@@ -3212,6 +3212,41 @@ pub struct CycleInfo {
 - Period 1: `current == previous` (self-loop)
 - Period 2: `current == 2_back` and `previous == 3_back`
 - Period k: Pattern repeats for k positions
+
+##### Always-On Cycle Defense (V2.14.30) ★★★
+
+**Prior behavior:** Cycle detection only ran in "health mode" (debugging).
+
+**New behavior:** Cycle detection runs always, with three key enhancements:
+
+1. **Per-phase reset:** `CycleDetector` resets when `SimplifyPhase` changes, preventing false positives across phase boundaries.
+
+2. **Blocklist:** `blocked_rules: HashSet<(u64, String)>` tracks `(fingerprint, rule_name)` pairs to prevent re-entry into cyclic states.
+
+3. **BlockedHint emission:** On first cycle detection, emits pedagogical hint with suggestion.
+
+```rust
+// In LocalSimplificationTransformer
+cycle_phase: Option<SimplifyPhase>,      // Track phase for reset
+blocked_rules: HashSet<(u64, String)>,   // Blocklist
+
+// After each rewrite:
+if self.cycle_phase != Some(self.current_phase) {
+    self.cycle_detector = Some(CycleDetector::new(self.current_phase));
+    self.cycle_phase = Some(self.current_phase);
+    self.fp_memo.clear();
+}
+
+let h = expr_fingerprint(ctx, expr_id, &mut self.fp_memo);
+if let Some(info) = self.cycle_detector.as_mut().unwrap().observe(h) {
+    if self.blocked_rules.insert((h, rule_name.to_string())) {
+        // Emit BlockedHint for user feedback
+        register_blocked_hint(BlockedHint { ... });
+    }
+    self.last_cycle = Some(info);
+    return expr_id;  // Stop phase early
+}
+```
 
 **When cycle detected:**
 - `PhaseStats.cycle = Some(CycleInfo)`
