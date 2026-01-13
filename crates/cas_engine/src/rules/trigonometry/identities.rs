@@ -1164,6 +1164,34 @@ fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -
     simplify_numeric_div(ctx, result)
 }
 
+/// Normalize an expression for even functions like cos.
+/// For even functions: f(-x) = f(x), so we can strip the negation.
+/// Returns the unwrapped inner expression if input is Neg(inner), else returns input.
+fn normalize_for_even_fn(ctx: &cas_ast::Context, expr: ExprId) -> ExprId {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+
+    // If expr is Neg(inner), return inner
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        return *inner;
+    }
+    // Also handle Mul(-1, x) or Mul(x, -1)
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        let minus_one = BigRational::from_integer(BigInt::from(-1));
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n == &minus_one {
+                return *r;
+            }
+        }
+        if let Expr::Number(n) = ctx.get(*r) {
+            if n == &minus_one {
+                return *l;
+            }
+        }
+    }
+    expr
+}
+
 /// Build avg = (A+B)/2, pre-simplifying sum for cleaner output
 /// This eliminates the need for a separate "Combine Like Terms" step
 fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
@@ -1267,7 +1295,12 @@ define_rule!(
 
         // Build intermediate states for didactic display
         let two = ctx.num(2);
-        let cos_half_diff = ctx.add(Expr::Function("cos".to_string(), vec![half_diff]));
+        // Normalize half_diff for cos (even function): cos(-x) = cos(x)
+        let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
+        let cos_half_diff = ctx.add(Expr::Function(
+            "cos".to_string(),
+            vec![half_diff_normalized],
+        ));
 
         // Intermediate numerator: 2·sin(avg)·cos(half_diff)
         let sin_avg_for_num = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
@@ -1277,7 +1310,11 @@ define_rule!(
         // Intermediate denominator: 2·cos(avg)·cos(half_diff)
         let two_2 = ctx.num(2);
         let cos_avg_for_den = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
-        let cos_half_diff_2 = ctx.add(Expr::Function("cos".to_string(), vec![half_diff]));
+        // Reuse normalized half_diff for cos_half_diff_2
+        let cos_half_diff_2 = ctx.add(Expr::Function(
+            "cos".to_string(),
+            vec![half_diff_normalized],
+        ));
         let den_product = smart_mul(ctx, cos_avg_for_den, cos_half_diff_2);
         let intermediate_den = smart_mul(ctx, two_2, den_product);
 
@@ -1303,7 +1340,7 @@ define_rule!(
             )
             .chain(
                 ChainedRewrite::new(final_result)
-                    .desc("Cancel common factor 2·cos((A-B)/2)")
+                    .desc("Cancel common factors 2 and cos(half_diff)")
                     .local(state_after_step2, final_result),
             );
 
