@@ -123,43 +123,6 @@ fn build_sum_without(
     }
 }
 
-/// Collect additive terms, handling Sub and Neg as sign inversions
-/// For example: Add(a, Sub(b, c)) → [a, b, -c]
-/// This allows inverse trig rules to see all terms in expressions like arctan(x) - pi/2
-fn collect_add_terms_with_sub(ctx: &mut Context, expr_id: ExprId) -> Vec<ExprId> {
-    let mut terms = Vec::new();
-    let mut stack: Vec<(ExprId, bool)> = vec![(expr_id, false)]; // (id, negate)
-
-    while let Some((id, neg)) = stack.pop() {
-        match ctx.get(id) {
-            Expr::Add(l, r) => {
-                stack.push((*r, neg));
-                stack.push((*l, neg));
-            }
-            Expr::Sub(l, r) => {
-                stack.push((*l, neg));
-                stack.push((*r, !neg)); // RHS is negated
-            }
-            Expr::Neg(inner) => {
-                stack.push((*inner, !neg)); // Flip sign
-            }
-            _ => {
-                if neg {
-                    // Avoid Neg(Neg(x)) by checking if id is already Neg
-                    match ctx.get(id) {
-                        Expr::Neg(inner) => terms.push(*inner), // --x => x
-                        _ => terms.push(ctx.add(Expr::Neg(id))),
-                    }
-                } else {
-                    terms.push(id);
-                }
-            }
-        }
-    }
-
-    terms
-}
-
 /// Combine optional base with new term
 fn combine_with_term(ctx: &mut Context, base: Option<ExprId>, new_term: ExprId) -> ExprId {
     match base {
@@ -421,7 +384,7 @@ define_rule!(
     Some(vec!["Add"]),
     |ctx, expr| {
         // Flatten Add tree to get all terms
-        let terms = collect_add_terms_with_sub(ctx, expr);
+        let terms = crate::helpers::flatten_add_sub_chain(ctx, expr);
 
         // Search for asin/acos pairs among all terms
         for i in 0..terms.len() {
@@ -515,7 +478,7 @@ impl crate::rule::Rule for InverseTrigAtanRule {
         }
 
         // Collect all additive terms (flattens nested Add nodes)
-        let terms = collect_add_terms_with_sub(ctx, expr);
+        let terms = crate::helpers::flatten_add_sub_chain(ctx, expr);
 
         // Need at least 2 terms to find a pair
         if terms.len() < 2 {
@@ -609,7 +572,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
         }
 
         // Collect all additive terms
-        let terms = collect_add_terms_with_sub(ctx, expr);
+        let terms = crate::helpers::flatten_add_sub_chain(ctx, expr);
 
         // Need at least 2 terms
         if terms.len() < 2 {

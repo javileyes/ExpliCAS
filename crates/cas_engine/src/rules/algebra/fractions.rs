@@ -1542,33 +1542,6 @@ fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     }
 }
 
-/// Check if expression contains inverse trig functions (arctan, arcsin, arccos, etc.)
-/// Used to let inverse trig identity rules fire before AddFractionsRule transforms the expression
-fn contains_inverse_trig(ctx: &Context, id: ExprId) -> bool {
-    match ctx.get(id) {
-        Expr::Function(name, _) => matches!(
-            name.as_str(),
-            "arctan"
-                | "atan"
-                | "arcsin"
-                | "asin"
-                | "arccos"
-                | "acos"
-                | "arcsec"
-                | "asec"
-                | "arccsc"
-                | "acsc"
-                | "arccot"
-                | "acot"
-        ),
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            contains_inverse_trig(ctx, *l) || contains_inverse_trig(ctx, *r)
-        }
-        Expr::Neg(e) | Expr::Pow(e, _) => contains_inverse_trig(ctx, *e),
-        _ => false,
-    }
-}
-
 define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
     use cas_ast::views::FractionParts;
 
@@ -1599,9 +1572,51 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
         return None;
     }
 
-    // Guard: Skip when inverse trig functions are involved
-    // Let inverse trig identity rules fire first (arctan(x) + arctan(1/x) = π/2, etc.)
-    if contains_inverse_trig(ctx, l) || contains_inverse_trig(ctx, r) {
+    // Structural guard: Skip combining when one side has functions and other is constant/π
+    // This lets inverse trig identity rules fire first (arctan(x) + arctan(1/x) = π/2, etc.)
+    // Case to block: arctan(1/3) - pi/2  (function expr + constant fraction)
+    // Cases to allow: 1 + 1/2, 1/2 + 1/3, x/2 + x/3, etc.
+
+    // Check if expression contains any function call (not purely algebraic)
+    fn contains_function(ctx: &Context, id: ExprId) -> bool {
+        match ctx.get(id) {
+            Expr::Function(_, _) => true,
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                contains_function(ctx, *l) || contains_function(ctx, *r)
+            }
+            Expr::Neg(e) | Expr::Pow(e, _) => contains_function(ctx, *e),
+            _ => false,
+        }
+    }
+
+    // Check if expression is a constant (no variables, no functions)
+    // Covers: Number, pi, e, Neg(const), Mul(const,const), Div(const,const), Pow(const,int)
+    fn is_constant(ctx: &Context, id: ExprId) -> bool {
+        match ctx.get(id) {
+            Expr::Number(_) | Expr::Constant(_) => true,
+            Expr::Neg(inner) => is_constant(ctx, *inner),
+            Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
+                is_constant(ctx, *l) && is_constant(ctx, *r)
+            }
+            Expr::Pow(base, exp) => is_constant(ctx, *base) && is_constant(ctx, *exp),
+            // Variables, functions, etc. are NOT constant
+            _ => false,
+        }
+    }
+
+    // Check if fraction n/d is purely constant (both n and d are constants)
+    fn is_constant_fraction(ctx: &Context, n: ExprId, d: ExprId) -> bool {
+        is_constant(ctx, n) && is_constant(ctx, d)
+    }
+
+    // Block case: function expr + constant fraction (like arctan(1/3) + pi/2)
+    let l_has_func = contains_function(ctx, l);
+    let r_has_func = contains_function(ctx, r);
+    let l_is_const_frac = is_frac1 && is_constant_fraction(ctx, n1, d1);
+    let r_is_const_frac = is_frac2 && is_constant_fraction(ctx, n2, d2);
+
+    // Skip if mixing function-containing with constant-fraction
+    if (l_has_func && r_is_const_frac) || (r_has_func && l_is_const_frac) {
         return None;
     }
 
