@@ -5,6 +5,48 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.36] - 2026-01-14 - GCD Router Unification
+
+### Added
+
+- **GcdGoal Enum**: Differentiates between interactive REPL usage and internal simplifier usage
+  - `UserPolyGcd`: Allows full pipeline (Structural → Exact → Modp)
+  - `CancelFraction`: Blocks modp methods, returns gcd=1 if budget exceeded (soundness guarantee)
+
+- **CancelPowersDivisionRule**: Ultra-light pre-order rule for `P^m / P^n` cancellation
+  - Handles all exponent cases: `m = n → 1`, `m > n → P^(m-n)`, `m < n → 1/P^(n-m)`
+  - Supports negative exponents: `P^(-2)/P^(-5) → P^3`
+  - Uses structural `compare_expr` (not expensive `poly_relation`)
+  - O(1) stack depth - prevents overflow on complex fractions
+
+- **Unified `gcd()` Command**: Single entry point for integer and polynomial GCD
+  - Auto-dispatches to Euclidean algorithm for integers
+  - Auto-dispatches to `poly_gcd` router for polynomials
+  - `help gcd` shows unified documentation
+
+- **Regression Tests** (`anti_catastrophe_tests.rs`):
+  - `test_power_cancel_equal_exponents`
+  - `test_power_cancel_smaller_numerator`
+  - `test_power_cancel_zero_numerator_exp`
+  - `test_power_cancel_negative_exponents`
+  - `test_identity_neutral_add_zero`
+
+### Fixed
+
+- **Stack Overflow in `((x+y)^10)/((x+y)^9)`**: New pre-order rule short-circuits before heavy fraction rules
+- **Identity Neutral Bug**: `(a+pi)^2 + 0` now produces same result as `(a+pi)^2`
+  - Root cause: `auto_expand_scan.rs` was counting literal `0` as "other terms"
+  - Fix: Filter `Number(0)` from `other_terms` before triggering auto-expand
+
+### Documentation
+
+- **POLY_GCD.md**: Extended with GCD Router Unification section (200+ lines)
+  - Pipeline diagrams by GcdGoal
+  - Usage examples for REPL and automatic fraction simplification
+  - API reference for `compute_poly_gcd_unified`
+
+---
+
 ## [2.14.30] - 2026-01-13 - Always-On Cycle Defense
 
 ### Added

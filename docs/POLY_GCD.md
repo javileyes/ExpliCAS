@@ -159,3 +159,241 @@ Result: 0   # GCD matches g
 | `poly_modp_conv.rs` | Expr ↔ MultiPolyModP conversion |
 | `expand.rs` | Full polynomial expansion |
 
+---
+
+# GCD Router Unification (V2.14.36) ★★★
+
+> **CRÍTICO**: Arquitectura unificada para GCD que diferencia entre uso **interactivo** (REPL) y uso **interno** (simplificador de fracciones).
+
+## Problema Original
+
+Antes de la unificación, existían dos caminos de GCD:
+
+1. **`poly_gcd(a, b)`** en REPL → podía usar Zippel/modp (probabilístico)
+2. **`SimplifyFractionRule`** → duplicaba lógica sin soundness labels
+
+**Riesgos**:
+- El simplificador de fracciones podía devolver resultados probabilísticos sin advertencia
+- Stack overflow en fracciones complejas como `((x+y)^10)/((x+y)^9)`
+- Código duplicado entre `gcd()` y `poly_gcd()`
+
+## Solución: GcdGoal Enum
+
+```rust
+/// Objetivo del cálculo GCD - determina qué métodos son seguros
+pub enum GcdGoal {
+    /// Usuario invoca gcd() en REPL - permite todo el pipeline
+    UserPolyGcd,
+    /// Uso interno para cancelar fracciones - solo métodos exactos
+    CancelFraction,
+}
+```
+
+### Pipeline por Goal
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      GCD Router                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  UserPolyGcd (REPL):                                         │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐                   │
+│  │Structural│───▶│  Exact  │───▶│  Modp   │ ✅ Allowed       │
+│  └─────────┘    └─────────┘    └─────────┘                   │
+│                                                              │
+│  CancelFraction (Internal):                                  │
+│  ┌─────────┐    ┌─────────┐                                  │
+│  │Structural│───▶│  Exact  │───▶ return gcd=1 ⛔ Modp blocked│
+│  └─────────┘    └─────────┘                                  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Ejemplos de Uso
+
+### 1. Comando `gcd()` en REPL (unificado)
+
+```txt
+cas> gcd(12, 18)
+6                                       # Enteros: algoritmo Euclidiano
+
+cas> gcd(x^2-1, x-1)
+x - 1                                   # Polinomios: auto-dispatch a poly_gcd
+
+cas> gcd(6*x^2 + 12*x, 9*x)
+3·x                                     # Content GCD + variable factor
+```
+
+### 2. Simplificación automática de fracciones
+
+```txt
+cas> ((x+y)^10)/((x+y)^9)
+Steps:
+1. Cancel: P^10/P^9 → P^1  [Cancel Same-Base Powers]
+Result: x + y
+
+cas> ((x+y)^10)/((x+y)^10)
+Steps:
+1. Cancel: P^10/P^10 → 1  [Cancel Same-Base Powers]
+Result: 1
+
+cas> ((x+y)^9)/((x+y)^10)
+Steps:
+1. Cancel: P^9/P^10 → 1/P  [Cancel Same-Base Powers]
+Result: 1/(x + y)
+```
+
+### 3. Exponentes negativos
+
+```txt
+cas> ((x+y)^(-2))/((x+y)^(-5))
+Steps:
+1. Cancel: P^-2/P^-5 → P^3  [Cancel Same-Base Powers]
+Result: (x + y)³
+```
+
+---
+
+## CancelPowersDivisionRule (Pre-Order Shallow)
+
+Regla ligera que intercepta `P^m / P^n` **antes** de las reglas pesadas de fracciones.
+
+### Características
+
+| Aspecto | Detalle |
+|---------|---------|
+| **Comparación de bases** | `compare_expr` (estructural, no poly_relation) |
+| **Casos manejados** | `m = n`, `m > n`, `m < n`, negativos |
+| **Stack depth** | O(1) - no recursión |
+| **Posición en pipeline** | PRE-ORDER (antes de `SimplifyFractionRule`) |
+
+### Código Resumido
+
+```rust
+define_rule!(
+    CancelPowersDivisionRule,
+    "Cancel Same-Base Powers",
+    |ctx, expr, parent_ctx| {
+        // Match Div(Pow(base1, m), Pow(base2, n))
+        let (num, den) = as_div(ctx, expr)?;
+        let (base1, exp1) = as_pow(ctx, num)?;
+        let (base2, exp2) = as_pow(ctx, den)?;
+        
+        // STRUCTURAL comparison (not poly_relation)
+        if compare_expr(ctx, base1, base2) != Ordering::Equal {
+            return None;
+        }
+        
+        let m = as_i64(ctx, exp1)?;
+        let n = as_i64(ctx, exp2)?;
+        let diff = m - n;
+        
+        // Build result: 1, P, P^k, 1/P, or 1/P^k
+        let result = match diff {
+            0 => ctx.num(1),
+            1 => base1,
+            -1 => ctx.add(Expr::Div(ctx.num(1), base1)),
+            d if d > 0 => ctx.add(Expr::Pow(base1, ctx.num(d))),
+            d => {
+                let pow = ctx.add(Expr::Pow(base1, ctx.num(-d)));
+                ctx.add(Expr::Div(ctx.num(1), pow))
+            }
+        };
+        
+        Some(Rewrite::new(result)
+            .desc(format!("Cancel: P^{}/P^{} → ...", m, n)))
+    }
+);
+```
+
+---
+
+## API Interna: compute_poly_gcd_unified
+
+Función central del router:
+
+```rust
+pub fn compute_poly_gcd_unified(
+    ctx: &mut Context,
+    a: ExprId,
+    b: ExprId,
+    goal: GcdGoal,        // ← Determina qué métodos son seguros
+    mode: GcdMode,        // ← Structural, Exact, Modp, Auto
+    preset: ZippelPreset,
+) -> GcdResult
+```
+
+### Comportamiento por Goal
+
+| Goal | Structural | Exact | Modp |
+|------|------------|-------|------|
+| `UserPolyGcd` | ✅ | ✅ | ✅ |
+| `CancelFraction` | ✅ | ✅ | ⛔ → gcd=1 |
+
+---
+
+## Shallow GCD Utilities (disponibles para futuro uso)
+
+Para casos donde se necesita cancelación ultra-rápida sin recursión:
+
+```rust
+/// GCD shallow para fracciones - O(1) stack depth
+pub fn gcd_shallow_for_fraction(
+    ctx: &mut Context, 
+    num: ExprId, 
+    den: ExprId
+) -> (ExprId, String)
+
+/// Comparación estructural 1-2 niveles
+fn expr_equal_shallow(ctx: &Context, a: ExprId, b: ExprId) -> bool
+```
+
+---
+
+## Identity Neutral Bug Fix (relacionado)
+
+Durante la implementación se descubrió un bug donde `e + 0` activaba auto-expand pero `e` solo no.
+
+**Root cause**: `auto_expand_scan.rs` contaba literales `0` como "otros términos".
+
+**Fix**: Filtrar `Number(0)` de `other_terms`:
+
+```rust
+let other_terms: Vec<ExprId> = other_terms
+    .into_iter()
+    .filter(|t| !matches!(ctx.get(*t), Expr::Number(n) if n.is_zero()))
+    .collect();
+```
+
+---
+
+## Test Coverage
+
+| Suite | Tests | Status |
+|-------|-------|--------|
+| `anti_catastrophe_tests` | 21 | ✅ |
+| `property_tests` | 19 | ✅ |
+| `poly_gcd_unified_tests` | 16 | ✅ |
+
+### Tests específicos añadidos
+
+```rust
+#[test] fn test_power_cancel_equal_exponents()     // P^n/P^n → 1
+#[test] fn test_power_cancel_smaller_numerator()   // P^9/P^10 → 1/P
+#[test] fn test_power_cancel_zero_numerator_exp()  // P^0/P^9 → 1/P^9
+#[test] fn test_power_cancel_negative_exponents()  // P^-2/P^-5 → P^3
+#[test] fn test_identity_neutral_add_zero()        // e+0 == e
+```
+
+---
+
+## Soundness Labels (PR-3 - TODO)
+
+Para futuras versiones, añadir etiquetas de soundness:
+
+```rust
+pub enum SoundnessLabel {
+    Equivalence,  // Structural/Exact: transformación exacta
+    Heuristic,    // Modp: probabilístico (correcto con alta probabilidad)
+}
+```
