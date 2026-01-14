@@ -263,6 +263,24 @@ pub trait LaTeXRenderer {
             }
         }
 
+        // V2.14.40: Absorb fractional coefficient into fraction for cleaner display
+        // Pattern: (1/n) * expr -> \frac{expr}{n}
+        // Pattern: (k/n) * expr -> \frac{k \cdot expr}{n} or just k/n * expr (simpler)
+        if let Expr::Number(n) = self.context().get(l) {
+            // Check if left is a simple fraction 1/n (numerator = 1, denominator > 1)
+            if !n.is_integer() && *n.numer() == 1.into() && *n.denom() > 1.into() {
+                let right_latex = self.expr_to_latex(r, false);
+                return format!("\\frac{{{}}}{{{}}}", right_latex, n.denom());
+            }
+        }
+        // Also check right side for (expr * 1/n) pattern
+        if let Expr::Number(n) = self.context().get(r) {
+            if !n.is_integer() && *n.numer() == 1.into() && *n.denom() > 1.into() {
+                let left_latex = self.expr_to_latex(l, false);
+                return format!("\\frac{{{}}}{{{}}}", left_latex, n.denom());
+            }
+        }
+
         let left = self.expr_to_latex_mul(l);
         let right = self.expr_to_latex_mul(r);
 
@@ -839,6 +857,22 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         if let Expr::Number(n) = self.context.get(r) {
             if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
                 return self.render_with_path(l, parent_needs_parens, &self.child_path(path, 0));
+            }
+        }
+
+        // V2.14.40: Absorb fractional coefficient into fraction for cleaner display
+        // Pattern: (1/n) * expr -> \frac{expr}{n}
+        if let Expr::Number(n) = self.context.get(l) {
+            if !n.is_integer() && *n.numer() == 1.into() && *n.denom() > 1.into() {
+                let right_latex = self.render_with_path(r, false, &self.child_path(path, 1));
+                return format!("\\frac{{{}}}{{{}}}", right_latex, n.denom());
+            }
+        }
+        // Also check right side for (expr * 1/n) pattern
+        if let Expr::Number(n) = self.context.get(r) {
+            if !n.is_integer() && *n.numer() == 1.into() && *n.denom() > 1.into() {
+                let left_latex = self.render_with_path(l, false, &self.child_path(path, 0));
+                return format!("\\frac{{{}}}{{{}}}", left_latex, n.denom());
             }
         }
 
