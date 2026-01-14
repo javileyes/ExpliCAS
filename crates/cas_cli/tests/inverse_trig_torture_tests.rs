@@ -1,6 +1,17 @@
-use cas_ast::DisplayExpr;
+//! Inverse Trigonometry Torture Tests
+//!
+//! Tests for complex inverse trig identities and compositions.
+
+use cas_ast::{Context, DisplayExpr, ExprId};
+use cas_engine::engine::eval_f64;
+use cas_engine::helpers::is_zero;
 use cas_engine::Simplifier;
 use cas_parser::parse;
+use std::collections::HashMap;
+
+// =============================================================================
+// Local Test Helpers
+// =============================================================================
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
@@ -15,18 +26,13 @@ fn simplify_str(input: &str) -> String {
     )
 }
 
-/// Simplify with Assume mode - allows analytic assumptions like x > 0
-/// Use for trig identities that require domain assumptions
 fn simplify_str_assume(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).unwrap();
-
-    // Use Assume mode for analytic simplifications
     let opts = cas_engine::SimplifyOptions {
         domain: cas_engine::DomainMode::Assume,
         ..Default::default()
     };
-
     let (result, _steps, _) = simplifier.simplify_with_stats(expr, opts);
     format!(
         "{}",
@@ -37,40 +43,104 @@ fn simplify_str_assume(input: &str) -> String {
     )
 }
 
-// ==================== Test 46: El Bumerán Roto (Principal Values) ====================
-
-#[test]
-fn test_46_principal_values() {
-    // asin(sin(3*pi/2)) + acos(cos(3*pi))
-    // Expected: pi/2
-    // Reasoning:
-    //   sin(3π/2) = -1, asin(-1) = -π/2
-    //   cos(3π) = -1, acos(-1) = π
-    //   -π/2 + π = π/2
-    let result = simplify_str("asin(sin(3*pi/2)) + acos(cos(3*pi))");
-
-    println!("Test 46 result: {}", result);
-
-    // TODO: This requires evaluating inverse trig with concrete values
-    // For now, just verify it doesn't crash
-    assert!(!result.is_empty(), "Should produce some result");
-
-    // Uncomment when rule is implemented:
-    // Expected: result.contains("pi") && result.contains("2") -> π/2
+fn pretty(ctx: &Context, id: ExprId) -> String {
+    format!("{}", DisplayExpr { context: ctx, id })
 }
 
-// ==================== Test 47: La Identidad Complementaria ====================
+fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
+    if a.is_nan() || b.is_nan() {
+        return false;
+    }
+    if a.is_infinite() && b.is_infinite() {
+        return a.signum() == b.signum();
+    }
+    (a - b).abs() <= tol
+}
+
+fn assert_simplifies_to_zero(input: &str) {
+    let mut simplifier = Simplifier::with_default_rules();
+    let a = parse(input, &mut simplifier.context).expect("parse failed");
+    let (simplified, _) = simplifier.simplify(a);
+    assert!(
+        is_zero(&simplifier.context, simplified),
+        "Expected 0, got: {}",
+        pretty(&simplifier.context, simplified)
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assert_equiv_numeric_1var(
+    input: &str,
+    expected: &str,
+    var: &str,
+    lo: f64,
+    hi: f64,
+    samples: usize,
+    tol: f64,
+    filter: impl Fn(f64) -> bool,
+) {
+    let mut simplifier = Simplifier::with_default_rules();
+    let a = parse(input, &mut simplifier.context).expect("parse failed");
+    let b = parse(expected, &mut simplifier.context).expect("parse failed");
+    let (a_s, _) = simplifier.simplify(a);
+    let (b_s, _) = simplifier.simplify(b);
+
+    let mut tested = 0;
+    for i in 0..samples {
+        let t = (i as f64 + 0.5) / samples as f64;
+        let x = lo + (hi - lo) * t;
+        if !filter(x) {
+            continue;
+        }
+        let mut var_map = HashMap::new();
+        var_map.insert(var.to_string(), x);
+        let va = eval_f64(&simplifier.context, a_s, &var_map);
+        let vb = eval_f64(&simplifier.context, b_s, &var_map);
+        if let (Some(va), Some(vb)) = (va, vb) {
+            tested += 1;
+            assert!(
+                approx_eq(va, vb, tol),
+                "Mismatch at {}={}: {} vs {}",
+                var,
+                x,
+                va,
+                vb
+            );
+        }
+    }
+    assert!(tested > 0, "No valid samples");
+}
+
+/// Numeric equivalence for 0-variable expressions (constants)
+fn assert_equiv_numeric_0var(input: &str, expected: &str, tol: f64) {
+    let mut simplifier = Simplifier::with_default_rules();
+    let a = parse(input, &mut simplifier.context).expect("parse failed");
+    let b = parse(expected, &mut simplifier.context).expect("parse failed");
+    let (a_s, _) = simplifier.simplify(a);
+    let (b_s, _) = simplifier.simplify(b);
+
+    let var_map = HashMap::new();
+    let va = eval_f64(&simplifier.context, a_s, &var_map).expect("Failed to evaluate input");
+    let vb = eval_f64(&simplifier.context, b_s, &var_map).expect("Failed to evaluate expected");
+
+    assert!(
+        approx_eq(va, vb, tol),
+        "Numeric mismatch: {} = {} vs {} = {}",
+        pretty(&simplifier.context, a_s),
+        va,
+        pretty(&simplifier.context, b_s),
+        vb
+    );
+}
+
+// =============================================================================
+// Strong Symbolic Tests (already passing)
+// =============================================================================
 
 #[test]
-fn test_47_complementary_identity() {
-    // asin(x^2 - 1) + acos(x^2 - 1)
-    // Expected: pi/2
-    // The identity asin(u) + acos(u) = π/2 holds for any u
+fn test_47_complementary_identity_symbolic() {
+    // asin(u) + acos(u) = π/2 for any u
     let result = simplify_str("asin(x^2 - 1) + acos(x^2 - 1)");
-
-    println!("Test 47 result: {}", result);
-
-    // This now works with the fixed InverseTrigSumRule!
     assert!(
         result.contains("pi") && (result.contains("2") || result.contains("1/2")),
         "asin(u) + acos(u) should be π/2, got: {}",
@@ -78,65 +148,16 @@ fn test_47_complementary_identity() {
     );
 }
 
-// ==================== Test 48: Atan Reciprocal (with sign) ====================
-
 #[test]
-fn test_48_atan_reciprocal_sign() {
-    // (atan(2) + atan(1/2)) - pi/2
-    // Expected: 0
-    // Since 2 > 0, atan(2) + atan(1/2) = π/2
-    let result = simplify_str("(atan(2) + atan(1/2)) - pi/2");
-
-    println!("Test 48 result: {}", result);
-
-    // NOW WORKS with unconditional multi-pass iteration! 🎉
-    assert_eq!(
-        result, "0",
-        "atan(2) + atan(1/2) - π/2 should fully simplify to 0, got: {}",
-        result
-    );
+fn test_48_atan_reciprocal_sign_symbolic() {
+    // atan(2) + atan(1/2) = π/2 for positive numbers
+    assert_simplifies_to_zero("(atan(2) + atan(1/2)) - pi/2");
 }
 
-// ==================== Test 49: MachinLike Formula ====================
-
 #[test]
-fn test_49_machin_formula() {
-    // 4*atan(1/5) - atan(1/239) - pi/4
-    // Expected: 0
-    // This is Machin's formula: 4*arctan(1/5) - arctan(1/239) = π/4
-    let result = simplify_str("4*atan(1/5) - atan(1/239) - pi/4");
-
-    println!("Test 49 result: {}", result);
-
-    // This is very complex and requires atan addition formula
-    // atan(a) + atan(b) = atan((a+b)/(1-ab))
-    // TODO: This is a future enhancement
-    assert!(!result.is_empty(), "Should produce some result");
-
-    // This test is expected to NOT pass without atan addition formula
-    // Expected when implemented: result == "0"
-}
-
-// ==================== Test 50: Triángulo Algebraico (Composition) ====================
-
-#[test]
-fn test_50_tan_asin_composition() {
-    // tan(asin(x))^2 - x^2/(1-x^2)
-    // Expected: 0
-    // Reasoning:
-    //   If θ = asin(x), then sin(θ) = x
-    //   From Pythagorean identity: cos²(θ) = 1 - sin²(θ) = 1 - x²
-    //   cos(θ) = √(1-x²)
-    //   tan(θ) = sin(θ)/cos(θ) = x/√(1-x²)
-    //   tan²(θ) = x²/(1-x²)
-    // NOTE: Requires Assume mode because sqrt(1-x²)^2 → (1-x²) needs 1-x² ≥ 0
+fn test_50_tan_asin_composition_symbolic() {
+    // tan(asin(x))² = x²/(1-x²)
     let result = simplify_str_assume("tan(asin(x))^2 - x^2/(1-x^2)");
-
-    println!("Test 50 result: {}", result);
-
-    // Now working with cos(asin(x)) → sqrt(1-x²) rule!
-    // The expression tan(asin(x)) = sin(asin(x))/cos(asin(x)) = x/sqrt(1-x²)
-    // So tan²(asin(x)) = x²/(1-x²)
     assert_eq!(
         result, "0",
         "tan(asin(x))² should equal x²/(1-x²), got: {}",
@@ -144,32 +165,91 @@ fn test_50_tan_asin_composition() {
     );
 }
 
-// ==================== Additional Composition Test ====================
+// =============================================================================
+// Numeric Equivalence Tests (verifies math even if engine doesn't simplify)
+// =============================================================================
 
 #[test]
-fn test_sin_acos_composition() {
-    // sin(acos(x)) should become sqrt(1-x^2)
-    let result = simplify_str("sin(acos(x))");
-
-    println!("sin(acos(x)) = {}", result);
-
-    // TODO: Implement this rule in trig_inverse_expansion
-    assert!(!result.is_empty(), "Should produce some result");
-
-    // Expected: sqrt(1 - x^2)
-    // When implemented: result.contains("sqrt") && result.contains("1") && result.contains("x")
+fn test_46_principal_values_numeric() {
+    // asin(sin(3π/2)) + acos(cos(3π)) = π/2
+    // sin(3π/2) = -1, asin(-1) = -π/2
+    // cos(3π) = -1, acos(-1) = π
+    // -π/2 + π = π/2
+    assert_equiv_numeric_0var("asin(sin(3*pi/2)) + acos(cos(3*pi))", "pi/2", 1e-9);
 }
 
 #[test]
-fn test_cos_asin_composition() {
-    // cos(asin(x)) should become sqrt(1-x^2)
-    let result = simplify_str("cos(asin(x))");
+fn test_49_machin_formula_numeric() {
+    // Machin's formula: 4*arctan(1/5) - arctan(1/239) = π/4
+    assert_equiv_numeric_0var("4*atan(1/5) - atan(1/239)", "pi/4", 1e-10);
+}
 
-    println!("cos(asin(x)) = {}", result);
+#[test]
+fn test_sin_acos_composition_numeric() {
+    // sin(acos(x)) = sqrt(1-x²)
+    assert_equiv_numeric_1var(
+        "sin(acos(x))",
+        "sqrt(1 - x^2)",
+        "x",
+        -0.99,
+        0.99,
+        200,
+        1e-10,
+        |x| x.abs() < 0.999, // Stay within acos domain
+    );
+}
 
-    // TODO: Implement this rule in trig_inverse_expansion
-    assert!(!result.is_empty(), "Should produce some result");
+#[test]
+fn test_cos_asin_composition_numeric() {
+    // cos(asin(x)) = sqrt(1-x²)
+    assert_equiv_numeric_1var(
+        "cos(asin(x))",
+        "sqrt(1 - x^2)",
+        "x",
+        -0.99,
+        0.99,
+        200,
+        1e-10,
+        |x| x.abs() < 0.999, // Stay within asin domain
+    );
+}
 
-    // Expected: sqrt(1 - x^2)
-    // When implemented: result.contains("sqrt") && result.contains("1") && result.contains("x")
+#[test]
+fn test_atan_inverse_positive_t_numeric() {
+    // atan(t) + atan(1/t) = π/2 for t > 0
+    assert_equiv_numeric_1var(
+        "atan(t) + atan(1/t)",
+        "pi/2",
+        "t",
+        0.05,
+        20.0,
+        200,
+        1e-9,
+        |t| t > 0.01,
+    );
+}
+
+// Note: For t < 0, atan(t) + atan(1/t) = -π/2, but this requires careful
+// handling of branch cuts. The positive case above verifies the identity
+// structure, which is what matters for the engine validation.
+
+#[test]
+fn test_tan_atan_roundtrip_numeric() {
+    // tan(atan(x)) = x
+    assert_equiv_numeric_1var("tan(atan(x))", "x", "x", -10.0, 10.0, 200, 1e-10, |_| true);
+}
+
+#[test]
+fn test_sin_atan_composition_numeric() {
+    // sin(atan(x)) = x/sqrt(1+x²)
+    assert_equiv_numeric_1var(
+        "sin(atan(x))",
+        "x/sqrt(1 + x^2)",
+        "x",
+        -10.0,
+        10.0,
+        200,
+        1e-10,
+        |_| true,
+    );
 }
