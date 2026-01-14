@@ -522,6 +522,8 @@ pub trait LaTeXRenderer {
                 let rhs = self.expr_to_latex(args[1], false);
                 format!("{} = {}", lhs, rhs)
             }
+            // __hold is an internal invisible barrier - just display the inner
+            "__hold" if args.len() == 1 => self.expr_to_latex(args[0], false),
             _ => {
                 let args_str: Vec<String> =
                     args.iter().map(|&a| self.expr_to_latex(a, false)).collect();
@@ -1080,6 +1082,10 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                 let lhs = self.render_with_path(args[0], false, &self.child_path(path, 0));
                 let rhs = self.render_with_path(args[1], false, &self.child_path(path, 1));
                 format!("{} = {}", lhs, rhs)
+            }
+            // __hold is an internal invisible barrier - just display the inner
+            "__hold" if args.len() == 1 => {
+                self.render_with_path(args[0], false, &self.child_path(path, 0))
             }
             _ => {
                 let args_str: Vec<String> = args

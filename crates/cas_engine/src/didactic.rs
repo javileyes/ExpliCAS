@@ -142,6 +142,11 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
             sub_steps.extend(generate_polynomial_identity_substeps(ctx, step));
         }
 
+        // Add sub-steps for Sum of Three Cubes identity
+        if step.rule_name.contains("Sum of Three Cubes") {
+            sub_steps.extend(generate_sum_three_cubes_substeps(ctx, step));
+        }
+
         enriched.push(EnrichedStep {
             base_step: step.clone(),
             sub_steps,
@@ -1127,6 +1132,107 @@ fn generate_polynomial_identity_substeps(ctx: &Context, step: &crate::step::Step
             after_latex: "0".to_string(),
         });
     }
+
+    sub_steps
+}
+
+/// Generate sub-steps explaining the Sum of Three Cubes identity
+/// When x + y + z = 0, we have x³ + y³ + z³ = 3xyz
+///
+/// For (a-b)³ + (b-c)³ + (c-a)³, the substeps are:
+///   1. Define x = (a-b), y = (b-c), z = (c-a)
+///   2. Verify x + y + z = 0
+///   3. Apply the identity x³ + y³ + z³ = 3xyz
+fn generate_sum_three_cubes_substeps(ctx: &Context, step: &crate::step::Step) -> Vec<SubStep> {
+    use crate::helpers::flatten_add;
+    use cas_ast::DisplayExpr;
+
+    let mut sub_steps = Vec::new();
+
+    // Extract the three cubed bases from the before expression
+    let before_expr = step.before;
+
+    // Flatten the sum to get individual terms
+    let mut terms = Vec::new();
+    flatten_add(ctx, before_expr, &mut terms);
+
+    if terms.len() != 3 {
+        return sub_steps; // Not the expected pattern
+    }
+
+    // Extract bases from each cube
+    let mut bases: Vec<ExprId> = Vec::new();
+    for &term in &terms {
+        let base = match ctx.get(term).clone() {
+            Expr::Pow(b, e) => {
+                if let Expr::Number(n) = ctx.get(e).clone() {
+                    if n.is_integer() && n.to_integer() == BigInt::from(3) {
+                        Some(b)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            Expr::Neg(inner) => {
+                if let Expr::Pow(_b, e) = ctx.get(inner).clone() {
+                    if let Expr::Number(n) = ctx.get(e).clone() {
+                        if n.is_integer() && n.to_integer() == BigInt::from(3) {
+                            // The base is negated: -(x³) - just use inner directly
+                            // We'll handle the negation in display
+                            Some(inner) // Return the Pow node, we'll detect negation later
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(b) = base {
+            bases.push(b);
+        } else {
+            return sub_steps; // Not the expected pattern
+        }
+    }
+
+    if bases.len() != 3 {
+        return sub_steps;
+    }
+
+    // Helper to format expression
+    let fmt = |id: ExprId| -> String { format!("{}", DisplayExpr { context: ctx, id }) };
+
+    let x_str = fmt(bases[0]);
+    let y_str = fmt(bases[1]);
+    let z_str = fmt(bases[2]);
+
+    // Sub-step 1: Define x, y, z
+    sub_steps.push(SubStep {
+        description: "Definimos las bases de los cubos".to_string(),
+        before_latex: format!("x = {}, \\quad y = {}, \\quad z = {}", x_str, y_str, z_str),
+        after_latex: "x^3 + y^3 + z^3".to_string(),
+    });
+
+    // Sub-step 2: Show that x + y + z = 0
+    sub_steps.push(SubStep {
+        description: "Verificamos que x + y + z = 0".to_string(),
+        before_latex: format!("({}) + ({}) + ({})", x_str, y_str, z_str),
+        after_latex: "0 \\quad \\checkmark".to_string(),
+    });
+
+    // Sub-step 3: Apply the identity
+    sub_steps.push(SubStep {
+        description: "Aplicamos la identidad: si x+y+z=0, entonces x³+y³+z³=3xyz".to_string(),
+        before_latex: format!("{}^3 + {}^3 + {}^3", x_str, y_str, z_str),
+        after_latex: format!("3 \\cdot ({}) \\cdot ({}) \\cdot ({})", x_str, y_str, z_str),
+    });
 
     sub_steps
 }

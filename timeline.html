@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \log_{2}(8)</title>
+    <title>CAS Steps: {(a - b)}^{3} + {(b - c)}^{3} + {(c - a)}^{3}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,34 +451,39 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\log_{2}(8)\]
+            \[{(a - b)}^{3} + {(b - c)}^{3} + {(c - a)}^{3}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Evaluate Logarithms</h3>
+                    <h3>Sum of Three Cubes (Zero Sum Identity)</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\log_{2}(8)}}\]
+                        \[{\color{red}{{(a - b)}^{3} + {(b - c)}^{3} + {(c - a)}^{3}}}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Pasos intermedios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Definimos las bases de los cubos</span><div class="substep-math">\[x = a - b, \quad y = b - c, \quad z = c - a \rightarrow x^3 + y^3 + z^3\]</div></div><div class="substep">
+                                    <span class="substep-desc">Verificamos que x + y + z = 0</span><div class="substep-math">\[(a - b) + (b - c) + (c - a) \rightarrow 0 \quad \checkmark\]</div></div><div class="substep">
+                                    <span class="substep-desc">Aplicamos la identidad: si x+y+z=0, entonces x³+y³+z³=3xyz</span><div class="substep-math">\[a - b^3 + b - c^3 + c - a^3 \rightarrow 3 \cdot (a - b) \cdot (b - c) \cdot (c - a)\]</div></div></div></details>
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{log(2, 8) = 3}\)</div>
+                        <div class="rule-name">\(\text{x³ + y³ + z³ = 3xyz (when x + y + z = 0)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\log_{2}(8)}} \rightarrow {\color{green}{3}}\]
+                            \[{\color{red}{{(a - b)}^{3} + {(b - c)}^{3} + {(c - a)}^{3}}} \rightarrow {\color{green}{3\cdot (a - b)\cdot (b - c)\cdot (c - a)}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{3}}\]
+                        \[{\color{green}{3\cdot (a - b)\cdot (b - c)\cdot (c - a)}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[3\]
+            \[3\cdot (a - b)\cdot (b - c)\cdot (c - a)\]
         </div>
     </div>
     <footer>
