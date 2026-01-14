@@ -15,6 +15,37 @@ use std::cmp::Ordering;
 use super::helpers::*;
 
 // =============================================================================
+// Context-aware helpers for AddFractionsRule gating
+// =============================================================================
+
+/// Check if a function name is trigonometric (sin, cos, tan and inverses/hyperbolics)
+fn is_trig_function_name(name: &str) -> bool {
+    matches!(
+        name,
+        "sin"
+            | "cos"
+            | "tan"
+            | "csc"
+            | "sec"
+            | "cot"
+            | "asin"
+            | "acos"
+            | "atan"
+            | "sinh"
+            | "cosh"
+            | "tanh"
+            | "asinh"
+            | "acosh"
+            | "atanh"
+    )
+}
+
+/// Check if expression is a constant involving π (e.g., pi, pi/9, 2*pi/3)
+fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
+    crate::helpers::extract_rational_pi_multiple(ctx, id).is_some()
+}
+
+// =============================================================================
 // Polynomial equality helper (for canonical comparison ignoring AST order)
 // =============================================================================
 
@@ -1638,224 +1669,255 @@ fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     }
 }
 
-define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
-    use cas_ast::views::FractionParts;
+define_rule!(
+    AddFractionsRule,
+    "Add Fractions",
+    |ctx, expr, parent_ctx| {
+        use cas_ast::views::FractionParts;
 
-    // Use zero-clone destructuring
-    let (l, r) = crate::helpers::as_add(ctx, expr)?;
+        // Use zero-clone destructuring
+        let (l, r) = crate::helpers::as_add(ctx, expr)?;
 
-    // First try FractionParts (handles direct Div and complex multiplicative patterns)
-    let fp_l = FractionParts::from(&*ctx, l);
-    let fp_r = FractionParts::from(&*ctx, r);
+        // First try FractionParts (handles direct Div and complex multiplicative patterns)
+        let fp_l = FractionParts::from(&*ctx, l);
+        let fp_r = FractionParts::from(&*ctx, r);
 
-    let (n1, d1, is_frac1) = fp_l.to_num_den(ctx);
-    let (n2, d2, is_frac2) = fp_r.to_num_den(ctx);
+        let (n1, d1, is_frac1) = fp_l.to_num_den(ctx);
+        let (n2, d2, is_frac2) = fp_r.to_num_den(ctx);
 
-    // If FractionParts didn't detect fractions, try extract_as_fraction as fallback
-    // This handles Mul(1/n, x) pattern that FractionParts misses
-    let (n1, d1, is_frac1) = if !is_frac1 {
-        extract_as_fraction(ctx, l)
-    } else {
-        (n1, d1, is_frac1)
-    };
-    let (n2, d2, is_frac2) = if !is_frac2 {
-        extract_as_fraction(ctx, r)
-    } else {
-        (n2, d2, is_frac2)
-    };
-
-    if !is_frac1 && !is_frac2 {
-        return None;
-    }
-
-    // Structural guard: Skip combining when one side has functions and other is constant/π
-    // This lets inverse trig identity rules fire first (arctan(x) + arctan(1/x) = π/2, etc.)
-    // Case to block: arctan(1/3) - pi/2  (function expr + constant fraction)
-    // Cases to allow: 1 + 1/2, 1/2 + 1/3, x/2 + x/3, etc.
-
-    // Check if expression contains any function call (not purely algebraic)
-    fn contains_function(ctx: &Context, id: ExprId) -> bool {
-        match ctx.get(id) {
-            Expr::Function(_, _) => true,
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-                contains_function(ctx, *l) || contains_function(ctx, *r)
-            }
-            Expr::Neg(e) | Expr::Pow(e, _) => contains_function(ctx, *e),
-            _ => false,
-        }
-    }
-
-    // Check if expression is a constant (no variables, no functions)
-    // Covers: Number, pi, e, Neg(const), Mul(const,const), Div(const,const), Pow(const,int)
-    fn is_constant(ctx: &Context, id: ExprId) -> bool {
-        match ctx.get(id) {
-            Expr::Number(_) | Expr::Constant(_) => true,
-            Expr::Neg(inner) => is_constant(ctx, *inner),
-            Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
-                is_constant(ctx, *l) && is_constant(ctx, *r)
-            }
-            Expr::Pow(base, exp) => is_constant(ctx, *base) && is_constant(ctx, *exp),
-            // Variables, functions, etc. are NOT constant
-            _ => false,
-        }
-    }
-
-    // Check if fraction n/d is purely constant (both n and d are constants)
-    fn is_constant_fraction(ctx: &Context, n: ExprId, d: ExprId) -> bool {
-        is_constant(ctx, n) && is_constant(ctx, d)
-    }
-
-    // Block case: function expr + constant fraction (like arctan(1/3) + pi/2)
-    let l_has_func = contains_function(ctx, l);
-    let r_has_func = contains_function(ctx, r);
-    let l_is_const_frac = is_frac1 && is_constant_fraction(ctx, n1, d1);
-    let r_is_const_frac = is_frac2 && is_constant_fraction(ctx, n2, d2);
-
-    // Skip if mixing function-containing with constant-fraction
-    if (l_has_func && r_is_const_frac) || (r_has_func && l_is_const_frac) {
-        return None;
-    }
-
-    // Check if d2 = -d1 or d2 == d1 (semantic comparison for cross-tree equality)
-    let (n2, d2, opposite_denom, same_denom) = {
-        // Use semantic comparison: denominators from different subexpressions may have same value but different ExprIds
-        let cmp = crate::ordering::compare_expr(ctx, d1, d2);
-        if d1 == d2 || cmp == Ordering::Equal {
-            (n2, d2, false, true)
-        } else if are_denominators_opposite(ctx, d1, d2) {
-            // Convert d2 -> d1, n2 -> -n2
-            let minus_n2 = ctx.add(Expr::Neg(n2));
-            (minus_n2, d1, true, false)
+        // If FractionParts didn't detect fractions, try extract_as_fraction as fallback
+        // This handles Mul(1/n, x) pattern that FractionParts misses
+        let (n1, d1, is_frac1) = if !is_frac1 {
+            extract_as_fraction(ctx, l)
         } else {
-            (n2, d2, false, false)
+            (n1, d1, is_frac1)
+        };
+        let (n2, d2, is_frac2) = if !is_frac2 {
+            extract_as_fraction(ctx, r)
+        } else {
+            (n2, d2, is_frac2)
+        };
+
+        if !is_frac1 && !is_frac2 {
+            return None;
         }
-    };
 
-    // Check if one denominator divides the other (d2 = k * d1 or d1 = k * d2)
-    // This allows combining 1/2 + 1/(2n) = n/(2n) + 1/(2n) = (n+1)/(2n)
-    let (n1, n2, common_den, divisible_denom) = check_divisible_denominators(ctx, n1, n2, d1, d2);
-    let same_denom = same_denom || divisible_denom;
+        // Structural guard: Skip combining when one side has functions and other is constant/π
+        // This lets inverse trig identity rules fire first (arctan(x) + arctan(1/x) = π/2, etc.)
+        // Case to block: arctan(1/3) - pi/2  (function expr + constant fraction)
+        // Cases to allow: 1 + 1/2, 1/2 + 1/3, x/2 + x/3, etc.
 
-    // Complexity heuristic
-    let old_complexity = count_nodes(ctx, expr);
-
-    // a/b + c/d = (ad + bc) / bd
-    let ad = mul2_raw(ctx, n1, d2);
-    let bc = mul2_raw(ctx, n2, d1);
-
-    let new_num = if opposite_denom || same_denom {
-        ctx.add(Expr::Add(n1, n2))
-    } else {
-        ctx.add(Expr::Add(ad, bc))
-    };
-
-    let new_den = if opposite_denom || same_denom {
-        common_den
-    } else {
-        mul2_raw(ctx, d1, d2)
-    };
-
-    // Try to simplify common den
-    let common_den = if same_denom || opposite_denom {
-        common_den
-    } else {
-        new_den
-    };
-
-    let new_expr = ctx.add(Expr::Div(new_num, common_den));
-    let new_complexity = count_nodes(ctx, new_expr);
-
-    // If complexity explodes, avoid adding fractions unless denominators are related
-    // Exception: if denominators are numbers, always combine: 1/2 + 1/3 = 5/6
-    let is_numeric = |e: ExprId| matches!(ctx.get(e), Expr::Number(_));
-    if is_numeric(d1) && is_numeric(d2) {
-        return Some(Rewrite::new(new_expr).desc("Add numeric fractions"));
-    }
-
-    let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> (bool, bool) {
-        // Heuristics to see if new fraction simplifies
-        // e.g. cancellation of factors
-        // or algebraic simplification
-        // Just checking if we reduced node count isn't enough,
-        // because un-added fractions might be smaller locally but harder to work with.
-        // But we don't want to create massive expressions.
-
-        // Factor cancellation check would be good.
-        // Is there a factor F in num and den?
-
-        // Check if num is 0
-        if let Expr::Number(n) = ctx.get(num) {
-            if n.is_zero() {
-                return (true, true);
+        // Check if expression contains any function call (not purely algebraic)
+        fn contains_function(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Function(_, _) => true,
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                    contains_function(ctx, *l) || contains_function(ctx, *r)
+                }
+                Expr::Neg(e) | Expr::Pow(e, _) => contains_function(ctx, *e),
+                _ => false,
             }
         }
 
-        // Check negation
-        let is_negation = |ctx: &Context, a: ExprId, b: ExprId| -> bool {
-            if let Expr::Neg(n) = ctx.get(a) {
-                *n == b
-            } else if let Expr::Neg(n) = ctx.get(b) {
-                *n == a
-            } else if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(a), ctx.get(b)) {
-                n1 == &-n2
+        // Check if expression is a constant (no variables, no functions)
+        // Covers: Number, pi, e, Neg(const), Mul(const,const), Div(const,const), Pow(const,int)
+        fn is_constant(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Number(_) | Expr::Constant(_) => true,
+                Expr::Neg(inner) => is_constant(ctx, *inner),
+                Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
+                    is_constant(ctx, *l) && is_constant(ctx, *r)
+                }
+                Expr::Pow(base, exp) => is_constant(ctx, *base) && is_constant(ctx, *exp),
+                // Variables, functions, etc. are NOT constant
+                _ => false,
+            }
+        }
+
+        // Check if fraction n/d is purely constant (both n and d are constants)
+        fn is_constant_fraction(ctx: &Context, n: ExprId, d: ExprId) -> bool {
+            is_constant(ctx, n) && is_constant(ctx, d)
+        }
+
+        // Block case: function expr + constant fraction (like arctan(1/3) + pi/2)
+        let l_has_func = contains_function(ctx, l);
+        let r_has_func = contains_function(ctx, r);
+        let l_is_const_frac = is_frac1 && is_constant_fraction(ctx, n1, d1);
+        let r_is_const_frac = is_frac2 && is_constant_fraction(ctx, n2, d2);
+
+        // Skip if mixing function-containing with constant-fraction
+        if (l_has_func && r_is_const_frac) || (r_has_func && l_is_const_frac) {
+            return None;
+        }
+
+        // Check if d2 = -d1 or d2 == d1 (semantic comparison for cross-tree equality)
+        let (n2, d2, opposite_denom, same_denom) = {
+            // Use semantic comparison: denominators from different subexpressions may have same value but different ExprIds
+            let cmp = crate::ordering::compare_expr(ctx, d1, d2);
+            if d1 == d2 || cmp == Ordering::Equal {
+                (n2, d2, false, true)
+            } else if are_denominators_opposite(ctx, d1, d2) {
+                // Convert d2 -> d1, n2 -> -n2
+                let minus_n2 = ctx.add(Expr::Neg(n2));
+                (minus_n2, d1, true, false)
             } else {
-                false
+                (n2, d2, false, false)
             }
         };
 
-        if is_negation(ctx, num, den) {
-            return (true, false);
+        // Check if one denominator divides the other (d2 = k * d1 or d1 = k * d2)
+        // This allows combining 1/2 + 1/(2n) = n/(2n) + 1/(2n) = (n+1)/(2n)
+        let (n1, n2, common_den, divisible_denom) =
+            check_divisible_denominators(ctx, n1, n2, d1, d2);
+        let same_denom = same_denom || divisible_denom;
+
+        // Complexity heuristic
+        let old_complexity = count_nodes(ctx, expr);
+
+        // a/b + c/d = (ad + bc) / bd
+        let ad = mul2_raw(ctx, n1, d2);
+        let bc = mul2_raw(ctx, n2, d1);
+
+        let new_num = if opposite_denom || same_denom {
+            ctx.add(Expr::Add(n1, n2))
+        } else {
+            ctx.add(Expr::Add(ad, bc))
+        };
+
+        let new_den = if opposite_denom || same_denom {
+            common_den
+        } else {
+            mul2_raw(ctx, d1, d2)
+        };
+
+        // Try to simplify common den
+        let common_den = if same_denom || opposite_denom {
+            common_den
+        } else {
+            new_den
+        };
+
+        let new_expr = ctx.add(Expr::Div(new_num, common_den));
+        let new_complexity = count_nodes(ctx, new_expr);
+
+        // If complexity explodes, avoid adding fractions unless denominators are related
+        // Exception: if denominators are numbers, always combine: 1/2 + 1/3 = 5/6
+        let is_numeric = |e: ExprId| matches!(ctx.get(e), Expr::Number(_));
+
+        // Context-aware gating: avoid combining symbol + pi-const inside trig functions
+        // This preserves sin(a + pi/9) structure for identity matching
+        // But allows combining pi-fractions like sin(pi/9 + pi/6) -> sin(5*pi/18)
+        if is_numeric(d1) && is_numeric(d2) {
+            // Check if we're inside a trig function argument
+            let inside_trig = parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
+            matches!(c.get(node_id), Expr::Function(name, _) if is_trig_function_name(name))
+        });
+
+            if inside_trig {
+                // Both constant? Always combine (e.g., pi/9 + pi/6)
+                let l_is_const = is_constant(ctx, l);
+                let r_is_const = is_constant(ctx, r);
+
+                if !(l_is_const && r_is_const) {
+                    // Mixed: check if we have symbolic + pi-constant pattern
+                    let l_is_pi = is_pi_constant(ctx, l);
+                    let r_is_pi = is_pi_constant(ctx, r);
+
+                    // Block: symbol + pi-const (e.g., a + pi/9) or pi-const + symbol
+                    if (l_is_pi && !r_is_const) || (r_is_pi && !l_is_const) {
+                        return None; // Preserve structure for trig identity matching
+                    }
+                }
+            }
+
+            return Some(Rewrite::new(new_expr).desc("Add numeric fractions"));
         }
 
-        // Try Polynomial GCD Check
-        let vars = collect_variables(ctx, new_num);
-        if vars.len() == 1 {
-            if let Some(var) = vars.iter().next() {
-                if let Ok(p_num) = Polynomial::from_expr(ctx, new_num, var) {
-                    if let Ok(p_den) = Polynomial::from_expr(ctx, common_den, var) {
-                        if !p_den.is_zero() {
-                            let gcd = p_num.gcd(&p_den);
-                            if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
-                                // println!(
-                                //     "  -> Simplifies via GCD! deg={} lc={}",
-                                //     gcd.degree(),
-                                //     gcd.leading_coeff()
-                                // );
-                                let is_proper = p_num.degree() < p_den.degree();
-                                return (true, is_proper);
+        let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> (bool, bool) {
+            // Heuristics to see if new fraction simplifies
+            // e.g. cancellation of factors
+            // or algebraic simplification
+            // Just checking if we reduced node count isn't enough,
+            // because un-added fractions might be smaller locally but harder to work with.
+            // But we don't want to create massive expressions.
+
+            // Factor cancellation check would be good.
+            // Is there a factor F in num and den?
+
+            // Check if num is 0
+            if let Expr::Number(n) = ctx.get(num) {
+                if n.is_zero() {
+                    return (true, true);
+                }
+            }
+
+            // Check negation
+            let is_negation = |ctx: &Context, a: ExprId, b: ExprId| -> bool {
+                if let Expr::Neg(n) = ctx.get(a) {
+                    *n == b
+                } else if let Expr::Neg(n) = ctx.get(b) {
+                    *n == a
+                } else if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(a), ctx.get(b)) {
+                    n1 == &-n2
+                } else {
+                    false
+                }
+            };
+
+            if is_negation(ctx, num, den) {
+                return (true, false);
+            }
+
+            // Try Polynomial GCD Check
+            let vars = collect_variables(ctx, new_num);
+            if vars.len() == 1 {
+                if let Some(var) = vars.iter().next() {
+                    if let Ok(p_num) = Polynomial::from_expr(ctx, new_num, var) {
+                        if let Ok(p_den) = Polynomial::from_expr(ctx, common_den, var) {
+                            if !p_den.is_zero() {
+                                let gcd = p_num.gcd(&p_den);
+                                if gcd.degree() > 0 || !gcd.leading_coeff().is_one() {
+                                    // println!(
+                                    //     "  -> Simplifies via GCD! deg={} lc={}",
+                                    //     gcd.degree(),
+                                    //     gcd.leading_coeff()
+                                    // );
+                                    let is_proper = p_num.degree() < p_den.degree();
+                                    return (true, is_proper);
+                                }
                             }
                         }
                     }
                 }
             }
+
+            (false, false)
+        };
+
+        let (does_simplify, is_proper) = simplifies(ctx, new_num, common_den);
+
+        // println!(
+        //     "AddFractions check: old={} new={} simplify={} limit={}",
+        //     old_complexity,
+        //     new_complexity,
+        //     does_simplify,
+        //     (old_complexity * 3) / 2
+        // );
+
+        // Allow complexity growth if we found a simplification (GCD)
+        // BUT strict check against improper fractions to prevent loops with polynomial division
+        // (DividePolynomialsRule splits improper fractions, AddFractions combines them -> loop)
+        if opposite_denom
+            || same_denom
+            || new_complexity <= old_complexity
+            || (does_simplify && is_proper && new_complexity < (old_complexity * 2))
+        {
+            // println!("AddFractions APPLIED: old={} new={} simplify={}", old_complexity, new_complexity, does_simplify);
+            return Some(Rewrite::new(new_expr).desc("Add fractions: a/b + c/d -> (ad+bc)/bd"));
         }
-
-        (false, false)
-    };
-
-    let (does_simplify, is_proper) = simplifies(ctx, new_num, common_den);
-
-    // println!(
-    //     "AddFractions check: old={} new={} simplify={} limit={}",
-    //     old_complexity,
-    //     new_complexity,
-    //     does_simplify,
-    //     (old_complexity * 3) / 2
-    // );
-
-    // Allow complexity growth if we found a simplification (GCD)
-    // BUT strict check against improper fractions to prevent loops with polynomial division
-    // (DividePolynomialsRule splits improper fractions, AddFractions combines them -> loop)
-    if opposite_denom
-        || same_denom
-        || new_complexity <= old_complexity
-        || (does_simplify && is_proper && new_complexity < (old_complexity * 2))
-    {
-        // println!("AddFractions APPLIED: old={} new={} simplify={}", old_complexity, new_complexity, does_simplify);
-        return Some(Rewrite::new(new_expr).desc("Add fractions: a/b + c/d -> (ad+bc)/bd"));
+        None
     }
-    None
-});
+);
 
 /// Recognizes ±1 in various AST forms
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

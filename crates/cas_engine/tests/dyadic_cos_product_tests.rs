@@ -289,3 +289,34 @@ fn test_cos_4pi() {
     let result = simplify("cos(4*pi)");
     assert_eq!(result, "1", "cos(4π) should be 1");
 }
+
+// =============================================================================
+// Context-aware AddFractions gating tests
+// =============================================================================
+
+/// sin(a + pi/9) should NOT combine to sin((9a+pi)/9)
+/// The structure should be preserved to allow trig identity matching
+#[test]
+fn test_sin_symbolic_plus_pi_not_combined() {
+    let result = simplify("sin(a + pi/9)");
+    // Should NOT contain combined form like (9a + pi)/9 or (9·a + pi)/9
+    assert!(
+        !result.contains("(9") || !result.contains("+") || !result.contains(")/9"),
+        "sin(a + pi/9) should NOT combine to sin((9a+pi)/9), got: {}",
+        result
+    );
+}
+
+/// sin(pi/9 + pi/6) SHOULD combine to sin(5*pi/18)
+/// Pure constant fractions inside trig should still combine
+#[test]
+fn test_sin_pi_fractions_do_combine() {
+    let result = simplify("sin(pi/9 + pi/6)");
+    // 1/9 + 1/6 = 2/18 + 3/18 = 5/18
+    // Should contain 5/18 or 5·pi/18 or similar
+    assert!(
+        result.contains("5/18") || result.contains("5·pi/18") || result.contains("5*pi/18"),
+        "sin(pi/9 + pi/6) should simplify to sin(5π/18), got: {}",
+        result
+    );
+}
