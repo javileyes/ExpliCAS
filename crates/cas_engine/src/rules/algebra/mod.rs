@@ -88,6 +88,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PolyEqModpRule));
     // Polynomial arithmetic on __hold: __hold(P) - __hold(Q) = 0 if equal mod p
     simplifier.add_rule(Box::new(PolySubModpRule));
+    // Sum of three cubes identity: x³ + y³ + z³ = 3xyz when x + y + z = 0
+    // Handles cyclic differences: (a-b)³ + (b-c)³ + (c-a)³ = 3(a-b)(b-c)(c-a)
+    simplifier.add_rule(Box::new(SumThreeCubesZeroRule));
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
 

@@ -691,6 +691,159 @@ define_rule!(
     }
 );
 
+// SumThreeCubesZeroRule: Simplifies x³ + y³ + z³ → 3xyz when x + y + z = 0
+// Classic identity: x³ + y³ + z³ - 3xyz = (x+y+z)(x²+y²+z²-xy-yz-zx)
+// When x+y+z = 0, we get x³ + y³ + z³ = 3xyz
+//
+// This handles cyclic differences: (a-b)³ + (b-c)³ + (c-a)³ = 3(a-b)(b-c)(c-a)
+// because (a-b) + (b-c) + (c-a) = 0 always
+define_rule!(
+    SumThreeCubesZeroRule,
+    "Sum of Three Cubes (Zero Sum Identity)",
+    |ctx, expr| {
+        use crate::helpers::flatten_add;
+
+        // Match Add expressions only
+        match ctx.get(expr) {
+            Expr::Add(_, _) => {}
+            _ => return None,
+        }
+
+        // Flatten the sum
+        let mut terms = Vec::new();
+        flatten_add(ctx, expr, &mut terms);
+
+        // We need at least 3 cube terms (and no more for the pure identity)
+        // For safety, only match exactly 3 cubes with no other terms
+        if terms.len() != 3 {
+            return None;
+        }
+
+        // Extract bases from cubes: term must be Pow(base, 3)
+        let mut bases: Vec<cas_ast::ExprId> = Vec::new();
+        for &term in &terms {
+            let (base, is_neg) = match ctx.get(term).clone() {
+                Expr::Pow(b, e) => {
+                    if let Expr::Number(n) = ctx.get(e).clone() {
+                        if n.is_integer() && n.to_integer() == num_bigint::BigInt::from(3) {
+                            (b, false)
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+                Expr::Neg(inner) => {
+                    // Handle -(x^3) form
+                    if let Expr::Pow(b, e) = ctx.get(inner).clone() {
+                        if let Expr::Number(n) = ctx.get(e).clone() {
+                            if n.is_integer() && n.to_integer() == num_bigint::BigInt::from(3) {
+                                (b, true)
+                            } else {
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+                _ => return None,
+            };
+
+            // For negative cubes (-x³), we need to negate the base
+            if is_neg {
+                let neg_base = ctx.add(Expr::Neg(base));
+                bases.push(neg_base);
+            } else {
+                bases.push(base);
+            }
+        }
+
+        // Check if bases sum to zero structurally
+        // Build the sum x + y + z and try to simplify it
+        let sum_bases = {
+            let xy = ctx.add(Expr::Add(bases[0], bases[1]));
+            ctx.add(Expr::Add(xy, bases[2]))
+        };
+
+        // Try to prove the sum is zero by simplifying
+        if !is_structurally_zero(ctx, sum_bases) {
+            return None;
+        }
+
+        // Sum of bases is zero! Apply the identity: x³ + y³ + z³ = 3xyz
+        let three = ctx.num(3);
+        // Build 3 * x * y * z
+        let xy = crate::rules::algebra::helpers::smart_mul(ctx, bases[0], bases[1]);
+        let xyz = crate::rules::algebra::helpers::smart_mul(ctx, xy, bases[2]);
+        let inner_result = crate::rules::algebra::helpers::smart_mul(ctx, three, xyz);
+        // Wrap in __hold to prevent DistributeRule from expanding
+        let result = ctx.add(Expr::Function("__hold".to_string(), vec![inner_result]));
+
+        Some(
+            Rewrite::new(result)
+                .desc("x³ + y³ + z³ = 3xyz (when x + y + z = 0)")
+                .local(expr, result),
+        )
+    }
+);
+
+/// Check if an expression is structurally zero after simplification
+/// This handles cases like (a-b) + (b-c) + (c-a) = 0
+fn is_structurally_zero(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    use num_traits::Zero;
+
+    // First, simple check: is it literally 0?
+    if let Expr::Number(n) = ctx.get(expr) {
+        return n.is_zero();
+    }
+
+    // Flatten the sum and collect terms with signs
+    // For (a-b) + (b-c) + (c-a), we expect:
+    // +a, -b, +b, -c, +c, -a → all cancel
+    let mut atomic_terms: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+
+    fn collect_atoms(
+        ctx: &cas_ast::Context,
+        expr: cas_ast::ExprId,
+        sign: i32,
+        atoms: &mut std::collections::HashMap<String, i32>,
+    ) {
+        match ctx.get(expr).clone() {
+            Expr::Add(l, r) => {
+                collect_atoms(ctx, l, sign, atoms);
+                collect_atoms(ctx, r, sign, atoms);
+            }
+            Expr::Sub(l, r) => {
+                collect_atoms(ctx, l, sign, atoms);
+                collect_atoms(ctx, r, -sign, atoms);
+            }
+            Expr::Neg(inner) => {
+                collect_atoms(ctx, inner, -sign, atoms);
+            }
+            _ => {
+                // Use display string as key for structural comparison
+                let key = format!(
+                    "{}",
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: expr
+                    }
+                );
+                *atoms.entry(key).or_insert(0) += sign;
+            }
+        }
+    }
+
+    collect_atoms(ctx, expr, 1, &mut atomic_terms);
+
+    // Check if all coefficients are zero
+    atomic_terms.values().all(|&coef| coef == 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
