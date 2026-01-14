@@ -37,6 +37,7 @@ fn scan_recursive(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
     check_and_mark_trig_square_pattern(ctx, expr_id, marks);
     check_and_mark_inverse_trig_pattern(ctx, expr_id, marks);
     check_and_mark_sum_quotient_pattern(ctx, expr_id, marks);
+    check_and_mark_tan_triple_product_pattern(ctx, expr_id, marks);
 }
 
 fn check_and_mark_pythagorean_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
@@ -308,6 +309,161 @@ fn check_and_mark_sum_quotient_pattern(ctx: &Context, expr_id: ExprId, marks: &m
         marks.mark_sum_quotient(cos_func1);
         marks.mark_sum_quotient(cos_func2);
     }
+}
+
+/// Detect tan(u)·tan(π/3+u)·tan(π/3-u) patterns.
+/// Mark all tan() function nodes for protection so TanToSinCosRule won't expand them,
+/// allowing TanTripleProductRule to fire.
+fn check_and_mark_tan_triple_product_pattern(
+    ctx: &Context,
+    expr_id: ExprId,
+    marks: &mut PatternMarks,
+) {
+    // Only check Mul nodes
+    if !matches!(ctx.get(expr_id), Expr::Mul(_, _)) {
+        return;
+    }
+
+    // Flatten multiplication to get factors
+    // Note: This needs mutable ctx, but we only have immutable here.
+    // We'll use a simpler check instead.
+    let mut factors = Vec::new();
+    let mut stack = vec![expr_id];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Mul(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            _ => factors.push(id),
+        }
+    }
+
+    // Extract all tan(arg) functions
+    let mut tan_nodes: Vec<(ExprId, ExprId)> = Vec::new(); // (func_id, arg)
+    for &factor in &factors {
+        if let Expr::Function(name, args) = ctx.get(factor) {
+            if name == "tan" && args.len() == 1 {
+                tan_nodes.push((factor, args[0]));
+            }
+        }
+    }
+
+    // Need exactly 3 tan factors
+    if tan_nodes.len() != 3 {
+        return;
+    }
+
+    // Try each argument as the potential "u"
+    for i in 0..3 {
+        let u = tan_nodes[i].1;
+        let (j, k) = match i {
+            0 => (1, 2),
+            1 => (0, 2),
+            2 => (0, 1),
+            _ => unreachable!(),
+        };
+
+        let arg_j = tan_nodes[j].1;
+        let arg_k = tan_nodes[k].1;
+
+        // Check if the set forms {u, u+π/3, π/3-u}
+        let match1 =
+            is_u_plus_pi_over_3_check(ctx, arg_j, u) && is_pi_over_3_minus_u_check(ctx, arg_k, u);
+        let match2 =
+            is_pi_over_3_minus_u_check(ctx, arg_j, u) && is_u_plus_pi_over_3_check(ctx, arg_k, u);
+
+        if match1 || match2 {
+            // Mark all 3 tan nodes for protection
+            for (tan_node, _) in &tan_nodes {
+                marks.mark_tan_triple_product(*tan_node);
+            }
+            return;
+        }
+    }
+}
+
+/// Helper: Check if expr equals u + π/3 (or π/3 + u)
+fn is_u_plus_pi_over_3_check(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
+    if let Expr::Add(l, r) = ctx.get(expr).clone() {
+        // Case: u + π/3
+        if crate::ordering::compare_expr(ctx, l, u) == std::cmp::Ordering::Equal {
+            return is_pi_over_3_check(ctx, r);
+        }
+        // Case: π/3 + u
+        if crate::ordering::compare_expr(ctx, r, u) == std::cmp::Ordering::Equal {
+            return is_pi_over_3_check(ctx, l);
+        }
+    }
+    false
+}
+
+/// Helper: Check if expr equals π/3 - u (or -u + π/3 in canonicalized form)
+fn is_pi_over_3_minus_u_check(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
+    // Pattern 1: Sub(π/3, u)
+    if let Expr::Sub(l, r) = ctx.get(expr).clone() {
+        if is_pi_over_3_check(ctx, l)
+            && crate::ordering::compare_expr(ctx, r, u) == std::cmp::Ordering::Equal
+        {
+            return true;
+        }
+    }
+    // Pattern 2: Add(π/3, Neg(u)) or Add(Neg(u), π/3) - canonicalized subtraction
+    if let Expr::Add(l, r) = ctx.get(expr).clone() {
+        // Add(π/3, Neg(u))
+        if is_pi_over_3_check(ctx, l) {
+            if let Expr::Neg(inner) = ctx.get(r).clone() {
+                if crate::ordering::compare_expr(ctx, inner, u) == std::cmp::Ordering::Equal {
+                    return true;
+                }
+            }
+        }
+        // Add(Neg(u), π/3)
+        if is_pi_over_3_check(ctx, r) {
+            if let Expr::Neg(inner) = ctx.get(l).clone() {
+                if crate::ordering::compare_expr(ctx, inner, u) == std::cmp::Ordering::Equal {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Helper: Check if an expression is π/3
+fn is_pi_over_3_check(ctx: &Context, expr: ExprId) -> bool {
+    // Pattern 1: Div(π, 3)
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        if matches!(ctx.get(num), Expr::Constant(cas_ast::Constant::Pi)) {
+            if let Expr::Number(n) = ctx.get(den) {
+                if n.is_integer() && *n.numer() == 3.into() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Pattern 2: Mul(Number(1/3), π) - canonicalized form from CanonicalizeDivRule
+    if let Expr::Mul(l, r) = ctx.get(expr).clone() {
+        // Check Mul(1/3, π)
+        if let Expr::Number(n) = ctx.get(l) {
+            if *n == num_rational::BigRational::new(1.into(), 3.into())
+                && matches!(ctx.get(r), Expr::Constant(cas_ast::Constant::Pi))
+            {
+                return true;
+            }
+        }
+        // Check Mul(π, 1/3)
+        if let Expr::Number(n) = ctx.get(r) {
+            if *n == num_rational::BigRational::new(1.into(), 3.into())
+                && matches!(ctx.get(l), Expr::Constant(cas_ast::Constant::Pi))
+            {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]

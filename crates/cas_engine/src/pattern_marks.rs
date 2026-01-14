@@ -24,6 +24,9 @@ pub struct PatternMarks {
     /// ExprIds of sin/cos Function nodes inside (sin(A)+sin(B))/(cos(A)+cos(B)) patterns.
     /// Protected from TripleAngleRule to allow sum-to-product simplification.
     pub sum_quotient_protected: HashSet<ExprId>,
+    /// ExprIds of tan() nodes that are part of tan(u)·tan(π/3+u)·tan(π/3-u) triple product.
+    /// Protected from TanToSinCosRule expansion to allow TanTripleProductRule to fire.
+    pub tan_triple_product_protected: HashSet<ExprId>,
 }
 
 impl PatternMarks {
@@ -35,6 +38,7 @@ impl PatternMarks {
             auto_expand_contexts: HashSet::new(),
             inverse_trig_protected: HashSet::new(),
             sum_quotient_protected: HashSet::new(),
+            tan_triple_product_protected: HashSet::new(),
         }
     }
 
@@ -107,5 +111,16 @@ impl PatternMarks {
     /// Mark an expression as part of sum-quotient pattern
     pub fn mark_sum_quotient(&mut self, expr: ExprId) {
         self.sum_quotient_protected.insert(expr);
+    }
+
+    /// Check if an expression is protected as part of tan triple product pattern
+    /// (e.g., tan(x) in tan(x)·tan(π/3+x)·tan(π/3-x) should not be converted to sin/cos)
+    pub fn is_tan_triple_product_protected(&self, expr: ExprId) -> bool {
+        self.tan_triple_product_protected.contains(&expr)
+    }
+
+    /// Mark an expression as part of tan triple product pattern
+    pub fn mark_tan_triple_product(&mut self, expr: ExprId) {
+        self.tan_triple_product_protected.insert(expr);
     }
 }
