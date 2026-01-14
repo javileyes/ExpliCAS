@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: 8\cdot \cos(\frac{\pi}{9})\cdot \cos(\frac{2\cdot \pi}{9})\cdot \cos(\frac{4\cdot \pi}{9})</title>
+    <title>CAS Steps: \frac{\sin(\pi)}{\sin(\pi)}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,77 +451,55 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[8\cdot \cos(\frac{\pi}{9})\cdot \cos(\frac{2\cdot \pi}{9})\cdot \cos(\frac{4\cdot \pi}{9})\]
+            \[\frac{\sin(\pi)}{\sin(\pi)}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Dyadic Cos Product</h3>
+                    <h3>Evaluate Trig at Integer Multiple of π</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{8\cdot \cos(\frac{1}{9}\cdot \pi)\cdot \cos(\frac{2}{9}\cdot \pi)\cdot \cos(\frac{4}{9}\cdot \pi)}}\]
+                        \[\frac{{\color{red}{\sin(\pi)}}}{\sin(\pi)}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{2^3·∏cos(2^k·θ) = sin(2^3·θ)/sin(θ)}\)</div>
+                        <div class="rule-name">\(\text{sin(1·π) = 0}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{8\cdot \cos(\frac{1}{9}\cdot \pi)\cdot \cos(\frac{2}{9}\cdot \pi)\cdot \cos(\frac{4}{9}\cdot \pi)}} \rightarrow {\color{green}{\frac{\sin(\frac{8}{9}\cdot \pi)}{\sin(\frac{1}{9}\cdot \pi)}}}\]
+                            \[{\color{red}{\sin(\pi)}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\frac{\sin(\frac{8}{9}\cdot \pi)}{\sin(\frac{1}{9}\cdot \pi)}}}\]
+                        \[\frac{{\color{green}{0}}}{\sin(\pi)}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Supplementary Angle</h3>
+                    <h3>Zero Property of Division</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{\sin(\frac{8}{9}\cdot \pi)}}}{\sin(\frac{1}{9}\cdot \pi)}\]
+                        \[{\color{red}{\frac{0}{\sin(\pi)}}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{sin(1π - x) = sin(x)}\)</div>
+                        <div class="rule-name">\(\text{0/0 is undefined}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\sin(\frac{8}{9}\cdot \pi)}} \rightarrow {\color{green}{\sin(\frac{1}{9}\cdot \pi)}}\]
+                            \[{\color{red}{\frac{0}{0}}} \rightarrow {\color{green}{\text{undefined}}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[\frac{{\color{green}{\sin(\frac{1}{9}\cdot \pi)}}}{\sin(\frac{1}{9}\cdot \pi)}\]
+                        \[{\color{green}{\text{undefined}}}\]
                     </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Cancel Identical Numerator/Denominator</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{\sin(\frac{1}{9}\cdot \pi)}{\sin(\frac{1}{9}\cdot \pi)}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel: P/P → 1}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{\sin(\frac{1}{9}\cdot \pi)}{\sin(\frac{1}{9}\cdot \pi)}}} \rightarrow {\color{green}{1}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{1}}\]
-                    </div>
-                    <div class="domain-assumptions">ℹ️ Requires: Assumed sin(1/9·pi) ≠ 0</div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[1\]
+            \[\text{undefined}\]
         </div>
     </div>
     <footer>

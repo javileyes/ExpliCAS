@@ -1766,10 +1766,18 @@ define_rule!(AddFractionsRule, "Add Fractions", |ctx, expr| {
     let new_complexity = count_nodes(ctx, new_expr);
 
     // If complexity explodes, avoid adding fractions unless denominators are related
-    // Exception: if denominators are numbers, always combine: 1/2 + 1/3 = 5/6
+    // Exception: if denominators are numbers AND numerators are constants, combine: 1/2 + 1/3 = 5/6
+    // But NOT symbol + pi/9, as this loses pattern structure (especially inside trig functions)
     let is_numeric = |e: ExprId| matches!(ctx.get(e), Expr::Number(_));
     if is_numeric(d1) && is_numeric(d2) {
-        return Some(Rewrite::new(new_expr).desc("Add numeric fractions"));
+        // Only combine if both numerators are purely constant (no symbols)
+        // This prevents: a + pi/9 → (9a + pi)/9  (loses structure for trig identity matching)
+        let n1_is_const = is_constant(ctx, n1);
+        let n2_is_const = is_constant(ctx, n2);
+        if n1_is_const && n2_is_const {
+            return Some(Rewrite::new(new_expr).desc("Add numeric fractions"));
+        }
+        // Fall through to general heuristics for mixed symbolic+constant cases
     }
 
     let simplifies = |ctx: &Context, num: ExprId, den: ExprId| -> (bool, bool) {
