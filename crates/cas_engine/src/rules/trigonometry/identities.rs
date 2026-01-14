@@ -2178,6 +2178,208 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// DyadicCosProductToSinRule: 2^n · ∏_{k=0}^{n-1} cos(2^k·θ) → sin(2^n·θ)/sin(θ)
+// =============================================================================
+//
+// This identity simplifies products like:
+// - 2·cos(θ) → sin(2θ)/sin(θ)
+// - 4·cos(θ)·cos(2θ) → sin(4θ)/sin(θ)
+// - 8·cos(θ)·cos(2θ)·cos(4θ) → sin(8θ)/sin(θ)
+//
+// Combined with sin supplementary angle (sin(π-x)=sin(x)) and cancellation,
+// this solves problems like: 8·cos(π/9)·cos(2π/9)·cos(4π/9) = 1.
+//
+// Domain: Requires sin(θ) ≠ 0. In Generic mode, this is only allowed when
+// θ is a rational multiple of π that is NOT an integer (proven case).
+
+/// DyadicCosProductToSinRule: Recognizes products 2^n · ∏cos(2^k·θ)
+pub struct DyadicCosProductToSinRule;
+
+impl crate::rule::Rule for DyadicCosProductToSinRule {
+    fn name(&self) -> &str {
+        "Dyadic Cos Product"
+    }
+
+    fn priority(&self) -> i32 {
+        // Run BEFORE DoubleAngleRule and RecursiveTrigExpansionRule
+        95
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::helpers::{as_number, flatten_mul, is_provably_sin_nonzero};
+        use crate::rule::Rewrite;
+        use num_bigint::BigInt;
+        use num_rational::BigRational;
+
+        // Only match Mul expressions
+        if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+            return None;
+        }
+
+        // Flatten the multiplication
+        let mut factors = Vec::new();
+        flatten_mul(ctx, expr, &mut factors);
+
+        // Separate numeric coefficient from cos factors
+        let mut numeric_coeff = BigRational::one();
+        let mut cos_args: Vec<ExprId> = Vec::new();
+        let mut other_factors: Vec<ExprId> = Vec::new();
+
+        for &factor in &factors {
+            if let Some(n) = as_number(ctx, factor) {
+                numeric_coeff = numeric_coeff * n.clone();
+            } else if let Expr::Function(name, args) = ctx.get(factor) {
+                if name == "cos" && args.len() == 1 {
+                    cos_args.push(args[0]);
+                } else {
+                    other_factors.push(factor);
+                }
+            } else {
+                other_factors.push(factor);
+            }
+        }
+
+        // Must have no other factors and at least 1 cos
+        if !other_factors.is_empty() || cos_args.is_empty() {
+            return None;
+        }
+
+        let n = cos_args.len() as u32;
+
+        // Numeric coefficient must be exactly 2^n
+        let expected_coeff = BigRational::from_integer(BigInt::from(1u64 << n));
+        if numeric_coeff != expected_coeff {
+            return None;
+        }
+
+        // Find θ by trying each cos_arg as base and verifying dyadic sequence
+        let mut theta: Option<ExprId> = None;
+
+        for candidate in &cos_args {
+            if verify_dyadic_sequence(ctx, *candidate, &cos_args) {
+                theta = Some(*candidate);
+                break;
+            }
+        }
+
+        let theta = theta?;
+
+        // Domain check: sin(θ) ≠ 0
+        let domain_mode = parent_ctx.domain_mode();
+
+        if !is_provably_sin_nonzero(ctx, theta) {
+            match domain_mode {
+                crate::domain::DomainMode::Generic | crate::domain::DomainMode::Strict => {
+                    // Block with hint
+                    let sin_theta = ctx.add(Expr::Function("sin".to_string(), vec![theta]));
+                    crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                        rule: "Dyadic Cos Product".to_string(),
+                        expr_id: sin_theta,
+                        key: crate::assumptions::AssumptionKey::nonzero_key(ctx, sin_theta),
+                        suggestion: "use `domain assume` to allow this transformation",
+                    });
+                    return None;
+                }
+                crate::domain::DomainMode::Assume => {
+                    // Allow but will record assumption in result
+                }
+            }
+        }
+
+        // Build result: sin(2^n · θ) / sin(θ)
+        let two_pow_n = ctx.num((1u64 << n) as i64);
+        let scaled_theta = smart_mul(ctx, two_pow_n, theta);
+        let sin_scaled = ctx.add(Expr::Function("sin".to_string(), vec![scaled_theta]));
+        let sin_theta = ctx.add(Expr::Function("sin".to_string(), vec![theta]));
+        let result = ctx.add(Expr::Div(sin_scaled, sin_theta));
+
+        // Build description
+        let desc = format!("2^{n}·∏cos(2^k·θ) = sin(2^{n}·θ)/sin(θ)", n = n);
+
+        let mut rewrite = Rewrite::new(result).desc(&desc).local(expr, result);
+
+        // Add assumption if in Assume mode and sin(θ)≠0 not proven
+        if domain_mode == crate::domain::DomainMode::Assume && !is_provably_sin_nonzero(ctx, theta)
+        {
+            // Create NonZero assumption with HeuristicAssumption kind
+            let mut event = crate::assumptions::AssumptionEvent::nonzero(ctx, sin_theta);
+            event.kind = crate::assumptions::AssumptionKind::HeuristicAssumption;
+            rewrite = rewrite.assume(event);
+        }
+
+        Some(rewrite)
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Mul"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+/// Verify that cos_args form a dyadic sequence: θ, 2θ, 4θ, ..., 2^(n-1)θ
+///
+/// Instead of structural comparison (which fails on normalized forms),
+/// we extract the rational coefficient of each arg relative to π and check
+/// if they form the sequence k, 2k, 4k, ..., 2^(n-1)k for some base k.
+fn verify_dyadic_sequence(ctx: &mut cas_ast::Context, theta: ExprId, cos_args: &[ExprId]) -> bool {
+    use crate::helpers::extract_rational_pi_multiple;
+    use num_rational::BigRational;
+
+    let n = cos_args.len() as u32;
+    if n == 0 {
+        return false;
+    }
+
+    // Extract the base coefficient from theta
+    let base_coeff = match extract_rational_pi_multiple(ctx, theta) {
+        Some(k) => k,
+        None => return false, // theta must be a rational multiple of π
+    };
+
+    // Collect all coefficients from cos_args
+    let mut coeffs: Vec<BigRational> = Vec::with_capacity(n as usize);
+    for &arg in cos_args {
+        match extract_rational_pi_multiple(ctx, arg) {
+            Some(k) => coeffs.push(k),
+            None => return false, // All args must be rational multiples of π
+        }
+    }
+
+    // Build expected coefficients: base, 2*base, 4*base, ..., 2^(n-1)*base
+    let mut expected: Vec<BigRational> = Vec::with_capacity(n as usize);
+    for k in 0..n {
+        let multiplier = BigRational::from_integer((1u64 << k).into());
+        expected.push(&base_coeff * &multiplier);
+    }
+
+    // Check if coeffs matches expected as multiset
+    let mut used = vec![false; expected.len()];
+    for coeff in &coeffs {
+        let mut found = false;
+        for (i, exp) in expected.iter().enumerate() {
+            if !used[i] && coeff == exp {
+                used[i] = true;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return false;
+        }
+    }
+
+    used.iter().all(|&u| u)
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     // Use the new data-driven EvaluateTrigTableRule instead of deprecated EvaluateTrigRule
     simplifier.add_rule(Box::new(super::evaluation::EvaluateTrigTableRule));
@@ -2191,6 +2393,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 
     simplifier.add_rule(Box::new(AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
+    // Dyadic Cos Product: 2^n·∏cos(2^k·θ) → sin(2^n·θ)/sin(θ)
+    // Must run BEFORE DoubleAngleRule to recognize the pattern
+    simplifier.add_rule(Box::new(DyadicCosProductToSinRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
     // Sum-to-Product Quotient: runs BEFORE TripleAngleRule to avoid polynomial explosion
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
@@ -2221,6 +2426,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 
     // Phase shift: sin(x + π/2) → cos(x), cos(x + π/2) → -sin(x), etc.
     simplifier.add_rule(Box::new(TrigPhaseShiftRule));
+
+    // Supplementary angle: sin(8π/9) = sin(π - π/9) = sin(π/9)
+    simplifier.add_rule(Box::new(SinSupplementaryAngleRule));
 
     // Fourth power difference: sin⁴(x) - cos⁴(x) → sin²(x) - cos²(x)
     simplifier.add_rule(Box::new(super::pythagorean::TrigEvenPowerDifferenceRule));
@@ -2671,6 +2879,120 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
 
     None
 });
+
+// =============================================================================
+// Sin Supplementary Angle Rule
+// =============================================================================
+// sin(π - x) → sin(x)
+// sin(k·π - x) → (-1)^(k+1) · sin(x) for integer k
+// cos(π - x) → -cos(x)
+//
+// This enables simplification of expressions like sin(8π/9) = sin(π - π/9) = sin(π/9)
+
+define_rule!(
+    SinSupplementaryAngleRule,
+    "Supplementary Angle",
+    |ctx, expr| {
+        use crate::helpers::extract_rational_pi_multiple;
+        use num_rational::BigRational;
+
+        let expr_data = ctx.get(expr).clone();
+
+        if let Expr::Function(name, args) = expr_data {
+            if args.len() != 1 {
+                return None;
+            }
+
+            let is_sin = name == "sin";
+            let is_cos = name == "cos";
+            if !is_sin && !is_cos {
+                return None;
+            }
+
+            let arg = args[0];
+
+            // Try to check if arg is a rational multiple of π
+            // where the coefficient is of the form (n - small) for some positive integer n
+            // e.g., 8/9 = 1 - 1/9, so sin(8π/9) = sin(π - π/9) = sin(π/9)
+
+            if let Some(k) = extract_rational_pi_multiple(ctx, arg) {
+                // k = p/q in lowest terms
+                let p = k.numer();
+                let q = k.denom();
+
+                // Check if p/q is close enough to an integer that the supplementary form is simpler.
+                // For sin(k·π) where k = (n*q - m)/q, we can write it as sin((n*q - m)/q · π) = sin(n·π - m/q·π)
+                // This simplifies when m < p (i.e., the remainder is smaller than the original numerator)
+                //
+                // Example: sin(8/9·π) = sin(1·π - 1/9·π) = sin(π/9) because 1 < 8
+
+                // Only for positive k (p > 0)
+                if p > &num_bigint::BigInt::from(0) {
+                    let one = num_bigint::BigInt::from(1);
+                    // n = ceil(p/q) = floor((p + q - 1) / q)
+                    let n_candidate = (p + q - &one) / q;
+                    let remainder = &n_candidate * q - p; // m = n*q - p
+
+                    // Apply simplification if:
+                    // 1. remainder > 0 (i.e., k is not an integer)
+                    // 2. remainder < p (i.e., the new form is simpler)
+                    // 3. n >= 1 (always true since p > 0)
+                    if remainder > num_bigint::BigInt::from(0) && &remainder < p {
+                        // The supplementary angle is m/q * π
+                        let new_coeff = BigRational::new(remainder.clone(), q.clone());
+
+                        // Build the new angle: (m/q) * π
+                        let new_angle = if new_coeff == BigRational::from_integer(1.into()) {
+                            ctx.add(Expr::Constant(cas_ast::Constant::Pi))
+                        } else {
+                            let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                            let coeff_expr = ctx.add(Expr::Number(new_coeff));
+                            ctx.add(Expr::Mul(coeff_expr, pi))
+                        };
+
+                        // Determine sign based on parity of n
+                        // sin(n·π - x) = (-1)^(n+1) · sin(x)
+                        // cos(n·π - x) = (-1)^n · cos(x)
+                        let n_parity_odd = &n_candidate % 2 == one;
+
+                        let (result, desc) = if is_sin {
+                            // sin(n·π - x) = (-1)^(n+1) · sin(x)
+                            // n odd → (-1)^(n+1) = 1, so sin(x)
+                            // n even → (-1)^(n+1) = -1, so -sin(x)
+                            let new_trig =
+                                ctx.add(Expr::Function("sin".to_string(), vec![new_angle]));
+                            if n_parity_odd {
+                                (new_trig, format!("sin({}π - x) = sin(x)", n_candidate))
+                            } else {
+                                (
+                                    ctx.add(Expr::Neg(new_trig)),
+                                    format!("sin({}π - x) = -sin(x)", n_candidate),
+                                )
+                            }
+                        } else {
+                            // cos(n·π - x) = (-1)^n · cos(x)
+                            // n odd → -cos(x), n even → cos(x)
+                            let new_trig =
+                                ctx.add(Expr::Function("cos".to_string(), vec![new_angle]));
+                            if n_parity_odd {
+                                (
+                                    ctx.add(Expr::Neg(new_trig)),
+                                    format!("cos({}π - x) = -cos(x)", n_candidate),
+                                )
+                            } else {
+                                (new_trig, format!("cos({}π - x) = cos(x)", n_candidate))
+                            }
+                        };
+
+                        return Some(Rewrite::new(result).desc(&desc));
+                    }
+                }
+            }
+        }
+
+        None
+    }
+);
 
 /// Extract (base_term, k) from arg such that arg = base_term + k*π/2
 /// Handles multiple canonical forms:
