@@ -685,6 +685,138 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
     }
 }
 
+// =============================================================================
+// LOG CHAIN PRODUCT RULE (LOG TELESCOPING)
+// log(base, a) * log(a, c) → log(base, c)
+// =============================================================================
+// This implements the "change of base" telescoping identity:
+//   log_b(a) * log_a(c) = log_b(c)
+//
+// Using the definition log_b(x) = ln(x)/ln(b):
+//   (ln(a)/ln(b)) * (ln(c)/ln(a)) = ln(c)/ln(b) = log_b(c)
+//
+// The rule scans Mul chains for pairs of logs where:
+// - Value of log_i == Base of log_j (or vice versa, since Mul is commutative)
+//
+// REDUCES log count: 2 logs → 1 log (naturally terminante)
+//
+// Soundness: EquivalenceUnderIntroducedRequires
+// - Requires: both log arguments > 0, bases ≠ 1
+// - These are already implied by the logs being defined
+pub struct LogChainProductRule;
+
+impl crate::rule::Rule for LogChainProductRule {
+    fn name(&self) -> &str {
+        "Log Chain (Telescoping)"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::helpers::flatten_mul;
+
+        // Only match Mul nodes
+        if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+            return None;
+        }
+
+        // Flatten the multiplication chain
+        let mut factors: Vec<ExprId> = Vec::new();
+        flatten_mul(ctx, expr, &mut factors);
+
+        // Extract log parts from all factors
+        // log_parts[i] = Some((base, arg)) if factor[i] is log(base, arg)
+        let log_parts: Vec<Option<(ExprId, ExprId)>> =
+            factors.iter().map(|&f| extract_log_parts(ctx, f)).collect();
+
+        // Find a pair (i, j) where log_i.arg == log_j.base
+        // i.e., log(b1, a) * log(a, c) → log(b1, c)
+        for (i, log_i_opt) in log_parts.iter().enumerate() {
+            let Some((base_i, arg_i)) = log_i_opt else {
+                continue;
+            };
+
+            for (j, log_j_opt) in log_parts.iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+                let Some((base_j, arg_j)) = log_j_opt else {
+                    continue;
+                };
+
+                // Check if arg_i == base_j (telescoping condition)
+                // arg_i is the "middle" value that cancels
+                if !exprs_match(ctx, *arg_i, *base_j) {
+                    continue;
+                }
+
+                // Found a match! log(base_i, arg_i) * log(arg_i, arg_j) → log(base_i, arg_j)
+                // Build the new log
+                let new_log = make_log(ctx, *base_i, *arg_j);
+
+                // Build the remaining product (all factors except i and j)
+                let remaining: Vec<ExprId> = factors
+                    .iter()
+                    .enumerate()
+                    .filter(|&(idx, _)| idx != i && idx != j)
+                    .map(|(_, &f)| f)
+                    .collect();
+
+                let result = if remaining.is_empty() {
+                    new_log
+                } else {
+                    // Multiply new_log with remaining factors
+                    let mut product = new_log;
+                    for r in remaining {
+                        product = smart_mul(ctx, product, r);
+                    }
+                    product
+                };
+
+                // Build description showing what was telescoped
+                let desc = "log(b, a) * log(a, c) = log(b, c)";
+
+                return Some(crate::rule::Rewrite::new(result).desc(desc));
+            }
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Mul"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+/// Check if two expressions match (for telescoping condition)
+/// Handles ln sentinel and structural equality
+fn exprs_match(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+    let sentinel = ExprId::from_raw(u32::MAX);
+
+    // ln sentinel matches Constant::E
+    if e1 == sentinel {
+        return matches!(ctx.get(e2), Expr::Constant(cas_ast::Constant::E));
+    }
+    if e2 == sentinel {
+        return matches!(ctx.get(e1), Expr::Constant(cas_ast::Constant::E));
+    }
+
+    // Direct ID match
+    if e1 == e2 {
+        return true;
+    }
+
+    // Structural comparison for same expression
+    compare_expr(ctx, e1, e2) == Ordering::Equal
+}
+
 /// LogContractionRule: Contracts sums/differences of logs into single logs.
 /// - ln(a) + ln(b) → ln(a*b)
 /// - ln(a) - ln(b) → ln(a/b)
@@ -1447,6 +1579,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // LogAbsSimplifyRule: ln(|x|) → ln(x) when x > 0
     // Must be BEFORE LogContractionRule to catch `ln(|x|) - ln(x)` before it becomes `ln(|x|/x)`
     simplifier.add_rule(Box::new(LogAbsSimplifyRule));
+
+    // LogChainProductRule: log(b,a)*log(a,c) → log(b,c) (telescoping)
+    // Must be BEFORE LogContractionRule
+    simplifier.add_rule(Box::new(LogChainProductRule));
 
     // LogContractionRule DOES reduce node count (ln(a)+ln(b) → ln(ab)) - valid simplification
     simplifier.add_rule(Box::new(LogContractionRule));
