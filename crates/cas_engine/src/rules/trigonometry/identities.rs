@@ -86,6 +86,98 @@ impl crate::rule::Rule for SinCosIntegerPiRule {
     }
 }
 
+// =============================================================================
+// TrigOddEvenParityRule: sin(-u) = -sin(u), cos(-u) = cos(u), tan(-u) = -tan(u)
+// =============================================================================
+// sin, tan, csc, cot are ODD functions: f(-x) = -f(x)
+// cos, sec are EVEN functions: f(-x) = f(x)
+//
+// This enables simplification of expressions like sin(pi/9)/sin(-pi/9) → -1
+
+define_rule!(
+    TrigOddEvenParityRule,
+    "Trig Parity (Odd/Even)",
+    |ctx, expr| {
+        let expr_data = ctx.get(expr).clone();
+
+        if let Expr::Function(name, args) = expr_data {
+            if args.len() != 1 {
+                return None;
+            }
+
+            let arg = args[0];
+            let arg_data = ctx.get(arg).clone();
+
+            // Try to extract "negated form" of argument
+            let negated_info: Option<(ExprId, Option<num_rational::BigRational>)> = match &arg_data
+            {
+                // Direct negation: Neg(u)
+                Expr::Neg(inner) => Some((*inner, None)),
+
+                // Multiplication by negative number
+                Expr::Mul(a, b) => {
+                    let a_data = ctx.get(*a).clone();
+                    let b_data = ctx.get(*b).clone();
+
+                    if let Expr::Number(n) = a_data {
+                        if n < num_rational::BigRational::from_integer(0.into()) {
+                            Some((*b, Some(-n)))
+                        } else {
+                            None
+                        }
+                    } else if let Expr::Number(n) = b_data {
+                        if n < num_rational::BigRational::from_integer(0.into()) {
+                            Some((*a, Some(-n)))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+
+            if let Some((base, opt_coeff)) = negated_info {
+                // Build positive argument
+                let positive_arg = if let Some(coeff) = opt_coeff {
+                    if coeff == num_rational::BigRational::from_integer(1.into()) {
+                        base
+                    } else {
+                        let c = ctx.add(Expr::Number(coeff));
+                        ctx.add(Expr::Mul(c, base))
+                    }
+                } else {
+                    base
+                };
+
+                match name.as_str() {
+                    // ODD functions: f(-u) = -f(u)
+                    "sin" | "tan" | "csc" | "cot" | "sinh" | "tanh" => {
+                        let f_u = ctx.add(Expr::Function(name.clone(), vec![positive_arg]));
+                        let neg_f_u = ctx.add(Expr::Neg(f_u));
+                        return Some(
+                            Rewrite::new(neg_f_u)
+                                .desc(format!("{}(-u) = -{}(u) [odd function]", name, name)),
+                        );
+                    }
+                    // EVEN functions: f(-u) = f(u)
+                    "cos" | "sec" | "cosh" => {
+                        let f_u = ctx.add(Expr::Function(name.clone(), vec![positive_arg]));
+                        return Some(
+                            Rewrite::new(f_u)
+                                .desc(format!("{}(-u) = {}(u) [even function]", name, name)),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        None
+    }
+);
+
 // NOTE: EvaluateTrigRule is deprecated - use EvaluateTrigTableRule from evaluation.rs instead
 // This rule is kept for reference but should not be registered in the simplifier.
 define_rule!(
@@ -2468,6 +2560,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // PRE-ORDER: Evaluate sin(n·π) = 0 and cos(n·π) = (-1)^n BEFORE any expansion
     // This prevents unnecessary triple/double angle expansions on integer multiples of π
     simplifier.add_rule(Box::new(SinCosIntegerPiRule));
+
+    // PRE-ORDER: Trig parity (odd/even functions)
+    // sin(-u) = -sin(u), cos(-u) = cos(u), tan(-u) = -tan(u)
+    simplifier.add_rule(Box::new(TrigOddEvenParityRule));
 
     // Use the new data-driven EvaluateTrigTableRule instead of deprecated EvaluateTrigRule
     simplifier.add_rule(Box::new(super::evaluation::EvaluateTrigTableRule));
