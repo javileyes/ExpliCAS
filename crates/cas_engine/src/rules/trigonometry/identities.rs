@@ -2233,7 +2233,7 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
 
         for &factor in &factors {
             if let Some(n) = as_number(ctx, factor) {
-                numeric_coeff = numeric_coeff * n.clone();
+                numeric_coeff *= n.clone();
             } else if let Expr::Function(name, args) = ctx.get(factor) {
                 if name == "cos" && args.len() == 1 {
                     cos_args.push(args[0]);
@@ -2322,6 +2322,11 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
 
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::High
+    }
+
+    fn soundness(&self) -> crate::rule::SoundnessLabel {
+        // The transformation requires sin(θ) ≠ 0, which is either proven or assumed
+        crate::rule::SoundnessLabel::EquivalenceUnderIntroducedRequires
     }
 }
 
