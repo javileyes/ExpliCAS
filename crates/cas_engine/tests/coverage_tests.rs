@@ -55,14 +55,18 @@ fn test_cancel_common_factors_powers() {
 fn test_integral_linear_subst_sin() {
     let res = simplify_str("integrate(sin(2*x + 1), x)");
     println!("test_integral_linear_subst_sin: {}", res);
-    // assert!(res.contains("\\cos"));
+    // Smoke test: integration returns without crash
+    // Full assertion pending: integrate not fully implemented
+    assert!(!res.is_empty());
 }
 
 #[test]
 fn test_integral_linear_subst_exp() {
     let res = simplify_str("integrate(exp(3*x), x)");
     println!("test_integral_linear_subst_exp: {}", res);
-    // assert!(res.contains("e^{3 x}"));
+    // Smoke test: integration returns without crash
+    // Full assertion pending: integrate not fully implemented
+    assert!(!res.is_empty());
 }
 
 #[test]
@@ -75,27 +79,30 @@ fn test_diff_chain_rule_depth() {
     assert!(res.contains("x"));
 }
 
-// #[test]
-// fn test_inequality_abs_gt() {
-//     let res = simplify_str("solve_inequality(abs(x - 1) > 2, x)");
-//     assert!(res.contains("3"));
-//     assert!(res.contains("-1"));
-// }
+#[test]
+#[ignore = "needs solve_inequality feature"]
+fn test_inequality_abs_gt() {
+    let res = simplify_str("solve_inequality(abs(x - 1) > 2, x)");
+    assert!(res.contains("3"));
+    assert!(res.contains("-1"));
+}
 
-// #[test]
-// fn test_inequality_quadratic() {
-//     let res = simplify_str("solve_inequality(x^2 - 4 > 0, x)");
-//     assert!(res.contains("2"));
-//     assert!(res.contains("-2"));
-// }
+#[test]
+#[ignore = "needs solve_inequality feature"]
+fn test_inequality_quadratic() {
+    let res = simplify_str("solve_inequality(x^2 - 4 > 0, x)");
+    assert!(res.contains("2"));
+    assert!(res.contains("-2"));
+}
 
-// #[test]
-// fn test_equation_cubic() {
-//     // x^3 = 8 -> x^3 - 8 = 0
-//     let res = simplify_str("solve(x^3 - 8, x)");
-//     println!("test_equation_cubic: {}", res);
-//     assert!(res.contains("2"));
-// }
+#[test]
+#[ignore = "needs cubic solver"]
+fn test_equation_cubic() {
+    // x^3 = 8 -> x^3 - 8 = 0
+    let res = simplify_str("solve(x^3 - 8, x)");
+    println!("test_equation_cubic: {}", res);
+    assert!(res.contains("2"));
+}
 
 #[test]
 fn test_trig_square_canonicalization() {

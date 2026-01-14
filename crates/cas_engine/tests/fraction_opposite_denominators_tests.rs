@@ -175,8 +175,7 @@ fn test_bridge_case_direct() {
     // KNOWN LIMITATION: Currently doesn't fully simplify due to rationalization limits
     let result = simplify_and_display("1/(sqrt(x) + 1) + 1/(sqrt(x) - 1) - (2*sqrt(x))/(x - 1)");
     assert!(!result.is_empty(), "Should produce output");
-    // TODO: When rationalization is improved, use:
-    // assert_simplifies_to_zero("1/(sqrt(x) + 1) + 1/(sqrt(x) - 1) - (2*sqrt(x))/(x - 1)");
+    // TODO: When rationalization is improved: verify result == 0
 }
 
 // ============================================================================

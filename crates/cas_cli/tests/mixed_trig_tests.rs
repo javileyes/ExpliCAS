@@ -97,7 +97,7 @@ fn test_55_mixed_trig_fraction() {
 
     // This is the HARDEST test - requires full sin/cos conversion
     // TODO: Implement comprehensive trig-to-sincos conversion
-    // assert_eq!(result, "0", "Complex fraction should simplify to 0");
+    // TODO: When full trig->sincos conversion is implemented, verify: result == "0"
 }
 
 // ==================== Additional Tests for Robustness ====================

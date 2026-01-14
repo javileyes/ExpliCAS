@@ -56,11 +56,7 @@ fn test_46_principal_values() {
     assert!(!result.is_empty(), "Should produce some result");
 
     // Uncomment when rule is implemented:
-    // assert!(
-    //     result.contains("pi") && result.contains("2"),
-    //     "asin(sin(3π/2)) + acos(cos(3π)) should be π/2, got: {}",
-    //     result
-    // );
+    // Expected: result.contains("pi") && result.contains("2") -> π/2
 }
 
 // ==================== Test 47: La Identidad Complementaria ====================
@@ -118,8 +114,7 @@ fn test_49_machin_formula() {
     assert!(!result.is_empty(), "Should produce some result");
 
     // This test is expected to NOT pass without atan addition formula
-    // Uncomment only when that advanced rule is implemented:
-    // assert_eq!(result, "0", "Machin's formula should simplify to 0");
+    // Expected when implemented: result == "0"
 }
 
 // ==================== Test 50: Triángulo Algebraico (Composition) ====================
@@ -162,12 +157,7 @@ fn test_sin_acos_composition() {
     assert!(!result.is_empty(), "Should produce some result");
 
     // Expected: sqrt(1 - x^2)
-    // Uncomment when implemented:
-    // assert!(
-    //     result.contains("sqrt") && result.contains("1") && result.contains("x"),
-    //     "sin(acos(x)) should be sqrt(1-x²), got: {}",
-    //     result
-    // );
+    // When implemented: result.contains("sqrt") && result.contains("1") && result.contains("x")
 }
 
 #[test]
@@ -181,10 +171,5 @@ fn test_cos_asin_composition() {
     assert!(!result.is_empty(), "Should produce some result");
 
     // Expected: sqrt(1 - x^2)
-    // Uncomment when implemented:
-    // assert!(
-    //     result.contains("sqrt") && result.contains("1") && result.contains("x"),
-    //     "cos(asin(x)) should be sqrt(1-x²), got: {}",
-    //     result
-    // );
+    // When implemented: result.contains("sqrt") && result.contains("1") && result.contains("x")
 }
