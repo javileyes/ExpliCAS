@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \sin(\frac{\pi}{12}) + \sin(\frac{5\cdot \pi}{12})</title>
+    <title>CAS Steps: \text{log}(2, 8)</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,118 +451,34 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\sin(\frac{\pi}{12}) + \sin(\frac{5\cdot \pi}{12})\]
+            \[\text{log}(2, 8)\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Sum-to-Product Identity</h3>
+                    <h3>Evaluate Logarithms</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\sin(\frac{\pi}{12}) + \sin(\frac{5}{12}\cdot \pi)}}\]
+                        \[{\color{red}{\text{log}(2, 8)}}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)}\)</div>
+                        <div class="rule-name">\(\text{log(2, 8) = 3}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\sin(\frac{\pi}{12}) + \sin(\frac{5}{12}\cdot \pi)}} \rightarrow {\color{green}{2\cdot \sin(\frac{\frac{\pi}{2}}{2})\cdot \cos(\frac{-\frac{1}{3}\cdot \pi}{2})}}\]
+                            \[{\color{red}{\log_{8}(2)}} \rightarrow {\color{green}{3}}\]
                         </div>
                     </div>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{2\cdot \sin(\frac{\frac{\pi}{2}}{2})\cdot \cos(\frac{-\frac{1}{3}\cdot \pi}{2})}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Evaluate Trigonometric Functions (Table)</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[2\cdot {\color{red}{\sin(\frac{\pi}{4})}}\cdot \cos(\frac{-\frac{1}{3}\cdot \pi}{2})\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{sin(π/4) = √2/2}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\sin(\frac{\pi}{4})}} \rightarrow {\color{green}{\frac{\sqrt{2}}{2}}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[2\cdot {\color{green}{\frac{\sqrt{2}}{2}}}\cdot \cos(\frac{-\frac{1}{3}\cdot \pi}{2})\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Trig Parity (Odd/Even)</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[2\cdot \frac{\sqrt{2}}{2}\cdot {\color{red}{\cos(-\frac{1}{6}\cdot \pi)}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{cos(-u) = cos(u) [even function]}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\cos(-\frac{1}{6}\cdot \pi)}} \rightarrow {\color{green}{\cos(\frac{\pi}{6})}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[2\cdot \frac{\sqrt{2}}{2}\cdot {\color{green}{\cos(\frac{\pi}{6})}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Evaluate Trigonometric Functions (Table)</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[2\cdot \frac{\sqrt{2}}{2}\cdot {\color{red}{\cos(\frac{\pi}{6})}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{cos(π/6) = √3/2}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\cos(\frac{\pi}{6})}} \rightarrow {\color{green}{\frac{\sqrt{3}}{2}}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[2\cdot \frac{\sqrt{2}}{2}\cdot {\color{green}{\frac{\sqrt{3}}{2}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
-                    <h3>Product Same Exponent</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[2\cdot \frac{\sqrt{2}}{2}\cdot \frac{{\color{red}{\sqrt{3}}}}{2}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine powers with same exponent}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\sqrt{2}\cdot \sqrt{3}}} \rightarrow {\color{green}{\sqrt{2\cdot 3}}}\]
-                        </div>
-                    </div>
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[2\cdot \frac{\frac{{\color{green}{\sqrt{2\cdot 3}}}}{2}}{2}\]
+                        \[{\color{green}{3}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[\frac{\sqrt{6}}{2}\]
+            \[3\]
         </div>
     </div>
     <footer>

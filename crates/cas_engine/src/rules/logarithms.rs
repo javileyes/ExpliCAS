@@ -22,6 +22,117 @@ fn make_log(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
     }
 }
 
+/// Evaluate log_base(val) as a rational number using prime factorization.
+///
+/// Returns Some(ratio) if both base and val are powers of a common prime base:
+/// - log(2, 8) = 3     because 2 = 2^1, 8 = 2^3 → ratio = 3/1
+/// - log(8, 2) = 1/3   because 8 = 2^3, 2 = 2^1 → ratio = 1/3
+/// - log(16, 8) = 3/4  because 16 = 2^4, 8 = 2^3 → ratio = 3/4
+///
+/// Returns None if the log cannot be expressed as a rational number.
+fn eval_log_rational(
+    base: &num_bigint::BigInt,
+    val: &num_bigint::BigInt,
+) -> Option<num_rational::BigRational> {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    // Guard: base > 1, val > 0
+    let one = BigInt::one();
+    if base <= &one || val.is_zero() || val.is_negative() || base.is_negative() {
+        return None;
+    }
+
+    // Special case: val = 1 → log_b(1) = 0
+    if val.is_one() {
+        return Some(BigRational::zero());
+    }
+
+    // Special case: base == val → log_b(b) = 1
+    if base == val {
+        return Some(BigRational::one());
+    }
+
+    // Factorize both into prime -> exponent maps
+    let fb = prime_exponent_map(base);
+    let fv = prime_exponent_map(val);
+
+    // Both must have the same set of primes
+    if fb.keys().collect::<std::collections::HashSet<_>>()
+        != fv.keys().collect::<std::collections::HashSet<_>>()
+    {
+        return None;
+    }
+
+    // The ratio exp_val / exp_base must be identical for all primes
+    // log_base(val) = log(val) / log(base) = (sum of exp_val[p] * log(p)) / (sum of exp_base[p] * log(p))
+    // This only works if exp_val[p] / exp_base[p] is constant for all p
+    let mut ratio: Option<BigRational> = None;
+    for (prime, exp_base) in &fb {
+        let exp_val = fv.get(prime)?;
+        if exp_base.is_zero() {
+            return None; // Shouldn't happen, but guard
+        }
+        let r = BigRational::new(BigInt::from(*exp_val), BigInt::from(*exp_base));
+        match &ratio {
+            None => ratio = Some(r),
+            Some(prev) if *prev == r => {}
+            _ => return None, // Different ratios for different primes
+        }
+    }
+
+    ratio
+}
+
+/// Compute prime factorization as a map of prime -> exponent
+fn prime_exponent_map(n: &num_bigint::BigInt) -> HashMap<num_bigint::BigInt, u32> {
+    use num_bigint::BigInt;
+    use num_integer::Integer;
+    use num_traits::{One, Signed, Zero};
+
+    let mut result = HashMap::new();
+    let mut n = n.abs();
+    let one = BigInt::one();
+
+    if n <= one {
+        return result;
+    }
+
+    // Factor out 2s
+    let mut count_2 = 0u32;
+    while n.is_even() {
+        count_2 += 1;
+        n /= 2;
+    }
+    if count_2 > 0 {
+        result.insert(BigInt::from(2), count_2);
+    }
+
+    // Factor out odd primes
+    let mut d = BigInt::from(3);
+    while &d * &d <= n {
+        let mut count = 0u32;
+        while (&n % &d).is_zero() {
+            count += 1;
+            n /= &d;
+        }
+        if count > 0 {
+            result.insert(d.clone(), count);
+        }
+        d += 2;
+    }
+
+    // If n > 1 at this point, it's a prime
+    if n > one {
+        result.insert(n, 1);
+    }
+
+    result
+}
+
+use std::collections::HashMap;
+
 define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Function(name, args) = expr_data {
@@ -56,24 +167,19 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
             // Check if n is a power of base (if base is a number)
             let base_data = ctx.get(base).clone();
             if let Expr::Number(b) = base_data {
-                // Simple check for integer powers for now
+                // Try to evaluate log(base, val) as a rational number
+                // This handles cases like:
+                //   log(2, 8) = 3      (8 = 2^3)
+                //   log(8, 2) = 1/3    (2 = 8^(1/3))
+                //   log(16, 8) = 3/4   (16 = 2^4, 8 = 2^3, so log_16(8) = 3/4)
                 if b.is_integer() && n.is_integer() {
                     let b_int = b.to_integer();
                     let n_int = n.to_integer();
-                    if b_int > num_bigint::BigInt::from(1) {
-                        let mut temp = b_int.clone();
-                        let mut power = 1;
-                        while temp < n_int {
-                            temp *= &b_int;
-                            power += 1;
-                        }
-                        if temp == n_int {
-                            let new_expr = ctx.num(power);
-                            return Some(
-                                Rewrite::new(new_expr)
-                                    .desc(format!("log({}, {}) = {}", b, n, power)),
-                            );
-                        }
+                    if let Some(ratio) = eval_log_rational(&b_int, &n_int) {
+                        let new_expr = ctx.add(Expr::Number(ratio.clone()));
+                        return Some(
+                            Rewrite::new(new_expr).desc(format!("log({}, {}) = {}", b, n, ratio)),
+                        );
                     }
                 }
             }
