@@ -5512,7 +5512,17 @@ impl Repl {
                         // Display blocked hints (pedagogical warnings for Generic mode)
                         // Respects hints_enabled option (can be toggled with `semantics set hints off`)
                         // NOTE: Use output.blocked_hints which were collected by eval() from thread-local
-                        let hints = &output.blocked_hints;
+                        // Filter out spurious 'defined' hints when result is undefined
+                        // (these are cycle detection artifacts, not useful when result is already undefined)
+                        let result_is_undefined = matches!(
+                            self.engine.simplifier.context.get(output.resolved),
+                            cas_ast::Expr::Constant(cas_ast::Constant::Undefined)
+                        );
+                        let hints: Vec<_> = output
+                            .blocked_hints
+                            .iter()
+                            .filter(|h| !(result_is_undefined && h.key.kind() == "defined"))
+                            .collect();
                         if !hints.is_empty() && self.state.options.hints_enabled {
                             let ctx = &self.engine.simplifier.context;
 
@@ -5534,7 +5544,7 @@ impl Repl {
                             // Group hints by rule name
                             let mut grouped: std::collections::HashMap<String, Vec<String>> =
                                 std::collections::HashMap::new();
-                            for hint in hints {
+                            for hint in &hints {
                                 grouped
                                     .entry(hint.rule.clone())
                                     .or_default()

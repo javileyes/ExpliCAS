@@ -1756,14 +1756,21 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             let rule_name_static = rule.name();
                             if self.blocked_rules.insert((h, rule_name_static.to_string())) {
                                 // First time seeing this (fingerprint, rule) - emit hint
-                                crate::domain::register_blocked_hint(crate::domain::BlockedHint {
-                                    key: crate::assumptions::AssumptionKey::Defined {
-                                        expr_fingerprint: h,
-                                    },
-                                    expr_id,
-                                    rule: rule_name_static.to_string(),
-                                    suggestion: "cycle detected; consider disabling heuristic rules or tightening budget",
-                                });
+                                // But don't emit for constants/numbers (they're not meaningful cycles)
+                                let is_constant = matches!(
+                                    self.context.get(expr_id),
+                                    cas_ast::Expr::Number(_) | cas_ast::Expr::Constant(_)
+                                );
+                                if !is_constant {
+                                    crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                                        key: crate::assumptions::AssumptionKey::Defined {
+                                            expr_fingerprint: h,
+                                        },
+                                        expr_id,
+                                        rule: rule_name_static.to_string(),
+                                        suggestion: "cycle detected; consider disabling heuristic rules or tightening budget",
+                                    });
+                                }
                             }
                             self.last_cycle = Some(info);
                             // Treat as fixed-point: stop this phase early
