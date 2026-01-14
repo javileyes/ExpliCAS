@@ -155,6 +155,8 @@ pub struct LaTeXExprHighlightedWithHints<'a> {
     pub id: ExprId,
     pub highlights: &'a HighlightConfig,
     pub hints: &'a DisplayContext,
+    /// V2.14.40: Style preferences for consistent root rendering
+    pub style_prefs: Option<&'a crate::root_style::StylePreferences>,
 }
 
 impl<'a> LaTeXRenderer for LaTeXExprHighlightedWithHints<'a> {
@@ -173,8 +175,11 @@ impl<'a> LaTeXRenderer for LaTeXExprHighlightedWithHints<'a> {
     fn get_display_hint(&self, _id: ExprId) -> Option<&DisplayContext> {
         Some(self.hints)
     }
-    // V2.14.40: format_pow is now handled by the trait default, which renders
-    // fractional powers as roots automatically
+
+    fn get_style_prefs(&self) -> Option<&crate::root_style::StylePreferences> {
+        self.style_prefs
+    }
+    // V2.14.40: format_pow is now handled by the trait default, which respects style preferences
 }
 
 impl<'a> LaTeXExprHighlightedWithHints<'a> {
@@ -313,6 +318,7 @@ mod tests {
             id: sqrt_expr,
             highlights: &config,
             hints: &hints,
+            style_prefs: None,
         };
         assert_eq!(latex.to_latex(), "\\sqrt{x}");
     }

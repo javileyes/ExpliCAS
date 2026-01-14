@@ -2053,6 +2053,7 @@ impl<'a> TimelineHtml<'a> {
                 id: focus_before,
                 highlights: &rule_before_config,
                 hints: &display_hints,
+                style_prefs: Some(&self.style_prefs),
             }
             .to_latex();
 
@@ -2063,6 +2064,7 @@ impl<'a> TimelineHtml<'a> {
                 id: focus_after,
                 highlights: &rule_after_config,
                 hints: &display_hints,
+                style_prefs: Some(&self.style_prefs),
             }
             .to_latex();
 
