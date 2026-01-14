@@ -29,15 +29,73 @@ use std::collections::HashMap;
 /// Tolerance for numeric comparison
 pub const DEFAULT_TOL: f64 = 1e-9;
 
-/// Check if two f64 values are approximately equal
+// =============================================================================
+// Numeric Equivalence Options
+// =============================================================================
+
+/// Options for numeric equivalence testing with min_valid and atol/rtol
+#[derive(Clone, Copy, Debug)]
+pub struct NumericEquivOptions {
+    /// Number of sample points to test
+    pub samples: usize,
+    /// Minimum number of valid (non-None) samples required
+    pub min_valid: usize,
+    /// Absolute tolerance for comparisons
+    pub atol: f64,
+    /// Relative tolerance for comparisons
+    pub rtol: f64,
+}
+
+impl NumericEquivOptions {
+    /// Create new options with sensible defaults
+    /// min_valid defaults to samples/2 (at least 32)
+    pub fn new(samples: usize) -> Self {
+        let min_valid = (samples / 2).max(32);
+        Self {
+            samples,
+            min_valid,
+            atol: 1e-10,
+            rtol: 1e-10,
+        }
+    }
+
+    /// Set absolute and relative tolerance
+    pub fn with_tol(mut self, atol: f64, rtol: f64) -> Self {
+        self.atol = atol;
+        self.rtol = rtol;
+        self
+    }
+
+    /// Set minimum valid samples required
+    pub fn with_min_valid(mut self, min_valid: usize) -> Self {
+        self.min_valid = min_valid;
+        self
+    }
+}
+
+impl Default for NumericEquivOptions {
+    fn default() -> Self {
+        Self::new(200)
+    }
+}
+
+/// Check if two f64 values are approximately equal using absolute tolerance only
 pub fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
+    approx_eq_atol_rtol(a, b, tol, 0.0)
+}
+
+/// Check if two f64 values are approximately equal using both absolute and relative tolerance
+/// |a - b| <= atol + rtol * max(|a|, |b|)
+pub fn approx_eq_atol_rtol(a: f64, b: f64, atol: f64, rtol: f64) -> bool {
     if a.is_nan() || b.is_nan() {
         return false;
     }
     if a.is_infinite() && b.is_infinite() {
         return a.signum() == b.signum();
     }
-    (a - b).abs() <= tol
+    let diff = (a - b).abs();
+    let scale = a.abs().max(b.abs()).max(1.0);
+    diff <= atol + rtol * scale
 }
 
 /// Pretty-print an expression
@@ -107,6 +165,9 @@ pub fn assert_simplifies_to_zero(input: &str) {
 /// Evaluates both expressions at sample points and checks they're equal within tolerance.
 /// Use `filter` to exclude singular points (e.g., where denominator is zero).
 ///
+/// **Enforces minimum valid samples**: If less than 50% of samples are valid,
+/// the test fails to prevent false positives from over-restrictive filters.
+///
 /// # Example
 /// ```ignore
 /// assert_equiv_numeric_1var(
@@ -130,6 +191,9 @@ pub fn assert_equiv_numeric_1var(
     tol: f64,
     filter: impl Fn(f64) -> bool,
 ) {
+    // Use conservative min_valid: at least 50% of samples must be valid
+    let min_valid = (samples / 2).max(10);
+
     let mut simplifier = Simplifier::with_default_rules();
     let a = parse(input, &mut simplifier.context).expect("Failed to parse input");
     let b = parse(expected, &mut simplifier.context).expect("Failed to parse expected");
@@ -137,7 +201,9 @@ pub fn assert_equiv_numeric_1var(
     let (a_simplified, _) = simplifier.simplify(a);
     let (b_simplified, _) = simplifier.simplify(b);
 
-    let mut tested = 0;
+    let mut valid = 0usize;
+    let mut filtered_out = 0usize;
+    let mut eval_failed = 0usize;
     let mut failed = false;
     let mut fail_msg = String::new();
 
@@ -146,6 +212,7 @@ pub fn assert_equiv_numeric_1var(
         let x = lo + (hi - lo) * t;
 
         if !filter(x) {
+            filtered_out += 1;
             continue;
         }
 
@@ -157,34 +224,59 @@ pub fn assert_equiv_numeric_1var(
 
         match (va, vb) {
             (Some(va), Some(vb)) => {
-                tested += 1;
-                if !approx_eq(va, vb, tol) {
+                valid += 1;
+                // Use both absolute and relative tolerance
+                if !approx_eq_atol_rtol(va, vb, tol, tol) {
                     failed = true;
+                    let diff = (va - vb).abs();
+                    let scale = va.abs().max(vb.abs()).max(1.0);
                     fail_msg = format!(
-                        "Numeric mismatch at {}={}:\n  input  -> {} = {}\n  expected -> {} = {}\n  error = {}",
+                        "Numeric mismatch at {}={}:\n  input  -> {} = {:.15}\n  expected -> {} = {:.15}\n  |diff| = {:.3e}\n  allowed = atol({:.3e}) + rtol({:.3e})*scale({:.3e}) = {:.3e}",
                         var, x,
                         pretty(&simplifier.context, a_simplified), va,
                         pretty(&simplifier.context, b_simplified), vb,
-                        (va - vb).abs()
+                        diff, tol, tol, scale, tol + tol * scale
                     );
                     break;
                 }
             }
             (None, _) | (_, None) => {
-                // Skip if evaluation fails (singularity, undefined, etc.)
+                eval_failed += 1;
                 continue;
             }
         }
     }
 
     assert!(!failed, "{}", fail_msg);
+
+    // Enforce minimum valid samples
     assert!(
-        tested > 0,
-        "No valid samples tested for {} in [{}, {}]",
-        var,
-        lo,
-        hi
+        valid >= min_valid,
+        "Too few valid samples: {} valid < {} min_valid (out of {} samples)\n  \
+         filtered_out={}, eval_failed={}\n  \
+         Hint: Filter may be too restrictive or evaluation is failing too often\n  \
+         input: {}\n  expected: {}",
+        valid,
+        min_valid,
+        samples,
+        filtered_out,
+        eval_failed,
+        input,
+        expected
     );
+
+    // Warn about fragile tests that barely pass
+    let fragility_ratio = valid as f64 / samples as f64;
+    if fragility_ratio < 0.6 || eval_failed > samples / 4 {
+        eprintln!(
+            "⚠️  FRAGILE TEST: {:.0}% valid samples, {:.0}% eval failures\n   \
+             input: {}\n   \
+             Consider: wider range, looser filter, or investigate eval failures",
+            fragility_ratio * 100.0,
+            eval_failed as f64 / samples as f64 * 100.0,
+            input
+        );
+    }
 }
 
 /// Assert numeric equivalence for expressions with two variables.
