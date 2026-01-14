@@ -253,12 +253,12 @@ fn non_regression_complex_fraction_simplification_pipeline() {
     // Collect rule names
     let rule_names: Vec<&str> = steps.iter().map(|(r, _, _, _)| r.as_str()).collect();
 
-    // Should have "Combine Fractions Same Denom" step
+    // Should have fraction-combining step (either "Combine Fractions Same Denom" or "Common Denominator")
     assert!(
         rule_names
             .iter()
-            .any(|r| r.contains("Combine") && r.contains("Denom")),
-        "Should apply 'Combine Fractions Same Denom' rule, got: {:?}",
+            .any(|r| (r.contains("Combine") && r.contains("Denom")) || *r == "Common Denominator"),
+        "Should apply 'Combine Fractions Same Denom' or 'Common Denominator' rule, got: {:?}",
         rule_names
     );
 

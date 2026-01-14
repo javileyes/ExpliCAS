@@ -1669,6 +1669,163 @@ fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     }
 }
 
+// =============================================================================
+// Fold Add Into Fraction: k + p/q → (k·q + p)/q
+// =============================================================================
+//
+// This rule combines a simple term with a fraction into a single fraction.
+// Unlike AddFractionsRule, this always fires when k is "simple enough"
+// (Number, Variable, or simple polynomial) to produce canonical rational form.
+//
+// Examples:
+// - 1 + (x+1)/(2x+1) → (3x+2)/(2x+1)
+// - x + 1/y → (x·y + 1)/y
+// - 2 + 3/x → (2x + 3)/x
+//
+// Guards:
+// - Skip if inside trig arguments (preserve sin(a + pi/9) structure)
+// - Skip if k contains functions (preserve arctan(x) + 1/y structure)
+
+define_rule!(
+    FoldAddIntoFractionRule,
+    "Common Denominator",
+    |ctx, expr, parent_ctx| {
+        // Match Add(l, r) where one is a fraction and the other is not
+        let (l, r) = crate::helpers::as_add(ctx, expr)?;
+
+        // Determine which is the fraction
+        let (term, p, q, swapped) = if let Expr::Div(p, q) = ctx.get(r).clone() {
+            // l + p/q
+            if matches!(ctx.get(l), Expr::Div(_, _)) {
+                return None; // Both fractions: let AddFractionsRule handle it
+            }
+            (l, p, q, false)
+        } else if let Expr::Div(p, q) = ctx.get(l).clone() {
+            // p/q + r
+            if matches!(ctx.get(r), Expr::Div(_, _)) {
+                return None;
+            }
+            (r, p, q, true)
+        } else {
+            return None; // Neither is a fraction
+        };
+
+        // Guard: Skip if inside trig function argument
+        let inside_trig = parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
+            matches!(c.get(node_id), Expr::Function(name, _) if is_trig_function_name(name))
+        });
+        if inside_trig {
+            return None;
+        }
+
+        // Guard: Skip if this expression is inside a fraction (numerator OR denominator)
+        // Let SimplifyComplexFraction handle nested cases properly
+        // This prevents preemptive simplification of 1 + x/(x+1) when it's in a complex fraction
+        let inside_fraction = parent_ctx
+            .has_ancestor_matching(ctx, |c, node_id| matches!(c.get(node_id), Expr::Div(_, _)));
+        if inside_fraction {
+            return None;
+        }
+
+        // Guard: Skip if term is just 1 or -1 AND numerator p is also constant
+        // These cases interact badly with SimplifyFractionRule and cause cycles
+        // e.g., 1 + 1/(x-1) -> x/(x-1) -> some other form -> cycle
+        // But allow: 1 + (x+1)/(2x+1) -> (3x+2)/(2x+1) since numerator has x
+        let term_is_unit = match ctx.get(term) {
+            Expr::Number(n) => {
+                n == &num_rational::BigRational::from_integer(1.into())
+                    || n == &num_rational::BigRational::from_integer((-1).into())
+            }
+            Expr::Neg(inner) => {
+                matches!(ctx.get(*inner), Expr::Number(n) if n == &num_rational::BigRational::from_integer(1.into()))
+            }
+            _ => false,
+        };
+
+        // Check if numerator p is purely constant (no variables)
+        fn is_constant(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Number(_) | Expr::Constant(_) => true,
+                Expr::Neg(inner) => is_constant(ctx, *inner),
+                Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
+                    is_constant(ctx, *l) && is_constant(ctx, *r)
+                }
+                Expr::Pow(base, exp) => is_constant(ctx, *base) && is_constant(ctx, *exp),
+                _ => false, // Variables, functions, etc. are NOT constant
+            }
+        }
+
+        if term_is_unit && is_constant(ctx, p) {
+            return None;
+        }
+
+        // Guard: Skip if term contains functions or roots (preserve arctan(x) + 1/y)
+        fn contains_function_or_root(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Function(_, _) => true,
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                    contains_function_or_root(ctx, *l) || contains_function_or_root(ctx, *r)
+                }
+                Expr::Neg(e) => contains_function_or_root(ctx, *e),
+                // Detect fractional exponents (roots): x^(1/2), x^(1/3), etc.
+                Expr::Pow(base, exp) => {
+                    // Check if exponent is a fraction with numerator smaller than denominator
+                    let is_fractional = match ctx.get(*exp) {
+                        Expr::Number(n) => {
+                            !n.is_integer()
+                                && n.abs() < num_rational::BigRational::from_integer(1.into())
+                        }
+                        Expr::Div(_, _) => true, // Any explicit division in exponent is a root
+                        _ => false,
+                    };
+                    is_fractional || contains_function_or_root(ctx, *base)
+                }
+                _ => false,
+            }
+        }
+        if contains_function_or_root(ctx, term) {
+            return None;
+        }
+
+        // Guard: Skip if denominator contains functions or roots (sqrt, etc.)
+        // These interact badly with rationalization rules and cause cycles
+        // e.g., 1/(sqrt(x)-1) should NOT be combined with external terms
+        if contains_function_or_root(ctx, q) {
+            return None;
+        }
+
+        // Guard: Skip if denominator is numeric (let AddFractionsRule handle 1 + 1/2)
+        if matches!(ctx.get(q), Expr::Number(_)) {
+            return None;
+        }
+
+        // Build: (term · q + p) / q
+        let term_times_q = mul2_raw(ctx, term, q);
+        let new_num = ctx.add(Expr::Add(term_times_q, p));
+        let new_expr = ctx.add(Expr::Div(new_num, q));
+
+        // Complexity guard: Only apply if we're not making things worse
+        // The result should simplify further (combine like terms) to be worthwhile
+        let old_nodes = count_nodes(ctx, expr);
+        let new_nodes = count_nodes(ctx, new_expr);
+
+        // Allow slight increase in nodes since combine-like-terms will reduce later
+        // But prevent explosion (cap at 1.5x the original)
+        if new_nodes > old_nodes * 3 / 2 + 2 {
+            return None;
+        }
+
+        // Description based on order
+        let desc = if swapped {
+            "Common denominator: p/q + k → (p + k·q)/q"
+        } else {
+            "Common denominator: k + p/q → (k·q + p)/q"
+        };
+
+        Some(Rewrite::new(new_expr).desc(desc))
+    }
+);
+
 define_rule!(
     AddFractionsRule,
     "Add Fractions",

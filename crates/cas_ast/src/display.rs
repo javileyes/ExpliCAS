@@ -1733,26 +1733,53 @@ impl<'a> DisplayExprStyled<'a> {
             Expr::Pow(base, exp) => {
                 // Check if this is a fractional power that should be a root
                 if resolved_style.root_style == crate::root_style::RootStyle::Radical {
-                    if let Expr::Number(n) = self.context.get(*exp) {
-                        // Check for 1/n form (nth root)
-                        if !n.is_integer() && n.numer() == &1.into() {
-                            if let Some(index) = n.denom().to_u32_digits().1.first() {
-                                // Print as root
-                                write!(f, "{}(", unicode_root_prefix(*index as u64))?;
+                    use num_traits::ToPrimitive;
+
+                    // Helper to extract (numerator, denominator) from exponent
+                    let get_frac_parts = |exp_id: ExprId| -> Option<(i64, i64)> {
+                        match self.context.get(exp_id) {
+                            // Expr::Number with rational value
+                            Expr::Number(n) => {
+                                if !n.is_integer() {
+                                    let numer = n.numer().to_i64()?;
+                                    let denom = n.denom().to_i64()?;
+                                    Some((numer, denom))
+                                } else {
+                                    None
+                                }
+                            }
+                            // Expr::Div(num, den) form
+                            Expr::Div(num, den) => {
+                                if let (Expr::Number(n), Expr::Number(d)) =
+                                    (self.context.get(*num), self.context.get(*den))
+                                {
+                                    if n.is_integer() && d.is_integer() {
+                                        let numer = n.numer().to_i64()?;
+                                        let denom = d.numer().to_i64()?;
+                                        if denom > 1 {
+                                            return Some((numer, denom));
+                                        }
+                                    }
+                                }
+                                None
+                            }
+                            _ => None,
+                        }
+                    };
+
+                    if let Some((numer, denom)) = get_frac_parts(*exp) {
+                        if denom > 1 {
+                            if numer == 1 {
+                                // Print as root: √(base)
+                                write!(f, "{}(", unicode_root_prefix(denom as u64))?;
                                 self.fmt_internal(f, *base)?;
                                 return write!(f, ")");
-                            }
-                        }
-                        // Check for k/n form (kth power under nth root)
-                        if !n.is_integer() {
-                            let numer: i64 = n.numer().try_into().unwrap_or(1);
-                            if let Some(denom) = n.denom().to_u32_digits().1.first() {
-                                if *denom > 1 && numer != 1 {
-                                    write!(f, "{}(", unicode_root_prefix(*denom as u64))?;
-                                    self.fmt_internal(f, *base)?;
-                                    write!(f, "^{})", numer)?;
-                                    return Ok(());
-                                }
+                            } else if numer != 1 {
+                                // Print as k-th power under d-th root: ∜(base^k)
+                                write!(f, "{}(", unicode_root_prefix(denom as u64))?;
+                                self.fmt_internal(f, *base)?;
+                                write!(f, "^{})", numer)?;
+                                return Ok(());
                             }
                         }
                     }
@@ -2111,5 +2138,34 @@ mod hold_tests {
             }
         );
         assert_eq!(display, "x", "Expected 'x' but got '{}'", display);
+    }
+
+    #[test]
+    fn test_display_styled_pow_half_as_radical() {
+        use crate::root_style::{RootStyle, StylePreferences};
+
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let sqrt2 = ctx.add(Expr::Pow(two, half));
+
+        // With Radical style, should show sqrt (ASCII) or √ (pretty)
+        // Tests run in ASCII mode, so check for "sqrt"
+        let style = StylePreferences::with_root_style(RootStyle::Radical);
+        let disp = format!("{}", DisplayExprStyled::new(&ctx, sqrt2, &style));
+
+        // In ASCII mode (tests), unicode_root_prefix(2) returns "sqrt"
+        // In pretty mode (CLI), it returns "√"
+        assert!(
+            disp.contains("sqrt") || disp.contains("√"),
+            "Expected sqrt or √ in output, got: {}",
+            disp
+        );
+        // Verify it's NOT ^(1/2) format
+        assert!(
+            !disp.contains("^(1/2)") && !disp.contains("^(1 / 2)"),
+            "Should not use exponential format, got: {}",
+            disp
+        );
     }
 }

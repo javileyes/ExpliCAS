@@ -202,7 +202,13 @@ fn clean_sign_patterns(s: String) -> String {
 /// Render an expression with scoped display transforms based on the rule name.
 /// Used for per-step rendering where certain rules (e.g., "Quadratic Formula")
 /// should display sqrt notation instead of ^(1/2).
-fn render_with_rule_scope(ctx: &Context, id: ExprId, rule_name: &str) -> String {
+/// Now also respects global style preferences for consistent root display.
+fn render_with_rule_scope(
+    ctx: &Context,
+    id: ExprId,
+    rule_name: &str,
+    style_prefs: &StylePreferences,
+) -> String {
     // Map rule names to scopes
     let scopes: Vec<cas_ast::display_transforms::ScopeTag> = match rule_name {
         "Quadratic Formula" => vec![cas_ast::display_transforms::ScopeTag::Rule(
@@ -213,10 +219,12 @@ fn render_with_rule_scope(ctx: &Context, id: ExprId, rule_name: &str) -> String 
     };
 
     if scopes.is_empty() {
-        // No transforms apply - use standard display
-        DisplayExpr { context: ctx, id }.to_string()
+        // No transforms apply - use styled display with preferences
+        DisplayExprStyled::new(ctx, id, style_prefs).to_string()
     } else {
         // Use scoped renderer with transforms
+        // Note: ScopedRenderer has its own display logic, so we can't easily combine with style_prefs
+        // For now, use the scoped renderer directly; future improvement could merge these systems
         let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
         let renderer = cas_ast::display_transforms::ScopedRenderer::new(ctx, &scopes, &registry);
         renderer.render(id)
@@ -5216,6 +5224,7 @@ impl Repl {
                                 &self.engine.simplifier.context,
                                 rule_after_id,
                                 &step.rule_name,
+                                &style_prefs,
                             ));
 
                             if before_disp == after_disp {
@@ -5801,6 +5810,7 @@ impl Repl {
                                                 &temp_simplifier.context,
                                                 rule_after_id,
                                                 &step.rule_name,
+                                                &style_prefs,
                                             ));
 
                                         println!("   Rule: {} -> {}", before_disp, after_disp);
