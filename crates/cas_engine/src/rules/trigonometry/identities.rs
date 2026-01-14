@@ -4,8 +4,87 @@ use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Expr, ExprId};
 use num_traits::{One, Zero};
-
 use std::cmp::Ordering;
+
+// =============================================================================
+// SinCosIntegerPiRule: Pre-order evaluation of sin(n·π) and cos(n·π)
+// =============================================================================
+// sin(n·π) = 0 for any integer n
+// cos(n·π) = (-1)^n for any integer n
+//
+// This rule runs BEFORE any expansion rules (TripleAngle, DoubleAngle, etc.)
+// to avoid unnecessary polynomial expansion of expressions like sin(3π).
+//
+// Priority: 100 (higher than most rules to ensure pre-order evaluation)
+
+pub struct SinCosIntegerPiRule;
+
+impl crate::rule::Rule for SinCosIntegerPiRule {
+    fn name(&self) -> &str {
+        "Evaluate Trig at Integer Multiple of π"
+    }
+
+    fn priority(&self) -> i32 {
+        100 // Run before expansion rules
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::helpers::extract_rational_pi_multiple;
+
+        let expr_data = ctx.get(expr).clone();
+
+        if let Expr::Function(name, args) = expr_data {
+            if args.len() != 1 {
+                return None;
+            }
+
+            let is_sin = name == "sin";
+            let is_cos = name == "cos";
+            if !is_sin && !is_cos {
+                return None;
+            }
+
+            let arg = args[0];
+
+            // Try to extract k from k·π
+            if let Some(k) = extract_rational_pi_multiple(ctx, arg) {
+                if k.is_integer() {
+                    let n = k.to_integer();
+
+                    if is_sin {
+                        // sin(n·π) = 0 for any integer n
+                        let zero = ctx.num(0);
+                        return Some(Rewrite::new(zero).desc(format!("sin({}·π) = 0", n)));
+                    } else {
+                        // cos(n·π) = (-1)^n
+                        // n even → 1, n odd → -1
+                        let is_even = &n % 2 == num_bigint::BigInt::from(0);
+                        let result = if is_even { ctx.num(1) } else { ctx.num(-1) };
+                        let result_str = if is_even { "1" } else { "-1" };
+                        return Some(
+                            Rewrite::new(result).desc(format!("cos({}·π) = {}", n, result_str)),
+                        );
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
 
 // NOTE: EvaluateTrigRule is deprecated - use EvaluateTrigTableRule from evaluation.rs instead
 // This rule is kept for reference but should not be registered in the simplifier.
@@ -2386,6 +2465,10 @@ fn verify_dyadic_sequence(ctx: &mut cas_ast::Context, theta: ExprId, cos_args: &
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // PRE-ORDER: Evaluate sin(n·π) = 0 and cos(n·π) = (-1)^n BEFORE any expansion
+    // This prevents unnecessary triple/double angle expansions on integer multiples of π
+    simplifier.add_rule(Box::new(SinCosIntegerPiRule));
+
     // Use the new data-driven EvaluateTrigTableRule instead of deprecated EvaluateTrigRule
     simplifier.add_rule(Box::new(super::evaluation::EvaluateTrigTableRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));

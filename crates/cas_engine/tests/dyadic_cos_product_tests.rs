@@ -136,3 +136,156 @@ fn test_dyadic_cos_product_assume_symbolic_allowed() {
         result_str
     );
 }
+
+// =============================================================================
+// prove_nonzero tests for sin(k·π)
+// =============================================================================
+
+/// sin(π/9) should be provably non-zero (1/9 is not an integer)
+#[test]
+fn test_prove_nonzero_sin_pi_over_9() {
+    use cas_engine::domain::Proof;
+    use cas_engine::helpers::prove_nonzero;
+
+    let mut ctx = Context::new();
+    let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
+    let nine = ctx.num(9);
+    let pi_over_9 = ctx.add(cas_ast::Expr::Div(pi, nine));
+    let sin_pi_9 = ctx.add(cas_ast::Expr::Function("sin".to_string(), vec![pi_over_9]));
+
+    assert_eq!(
+        prove_nonzero(&ctx, sin_pi_9),
+        Proof::Proven,
+        "sin(π/9) should be Proven non-zero"
+    );
+}
+
+/// sin(π) should be provably zero (1 is an integer)
+#[test]
+fn test_prove_nonzero_sin_pi() {
+    use cas_engine::domain::Proof;
+    use cas_engine::helpers::prove_nonzero;
+
+    let mut ctx = Context::new();
+    let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
+    let sin_pi = ctx.add(cas_ast::Expr::Function("sin".to_string(), vec![pi]));
+
+    assert_eq!(
+        prove_nonzero(&ctx, sin_pi),
+        Proof::Disproven,
+        "sin(π) should be Disproven (zero)"
+    );
+}
+
+/// sin(18π/9) = sin(2π) should be provably zero (18/9 = 2 is an integer)
+#[test]
+fn test_prove_nonzero_sin_18pi_over_9() {
+    use cas_engine::domain::Proof;
+    use cas_engine::helpers::prove_nonzero;
+
+    let mut ctx = Context::new();
+    let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
+    let coeff = ctx.add(cas_ast::Expr::Number(num_rational::BigRational::new(
+        18.into(),
+        9.into(),
+    )));
+    let arg = ctx.add(cas_ast::Expr::Mul(coeff, pi));
+    let sin_expr = ctx.add(cas_ast::Expr::Function("sin".to_string(), vec![arg]));
+
+    assert_eq!(
+        prove_nonzero(&ctx, sin_expr),
+        Proof::Disproven,
+        "sin(18π/9) = sin(2π) should be Disproven (zero)"
+    );
+}
+
+/// sin(a) with symbolic a should be Unknown
+#[test]
+fn test_prove_nonzero_sin_symbolic() {
+    use cas_engine::domain::Proof;
+    use cas_engine::helpers::prove_nonzero;
+
+    let mut ctx = Context::new();
+    let a = ctx.var("a");
+    let sin_a = ctx.add(cas_ast::Expr::Function("sin".to_string(), vec![a]));
+
+    assert_eq!(
+        prove_nonzero(&ctx, sin_a),
+        Proof::Unknown,
+        "sin(a) with symbolic a should be Unknown"
+    );
+}
+
+// =============================================================================
+// SinCosIntegerPiRule tests: pre-order evaluation without expansion
+// =============================================================================
+
+fn simplify_with_steps(input: &str) -> (String, Vec<String>) {
+    let opts = EvalOptions {
+        steps_mode: StepsMode::On,
+        ..Default::default()
+    };
+    let mut ctx = Context::new();
+    let expr = parse(input, &mut ctx).expect("Failed to parse");
+
+    let mut simplifier = Simplifier::with_profile(&opts);
+    simplifier.context = ctx;
+    let (result, steps) = simplifier.simplify(expr);
+
+    let result_str = format!(
+        "{}",
+        cas_ast::DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+
+    let step_names: Vec<String> = steps.iter().map(|s| s.rule_name.clone()).collect();
+
+    (result_str, step_names)
+}
+
+/// sin(3·π) should evaluate to 0 without using Triple Angle Identity
+#[test]
+fn test_sin_3pi_no_triple_angle() {
+    let (result, step_names) = simplify_with_steps("sin(3*pi)");
+
+    assert_eq!(result, "0", "sin(3π) should be 0");
+    assert!(
+        !step_names.iter().any(|n| n.contains("Triple Angle")),
+        "Should NOT use Triple Angle Identity, got steps: {:?}",
+        step_names
+    );
+    assert!(
+        step_names.iter().any(|n| n.contains("Integer Multiple")),
+        "Should use 'Integer Multiple of π' rule, got steps: {:?}",
+        step_names
+    );
+}
+
+/// sin(81·π/27) = sin(3·π) should also evaluate to 0 without Triple Angle
+#[test]
+fn test_sin_81pi_over_27_no_triple_angle() {
+    let (result, step_names) = simplify_with_steps("sin(81*pi/27)");
+
+    assert_eq!(result, "0", "sin(81π/27) = sin(3π) should be 0");
+    assert!(
+        !step_names.iter().any(|n| n.contains("Triple Angle")),
+        "Should NOT use Triple Angle Identity, got steps: {:?}",
+        step_names
+    );
+}
+
+/// cos(3·π) should evaluate to -1 (3 is odd)
+#[test]
+fn test_cos_3pi() {
+    let result = simplify("cos(3*pi)");
+    assert_eq!(result, "-1", "cos(3π) should be -1");
+}
+
+/// cos(4·π) should evaluate to 1 (4 is even)
+#[test]
+fn test_cos_4pi() {
+    let result = simplify("cos(4*pi)");
+    assert_eq!(result, "1", "cos(4π) should be 1");
+}

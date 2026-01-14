@@ -711,6 +711,23 @@ pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
             }
         }
 
+        // sin(k·π): zero iff k is integer, non-zero iff k is rational non-integer
+        // This enables cancellation of sin(π/9)/sin(π/9) without requiring assumptions
+        Expr::Function(name, args) if name == "sin" && args.len() == 1 => {
+            // Try to extract k from sin(k·π)
+            if let Some(k) = extract_rational_pi_multiple(ctx, args[0]) {
+                // k.is_integer() checks if denominator == 1 (works on reduced form)
+                if k.is_integer() {
+                    Proof::Disproven // sin(n·π) = 0 for any integer n
+                } else {
+                    Proof::Proven // sin(k·π) ≠ 0 for non-integer rational k
+                }
+            } else {
+                // Not a rational multiple of π (e.g., sin(a) for symbolic a)
+                Proof::Unknown
+            }
+        }
+
         // Variables, other functions: UNKNOWN (conservative)
         _ => Proof::Unknown,
     }
