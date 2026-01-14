@@ -2285,12 +2285,14 @@ impl Repl {
         let timeline_verbosity = cas_engine::timeline::VerbosityLevel::Normal;
 
         // Generate HTML timeline with ALL steps and the known simplified result
-        let mut timeline = cas_engine::timeline::TimelineHtml::new_with_result(
+        // V2.14.40: Pass input string for style preference sniffing (exponential vs radical)
+        let mut timeline = cas_engine::timeline::TimelineHtml::new_with_result_and_style(
             &mut self.engine.simplifier.context,
             &steps,
             expr_id,
             Some(simplified),
             timeline_verbosity,
+            Some(expr_str),
         );
         let html = timeline.to_html();
 

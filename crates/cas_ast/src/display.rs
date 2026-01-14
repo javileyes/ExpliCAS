@@ -1289,6 +1289,9 @@ impl<'a> DisplayExprWithHints<'a> {
                         return write!(f, ")");
                     }
                 }
+                crate::display_context::DisplayHint::PreferPower => {
+                    // PreferPower hint: let regular formatting handle it (exponential form)
+                }
             }
         }
 

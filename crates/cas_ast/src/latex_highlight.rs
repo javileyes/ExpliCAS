@@ -8,7 +8,7 @@
 
 use crate::display_context::DisplayContext;
 use crate::latex_core::LaTeXRenderer;
-use crate::{Context, Expr, ExprId};
+use crate::{Context, ExprId};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -173,59 +173,8 @@ impl<'a> LaTeXRenderer for LaTeXExprHighlightedWithHints<'a> {
     fn get_display_hint(&self, _id: ExprId) -> Option<&DisplayContext> {
         Some(self.hints)
     }
-
-    /// Override pow formatting to check for root hints
-    fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
-        // If exponent is 1, just return the base (no ^{1})
-        if let Expr::Number(n) = self.context().get(exp) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                return self.expr_to_latex(base, false);
-            }
-        }
-
-        // If base is 1, just return "1" (1^n = 1)
-        if let Expr::Number(n) = self.context().get(base) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                return "1".to_string();
-            }
-        }
-
-        // Check if this should be rendered as a root based on hints
-        if let Some(hints) = self.get_display_hint(self.root_id()) {
-            if let Expr::Number(n) = self.context().get(exp) {
-                let denom = n.denom();
-                if !n.is_integer() && *denom > 1.into() {
-                    // Check if we have a matching root hint
-                    for root_idx in hints.root_indices() {
-                        if *denom == (root_idx as i64).into() {
-                            let base_str = self.expr_to_latex(base, false);
-                            let numer = n.numer();
-
-                            if *numer == 1.into() {
-                                if *denom == 2.into() {
-                                    return format!("\\sqrt{{{}}}", base_str);
-                                } else {
-                                    return format!("\\sqrt[{}]{{{}}}", denom, base_str);
-                                }
-                            } else if *denom == 2.into() {
-                                return format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer);
-                            } else {
-                                return format!(
-                                    "\\sqrt[{}]{{{{{}}}^{{{}}}}}",
-                                    denom, base_str, numer
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Default power rendering
-        let base_str = self.expr_to_latex_base(base);
-        let exp_str = self.expr_to_latex(exp, false);
-        format!("{{{}}}^{{{}}}", base_str, exp_str)
-    }
+    // V2.14.40: format_pow is now handled by the trait default, which renders
+    // fractional powers as roots automatically
 }
 
 impl<'a> LaTeXExprHighlightedWithHints<'a> {

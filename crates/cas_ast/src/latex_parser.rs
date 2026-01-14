@@ -520,7 +520,8 @@ mod tests {
 
     #[test]
     fn test_parse_power_with_frac_exponent() {
-        assert_eq!(test_parse("{x}^{\\frac{1}{2}}"), "{x}^{\\frac{1}{2}}");
+        // V2.14.40: Fractional powers now render as sqrt by default
+        assert_eq!(test_parse("{x}^{\\frac{1}{2}}"), "\\sqrt{x}");
     }
 
     #[test]
@@ -530,19 +531,21 @@ mod tests {
 
     #[test]
     fn test_parse_subtraction_complex() {
+        // V2.14.40: Fractional powers now render as sqrt by default
         // This tests the problematic pattern from timeline
         assert_eq!(
             test_parse("{x}^{\\frac{17}{24}} - {x}^{\\frac{17}{24}}"),
-            "{x}^{\\frac{17}{24}} - {x}^{\\frac{17}{24}}"
+            "\\sqrt[24]{{x}^{17}} - \\sqrt[24]{{x}^{17}}"
         );
     }
 
     #[test]
     fn test_parse_sqrt_power_minus() {
+        // V2.14.40: Fractional powers now render as sqrt by default
         // Simplified version of timeline step 5
         assert_eq!(
             test_parse("\\sqrt{{x}^{\\frac{17}{12}}} - {x}^{\\frac{17}{24}}"),
-            "\\sqrt{{x}^{\\frac{17}{12}}} - {x}^{\\frac{17}{24}}"
+            "\\sqrt{\\sqrt[12]{{x}^{17}}} - \\sqrt[24]{{x}^{17}}"
         );
     }
 

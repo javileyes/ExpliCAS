@@ -101,22 +101,27 @@ fn test_simple_power_latex() {
 
 #[test]
 fn test_power_with_fraction_exponent() {
-    assert_latex_reversible("{x}^{\\frac{17}{24}}");
+    // V2.14.40: Fractional powers now render as sqrt by default
+    // Input: {x}^{\frac{17}{24}} -> x^(17/24) -> sqrt[24]{x^17}
+    assert_latex_reversible("\\sqrt[24]{{x}^{17}}");
 }
 
 #[test]
 fn test_subtraction_same_terms() {
+    // V2.14.40: Fractional powers now render as sqrt by default
     // This was the problematic case in timeline step 5
-    assert_latex_reversible("{x}^{\\frac{17}{24}} - {x}^{\\frac{17}{24}}");
+    assert_latex_reversible("\\sqrt[24]{{x}^{17}} - \\sqrt[24]{{x}^{17}}");
 }
 
 #[test]
 fn test_sqrt_with_power_inside() {
-    assert_latex_reversible("\\sqrt{{x}^{\\frac{17}{12}}}");
+    // V2.14.40: sqrt { x^(17/12) } -> sqrt { sqrt[12]{x^17} }
+    assert_latex_reversible("\\sqrt{\\sqrt[12]{{x}^{17}}}");
 }
 
 #[test]
 fn test_complex_expression() {
+    // V2.14.40: Fractional powers now render as sqrt by default
     // Full expression from timeline
-    assert_latex_reversible("\\sqrt{{x}^{\\frac{17}{12}}} - {x}^{\\frac{17}{24}}");
+    assert_latex_reversible("\\sqrt{\\sqrt[12]{{x}^{17}}} - \\sqrt[24]{{x}^{17}}");
 }

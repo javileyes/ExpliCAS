@@ -64,66 +64,8 @@ impl<'a> LaTeXRenderer for LaTeXExprWithHints<'a> {
     fn get_display_hint(&self, _id: ExprId) -> Option<&DisplayContext> {
         Some(self.hints)
     }
-
-    /// Override pow formatting to check for root hints
-    fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
-        use crate::Expr;
-
-        // If exponent is 1, just return the base (no ^{1})
-        if let Expr::Number(n) = self.context().get(exp) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                return self.expr_to_latex(base, false);
-            }
-        }
-
-        // If base is 1, just return "1" (1^n = 1)
-        if let Expr::Number(n) = self.context().get(base) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                return "1".to_string();
-            }
-        }
-
-        // Check if this should be rendered as a root based on hints
-        if let Some(hints) = self.get_display_hint(self.root_id()) {
-            if let Expr::Number(n) = self.context().get(exp) {
-                // Check if this power matches a root hint
-                let denom = n.denom();
-                if !n.is_integer() && *denom > 1.into() {
-                    // Check if we have a matching root hint
-                    for root_idx in hints.root_indices() {
-                        if *denom == (root_idx as i64).into() {
-                            let base_str = self.expr_to_latex(base, false);
-                            let numer = n.numer();
-
-                            if *numer == 1.into() {
-                                // Simple root: x^(1/n) -> nth root of x
-                                if *denom == 2.into() {
-                                    return format!("\\sqrt{{{}}}", base_str);
-                                } else {
-                                    return format!("\\sqrt[{}]{{{}}}", denom, base_str);
-                                }
-                            } else {
-                                // Complex root: x^(k/n) -> nth root of x^k
-                                if *denom == 2.into() {
-                                    return format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer);
-                                } else {
-                                    return format!(
-                                        "\\sqrt[{}]{{{{{}}}^{{{}}}}}",
-                                        denom, base_str, numer
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Default power rendering
-        let base_str = self.expr_to_latex_base(base);
-        let exp_str = self.expr_to_latex(exp, false);
-        format!("{{{}}}^{{{}}}", base_str, exp_str)
-    }
+    // V2.14.40: format_pow is now handled by the trait default, which renders
+    // fractional powers as roots automatically
 }
 
 impl<'a> LaTeXExprWithHints<'a> {
@@ -205,14 +147,14 @@ mod tests {
         let half = ctx.rational(1, 2);
         let sqrt_expr = ctx.add(Expr::Pow(x, half));
 
-        // Without hints, renders as power
+        // Now renders as sqrt by default (V2.14.40: consistent root display)
         let latex = LaTeXExpr {
             context: &ctx,
             id: sqrt_expr,
         };
-        assert_eq!(latex.to_latex(), "{x}^{\\frac{1}{2}}");
+        assert_eq!(latex.to_latex(), "\\sqrt{x}");
 
-        // With hints containing root index 2, renders as sqrt
+        // With hints is still consistent
         let hints = DisplayContext::with_root_index(2);
         let latex_with_hints = LaTeXExprWithHints {
             context: &ctx,

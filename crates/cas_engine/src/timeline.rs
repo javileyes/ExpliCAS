@@ -382,6 +382,8 @@ pub struct TimelineHtml<'a> {
     /// V2.12.13: Global requires inferred from input expression.
     /// Shown at the end of the timeline, after final result.
     global_requires: Vec<crate::implicit_domain::ImplicitCondition>,
+    /// V2.14.40: Style preferences derived from input string for consistent root rendering
+    style_prefs: cas_ast::StylePreferences,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -423,12 +425,45 @@ impl<'a> TimelineHtml<'a> {
         simplified_result: Option<ExprId>,
         verbosity: VerbosityLevel,
     ) -> Self {
+        Self::new_with_result_and_style(
+            context,
+            steps,
+            original_expr,
+            simplified_result,
+            verbosity,
+            None,
+        )
+    }
+
+    /// Create a new TimelineHtml with style preferences derived from input string
+    /// V2.14.40: Enables consistent root rendering (exponential vs radical)
+    pub fn new_with_result_and_style(
+        context: &'a mut Context,
+        steps: &'a [Step],
+        original_expr: ExprId,
+        simplified_result: Option<ExprId>,
+        verbosity: VerbosityLevel,
+        input_string: Option<&str>,
+    ) -> Self {
         use crate::implicit_domain::infer_implicit_domain;
         use crate::semantics::ValueDomain;
 
-        let title = LaTeXExpr {
+        // V2.14.40: Compute style preferences from input string
+        let signals = input_string.map(cas_ast::ParseStyleSignals::from_input_string);
+        let style_prefs = cas_ast::StylePreferences::from_expression_with_signals(
+            context,
+            original_expr,
+            signals.as_ref(),
+        );
+
+        // V2.14.40: Generate title using styled renderer for consistent root rendering
+        let empty_config = PathHighlightConfig::new();
+        let title = PathHighlightedLatexRenderer {
             context,
             id: original_expr,
+            path_highlights: &empty_config,
+            hints: None,
+            style_prefs: Some(&style_prefs),
         }
         .to_latex();
 
@@ -445,6 +480,7 @@ impl<'a> TimelineHtml<'a> {
             title,
             verbosity_level: verbosity,
             global_requires,
+            style_prefs,
         }
     }
 
@@ -1823,6 +1859,7 @@ impl<'a> TimelineHtml<'a> {
                         id: global_before_expr,
                         path_highlights: &before_config,
                         hints: Some(&display_hints),
+                        style_prefs: Some(&self.style_prefs),
                     }
                     .to_latex();
 
@@ -1833,6 +1870,7 @@ impl<'a> TimelineHtml<'a> {
                         id: global_after_expr,
                         path_highlights: &after_config,
                         hints: Some(&display_hints),
+                        style_prefs: Some(&self.style_prefs),
                     }
                     .to_latex();
 
@@ -1923,6 +1961,7 @@ impl<'a> TimelineHtml<'a> {
                             id: global_before_expr,
                             path_highlights: &before_config,
                             hints: Some(&display_hints),
+                            style_prefs: Some(&self.style_prefs),
                         }
                         .to_latex()
                     } else {
@@ -1935,6 +1974,7 @@ impl<'a> TimelineHtml<'a> {
                             id: global_before_expr,
                             path_highlights: &before_config,
                             hints: Some(&display_hints),
+                            style_prefs: Some(&self.style_prefs),
                         }
                         .to_latex()
                     };
@@ -1951,6 +1991,7 @@ impl<'a> TimelineHtml<'a> {
                             id: global_after_expr,
                             path_highlights: &after_config,
                             hints: Some(&display_hints),
+                            style_prefs: Some(&self.style_prefs),
                         }
                         .to_latex()
                     } else {
@@ -1977,6 +2018,7 @@ impl<'a> TimelineHtml<'a> {
                     id: global_before_expr,
                     path_highlights: &before_config,
                     hints: Some(&display_hints),
+                    style_prefs: Some(&self.style_prefs),
                 }
                 .to_latex();
 
@@ -1987,6 +2029,7 @@ impl<'a> TimelineHtml<'a> {
                     id: global_after_expr,
                     path_highlights: &after_config,
                     hints: Some(&display_hints),
+                    style_prefs: Some(&self.style_prefs),
                 }
                 .to_latex();
 
@@ -2211,10 +2254,14 @@ impl<'a> TimelineHtml<'a> {
         // Add final result with display hints for consistent root notation
         // Use simplified_result if available (passed from simplifier), otherwise use last_global_after
         let final_result_expr = self.simplified_result.unwrap_or(last_global_after);
-        let final_expr = cas_ast::LaTeXExprWithHints {
+        // V2.14.40: Use styled renderer for consistent root notation
+        let empty_config = PathHighlightConfig::new();
+        let final_expr = PathHighlightedLatexRenderer {
             context: self.context,
             id: final_result_expr,
-            hints: &display_hints,
+            path_highlights: &empty_config,
+            hints: Some(&display_hints),
+            style_prefs: Some(&self.style_prefs),
         }
         .to_latex();
         html.push_str(

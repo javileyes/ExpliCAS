@@ -12,6 +12,8 @@ use std::collections::HashMap;
 pub enum DisplayHint {
     /// Display x^(1/n) as nth root: √x or ∛x etc.
     AsRoot { index: u32 },
+    /// Display x^(1/n) as power: x^{1/n} (preserves user's exponential notation)
+    PreferPower,
     // Future extensions:
     // AsFraction,     // x^(-1) as 1/x
     // AsNegation,     // (-1)*x as -x
@@ -67,9 +69,9 @@ impl DisplayContext {
     pub fn root_indices(&self) -> impl Iterator<Item = u32> + '_ {
         self.hints
             .values()
-            .map(|hint| {
-                let DisplayHint::AsRoot { index } = hint;
-                *index
+            .filter_map(|hint| match hint {
+                DisplayHint::AsRoot { index } => Some(*index),
+                DisplayHint::PreferPower => None,
             })
             .chain(self.root_index.iter().copied())
     }

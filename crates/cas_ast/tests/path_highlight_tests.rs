@@ -19,6 +19,7 @@ fn test_path_highlight_single_occurrence() {
         id: expr,
         path_highlights: &config,
         hints: None,
+        style_prefs: None,
     };
 
     let latex = renderer.to_latex();
@@ -48,6 +49,7 @@ fn test_path_highlight_avoids_duplicate_values() {
         id: expr,
         path_highlights: &config,
         hints: None,
+        style_prefs: None,
     };
 
     let latex = renderer.to_latex();
@@ -82,6 +84,7 @@ fn test_path_highlight_nested_expression() {
         id: expr,
         path_highlights: &config,
         hints: None,
+        style_prefs: None,
     };
 
     let latex = renderer.to_latex();
@@ -112,6 +115,7 @@ fn test_path_highlight_root_node() {
         id: x,
         path_highlights: &config,
         hints: None,
+        style_prefs: None,
     };
 
     let latex = renderer.to_latex();

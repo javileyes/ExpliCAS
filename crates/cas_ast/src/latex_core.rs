@@ -31,6 +31,11 @@ pub trait LaTeXRenderer {
         None
     }
 
+    /// Get style preferences for rendering (e.g., root as radical vs exponential)
+    fn get_style_prefs(&self) -> Option<&crate::root_style::StylePreferences> {
+        None
+    }
+
     /// Post-process LaTeX to fix negative sign patterns
     fn clean_latex_negatives(latex: &str) -> String {
         use regex::Regex;
@@ -299,7 +304,15 @@ pub trait LaTeXRenderer {
     }
 
     /// Format power expression
+    /// Respects display hints and style preferences in priority order:
+    /// 1. Node-level hint (PreferPower or AsRoot) - highest priority
+    /// 2. Global style preferences (Exponential or Radical)
+    /// 3. Default: render fractional powers as roots
     fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
+        use crate::display_context::DisplayHint;
+        use crate::root_style::RootStyle;
+        use num_traits::ToPrimitive;
+
         // If exponent is 1, just return the base (no ^{1})
         if let Expr::Number(n) = self.context().get(exp) {
             if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
@@ -314,9 +327,97 @@ pub trait LaTeXRenderer {
             }
         }
 
-        let base_str = self.expr_to_latex_base(base);
-        let exp_str = self.expr_to_latex(exp, false);
-        format!("{{{}}}^{{{}}}", base_str, exp_str)
+        // Helper to extract (numerator, denominator) from exponent
+        let get_frac_parts = |ctx: &Context, exp_id: ExprId| -> Option<(i64, i64)> {
+            match ctx.get(exp_id) {
+                // Expr::Number with rational value
+                Expr::Number(n) => {
+                    if !n.is_integer() {
+                        let numer = n.numer().to_i64()?;
+                        let denom = n.denom().to_i64()?;
+                        if denom > 1 {
+                            return Some((numer, denom));
+                        }
+                    }
+                    None
+                }
+                // Expr::Div(num, den) form
+                Expr::Div(num, den) => {
+                    if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*num), ctx.get(*den)) {
+                        if n.is_integer() && d.is_integer() {
+                            let numer = n.numer().to_i64()?;
+                            let denom = d.numer().to_i64()?;
+                            if denom > 1 {
+                                return Some((numer, denom));
+                            }
+                        }
+                    }
+                    None
+                }
+                _ => None,
+            }
+        };
+
+        // Helper to render as power (exponential form)
+        let render_as_power = |this: &Self| -> String {
+            let base_str = this.expr_to_latex_base(base);
+            let exp_str = this.expr_to_latex(exp, false);
+            format!("{{{}}}^{{{}}}", base_str, exp_str)
+        };
+
+        // Helper to render as root
+        let render_as_root = |this: &Self, numer: i64, denom: i64| -> String {
+            let base_str = this.expr_to_latex(base, false);
+            if numer == 1 {
+                // Simple root: x^(1/n) -> \sqrt[n]{x}
+                if denom == 2 {
+                    format!("\\sqrt{{{}}}", base_str)
+                } else {
+                    format!("\\sqrt[{}]{{{}}}", denom, base_str)
+                }
+            } else if numer > 0 {
+                // Fractional power: x^(k/n) -> \sqrt[n]{x^k}
+                if denom == 2 {
+                    format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer)
+                } else {
+                    format!("\\sqrt[{}]{{{{{}}}^{{{}}}}}", denom, base_str, numer)
+                }
+            } else {
+                // Negative numerators: fall through to power
+                render_as_power(this)
+            }
+        };
+
+        // Check for fractional exponent
+        if let Some((numer, denom)) = get_frac_parts(self.context(), exp) {
+            // Priority 1: Check node-level display hint
+            // Note: We check the root_id's hints, which may contain node-specific preferences
+            if let Some(hints) = self.get_display_hint(self.root_id()) {
+                // Check if there's a specific hint for the current Pow's base
+                // (This is a simplified check - ideally we'd check hints for the Pow node itself)
+                if let Some(hint) = hints.get(base) {
+                    match hint {
+                        DisplayHint::PreferPower => return render_as_power(self),
+                        DisplayHint::AsRoot { .. } => return render_as_root(self, numer, denom),
+                    }
+                }
+            }
+
+            // Priority 2: Check global style preferences
+            if let Some(prefs) = self.get_style_prefs() {
+                match prefs.root_style {
+                    RootStyle::Exponential => return render_as_power(self),
+                    RootStyle::Radical => return render_as_root(self, numer, denom),
+                    RootStyle::Auto => return render_as_root(self, numer, denom), // Auto defaults to radical
+                }
+            }
+
+            // Priority 3: Default to radical notation
+            return render_as_root(self, numer, denom);
+        }
+
+        // Non-fractional exponent: render as power
+        render_as_power(self)
     }
 
     /// Format negation
@@ -527,50 +628,8 @@ impl<'a> LaTeXRenderer for HintedLatexRenderer<'a> {
         // The DisplayContext applies to the root; for now return it for all
         Some(self.hints)
     }
-
-    /// Override pow formatting to check for root hints
-    fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
-        // If exponent is 1, just return the base (no ^{1})
-        if let Expr::Number(n) = self.context().get(exp) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                return self.expr_to_latex(base, false);
-            }
-        }
-
-        // If base is 1, just return "1" (1^n = 1)
-        if let Expr::Number(n) = self.context().get(base) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                return "1".to_string();
-            }
-        }
-
-        // Check if this should be rendered as a root
-        if let Some(_hints) = self.get_display_hint(self.root_id()) {
-            if let Expr::Number(n) = self.context().get(exp) {
-                // Check if denominator matches a root hint
-                let denom = n.denom();
-                if !n.is_integer() && *denom > 1.into() {
-                    // Render as nth root
-                    let base_str = self.expr_to_latex(base, false);
-                    let numer = n.numer();
-
-                    if *numer == 1.into() {
-                        // Simple root: x^(1/n) -> nth root of x
-                        if *denom == 2.into() {
-                            return format!("\\sqrt{{{}}}", base_str);
-                        } else {
-                            return format!("\\sqrt[{}]{{{}}}", denom, base_str);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Default power rendering
-        let base_str = self.expr_to_latex_base(base);
-        let exp_str = self.expr_to_latex(exp, false);
-        format!("{{{}}}^{{{}}}", base_str, exp_str)
-    }
+    // V2.14.40: format_pow is now handled by the trait default, which renders
+    // fractional powers as roots automatically
 }
 
 // ============================================================================
@@ -601,46 +660,8 @@ impl<'a> LaTeXRenderer for FullLatexRenderer<'a> {
     fn get_display_hint(&self, _id: ExprId) -> Option<&DisplayContext> {
         Some(self.hints)
     }
-
-    /// Override pow formatting to check for root hints
-    fn format_pow(&self, base: ExprId, exp: ExprId) -> String {
-        // If exponent is 1, just return the base (no ^{1})
-        if let Expr::Number(n) = self.context().get(exp) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                return self.expr_to_latex(base, false);
-            }
-        }
-
-        // If base is 1, just return "1" (1^n = 1)
-        if let Expr::Number(n) = self.context().get(base) {
-            if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
-                return "1".to_string();
-            }
-        }
-
-        // Check if this should be rendered as a root
-        if let Some(_hints) = self.get_display_hint(self.root_id()) {
-            if let Expr::Number(n) = self.context().get(exp) {
-                let denom = n.denom();
-                if !n.is_integer() && *denom > 1.into() {
-                    let base_str = self.expr_to_latex(base, false);
-                    let numer = n.numer();
-
-                    if *numer == 1.into() {
-                        if *denom == 2.into() {
-                            return format!("\\sqrt{{{}}}", base_str);
-                        } else {
-                            return format!("\\sqrt[{}]{{{}}}", denom, base_str);
-                        }
-                    }
-                }
-            }
-        }
-
-        let base_str = self.expr_to_latex_base(base);
-        let exp_str = self.expr_to_latex(exp, false);
-        format!("{{{}}}^{{{}}}", base_str, exp_str)
-    }
+    // V2.14.40: format_pow is now handled by the trait default, which renders
+    // fractional powers as roots automatically
 }
 
 // ============================================================================
@@ -661,6 +682,8 @@ pub struct PathHighlightedLatexRenderer<'a> {
     pub id: ExprId,
     pub path_highlights: &'a PathHighlightConfig,
     pub hints: Option<&'a DisplayContext>,
+    /// Style preferences for rendering (e.g., root style)
+    pub style_prefs: Option<&'a crate::root_style::StylePreferences>,
 }
 
 impl<'a> PathHighlightedLatexRenderer<'a> {
@@ -844,6 +867,9 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
     }
 
     fn format_pow_path(&self, base: ExprId, exp: ExprId, path: &ExprPath) -> String {
+        use crate::display_context::DisplayHint;
+        use num_traits::ToPrimitive;
+
         // Check if exponent is 1, just return the base (no ^{1})
         if let Expr::Number(n) = self.context.get(exp) {
             if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
@@ -858,43 +884,92 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             }
         }
 
-        // Check if this should be rendered as a root based on hints
-        if let Some(hints) = &self.hints {
-            if let Expr::Number(n) = self.context.get(exp) {
-                let denom = n.denom();
-                if !n.is_integer() && *denom > 1.into() {
-                    // Check if we have a matching root hint
-                    for root_idx in hints.root_indices() {
-                        if *denom == (root_idx as i64).into() {
-                            let base_str =
-                                self.render_with_path(base, false, &self.child_path(path, 0));
-                            let numer = n.numer();
-
-                            if *numer == 1.into() {
-                                // Simple root: x^(1/n) -> nth root of x
-                                if *denom == 2.into() {
-                                    return format!("\\sqrt{{{}}}", base_str);
-                                } else {
-                                    return format!("\\sqrt[{}]{{{}}}", denom, base_str);
-                                }
-                            } else {
-                                // Complex root: x^(k/n) -> nth root of x^k
-                                if *denom == 2.into() {
-                                    return format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer);
-                                } else {
-                                    return format!(
-                                        "\\sqrt[{}]{{{{{}}}^{{{}}}}}",
-                                        denom, base_str, numer
-                                    );
-                                }
+        // Helper to extract (numerator, denominator) from exponent
+        let get_frac_parts = |ctx: &Context, exp_id: ExprId| -> Option<(i64, i64)> {
+            match ctx.get(exp_id) {
+                // Expr::Number with rational value
+                Expr::Number(n) => {
+                    if !n.is_integer() {
+                        let numer = n.numer().to_i64()?;
+                        let denom = n.denom().to_i64()?;
+                        if denom > 1 {
+                            return Some((numer, denom));
+                        }
+                    }
+                    None
+                }
+                // Expr::Div(num, den) form
+                Expr::Div(num, den) => {
+                    if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*num), ctx.get(*den)) {
+                        if n.is_integer() && d.is_integer() {
+                            let numer = n.numer().to_i64()?;
+                            let denom = d.numer().to_i64()?;
+                            if denom > 1 {
+                                return Some((numer, denom));
                             }
                         }
                     }
+                    None
+                }
+                _ => None,
+            }
+        };
+
+        // V2.14.40: Render fractional powers based on style preferences
+        // Priority: 1) node hint, 2) style prefs, 3) default radical
+        if let Some((numer, denom)) = get_frac_parts(self.context, exp) {
+            // Helper to render as power
+            let render_power = || {
+                let base_str = self.render_base(base, &self.child_path(path, 0));
+                let exp_str = self.render_with_path(exp, false, &self.child_path(path, 1));
+                format!("{{{}}}^{{{}}}", base_str, exp_str)
+            };
+
+            // Helper to render as root
+            let render_root = || {
+                let base_str = self.render_with_path(base, false, &self.child_path(path, 0));
+                if numer == 1 {
+                    if denom == 2 {
+                        format!("\\sqrt{{{}}}", base_str)
+                    } else {
+                        format!("\\sqrt[{}]{{{}}}", denom, base_str)
+                    }
+                } else if numer > 0 {
+                    if denom == 2 {
+                        format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer)
+                    } else {
+                        format!("\\sqrt[{}]{{{{{}}}^{{{}}}}}", denom, base_str, numer)
+                    }
+                } else {
+                    // Negative numerator: fall to power
+                    render_power()
+                }
+            };
+
+            // Priority 1: Check node-level hints (via hints field)
+            if let Some(hints) = self.hints {
+                if let Some(hint) = hints.get(base) {
+                    match hint {
+                        DisplayHint::PreferPower => return render_power(),
+                        DisplayHint::AsRoot { .. } => return render_root(),
+                    }
                 }
             }
+
+            // Priority 2: Check style preferences
+            if let Some(prefs) = self.style_prefs {
+                use crate::root_style::RootStyle;
+                match prefs.root_style {
+                    RootStyle::Exponential => return render_power(),
+                    RootStyle::Radical | RootStyle::Auto => return render_root(),
+                }
+            }
+
+            // Priority 3: Default to radical
+            return render_root();
         }
 
-        // Default power rendering
+        // Default power rendering (non-fractional exponent)
         let base_str = self.render_base(base, &self.child_path(path, 0));
         let exp_str = self.render_with_path(exp, false, &self.child_path(path, 1));
         format!("{{{}}}^{{{}}}", base_str, exp_str)
