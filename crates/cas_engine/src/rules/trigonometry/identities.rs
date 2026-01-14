@@ -1640,6 +1640,122 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// STANDALONE SUM-TO-PRODUCT RULE
+// sin(A)+sin(B) → 2·sin((A+B)/2)·cos((A-B)/2)
+// sin(A)-sin(B) → 2·cos((A+B)/2)·sin((A-B)/2)
+// cos(A)+cos(B) → 2·cos((A+B)/2)·cos((A-B)/2)
+// cos(A)-cos(B) → -2·sin((A+B)/2)·sin((A-B)/2)
+// =============================================================================
+// This rule applies sum-to-product identities to standalone sums/differences
+// of trig functions (not inside quotients handled by SinCosSumQuotientRule).
+//
+// GATING: Only apply when both arguments are rational multiples of π, ensuring
+// the transformed expression can be evaluated via trig table lookup (π/4, π/6, etc.)
+// This prevents unnecessary expansion of symbolic expressions like sin(a)+sin(b).
+//
+// MATCHERS: Uses semantic TrigSumMatch (unordered) and TrigDiffMatch (ordered)
+// to ensure correct sign handling for difference identities.
+define_rule!(
+    TrigSumToProductRule,
+    "Sum-to-Product Identity",
+    |ctx, expr| {
+        use crate::helpers::{extract_rational_pi_multiple, match_trig_diff, match_trig_sum};
+
+        // Try all four patterns
+        enum Pattern {
+            SinSum { arg1: ExprId, arg2: ExprId },
+            SinDiff { a: ExprId, b: ExprId }, // ordered!
+            CosSum { arg1: ExprId, arg2: ExprId },
+            CosDiff { a: ExprId, b: ExprId }, // ordered!
+        }
+
+        let pattern = if let Some(m) = match_trig_sum(ctx, expr, "sin") {
+            Pattern::SinSum {
+                arg1: m.arg1,
+                arg2: m.arg2,
+            }
+        } else if let Some(m) = match_trig_diff(ctx, expr, "sin") {
+            Pattern::SinDiff { a: m.a, b: m.b }
+        } else if let Some(m) = match_trig_sum(ctx, expr, "cos") {
+            Pattern::CosSum {
+                arg1: m.arg1,
+                arg2: m.arg2,
+            }
+        } else if let Some(m) = match_trig_diff(ctx, expr, "cos") {
+            Pattern::CosDiff { a: m.a, b: m.b }
+        } else {
+            return None;
+        };
+
+        // Extract (A, B) and the function name
+        let (arg_a, arg_b, is_diff, fn_name) = match pattern {
+            Pattern::SinSum { arg1, arg2 } => (arg1, arg2, false, "sin"),
+            Pattern::SinDiff { a, b } => (a, b, true, "sin"),
+            Pattern::CosSum { arg1, arg2 } => (arg1, arg2, false, "cos"),
+            Pattern::CosDiff { a, b } => (a, b, true, "cos"),
+        };
+
+        // GATING: Only apply when BOTH arguments are rational multiples of π
+        // This ensures the result can be simplified via trig table lookup
+        let pi_a = extract_rational_pi_multiple(ctx, arg_a);
+        let pi_b = extract_rational_pi_multiple(ctx, arg_b);
+        if pi_a.is_none() || pi_b.is_none() {
+            return None; // Don't expand symbolic sums
+        }
+
+        // Build avg = (A+B)/2 and half_diff = (A-B)/2
+        let avg = build_avg(ctx, arg_a, arg_b);
+        let half_diff = build_half_diff(ctx, arg_a, arg_b);
+        let two = ctx.num(2);
+
+        let (result, desc) = match (fn_name, is_diff) {
+            // sin(A) + sin(B) → 2·sin(avg)·cos(half_diff)
+            ("sin", false) => {
+                let sin_avg = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
+                let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![half_diff]));
+                let product = smart_mul(ctx, sin_avg, cos_half);
+                let result = smart_mul(ctx, two, product);
+                (result, "sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)")
+            }
+            // sin(A) - sin(B) → 2·cos(avg)·sin(half_diff)
+            // Note: half_diff preserves order (A-B)/2 for correct sign
+            ("sin", true) => {
+                let cos_avg = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
+                let sin_half = ctx.add(Expr::Function("sin".to_string(), vec![half_diff]));
+                let product = smart_mul(ctx, cos_avg, sin_half);
+                let result = smart_mul(ctx, two, product);
+                (result, "sin(A)-sin(B) = 2·cos((A+B)/2)·sin((A-B)/2)")
+            }
+            // cos(A) + cos(B) → 2·cos(avg)·cos(half_diff)
+            ("cos", false) => {
+                // For cos, half_diff sign doesn't matter (even function)
+                let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
+                let cos_avg = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
+                let cos_half = ctx.add(Expr::Function(
+                    "cos".to_string(),
+                    vec![half_diff_normalized],
+                ));
+                let product = smart_mul(ctx, cos_avg, cos_half);
+                let result = smart_mul(ctx, two, product);
+                (result, "cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)")
+            }
+            // cos(A) - cos(B) → -2·sin(avg)·sin(half_diff)
+            ("cos", true) => {
+                let sin_avg = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
+                let sin_half = ctx.add(Expr::Function("sin".to_string(), vec![half_diff]));
+                let product = smart_mul(ctx, sin_avg, sin_half);
+                let two_product = smart_mul(ctx, two, product);
+                let result = ctx.add(Expr::Neg(two_product));
+                (result, "cos(A)-cos(B) = -2·sin((A+B)/2)·sin((A-B)/2)")
+            }
+            _ => return None,
+        };
+
+        Some(Rewrite::new(result).desc(desc))
+    }
+);
+
 define_rule!(
     DoubleAngleRule,
     "Double Angle Identity",
@@ -2583,6 +2699,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DoubleAngleRule));
     // Sum-to-Product Quotient: runs BEFORE TripleAngleRule to avoid polynomial explosion
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
+    // Standalone Sum-to-Product: sin(A)+sin(B), cos(A)+cos(B) etc. when args are k*π
+    simplifier.add_rule(Box::new(TrigSumToProductRule));
     simplifier.add_rule(Box::new(TripleAngleRule)); // Shortcut: sin(3x), cos(3x)
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
     // Trig Quotient: sin(x)/cos(x) → tan(x) - runs after sum-to-product
