@@ -1756,6 +1756,234 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// HALF-ANGLE TANGENT RULE
+// (1 - cos(2x)) / sin(2x) → tan(x)
+// sin(2x) / (1 + cos(2x)) → tan(x)
+// =============================================================================
+// These are half-angle tangent identities derived from:
+//   1 - cos(2x) = 2·sin²(x)
+//   1 + cos(2x) = 2·cos²(x)
+//   sin(2x) = 2·sin(x)·cos(x)
+//
+// DOMAIN WARNING: This transformation can extend the domain:
+// - Pattern 1: Original requires sin(2x) ≠ 0, but tan(x) only requires cos(x) ≠ 0
+// - Pattern 2: Original requires 1+cos(2x) ≠ 0, but tan(x) only requires cos(x) ≠ 0
+//
+// To preserve soundness, we introduce requires for cos(x) ≠ 0 (for tan(x) to be defined)
+// and inherit the original denominator ≠ 0 condition.
+//
+// Uses SoundnessLabel::EquivalenceUnderIntroducedRequires
+struct HalfAngleTangentRule;
+
+impl crate::rule::Rule for HalfAngleTangentRule {
+    fn name(&self) -> &str {
+        "Half-Angle Tangent Identity"
+    }
+
+    fn priority(&self) -> i32 {
+        50 // Normal priority
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::helpers::extract_double_angle_arg;
+        use crate::implicit_domain::ImplicitCondition;
+
+        // Only match Div nodes
+        let Expr::Div(num_id, den_id) = ctx.get(expr).clone() else {
+            return None;
+        };
+
+        // Pattern 1: (1 - cos(2x)) / sin(2x) → tan(x)
+        // Pattern 2: sin(2x) / (1 + cos(2x)) → tan(x)
+
+        enum Pattern {
+            OneMinusCosOverSin { x: ExprId, sin_2x: ExprId },
+            SinOverOnePlusCos { x: ExprId, one_plus_cos_2x: ExprId },
+        }
+
+        let pattern = 'pattern: {
+            // Try Pattern 1: (1 - cos(2x)) / sin(2x)
+            // Numerator can be: Sub(1, cos(2x)) OR Add(1, Neg(cos(2x))) (canonicalized)
+
+            // Helper to extract cos(2x) from either cos(2x) or Neg(cos(2x))
+            let try_extract_cos_2x =
+                |ctx: &cas_ast::Context, id: ExprId| -> Option<(ExprId, bool)> {
+                    if let Expr::Function(name, args) = ctx.get(id) {
+                        if name == "cos" && args.len() == 1 {
+                            return extract_double_angle_arg(ctx, args[0]).map(|x| (x, false));
+                        }
+                    }
+                    // Check for Neg(cos(2x))
+                    if let Expr::Neg(inner) = ctx.get(id) {
+                        if let Expr::Function(name, args) = ctx.get(*inner) {
+                            if name == "cos" && args.len() == 1 {
+                                return extract_double_angle_arg(ctx, args[0]).map(|x| (x, true));
+                                // negated
+                            }
+                        }
+                    }
+                    None
+                };
+
+            // Check Sub(1, cos(2x))
+            if let Expr::Sub(one_id, cos_id) = ctx.get(num_id) {
+                if let Expr::Number(n) = ctx.get(*one_id) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
+                        if let Some((x, false)) = try_extract_cos_2x(ctx, *cos_id) {
+                            // Check if denominator is sin(2x) with same argument
+                            if let Expr::Function(den_name, den_args) = ctx.get(den_id) {
+                                if den_name == "sin" && den_args.len() == 1 {
+                                    if let Some(x2) = extract_double_angle_arg(ctx, den_args[0]) {
+                                        if crate::ordering::compare_expr(ctx, x, x2)
+                                            == std::cmp::Ordering::Equal
+                                        {
+                                            break 'pattern Some(Pattern::OneMinusCosOverSin {
+                                                x,
+                                                sin_2x: den_id,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check Add(1, Neg(cos(2x))) or Add(Neg(cos(2x)), 1) - canonicalized form
+            if let Expr::Add(left, right) = ctx.get(num_id) {
+                // Try left=1, right=Neg(cos)
+                let try_order = |one: ExprId, neg_cos: ExprId| -> Option<ExprId> {
+                    if let Expr::Number(n) = ctx.get(one) {
+                        if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into())
+                        {
+                            if let Some((x, true)) = try_extract_cos_2x(ctx, neg_cos) {
+                                return Some(x);
+                            }
+                        }
+                    }
+                    None
+                };
+
+                // Try both orders
+                let x_opt = try_order(*left, *right).or_else(|| try_order(*right, *left));
+
+                if let Some(x) = x_opt {
+                    // Check if denominator is sin(2x) with same argument
+                    if let Expr::Function(den_name, den_args) = ctx.get(den_id) {
+                        if den_name == "sin" && den_args.len() == 1 {
+                            if let Some(x2) = extract_double_angle_arg(ctx, den_args[0]) {
+                                if crate::ordering::compare_expr(ctx, x, x2)
+                                    == std::cmp::Ordering::Equal
+                                {
+                                    break 'pattern Some(Pattern::OneMinusCosOverSin {
+                                        x,
+                                        sin_2x: den_id,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Try Pattern 2: sin(2x) / (1 + cos(2x))
+            // Numerator: sin(2x)
+            if let Expr::Function(name, args) = ctx.get(num_id) {
+                if name == "sin" && args.len() == 1 {
+                    if let Some(x) = extract_double_angle_arg(ctx, args[0]) {
+                        // Denominator: 1 + cos(2x) or Add(1, cos(2x))
+                        if let Expr::Add(left, right) = ctx.get(den_id) {
+                            // Check both orders: 1 + cos(2x) or cos(2x) + 1
+                            let (one_id, cos_id) = if matches!(ctx.get(*left), Expr::Number(n) if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()))
+                            {
+                                (*left, *right)
+                            } else if matches!(ctx.get(*right), Expr::Number(n) if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()))
+                            {
+                                (*right, *left)
+                            } else {
+                                break 'pattern None;
+                            };
+
+                            // Verify one_id is 1
+                            if let Expr::Number(n) = ctx.get(one_id) {
+                                if n.is_integer()
+                                    && *n == num_rational::BigRational::from_integer(1.into())
+                                {
+                                    // Check if cos_id is cos(2x) with same x
+                                    if let Expr::Function(cos_name, cos_args) = ctx.get(cos_id) {
+                                        if cos_name == "cos" && cos_args.len() == 1 {
+                                            if let Some(x2) =
+                                                extract_double_angle_arg(ctx, cos_args[0])
+                                            {
+                                                if crate::ordering::compare_expr(ctx, x, x2)
+                                                    == std::cmp::Ordering::Equal
+                                                {
+                                                    break 'pattern Some(
+                                                        Pattern::SinOverOnePlusCos {
+                                                            x,
+                                                            one_plus_cos_2x: den_id,
+                                                        },
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            None
+        }?;
+
+        // Build tan(x)
+        let (x, denom_expr, desc) = match pattern {
+            Pattern::OneMinusCosOverSin { x, sin_2x } => {
+                (x, sin_2x, "(1 - cos(2x))/sin(2x) = tan(x)")
+            }
+            Pattern::SinOverOnePlusCos { x, one_plus_cos_2x } => {
+                (x, one_plus_cos_2x, "sin(2x)/(1 + cos(2x)) = tan(x)")
+            }
+        };
+
+        let tan_x = ctx.add(Expr::Function("tan".to_string(), vec![x]));
+
+        // Build cos(x) for the NonZero require
+        let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![x]));
+
+        // Create rewrite with requires:
+        // 1. Original denominator ≠ 0 (inherited from the division)
+        // 2. cos(x) ≠ 0 (for tan(x) to be defined)
+        let rewrite = Rewrite::new(tan_x)
+            .desc(desc)
+            .requires(ImplicitCondition::NonZero(denom_expr))
+            .requires(ImplicitCondition::NonZero(cos_x));
+
+        Some(rewrite)
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Div"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+
+    fn soundness(&self) -> crate::rule::SoundnessLabel {
+        crate::rule::SoundnessLabel::EquivalenceUnderIntroducedRequires
+    }
+}
+
 define_rule!(
     DoubleAngleRule,
     "Double Angle Identity",
@@ -2705,6 +2933,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
     // Trig Quotient: sin(x)/cos(x) → tan(x) - runs after sum-to-product
     simplifier.add_rule(Box::new(TrigQuotientRule));
+    // Half-Angle Tangent: (1-cos(2x))/sin(2x) → tan(x), sin(2x)/(1+cos(2x)) → tan(x)
+    simplifier.add_rule(Box::new(HalfAngleTangentRule));
 
     // DISABLED: ProductToSumRule conflicts with AngleIdentityRule creating infinite loops
     // ProductToSumRule: 2*sin(a)*cos(b) → sin(a+b) + sin(a-b)
