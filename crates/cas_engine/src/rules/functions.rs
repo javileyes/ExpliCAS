@@ -272,6 +272,90 @@ define_rule!(
     }
 );
 
+// ============================================================================
+// SymbolicRootCancelRule: sqrt(x^n, n) → x when n is symbolic (Assume mode only)
+// ============================================================================
+//
+// V2.14.45: When the index is symbolic (not a numeric literal), we can't
+// determine parity to decide between x and |x|. In Assume mode, we simplify
+// to x with the assumption x ≥ 0 (which makes both even and odd cases equivalent).
+//
+// - Generic/Strict: block (handled by keeping sqrt form in CanonicalizeRootRule)
+// - Assume: sqrt(x^n, n) → x with Requires: x ≥ 0
+// ============================================================================
+pub struct SymbolicRootCancelRule;
+
+impl crate::rule::Rule for SymbolicRootCancelRule {
+    fn name(&self) -> &str {
+        "Symbolic Root Cancel"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::domain::DomainMode;
+        use crate::semantics::ValueDomain;
+
+        // Only apply in Assume mode (Generic keeps sqrt form)
+        if parent_ctx.domain_mode() != DomainMode::Assume {
+            return None;
+        }
+
+        // Only apply in RealOnly (complex has different semantics)
+        if parent_ctx.value_domain() != ValueDomain::RealOnly {
+            return None;
+        }
+
+        // Match sqrt(arg, index) where arg = Pow(base, exp) and exp == index
+        let Expr::Function(name, args) = ctx.get(expr).clone() else {
+            return None;
+        };
+
+        if name != "sqrt" || args.len() != 2 {
+            return None;
+        }
+
+        let arg = args[0];
+        let index = args[1];
+
+        // Index must be symbolic (non-numeric) - numeric cases handled elsewhere
+        if matches!(ctx.get(index), Expr::Number(_)) {
+            return None;
+        }
+
+        // Arg must be Pow(base, exp)
+        let Expr::Pow(base, exp) = ctx.get(arg).clone() else {
+            return None;
+        };
+
+        // Check if exp == index (structural equality)
+        if crate::ordering::compare_expr(ctx, exp, index) != std::cmp::Ordering::Equal {
+            return None;
+        }
+
+        // Pattern matched: sqrt(base^n, n) with symbolic n
+        // In Assume mode: return base with x ≥ 0 assumption
+        use crate::implicit_domain::ImplicitCondition;
+        Some(
+            crate::rule::Rewrite::new(base)
+                .desc("sqrt(x^n, n) = x (assuming x ≥ 0)")
+                .requires(ImplicitCondition::NonNegative(base))
+                .assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, base)),
+        )
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +477,7 @@ define_rule!(
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
     simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
+    simplifier.add_rule(Box::new(SymbolicRootCancelRule)); // V2.14.45: sqrt(x^n, n) -> x in Assume mode
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
     simplifier.add_rule(Box::new(AbsSquaredRule));

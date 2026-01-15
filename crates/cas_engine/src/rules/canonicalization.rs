@@ -386,15 +386,28 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                 return Some(Rewrite::new(new_expr).desc("sqrt(x) = x^(1/2)"));
             } else if args.len() == 2 {
                 // sqrt(x, n) -> x^(1/n)
+                // V2.14.45: Only convert if n is numeric (known index)
+                // If n is symbolic, keep sqrt form for better visualization and matching
+                let index = args[1];
+                if !matches!(ctx.get(index), Expr::Number(_)) {
+                    // Symbolic index: don't convert, keep sqrt(x, n) form
+                    return None;
+                }
                 let one = ctx.num(1);
-                let exp = ctx.add(Expr::Div(one, args[1]));
+                let exp = ctx.add(Expr::Div(one, index));
                 let new_expr = ctx.add(Expr::Pow(args[0], exp));
                 return Some(Rewrite::new(new_expr).desc("sqrt(x, n) = x^(1/n)"));
             }
         } else if name == "root" && args.len() == 2 {
             // root(x, n) -> x^(1/n)
+            // V2.14.45: Only convert if n is numeric (known index)
+            let index = args[1];
+            if !matches!(ctx.get(index), Expr::Number(_)) {
+                // Symbolic index: don't convert, keep root(x, n) form
+                return None;
+            }
             let one = ctx.num(1);
-            let exp = ctx.add(Expr::Div(one, args[1]));
+            let exp = ctx.add(Expr::Div(one, index));
             let new_expr = ctx.add(Expr::Pow(args[0], exp));
             return Some(Rewrite::new(new_expr).desc("root(x, n) = x^(1/n)"));
         }
