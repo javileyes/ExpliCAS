@@ -481,7 +481,11 @@ define_rule!(
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
-    simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
+                                                           // V2.14.45: SimplifySqrtOddPowerRule DISABLED - causes split/merge cycle with ProductPowerRule
+                                                           // x^(5/2) → |x|²*√x is a "worsening" transformation (increases AST nodes).
+                                                           // The canonical form for odd half-integer powers is Pow(x, n/2), NOT the product form.
+                                                           // If visual "extracted square" form is desired, it belongs in a renderer or explain-mode.
+                                                           // simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
     simplifier.add_rule(Box::new(SymbolicRootCancelRule)); // V2.14.45: sqrt(x^n, n) -> x in Assume mode
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
