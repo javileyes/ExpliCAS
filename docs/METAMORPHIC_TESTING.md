@@ -65,13 +65,13 @@ Every test run is logged to `crates/metatest_log.jsonl` in JSON Lines format:
 
 ```bash
 # View last 5 runs
-tail -5 crates/cas_engine/metatest_log.jsonl
+tail -5 crates/metatest_log.jsonl
 
 # Filter failures
-jq 'select(.failed > 0)' crates/cas_engine/metatest_log.jsonl
+jq 'select(.failed > 0)' crates/metatest_log.jsonl
 
 # Summary by test
-jq -s 'group_by(.test) | map({test: .[0].test, runs: length, passed: [.[] | .passed] | add})' crates/cas_engine/metatest_log.jsonl
+jq -s 'group_by(.test) | map({test: .[0].test, runs: length, passed: [.[] | .passed] | add})' crates/metatest_log.jsonl
 ```
 
 ## Test Cases
@@ -87,7 +87,7 @@ jq -s 'group_by(.test) | map({test: .[0].test, runs: length, passed: [.[] | .pas
 | `difference_of_squares` | (x-1)(x+1) = x² - 1 | ✅ |
 | `polynomial_simplify` | (x+1)(x-1) + 1 = x² | ✅ |
 | `log_product` | ln(2) + ln(3) = ln(6) | ⏸️ Skipped (no vars) |
-| `triple_tan_identity` | tan(x)·tan(π/3-x)·tan(π/3+x) = tan(3x) | ⏸️ Known issue |
+| `triple_tan_identity` | tan(x)·tan(π/3-x)·tan(π/3+x) = tan(3x) | ✅ |
 
 ## Failure Output
 
@@ -144,27 +144,15 @@ impl Lcg {
 - Uses `atol + rtol * scale` tolerance for comparison
 - Requires `min_valid` successful evaluations (filters NaN/Inf)
 
-## Known Issues
+## Resolved Issues
 
-### Triple Tan Identity
+### Triple Tan Identity (Fixed)
 
-When `tan(3*x)` appears in sum context (B+e), `TanToSinCosRule` expands it:
-```
-tan(3*x) → sin(3*x)/cos(3*x) → (3·sin(x)-4·sin³(x))/(4·cos³(x)-3·cos(x))
-```
+**Original problem**: When `tan(3*x)` appeared in sum context (B+e), `TanToSinCosRule` expanded it to complex sin/cos forms, while the identity result from A was protected. This caused different canonical forms.
 
-But when the product `tan(x)·tan(π/3-x)·tan(π/3+x)` simplifies to `tan(3x)` (A+e), that result is **protected** by `TanTripleProductRule` and does NOT get expanded.
+**Fix implemented** (V2.15):
+1. **Anti-worsen guard** on `TanToSinCosRule`: Don't expand `tan(n*x)` where n is integer > 1
+2. **Inf filtering** in numeric verification: Filter out infinity values from singularities
+3. **`__hold` support** in `eval_f64`: Transparently evaluate held expressions
 
-**Result**: Different canonical forms, `eval_failed=200` because the expanded form has more NaN points.
-
-```
-A+e simplified = 1 + tan(3·x) + cos(x) + x²
-B+e simplified = 1 + cos(x) + x² + (3·sin(x) - 4·sin³(x))/(4·cos³(x) - 3·cos(x))
-```
-
-**Status**: Marked `#[ignore]`, tracked as TODO.
-
-**Potential fixes** (not yet implemented):
-1. **PreferTan canonicalization**: Add rule `sin(u)/cos(u) → tan(u)` that handles expanded forms
-2. **Gate TanToSinCosRule**: Don't expand `tan(nx)` when n is integer (rarely useful)
-3. **Hold pattern**: Have identity rules return `__hold(tan(3x))` to prevent expansion
+Both A+e and B+e now simplify to `1 + tan(3·x) + cos(x) + x²` and pass numeric verification.

@@ -280,7 +280,8 @@ fn check_numeric_equiv_1var(
 
         match (va, vb) {
             (Some(va), Some(vb)) => {
-                if va.is_nan() || vb.is_nan() {
+                // Filter out NaN and Inf (singularities like tan poles)
+                if va.is_nan() || vb.is_nan() || va.is_infinite() || vb.is_infinite() {
                     eval_failed += 1;
                     continue;
                 }
@@ -298,7 +299,9 @@ fn check_numeric_equiv_1var(
                     ));
                 }
             }
-            _ => {
+            (va, vb) => {
+                // Both None, or one None - skip this sample
+                let _ = (va, vb); // suppress warning
                 eval_failed += 1;
             }
         }
@@ -471,7 +474,6 @@ fn metatest_difference_of_squares() {
 }
 
 #[test]
-#[ignore] // Known issue: TanToSinCosRule expands standalone tan(3*x) but not identity result
 fn metatest_triple_tan_identity() {
     // tan(x)·tan(π/3-x)·tan(π/3+x) = tan(3x)
     //

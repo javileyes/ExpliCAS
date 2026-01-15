@@ -1126,6 +1126,37 @@ fn is_part_of_tan_triple_product(
     false
 }
 
+/// Check if an expression is a "multiple angle" pattern: n*x where n is integer > 1.
+/// This is used to gate tan(n*x) → sin/cos expansion, which leads to complexity explosion
+/// via triple-angle formulas.
+fn is_multiple_angle(ctx: &cas_ast::Context, arg: ExprId) -> bool {
+    use cas_ast::Expr;
+
+    // Pattern: Mul(Number(n), x) or Mul(x, Number(n)) where n is integer > 1
+    if let Expr::Mul(l, r) = ctx.get(arg) {
+        // Check left side for integer > 1
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n.is_integer() {
+                let val = n.numer().clone();
+                if val > 1.into() || val < (-1).into() {
+                    return true;
+                }
+            }
+        }
+        // Check right side for integer > 1
+        if let Expr::Number(n) = ctx.get(*r) {
+            if n.is_integer() {
+                let val = n.numer().clone();
+                if val > 1.into() || val < (-1).into() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
 /// Convert tan(x) to sin(x)/cos(x) UNLESS it's part of a Pythagorean pattern
 pub struct TanToSinCosRule;
 
@@ -1181,8 +1212,18 @@ impl crate::rule::Rule for TanToSinCosRule {
             return None; // Let TanTripleProductRule handle it
         }
 
-        // Original conversion logic
+        // GUARD: Anti-worsen for multiple angles.
+        // Don't expand tan(n*x) for integer n > 1, as it leads to explosive
+        // triple-angle formulas: tan(3x) → (3sin(x) - 4sin³(x))/(4cos³(x) - 3cos(x))
+        // This is almost never useful for simplification.
         let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(name, args) = &expr_data {
+            if name == "tan" && args.len() == 1 && is_multiple_angle(ctx, args[0]) {
+                return None; // Don't expand tan(n*x) - causes complexity explosion
+            }
+        }
+
+        // Original conversion logic
         if let Expr::Function(name, args) = expr_data {
             if name == "tan" && args.len() == 1 {
                 // tan(x) -> sin(x) / cos(x)

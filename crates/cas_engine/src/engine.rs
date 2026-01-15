@@ -1188,6 +1188,15 @@ pub fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> 
                 "round" => Some(arg_vals.first()?.round()),
                 "sign" | "sgn" => Some(arg_vals.first()?.signum()),
 
+                // __hold is transparent for evaluation - just evaluate the held expression
+                "__hold" => {
+                    if args.len() == 1 {
+                        eval_f64(ctx, args[0], var_map)
+                    } else {
+                        None
+                    }
+                }
+
                 _ => None,
             }
         }
