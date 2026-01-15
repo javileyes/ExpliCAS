@@ -5237,6 +5237,16 @@ impl Repl {
                             }
 
                             println!("   Rule: {} -> {}", before_disp, after_disp);
+
+                            // V2.14.45: Show rule-provided substeps (educational explanations)
+                            if !step.substeps.is_empty() {
+                                for substep in &step.substeps {
+                                    println!("   [{}]", substep.title);
+                                    for line in &substep.lines {
+                                        println!("      • {}", line);
+                                    }
+                                }
+                            }
                         }
 
                         // Use precomputed global_after if available, fall back to reconstruction

@@ -157,6 +157,10 @@ pub struct Rewrite {
     /// Engine processes these in order, constructing Steps with correct before/after.
     /// See `ChainedRewrite` documentation for the sequential coherence guarantee.
     pub chained: Vec<ChainedRewrite>,
+    /// V2.14.45: Educational sub-steps explaining rule application.
+    /// These are metadata only - don't participate in the rewrite loop.
+    /// Propagated to Step.substeps during step creation.
+    pub substeps: Vec<crate::step::SubStep>,
 }
 
 impl Default for Rewrite {
@@ -170,6 +174,7 @@ impl Default for Rewrite {
             required_conditions: vec![],
             poly_proof: None,
             chained: vec![],
+            substeps: vec![],
         }
     }
 }
@@ -304,6 +309,23 @@ impl Rewrite {
     #[must_use]
     pub fn chain(mut self, r: ChainedRewrite) -> Self {
         self.chained.push(r);
+        self
+    }
+
+    /// Add an educational sub-step explaining rule application (V2.14.45).
+    /// These are metadata only - don't participate in the rewrite loop.
+    ///
+    /// # Example
+    /// ```ignore
+    /// Rewrite::new(result)
+    ///     .desc("Triple Tangent Product")
+    ///     .substep("Pattern Recognition", vec![
+    ///         "Detected 3 tan(·) factors".to_string(),
+    ///     ])
+    /// ```
+    #[must_use]
+    pub fn substep(mut self, title: impl Into<String>, lines: Vec<String>) -> Self {
+        self.substeps.push(crate::step::SubStep::new(title, lines));
         self
     }
 }

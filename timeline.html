@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: {(a - b)}^{3} + {(b - c)}^{3} + {(c - a)}^{3}</title>
+    <title>CAS Steps: \tan(x)\cdot \tan(x + \frac{\pi}{3})\cdot \tan(\frac{\pi}{3} - x)</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,39 +451,43 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[{(a - b)}^{3} + {(b - c)}^{3} + {(c - a)}^{3}\]
+            \[\tan(x)\cdot \tan(x + \frac{\pi}{3})\cdot \tan(\frac{\pi}{3} - x)\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Sum of Three Cubes (Zero Sum Identity)</h3>
+                    <h3>Triple Tangent Product (π/3)</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{{(a - b)}^{3} + {(b - c)}^{3} + {(c - a)}^{3}}}\]
+                        \[{\color{red}{\tan(x)\cdot \tan(x + \frac{\pi}{3})\cdot \tan(\frac{\pi}{3} - x)}}\]
                     </div>
-                    <details class="substeps-details">
-                            <summary>Pasos intermedios</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Definimos las bases de los cubos</span><div class="substep-math">\[x = a - b, \quad y = b - c, \quad z = c - a \rightarrow x^3 + y^3 + z^3\]</div></div><div class="substep">
-                                    <span class="substep-desc">Verificamos que x + y + z = 0</span><div class="substep-math">\[(a - b) + (b - c) + (c - a) \rightarrow 0 \quad \checkmark\]</div></div><div class="substep">
-                                    <span class="substep-desc">Aplicamos la identidad: si x+y+z=0, entonces x³+y³+z³=3xyz</span><div class="substep-math">\[a - b^3 + b - c^3 + c - a^3 \rightarrow 3 \cdot (a - b) \cdot (b - c) \cdot (c - a)\]</div></div></div></details>
+                    
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{x³ + y³ + z³ = 3xyz (when x + y + z = 0)}\)</div>
+                        <div class="rule-name">\(\text{tan(u)·tan(π/3+u)·tan(π/3−u) = tan(3u)}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{{(a - b)}^{3} + {(b - c)}^{3} + {(c - a)}^{3}}} \rightarrow {\color{green}{3\cdot (a - b)\cdot (b - c)\cdot (c - a)}}\]
+                            \[{\color{red}{\tan(x)\cdot \tan(x + \frac{\pi}{3})\cdot \tan(-x + \frac{\pi}{3})}} \rightarrow {\color{green}{\tan(3\cdot x)}}\]
                         </div>
                     </div>
+                    <details class="substeps-details" open>
+                    <summary>Pasos didácticos</summary>
+                    <div class="substeps-content"><div class="substep">
+                            <strong>[Normalizar argumentos]</strong><div class="substep-line">• π/3 − u se representa como −u + π/3 para comparar como u + const</div></div><div class="substep">
+                            <strong>[Reconocer patrón]</strong><div class="substep-line">• Sea u = x</div><div class="substep-line">• Factores: tan(u), tan(u + π/3), tan(π/3 − u)</div></div><div class="substep">
+                            <strong>[Aplicar identidad]</strong><div class="substep-line">• tan(u)·tan(u + π/3)·tan(π/3 − u) = tan(3u)</div></div></div></details>
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{3\cdot (a - b)\cdot (b - c)\cdot (c - a)}}\]
+                        \[{\color{green}{\tan(3\cdot x)}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[3\cdot (a - b)\cdot (b - c)\cdot (c - a)\]
+            \[\tan(3\cdot x)\]
+        </div>
+        <div class="global-requires">
+            <strong>ℹ️ Requires:</strong> 3 ≠ 0
         </div>
     </div>
     <footer>

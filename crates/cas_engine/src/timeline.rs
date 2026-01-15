@@ -2146,6 +2146,33 @@ impl<'a> TimelineHtml<'a> {
                 String::new()
             };
 
+            // V2.14.45: Build HTML for rule-provided substeps (educational explanations)
+            let rule_substeps_html = if !step.substeps.is_empty() {
+                let mut details_html = String::from(
+                    r#"<details class="substeps-details" open>
+                    <summary>Pasos didácticos</summary>
+                    <div class="substeps-content">"#,
+                );
+                for substep in &step.substeps {
+                    details_html.push_str(&format!(
+                        r#"<div class="substep">
+                            <strong>[{}]</strong>"#,
+                        html_escape(&substep.title)
+                    ));
+                    for line in &substep.lines {
+                        details_html.push_str(&format!(
+                            r#"<div class="substep-line">• {}</div>"#,
+                            html_escape(line)
+                        ));
+                    }
+                    details_html.push_str("</div>");
+                }
+                details_html.push_str("</div></details>");
+                details_html
+            } else {
+                String::new()
+            };
+
             // V2.12.13: Build assumption HTML from assumption_events, filtered and grouped by kind
             let domain_html = if !step.assumption_events.is_empty() {
                 use crate::assumptions::AssumptionKind;
@@ -2234,6 +2261,7 @@ impl<'a> TimelineHtml<'a> {
                             \[{}\]
                         </div>
                     </div>
+                    {}
                     <div class="math-expr after">
                         \(\textbf{{After:}}\)
                         \[{}\]
@@ -2247,6 +2275,7 @@ impl<'a> TimelineHtml<'a> {
                 sub_steps_html,
                 step.description,
                 local_change_latex,
+                rule_substeps_html, // Add rule-provided educational substeps
                 global_after,
                 requires_html,
                 domain_html

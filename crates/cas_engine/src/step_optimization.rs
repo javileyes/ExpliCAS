@@ -115,6 +115,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     category: crate::step::StepCategory::Canonicalize,
                     is_chained: false,
                     soundness: crate::rule::SoundnessLabel::Equivalence,
+                    substeps: vec![],
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;

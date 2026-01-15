@@ -116,6 +116,43 @@ pub enum StepCategory {
     Limits,       // Limit calculations
 }
 
+/// Educational sub-step explaining rule application (V2.14.45)
+/// These are metadata only - they don't participate in the rewrite loop.
+/// Used to show pattern recognition, normalization steps, identity application, etc.
+#[derive(Debug, Clone)]
+pub struct SubStep {
+    /// Title of this sub-step (e.g., "Pattern Recognition")
+    pub title: String,
+    /// Explanation lines (bullet points)
+    pub lines: Vec<String>,
+    /// Importance for verbosity filtering
+    pub importance: ImportanceLevel,
+}
+
+impl SubStep {
+    /// Create a new substep with the given title and lines
+    pub fn new(title: impl Into<String>, lines: Vec<String>) -> Self {
+        Self {
+            title: title.into(),
+            lines,
+            importance: ImportanceLevel::Low,
+        }
+    }
+
+    /// Create a substep with custom importance
+    pub fn with_importance(
+        title: impl Into<String>,
+        lines: Vec<String>,
+        importance: ImportanceLevel,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            lines,
+            importance,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Step {
     pub description: String,
@@ -160,6 +197,10 @@ pub struct Step {
     /// V2.14.30: Mathematical soundness classification of this step's transformation.
     /// Propagated from Rule::soundness() or elevated based on assumption_events.
     pub soundness: SoundnessLabel,
+    /// V2.14.45: Educational sub-steps explaining rule application.
+    /// These are metadata only - don't affect the simplification loop.
+    /// Propagated from Rewrite.substeps during step creation.
+    pub substeps: Vec<SubStep>,
 }
 
 impl Step {
@@ -205,6 +246,7 @@ impl Step {
             category: StepCategory::General,
             is_chained: false,
             soundness: SoundnessLabel::Equivalence,
+            substeps: vec![],
         }
     }
 
@@ -229,6 +271,7 @@ impl Step {
             category: StepCategory::General,
             is_chained: false,
             soundness: SoundnessLabel::Equivalence,
+            substeps: vec![],
         }
     }
 

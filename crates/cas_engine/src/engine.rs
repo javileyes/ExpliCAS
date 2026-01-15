@@ -1648,6 +1648,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             let main_assumptions = rewrite.assumption_events.clone();
                             let main_required = rewrite.required_conditions.clone();
                             let main_poly_proof = rewrite.poly_proof.clone();
+                            let main_substeps = rewrite.substeps.clone();
                             let chained_rewrites = rewrite.chained.clone();
 
                             // Determine final result (last of chained, or main rewrite)
@@ -1675,6 +1676,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             step.assumption_events = main_assumptions;
                             step.required_conditions = main_required;
                             step.poly_proof = main_poly_proof;
+                            step.substeps = main_substeps;
                             step.importance = rule.importance();
                             self.steps.push(step);
 
@@ -1958,6 +1960,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         let main_assumptions = rewrite.assumption_events.clone();
                         let main_required = rewrite.required_conditions.clone();
                         let main_poly_proof = rewrite.poly_proof.clone();
+                        let main_substeps = rewrite.substeps.clone();
                         let chained_rewrites = rewrite.chained.clone();
 
                         let final_result = chained_rewrites
@@ -1983,6 +1986,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         step.assumption_events = main_assumptions;
                         step.required_conditions = main_required;
                         step.poly_proof = main_poly_proof;
+                        step.substeps = main_substeps;
                         step.importance = rule.importance();
                         self.steps.push(step);
 

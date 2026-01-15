@@ -89,3 +89,40 @@ fn test_tan_triple_product_permutation() {
         result
     );
 }
+
+#[test]
+fn test_tan_triple_product_has_substeps() {
+    let opts = EvalOptions::default();
+    let mut ctx = Context::new();
+    let expr = parse("tan(x) * tan(pi/3 - x) * tan(pi/3 + x)", &mut ctx).expect("parse failed");
+
+    let mut simplifier = Simplifier::with_profile(&opts);
+    simplifier.context = ctx;
+
+    let (_result, steps) = simplifier.simplify(expr);
+
+    // Find the Triple Tangent Product step
+    let triple_step = steps
+        .iter()
+        .find(|s| s.rule_name == "Triple Tangent Product (π/3)");
+
+    assert!(
+        triple_step.is_some(),
+        "Should have Triple Tangent Product step"
+    );
+
+    let step = triple_step.unwrap();
+
+    // Verify substeps are populated
+    assert_eq!(
+        step.substeps.len(),
+        3,
+        "Should have 3 substeps; got: {:?}",
+        step.substeps
+    );
+
+    // Check substep titles (now in Spanish for pedagogical clarity)
+    assert_eq!(step.substeps[0].title, "Normalizar argumentos");
+    assert_eq!(step.substeps[1].title, "Reconocer patrón");
+    assert_eq!(step.substeps[2].title, "Aplicar identidad");
+}

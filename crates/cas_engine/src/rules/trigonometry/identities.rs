@@ -828,6 +828,11 @@ impl crate::rule::Rule for TanTripleProductRule {
         crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::TRANSFORM
     }
 
+    fn soundness(&self) -> crate::rule::SoundnessLabel {
+        // This rule introduces requires (cos ≠ 0) for the tangent definitions
+        crate::rule::SoundnessLabel::EquivalenceUnderIntroducedRequires
+    }
+
     fn apply(
         &self,
         ctx: &mut cas_ast::Context,
@@ -900,7 +905,52 @@ impl crate::rule::Rule for TanTripleProductRule {
                     product
                 };
 
-                return Some(Rewrite::new(result).desc("tan(u)·tan(π/3+u)·tan(π/3-u) = tan(3u)"));
+                // Build domain conditions: cos(u), cos(u+π/3), cos(π/3−u) ≠ 0
+                // These are required for the tangent functions to be defined
+                let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+                let three = ctx.num(3);
+                let pi_over_3 = ctx.add(Expr::Div(pi, three));
+                let u_plus_pi3 = ctx.add(Expr::Add(u, pi_over_3));
+                let pi3_minus_u = ctx.add(Expr::Sub(pi_over_3, u));
+                let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![u]));
+                let cos_u_plus = ctx.add(Expr::Function("cos".to_string(), vec![u_plus_pi3]));
+                let cos_pi3_minus = ctx.add(Expr::Function("cos".to_string(), vec![pi3_minus_u]));
+
+                // Format u for display in substeps
+                let u_str = cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: u,
+                }
+                .to_string();
+
+                return Some(
+                    Rewrite::new(result)
+                        .desc("tan(u)·tan(π/3+u)·tan(π/3−u) = tan(3u)")
+                        .substep(
+                            "Normalizar argumentos",
+                            vec![format!(
+                                "π/3 − u se representa como −u + π/3 para comparar como u + const"
+                            )],
+                        )
+                        .substep(
+                            "Reconocer patrón",
+                            vec![
+                                format!("Sea u = {}", u_str),
+                                format!("Factores: tan(u), tan(u + π/3), tan(π/3 − u)"),
+                            ],
+                        )
+                        .substep(
+                            "Aplicar identidad",
+                            vec![format!("tan(u)·tan(u + π/3)·tan(π/3 − u) = tan(3u)")],
+                        )
+                        .requires(crate::implicit_domain::ImplicitCondition::NonZero(cos_u))
+                        .requires(crate::implicit_domain::ImplicitCondition::NonZero(
+                            cos_u_plus,
+                        ))
+                        .requires(crate::implicit_domain::ImplicitCondition::NonZero(
+                            cos_pi3_minus,
+                        )),
+                );
             }
         }
 
