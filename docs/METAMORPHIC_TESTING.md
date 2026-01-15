@@ -55,7 +55,7 @@ The random expression generator uses only "safe" operations to avoid domain issu
 
 ## Historical Logging
 
-Every test run is logged to `crates/cas_engine/metatest_log.jsonl` in JSON Lines format:
+Every test run is logged to `crates/metatest_log.jsonl` in JSON Lines format:
 
 ```json
 {"timestamp":1768499153,"test":"pythagorean_identity","seed":12648430,"samples":50,"depth":3,"min_valid":20,"stress":false,"passed":1,"failed":0,"skipped":0}
@@ -148,6 +148,23 @@ impl Lcg {
 
 ### Triple Tan Identity
 
-When `tan(3*x)` appears in sum context (B+e), `TanToSinCosRule` expands it to sin/cos. But when the product simplifies to `tan(3x)` (A+e), that result is NOT expanded because it comes from an identity rule. This causes different canonical forms.
+When `tan(3*x)` appears in sum context (B+e), `TanToSinCosRule` expands it:
+```
+tan(3*x) → sin(3*x)/cos(3*x) → (3·sin(x)-4·sin³(x))/(4·cos³(x)-3·cos(x))
+```
+
+But when the product `tan(x)·tan(π/3-x)·tan(π/3+x)` simplifies to `tan(3x)` (A+e), that result is **protected** by `TanTripleProductRule` and does NOT get expanded.
+
+**Result**: Different canonical forms, `eval_failed=200` because the expanded form has more NaN points.
+
+```
+A+e simplified = 1 + tan(3·x) + cos(x) + x²
+B+e simplified = 1 + cos(x) + x² + (3·sin(x) - 4·sin³(x))/(4·cos³(x) - 3·cos(x))
+```
 
 **Status**: Marked `#[ignore]`, tracked as TODO.
+
+**Potential fixes** (not yet implemented):
+1. **PreferTan canonicalization**: Add rule `sin(u)/cos(u) → tan(u)` that handles expanded forms
+2. **Gate TanToSinCosRule**: Don't expand `tan(nx)` when n is integer (rarely useful)
+3. **Hold pattern**: Have identity rules return `__hold(tan(3x))` to prevent expansion

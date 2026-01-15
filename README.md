@@ -878,7 +878,7 @@ cargo test -p cas_engine --test metamorphic_simplification_tests
 METATEST_STRESS=1 cargo test -p cas_engine --test metamorphic_simplification_tests
 ```
 
-Results are logged to `crates/cas_engine/metatest_log.jsonl` for historical tracking.
+Results are logged to `crates/metatest_log.jsonl` for historical tracking.
 
 See [docs/METAMORPHIC_TESTING.md](docs/METAMORPHIC_TESTING.md) for full documentation.
 
