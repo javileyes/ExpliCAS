@@ -11,6 +11,41 @@ use std::sync::Arc;
 use tracing::debug;
 
 // =============================================================================
+// EquivalenceResult: Tri-state result for equiv command
+// =============================================================================
+//
+// V2.14.45: Proper equivalence checking with domain awareness.
+// Returns conditional true when rules with EquivalenceUnderIntroducedRequires
+// are used or when domain conditions are introduced.
+// =============================================================================
+
+/// Result of equivalence checking between two expressions.
+#[derive(Debug, Clone)]
+pub enum EquivalenceResult {
+    /// A ≡ B unconditionally (no domain assumptions needed)
+    True,
+    /// A ≡ B under specified conditions (domain restrictions)
+    ConditionalTrue {
+        /// Requires conditions introduced during simplification
+        requires: Vec<String>,
+    },
+    /// A ≢ B (found counterexample or proved non-equivalent)
+    False,
+    /// Cannot determine (no proof either way)
+    Unknown,
+}
+
+impl EquivalenceResult {
+    /// Returns true if the result indicates equivalence (True or ConditionalTrue)
+    pub fn is_equivalent(&self) -> bool {
+        matches!(
+            self,
+            EquivalenceResult::True | EquivalenceResult::ConditionalTrue { .. }
+        )
+    }
+}
+
+// =============================================================================
 // HoldAll function semantics
 // =============================================================================
 
@@ -824,6 +859,118 @@ impl Simplifier {
                     false
                 }
             }
+        }
+    }
+
+    /// Extended equivalence check returning tri-state result with domain conditions.
+    ///
+    /// V2.14.45: This method uses the same simplifier pipeline as the REPL,
+    /// and properly interprets SoundnessLabel and Requires from rules.
+    ///
+    /// Returns:
+    /// - `True` if A-B simplifies to 0 with pure Equivalence rules
+    /// - `ConditionalTrue` if A-B simplifies to 0 but rules with
+    ///   EquivalenceUnderIntroducedRequires were used or domain conditions introduced
+    /// - `Unknown` if cannot simplify to 0 but no counterexample found
+    /// - `False` if numeric verification finds counterexample
+    pub fn are_equivalent_extended(&mut self, a: ExprId, b: ExprId) -> EquivalenceResult {
+        use crate::rule::SoundnessLabel;
+
+        // Build A - B and simplify with step collection
+        // Note: We don't wrap in expand() because that blocks trig rules.
+        // The simplify pipeline applies all rules including trig identities.
+        let diff = self.context.add(Expr::Sub(a, b));
+
+        // Enable step collection to track soundness labels
+        let was_collecting = self.collect_steps();
+        self.set_collect_steps(true);
+
+        let (simplified_diff, steps) = self.simplify(diff);
+
+        self.set_collect_steps(was_collecting);
+
+        let result_expr = simplified_diff;
+
+        // Check if result is 0
+        let is_zero = match self.context.get(result_expr) {
+            Expr::Number(n) => n.is_zero(),
+            _ => false,
+        };
+
+        if is_zero {
+            // Success! Now determine if unconditional or conditional
+            // Check for any soundness label worse than Equivalence
+            let mut has_conditional_rules = false;
+            let mut requires: Vec<String> = Vec::new();
+
+            for step in &steps {
+                // Check soundness label
+                if step.soundness != SoundnessLabel::Equivalence {
+                    has_conditional_rules = true;
+                }
+
+                // Collect required_conditions from steps
+                for req in &step.required_conditions {
+                    let condition_str = req.display(&self.context);
+                    if !requires.contains(&condition_str) {
+                        requires.push(condition_str);
+                    }
+                }
+            }
+
+            // Also check blocked hints (from Strict mode)
+            for hint in &self.last_blocked_hints {
+                // Build condition string from AssumptionKey
+                let expr_display = format!(
+                    "{}",
+                    cas_ast::DisplayExpr {
+                        context: &self.context,
+                        id: hint.expr_id
+                    }
+                );
+                let hint_str = match &hint.key {
+                    crate::assumptions::AssumptionKey::NonZero { .. } => {
+                        format!("{} ≠ 0", expr_display)
+                    }
+                    crate::assumptions::AssumptionKey::Positive { .. } => {
+                        format!("{} > 0", expr_display)
+                    }
+                    crate::assumptions::AssumptionKey::NonNegative { .. } => {
+                        format!("{} ≥ 0", expr_display)
+                    }
+                    _ => format!("{} ({})", expr_display, hint.rule),
+                };
+                if !requires.contains(&hint_str) {
+                    requires.push(hint_str);
+                }
+            }
+
+            if has_conditional_rules || !requires.is_empty() {
+                EquivalenceResult::ConditionalTrue { requires }
+            } else {
+                EquivalenceResult::True
+            }
+        } else {
+            // Not zero symbolically - try numeric verification
+            if self.allow_numerical_verification {
+                let vars = self.collect_variables(result_expr);
+                let mut var_map = HashMap::new();
+                for var in &vars {
+                    var_map.insert(var.clone(), 1.23456789);
+                }
+
+                if let Some(val) = eval_f64(&self.context, result_expr, &var_map) {
+                    if val.abs() < 1e-9 {
+                        // Numeric evidence suggests equivalence but couldn't prove symbolically
+                        return EquivalenceResult::Unknown;
+                    } else {
+                        // Found counterexample
+                        return EquivalenceResult::False;
+                    }
+                }
+            }
+            // Can't determine
+            EquivalenceResult::Unknown
         }
     }
 

@@ -83,7 +83,7 @@ pub mod visitors;
 pub mod macros;
 
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
-pub use engine::{strip_all_holds, Simplifier};
+pub use engine::{strip_all_holds, EquivalenceResult, Simplifier};
 pub use error::CasError;
 pub use eval::*;
 // JSON API exports (canonical for CLI/FFI)

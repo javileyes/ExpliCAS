@@ -1984,8 +1984,6 @@ impl Repl {
 
     fn handle_equiv(&mut self, line: &str) {
         use cas_ast::Expr;
-        use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
-        use cas_engine::EntryKind;
         use cas_parser::Statement;
 
         let rest = line[6..].trim();
@@ -2016,26 +2014,30 @@ impl Repl {
 
             match (e1_res, e2_res) {
                 (Ok(e1), Ok(e2)) => {
-                    let req = EvalRequest {
-                        raw_input: expr1_str.to_string(),
-                        parsed: e1,
-                        kind: EntryKind::Expr(e1),
-                        action: EvalAction::Equiv { other: e2 },
-                        auto_store: false,
-                    };
+                    // V2.14.45: Use new tri-state equivalence check
+                    use cas_engine::EquivalenceResult;
 
-                    match self.engine.eval(&mut self.state, req) {
-                        Ok(output) => match output.result {
-                            EvalResult::Bool(b) => {
-                                if b {
-                                    println!("True")
-                                } else {
-                                    println!("False")
+                    let result = self.engine.simplifier.are_equivalent_extended(e1, e2);
+
+                    match result {
+                        EquivalenceResult::True => {
+                            println!("True");
+                        }
+                        EquivalenceResult::ConditionalTrue { requires } => {
+                            println!("True (conditional)");
+                            if !requires.is_empty() {
+                                println!("ℹ️ Requires:");
+                                for req in &requires {
+                                    println!("  • {}", req);
                                 }
                             }
-                            _ => println!("Unexpected result type"),
-                        },
-                        Err(e) => println!("Error: {}", e),
+                        }
+                        EquivalenceResult::False => {
+                            println!("False");
+                        }
+                        EquivalenceResult::Unknown => {
+                            println!("Unknown (cannot prove equivalence)");
+                        }
                     }
                 }
                 (Err(e), _) => println!("Error parsing first arg: {}", e),
