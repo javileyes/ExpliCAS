@@ -297,6 +297,147 @@ define_rule!(
     }
 );
 
+// ============================================================================
+// RootPowCancelRule: (x^n)^(1/n) → x (odd n) or |x| (even n)
+// ============================================================================
+//
+// V2.14.45: Sound handling of root-of-power cancellation in RealOnly.
+//
+// When canceling (x^n)^(1/n):
+// - n odd integer → x (raíz impar preserva signo)
+// - n even integer → |x| (raíz par requiere valor absoluto)
+// - n symbolic → block in Generic (can't determine parity)
+//                 in Assume: x with requires x ≥ 0
+//
+// Priority: HIGHER than PowerPowerRule to catch this pattern first.
+// ============================================================================
+pub struct RootPowCancelRule;
+
+impl crate::rule::Rule for RootPowCancelRule {
+    fn name(&self) -> &str {
+        "Root Power Cancel"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::semantics::ValueDomain;
+
+        // Match Pow(Pow(x, n), 1/n) where outer_exp = 1/n and inner_exp = n
+        let expr_data = ctx.get(expr).clone();
+        let Expr::Pow(base, outer_exp) = expr_data else {
+            return None;
+        };
+
+        let base_data = ctx.get(base).clone();
+        let Expr::Pow(inner_base, inner_exp) = base_data else {
+            return None;
+        };
+
+        // Check if outer_exp = 1/n where n matches inner_exp
+        // Also handles case where outer_exp = p/q and inner_exp = q (so p/q * q = p)
+        let outer_exp_data = ctx.get(outer_exp).clone();
+        let inner_exp_data = ctx.get(inner_exp).clone();
+
+        // Get the combined exponent: inner_exp * outer_exp
+        // For true root cancellation, we need combined_exp = 1
+        let combined_is_one = match (&outer_exp_data, &inner_exp_data) {
+            (Expr::Number(o), Expr::Number(i)) => {
+                let combined = o * i;
+                combined.is_one()
+            }
+            // Check if outer_exp = Div(1, inner_exp) structurally
+            _ => {
+                if let Expr::Div(num, denom) = &outer_exp_data {
+                    if let Expr::Number(n) = ctx.get(*num) {
+                        if n.is_one() {
+                            // outer_exp = 1/denom, check if denom == inner_exp
+                            crate::ordering::compare_expr(ctx, *denom, inner_exp) == Ordering::Equal
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+        };
+
+        if !combined_is_one {
+            return None;
+        }
+
+        // We have (x^n)^(1/n) pattern. Now check parity of n.
+        let vd = parent_ctx.value_domain();
+
+        // Only apply in RealOnly mode (complex has different branch rules)
+        if vd == ValueDomain::ComplexEnabled {
+            return None;
+        }
+
+        // Check if n is a numeric integer and get its parity
+        if let Expr::Number(n) = &inner_exp_data {
+            if n.is_integer() {
+                let n_int = n.to_integer();
+                let is_even = n_int.is_even();
+
+                if is_even {
+                    // Even root: (x^(2k))^(1/(2k)) = |x|
+                    let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![inner_base]));
+                    return Some(
+                        crate::rule::Rewrite::new(abs_base).desc("(x^n)^(1/n) = |x| for even n"),
+                    );
+                } else {
+                    // Odd root: (x^(2k+1))^(1/(2k+1)) = x
+                    return Some(
+                        crate::rule::Rewrite::new(inner_base).desc("(x^n)^(1/n) = x for odd n"),
+                    );
+                }
+            }
+        }
+
+        // n is symbolic - can't determine parity
+        let dm = parent_ctx.domain_mode();
+
+        match dm {
+            crate::domain::DomainMode::Strict | crate::domain::DomainMode::Generic => {
+                // Block: can't determine if n is even or odd
+                None
+            }
+            crate::domain::DomainMode::Assume => {
+                // Return x with requires x ≥ 0 (valid for both even and odd n)
+                use crate::implicit_domain::ImplicitCondition;
+                Some(
+                    crate::rule::Rewrite::new(inner_base)
+                        .desc("(x^n)^(1/n) = x (assuming x ≥ 0)")
+                        .requires(ImplicitCondition::NonNegative(inner_base))
+                        .assume(crate::assumptions::AssumptionEvent::nonnegative(
+                            ctx, inner_base,
+                        )),
+                )
+            }
+        }
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Pow"])
+    }
+
+    fn priority(&self) -> i32 {
+        // Higher than PowerPowerRule to catch root cancellation first
+        15
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
 define_rule!(
     PowerPowerRule,
     "Power of a Power",
@@ -419,6 +560,44 @@ define_rule!(
                     rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base));
                 }
                 return Some(rewrite);
+            }
+            // V2.14.45: Check for symbolic root cancellation (x^n)^(1/n) with n symbolic
+            // In this case, we cannot determine parity of n, so in Generic/Strict we must block
+            // because even roots require abs() but odd roots don't.
+            //
+            // Detect pattern: outer_exp is Div(p, denom) and denom structurally equals inner_exp
+            let is_symbolic_root_cancel = if let Expr::Div(_num, denom) = ctx.get(outer_exp) {
+                // Check if denom == inner_exp (structural equality)
+                crate::ordering::compare_expr(ctx, *denom, inner_exp) == Ordering::Equal
+            } else {
+                false
+            };
+
+            if is_symbolic_root_cancel {
+                let dm = parent_ctx.domain_mode();
+                let vd = parent_ctx.value_domain();
+
+                // Only block in RealOnly domain where parity matters
+                if vd == crate::semantics::ValueDomain::RealOnly {
+                    match dm {
+                        crate::domain::DomainMode::Strict | crate::domain::DomainMode::Generic => {
+                            // Block: can't determine if n is even or odd
+                            return None;
+                        }
+                        crate::domain::DomainMode::Assume => {
+                            // Allow with NonNegative assumption (valid for both parities)
+                            use crate::implicit_domain::ImplicitCondition;
+                            let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
+                            let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc("(x^n)^(1/n) = x (assuming x ≥ 0)")
+                                    .requires(ImplicitCondition::NonNegative(inner_base))
+                                    .assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base))
+                            );
+                        }
+                    }
+                }
             }
 
             // Default case: no domain restriction needed
@@ -889,6 +1068,8 @@ fn is_purely_numeric(ctx: &Context, expr: ExprId) -> bool {
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(ProductSameExponentRule));
+    // V2.14.45: RootPowCancelRule BEFORE PowerPowerRule for (x^n)^(1/n) with parity
+    simplifier.add_rule(Box::new(RootPowCancelRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
 
