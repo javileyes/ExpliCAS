@@ -1638,6 +1638,9 @@ impl crate::rule::Rule for LogExpInverseRule {
                                     }
                                     crate::domain::DomainMode::Assume => {
                                         // Allow with assumption warning
+                                        // Require base > 0 and base ≠ 1 (use base - 1 ≠ 0)
+                                        let one = ctx.num(1);
+                                        let base_minus_1 = ctx.add(Expr::Sub(base, one));
                                         return Some(
                                             crate::rule::Rewrite::new(p_exp)
                                                 .desc("log(b, b^x) → x")
@@ -1645,7 +1648,8 @@ impl crate::rule::Rule for LogExpInverseRule {
                                                     crate::assumptions::AssumptionEvent::positive_assumed(
                                                         ctx, base,
                                                     ),
-                                                ),
+                                                )
+                                                .requires(crate::implicit_domain::ImplicitCondition::NonZero(base_minus_1)),
                                         );
                                     }
                                 }
@@ -1659,7 +1663,16 @@ impl crate::rule::Rule for LogExpInverseRule {
                         }
 
                         // RealOnly with valid base (proven positive): Always simplify
-                        return Some(crate::rule::Rewrite::new(p_exp).desc("log(b, b^x) → x"));
+                        // Still need to require base ≠ 1 for log to be defined (use base - 1 ≠ 0)
+                        let one = ctx.num(1);
+                        let base_minus_1 = ctx.add(Expr::Sub(base, one));
+                        return Some(
+                            crate::rule::Rewrite::new(p_exp)
+                                .desc("log(b, b^x) → x")
+                                .requires(crate::implicit_domain::ImplicitCondition::NonZero(
+                                    base_minus_1,
+                                )),
+                        );
                     }
                 }
             }
@@ -1764,10 +1777,15 @@ impl crate::rule::Rule for LogPowerBaseRule {
                     let dm = parent_ctx.domain_mode();
                     let base_positive = prove_positive(ctx, base_core, vd);
 
+                    // For numeric exponents, the identity log(a^m, a^n) = n/m is ALGEBRAICALLY VALID
+                    // The domain restrictions (a > 0, a^m ≠ 1) are already implied by the log being defined.
+                    // In Generic mode, we can apply without proving a > 0, since the input expression
+                    // already requires those conditions to be meaningful.
+                    // We only block if we're in Strict mode and can't prove positivity.
                     match dm {
-                        DomainMode::Strict | DomainMode::Generic => {
+                        DomainMode::Strict => {
                             if base_positive != Proof::Proven {
-                                // Cannot prove a > 0, block
+                                // Cannot prove a > 0, block in Strict
                                 return None;
                             }
                             // Also check a ≠ 1
@@ -1775,8 +1793,9 @@ impl crate::rule::Rule for LogPowerBaseRule {
                                 return None;
                             }
                         }
-                        DomainMode::Assume => {
-                            // Proceed and emit requires
+                        DomainMode::Generic | DomainMode::Assume => {
+                            // For numeric exponents: algebraically valid, proceed
+                            // The log existence already implies the domain conditions
                         }
                     }
 
@@ -1792,7 +1811,9 @@ impl crate::rule::Rule for LogPowerBaseRule {
                     if dm == DomainMode::Assume && base_positive != Proof::Proven {
                         rewrite = rewrite.requires(ImplicitCondition::Positive(base_core));
                     }
-                    rewrite = rewrite.requires(ImplicitCondition::NonZero(base)); // base ≠ 1 implicitly
+                    // base ≠ 1 (log base 1 is undefined) - use base - 1 ≠ 0
+                    let base_minus_1 = ctx.add(Expr::Sub(base, one));
+                    rewrite = rewrite.requires(ImplicitCondition::NonZero(base_minus_1));
 
                     return Some(rewrite);
                 }
@@ -1807,6 +1828,12 @@ impl crate::rule::Rule for LogPowerBaseRule {
 
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::Medium
+    }
+
+    fn priority(&self) -> i32 {
+        // Higher than LogEvenPowerWithChainedAbsRule (10) to match log(x^2, x^6) first
+        // Otherwise LogEvenPower would expand to 6·log(x², |x|) before we can simplify to 3
+        15
     }
 }
 
@@ -1839,6 +1866,10 @@ fn normalize_to_power(ctx: &mut cas_ast::Context, expr: ExprId) -> (ExprId, Expr
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // V2.14.45: LogPowerBaseRule MUST come BEFORE LogEvenPowerRule
+    // Otherwise log(x^2, x^6) gets expanded to 6·log(x², |x|) before simplifying to 3
+    simplifier.add_rule(Box::new(LogPowerBaseRule)); // log(a^m, a^n) → n/m
+
     // V2.14.20: LogEvenPowerWithChainedAbsRule handles ln(x^even) with ChainedRewrite
     // Has higher priority (10) than EvaluateLogRule (0) so matches first
     simplifier.add_rule(Box::new(LogEvenPowerWithChainedAbsRule));
@@ -1862,7 +1893,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(LogInversePowerRule));
-    simplifier.add_rule(Box::new(LogPowerBaseRule)); // log(a^m, a^n) → n/m
     simplifier.add_rule(Box::new(LogExpInverseRule));
 
     // AutoExpandLogRule: auto-expand log products/quotients when log_expand_policy=Auto
