@@ -1155,6 +1155,86 @@ fn try_sum_diff_of_cubes_in_num(
     Some(rewrite)
 }
 
+// =============================================================================
+// EARLY RETURN: Power quotient preserving factored form P^m / P^n → P^(m-n)
+// =============================================================================
+//
+// V2.14.45: When both numerator and denominator are powers of the same base,
+// simplify by subtracting exponents WITHOUT expanding to polynomial form.
+// This preserves (x-1)⁴/(x-1)² → (x-1)² instead of x² - 2x + 1.
+//
+// Also handles: P^m / P → P^(m-1) and P / P^n → P^(1-n)
+// =============================================================================
+fn try_power_quotient_preserve_form(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    _domain_mode: crate::domain::DomainMode,
+    _parent_ctx: &crate::parent_context::ParentContext,
+) -> Option<Rewrite> {
+    use crate::implicit_domain::ImplicitCondition;
+
+    // Extract base and exponent from numerator
+    // Handle both Pow(base, exp) and just base (implicitly exp=1)
+    let (num_base, num_exp) = if let Some((base, exp)) = crate::helpers::as_pow(ctx, num) {
+        (base, Some(exp))
+    } else {
+        (num, None) // Treat as P^1
+    };
+
+    // Extract base and exponent from denominator
+    let (den_base, den_exp) = if let Some((base, exp)) = crate::helpers::as_pow(ctx, den) {
+        (base, Some(exp))
+    } else {
+        (den, None) // Treat as P^1
+    };
+
+    // Check if bases are structurally equal using polynomial comparison
+    // This handles reordering like (x-1) vs (1-x) if signs are handled
+    if !poly_eq(ctx, num_base, den_base) {
+        return None;
+    }
+
+    // Both exponents must be numeric integers for safe simplification
+    let num_exp_val: i64 = match num_exp {
+        Some(e) => crate::helpers::as_i64(ctx, e)?,
+        None => 1,
+    };
+    let den_exp_val: i64 = match den_exp {
+        Some(e) => crate::helpers::as_i64(ctx, e)?,
+        None => 1,
+    };
+
+    // Must have m > n for this to be a simplification (result is positive exponent)
+    // Otherwise let other rules handle it
+    if num_exp_val <= den_exp_val {
+        return None;
+    }
+
+    let result_exp = num_exp_val - den_exp_val;
+
+    // Build result: base^(m-n)
+    let result = if result_exp == 1 {
+        num_base // P^1 = P
+    } else {
+        let exp_expr = ctx.num(result_exp);
+        ctx.add(Expr::Pow(num_base, exp_expr))
+    };
+
+    // Build local display: show P^m / P^n → P^(m-n)
+    let desc = format!(
+        "Cancel: P^{} / P^{} → P^{}",
+        num_exp_val, den_exp_val, result_exp
+    );
+
+    Some(
+        Rewrite::new(result)
+            .desc(&desc)
+            .local(num, result)
+            .requires(ImplicitCondition::NonZero(den)),
+    )
+}
+
 define_rule!(
     SimplifyFractionRule,
     "Simplify Nested Fraction",
@@ -1195,6 +1275,13 @@ define_rule!(
         if let Some(rewrite) = try_sum_diff_of_cubes_in_num(ctx, num, den, domain_mode, parent_ctx) {
             return Some(rewrite);
         }
+
+        // EARLY RETURN: Power quotient preserving factored form
+        // V2.14.45: (x-1)⁴/(x-1)² → (x-1)² instead of x² - 2x + 1
+        if let Some(rewrite) = try_power_quotient_preserve_form(ctx, num, den, domain_mode, parent_ctx) {
+            return Some(rewrite);
+        }
+
         // NOTE: PR-2 shallow GCD integration deferred.
         // The gcd_shallow_for_fraction function exists in poly_gcd.rs but calling it
         // here adds stack depth that causes overflow on complex expressions.
