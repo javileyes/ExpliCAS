@@ -34,6 +34,8 @@ pub struct ParentContext {
     pub(crate) simplify_purpose: crate::solve_safety::SimplifyPurpose,
     /// Count of Div ancestors - used to guard trig expansions in quotients
     pub(crate) div_ancestor_count: usize,
+    /// True if inside sin/cos/tan arg with large coeff (n>2), blocks trig expansion
+    pub(crate) trig_large_coeff_protected: bool,
 }
 
 impl ParentContext {
@@ -55,6 +57,7 @@ impl ParentContext {
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
             div_ancestor_count: 0,
+            trig_large_coeff_protected: false,
         }
     }
 
@@ -76,6 +79,7 @@ impl ParentContext {
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
             div_ancestor_count: 0,
+            trig_large_coeff_protected: false,
         }
     }
 
@@ -97,6 +101,7 @@ impl ParentContext {
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
             div_ancestor_count: 0,
+            trig_large_coeff_protected: false,
         }
     }
 
@@ -121,6 +126,7 @@ impl ParentContext {
             context_mode: crate::options::ContextMode::default(),
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
             div_ancestor_count: 0,
+            trig_large_coeff_protected: false,
         }
     }
 
@@ -145,6 +151,7 @@ impl ParentContext {
             context_mode: self.context_mode,
             simplify_purpose: self.simplify_purpose,
             div_ancestor_count: self.div_ancestor_count,
+            trig_large_coeff_protected: self.trig_large_coeff_protected,
         }
     }
 
@@ -372,8 +379,23 @@ impl ParentContext {
         self.div_ancestor_count > 0
     }
 
-    /// Extend context with a new parent, checking if it's a Div node.
-    /// Use this when you have access to Context to properly track Div ancestors.
+    /// Check if we're inside a sin/cos/tan argument with large coefficient (|n| > 2).
+    /// Used by rules to block trig expansion that would cause exponential blowup.
+    /// E.g., sin(16x) should NOT be expanded via sin(a+b) because it leads to
+    /// sin(13x + 3x) -> sin(13x)cos(3x) + cos(13x)sin(3x) -> ... exponential growth.
+    pub fn is_trig_large_coeff_protected(&self) -> bool {
+        self.trig_large_coeff_protected
+    }
+
+    /// Set trig_large_coeff_protected flag when recursing into sin/cos/tan(n*x).
+    pub fn with_trig_large_coeff_protection(mut self, protected: bool) -> Self {
+        self.trig_large_coeff_protected = protected;
+        self
+    }
+
+    /// Extend context with a new parent, checking if it's a Div node or trig with large coeff.
+    /// Use this when you have access to Context to properly track Div ancestors
+    /// and detect sin/cos/tan(n*x) patterns that should block expansion.
     pub fn extend_with_div_check(&self, parent_id: ExprId, ctx: &Context) -> Self {
         use cas_ast::Expr;
 
@@ -382,6 +404,19 @@ impl ParentContext {
 
         // Check if the new parent is a Div
         let is_div = matches!(ctx.get(parent_id), Expr::Div(_, _));
+
+        // Check if the new parent is sin/cos/tan(n*x) with |n| > 2
+        // If so, set protection flag to block trig expansions for descendants
+        let is_trig_large_coeff = if let Expr::Function(name, args) = ctx.get(parent_id) {
+            if (name == "sin" || name == "cos" || name == "tan") && args.len() == 1 {
+                // Check if argument is n*x with |n| > 2
+                is_large_trig_coefficient(ctx, args[0])
+            } else {
+                false
+            }
+        } else {
+            false
+        };
 
         Self {
             ancestors: new_ancestors,
@@ -403,8 +438,41 @@ impl ParentContext {
             } else {
                 self.div_ancestor_count
             },
+            // Once protected, stays protected (OR with current state)
+            trig_large_coeff_protected: self.trig_large_coeff_protected || is_trig_large_coeff,
         }
     }
+}
+
+/// Check if an expression is n*x where |n| > 2 (integer).
+/// This indicates a "large coefficient" that would cause exponential expansion
+/// if we tried to expand sin(n*x) or cos(n*x).
+fn is_large_trig_coefficient(ctx: &Context, expr: ExprId) -> bool {
+    use cas_ast::Expr;
+
+    // Pattern: Mul(Number(n), x) or Mul(x, Number(n)) where |n| > 2
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        // Check left side for integer with |n| > 2
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n.is_integer() {
+                let val = n.numer().clone();
+                // |n| > 2 means n > 2 or n < -2
+                if val > num_bigint::BigInt::from(2) || val < num_bigint::BigInt::from(-2) {
+                    return true;
+                }
+            }
+        }
+        // Check right side for integer with |n| > 2
+        if let Expr::Number(n) = ctx.get(*r) {
+            if n.is_integer() {
+                let val = n.numer().clone();
+                if val > num_bigint::BigInt::from(2) || val < num_bigint::BigInt::from(-2) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]

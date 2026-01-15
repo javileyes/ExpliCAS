@@ -678,11 +678,50 @@ impl crate::rule::Rule for AngleIdentityRule {
     ) -> Option<Rewrite> {
         use cas_ast::Expr;
 
+        // GUARD: Don't expand sin/cos if the argument has a large coefficient.
+        // sin(n*x) with |n| > 2 should NOT be expanded because it leads to
+        // exponential explosion: sin(16x) → sin(13x+3x) → ... huge tree.
+        // This guard blocks the expansion at the source.
+        if !parent_ctx.is_expand_mode() {
+            if let Expr::Function(name, args) = ctx.get(expr) {
+                if (name == "sin" || name == "cos" || name == "tan")
+                    && args.len() == 1
+                    && has_large_coefficient(ctx, args[0])
+                {
+                    return None;
+                }
+            }
+        }
+
         // GUARD: Don't expand sin(a+b)/cos(a+b) if this function is part of sin²+cos²=1 pattern
         // The pattern marks are set by pre-scan before simplification
         if let Some(marks) = parent_ctx.pattern_marks() {
             if marks.is_trig_square_protected(expr) {
                 return None; // Skip expansion to preserve Pythagorean identity
+            }
+        }
+
+        // GUARD: Centralized anti-worsen for large trig coefficients.
+        // If we're inside sin(n*x) with |n| > 2, block all trig expansions.
+        // This prevents exponential explosion from recursive angle decomposition.
+        if parent_ctx.is_trig_large_coeff_protected() && !parent_ctx.is_expand_mode() {
+            return None;
+        }
+
+        // GUARD: Anti-worsen for multiple angles.
+        // Don't expand sin(a+b) or cos(a+b) if:
+        // - Either a or b is already a multiple angle (n*x where |n| > 1)
+        // - This would cause exponential expansion: sin(12x + 4x) → huge tree
+        // Note: We allow sin(x + y) with distinct variables, only block multiples of same var
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if (name == "sin" || name == "cos") && args.len() == 1 {
+                let inner = args[0];
+                if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = ctx.get(inner) {
+                    // Check if either side is a multiple angle that would cause explosion
+                    if is_multiple_angle(ctx, *lhs) || is_multiple_angle(ctx, *rhs) {
+                        return None; // Block expansion - would cause exponential growth
+                    }
+                }
             }
         }
 
@@ -1151,6 +1190,43 @@ fn is_multiple_angle(ctx: &cas_ast::Context, arg: ExprId) -> bool {
                     return true;
                 }
             }
+        }
+    }
+
+    false
+}
+
+/// Check if an expression has a "large coefficient" pattern: n*x where |n| > 2.
+/// This guards against exponential explosion in trig expansions.
+/// sin(16*x) would trigger this, blocking sin(a+b) decomposition.
+fn has_large_coefficient(ctx: &cas_ast::Context, arg: ExprId) -> bool {
+    use cas_ast::Expr;
+
+    // Pattern: Mul(Number(n), x) or Mul(x, Number(n)) where |n| > 2
+    if let Expr::Mul(l, r) = ctx.get(arg) {
+        let check_large = |id: ExprId| -> bool {
+            if let Expr::Number(n) = ctx.get(id) {
+                if n.is_integer() {
+                    let val = n.numer().clone();
+                    val > num_bigint::BigInt::from(2) || val < num_bigint::BigInt::from(-2)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+        // Check both sides
+        if check_large(*l) || check_large(*r) {
+            return true;
+        }
+    }
+
+    // Also check for Add/Sub patterns that contain multiples
+    // This catches sin(13x + 3x) patterns
+    if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = ctx.get(arg) {
+        if is_multiple_angle(ctx, *lhs) || is_multiple_angle(ctx, *rhs) {
+            return true;
         }
     }
 
@@ -2378,6 +2454,14 @@ define_rule!(
                 // Check if arg is 2*x or x*2
                 // We need to match "2 * x"
                 if let Some(inner_var) = extract_double_angle_arg(ctx, args[0]) {
+                    // GUARD: Anti-worsen for multiple angles.
+                    // Don't expand sin(2*(8x)) = sin(16x) because the inner argument
+                    // is already a multiple (8x). This would cause exponential recursion:
+                    // sin(16x) → 2sin(8x)cos(8x) → 2·2sin(4x)cos(4x)·... = explosion
+                    if is_multiple_angle(ctx, inner_var) {
+                        return None;
+                    }
+
                     match name.as_str() {
                         "sin" => {
                             // sin(2x) -> 2sin(x)cos(x)

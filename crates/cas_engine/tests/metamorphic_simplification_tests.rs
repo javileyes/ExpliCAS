@@ -100,10 +100,10 @@ fn log_metatest_run(
 fn metatest_config() -> MetatestConfig {
     let stress = env::var("METATEST_STRESS").ok().as_deref() == Some("1");
 
-    let samples = if stress { 200 } else { 50 };
-    let min_valid = if stress { 100 } else { 20 };
-    let depth = 3; // Depth 3 to avoid stack overflow in simplifier
-    let eval_samples = if stress { 300 } else { 200 };
+    let samples = if stress { 500 } else { 50 };
+    let min_valid = if stress { 250 } else { 20 };
+    let depth = if stress { 5 } else { 3 };
+    let eval_samples = if stress { 500 } else { 200 };
 
     // Seed from env or default
     let seed = env::var("METATEST_SEED")

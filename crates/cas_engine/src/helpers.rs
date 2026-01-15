@@ -1780,6 +1780,55 @@ pub fn same_args_unordered(ctx: &Context, a: ExprId, b: ExprId, c: ExprId, d: Ex
     compare_expr(ctx, a1, b1) == Ordering::Equal && compare_expr(ctx, a2, b2) == Ordering::Equal
 }
 
+// =============================================================================
+// Expression Complexity Helpers
+// =============================================================================
+
+/// Count the number of nodes in an expression tree.
+/// Used by the anti-worsen guard to reject rewrites that grow expressions too much.
+pub fn node_count(ctx: &Context, expr: ExprId) -> usize {
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => 1,
+        Expr::Neg(e) => 1 + node_count(ctx, *e),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            1 + node_count(ctx, *l) + node_count(ctx, *r)
+        }
+        Expr::Function(_, args) => 1 + args.iter().map(|a| node_count(ctx, *a)).sum::<usize>(),
+        Expr::Matrix { rows, cols, data } => {
+            1 + (*rows) * (*cols) + data.iter().map(|e| node_count(ctx, *e)).sum::<usize>()
+        }
+    }
+}
+
+/// Check if a rewrite would "worsen" the expression by growing it too much.
+/// Returns true if the rewrite should be BLOCKED.
+///
+/// Budget policy:
+/// - Allow growth up to `max_growth_abs` nodes (e.g., 30)
+/// - Allow growth up to `max_growth_ratio` times original size (e.g., 1.5x)
+/// - If BOTH limits are exceeded, block the rewrite
+pub fn rewrite_worsens_too_much(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+    max_growth_abs: usize,
+    max_growth_ratio: f64,
+) -> bool {
+    let size_before = node_count(ctx, before);
+    let size_after = node_count(ctx, after);
+
+    // If expression got smaller or stayed same, always allow
+    if size_after <= size_before {
+        return false;
+    }
+
+    let growth_abs = size_after - size_before;
+    let growth_ratio = size_after as f64 / size_before.max(1) as f64;
+
+    // Block only if BOTH thresholds are exceeded (more permissive)
+    growth_abs > max_growth_abs && growth_ratio > max_growth_ratio
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

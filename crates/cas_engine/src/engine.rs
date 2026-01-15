@@ -1833,6 +1833,29 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             }
                         }
 
+                        // ANTI-WORSEN BUDGET: Reject rewrites that grow expression beyond threshold.
+                        // This is a GLOBAL SAFETY NET against exponential explosion (e.g., sin(16*x) expansion).
+                        // Budget policy: Block if BOTH:
+                        // - Absolute growth > 30 nodes
+                        // - Relative growth > 1.5x (50% larger)
+                        // Exception: expand_mode bypasses this check (user explicitly requested expansion)
+                        if !parent_ctx.is_expand_mode()
+                            && crate::helpers::rewrite_worsens_too_much(
+                                self.context,
+                                expr_id,
+                                rewrite.new_expr,
+                                30,  // max_growth_abs
+                                1.5, // max_growth_ratio
+                            )
+                        {
+                            debug!(
+                                "{}[DEBUG] Rule '{}' blocked by anti-worsen budget (expression grew too much)",
+                                self.indent(),
+                                rule.name()
+                            );
+                            continue;
+                        }
+
                         // Domain Delta Airbag: Check if rewrite expands analytic domain
                         // This catches any rewrite that removes implicit constraints like x≥0 from sqrt(x)
                         // Behavior by mode:
