@@ -230,13 +230,16 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 };
 
                 if is_even_integer {
-                    // Even exponent: ln(x^(2k)) = 2k·ln(|x|) - no assumption needed
-                    let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![p_base]));
-                    let log_abs = make_log(ctx, base, abs_base);
-                    let new_expr = smart_mul(ctx, p_exp, log_abs);
-                    return Some(
-                        Rewrite::new(new_expr).desc("log(b, x^(even)) = even·log(b, |x|)"),
-                    );
+                    // Even exponent: ln(x^(2k)) = 2k·ln(|x|) - but this introduces abs()
+                    //
+                    // V2.14.45 ANTI-WORSEN GUARD:
+                    // In Generic/Strict: BLOCK - this would introduce abs() without resolution
+                    // Let LogEvenPowerWithChainedAbsRule handle this case in Assume mode
+                    //
+                    // NOTE: EvaluateLogRule uses define_rule! without parent_ctx, so we
+                    // delegate to LogEvenPowerWithChainedAbsRule which has proper domain checks.
+                    // Just skip this case here - the specialized rule will handle it.
+                    return None;
                 } else {
                     // Odd or non-integer exponent: requires x > 0
                     // Only allow in Generic/Assume modes, block in Strict
@@ -681,8 +684,27 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
             rw = rw.chain(chain);
             Some(rw)
         } else {
-            // Cannot chain: just produce even·ln(|x|)
-            Some(crate::rule::Rewrite::new(mid_expr).desc("log(b, x^(even)) = even·log(b, |x|)"))
+            // Cannot chain: would produce even·ln(|x|) introducing abs()
+            //
+            // V2.14.45 ANTI-WORSEN GUARD:
+            // In Generic/Strict: BLOCK - introducing abs() without resolution worsens the expression
+            // In Assume: allow since user has explicitly opted into assumptions
+            match dm {
+                DomainMode::Strict | DomainMode::Generic => {
+                    // Don't worsen expression by introducing abs() we can't resolve
+                    None
+                }
+                DomainMode::Assume => {
+                    // In Assume mode: produce even·ln(|x|) with assumption event
+                    let mut rw = crate::rule::Rewrite::new(mid_expr)
+                        .desc("log(b, x^(even)) = even·log(b, |x|)");
+                    // Add assumption that x > 0 or x < 0 (needed for abs to be meaningful)
+                    rw = rw.assume(crate::assumptions::AssumptionEvent::positive_assumed(
+                        ctx, p_base,
+                    ));
+                    Some(rw)
+                }
+            }
         }
     }
 
