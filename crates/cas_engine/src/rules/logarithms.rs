@@ -1672,6 +1672,172 @@ impl crate::rule::Rule for LogExpInverseRule {
     }
 }
 
+/// Rule for log(a^m, a^n) → n/m
+///
+/// Handles cases like:
+/// - log(x^2, x^6) → 6/2 = 3
+/// - log(1/x, x) → log(x^(-1), x^1) → 1/(-1) = -1
+///
+/// Normalizes bases and arguments to power form:
+/// - a → (a, 1)
+/// - a^m → (a, m)
+/// - 1/a → (a, -1)
+pub struct LogPowerBaseRule;
+
+impl crate::rule::Rule for LogPowerBaseRule {
+    fn name(&self) -> &str {
+        "Log Power Base"
+    }
+
+    fn soundness(&self) -> crate::rule::SoundnessLabel {
+        crate::rule::SoundnessLabel::EquivalenceUnderIntroducedRequires
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(name, args) = expr_data {
+            // Match log(base, arg) - not ln (which has implicit base e)
+            if name != "log" || args.len() != 2 {
+                return None;
+            }
+            let base = args[0];
+            let arg = args[1];
+
+            // Normalize base to (core, exponent) form
+            let (base_core, base_exp) = normalize_to_power(ctx, base);
+            // Normalize arg to (core, exponent) form
+            let (arg_core, arg_exp) = normalize_to_power(ctx, arg);
+
+            // Both must have the same core, and base_exp must not be 0 or 1
+            // (if base_exp = 0, base = a^0 = 1, undefined log)
+            // (if base_exp = 1, this is just log(a, a^n) → n, handled by LogExpInverseRule)
+            if base_core == arg_core || compare_expr(ctx, base_core, arg_core) == Ordering::Equal {
+                // Check base_exp is not 0 or 1 (to avoid overlapping with other rules)
+                let base_exp_is_one = matches!(ctx.get(base_exp), Expr::Number(n) if n.is_one());
+                if base_exp_is_one {
+                    // log(a, a^n) → n is handled by LogExpInverseRule
+                    return None;
+                }
+
+                // Check both exponents are numeric (for now, start conservative)
+                let base_exp_num = match ctx.get(base_exp) {
+                    Expr::Number(n) => Some(n.clone()),
+                    _ => None,
+                };
+                let arg_exp_num = match ctx.get(arg_exp) {
+                    Expr::Number(n) => Some(n.clone()),
+                    _ => None,
+                };
+
+                if let (Some(m), Some(n)) = (base_exp_num, arg_exp_num) {
+                    // Check m ≠ 0 (log base a^0 = 1 is undefined)
+                    if m.is_zero() {
+                        return None;
+                    }
+
+                    // Result: n/m  (clone for description building)
+                    let m_disp = m.clone();
+                    let n_disp = n.clone();
+                    let result_ratio = n / m;
+                    let result = ctx.add(Expr::Number(result_ratio.clone()));
+
+                    // Domain requires: a > 0, a ≠ 1
+                    use crate::implicit_domain::ImplicitCondition;
+                    let one = ctx.num(1);
+
+                    // Gate by domain mode
+                    use crate::domain::{DomainMode, Proof};
+                    use crate::helpers::prove_positive;
+                    use crate::semantics::ValueDomain;
+
+                    let vd = parent_ctx.value_domain();
+                    if vd == ValueDomain::ComplexEnabled {
+                        // Complex domain: don't simplify
+                        return None;
+                    }
+
+                    let dm = parent_ctx.domain_mode();
+                    let base_positive = prove_positive(ctx, base_core, vd);
+
+                    match dm {
+                        DomainMode::Strict | DomainMode::Generic => {
+                            if base_positive != Proof::Proven {
+                                // Cannot prove a > 0, block
+                                return None;
+                            }
+                            // Also check a ≠ 1
+                            if compare_expr(ctx, base_core, one) == Ordering::Equal {
+                                return None;
+                            }
+                        }
+                        DomainMode::Assume => {
+                            // Proceed and emit requires
+                        }
+                    }
+
+                    // Build description using cloned exponents
+                    let desc = format!(
+                        "log(a^{}, a^{}) = {}/{} = {}",
+                        m_disp, n_disp, n_disp, m_disp, result_ratio
+                    );
+
+                    let mut rewrite = crate::rule::Rewrite::new(result).desc(desc);
+
+                    // Add requires in Assume mode (or always to be explicit)
+                    if dm == DomainMode::Assume && base_positive != Proof::Proven {
+                        rewrite = rewrite.requires(ImplicitCondition::Positive(base_core));
+                    }
+                    rewrite = rewrite.requires(ImplicitCondition::NonZero(base)); // base ≠ 1 implicitly
+
+                    return Some(rewrite);
+                }
+            }
+        }
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
+}
+
+/// Normalize an expression to (core, exponent) form:
+/// - a → (a, 1)
+/// - a^m → (a, m)
+/// - 1/a → (a, -1)
+/// - a^m/b → not handled, returns original
+fn normalize_to_power(ctx: &mut cas_ast::Context, expr: ExprId) -> (ExprId, ExprId) {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => (base, exp),
+        Expr::Div(num, den) => {
+            // Check if num is 1 (literal 1)
+            if matches!(ctx.get(num), Expr::Number(n) if n.is_one()) {
+                // 1/a → (a, -1)
+                let neg_one = ctx.num(-1);
+                (den, neg_one)
+            } else {
+                // Not a simple reciprocal, return as is
+                let one = ctx.num(1);
+                (expr, one)
+            }
+        }
+        _ => {
+            // Just a → (a, 1)
+            let one = ctx.num(1);
+            (expr, one)
+        }
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     // V2.14.20: LogEvenPowerWithChainedAbsRule handles ln(x^even) with ChainedRewrite
     // Has higher priority (10) than EvaluateLogRule (0) so matches first
@@ -1696,6 +1862,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ExponentialLogRule));
     simplifier.add_rule(Box::new(SplitLogExponentsRule));
     simplifier.add_rule(Box::new(LogInversePowerRule));
+    simplifier.add_rule(Box::new(LogPowerBaseRule)); // log(a^m, a^n) → n/m
     simplifier.add_rule(Box::new(LogExpInverseRule));
 
     // AutoExpandLogRule: auto-expand log products/quotients when log_expand_policy=Auto
