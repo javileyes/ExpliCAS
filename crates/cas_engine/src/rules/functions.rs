@@ -280,6 +280,11 @@ define_rule!(
 // determine parity to decide between x and |x|. In Assume mode, we simplify
 // to x with the assumption x ≥ 0 (which makes both even and odd cases equivalent).
 //
+// CONTRACT: sqrt(x, n) / root(x, n) semantics assume n is a POSITIVE INTEGER.
+// This is the standard mathematical definition of n-th root where n ∈ ℤ⁺.
+// We do NOT emit requires for n ≠ 0 or n > 0 because this is implicit in the
+// root function's domain definition.
+//
 // - Generic/Strict: block (handled by keeping sqrt form in CanonicalizeRootRule)
 // - Assume: sqrt(x^n, n) → x with Requires: x ≥ 0
 // ============================================================================
