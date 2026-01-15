@@ -1065,6 +1065,66 @@ fn is_purely_numeric(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+// ============================================================================
+// ExpQuotientRule: e^a / e^b → e^(a-b)
+// ============================================================================
+//
+// V2.14.45: This rule simplifies quotients of exponentials with base e.
+// Safe: exp(x) > 0 for all x ∈ ℝ or ℂ, so no division by zero.
+// No requires needed.
+// ============================================================================
+define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
+    let expr_data = ctx.get(expr).clone();
+    if let Expr::Div(num, den) = expr_data {
+        let num_data = ctx.get(num).clone();
+        let den_data = ctx.get(den).clone();
+
+        // Match Pow(e, a) / Pow(e, b)
+        if let (Expr::Pow(num_base, num_exp), Expr::Pow(den_base, den_exp)) = (&num_data, &den_data)
+        {
+            let num_base_is_e = matches!(ctx.get(*num_base), Expr::Constant(cas_ast::Constant::E));
+            let den_base_is_e = matches!(ctx.get(*den_base), Expr::Constant(cas_ast::Constant::E));
+
+            if num_base_is_e && den_base_is_e {
+                // e^a / e^b → e^(a - b)
+                let diff = ctx.add(Expr::Sub(*num_exp, *den_exp));
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                let new_expr = ctx.add(Expr::Pow(e, diff));
+                return Some(Rewrite::new(new_expr).desc("e^a / e^b = e^(a-b)"));
+            }
+        }
+
+        // Match Div where num is just Constant::E (which is e^1)
+        // e / e^b → e^(1-b)
+        if matches!(num_data, Expr::Constant(cas_ast::Constant::E)) {
+            if let Expr::Pow(den_base, den_exp) = &den_data {
+                if matches!(ctx.get(*den_base), Expr::Constant(cas_ast::Constant::E)) {
+                    let one = ctx.num(1);
+                    let diff = ctx.add(Expr::Sub(one, *den_exp));
+                    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                    let new_expr = ctx.add(Expr::Pow(e, diff));
+                    return Some(Rewrite::new(new_expr).desc("e / e^b = e^(1-b)"));
+                }
+            }
+        }
+
+        // Match e^a / e (where den is just Constant::E, which is e^1)
+        // e^a / e → e^(a-1)
+        if matches!(den_data, Expr::Constant(cas_ast::Constant::E)) {
+            if let Expr::Pow(num_base, num_exp) = &num_data {
+                if matches!(ctx.get(*num_base), Expr::Constant(cas_ast::Constant::E)) {
+                    let one = ctx.num(1);
+                    let diff = ctx.add(Expr::Sub(*num_exp, one));
+                    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                    let new_expr = ctx.add(Expr::Pow(e, diff));
+                    return Some(Rewrite::new(new_expr).desc("e^a / e = e^(a-1)"));
+                }
+            }
+        }
+    }
+    None
+});
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(ProductSameExponentRule));
@@ -1072,6 +1132,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RootPowCancelRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
+    simplifier.add_rule(Box::new(ExpQuotientRule)); // V2.14.45: e^a/e^b → e^(a-b)
 
     simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(PowerProductRule));
