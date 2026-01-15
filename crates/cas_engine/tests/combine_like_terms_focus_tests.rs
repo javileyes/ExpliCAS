@@ -158,8 +158,8 @@ fn combine_like_terms_variable_cancellation_focus() {
         .any(|(_, _, after_local, _)| after_local.as_deref() == Some("0"));
 
     assert!(
-        has_zero_result || steps.is_empty() || steps.iter().any(|(r, _, _, _)| r == "Add Inverse"),
-        "x - x should have a step showing → 0, or be handled by Add Inverse. Steps: {:?}",
+        has_zero_result || steps.is_empty() || steps.iter().any(|(r, _, _, _)| r == "Add Inverse" || r == "Subtraction Self-Cancel"),
+        "x - x should have a step showing → 0, or be handled by Add Inverse/Subtraction Self-Cancel. Steps: {:?}",
         steps
     );
 }

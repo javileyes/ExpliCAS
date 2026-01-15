@@ -429,6 +429,97 @@ mod tests {
     }
 }
 
+// =============================================================================
+// SubSelfToZeroRule: a - a = 0 (Short-circuit)
+// =============================================================================
+//
+// V2.14.45: This rule MUST fire before expansion rules like TanToSinCosRule.
+// Without this, tan(3x) - tan(3x) would expand both tans and fail to cancel.
+// Uses priority 500 to ensure it runs first.
+//
+// Domain Policy: Same as AddInverseRule - check for undefined subexpressions.
+// Uses compare_expr for structural equality (handles tan(3x) == tan(3·x)).
+// =============================================================================
+pub struct SubSelfToZeroRule;
+
+impl crate::rule::SimpleRule for SubSelfToZeroRule {
+    fn name(&self) -> &str {
+        "Subtraction Self-Cancel"
+    }
+
+    fn apply_simple(&self, _ctx: &mut cas_ast::Context, _expr: cas_ast::ExprId) -> Option<Rewrite> {
+        unreachable!("This rule uses apply_with_context")
+    }
+
+    fn apply_with_context(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        use crate::domain::Proof;
+        use crate::helpers::prove_nonzero;
+        use crate::semantic_equality::SemanticEqualityChecker;
+
+        // Helper: check if expression contains any Div with non-literal denominator
+        fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+            let mut stack = vec![expr];
+            while let Some(e) = stack.pop() {
+                match ctx.get(e) {
+                    Expr::Div(_, den) => {
+                        if prove_nonzero(ctx, *den) != Proof::Proven {
+                            return true;
+                        }
+                        stack.push(*den);
+                    }
+                    Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                        stack.push(*l);
+                        stack.push(*r);
+                    }
+                    Expr::Neg(inner) => {
+                        stack.push(*inner);
+                    }
+                    Expr::Function(_, args) => {
+                        for arg in args {
+                            stack.push(*arg);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            false
+        }
+
+        // Match: Sub(lhs, rhs)
+        if let Expr::Sub(lhs, rhs) = ctx.get(expr) {
+            let lhs = *lhs;
+            let rhs = *rhs;
+
+            // Use semantic equality (handles structural equivalence like tan(3x) vs tan(3·x))
+            let checker = SemanticEqualityChecker::new(ctx);
+            if checker.are_equal(lhs, rhs) {
+                let domain_mode = parent_ctx.domain_mode();
+
+                // In Strict mode, check for undefined risk
+                if domain_mode == crate::DomainMode::Strict && has_undefined_risk(ctx, lhs) {
+                    return None;
+                }
+
+                return Some(Rewrite::new(ctx.num(0)).desc("a - a = 0"));
+            }
+        }
+        None
+    }
+
+    fn priority(&self) -> i32 {
+        500 // High priority: before any expansion rules
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
+}
+
 // AddInverseRule: a + (-a) = 0
 // Domain Mode Policy: Like other cancellation rules, we must respect domain_mode
 // because if `a` can be undefined (e.g., x/(x+1) when x=-1), then a + (-a)
@@ -592,6 +683,9 @@ define_rule!(
 );
 
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // High-priority short-circuit rules first
+    simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion
+
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
     simplifier.add_rule(Box::new(MulZeroRule));

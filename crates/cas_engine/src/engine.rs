@@ -875,16 +875,113 @@ impl Simplifier {
     /// - `False` if numeric verification finds counterexample
     pub fn are_equivalent_extended(&mut self, a: ExprId, b: ExprId) -> EquivalenceResult {
         use crate::rule::SoundnessLabel;
-
-        // Build A - B and simplify with step collection
-        // Note: We don't wrap in expand() because that blocks trig rules.
-        // The simplify pipeline applies all rules including trig identities.
-        let diff = self.context.add(Expr::Sub(a, b));
+        use crate::semantic_equality::SemanticEqualityChecker;
 
         // Enable step collection to track soundness labels
         let was_collecting = self.collect_steps();
         self.set_collect_steps(true);
 
+        // =================================================================
+        // OPTION 2: Normal forms comparison
+        // Simplify A and B separately, then compare.
+        // This catches cases like tan(x)*tan(pi/3-x)*tan(pi/3+x) ≡ tan(3x)
+        // where both simplify to tan(3x) but diff doesn't cancel due to
+        // expansion rules firing before cancellation.
+        // =================================================================
+        let (simplified_a, steps_a) = self.simplify(a);
+
+        // Early check: compare simplified_a with b (before simplifying b)
+        // This catches cases where A simplifies to exactly B
+        // e.g., tan(x)*tan(pi/3-x)*tan(pi/3+x) → tan(3x) ≡ tan(3*x)
+        let checker = SemanticEqualityChecker::new(&self.context);
+        if checker.are_equal(simplified_a, b) {
+            let has_conditional_rules = steps_a
+                .iter()
+                .any(|step| step.soundness != SoundnessLabel::Equivalence);
+            let mut requires: Vec<String> = Vec::new();
+
+            for step in &steps_a {
+                for req in &step.required_conditions {
+                    let condition_str = req.display(&self.context);
+                    if !requires.contains(&condition_str) {
+                        requires.push(condition_str);
+                    }
+                }
+            }
+
+            self.set_collect_steps(was_collecting);
+
+            return if has_conditional_rules || !requires.is_empty() {
+                EquivalenceResult::ConditionalTrue { requires }
+            } else {
+                EquivalenceResult::True
+            };
+        }
+
+        // Also check: b simplified vs a (before simplifying a further)
+        let (simplified_b, steps_b) = self.simplify(b);
+
+        // Check if simplified forms are semantically equal
+        let checker = SemanticEqualityChecker::new(&self.context);
+        if checker.are_equal(simplified_a, simplified_b) {
+            // Merge steps for soundness analysis
+            let mut all_steps = steps_a;
+            all_steps.extend(steps_b);
+
+            let mut has_conditional_rules = false;
+            let mut requires: Vec<String> = Vec::new();
+
+            for step in &all_steps {
+                if step.soundness != SoundnessLabel::Equivalence {
+                    has_conditional_rules = true;
+                }
+                for req in &step.required_conditions {
+                    let condition_str = req.display(&self.context);
+                    if !requires.contains(&condition_str) {
+                        requires.push(condition_str);
+                    }
+                }
+            }
+
+            // Check blocked hints
+            for hint in &self.last_blocked_hints {
+                let expr_display = format!(
+                    "{}",
+                    cas_ast::DisplayExpr {
+                        context: &self.context,
+                        id: hint.expr_id
+                    }
+                );
+                let hint_str = match &hint.key {
+                    crate::assumptions::AssumptionKey::NonZero { .. } => {
+                        format!("{} ≠ 0", expr_display)
+                    }
+                    crate::assumptions::AssumptionKey::Positive { .. } => {
+                        format!("{} > 0", expr_display)
+                    }
+                    crate::assumptions::AssumptionKey::NonNegative { .. } => {
+                        format!("{} ≥ 0", expr_display)
+                    }
+                    _ => format!("{} ({})", expr_display, hint.rule),
+                };
+                if !requires.contains(&hint_str) {
+                    requires.push(hint_str);
+                }
+            }
+
+            self.set_collect_steps(was_collecting);
+
+            return if has_conditional_rules || !requires.is_empty() {
+                EquivalenceResult::ConditionalTrue { requires }
+            } else {
+                EquivalenceResult::True
+            };
+        }
+
+        // =================================================================
+        // Fallback: Try A - B = 0
+        // =================================================================
+        let diff = self.context.add(Expr::Sub(a, b));
         let (simplified_diff, steps) = self.simplify(diff);
 
         self.set_collect_steps(was_collecting);
