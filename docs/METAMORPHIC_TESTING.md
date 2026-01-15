@@ -32,9 +32,10 @@ METATEST_SEED=12345 cargo test -p cas_engine --test metamorphic_simplification_t
 
 | Parameter | CI Mode | Stress Mode |
 |-----------|---------|-------------|
-| `samples` | 50 | 500 |
-| `min_valid` | 20 | 250 |
-| `depth` | 3 | 5 |
+| `samples` | 50 | 200 |
+| `min_valid` | 20 | 100 |
+| `depth` | 3 | 3 |
+| `eval_samples` | 200 | 300 |
 | `atol/rtol` | 1e-9 | 1e-9 |
 
 ## Expression Generator
