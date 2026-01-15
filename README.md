@@ -866,6 +866,22 @@ cargo test
 
 This runs unit tests for all crates and integration tests ensuring the parser and engine work together correctly.
 
+#### Metamorphic Testing
+
+ExpliCAS includes a **metamorphic testing** framework that validates mathematical correctness through invariant properties. If `A` simplifies to `B`, then `A + e` must equal `B + e` for any random expression `e`.
+
+```bash
+# Run metatests (CI mode)
+cargo test -p cas_engine --test metamorphic_simplification_tests
+
+# Stress mode (more samples, deeper expressions)
+METATEST_STRESS=1 cargo test -p cas_engine --test metamorphic_simplification_tests
+```
+
+Results are logged to `crates/cas_engine/metatest_log.jsonl` for historical tracking.
+
+See [docs/METAMORPHIC_TESTING.md](docs/METAMORPHIC_TESTING.md) for full documentation.
+
 ## Project Structure
 
 -   `crates/cas_ast`: Core mathematical data structures and LaTeX rendering.

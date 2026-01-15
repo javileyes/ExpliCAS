@@ -33,8 +33,66 @@ use cas_engine::Simplifier;
 use cas_parser::parse;
 use std::collections::HashMap;
 use std::env;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
+
+use std::time::SystemTime;
 
 // =============================================================================
+// Logging Infrastructure
+// =============================================================================
+
+/// Log file path (relative to project root)
+fn log_file_path() -> PathBuf {
+    // Try to use project root, fallback to current dir
+    let base = env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+    base.parent().unwrap_or(&base).join("metatest_log.jsonl")
+}
+
+/// Append a log entry to the metatest log file (JSON Lines format)
+fn log_metatest_run(
+    test_name: &str,
+    config: &MetatestConfig,
+    passed: usize,
+    failed: usize,
+    skipped: usize,
+) {
+    // Get timestamp
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let stress = env::var("METATEST_STRESS").ok().as_deref() == Some("1");
+
+    // Build JSON entry
+    let entry = format!(
+        r#"{{"timestamp":{},"test":"{}","seed":{},"samples":{},"depth":{},"min_valid":{},"stress":{},"passed":{},"failed":{},"skipped":{}}}"#,
+        timestamp,
+        test_name,
+        config.seed,
+        config.samples,
+        config.depth,
+        config.min_valid,
+        stress,
+        passed,
+        failed,
+        skipped
+    );
+
+    // Append to log file
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file_path())
+    {
+        let _ = writeln!(file, "{}", entry);
+    }
+}
+
 // Configuration
 // =============================================================================
 
@@ -263,13 +321,17 @@ fn check_numeric_equiv_1var(
 /// Assert metamorphic property: if A ≡ B, then A+e ≡ B+e for random e.
 ///
 /// Uses numeric verification to avoid circular dependency on simplifier.
-fn assert_metamorphic_addition(base_a: &str, base_b: &str, vars: &[&str]) {
+/// Logs results to metatest_log.jsonl for historical tracking.
+fn assert_metamorphic_addition(test_name: &str, base_a: &str, base_b: &str, vars: &[&str]) {
+    let config = metatest_config();
+
     if vars.is_empty() {
         // Skip tests with no variables (can't do numeric verification)
         eprintln!(
             "⚠️  Skipping metatest (no variables): {} → {}",
             base_a, base_b
         );
+        log_metatest_run(test_name, &config, 0, 0, 1);
         return;
     }
 
@@ -279,10 +341,10 @@ fn assert_metamorphic_addition(base_a: &str, base_b: &str, vars: &[&str]) {
             "⚠️  Skipping metatest (multi-var not yet supported): {} → {}",
             base_a, base_b
         );
+        log_metatest_run(test_name, &config, 0, 0, 1);
         return;
     }
 
-    let config = metatest_config();
     let mut rng = Lcg::new(config.seed);
     let var = vars[0];
 
@@ -316,6 +378,8 @@ fn assert_metamorphic_addition(base_a: &str, base_b: &str, vars: &[&str]) {
         if let Err(err) =
             check_numeric_equiv_1var(&simplifier.context, a_simp, b_simp, var, &config)
         {
+            // Log failure before panic
+            log_metatest_run(test_name, &config, 0, 1, 0);
             panic!(
                 "Metatest FAILED (seed={}, iter={})\n\
                  A = {}\n\
@@ -345,6 +409,9 @@ fn assert_metamorphic_addition(base_a: &str, base_b: &str, vars: &[&str]) {
             );
         }
     }
+
+    // Log success
+    log_metatest_run(test_name, &config, 1, 0, 0);
 }
 
 // =============================================================================
@@ -354,43 +421,53 @@ fn assert_metamorphic_addition(base_a: &str, base_b: &str, vars: &[&str]) {
 #[test]
 fn metatest_pythagorean_identity() {
     // sin²(x) + cos²(x) = 1
-    assert_metamorphic_addition("sin(x)^2 + cos(x)^2", "1", &["x"]);
+    assert_metamorphic_addition("pythagorean_identity", "sin(x)^2 + cos(x)^2", "1", &["x"]);
 }
 
 #[test]
 fn metatest_double_angle_sin() {
     // sin(2x) = 2·sin(x)·cos(x)
-    assert_metamorphic_addition("sin(2*x)", "2*sin(x)*cos(x)", &["x"]);
+    assert_metamorphic_addition("double_angle_sin", "sin(2*x)", "2*sin(x)*cos(x)", &["x"]);
 }
 
 #[test]
 fn metatest_double_angle_cos() {
     // cos(2x) = cos²(x) - sin²(x)
-    assert_metamorphic_addition("cos(2*x)", "cos(x)^2 - sin(x)^2", &["x"]);
+    assert_metamorphic_addition(
+        "double_angle_cos",
+        "cos(2*x)",
+        "cos(x)^2 - sin(x)^2",
+        &["x"],
+    );
 }
 
 #[test]
 fn metatest_add_zero() {
     // x + 0 = x
-    assert_metamorphic_addition("x + 0", "x", &["x"]);
+    assert_metamorphic_addition("add_zero", "x + 0", "x", &["x"]);
 }
 
 #[test]
 fn metatest_mul_one() {
     // x * 1 = x
-    assert_metamorphic_addition("x * 1", "x", &["x"]);
+    assert_metamorphic_addition("mul_one", "x * 1", "x", &["x"]);
 }
 
 #[test]
 fn metatest_binomial_square() {
     // (x + 1)² = x² + 2x + 1
-    assert_metamorphic_addition("(x + 1)^2", "x^2 + 2*x + 1", &["x"]);
+    assert_metamorphic_addition("binomial_square", "(x + 1)^2", "x^2 + 2*x + 1", &["x"]);
 }
 
 #[test]
 fn metatest_difference_of_squares() {
     // (x - 1)(x + 1) = x² - 1
-    assert_metamorphic_addition("(x - 1) * (x + 1)", "x^2 - 1", &["x"]);
+    assert_metamorphic_addition(
+        "difference_of_squares",
+        "(x - 1) * (x + 1)",
+        "x^2 - 1",
+        &["x"],
+    );
 }
 
 #[test]
@@ -405,18 +482,28 @@ fn metatest_triple_tan_identity() {
     //
     // TODO: Gate TanToSinCosRule to not fire on identity-derived results,
     // or compare numerically without simplification.
-    assert_metamorphic_addition("tan(x) * tan(pi/3 - x) * tan(pi/3 + x)", "tan(3*x)", &["x"]);
+    assert_metamorphic_addition(
+        "triple_tan_identity",
+        "tan(x) * tan(pi/3 - x) * tan(pi/3 + x)",
+        "tan(3*x)",
+        &["x"],
+    );
 }
 
 #[test]
 fn metatest_log_product() {
     // ln(2) + ln(3) = ln(6)
     // No variables, skipped by harness
-    assert_metamorphic_addition("ln(2) + ln(3)", "ln(6)", &[]);
+    assert_metamorphic_addition("log_product", "ln(2) + ln(3)", "ln(6)", &[]);
 }
 
 #[test]
 fn metatest_polynomial_simplify() {
     // (x + 1)(x - 1) + 1 = x²
-    assert_metamorphic_addition("(x + 1) * (x - 1) + 1", "x^2", &["x"]);
+    assert_metamorphic_addition(
+        "polynomial_simplify",
+        "(x + 1) * (x - 1) + 1",
+        "x^2",
+        &["x"],
+    );
 }
