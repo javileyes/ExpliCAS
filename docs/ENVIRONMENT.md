@@ -277,7 +277,11 @@ Result: x = 4
 
 ### Equivalence Checking
 
-You can verify if two session entries are mathematically equivalent using `equiv`.
+You can verify if two session entries are mathematically equivalent using `equiv`. The command returns:
+- **True** — Expressions are unconditionally equivalent
+- **True (conditional)** — Expressions are equivalent under domain conditions (shown as "Requires")
+- **False** — Expressions are demonstrably not equivalent
+- **Unknown** — Cannot determine equivalence
 
 ```text
 > (x+1)^2
@@ -288,6 +292,27 @@ You can verify if two session entries are mathematically equivalent using `equiv
 
 > equiv #1, #2
 Result: True
+```
+
+**Conditional Equivalence Examples:**
+
+```text
+> equiv (x - 27) / (x^(2/3) + 3*x^(1/3) + 9), x^(1/3) - 3
+True (conditional)
+ℹ️ Requires:
+  • 9 + x^(2/3) + 3·x^(1/3) ≠ 0
+
+> equiv tan(x) * tan(pi/3 - x) * tan(pi/3 + x), tan(3*x)
+True (conditional)
+ℹ️ Requires:
+  • cos(x) ≠ 0
+  • cos(x + pi / 3) ≠ 0
+  • cos(pi / 3 - x) ≠ 0
+
+> equiv (x-1)/(x-1), 1
+True (conditional)
+ℹ️ Requires:
+  • x - 1 ≠ 0
 ```
 
 ---

@@ -434,11 +434,31 @@ Result: (-infinity, -5) U (5, infinity)
 ```
 
 #### 6. Equivalence Checking
-Verify if two expressions are mathematically equivalent.
+Verify if two expressions are mathematically equivalent. The command returns:
+- **True** — Unconditionally equivalent
+- **True (conditional)** — Equivalent under domain conditions
+- **False** — Demonstrably not equivalent
+- **Unknown** — Cannot determine
+
 ```text
 > equiv sin(x+y), sin(x)*cos(y) + cos(x)*sin(y)
 ```
 **Output:** `True`
+
+**Conditional Equivalence Examples:**
+```text
+> equiv (x - 27) / (x^(2/3) + 3*x^(1/3) + 9), x^(1/3) - 3
+True (conditional)
+ℹ️ Requires:
+  • 9 + x^(2/3) + 3·x^(1/3) ≠ 0
+
+> equiv tan(x) * tan(pi/3 - x) * tan(pi/3 + x), tan(3*x)
+True (conditional)
+ℹ️ Requires:
+  • cos(x) ≠ 0
+  • cos(x + pi / 3) ≠ 0
+  • cos(pi / 3 - x) ≠ 0
+```
 
 #### 6. Equation Solving
 ```text
