@@ -862,6 +862,42 @@ impl Simplifier {
         }
     }
 
+    /// Normalize, deduplicate, and sort requires strings for stable output.
+    ///
+    /// Normalization rules:
+    /// - `expr ≠ 0` where expr starts with `-` → canonicalize to positive form
+    /// - Deduplicate by exact string match
+    /// - Sort alphabetically for deterministic output
+    fn normalize_requires(&self, requires: &mut Vec<String>) {
+        use std::collections::HashSet;
+
+        // Normalize each require string
+        for req in requires.iter_mut() {
+            // Handle "expr ≠ 0" → strip leading negative if present
+            if let Some(expr_part) = req.strip_suffix(" ≠ 0") {
+                let trimmed = expr_part.trim();
+                // If expression starts with "-(" and ends with ")", remove the negative
+                if let Some(inner) = trimmed.strip_prefix("-(") {
+                    if let Some(inner) = inner.strip_suffix(")") {
+                        *req = format!("{} ≠ 0", inner.trim());
+                    }
+                } else if let Some(inner) = trimmed.strip_prefix("-") {
+                    // Simple negative like "-x" → "x"
+                    if !inner.starts_with('(') && !inner.contains(' ') {
+                        *req = format!("{} ≠ 0", inner.trim());
+                    }
+                }
+            }
+        }
+
+        // Deduplicate
+        let mut seen = HashSet::new();
+        requires.retain(|r| seen.insert(r.clone()));
+
+        // Sort for deterministic output
+        requires.sort();
+    }
+
     /// Extended equivalence check returning tri-state result with domain conditions.
     ///
     /// V2.14.45: This method uses the same simplifier pipeline as the REPL,
@@ -910,6 +946,7 @@ impl Simplifier {
             }
 
             self.set_collect_steps(was_collecting);
+            self.normalize_requires(&mut requires);
 
             return if has_conditional_rules || !requires.is_empty() {
                 EquivalenceResult::ConditionalTrue { requires }
@@ -970,6 +1007,7 @@ impl Simplifier {
             }
 
             self.set_collect_steps(was_collecting);
+            self.normalize_requires(&mut requires);
 
             return if has_conditional_rules || !requires.is_empty() {
                 EquivalenceResult::ConditionalTrue { requires }
@@ -1041,6 +1079,8 @@ impl Simplifier {
                     requires.push(hint_str);
                 }
             }
+
+            self.normalize_requires(&mut requires);
 
             if has_conditional_rules || !requires.is_empty() {
                 EquivalenceResult::ConditionalTrue { requires }
