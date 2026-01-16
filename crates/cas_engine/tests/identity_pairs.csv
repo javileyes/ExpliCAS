@@ -627,6 +627,32 @@ phi^2,phi + 1,x
 1/phi,phi - 1,x
 
 # =============================================================================
+# RECIPROCAL TRIG VALUES (cot, sec, csc)
+# =============================================================================
+
+# Basic angles - cot
+cot(pi/6),sqrt(3),x
+cot(pi/4),1,x
+cot(pi/3),1/sqrt(3),x
+
+# Basic angles - sec  
+sec(0),1,x
+sec(pi),-1,x
+sec(pi/4),sqrt(2),x
+sec(pi/3),2,x
+
+# Basic angles - csc
+csc(pi/2),1,x
+csc(pi/6),2,x
+csc(pi/4),sqrt(2),x
+
+# Special angles - cot
+cot(pi/12),2 + sqrt(3),x
+cot(5*pi/12),2 - sqrt(3),x
+cot(pi/8),sqrt(2) + 1,x
+cot(3*pi/8),sqrt(2) - 1,x
+
+# =============================================================================
 # HYPERBOLIC ANALOGS
 # =============================================================================
 

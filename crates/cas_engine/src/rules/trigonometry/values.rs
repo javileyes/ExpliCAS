@@ -468,6 +468,65 @@ pub static TRIG_VALUES: &[(&str, SpecialAngle, TrigValue)] = &[
         SpecialAngle::PiOver10,
         TrigValue::CoeffSqrtOfSqrtSumDiv(10, 2, 5, 4),
     ),
+    // =========================================================================
+    // COTANGENT (cot = cos/sin = 1/tan)
+    // =========================================================================
+    ("cot", SpecialAngle::Zero, TrigValue::Undefined),
+    ("cot", SpecialAngle::Pi, TrigValue::Undefined),
+    ("cot", SpecialAngle::PiOver2, TrigValue::Zero),
+    ("cot", SpecialAngle::PiOver6, TrigValue::Sqrt(3)),
+    ("cot", SpecialAngle::PiOver4, TrigValue::One),
+    ("cot", SpecialAngle::PiOver3, TrigValue::InvSqrt(3)),
+    ("cot", SpecialAngle::PiOver12, TrigValue::IntPlusSqrt(2, 3)), // 2 + √3
+    (
+        "cot",
+        SpecialAngle::FivePiOver12,
+        TrigValue::IntMinusSqrt(2, 3),
+    ), // 2 - √3
+    ("cot", SpecialAngle::PiOver8, TrigValue::SqrtPlusInt(2, 1)),  // √2 + 1
+    (
+        "cot",
+        SpecialAngle::ThreePiOver8,
+        TrigValue::SqrtMinusInt(2, 1),
+    ), // √2 - 1
+    // =========================================================================
+    // SECANT (sec = 1/cos)
+    // =========================================================================
+    ("sec", SpecialAngle::Zero, TrigValue::One),
+    ("sec", SpecialAngle::Pi, TrigValue::NegOne),
+    ("sec", SpecialAngle::PiOver2, TrigValue::Undefined),
+    ("sec", SpecialAngle::PiOver6, TrigValue::SqrtDiv(3, 1)), // 2/√3 = 2√3/3
+    ("sec", SpecialAngle::PiOver4, TrigValue::Sqrt(2)),
+    ("sec", SpecialAngle::PiOver3, TrigValue::Fraction(2, 1)), // 2
+    (
+        "sec",
+        SpecialAngle::PiOver12,
+        TrigValue::SqrtDiffDiv(6, 2, 1),
+    ), // √6 - √2
+    (
+        "sec",
+        SpecialAngle::FivePiOver12,
+        TrigValue::SqrtSumDiv(6, 2, 1),
+    ), // √6 + √2
+    // =========================================================================
+    // COSECANT (csc = 1/sin)
+    // =========================================================================
+    ("csc", SpecialAngle::Zero, TrigValue::Undefined),
+    ("csc", SpecialAngle::Pi, TrigValue::Undefined),
+    ("csc", SpecialAngle::PiOver2, TrigValue::One),
+    ("csc", SpecialAngle::PiOver6, TrigValue::Fraction(2, 1)), // 2
+    ("csc", SpecialAngle::PiOver4, TrigValue::Sqrt(2)),
+    ("csc", SpecialAngle::PiOver3, TrigValue::SqrtDiv(3, 1)), // 2/√3 = 2√3/3
+    (
+        "csc",
+        SpecialAngle::PiOver12,
+        TrigValue::SqrtSumDiv(6, 2, 1),
+    ), // √6 + √2
+    (
+        "csc",
+        SpecialAngle::FivePiOver12,
+        TrigValue::SqrtDiffDiv(6, 2, 1),
+    ), // √6 - √2
 ];
 
 /// Inverse trig values at special numeric inputs
