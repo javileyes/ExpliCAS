@@ -36,6 +36,10 @@ pub enum TrigValue {
     SqrtOfSqrtSumDiv(i64, i64, i64),
     /// √(a - √b) / d (nested radical, e.g., √(2 - √2)/2 = sin(π/8))
     SqrtOfSqrtDiffDiv(i64, i64, i64),
+    /// √(a + c*√b) / d (nested with coeff, e.g., √(10 + 2√5)/4 = sin(2π/5))
+    CoeffSqrtOfSqrtSumDiv(i64, i64, i64, i64), // a, c, b, d
+    /// √(a - c*√b) / d (nested with coeff, e.g., √(10 - 2√5)/4 = sin(π/5))
+    CoeffSqrtOfSqrtDiffDiv(i64, i64, i64, i64), // a, c, b, d
     /// n - √r (e.g., 2 - √3 = tan(π/12))
     IntMinusSqrt(i64, i64),
     /// n + √r (e.g., 2 + √3 = tan(5π/12))
@@ -44,6 +48,16 @@ pub enum TrigValue {
     SqrtMinusInt(i64, i64),
     /// √r + n (e.g., √2 + 1 = tan(3π/8))
     SqrtPlusInt(i64, i64),
+    /// (n + √r) / d (e.g., (1 + √5)/4 = cos(π/5))
+    IntPlusSqrtDiv(i64, i64, i64),
+    /// (n - √r) / d
+    IntMinusSqrtDiv(i64, i64, i64),
+    /// (√r - n) / d (e.g., (√5 - 1)/4 = cos(2π/5))
+    SqrtMinusIntDiv(i64, i64, i64),
+    /// (√r + n) / d
+    SqrtPlusIntDiv(i64, i64, i64),
+    /// √(a - c*√b) (without division, e.g., √(5 - 2√5) = tan(π/5))
+    CoeffSqrtOfSqrtDiff(i64, i64, i64), // a, c, b
 }
 
 impl TrigValue {
@@ -140,6 +154,50 @@ impl TrigValue {
                 let denom = ctx.num(*d);
                 ctx.add(Expr::Div(outer_sqrt, denom))
             }
+            TrigValue::CoeffSqrtOfSqrtSumDiv(a, c, b, d) => {
+                // sqrt(a + c*sqrt(b)) / d
+                let sqrt_b = make_sqrt(ctx, *b);
+                let a_num = ctx.num(*a);
+                let c_num = ctx.num(*c);
+                let c_sqrt_b = ctx.add(Expr::Mul(c_num, sqrt_b));
+                let inner = ctx.add(Expr::Add(a_num, c_sqrt_b));
+                let outer_sqrt = {
+                    let one = ctx.num(1);
+                    let two = ctx.num(2);
+                    let half = ctx.add(Expr::Div(one, two));
+                    ctx.add(Expr::Pow(inner, half))
+                };
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(outer_sqrt, denom))
+            }
+            TrigValue::CoeffSqrtOfSqrtDiffDiv(a, c, b, d) => {
+                // sqrt(a - c*sqrt(b)) / d
+                let sqrt_b = make_sqrt(ctx, *b);
+                let a_num = ctx.num(*a);
+                let c_num = ctx.num(*c);
+                let c_sqrt_b = ctx.add(Expr::Mul(c_num, sqrt_b));
+                let inner = ctx.add(Expr::Sub(a_num, c_sqrt_b));
+                let outer_sqrt = {
+                    let one = ctx.num(1);
+                    let two = ctx.num(2);
+                    let half = ctx.add(Expr::Div(one, two));
+                    ctx.add(Expr::Pow(inner, half))
+                };
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(outer_sqrt, denom))
+            }
+            TrigValue::CoeffSqrtOfSqrtDiff(a, c, b) => {
+                // sqrt(a - c*sqrt(b)) (no division)
+                let sqrt_b = make_sqrt(ctx, *b);
+                let a_num = ctx.num(*a);
+                let c_num = ctx.num(*c);
+                let c_sqrt_b = ctx.add(Expr::Mul(c_num, sqrt_b));
+                let inner = ctx.add(Expr::Sub(a_num, c_sqrt_b));
+                let one = ctx.num(1);
+                let two = ctx.num(2);
+                let half = ctx.add(Expr::Div(one, two));
+                ctx.add(Expr::Pow(inner, half))
+            }
             TrigValue::IntMinusSqrt(n, r) => {
                 // n - sqrt(r)
                 let num = ctx.num(*n);
@@ -164,6 +222,38 @@ impl TrigValue {
                 let num = ctx.num(*n);
                 ctx.add(Expr::Add(sqrt_r, num))
             }
+            TrigValue::IntPlusSqrtDiv(n, r, d) => {
+                // (n + sqrt(r)) / d
+                let num = ctx.num(*n);
+                let sqrt_r = make_sqrt(ctx, *r);
+                let sum = ctx.add(Expr::Add(num, sqrt_r));
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(sum, denom))
+            }
+            TrigValue::IntMinusSqrtDiv(n, r, d) => {
+                // (n - sqrt(r)) / d
+                let num = ctx.num(*n);
+                let sqrt_r = make_sqrt(ctx, *r);
+                let diff = ctx.add(Expr::Sub(num, sqrt_r));
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(diff, denom))
+            }
+            TrigValue::SqrtMinusIntDiv(r, n, d) => {
+                // (sqrt(r) - n) / d
+                let sqrt_r = make_sqrt(ctx, *r);
+                let num = ctx.num(*n);
+                let diff = ctx.add(Expr::Sub(sqrt_r, num));
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(diff, denom))
+            }
+            TrigValue::SqrtPlusIntDiv(r, n, d) => {
+                // (sqrt(r) + n) / d
+                let sqrt_r = make_sqrt(ctx, *r);
+                let num = ctx.num(*n);
+                let sum = ctx.add(Expr::Add(sqrt_r, num));
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(sum, denom))
+            }
         }
     }
 
@@ -184,10 +274,17 @@ impl TrigValue {
             TrigValue::SqrtDiffDiv(a, b, d) => format!("(√{}-√{})/{}", a, b, d),
             TrigValue::SqrtOfSqrtSumDiv(a, b, d) => format!("√({}+√{})/{}", a, b, d),
             TrigValue::SqrtOfSqrtDiffDiv(a, b, d) => format!("√({}-√{})/{}", a, b, d),
+            TrigValue::CoeffSqrtOfSqrtSumDiv(a, c, b, d) => format!("√({}+{}√{})/{}", a, c, b, d),
+            TrigValue::CoeffSqrtOfSqrtDiffDiv(a, c, b, d) => format!("√({}-{}√{})/{}", a, c, b, d),
             TrigValue::IntMinusSqrt(n, r) => format!("{}-√{}", n, r),
             TrigValue::IntPlusSqrt(n, r) => format!("{}+√{}", n, r),
             TrigValue::SqrtMinusInt(r, n) => format!("√{}-{}", r, n),
             TrigValue::SqrtPlusInt(r, n) => format!("√{}+{}", r, n),
+            TrigValue::IntPlusSqrtDiv(n, r, d) => format!("({}+√{})/{}", n, r, d),
+            TrigValue::IntMinusSqrtDiv(n, r, d) => format!("({}-√{})/{}", n, r, d),
+            TrigValue::SqrtMinusIntDiv(r, n, d) => format!("(√{}-{})/{}", r, n, d),
+            TrigValue::SqrtPlusIntDiv(r, n, d) => format!("(√{}+{})/{}", r, n, d),
+            TrigValue::CoeffSqrtOfSqrtDiff(a, c, b) => format!("√({}-{}√{})", a, c, b),
         }
     }
 }
@@ -205,6 +302,9 @@ pub enum SpecialAngle {
     PiOver12,     // π/12 = 15°
     ThreePiOver8, // 3π/8 = 67.5°
     FivePiOver12, // 5π/12 = 75°
+    PiOver5,      // π/5 = 36° (golden angle)
+    TwoPiOver5,   // 2π/5 = 72°
+    PiOver10,     // π/10 = 18°
 }
 
 impl SpecialAngle {
@@ -220,6 +320,9 @@ impl SpecialAngle {
             SpecialAngle::PiOver12 => "π/12",
             SpecialAngle::ThreePiOver8 => "3π/8",
             SpecialAngle::FivePiOver12 => "5π/12",
+            SpecialAngle::PiOver5 => "π/5",
+            SpecialAngle::TwoPiOver5 => "2π/5",
+            SpecialAngle::PiOver10 => "π/10",
         }
     }
 }
@@ -320,6 +423,51 @@ pub static TRIG_VALUES: &[(&str, SpecialAngle, TrigValue)] = &[
         SpecialAngle::ThreePiOver8,
         TrigValue::SqrtPlusInt(2, 1),
     ),
+    // --- Angle: π/5 (36°) - Golden Angle ---
+    // sin(π/5) = √(10 - 2√5) / 4
+    // cos(π/5) = (1 + √5) / 4
+    // tan(π/5) = √(5 - 2√5)
+    (
+        "sin",
+        SpecialAngle::PiOver5,
+        TrigValue::CoeffSqrtOfSqrtDiffDiv(10, 2, 5, 4),
+    ),
+    (
+        "cos",
+        SpecialAngle::PiOver5,
+        TrigValue::IntPlusSqrtDiv(1, 5, 4),
+    ),
+    (
+        "tan",
+        SpecialAngle::PiOver5,
+        TrigValue::CoeffSqrtOfSqrtDiff(5, 2, 5),
+    ),
+    // --- Angle: 2π/5 (72°) ---
+    // sin(2π/5) = √(10 + 2√5) / 4
+    // cos(2π/5) = (√5 - 1) / 4
+    (
+        "sin",
+        SpecialAngle::TwoPiOver5,
+        TrigValue::CoeffSqrtOfSqrtSumDiv(10, 2, 5, 4),
+    ),
+    (
+        "cos",
+        SpecialAngle::TwoPiOver5,
+        TrigValue::SqrtMinusIntDiv(5, 1, 4),
+    ),
+    // --- Angle: π/10 (18°) ---
+    // sin(π/10) = (√5 - 1) / 4
+    // cos(π/10) = √(10 + 2√5) / 4
+    (
+        "sin",
+        SpecialAngle::PiOver10,
+        TrigValue::SqrtMinusIntDiv(5, 1, 4),
+    ),
+    (
+        "cos",
+        SpecialAngle::PiOver10,
+        TrigValue::CoeffSqrtOfSqrtSumDiv(10, 2, 5, 4),
+    ),
 ];
 
 /// Inverse trig values at special numeric inputs
@@ -376,8 +524,14 @@ pub fn detect_special_angle(ctx: &Context, expr: ExprId) -> Option<SpecialAngle>
     if is_pi_over_n(ctx, expr, 12) {
         return Some(SpecialAngle::PiOver12);
     }
+    if is_pi_over_n(ctx, expr, 5) {
+        return Some(SpecialAngle::PiOver5);
+    }
+    if is_pi_over_n(ctx, expr, 10) {
+        return Some(SpecialAngle::PiOver10);
+    }
 
-    // For fractional multiples like 3π/8 or 5π/12, use extract_rational_pi_multiple
+    // For fractional multiples like 3π/8, 5π/12, 2π/5, use extract_rational_pi_multiple
     if let Some(k) = extract_rational_pi_multiple(ctx, expr) {
         // Check for 3/8
         if k == BigRational::new(3.into(), 8.into()) {
@@ -386,6 +540,10 @@ pub fn detect_special_angle(ctx: &Context, expr: ExprId) -> Option<SpecialAngle>
         // Check for 5/12
         if k == BigRational::new(5.into(), 12.into()) {
             return Some(SpecialAngle::FivePiOver12);
+        }
+        // Check for 2/5
+        if k == BigRational::new(2.into(), 5.into()) {
+            return Some(SpecialAngle::TwoPiOver5);
         }
     }
 

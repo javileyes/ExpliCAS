@@ -9,25 +9,13 @@
 # ✅ IMPLEMENTADOS (ahora en identity_pairs.csv):
 #   - π/12, 5π/12 (con sin, cos, tan)
 #   - π/8, 3π/8 (con sin, cos, tan)
+#   - π/5, 2π/5, π/10 (con sin, cos, tan)
 
-# Funciones recíprocas para π/12 y π/8 (cot, sec, csc)
+# Funciones recíprocas pendientes (cot, sec, csc)
 cot(pi/12),2 + sqrt(3),x
 sec(pi/12),sqrt(6) - sqrt(2),x
 csc(pi/12),sqrt(6) + sqrt(2),x
 cot(pi/8),sqrt(2) + 1,x
-
-# π/5 (36°) - Golden angle (pendiente)
-sin(pi/5),sqrt(10 - 2*sqrt(5))/4,x
-cos(pi/5),(1 + sqrt(5))/4,x
-tan(pi/5),sqrt(5 - 2*sqrt(5)),x
-
-# 2π/5 (72°)
-sin(2*pi/5),sqrt(10 + 2*sqrt(5))/4,x
-cos(2*pi/5),(sqrt(5) - 1)/4,x
-
-# π/10 (18°)
-sin(pi/10),(sqrt(5) - 1)/4,x
-cos(pi/10),sqrt(10 + 2*sqrt(5))/4,x
 
 # =============================================================================
 # NÚMEROS COMPLEJOS (si se implementa soporte)
