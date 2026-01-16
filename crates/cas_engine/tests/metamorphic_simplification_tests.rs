@@ -718,6 +718,8 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
 
     let mut passed = 0;
     let mut failed = 0;
+    let mut symbolic_passed = 0;
+    let mut numeric_only_passed = 0;
 
     // Double combinations: all pairs of different identities
     for i in 0..n {
@@ -746,30 +748,43 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
             let (exp_simplified, _) = simplifier.simplify(exp_parsed);
             let (simp_simplified, _) = simplifier.simplify(simp_parsed);
 
-            // Check numeric equivalence
-            let result = check_numeric_equiv_2var(
+            // First check: symbolic equality (exact match)
+            let symbolic_match = cas_engine::ordering::compare_expr(
                 &simplifier.context,
                 exp_simplified,
                 simp_simplified,
-                &pair1.var,
-                "u",
-                &config,
-            );
+            ) == std::cmp::Ordering::Equal;
 
-            if result.is_ok() {
+            if symbolic_match {
+                symbolic_passed += 1;
                 passed += 1;
             } else {
-                failed += 1;
-                if failed <= 5 {
-                    eprintln!("❌ Double combo failed: ({}) + ({})", pair1.exp, pair2.exp);
+                // Fallback: check numeric equivalence
+                let result = check_numeric_equiv_2var(
+                    &simplifier.context,
+                    exp_simplified,
+                    simp_simplified,
+                    &pair1.var,
+                    "u",
+                    &config,
+                );
+
+                if result.is_ok() {
+                    numeric_only_passed += 1;
+                    passed += 1;
+                } else {
+                    failed += 1;
+                    if failed <= 5 {
+                        eprintln!("❌ Double combo failed: ({}) + ({})", pair1.exp, pair2.exp);
+                    }
                 }
             }
         }
     }
 
     eprintln!(
-        "✅ Double combinations: {} passed, {} failed",
-        passed, failed
+        "✅ Double combinations: {} passed ({} symbolic, {} numeric-only), {} failed",
+        passed, symbolic_passed, numeric_only_passed, failed
     );
 
     // Triple combinations (optional, limited)
