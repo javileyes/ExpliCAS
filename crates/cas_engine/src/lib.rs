@@ -45,6 +45,7 @@ pub mod profile_cache;
 pub mod profiler;
 pub mod rationalize;
 pub mod rationalize_policy;
+pub mod recursion_guard;
 pub mod rule;
 pub mod rules;
 pub mod semantic_equality;

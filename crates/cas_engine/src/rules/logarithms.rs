@@ -634,25 +634,22 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         let dm = parent_ctx.domain_mode();
         let pos = prove_positive(ctx, p_base, vd);
 
-        // V2.14.21: Check if x > 0 is in global requires using root_expr + infer_implicit_domain
+        // V2.14.21: Check if x > 0 is in global requires using implicit_domain
         // V2.15: Use cached implicit_domain if available, fallback to computation with root_expr
-        let in_requires = if let Some(id) = parent_ctx.implicit_domain() {
+        let implicit_domain: Option<crate::implicit_domain::ImplicitDomain> =
+            parent_ctx.implicit_domain().cloned().or_else(|| {
+                parent_ctx
+                    .root_expr()
+                    .map(|root| crate::implicit_domain::infer_implicit_domain(ctx, root, vd))
+            });
+
+        let in_requires = implicit_domain.as_ref().is_some_and(|id| {
             let dc = crate::implicit_domain::DomainContext::new(
                 id.conditions().iter().cloned().collect(),
             );
             let cond = crate::implicit_domain::ImplicitCondition::Positive(p_base);
             dc.is_condition_implied(ctx, &cond)
-        } else if let Some(root) = parent_ctx.root_expr() {
-            // Fallback: compute implicit_domain from root_expr
-            let id = crate::implicit_domain::infer_implicit_domain(ctx, root, vd);
-            let dc = crate::implicit_domain::DomainContext::new(
-                id.conditions().iter().cloned().collect(),
-            );
-            let cond = crate::implicit_domain::ImplicitCondition::Positive(p_base);
-            dc.is_condition_implied(ctx, &cond)
-        } else {
-            false
-        };
+        });
 
         let can_chain = match dm {
             DomainMode::Strict | DomainMode::Generic => pos == Proof::Proven || in_requires,

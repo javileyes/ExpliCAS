@@ -26,6 +26,36 @@ use num_rational::BigRational;
 use std::collections::HashSet;
 
 // =============================================================================
+// Domain Inference Call Counter (for regression testing)
+// =============================================================================
+// Tracks how many times infer_implicit_domain is called per simplify operation.
+// This helps detect regressions where rules accidentally recompute the domain.
+
+use std::cell::Cell;
+
+thread_local! {
+    static INFER_DOMAIN_CALLS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Reset the domain inference call counter. Call at the start of each simplify.
+#[inline]
+pub fn infer_domain_calls_reset() {
+    INFER_DOMAIN_CALLS.with(|c| c.set(0));
+}
+
+/// Get the current domain inference call count.
+#[inline]
+pub fn infer_domain_calls_get() -> usize {
+    INFER_DOMAIN_CALLS.with(|c| c.get())
+}
+
+/// Increment the domain inference call counter.
+#[inline]
+fn infer_domain_calls_inc() {
+    INFER_DOMAIN_CALLS.with(|c| c.set(c.get() + 1));
+}
+
+// =============================================================================
 // Implicit Condition Types
 // =============================================================================
 
@@ -1000,6 +1030,9 @@ pub fn expands_analytic_in_context(
 /// NOTE: Skips expressions that don't contain variables - those are fully numeric
 /// and don't need implicit domain protection.
 pub fn infer_implicit_domain(ctx: &Context, root: ExprId, vd: ValueDomain) -> ImplicitDomain {
+    // Track call count for regression testing
+    infer_domain_calls_inc();
+
     // Only apply in RealOnly mode
     if vd != ValueDomain::RealOnly {
         return ImplicitDomain::empty();

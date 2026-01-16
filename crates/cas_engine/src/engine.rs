@@ -724,6 +724,9 @@ impl Simplifier {
         let steps_mode = self.steps_mode;
 
         // Create initial ParentContext with pattern marks, expand_mode, auto-expand, domain_mode, inv_trig, value_domain, goal, simplify_purpose, and context_mode
+        // V2.15: Reset domain inference call counter for regression testing
+        crate::implicit_domain::infer_domain_calls_reset();
+
         let initial_parent_ctx = crate::parent_context::ParentContext::with_expand_mode(
             pattern_marks.clone(),
             expand_mode,
@@ -1249,12 +1252,27 @@ fn eval_f64_depth(
 }
 
 /// Maximum recursion depth for simplification to prevent stack overflow.
-/// V2.15: Reduced to 30 to leave margin for helper functions (prove_*, etc.)
-/// that can add significant stack usage per frame.
-const MAX_SIMPLIFY_DEPTH: usize = 30;
+///
+/// V2.15: Set to 50 after frame size optimizations (see `record_step()`).
+/// Previously 30 was needed due to ~150KB frames; with `#[inline(never)]`
+/// on step recording, frames are small enough for 50+ on 8MB stack.
+///
+/// For deeper expressions, use `recursion_guard::with_stack(16MB, || ...)`.
+/// Note: depth=100 still overflows due to Div/Pow/Function inline code.
+const MAX_SIMPLIFY_DEPTH: usize = 50;
 
 /// Path to log expressions that exceed the depth limit for later investigation.
 const DEPTH_OVERFLOW_LOG_PATH: &str = "/tmp/cas_depth_overflow_expressions.log";
+
+/// Binary operation type for transform_binary helper
+#[derive(Clone, Copy)]
+#[allow(dead_code)] // Div is kept for consistency, may be used if Div early-detection is removed
+enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
 
 struct LocalSimplificationTransformer<'a> {
     context: &'a mut Context,
@@ -1428,6 +1446,58 @@ impl<'a> LocalSimplificationTransformer<'a> {
         new_root
     }
 
+    /// Record a step without inflating the recursive frame.
+    /// Using #[inline(never)] to ensure Step construction stays out of transform_expr_recursive.
+    #[inline(never)]
+    fn record_step(
+        &mut self,
+        name: &'static str,
+        description: &'static str,
+        before: ExprId,
+        after: ExprId,
+    ) {
+        if self.steps_mode != StepsMode::Off {
+            let step = crate::step::Step::new(
+                name,
+                description,
+                before,
+                after,
+                self.current_path.clone(),
+                Some(self.context),
+            );
+            self.steps.push(step);
+        }
+    }
+
+    /// Transform binary expression (Add/Sub/Mul) by simplifying children.
+    /// Extracted to reduce stack frame size in transform_expr_recursive.
+    #[inline(never)]
+    fn transform_binary(&mut self, id: ExprId, l: ExprId, r: ExprId, op: BinaryOp) -> ExprId {
+        self.current_path.push(crate::step::PathStep::Left);
+        self.ancestor_stack.push(id);
+        let new_l = self.transform_expr_recursive(l);
+        self.ancestor_stack.pop();
+        self.current_path.pop();
+
+        self.current_path.push(crate::step::PathStep::Right);
+        self.ancestor_stack.push(id);
+        let new_r = self.transform_expr_recursive(r);
+        self.ancestor_stack.pop();
+        self.current_path.pop();
+
+        if new_l != l || new_r != r {
+            let expr = match op {
+                BinaryOp::Add => Expr::Add(new_l, new_r),
+                BinaryOp::Sub => Expr::Sub(new_l, new_r),
+                BinaryOp::Mul => Expr::Mul(new_l, new_r),
+                BinaryOp::Div => Expr::Div(new_l, new_r),
+            };
+            self.context.add(expr)
+        } else {
+            id
+        }
+    }
+
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
         // Depth guard: prevent stack overflow by limiting recursion depth
         self.current_depth += 1;
@@ -1490,63 +1560,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
         let expr_with_simplified_children = match expr {
             Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => id,
-            Expr::Add(l, r) => {
-                self.current_path.push(crate::step::PathStep::Left);
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_l = self.transform_expr_recursive(l);
-                self.ancestor_stack.pop();
-                self.current_path.pop();
-
-                self.current_path.push(crate::step::PathStep::Right);
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_r = self.transform_expr_recursive(r);
-                self.ancestor_stack.pop();
-                self.current_path.pop();
-
-                if new_l != l || new_r != r {
-                    self.context.add(Expr::Add(new_l, new_r))
-                } else {
-                    id
-                }
-            }
-            Expr::Sub(l, r) => {
-                self.current_path.push(crate::step::PathStep::Left);
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_l = self.transform_expr_recursive(l);
-                self.ancestor_stack.pop();
-                self.current_path.pop();
-
-                self.current_path.push(crate::step::PathStep::Right);
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_r = self.transform_expr_recursive(r);
-                self.ancestor_stack.pop();
-                self.current_path.pop();
-
-                if new_l != l || new_r != r {
-                    self.context.add(Expr::Sub(new_l, new_r))
-                } else {
-                    id
-                }
-            }
-            Expr::Mul(l, r) => {
-                self.current_path.push(crate::step::PathStep::Left);
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_l = self.transform_expr_recursive(l);
-                self.ancestor_stack.pop();
-                self.current_path.pop();
-
-                self.current_path.push(crate::step::PathStep::Right);
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_r = self.transform_expr_recursive(r);
-                self.ancestor_stack.pop();
-                self.current_path.pop();
-
-                if new_l != l || new_r != r {
-                    self.context.add(Expr::Mul(new_l, new_r))
-                } else {
-                    id
-                }
-            }
+            Expr::Add(l, r) => self.transform_binary(id, l, r, BinaryOp::Add),
+            Expr::Sub(l, r) => self.transform_binary(id, l, r, BinaryOp::Sub),
+            Expr::Mul(l, r) => self.transform_binary(id, l, r, BinaryOp::Mul),
             Expr::Div(l, r) => {
                 // EARLY DETECTION: (A² - B²) / (A ± B) pattern
                 // Must check BEFORE recursing into children to prevent auto-expand from destroying the pattern
@@ -1599,18 +1615,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                     .context
                                     .add(Expr::Function("abs".to_string(), vec![*inner_base]));
 
-                                // Record the step
-                                if self.steps_mode != StepsMode::Off {
-                                    let step = crate::step::Step::new(
-                                        "sqrt(u^2) = |u|",
-                                        "Simplify Square Root of Square",
-                                        id,
-                                        abs_expr,
-                                        self.current_path.clone(),
-                                        Some(self.context),
-                                    );
-                                    self.steps.push(step);
-                                }
+                                // Record the step (using helper to reduce frame size)
+                                self.record_step(
+                                    "sqrt(u^2) = |u|",
+                                    "Simplify Square Root of Square",
+                                    id,
+                                    abs_expr,
+                                );
 
                                 // Continue simplifying the result
                                 return self.transform_expr_recursive(abs_expr);
@@ -1628,18 +1639,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 .context
                                 .add(Expr::Function("abs".to_string(), vec![*left]));
 
-                            // Record the step
-                            if self.steps_mode != StepsMode::Off {
-                                let step = crate::step::Step::new(
-                                    "sqrt(u * u) = |u|",
-                                    "Simplify Square Root of Product",
-                                    id,
-                                    abs_expr,
-                                    self.current_path.clone(),
-                                    Some(self.context),
-                                );
-                                self.steps.push(step);
-                            }
+                            // Record the step (using helper to reduce frame size)
+                            self.record_step(
+                                "sqrt(u * u) = |u|",
+                                "Simplify Square Root of Product",
+                                id,
+                                abs_expr,
+                            );
 
                             // Continue simplifying the result
                             return self.transform_expr_recursive(abs_expr);

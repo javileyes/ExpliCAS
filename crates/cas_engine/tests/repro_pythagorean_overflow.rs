@@ -301,3 +301,43 @@ fn bisect_only_sub() {
     let (r, _) = s.simplify(e);
     eprintln!("OK: {:?}", s.context.get(r));
 }
+
+// =============================================================================
+// V2.15: Regression test for infer_implicit_domain call count
+// =============================================================================
+// This test ensures that the fix for the stack overflow (caused by 98+ nested
+// calls to infer_implicit_domain) doesn't regress. The domain should be inferred
+// at most a small number of times per simplification, not O(n²) times.
+
+/// Regression test: ensure infer_implicit_domain is not called excessively.
+/// The original bug caused 98+ calls for a simple expression.
+/// With the fix, it should be called only 1-3 times (cache + fallback).
+#[test]
+fn test_domain_inference_call_count_regression() {
+    use cas_engine::implicit_domain::{infer_domain_calls_get, infer_domain_calls_reset};
+
+    // Expression that previously caused stack overflow
+    let expr_str = "sin((3 - x + sin(x))^4)^2";
+
+    let mut simplifier = Simplifier::with_default_rules();
+    let expr = parse(expr_str, &mut simplifier.context).expect("Failed to parse");
+
+    // Reset counter and simplify
+    infer_domain_calls_reset();
+    let (_result, _) = simplifier.simplify(expr);
+
+    // Check call count
+    let calls = infer_domain_calls_get();
+    eprintln!("infer_implicit_domain called {} times", calls);
+
+    // The limit is generous to account for fallback calls, but should catch O(n²) regressions
+    // Before fix: ~98 calls. After fix: 1-5 calls.
+    const MAX_ALLOWED_CALLS: usize = 10;
+    assert!(
+        calls <= MAX_ALLOWED_CALLS,
+        "REGRESSION: infer_implicit_domain called {} times (max allowed: {}). \
+         Rules may be recomputing domain instead of using cache.",
+        calls,
+        MAX_ALLOWED_CALLS
+    );
+}
