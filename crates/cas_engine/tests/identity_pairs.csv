@@ -443,3 +443,237 @@ sqrt(2)/sqrt(2),1,x
 x*0,0,x
 0/x,0,x
 0^x,0,x
+
+# =============================================================================
+# ADVANCED COMPLEX IDENTITIES
+# =============================================================================
+
+# Multiple angle formulas
+sin(4*x),4*sin(x)*cos(x)*(cos(x)^2 - sin(x)^2),x
+cos(4*x),8*cos(x)^4 - 8*cos(x)^2 + 1,x
+sin(5*x),16*sin(x)^5 - 20*sin(x)^3 + 5*sin(x),x
+
+# Advanced sum/product formulas
+sin(x)*cos(2*x),sin(3*x)/2 - sin(x)/2,x
+cos(x)*sin(2*x),sin(3*x)/2 + sin(x)/2,x
+sin(x)^3,(3*sin(x) - sin(3*x))/4,x
+cos(x)^3,(3*cos(x) + cos(3*x))/4,x
+sin(x)^4,(3 - 4*cos(2*x) + cos(4*x))/8,x
+cos(x)^4,(3 + 4*cos(2*x) + cos(4*x))/8,x
+
+# Prosthaphaeresis formulas
+sin(x)*sin(y),(cos(x-y) - cos(x+y))/2,x
+cos(x)*cos(y),(cos(x-y) + cos(x+y))/2,x
+sin(x)*cos(y),(sin(x+y) + sin(x-y))/2,x
+
+# Advanced half-angle
+sin(x/2),sqrt((1 - cos(x))/2),x
+cos(x/2),sqrt((1 + cos(x))/2),x
+
+# Tangent addition
+tan(x) + tan(y),sin(x+y)/(cos(x)*cos(y)),x
+
+# =============================================================================
+# COMPLEX POLYNOMIAL FACTORIZATIONS
+# =============================================================================
+
+# Sum of 4th powers
+x^4 + 4,(x^2 + 2*x + 2)*(x^2 - 2*x + 2),x
+
+# Cyclotomic-like
+x^4 + x^3 + x^2 + x + 1,(x^2 + x + 1)*(x^2 - x + 1) - x^2,x
+x^3 + x^2 + x + 1,(x+1)*(x^2+1),x
+
+# Higher binomials
+(x+1)^5,x^5 + 5*x^4 + 10*x^3 + 10*x^2 + 5*x + 1,x
+(x-1)^5,x^5 - 5*x^4 + 10*x^3 - 10*x^2 + 5*x - 1,x
+(x+1)^6,x^6 + 6*x^5 + 15*x^4 + 20*x^3 + 15*x^2 + 6*x + 1,x
+
+# Newton's identities related
+x^2 + y^2,(x+y)^2 - 2*x*y,x
+x^3 + y^3,(x+y)^3 - 3*x*y*(x+y),x
+x^4 + y^4,(x^2+y^2)^2 - 2*x^2*y^2,x
+
+# =============================================================================
+# COMPLEX RADICAL SIMPLIFICATIONS
+# =============================================================================
+
+# Denesting radicals
+sqrt(3 + 2*sqrt(2)),1 + sqrt(2),x
+sqrt(5 + 2*sqrt(6)),sqrt(2) + sqrt(3),x
+sqrt(7 + 4*sqrt(3)),2 + sqrt(3),x
+sqrt(8 + 4*sqrt(3)),sqrt(6) + sqrt(2),x
+
+# Complex rationalization
+(sqrt(x) + sqrt(y))*(sqrt(x) - sqrt(y)),x - y,x
+(sqrt(2) + sqrt(3))*(sqrt(2) - sqrt(3)),-1,x
+(sqrt(5) + sqrt(2))*(sqrt(5) - sqrt(2)),3,x
+
+# Cube root denesting
+(2 + sqrt(5))^(1/3) + (2 - sqrt(5))^(1/3),1,x
+
+# =============================================================================
+# EXPONENTIAL AND LOGARITHMIC COMPLEX
+# =============================================================================
+
+# Nested exponentials
+exp(exp(ln(x))),exp(x),x
+ln(exp(exp(x))),exp(x),x
+
+# Log of complex products
+ln(x^2*y),2*ln(x) + ln(y),x
+ln(sqrt(x)*y),ln(x)/2 + ln(y),x
+
+# Exponential of logs
+exp(ln(x) + ln(y)),x*y,x
+exp(2*ln(x) + 3*ln(y)),x^2*y^3,x
+exp(ln(x) - ln(y)),x/y,x
+
+# Power tower identities
+x^(y*z),(x^y)^z,x
+(x^y)^(1/y),x,x
+x^(ln(y)/ln(x)),y,x
+
+# =============================================================================
+# ADVANCED ALGEBRAIC IDENTITIES
+# =============================================================================
+
+# AM-GM related (constant cases)
+(x + 1/x)/2,|x + 1/x|/2,x
+
+# Cauchy-Schwarz related structure
+(x^2 + y^2)*(a^2 + b^2),(x*a + y*b)^2 + (x*b - y*a)^2,x
+
+# Quadratic formula related
+(-b + sqrt(b^2 - 4*a*c))/(2*a),(-b + sqrt(b^2 - 4*a*c))/(2*a),x
+
+# =============================================================================
+# TRIGONOMETRIC PRODUCTS
+# =============================================================================
+
+# Chebyshev products
+sin(x)*sin(2*x)*sin(3*x),sin(6*x)/(4*8),x
+
+# Tangent products
+tan(x)*tan(2*x)*tan(3*x),tan(x) + tan(2*x) + tan(3*x) - tan(6*x),x
+
+# Secant/Cosecant relations
+sec(x)^2 - tan(x)^2,1,x
+csc(x)^2 - cot(x)^2,1,x
+sec(x)^2 + csc(x)^2,sec(x)^2*csc(x)^2,x
+
+# =============================================================================
+# LIMIT-RELATED FORMS
+# =============================================================================
+
+# Indeterminate form simplifications
+(x^2 - 1)/(x - 1),x + 1,x
+(x^3 - 1)/(x - 1),x^2 + x + 1,x
+(x^4 - 1)/(x - 1),x^3 + x^2 + x + 1,x
+(x^n - 1)/(x - 1),1 + x + x^2 + ... + x^(n-1),x
+(x^2 - 4)/(x - 2),x + 2,x
+(x^3 - 8)/(x - 2),x^2 + 2*x + 4,x
+
+# Factorial growth indicators
+x!/(x-1)!,x,x
+
+# =============================================================================
+# INVERSE FUNCTION COMPOSITIONS
+# =============================================================================
+
+# arcsin/arccos relation
+arcsin(x) + arccos(x),pi/2,x
+
+# arctan compositions
+arctan(x) + arctan(1/x),pi/2,x
+2*arctan(x),arctan(2*x/(1-x^2)),x
+arctan((x-y)/(1+x*y)),arctan(x) - arctan(y),x
+
+# =============================================================================
+# SPECIAL FUNCTION VALUES
+# =============================================================================
+
+# Trig at multiples of pi/12
+sin(pi/12),(sqrt(6) - sqrt(2))/4,x
+cos(pi/12),(sqrt(6) + sqrt(2))/4,x
+tan(pi/12),2 - sqrt(3),x
+
+# At pi/8
+sin(pi/8),sqrt(2 - sqrt(2))/2,x
+cos(pi/8),sqrt(2 + sqrt(2))/2,x
+
+# At pi/5
+cos(pi/5),(1 + sqrt(5))/4,x
+cos(2*pi/5),(sqrt(5) - 1)/4,x
+
+# Golden ratio related
+(1 + sqrt(5))/2,phi,x
+phi^2,phi + 1,x
+1/phi,phi - 1,x
+
+# =============================================================================
+# HYPERBOLIC ANALOGS
+# =============================================================================
+
+# Hyperbolic definitions (if supported)
+sinh(x),(exp(x) - exp(-x))/2,x
+cosh(x),(exp(x) + exp(-x))/2,x
+tanh(x),sinh(x)/cosh(x),x
+tanh(x),(exp(x) - exp(-x))/(exp(x) + exp(-x)),x
+
+# Hyperbolic Pythagorean
+cosh(x)^2 - sinh(x)^2,1,x
+
+# Hyperbolic double angle
+sinh(2*x),2*sinh(x)*cosh(x),x
+cosh(2*x),cosh(x)^2 + sinh(x)^2,x
+
+# =============================================================================
+# COMPLEX NUMBER FORMS
+# =============================================================================
+
+# Euler's formula related (if i supported)
+exp(i*x),cos(x) + i*sin(x),x
+cos(x),(exp(i*x) + exp(-i*x))/2,x
+sin(x),(exp(i*x) - exp(-i*x))/(2*i),x
+
+# Modulus squared
+|a + b*i|^2,a^2 + b^2,x
+
+# =============================================================================
+# CALCULUS-RELATED ALGEBRAIC FORMS
+# =============================================================================
+
+# Derivative-like patterns
+(f(x+h) - f(x))/h,f'(x),x
+
+# Series expansion first terms
+sin(x),x - x^3/6 + x^5/120,x
+cos(x),1 - x^2/2 + x^4/24,x
+exp(x),1 + x + x^2/2 + x^3/6,x
+ln(1+x),x - x^2/2 + x^3/3,x
+1/(1-x),1 + x + x^2 + x^3,x
+
+# =============================================================================
+# TELESCOPING AND RECURSIVE PATTERNS
+# =============================================================================
+
+# Telescoping sums
+1/(x*(x+1)),1/x - 1/(x+1),x
+1/((x+1)*(x+2)),1/(x+1) - 1/(x+2),x
+1/(x*(x+2)),1/(2*x) - 1/(2*(x+2)),x
+
+# Recursive patterns
+x^(n+1),x*x^n,x
+(x+1)^(n+1),(x+1)*(x+1)^n,x
+
+# =============================================================================
+# COMBINATORIAL IDENTITIES
+# =============================================================================
+
+# Binomial coefficient patterns
+C(n;k) + C(n;k+1),C(n+1;k+1),x
+C(n;0) + C(n;1) + ... + C(n;n),2^n,x
+
+# Pascal's triangle related
+(x+y)^n,sum(C(n;k)*x^k*y^(n-k)),x
