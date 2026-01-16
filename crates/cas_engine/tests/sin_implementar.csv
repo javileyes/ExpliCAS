@@ -11,11 +11,7 @@
 #   - π/8, 3π/8 (con sin, cos, tan)
 #   - π/5, 2π/5, π/10 (con sin, cos, tan)
 
-# Funciones recíprocas pendientes (cot, sec, csc)
-cot(pi/12),2 + sqrt(3),x
-sec(pi/12),sqrt(6) - sqrt(2),x
-csc(pi/12),sqrt(6) + sqrt(2),x
-cot(pi/8),sqrt(2) + 1,x
+
 
 # =============================================================================
 # NÚMEROS COMPLEJOS (si se implementa soporte)
