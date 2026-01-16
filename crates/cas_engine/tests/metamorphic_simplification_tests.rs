@@ -567,7 +567,7 @@ fn assert_metamorphic_combine_triple(
     );
 
     // Variables: x, u, v (all different now)
-    let vars = vec![pair1.var, "u", "v"];
+    let vars = [pair1.var, "u", "v"];
 
     // Parse expressions
     let mut simplifier = Simplifier::with_default_rules();
@@ -620,42 +620,39 @@ fn assert_metamorphic_combine_triple(
                 let va = eval_f64(&simplifier.context, exp_simplified, &var_map);
                 let vb = eval_f64(&simplifier.context, simp_simplified, &var_map);
 
-                match (va, vb) {
-                    (Some(va), Some(vb)) => {
-                        if va.is_nan() || vb.is_nan() || va.is_infinite() || vb.is_infinite() {
-                            continue;
-                        }
-                        valid += 1;
-
-                        let diff = (va - vb).abs();
-                        let scale = va.abs().max(vb.abs()).max(1.0);
-                        let allowed = config.atol + config.rtol * scale;
-
-                        if diff > allowed {
-                            panic!(
-                                "Triple Combination Metatest FAILED: {}\n\
-                                 pair1: {} ≡ {}\n\
-                                 pair2: {} ≡ {}\n\
-                                 pair3: {} ≡ {}\n\
-                                 at x={}, u={}, v={}\n\
-                                 a={:.15}, b={:.15}, diff={:.3e}",
-                                test_name,
-                                pair1.exp,
-                                pair1.simp,
-                                pair2.exp,
-                                pair2.simp,
-                                pair3.exp,
-                                pair3.simp,
-                                x,
-                                y,
-                                z,
-                                va,
-                                vb,
-                                diff
-                            );
-                        }
+                if let (Some(va), Some(vb)) = (va, vb) {
+                    if va.is_nan() || vb.is_nan() || va.is_infinite() || vb.is_infinite() {
+                        continue;
                     }
-                    _ => {}
+                    valid += 1;
+
+                    let diff = (va - vb).abs();
+                    let scale = va.abs().max(vb.abs()).max(1.0);
+                    let allowed = config.atol + config.rtol * scale;
+
+                    if diff > allowed {
+                        panic!(
+                            "Triple Combination Metatest FAILED: {}\n\
+                             pair1: {} ≡ {}\n\
+                             pair2: {} ≡ {}\n\
+                             pair3: {} ≡ {}\n\
+                             at x={}, u={}, v={}\n\
+                             a={:.15}, b={:.15}, diff={:.3e}",
+                            test_name,
+                            pair1.exp,
+                            pair1.simp,
+                            pair2.exp,
+                            pair2.simp,
+                            pair3.exp,
+                            pair3.simp,
+                            x,
+                            y,
+                            z,
+                            va,
+                            vb,
+                            diff
+                        );
+                    }
                 }
             }
         }
@@ -822,7 +819,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                     let mut valid = true;
                     for test_val in [0.5, 1.0, 1.5, 2.0] {
                         let t = (test_val - lo) / (hi - lo);
-                        let x_val = lo + (hi - lo) * t.min(1.0).max(0.0);
+                        let x_val = lo + (hi - lo) * t.clamp(0.0, 1.0);
 
                         let mut var_map = HashMap::new();
                         var_map.insert(pair1.var.clone(), x_val);
