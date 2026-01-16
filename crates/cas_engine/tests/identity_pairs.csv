@@ -1,0 +1,445 @@
+# Mathematical Identity Pairs for Metamorphic Testing
+# Format: exp,simp,var
+# Each row represents an identity: exp ≡ simp
+# var is the primary variable used (for alpha-renaming)
+
+# Pythagorean Identities
+sin(x)^2 + cos(x)^2,1,x
+tan(x)^2 + 1,sec(x)^2,x
+1 + cot(x)^2,csc(x)^2,x
+
+# Double Angle
+sin(2*x),2*sin(x)*cos(x),x
+cos(2*x),cos(x)^2 - sin(x)^2,x
+tan(2*x),2*tan(x)/(1-tan(x)^2),x
+
+# Half Angle
+2*sin(x/2)^2,1 - cos(x),x
+2*cos(x/2)^2,1 + cos(x),x
+
+# Power Reduction
+sin(x)^2,(1 - cos(2*x))/2,x
+cos(x)^2,(1 + cos(2*x))/2,x
+sin(x)*cos(x),sin(2*x)/2,x
+
+# Negative Argument (Odd)
+sin(-x),-sin(x),x
+tan(-x),-tan(x),x
+cot(-x),-cot(x),x
+csc(-x),-csc(x),x
+
+# Negative Argument (Even)
+cos(-x),cos(x),x
+sec(-x),sec(x),x
+
+# Cofunction
+sin(pi/2 - x),cos(x),x
+cos(pi/2 - x),sin(x),x
+
+# Quotient Identities
+sin(x)/cos(x),tan(x),x
+cos(x)/sin(x),cot(x),x
+1/cos(x),sec(x),x
+1/sin(x),csc(x),x
+
+# Reciprocal Products
+tan(x)*cot(x),1,x
+sin(x)*csc(x),1,x
+cos(x)*sec(x),1,x
+
+# Log/Exp Inverse
+ln(exp(x)),x,x
+exp(ln(x)),x,x
+
+# Log Properties
+ln(x*e),ln(x) + 1,x
+ln(x/e),ln(x) - 1,x
+ln(sqrt(x)),ln(x)/2,x
+ln(x^2),2*ln(x),x
+ln(x^3),3*ln(x),x
+
+# Exp Properties
+exp(x+1),e*exp(x),x
+exp(x-1),exp(x)/e,x
+exp(2*x),exp(x)^2,x
+exp(x)*exp(-x),1,x
+
+# Power Rules
+x^2 * x^3,x^5,x
+x^3 * x^4,x^7,x
+(x^2)^3,x^6,x
+(x^3)^2,x^6,x
+x^5 / x^3,x^2,x
+x^6 / x^4,x^2,x
+x^8 / x^4,x^4,x
+
+# Power Special Cases
+x^0,1,x
+x^1,x,x
+1^x,1,x
+x^(-1),1/x,x
+x^(-2),1/x^2,x
+
+# Root Rules
+sqrt(x)^2,x,x
+(x^(1/3))^3,x,x
+sqrt(sqrt(x)),x^(1/4),x
+sqrt(sqrt(sqrt(x))),x^(1/8),x
+sqrt(x) * sqrt(x),x,x
+x^(1/2) * x^(1/2),x,x
+x^(1/3) * x^(2/3),x,x
+
+# Absolute Value
+|x|^2,x^2,x
+sqrt(x^2),|x|,x
+|-x|,|x|,x
+
+# Fraction Simplification
+x/x,1,x
+2*x/2,x,x
+3*x/3,x,x
+x * (1/x),1,x
+1/(1/x),x,x
+(1/x)^(-1),x,x
+
+# Basic Arithmetic
+x + 0,x,x
+0 + x,x,x
+x - 0,x,x
+x * 1,x,x
+x / 1,x,x
+x - x,0,x
+x + x,2*x,x
+2*x + 3*x,5*x,x
+
+# Negation
+-(-x),x,x
+-(-(-x)),-x,x
+
+# Binomial Expansion
+(x+1)^2,x^2 + 2*x + 1,x
+(x+2)^2,x^2 + 4*x + 4,x
+(x+3)^2,x^2 + 6*x + 9,x
+(x-1)^2,x^2 - 2*x + 1,x
+(x-2)^2,x^2 - 4*x + 4,x
+(x+1)^3,x^3 + 3*x^2 + 3*x + 1,x
+(x-1)^3,x^3 - 3*x^2 + 3*x - 1,x
+(x+2)^3,x^3 + 6*x^2 + 12*x + 8,x
+(x+1)^4,x^4 + 4*x^3 + 6*x^2 + 4*x + 1,x
+
+# Difference of Squares
+x^2 - 1,(x-1)*(x+1),x
+x^2 - 4,(x-2)*(x+2),x
+x^2 - 9,(x-3)*(x+3),x
+x^2 - 16,(x-4)*(x+4),x
+x^4 - 1,(x^2+1)*(x+1)*(x-1),x
+
+# Sum/Difference of Cubes
+x^3 + 1,(x+1)*(x^2 - x + 1),x
+x^3 - 1,(x-1)*(x^2 + x + 1),x
+x^3 + 8,(x+2)*(x^2 - 2*x + 4),x
+x^3 - 8,(x-2)*(x^2 + 2*x + 4),x
+
+# Factoring
+x^2 + x,x*(x+1),x
+x^3 + x^2,x^2*(x+1),x
+x^2 + 2*x,x*(x+2),x
+2*(x+1),2*x + 2,x
+2*(x+3),2*x + 6,x
+
+# FOIL
+(x+1)*(x+2),x^2 + 3*x + 2,x
+(x+2)*(x+3),x^2 + 5*x + 6,x
+(x+1)*(x-1),x^2 - 1,x
+(x+2)*(x-2),x^2 - 4,x
+
+# Rationalization
+1/sqrt(2),sqrt(2)/2,x
+1/sqrt(3),sqrt(3)/3,x
+1/sqrt(5),sqrt(5)/5,x
+1/sqrt(x),sqrt(x)/x,x
+
+# Sqrt Simplification
+sqrt(8),2*sqrt(2),x
+sqrt(18),3*sqrt(2),x
+sqrt(32),4*sqrt(2),x
+sqrt(50),5*sqrt(2),x
+sqrt(72),6*sqrt(2),x
+sqrt(12),2*sqrt(3),x
+sqrt(27),3*sqrt(3),x
+sqrt(48),4*sqrt(3),x
+
+# Sqrt Arithmetic
+sqrt(8) + sqrt(2),3*sqrt(2),x
+sqrt(18) - sqrt(2),2*sqrt(2),x
+sqrt(2)*sqrt(8),4,x
+sqrt(3)*sqrt(12),6,x
+sqrt(50)/sqrt(2),5,x
+sqrt(72)/sqrt(8),3,x
+
+# Conjugate Products
+(sqrt(2)+1)*(sqrt(2)-1),1,x
+(sqrt(3)+1)*(sqrt(3)-1),2,x
+
+# Numeric Roots
+sqrt(4),2,x
+sqrt(9),3,x
+sqrt(16),4,x
+sqrt(25),5,x
+sqrt(36),6,x
+sqrt(49),7,x
+sqrt(64),8,x
+sqrt(81),9,x
+sqrt(100),10,x
+sqrt(121),11,x
+sqrt(144),12,x
+sqrt(169),13,x
+
+# Numeric Cube Roots
+8^(1/3),2,x
+27^(1/3),3,x
+64^(1/3),4,x
+125^(1/3),5,x
+216^(1/3),6,x
+343^(1/3),7,x
+
+# Numeric 4th Roots
+16^(1/4),2,x
+81^(1/4),3,x
+256^(1/4),4,x
+625^(1/4),5,x
+
+# Higher Roots
+32^(1/5),2,x
+64^(1/6),2,x
+256^(1/8),2,x
+
+# Log Numeric
+ln(1),0,x
+ln(e),1,x
+ln(e^2),2,x
+ln(e^3),3,x
+log(2; 4),2,x
+log(2; 8),3,x
+log(3; 9),2,x
+log(3; 27),3,x
+log(10; 100),2,x
+log(10; 1000),3,x
+
+# Trig Special Values
+sin(0),0,x
+cos(0),1,x
+tan(0),0,x
+sin(pi),0,x
+cos(pi),-1,x
+sin(2*pi),0,x
+cos(2*pi),1,x
+sin(pi/2),1,x
+cos(pi/2),0,x
+sin(pi/6),1/2,x
+cos(pi/3),1/2,x
+tan(pi/4),1,x
+cot(pi/4),1,x
+sec(0),1,x
+
+# Inverse Trig
+tan(arctan(x)),x,x
+sin(arcsin(x)),x,x
+cos(arccos(x)),x,x
+arctan(0),0,x
+arcsin(0),0,x
+arccos(1),0,x
+arcsin(1),pi/2,x
+
+# Exp Numeric
+exp(0),1,x
+exp(1),e,x
+
+# =============================================================================
+# COMPLEX RATIONALIZATIONS
+# =============================================================================
+
+# Rationalize denominators with conjugates
+1/(sqrt(2)+1),sqrt(2)-1,x
+1/(sqrt(3)+1),(sqrt(3)-1)/2,x
+1/(sqrt(5)+2),sqrt(5)-2,x
+1/(sqrt(x)+1),(sqrt(x)-1)/(x-1),x
+2/(sqrt(3)-1),sqrt(3)+1,x
+3/(sqrt(2)+sqrt(3)),(sqrt(2)-sqrt(3))*(-3),x
+
+# Nested radicals
+sqrt(2 + sqrt(3)),sqrt((2+sqrt(3))),x
+sqrt(6 + 2*sqrt(5)),sqrt(5)+1,x
+sqrt(6 - 2*sqrt(5)),sqrt(5)-1,x
+
+# Rationalize with cube roots
+1/(1+x^(1/3)),(1-x^(1/3)+x^(2/3))/(1+x),x
+
+# =============================================================================
+# ADVANCED TRIGONOMETRIC IDENTITIES
+# =============================================================================
+
+# Triple angle
+sin(3*x),3*sin(x) - 4*sin(x)^3,x
+cos(3*x),4*cos(x)^3 - 3*cos(x),x
+tan(3*x),(3*tan(x) - tan(x)^3)/(1 - 3*tan(x)^2),x
+
+# Sum-to-product
+sin(x) + sin(3*x),2*sin(2*x)*cos(x),x
+cos(x) + cos(3*x),2*cos(2*x)*cos(x),x
+sin(x) - sin(3*x),-2*cos(2*x)*sin(x),x
+
+# Product-to-sum
+2*sin(x)*sin(2*x),cos(x) - cos(3*x),x
+2*cos(x)*cos(2*x),cos(x) + cos(3*x),x
+2*sin(x)*cos(2*x),sin(3*x) - sin(x),x
+
+# Chebyshev-like
+cos(2*x),2*cos(x)^2 - 1,x
+cos(2*x),1 - 2*sin(x)^2,x
+
+# Tangent half-angle substitution
+tan(x/2),sin(x)/(1 + cos(x)),x
+tan(x/2),(1 - cos(x))/sin(x),x
+sin(x),2*tan(x/2)/(1 + tan(x/2)^2),x
+cos(x),(1 - tan(x/2)^2)/(1 + tan(x/2)^2),x
+
+# =============================================================================
+# POLYNOMIAL IDENTITIES
+# =============================================================================
+
+# Vieta's formulas related
+(x+1)*(x+2)*(x+3),x^3 + 6*x^2 + 11*x + 6,x
+(x-1)*(x-2)*(x-3),x^3 - 6*x^2 + 11*x - 6,x
+
+# Higher degree differences
+x^4 - 16,(x^2+4)*(x+2)*(x-2),x
+x^6 - 1,(x^2+x+1)*(x^2-x+1)*(x+1)*(x-1),x
+
+# Sophie Germain identity
+x^4 + 4*x^2 + 4,(x^2 + 2)^2,x
+
+# Completing the square patterns
+x^2 + 4*x + 4,(x+2)^2,x
+x^2 + 6*x + 9,(x+3)^2,x
+x^2 - 4*x + 4,(x-2)^2,x
+x^2 + 2*x,(x+1)^2 - 1,x
+x^2 + 4*x,(x+2)^2 - 4,x
+
+# Binomial with fractions
+(x+1/2)^2,x^2 + x + 1/4,x
+(x-1/2)^2,x^2 - x + 1/4,x
+
+# =============================================================================
+# LOGARITHMIC IDENTITIES
+# =============================================================================
+
+# Change of base
+ln(x)/ln(2),log(2; x),x
+ln(x)/ln(10),log(10; x),x
+
+# Log of products/quotients
+ln(x*y),ln(x) + ln(y),x
+ln(x/y),ln(x) - ln(y),x
+
+# Nested logs
+ln(e^x),x,x
+e^(ln(x)),x,x
+ln(e^(2*x)),2*x,x
+e^(2*ln(x)),x^2,x
+e^(3*ln(x)),x^3,x
+
+# Log of roots
+ln(x^(1/2)),ln(x)/2,x
+ln(x^(1/3)),ln(x)/3,x
+ln(x^(1/4)),ln(x)/4,x
+
+# =============================================================================
+# EXPONENTIAL IDENTITIES  
+# =============================================================================
+
+# Exponential products
+exp(x)^2,exp(2*x),x
+exp(x)^3,exp(3*x),x
+exp(x)^n,exp(n*x),x
+
+# Exponential quotients
+exp(2*x)/exp(x),exp(x),x
+exp(3*x)/exp(2*x),exp(x),x
+exp(x)/exp(2*x),exp(-x),x
+
+# Hyperbolic-like (even without sinh/cosh)
+(exp(x) + exp(-x))/2,cosh(x),x
+(exp(x) - exp(-x))/2,sinh(x),x
+
+# =============================================================================
+# RADICAL IDENTITIES
+# =============================================================================
+
+# Radical products
+sqrt(a)*sqrt(b),sqrt(a*b),x
+sqrt(x)*sqrt(4*x),2*x,x
+sqrt(2*x)*sqrt(8*x),4*x,x
+
+# Radical quotients
+sqrt(a)/sqrt(b),sqrt(a/b),x
+sqrt(8*x)/sqrt(2*x),2,x
+sqrt(27*x)/sqrt(3*x),3,x
+
+# Rationalizing higher radicals
+x^(1/2)*x^(1/2),x,x
+x^(1/3)*x^(1/3)*x^(1/3),x,x
+x^(1/4)*x^(1/4)*x^(1/4)*x^(1/4),x,x
+
+# Power of roots
+sqrt(x^3),x*sqrt(x),x
+sqrt(x^5),x^2*sqrt(x),x
+(sqrt(x))^3,x*sqrt(x),x
+(sqrt(x))^4,x^2,x
+
+# =============================================================================
+# FRACTION IDENTITIES
+# =============================================================================
+
+# Complex fractions
+1/(1/x),x,x
+1/(1/(1/x)),1/x,x
+(a/b)/(c/d),(a*d)/(b*c),x
+
+# Addition of fractions
+1/x + 1/(x+1),(2*x+1)/(x*(x+1)),x
+1/(x-1) - 1/(x+1),2/(x^2-1),x
+
+# Partial fraction like
+(2*x+1)/(x^2+x),2/x - 1/(x+1),x
+
+# =============================================================================
+# ABSOLUTE VALUE IDENTITIES
+# =============================================================================
+
+# Absolute value properties
+|x|*|y|,|x*y|,x
+|x|/|y|,|x/y|,x
+|x^2|,x^2,x
+|x|^2,x^2,x
+sqrt(|x|^2),|x|,x
+
+# =============================================================================
+# SPECIAL VALUES AND LIMITS
+# =============================================================================
+
+# Perfect squares
+sqrt(x^2),|x|,x
+sqrt((x-1)^2),|x-1|,x
+sqrt((x+1)^2),|x+1|,x
+
+# Constants
+pi/pi,1,x
+e/e,1,x
+sqrt(2)/sqrt(2),1,x
+
+# Zero and infinity related
+0*x,0,x
+x*0,0,x
+0/x,0,x
+0^x,0,x
