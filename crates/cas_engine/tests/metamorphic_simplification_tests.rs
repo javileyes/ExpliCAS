@@ -940,6 +940,10 @@ fn metatest_individual_identities() {
         if symbolic_match {
             symbolic_passed += 1;
         } else {
+            // Get string representations of simplified forms using Debug
+            let exp_simplified_str = format!("{:?}", simplifier.context.get(exp_simplified));
+            let simp_simplified_str = format!("{:?}", simplifier.context.get(simp_simplified));
+
             // Check numeric equivalence
             let result = check_numeric_equiv_1var(
                 &simplifier.context,
@@ -951,13 +955,18 @@ fn metatest_individual_identities() {
 
             if result.is_ok() {
                 numeric_only_passed += 1;
-                if numeric_only_examples.len() < 20 {
-                    numeric_only_examples.push(format!("{} ≡ {}", pair.exp, pair.simp));
+                if numeric_only_examples.len() < 30 {
+                    numeric_only_examples.push(format!(
+                        "{} ≡ {}\n     → L: {}\n     → R: {}",
+                        pair.exp, pair.simp, exp_simplified_str, simp_simplified_str
+                    ));
                 }
             } else {
                 failed += 1;
-                if failed <= 5 {
+                if failed <= 10 {
                     eprintln!("❌ Identity failed: {} ≡ {}", pair.exp, pair.simp);
+                    eprintln!("   → L simplified: {}", exp_simplified_str);
+                    eprintln!("   → R simplified: {}", simp_simplified_str);
                 }
             }
         }
@@ -973,7 +982,7 @@ fn metatest_individual_identities() {
     eprintln!("   ❌ Failed: {}", failed);
 
     if !numeric_only_examples.is_empty() {
-        eprintln!("\n📝 Examples of numeric-only (first 20):");
+        eprintln!("\n📝 Numeric-only identities (showing simplifications):");
         for ex in &numeric_only_examples {
             eprintln!("   • {}", ex);
         }
