@@ -6,39 +6,26 @@
 # =============================================================================
 # VALORES TRIGONOMÉTRICOS ESPECIALES (ángulos no estándar)
 # =============================================================================
+# ✅ IMPLEMENTADOS (ahora en identity_pairs.csv):
+#   - π/12, 5π/12 (con sin, cos, tan)
+#   - π/8, 3π/8 (con sin, cos, tan)
 
-# Múltiplos de pi/12
-sin(pi/12),(sqrt(6) - sqrt(2))/4,x
-cos(pi/12),(sqrt(6) + sqrt(2))/4,x
-tan(pi/12),2 - sqrt(3),x
+# Funciones recíprocas para π/12 y π/8 (cot, sec, csc)
 cot(pi/12),2 + sqrt(3),x
 sec(pi/12),sqrt(6) - sqrt(2),x
 csc(pi/12),sqrt(6) + sqrt(2),x
-
-# 5*pi/12
-sin(5*pi/12),(sqrt(6) + sqrt(2))/4,x
-cos(5*pi/12),(sqrt(6) - sqrt(2))/4,x
-
-# pi/8 (22.5°)
-sin(pi/8),sqrt(2 - sqrt(2))/2,x
-cos(pi/8),sqrt(2 + sqrt(2))/2,x
-tan(pi/8),sqrt(2) - 1,x
 cot(pi/8),sqrt(2) + 1,x
 
-# 3*pi/8
-sin(3*pi/8),sqrt(2 + sqrt(2))/2,x
-cos(3*pi/8),sqrt(2 - sqrt(2))/2,x
-
-# pi/5 (36°) - Golden angle
+# π/5 (36°) - Golden angle (pendiente)
 sin(pi/5),sqrt(10 - 2*sqrt(5))/4,x
 cos(pi/5),(1 + sqrt(5))/4,x
 tan(pi/5),sqrt(5 - 2*sqrt(5)),x
 
-# 2*pi/5 (72°)
+# 2π/5 (72°)
 sin(2*pi/5),sqrt(10 + 2*sqrt(5))/4,x
 cos(2*pi/5),(sqrt(5) - 1)/4,x
 
-# pi/10 (18°)
+# π/10 (18°)
 sin(pi/10),(sqrt(5) - 1)/4,x
 cos(pi/10),sqrt(10 + 2*sqrt(5))/4,x
 

@@ -1294,8 +1294,16 @@ impl crate::rule::Rule for TanToSinCosRule {
         // This is almost never useful for simplification.
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(name, args) = &expr_data {
-            if name == "tan" && args.len() == 1 && is_multiple_angle(ctx, args[0]) {
-                return None; // Don't expand tan(n*x) - causes complexity explosion
+            if name == "tan" && args.len() == 1 {
+                // GUARD: Don't expand tan(n*x) - causes complexity explosion
+                if is_multiple_angle(ctx, args[0]) {
+                    return None;
+                }
+                // GUARD: Don't expand tan at special angles that have known values
+                // Let EvaluateTrigTableRule handle these instead
+                if super::values::detect_special_angle(ctx, args[0]).is_some() {
+                    return None;
+                }
             }
         }
 

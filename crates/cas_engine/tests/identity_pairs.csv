@@ -585,10 +585,28 @@ arctan(x) + arctan(1/x),pi/2,x
 2*arctan(x),arctan(2*x/(1-x^2)),x
 
 # =============================================================================
-# SPECIAL FUNCTION VALUES
+# SPECIAL TRIG VALUES 
 # =============================================================================
-# NOTE: For unimplemented trig values (pi/12, pi/8, pi/5, etc.)
-# see sin_implementar.csv
+
+# π/12 (15°)
+sin(pi/12),(sqrt(6) - sqrt(2))/4,x
+cos(pi/12),(sqrt(6) + sqrt(2))/4,x
+tan(pi/12),2 - sqrt(3),x
+
+# 5π/12 (75°)  
+sin(5*pi/12),(sqrt(6) + sqrt(2))/4,x
+cos(5*pi/12),(sqrt(6) - sqrt(2))/4,x
+tan(5*pi/12),2 + sqrt(3),x
+
+# π/8 (22.5°)
+sin(pi/8),sqrt(2 - sqrt(2))/2,x
+cos(pi/8),sqrt(2 + sqrt(2))/2,x
+tan(pi/8),sqrt(2) - 1,x
+
+# 3π/8 (67.5°)
+sin(3*pi/8),sqrt(2 + sqrt(2))/2,x
+cos(3*pi/8),sqrt(2 - sqrt(2))/2,x
+tan(3*pi/8),sqrt(2) + 1,x
 
 # Golden ratio related
 (1 + sqrt(5))/2,phi,x

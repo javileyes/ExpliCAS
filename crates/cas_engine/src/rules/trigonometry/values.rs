@@ -26,11 +26,38 @@ pub enum TrigValue {
     NegSqrtDiv(i64, i64),
     /// π/n (e.g., π/2 is PiDiv(2))
     PiDiv(i64),
+    /// √n (just sqrt, e.g., √3)
+    Sqrt(i64),
+    /// (√a + √b) / d (e.g., (√6 + √2)/4)
+    SqrtSumDiv(i64, i64, i64),
+    /// (√a - √b) / d (e.g., (√6 - √2)/4)
+    SqrtDiffDiv(i64, i64, i64),
+    /// √(a + √b) / d (nested radical, e.g., √(2 + √2)/2 = cos(π/8))
+    SqrtOfSqrtSumDiv(i64, i64, i64),
+    /// √(a - √b) / d (nested radical, e.g., √(2 - √2)/2 = sin(π/8))
+    SqrtOfSqrtDiffDiv(i64, i64, i64),
+    /// n - √r (e.g., 2 - √3 = tan(π/12))
+    IntMinusSqrt(i64, i64),
+    /// n + √r (e.g., 2 + √3 = tan(5π/12))
+    IntPlusSqrt(i64, i64),
+    /// √r - n (e.g., √2 - 1 = tan(π/8))
+    SqrtMinusInt(i64, i64),
+    /// √r + n (e.g., √2 + 1 = tan(3π/8))
+    SqrtPlusInt(i64, i64),
 }
 
 impl TrigValue {
     /// Build an ExprId from this TrigValue
     pub fn to_expr(&self, ctx: &mut Context) -> ExprId {
+        // Helper to create sqrt(n) = n^(1/2)
+        let make_sqrt = |ctx: &mut Context, n: i64| -> ExprId {
+            let num = ctx.num(n);
+            let one = ctx.num(1);
+            let two = ctx.num(2);
+            let half = ctx.add(Expr::Div(one, two));
+            ctx.add(Expr::Pow(num, half))
+        };
+
         match self {
             TrigValue::Zero => ctx.num(0),
             TrigValue::One => ctx.num(1),
@@ -43,21 +70,13 @@ impl TrigValue {
             }
             TrigValue::SqrtDiv(radicand, denom) => {
                 // sqrt(radicand) / denom
-                let rad = ctx.num(*radicand);
-                let one = ctx.num(1);
-                let two = ctx.num(2);
-                let half = ctx.add(Expr::Div(one, two));
-                let sqrt_rad = ctx.add(Expr::Pow(rad, half));
+                let sqrt_rad = make_sqrt(ctx, *radicand);
                 let d = ctx.num(*denom);
                 ctx.add(Expr::Div(sqrt_rad, d))
             }
             TrigValue::NegSqrtDiv(radicand, denom) => {
                 // -sqrt(radicand) / denom
-                let rad = ctx.num(*radicand);
-                let one = ctx.num(1);
-                let two = ctx.num(2);
-                let half = ctx.add(Expr::Div(one, two));
-                let sqrt_rad = ctx.add(Expr::Pow(rad, half));
+                let sqrt_rad = make_sqrt(ctx, *radicand);
                 let neg_sqrt = ctx.add(Expr::Neg(sqrt_rad));
                 let d = ctx.num(*denom);
                 ctx.add(Expr::Div(neg_sqrt, d))
@@ -65,17 +84,85 @@ impl TrigValue {
             TrigValue::InvSqrt(radicand) => {
                 // 1 / sqrt(radicand)
                 let one = ctx.num(1);
-                let rad = ctx.num(*radicand);
-                let one2 = ctx.num(1);
-                let two = ctx.num(2);
-                let half = ctx.add(Expr::Div(one2, two));
-                let sqrt_rad = ctx.add(Expr::Pow(rad, half));
+                let sqrt_rad = make_sqrt(ctx, *radicand);
                 ctx.add(Expr::Div(one, sqrt_rad))
             }
             TrigValue::PiDiv(denom) => {
                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                 let d = ctx.num(*denom);
                 ctx.add(Expr::Div(pi, d))
+            }
+            TrigValue::Sqrt(radicand) => {
+                // sqrt(radicand)
+                make_sqrt(ctx, *radicand)
+            }
+            TrigValue::SqrtSumDiv(a, b, d) => {
+                // (sqrt(a) + sqrt(b)) / d
+                let sqrt_a = make_sqrt(ctx, *a);
+                let sqrt_b = make_sqrt(ctx, *b);
+                let sum = ctx.add(Expr::Add(sqrt_a, sqrt_b));
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(sum, denom))
+            }
+            TrigValue::SqrtDiffDiv(a, b, d) => {
+                // (sqrt(a) - sqrt(b)) / d
+                let sqrt_a = make_sqrt(ctx, *a);
+                let sqrt_b = make_sqrt(ctx, *b);
+                let diff = ctx.add(Expr::Sub(sqrt_a, sqrt_b));
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(diff, denom))
+            }
+            TrigValue::SqrtOfSqrtSumDiv(a, b, d) => {
+                // sqrt(a + sqrt(b)) / d
+                let sqrt_b = make_sqrt(ctx, *b);
+                let a_num = ctx.num(*a);
+                let inner = ctx.add(Expr::Add(a_num, sqrt_b));
+                let outer_sqrt = {
+                    let one = ctx.num(1);
+                    let two = ctx.num(2);
+                    let half = ctx.add(Expr::Div(one, two));
+                    ctx.add(Expr::Pow(inner, half))
+                };
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(outer_sqrt, denom))
+            }
+            TrigValue::SqrtOfSqrtDiffDiv(a, b, d) => {
+                // sqrt(a - sqrt(b)) / d
+                let sqrt_b = make_sqrt(ctx, *b);
+                let a_num = ctx.num(*a);
+                let inner = ctx.add(Expr::Sub(a_num, sqrt_b));
+                let outer_sqrt = {
+                    let one = ctx.num(1);
+                    let two = ctx.num(2);
+                    let half = ctx.add(Expr::Div(one, two));
+                    ctx.add(Expr::Pow(inner, half))
+                };
+                let denom = ctx.num(*d);
+                ctx.add(Expr::Div(outer_sqrt, denom))
+            }
+            TrigValue::IntMinusSqrt(n, r) => {
+                // n - sqrt(r)
+                let num = ctx.num(*n);
+                let sqrt_r = make_sqrt(ctx, *r);
+                ctx.add(Expr::Sub(num, sqrt_r))
+            }
+            TrigValue::IntPlusSqrt(n, r) => {
+                // n + sqrt(r)
+                let num = ctx.num(*n);
+                let sqrt_r = make_sqrt(ctx, *r);
+                ctx.add(Expr::Add(num, sqrt_r))
+            }
+            TrigValue::SqrtMinusInt(r, n) => {
+                // sqrt(r) - n
+                let sqrt_r = make_sqrt(ctx, *r);
+                let num = ctx.num(*n);
+                ctx.add(Expr::Sub(sqrt_r, num))
+            }
+            TrigValue::SqrtPlusInt(r, n) => {
+                // sqrt(r) + n
+                let sqrt_r = make_sqrt(ctx, *r);
+                let num = ctx.num(*n);
+                ctx.add(Expr::Add(sqrt_r, num))
             }
         }
     }
@@ -92,6 +179,15 @@ impl TrigValue {
             TrigValue::NegSqrtDiv(r, d) => format!("-√{}/{}", r, d),
             TrigValue::InvSqrt(r) => format!("1/√{}", r),
             TrigValue::PiDiv(d) => format!("π/{}", d),
+            TrigValue::Sqrt(r) => format!("√{}", r),
+            TrigValue::SqrtSumDiv(a, b, d) => format!("(√{}+√{})/{}", a, b, d),
+            TrigValue::SqrtDiffDiv(a, b, d) => format!("(√{}-√{})/{}", a, b, d),
+            TrigValue::SqrtOfSqrtSumDiv(a, b, d) => format!("√({}+√{})/{}", a, b, d),
+            TrigValue::SqrtOfSqrtDiffDiv(a, b, d) => format!("√({}-√{})/{}", a, b, d),
+            TrigValue::IntMinusSqrt(n, r) => format!("{}-√{}", n, r),
+            TrigValue::IntPlusSqrt(n, r) => format!("{}+√{}", n, r),
+            TrigValue::SqrtMinusInt(r, n) => format!("√{}-{}", r, n),
+            TrigValue::SqrtPlusInt(r, n) => format!("√{}+{}", r, n),
         }
     }
 }
@@ -99,12 +195,16 @@ impl TrigValue {
 /// Angle key enum for special angles
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SpecialAngle {
-    Zero,    // 0
-    Pi,      // π
-    PiOver2, // π/2
-    PiOver3, // π/3
-    PiOver4, // π/4
-    PiOver6, // π/6
+    Zero,         // 0
+    Pi,           // π
+    PiOver2,      // π/2
+    PiOver3,      // π/3
+    PiOver4,      // π/4
+    PiOver6,      // π/6
+    PiOver8,      // π/8 = 22.5°
+    PiOver12,     // π/12 = 15°
+    ThreePiOver8, // 3π/8 = 67.5°
+    FivePiOver12, // 5π/12 = 75°
 }
 
 impl SpecialAngle {
@@ -116,6 +216,10 @@ impl SpecialAngle {
             SpecialAngle::PiOver3 => "π/3",
             SpecialAngle::PiOver4 => "π/4",
             SpecialAngle::PiOver6 => "π/6",
+            SpecialAngle::PiOver8 => "π/8",
+            SpecialAngle::PiOver12 => "π/12",
+            SpecialAngle::ThreePiOver8 => "3π/8",
+            SpecialAngle::FivePiOver12 => "5π/12",
         }
     }
 }
@@ -139,7 +243,7 @@ pub static TRIG_VALUES: &[(&str, SpecialAngle, TrigValue)] = &[
     // --- Angle: π/3 ---
     ("sin", SpecialAngle::PiOver3, TrigValue::SqrtDiv(3, 2)),
     ("cos", SpecialAngle::PiOver3, TrigValue::Fraction(1, 2)),
-    ("tan", SpecialAngle::PiOver3, TrigValue::InvSqrt(3)), // Actually √3, but this is 1/√(1/3)...
+    ("tan", SpecialAngle::PiOver3, TrigValue::Sqrt(3)),
     // --- Angle: π/4 ---
     ("sin", SpecialAngle::PiOver4, TrigValue::SqrtDiv(2, 2)),
     ("cos", SpecialAngle::PiOver4, TrigValue::SqrtDiv(2, 2)),
@@ -148,6 +252,74 @@ pub static TRIG_VALUES: &[(&str, SpecialAngle, TrigValue)] = &[
     ("sin", SpecialAngle::PiOver6, TrigValue::Fraction(1, 2)),
     ("cos", SpecialAngle::PiOver6, TrigValue::SqrtDiv(3, 2)),
     ("tan", SpecialAngle::PiOver6, TrigValue::InvSqrt(3)),
+    // --- Angle: π/12 (15°) ---
+    // sin(π/12) = (√6 - √2) / 4
+    // cos(π/12) = (√6 + √2) / 4
+    // tan(π/12) = 2 - √3
+    (
+        "sin",
+        SpecialAngle::PiOver12,
+        TrigValue::SqrtDiffDiv(6, 2, 4),
+    ),
+    (
+        "cos",
+        SpecialAngle::PiOver12,
+        TrigValue::SqrtSumDiv(6, 2, 4),
+    ),
+    ("tan", SpecialAngle::PiOver12, TrigValue::IntMinusSqrt(2, 3)),
+    // --- Angle: 5π/12 (75°) ---
+    // sin(5π/12) = (√6 + √2) / 4
+    // cos(5π/12) = (√6 - √2) / 4
+    // tan(5π/12) = 2 + √3
+    (
+        "sin",
+        SpecialAngle::FivePiOver12,
+        TrigValue::SqrtSumDiv(6, 2, 4),
+    ),
+    (
+        "cos",
+        SpecialAngle::FivePiOver12,
+        TrigValue::SqrtDiffDiv(6, 2, 4),
+    ),
+    (
+        "tan",
+        SpecialAngle::FivePiOver12,
+        TrigValue::IntPlusSqrt(2, 3),
+    ),
+    // --- Angle: π/8 (22.5°) ---
+    // sin(π/8) = √(2 - √2) / 2
+    // cos(π/8) = √(2 + √2) / 2
+    // tan(π/8) = √2 - 1
+    (
+        "sin",
+        SpecialAngle::PiOver8,
+        TrigValue::SqrtOfSqrtDiffDiv(2, 2, 2),
+    ),
+    (
+        "cos",
+        SpecialAngle::PiOver8,
+        TrigValue::SqrtOfSqrtSumDiv(2, 2, 2),
+    ),
+    ("tan", SpecialAngle::PiOver8, TrigValue::SqrtMinusInt(2, 1)),
+    // --- Angle: 3π/8 (67.5°) ---
+    // sin(3π/8) = √(2 + √2) / 2
+    // cos(3π/8) = √(2 - √2) / 2
+    // tan(3π/8) = √2 + 1
+    (
+        "sin",
+        SpecialAngle::ThreePiOver8,
+        TrigValue::SqrtOfSqrtSumDiv(2, 2, 2),
+    ),
+    (
+        "cos",
+        SpecialAngle::ThreePiOver8,
+        TrigValue::SqrtOfSqrtDiffDiv(2, 2, 2),
+    ),
+    (
+        "tan",
+        SpecialAngle::ThreePiOver8,
+        TrigValue::SqrtPlusInt(2, 1),
+    ),
 ];
 
 /// Inverse trig values at special numeric inputs
@@ -167,9 +339,10 @@ pub static INVERSE_TRIG_VALUES: &[(&str, &str, TrigValue)] = &[
 
 /// Detect if an expression represents a special angle
 ///
-/// Checks for 0, π, π/2, π/3, π/4, π/6 using shared helper functions.
+/// Checks for 0, π, π/2, π/3, π/4, π/6, π/8, π/12, 3π/8, 5π/12 using helper functions.
 pub fn detect_special_angle(ctx: &Context, expr: ExprId) -> Option<SpecialAngle> {
-    use crate::helpers::{is_pi, is_pi_over_n};
+    use crate::helpers::{extract_rational_pi_multiple, is_pi, is_pi_over_n};
+    use num_rational::BigRational;
     use num_traits::Zero;
 
     // Check for 0
@@ -184,7 +357,7 @@ pub fn detect_special_angle(ctx: &Context, expr: ExprId) -> Option<SpecialAngle>
         return Some(SpecialAngle::Pi);
     }
 
-    // Check for π/n values
+    // Check for simple π/n values first (faster path)
     if is_pi_over_n(ctx, expr, 2) {
         return Some(SpecialAngle::PiOver2);
     }
@@ -196,6 +369,24 @@ pub fn detect_special_angle(ctx: &Context, expr: ExprId) -> Option<SpecialAngle>
     }
     if is_pi_over_n(ctx, expr, 6) {
         return Some(SpecialAngle::PiOver6);
+    }
+    if is_pi_over_n(ctx, expr, 8) {
+        return Some(SpecialAngle::PiOver8);
+    }
+    if is_pi_over_n(ctx, expr, 12) {
+        return Some(SpecialAngle::PiOver12);
+    }
+
+    // For fractional multiples like 3π/8 or 5π/12, use extract_rational_pi_multiple
+    if let Some(k) = extract_rational_pi_multiple(ctx, expr) {
+        // Check for 3/8
+        if k == BigRational::new(3.into(), 8.into()) {
+            return Some(SpecialAngle::ThreePiOver8);
+        }
+        // Check for 5/12
+        if k == BigRational::new(5.into(), 12.into()) {
+            return Some(SpecialAngle::FivePiOver12);
+        }
     }
 
     None
