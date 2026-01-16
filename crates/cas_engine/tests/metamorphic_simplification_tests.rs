@@ -926,9 +926,15 @@ fn metatest_individual_identities() {
             Err(_) => continue,
         };
 
-        // Simplify both
-        let (exp_simplified, _) = simplifier.simplify(exp_parsed);
-        let (simp_simplified, _) = simplifier.simplify(simp_parsed);
+        // Use Assume domain mode to allow sqrt(a)*sqrt(b) = sqrt(a*b) etc.
+        let opts = cas_engine::phase::SimplifyOptions {
+            domain: cas_engine::domain::DomainMode::Assume,
+            ..Default::default()
+        };
+
+        // Simplify both with assume mode
+        let (exp_simplified, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
+        let (simp_simplified, _) = simplifier.simplify_with_options(simp_parsed, opts);
 
         // Check symbolic equality
         let symbolic_match = cas_engine::ordering::compare_expr(
