@@ -74,14 +74,16 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
                 // Only simplify if proven positive or implied by global requires
                 let is_implied = if pos != Proof::Proven {
                     // V2.14.21: Check if Positive(inner) is implied by global requires
-                    parent_ctx.root_expr().is_some_and(|root| {
-                        let id = crate::implicit_domain::infer_implicit_domain(ctx, root, vd);
+                    // V2.15: Use cached implicit_domain to avoid stack overflow from redundant computation
+                    if let Some(id) = parent_ctx.implicit_domain() {
                         let dc = crate::implicit_domain::DomainContext::new(
                             id.conditions().iter().cloned().collect(),
                         );
                         let cond = crate::implicit_domain::ImplicitCondition::Positive(inner);
                         dc.is_condition_implied(ctx, &cond)
-                    })
+                    } else {
+                        false
+                    }
                 } else {
                     true
                 };

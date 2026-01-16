@@ -275,13 +275,19 @@ pub fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprI
 ///
 /// This only handles `Add` nodes. For handling `Sub` and `Neg`, use
 /// `flatten_add_sub_chain` instead.
-pub fn flatten_add(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            flatten_add(ctx, *l, terms);
-            flatten_add(ctx, *r, terms);
+/// Uses iterative traversal to prevent stack overflow on deep expressions.
+pub fn flatten_add(ctx: &Context, root: ExprId, terms: &mut Vec<ExprId>) {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Add(l, r) => {
+                // Push right first so left is processed first
+                stack.push(*r);
+                stack.push(*l);
+            }
+            _ => terms.push(expr),
         }
-        _ => terms.push(expr),
     }
 }
 
@@ -332,13 +338,19 @@ fn flatten_add_sub_recursive(
 ///
 /// This only handles `Mul` nodes. For handling `Neg` as `-1 * expr`,
 /// use `flatten_mul_chain` instead.
-pub fn flatten_mul(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Mul(l, r) => {
-            flatten_mul(ctx, *l, factors);
-            flatten_mul(ctx, *r, factors);
+/// Uses iterative traversal to prevent stack overflow on deep expressions.
+pub fn flatten_mul(ctx: &Context, root: ExprId, factors: &mut Vec<ExprId>) {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Mul(l, r) => {
+                // Push right first so left is processed first
+                stack.push(*r);
+                stack.push(*l);
+            }
+            _ => factors.push(expr),
         }
-        _ => factors.push(expr),
     }
 }
 
@@ -604,8 +616,19 @@ pub fn is_negative(ctx: &Context, expr: ExprId) -> bool {
 /// prove_nonzero(ctx, ctx.pi())        // Proof::Proven
 /// ```
 pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
+    // Use depth-limited version with max 50 levels to prevent stack overflow
+    prove_nonzero_depth(ctx, expr, 50)
+}
+
+/// Internal prove_nonzero with explicit depth limit.
+fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::domain::Proof {
     use crate::domain::Proof;
     use num_traits::Zero;
+
+    // Depth guard: return Unknown if we've recursed too deep
+    if depth == 0 {
+        return Proof::Unknown;
+    }
 
     match ctx.get(expr) {
         // Numbers: check if zero
@@ -630,12 +653,12 @@ pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
         }
 
         // Neg: -a ≠ 0 iff a ≠ 0
-        Expr::Neg(a) => prove_nonzero(ctx, *a),
+        Expr::Neg(a) => prove_nonzero_depth(ctx, *a, depth - 1),
 
         // Mul: a*b ≠ 0 iff a ≠ 0 AND b ≠ 0
         Expr::Mul(a, b) => {
-            let proof_a = prove_nonzero(ctx, *a);
-            let proof_b = prove_nonzero(ctx, *b);
+            let proof_a = prove_nonzero_depth(ctx, *a, depth - 1);
+            let proof_b = prove_nonzero_depth(ctx, *b, depth - 1);
 
             match (proof_a, proof_b) {
                 (Proof::Disproven, _) | (_, Proof::Disproven) => Proof::Disproven,
@@ -649,7 +672,7 @@ pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
             if let Expr::Number(n) = ctx.get(*exp) {
                 // Only for positive exponents
                 if n.is_integer() && n > &num_rational::BigRational::zero() {
-                    return prove_nonzero(ctx, *base);
+                    return prove_nonzero_depth(ctx, *base, depth - 1);
                 }
             }
             Proof::Unknown
@@ -657,8 +680,8 @@ pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
 
         // Div: a/b ≠ 0 iff a ≠ 0 (assuming b ≠ 0 for the expression to be defined)
         Expr::Div(a, b) => {
-            let proof_a = prove_nonzero(ctx, *a);
-            let proof_b = prove_nonzero(ctx, *b);
+            let proof_a = prove_nonzero_depth(ctx, *a, depth - 1);
+            let proof_b = prove_nonzero_depth(ctx, *b, depth - 1);
 
             match (proof_a, proof_b) {
                 // If numerator is 0, whole thing is 0
@@ -772,9 +795,25 @@ pub fn prove_positive(
     expr: ExprId,
     value_domain: crate::semantics::ValueDomain,
 ) -> crate::domain::Proof {
+    // Use depth-limited version with max 50 levels to prevent stack overflow
+    prove_positive_depth(ctx, expr, value_domain, 50)
+}
+
+/// Internal prove_positive with explicit depth limit.
+fn prove_positive_depth(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::semantics::ValueDomain,
+    depth: usize,
+) -> crate::domain::Proof {
     use crate::domain::Proof;
     use crate::semantics::ValueDomain;
     use num_traits::Zero;
+
+    // Depth guard: return Unknown if we've recursed too deep
+    if depth == 0 {
+        return Proof::Unknown;
+    }
 
     match ctx.get(expr) {
         // Numbers: check if > 0
@@ -803,8 +842,8 @@ pub fn prove_positive(
                 return Proof::Disproven; // 0 * anything = 0, which is not > 0
             }
 
-            let proof_a = prove_positive(ctx, *a, value_domain);
-            let proof_b = prove_positive(ctx, *b, value_domain);
+            let proof_a = prove_positive_depth(ctx, *a, value_domain, depth - 1);
+            let proof_b = prove_positive_depth(ctx, *b, value_domain, depth - 1);
 
             match (proof_a, proof_b) {
                 (Proof::Proven, Proof::Proven) => Proof::Proven,
@@ -816,8 +855,8 @@ pub fn prove_positive(
 
         // Div: a/b > 0 if (a>0 AND b>0) OR (a<0 AND b<0)
         Expr::Div(a, b) => {
-            let proof_a = prove_positive(ctx, *a, value_domain);
-            let proof_b = prove_positive(ctx, *b, value_domain);
+            let proof_a = prove_positive_depth(ctx, *a, value_domain, depth - 1);
+            let proof_b = prove_positive_depth(ctx, *b, value_domain, depth - 1);
 
             match (proof_a, proof_b) {
                 (Proof::Proven, Proof::Proven) => Proof::Proven,
@@ -830,7 +869,7 @@ pub fn prove_positive(
         // - RealOnly: if base > 0, then base^exp > 0 (for any real exp)
         // - ComplexEnabled: only if exp is a real numeric AND base > 0
         Expr::Pow(base, exp) => {
-            let base_positive = prove_positive(ctx, *base, value_domain);
+            let base_positive = prove_positive_depth(ctx, *base, value_domain, depth - 1);
 
             match value_domain {
                 ValueDomain::RealOnly => {
@@ -855,7 +894,7 @@ pub fn prove_positive(
                     let two: num_bigint::BigInt = 2.into();
                     if &int_val % &two == 0.into() {
                         // a^(even) > 0 if a ≠ 0
-                        let base_nonzero = prove_nonzero(ctx, *base);
+                        let base_nonzero = prove_nonzero_depth(ctx, *base, depth - 1);
                         if base_nonzero == Proof::Proven {
                             return Proof::Proven;
                         }
@@ -867,7 +906,7 @@ pub fn prove_positive(
 
         // abs(x): always ≥ 0, but only > 0 if x ≠ 0
         Expr::Function(name, args) if name == "abs" && args.len() == 1 => {
-            let inner_nonzero = prove_nonzero(ctx, args[0]);
+            let inner_nonzero = prove_nonzero_depth(ctx, args[0], depth - 1);
             if inner_nonzero == Proof::Proven {
                 Proof::Proven
             } else if inner_nonzero == Proof::Disproven {
@@ -900,14 +939,14 @@ pub fn prove_positive(
 
         // sqrt(x) with x > 0 gives positive result
         Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
-            prove_positive(ctx, args[0], value_domain)
+            prove_positive_depth(ctx, args[0], value_domain, depth - 1)
         }
 
         // Neg: -x > 0 iff x < 0
         // If x is proven positive (> 0), then -x is proven negative (< 0), so Disproven
         // If x is proven negative (< 0), then -x is proven positive (> 0), so Proven
         Expr::Neg(inner) => {
-            let inner_proof = prove_positive(ctx, *inner, value_domain);
+            let inner_proof = prove_positive_depth(ctx, *inner, value_domain, depth - 1);
             match inner_proof {
                 Proof::Proven => Proof::Disproven, // -(positive) = negative
                 Proof::Disproven => {
@@ -962,9 +1001,25 @@ pub fn prove_nonnegative(
     expr: ExprId,
     value_domain: crate::semantics::ValueDomain,
 ) -> crate::domain::Proof {
+    // Use depth-limited version with max 50 levels to prevent stack overflow
+    prove_nonnegative_depth(ctx, expr, value_domain, 50)
+}
+
+/// Internal prove_nonnegative with explicit depth limit.
+fn prove_nonnegative_depth(
+    ctx: &Context,
+    expr: ExprId,
+    value_domain: crate::semantics::ValueDomain,
+    depth: usize,
+) -> crate::domain::Proof {
     use crate::domain::Proof;
     use crate::semantics::ValueDomain;
     use num_traits::Zero;
+
+    // Depth guard: return Unknown if we've recursed too deep
+    if depth == 0 {
+        return Proof::Unknown;
+    }
 
     match ctx.get(expr) {
         // Numbers: check if ≥ 0
@@ -1002,7 +1057,7 @@ pub fn prove_nonnegative(
 
             // Positive base with any exponent in reals is positive (hence non-negative)
             if value_domain == ValueDomain::RealOnly {
-                let base_positive = prove_positive(ctx, *base, value_domain);
+                let base_positive = prove_positive_depth(ctx, *base, value_domain, depth - 1);
                 if base_positive == Proof::Proven {
                     return Proof::Proven;
                 }
@@ -1018,7 +1073,7 @@ pub fn prove_nonnegative(
         // But we can't prove sqrt is defined without proving arg ≥ 0 (circular)
         Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
             // If the arg is provably non-negative, sqrt(arg) ≥ 0
-            prove_nonnegative(ctx, args[0], value_domain)
+            prove_nonnegative_depth(ctx, args[0], value_domain, depth - 1)
         }
 
         // exp(x) > 0 for all real x, hence ≥ 0
@@ -1039,8 +1094,8 @@ pub fn prove_nonnegative(
 
         // Mul of two non-negative numbers is non-negative
         Expr::Mul(a, b) => {
-            let proof_a = prove_nonnegative(ctx, *a, value_domain);
-            let proof_b = prove_nonnegative(ctx, *b, value_domain);
+            let proof_a = prove_nonnegative_depth(ctx, *a, value_domain, depth - 1);
+            let proof_b = prove_nonnegative_depth(ctx, *b, value_domain, depth - 1);
 
             match (proof_a, proof_b) {
                 (Proof::Proven, Proof::Proven) => Proof::Proven,
@@ -1051,7 +1106,7 @@ pub fn prove_nonnegative(
         // Neg: -x ≥ 0 iff x ≤ 0 - check if x is ≤ 0
         Expr::Neg(inner) => {
             // If inner is provably ≤ 0 (disproven as non-negative), then -inner ≥ 0
-            let inner_proof = prove_nonnegative(ctx, *inner, value_domain);
+            let inner_proof = prove_nonnegative_depth(ctx, *inner, value_domain, depth - 1);
             match inner_proof {
                 Proof::Disproven => Proof::Proven, // -(-3) = 3 ≥ 0
                 _ => Proof::Unknown,
@@ -1786,18 +1841,30 @@ pub fn same_args_unordered(ctx: &Context, a: ExprId, b: ExprId, c: ExprId, d: Ex
 
 /// Count the number of nodes in an expression tree.
 /// Used by the anti-worsen guard to reject rewrites that grow expressions too much.
+/// Uses iterative traversal to prevent stack overflow on deep expressions.
 pub fn node_count(ctx: &Context, expr: ExprId) -> usize {
-    match ctx.get(expr) {
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => 1,
-        Expr::Neg(e) => 1 + node_count(ctx, *e),
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            1 + node_count(ctx, *l) + node_count(ctx, *r)
-        }
-        Expr::Function(_, args) => 1 + args.iter().map(|a| node_count(ctx, *a)).sum::<usize>(),
-        Expr::Matrix { rows, cols, data } => {
-            1 + (*rows) * (*cols) + data.iter().map(|e| node_count(ctx, *e)).sum::<usize>()
+    let mut count = 0;
+    let mut stack = vec![expr];
+
+    while let Some(id) = stack.pop() {
+        count += 1;
+        match ctx.get(id) {
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            Expr::Neg(e) => stack.push(*e),
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
         }
     }
+
+    count
 }
 
 /// Check if a rewrite would "worsen" the expression by growing it too much.

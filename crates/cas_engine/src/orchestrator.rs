@@ -408,15 +408,31 @@ impl CycleDetector {
 
     /// Compute a hash based on the semantic structure of the expression
     /// This allows us to detect when expressions are equivalent even with different ExprIds
+    /// Uses iterative traversal with depth limit to prevent stack overflow.
     fn semantic_hash(ctx: &cas_ast::Context, expr: ExprId) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        fn hash_expr(ctx: &cas_ast::Context, expr: ExprId, hasher: &mut DefaultHasher) {
+        const MAX_HASH_DEPTH: usize = 200;
+
+        // Use a work stack: (expr_id, pending_hash) to process nodes iteratively
+        // For simplicity, we'll use a depth-limited recursive approach with explicit limit
+        fn hash_expr_depth(
+            ctx: &cas_ast::Context,
+            expr: ExprId,
+            depth: usize,
+            hasher: &mut DefaultHasher,
+        ) {
+            if depth == 0 {
+                // Depth limit exceeded - hash the ExprId directly as fallback
+                format!("{:?}", expr).hash(hasher);
+                return;
+            }
+
             match ctx.get(expr) {
                 cas_ast::Expr::Number(n) => {
                     0u8.hash(hasher);
-                    n.to_string().hash(hasher); // Hash string representation for consistency
+                    n.to_string().hash(hasher);
                 }
                 cas_ast::Expr::Constant(c) => {
                     1u8.hash(hasher);
@@ -428,9 +444,13 @@ impl CycleDetector {
                 }
                 cas_ast::Expr::Add(l, r) => {
                     3u8.hash(hasher);
-                    // Hash commutatively: sort the hashes to make a+b == b+a
-                    let hash_l = CycleDetector::semantic_hash(ctx, *l);
-                    let hash_r = CycleDetector::semantic_hash(ctx, *r);
+                    // Compute child hashes for commutative sorting
+                    let mut h1 = DefaultHasher::new();
+                    let mut h2 = DefaultHasher::new();
+                    hash_expr_depth(ctx, *l, depth - 1, &mut h1);
+                    hash_expr_depth(ctx, *r, depth - 1, &mut h2);
+                    let hash_l = h1.finish();
+                    let hash_r = h2.finish();
                     if hash_l <= hash_r {
                         hash_l.hash(hasher);
                         hash_r.hash(hasher);
@@ -441,14 +461,18 @@ impl CycleDetector {
                 }
                 cas_ast::Expr::Sub(l, r) => {
                     4u8.hash(hasher);
-                    hash_expr(ctx, *l, hasher);
-                    hash_expr(ctx, *r, hasher);
+                    hash_expr_depth(ctx, *l, depth - 1, hasher);
+                    hash_expr_depth(ctx, *r, depth - 1, hasher);
                 }
                 cas_ast::Expr::Mul(l, r) => {
                     5u8.hash(hasher);
-                    //  Hash commutatively: sort the hashes to make a*b == b*a
-                    let hash_l = CycleDetector::semantic_hash(ctx, *l);
-                    let hash_r = CycleDetector::semantic_hash(ctx, *r);
+                    // Compute child hashes for commutative sorting
+                    let mut h1 = DefaultHasher::new();
+                    let mut h2 = DefaultHasher::new();
+                    hash_expr_depth(ctx, *l, depth - 1, &mut h1);
+                    hash_expr_depth(ctx, *r, depth - 1, &mut h2);
+                    let hash_l = h1.finish();
+                    let hash_r = h2.finish();
                     if hash_l <= hash_r {
                         hash_l.hash(hasher);
                         hash_r.hash(hasher);
@@ -459,24 +483,24 @@ impl CycleDetector {
                 }
                 cas_ast::Expr::Div(l, r) => {
                     6u8.hash(hasher);
-                    hash_expr(ctx, *l, hasher);
-                    hash_expr(ctx, *r, hasher);
+                    hash_expr_depth(ctx, *l, depth - 1, hasher);
+                    hash_expr_depth(ctx, *r, depth - 1, hasher);
                 }
                 cas_ast::Expr::Pow(b, e) => {
                     7u8.hash(hasher);
-                    hash_expr(ctx, *b, hasher);
-                    hash_expr(ctx, *e, hasher);
+                    hash_expr_depth(ctx, *b, depth - 1, hasher);
+                    hash_expr_depth(ctx, *e, depth - 1, hasher);
                 }
                 cas_ast::Expr::Neg(e) => {
                     8u8.hash(hasher);
-                    hash_expr(ctx, *e, hasher);
+                    hash_expr_depth(ctx, *e, depth - 1, hasher);
                 }
                 cas_ast::Expr::Function(name, args) => {
                     9u8.hash(hasher);
                     name.hash(hasher);
                     args.len().hash(hasher);
                     for arg in args {
-                        hash_expr(ctx, *arg, hasher);
+                        hash_expr_depth(ctx, *arg, depth - 1, hasher);
                     }
                 }
                 cas_ast::Expr::Matrix { rows, cols, data } => {
@@ -485,7 +509,7 @@ impl CycleDetector {
                     cols.hash(hasher);
                     data.len().hash(hasher);
                     for elem in data {
-                        hash_expr(ctx, *elem, hasher);
+                        hash_expr_depth(ctx, *elem, depth - 1, hasher);
                     }
                 }
                 cas_ast::Expr::SessionRef(id) => {
@@ -496,7 +520,7 @@ impl CycleDetector {
         }
 
         let mut hasher = DefaultHasher::new();
-        hash_expr(ctx, expr, &mut hasher);
+        hash_expr_depth(ctx, expr, MAX_HASH_DEPTH, &mut hasher);
         hasher.finish()
     }
 }

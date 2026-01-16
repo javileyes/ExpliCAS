@@ -32,47 +32,56 @@ pub fn mark_auto_expand_candidates(
     scan_recursive(ctx, root, budget, marks);
 }
 
-/// Recursive scanner that visits all nodes and marks cancellation contexts.
-fn scan_recursive(ctx: &Context, id: ExprId, budget: &ExpandBudget, marks: &mut PatternMarks) {
-    // Try to detect cancellation patterns at this node
-    // First try Div(Sub(Pow(..), _), _) pattern (difference quotient)
-    if try_mark_difference_quotient(ctx, id, budget, marks) {
-        // Marked as Div context, continue to recurse
-    }
-    // Then try Sub(Pow(..), _) pattern (direct subtraction with potential cancellation)
-    else if try_mark_sub_cancellation(ctx, id, budget, marks) {
-        // Marked as Sub context, continue to recurse
-    }
-    // Then try Add(Pow(..), Neg(..), ...) pattern (Sub canonicalized to Add+Neg)
-    else if try_mark_add_neg_cancellation(ctx, id, budget, marks) {
-        // Marked as Add context (trinomial/multivar case), continue to recurse
-    }
-    // Then try log expansion patterns: ln(a*b) ± k*ln(a) ± m*ln(b)
-    else if try_mark_log_cancellation(ctx, id, marks) {
-        // Marked as Add/Sub context for log expansion
-    }
+/// Iterative scanner with depth limit (replaces recursive scan_recursive).
+/// Visits all nodes up to MAX_SCAN_DEPTH and marks cancellation contexts.
+fn scan_recursive(ctx: &Context, root: ExprId, budget: &ExpandBudget, marks: &mut PatternMarks) {
+    const MAX_SCAN_DEPTH: usize = 200;
 
-    // Recurse into children
-    match ctx.get(id) {
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            scan_recursive(ctx, *l, budget, marks);
-            scan_recursive(ctx, *r, budget, marks);
+    // Work stack: (expr_id, depth)
+    let mut work_stack = vec![(root, 0usize)];
+
+    while let Some((id, depth)) = work_stack.pop() {
+        // Depth guard
+        if depth >= MAX_SCAN_DEPTH {
+            continue;
         }
-        Expr::Neg(inner) => {
-            scan_recursive(ctx, *inner, budget, marks);
+
+        // Try to detect cancellation patterns at this node
+        if try_mark_difference_quotient(ctx, id, budget, marks) {
+            // Marked as Div context
+        } else if try_mark_sub_cancellation(ctx, id, budget, marks) {
+            // Marked as Sub context
+        } else if try_mark_add_neg_cancellation(ctx, id, budget, marks) {
+            // Marked as Add context
+        } else if try_mark_log_cancellation(ctx, id, marks) {
+            // Marked as log context
         }
-        Expr::Function(_, args) => {
-            for arg in args {
-                scan_recursive(ctx, *arg, budget, marks);
+
+        // Push children for processing
+        match ctx.get(id) {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                work_stack.push((*l, depth + 1));
+                work_stack.push((*r, depth + 1));
             }
-        }
-        Expr::Matrix { data, .. } => {
-            for elem in data {
-                scan_recursive(ctx, *elem, budget, marks);
+            Expr::Neg(inner) => {
+                work_stack.push((*inner, depth + 1));
             }
+            Expr::Function(_, args) => {
+                for arg in args {
+                    work_stack.push((*arg, depth + 1));
+                }
+            }
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    work_stack.push((*elem, depth + 1));
+                }
+            }
+            _ => {}
         }
-        // Atoms: Number, Variable, Constant, SessionRef - no children
-        _ => {}
     }
 }
 

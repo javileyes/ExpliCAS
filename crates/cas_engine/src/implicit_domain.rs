@@ -1130,17 +1130,29 @@ fn add_positive_and_propagate(
 }
 
 /// Check if expression contains any variables.
-fn contains_variable(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Variable(_) => true,
-        Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            contains_variable(ctx, *l) || contains_variable(ctx, *r)
+/// Uses iterative traversal to prevent stack overflow on deep expressions.
+fn contains_variable(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Variable(_) => return true,
+            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
         }
-        Expr::Neg(inner) => contains_variable(ctx, *inner),
-        Expr::Function(_, args) => args.iter().any(|a| contains_variable(ctx, *a)),
-        Expr::Matrix { data, .. } => data.iter().any(|e| contains_variable(ctx, *e)),
     }
+
+    false
 }
 
 /// Check if an expression is always non-negative for real values.
@@ -1149,6 +1161,17 @@ fn contains_variable(ctx: &Context, expr: ExprId) -> bool {
 /// - |x| (absolute value)
 /// - x⁴, x⁶, etc. (any even power)
 fn is_always_nonnegative(ctx: &Context, expr: ExprId) -> bool {
+    // Use depth-limited version with max 50 levels to prevent stack overflow
+    is_always_nonnegative_depth(ctx, expr, 50)
+}
+
+/// Internal is_always_nonnegative with explicit depth limit.
+fn is_always_nonnegative_depth(ctx: &Context, expr: ExprId, depth: usize) -> bool {
+    // Depth guard: return false if we've recursed too deep (conservative)
+    if depth == 0 {
+        return false;
+    }
+
     match ctx.get(expr) {
         // Numeric constants: check if ≥ 0
         Expr::Number(n) => *n >= BigRational::from_integer(0.into()),
@@ -1180,76 +1203,77 @@ fn is_always_nonnegative(ctx: &Context, expr: ExprId) -> bool {
                 return true; // x * x = x²
             }
             // Product of two non-negatives is non-negative
-            is_always_nonnegative(ctx, *l) && is_always_nonnegative(ctx, *r)
+            is_always_nonnegative_depth(ctx, *l, depth - 1)
+                && is_always_nonnegative_depth(ctx, *r, depth - 1)
         }
 
         // Sum of non-negatives is non-negative
-        Expr::Add(l, r) => is_always_nonnegative(ctx, *l) && is_always_nonnegative(ctx, *r),
+        Expr::Add(l, r) => {
+            is_always_nonnegative_depth(ctx, *l, depth - 1)
+                && is_always_nonnegative_depth(ctx, *r, depth - 1)
+        }
 
         _ => false,
     }
 }
 
-fn infer_recursive(ctx: &Context, expr: ExprId, domain: &mut ImplicitDomain) {
-    match ctx.get(expr) {
-        // sqrt(t) → NonNegative(t)
-        // BUT skip numeric literals - they're trivially provable
-        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
-            if !matches!(ctx.get(args[0]), Expr::Number(_)) {
-                domain.add_nonnegative(args[0]);
+/// Iterative domain inference (replaces recursive version).
+/// Uses explicit stack to prevent stack overflow on deep expressions.
+fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            // sqrt(t) → NonNegative(t)
+            // BUT skip numeric literals - they're trivially provable
+            Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+                if !matches!(ctx.get(args[0]), Expr::Number(_)) {
+                    domain.add_nonnegative(args[0]);
+                }
+                stack.push(args[0]);
             }
-            infer_recursive(ctx, args[0], domain);
-        }
 
-        // ln(t) or log(t) → Positive(t)
-        Expr::Function(name, args) if (name == "ln" || name == "log") && args.len() == 1 => {
-            domain.add_positive(args[0]);
-            infer_recursive(ctx, args[0], domain);
-        }
+            // ln(t) or log(t) → Positive(t)
+            Expr::Function(name, args) if (name == "ln" || name == "log") && args.len() == 1 => {
+                domain.add_positive(args[0]);
+                stack.push(args[0]);
+            }
 
-        // t^(1/2) or t^(p/q) where q is even → NonNegative(t)
-        // BUT skip numeric literals - they're trivially provable and don't need implicit domain protection
-        Expr::Pow(base, exp) => {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                // Check if denominator is 2 (sqrt) or any even number (even root)
-                if is_even_root_exponent(n) {
-                    // Only add constraint for non-numeric bases (variables, expressions)
-                    if !matches!(ctx.get(*base), Expr::Number(_)) {
+            // t^(1/2) or t^(p/q) where q is even → NonNegative(t)
+            Expr::Pow(base, exp) => {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if is_even_root_exponent(n) && !matches!(ctx.get(*base), Expr::Number(_)) {
                         domain.add_nonnegative(*base);
                     }
                 }
+                stack.push(*base);
+                stack.push(*exp);
             }
-            infer_recursive(ctx, *base, domain);
-            infer_recursive(ctx, *exp, domain);
-        }
 
-        // Div(_, t) → NonZero(t)
-        Expr::Div(num, den) => {
-            domain.add_nonzero(*den);
-            infer_recursive(ctx, *num, domain);
-            infer_recursive(ctx, *den, domain);
-        }
-
-        // Recursively process children
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-            infer_recursive(ctx, *l, domain);
-            infer_recursive(ctx, *r, domain);
-        }
-        Expr::Neg(inner) => {
-            infer_recursive(ctx, *inner, domain);
-        }
-        Expr::Function(_, args) => {
-            for arg in args {
-                infer_recursive(ctx, *arg, domain);
+            // Div(_, t) → NonZero(t)
+            Expr::Div(num, den) => {
+                domain.add_nonzero(*den);
+                stack.push(*num);
+                stack.push(*den);
             }
-        }
 
-        // Leaf nodes: nothing to infer
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            // Process children
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) => {
+                stack.push(*inner);
+            }
+            Expr::Function(_, args) => {
+                stack.extend(args.iter().copied());
+            }
 
-        Expr::Matrix { data, .. } => {
-            for elem in data {
-                infer_recursive(ctx, *elem, domain);
+            // Leaf nodes: nothing to infer
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+
+            Expr::Matrix { data, .. } => {
+                stack.extend(data.iter().copied());
             }
         }
     }

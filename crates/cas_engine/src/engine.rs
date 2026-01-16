@@ -1123,19 +1123,55 @@ impl Simplifier {
 
 /// Evaluate an expression numerically with f64 values.
 /// Used for numeric property testing to verify rewrite correctness.
+/// Has a depth limit of 200 to prevent stack overflow on deeply nested expressions.
 pub fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> Option<f64> {
+    eval_f64_depth(ctx, expr, var_map, 200)
+}
+
+/// Internal eval_f64 with explicit depth limit.
+fn eval_f64_depth(
+    ctx: &Context,
+    expr: ExprId,
+    var_map: &HashMap<String, f64>,
+    depth: usize,
+) -> Option<f64> {
+    if depth == 0 {
+        return None; // Depth budget exhausted
+    }
+
     match ctx.get(expr) {
         Expr::Number(n) => n.to_f64(),
         Expr::Variable(v) => var_map.get(v).cloned(),
-        Expr::Add(l, r) => Some(eval_f64(ctx, *l, var_map)? + eval_f64(ctx, *r, var_map)?),
-        Expr::Sub(l, r) => Some(eval_f64(ctx, *l, var_map)? - eval_f64(ctx, *r, var_map)?),
-        Expr::Mul(l, r) => Some(eval_f64(ctx, *l, var_map)? * eval_f64(ctx, *r, var_map)?),
-        Expr::Div(l, r) => Some(eval_f64(ctx, *l, var_map)? / eval_f64(ctx, *r, var_map)?),
-        Expr::Pow(b, e) => Some(eval_f64(ctx, *b, var_map)?.powf(eval_f64(ctx, *e, var_map)?)),
-        Expr::Neg(e) => Some(-eval_f64(ctx, *e, var_map)?),
+        Expr::Add(l, r) => Some(
+            eval_f64_depth(ctx, *l, var_map, depth - 1)?
+                + eval_f64_depth(ctx, *r, var_map, depth - 1)?,
+        ),
+        Expr::Sub(l, r) => Some(
+            eval_f64_depth(ctx, *l, var_map, depth - 1)?
+                - eval_f64_depth(ctx, *r, var_map, depth - 1)?,
+        ),
+        Expr::Mul(l, r) => Some(
+            eval_f64_depth(ctx, *l, var_map, depth - 1)?
+                * eval_f64_depth(ctx, *r, var_map, depth - 1)?,
+        ),
+        Expr::Div(l, r) => Some(
+            eval_f64_depth(ctx, *l, var_map, depth - 1)?
+                / eval_f64_depth(ctx, *r, var_map, depth - 1)?,
+        ),
+        Expr::Pow(b, e) => Some(
+            eval_f64_depth(ctx, *b, var_map, depth - 1)?.powf(eval_f64_depth(
+                ctx,
+                *e,
+                var_map,
+                depth - 1,
+            )?),
+        ),
+        Expr::Neg(e) => Some(-eval_f64_depth(ctx, *e, var_map, depth - 1)?),
         Expr::Function(name, args) => {
-            let arg_vals: Option<Vec<f64>> =
-                args.iter().map(|a| eval_f64(ctx, *a, var_map)).collect();
+            let arg_vals: Option<Vec<f64>> = args
+                .iter()
+                .map(|a| eval_f64_depth(ctx, *a, var_map, depth - 1))
+                .collect();
             let arg_vals = arg_vals?;
             match name.as_str() {
                 // Basic trig
@@ -1191,7 +1227,7 @@ pub fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> 
                 // __hold is transparent for evaluation - just evaluate the held expression
                 "__hold" => {
                     if args.len() == 1 {
-                        eval_f64(ctx, args[0], var_map)
+                        eval_f64_depth(ctx, args[0], var_map, depth - 1)
                     } else {
                         None
                     }
@@ -1213,9 +1249,9 @@ pub fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> 
 }
 
 /// Maximum recursion depth for simplification to prevent stack overflow.
-/// This is intentionally high to avoid interfering with normal operation.
-/// If exceeded, a warning is logged and the expression is returned unsimplified.
-const MAX_SIMPLIFY_DEPTH: usize = 500;
+/// V2.15: Reduced to 30 to leave margin for helper functions (prove_*, etc.)
+/// that can add significant stack usage per frame.
+const MAX_SIMPLIFY_DEPTH: usize = 30;
 
 /// Path to log expressions that exceed the depth limit for later investigation.
 const DEPTH_OVERFLOW_LOG_PATH: &str = "/tmp/cas_depth_overflow_expressions.log";
@@ -1811,6 +1847,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         }
                         ctx
                     };
+
                     if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
                         // Check semantic equality - skip if no real change
                         // EXCEPTION: Didactic rules should always generate steps
@@ -1941,6 +1978,30 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         };
                         self.profiler
                             .record_with_delta(self.current_phase, rule.name(), delta);
+
+                        // TRACE: Log applied rules for debugging cycles
+                        if std::env::var("CAS_TRACE_RULES").is_ok() {
+                            use std::io::Write;
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open("/tmp/rule_trace.log")
+                            {
+                                let node_count_before =
+                                    crate::helpers::node_count(self.context, expr_id);
+                                let node_count_after =
+                                    crate::helpers::node_count(self.context, rewrite.new_expr);
+                                let _ = writeln!(
+                                    f,
+                                    "APPLIED depth={} rule={} nodes={}->{}",
+                                    self.current_depth,
+                                    rule.name(),
+                                    node_count_before,
+                                    node_count_after
+                                );
+                                let _ = f.flush();
+                            }
+                        }
 
                         // println!(
                         //     "Rule '{}' applied: {:?} -> {:?}",

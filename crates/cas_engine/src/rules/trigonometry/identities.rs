@@ -3063,7 +3063,11 @@ define_rule!(
                     return None;
                 };
 
-                if n_val > num_bigint::BigInt::from(2) {
+                if n_val > num_bigint::BigInt::from(2) && n_val <= num_bigint::BigInt::from(6) {
+                    // GUARD: Only expand sin(n*x) for small n (3-6).
+                    // For n > 6, the expansion grows exponentially without benefit.
+                    // This prevents catastrophic expansion like sin(671*x) → 670 recursive steps.
+
                     // Rewrite sin(nx) -> sin((n-1)x + x)
 
                     let n_minus_1 = n_val.clone() - 1;

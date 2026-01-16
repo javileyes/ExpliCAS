@@ -46,10 +46,11 @@ harness = false
 name = "repl_end_to_end"
 harness = false
 
-[[bench]]
-name = "mm_gcd"
-harness = false
+# Disabled: mm_gcd benchmarks are slow and not needed for regular CI
+# [[bench]]
+# name = "mm_gcd"
+# harness = false
 
-[[bench]]
-name = "mm_gcd_modp"
-harness = false
+# [[bench]]
+# name = "mm_gcd_modp"
+# harness = false

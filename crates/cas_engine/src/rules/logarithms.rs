@@ -635,15 +635,24 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         let pos = prove_positive(ctx, p_base, vd);
 
         // V2.14.21: Check if x > 0 is in global requires using root_expr + infer_implicit_domain
-        // This allows chaining in Generic mode when x > 0 is already required
-        let in_requires = parent_ctx.root_expr().is_some_and(|root| {
+        // V2.15: Use cached implicit_domain if available, fallback to computation with root_expr
+        let in_requires = if let Some(id) = parent_ctx.implicit_domain() {
+            let dc = crate::implicit_domain::DomainContext::new(
+                id.conditions().iter().cloned().collect(),
+            );
+            let cond = crate::implicit_domain::ImplicitCondition::Positive(p_base);
+            dc.is_condition_implied(ctx, &cond)
+        } else if let Some(root) = parent_ctx.root_expr() {
+            // Fallback: compute implicit_domain from root_expr
             let id = crate::implicit_domain::infer_implicit_domain(ctx, root, vd);
             let dc = crate::implicit_domain::DomainContext::new(
                 id.conditions().iter().cloned().collect(),
             );
             let cond = crate::implicit_domain::ImplicitCondition::Positive(p_base);
             dc.is_condition_implied(ctx, &cond)
-        });
+        } else {
+            false
+        };
 
         let can_chain = match dm {
             DomainMode::Strict | DomainMode::Generic => pos == Proof::Proven || in_requires,
@@ -2089,11 +2098,14 @@ impl crate::rule::Rule for AutoExpandLogRule {
 
                 // V2.14.21: Before blocking, check if each factor's positivity is
                 // implied by global requires (e.g., b^3 > 0 is implied by b > 0)
-                // Compute implicit_domain directly from root_expr since parent_ctx doesn't propagate it
+                // V2.15: Use cached implicit_domain if available, fallback to computation
                 let vd = parent_ctx.value_domain();
-                let implicit_domain = parent_ctx
-                    .root_expr()
-                    .map(|root| crate::implicit_domain::infer_implicit_domain(ctx, root, vd));
+                let implicit_domain: Option<crate::implicit_domain::ImplicitDomain> =
+                    parent_ctx.implicit_domain().cloned().or_else(|| {
+                        parent_ctx.root_expr().map(|root| {
+                            crate::implicit_domain::infer_implicit_domain(ctx, root, vd)
+                        })
+                    });
 
                 let mut unproven_factor: Option<ExprId> = None;
                 for &factor in &factors {

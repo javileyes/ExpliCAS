@@ -8,36 +8,52 @@ pub fn scan_and_mark_patterns(ctx: &Context, root: ExprId, marks: &mut PatternMa
     scan_recursive(ctx, root, marks);
 }
 
-fn scan_recursive(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
-    // First, recursively scan all children
-    match ctx.get(expr_id) {
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            scan_recursive(ctx, *l, marks);
-            scan_recursive(ctx, *r, marks);
-        }
-        Expr::Neg(inner) => {
-            scan_recursive(ctx, *inner, marks);
-        }
-        Expr::Function(_, args) => {
-            for &arg in args {
-                scan_recursive(ctx, arg, marks);
+/// Iterative post-order traversal using explicit stack.
+/// Visits all children before parent, then marks parent patterns.
+fn scan_recursive(ctx: &Context, root: ExprId, marks: &mut PatternMarks) {
+    // Two stacks: work for traversal, process for post-order marking
+    let mut work_stack = vec![root];
+    let mut process_stack = Vec::new();
+
+    // First pass: collect all nodes for post-order processing
+    while let Some(expr_id) = work_stack.pop() {
+        process_stack.push(expr_id);
+
+        match ctx.get(expr_id) {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                work_stack.push(*l);
+                work_stack.push(*r);
             }
-        }
-        Expr::Matrix { data, .. } => {
-            for &elem in data {
-                scan_recursive(ctx, elem, marks);
+            Expr::Neg(inner) => {
+                work_stack.push(*inner);
             }
+            Expr::Function(_, args) => {
+                for &arg in args {
+                    work_stack.push(arg);
+                }
+            }
+            Expr::Matrix { data, .. } => {
+                for &elem in data {
+                    work_stack.push(elem);
+                }
+            }
+            _ => {}
         }
-        _ => {}
     }
 
-    // After scanning children, check if THIS node is a special pattern
-    check_and_mark_pythagorean_pattern(ctx, expr_id, marks);
-    check_and_mark_sqrt_square_pattern(ctx, expr_id, marks);
-    check_and_mark_trig_square_pattern(ctx, expr_id, marks);
-    check_and_mark_inverse_trig_pattern(ctx, expr_id, marks);
-    check_and_mark_sum_quotient_pattern(ctx, expr_id, marks);
-    check_and_mark_tan_triple_product_pattern(ctx, expr_id, marks);
+    // Second pass: process in reverse (post-order) to check patterns
+    while let Some(expr_id) = process_stack.pop() {
+        check_and_mark_pythagorean_pattern(ctx, expr_id, marks);
+        check_and_mark_sqrt_square_pattern(ctx, expr_id, marks);
+        check_and_mark_trig_square_pattern(ctx, expr_id, marks);
+        check_and_mark_inverse_trig_pattern(ctx, expr_id, marks);
+        check_and_mark_sum_quotient_pattern(ctx, expr_id, marks);
+        check_and_mark_tan_triple_product_pattern(ctx, expr_id, marks);
+    }
 }
 
 fn check_and_mark_pythagorean_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {

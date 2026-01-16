@@ -326,7 +326,37 @@ fn check_numeric_equiv_1var(
 ///
 /// Uses numeric verification to avoid circular dependency on simplifier.
 /// Logs results to metatest_log.jsonl for historical tracking.
+/// In stress mode, spawns a thread with 16MB stack to handle deep expressions.
 fn assert_metamorphic_addition(test_name: &str, base_a: &str, base_b: &str, vars: &[&str]) {
+    let _config = metatest_config();
+    let stress = env::var("METATEST_STRESS").ok().as_deref() == Some("1");
+
+    // In stress mode, spawn a thread with larger stack
+    if stress {
+        let test_name = test_name.to_string();
+        let base_a = base_a.to_string();
+        let base_b = base_b.to_string();
+        let vars: Vec<String> = vars.iter().map(|v| v.to_string()).collect();
+
+        // 16MB stack for stress tests
+        let child = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let vars_refs: Vec<&str> = vars.iter().map(|s| s.as_str()).collect();
+                assert_metamorphic_addition_impl(&test_name, &base_a, &base_b, &vars_refs);
+            })
+            .expect("Failed to spawn stress test thread");
+
+        child.join().expect("Stress test thread panicked");
+        return;
+    }
+
+    // Normal mode: run inline
+    assert_metamorphic_addition_impl(test_name, base_a, base_b, vars);
+}
+
+/// Core implementation of metamorphic test (called from main thread or spawned thread)
+fn assert_metamorphic_addition_impl(test_name: &str, base_a: &str, base_b: &str, vars: &[&str]) {
     let config = metatest_config();
 
     if vars.is_empty() {
@@ -373,6 +403,25 @@ fn assert_metamorphic_addition(test_name: &str, base_a: &str, base_b: &str, vars
                 continue;
             }
         };
+
+        // Log BEFORE simplify for crash reproduction
+        // This is crucial: stack overflow can't be caught, so we log first
+        {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open("/tmp/metatest_repro.log")
+            {
+                let _ = writeln!(f, "test={}", test_name);
+                let _ = writeln!(f, "seed={}", config.seed);
+                let _ = writeln!(f, "iter={}", iter);
+                let _ = writeln!(f, "expr_a={}", a_plus);
+                let _ = writeln!(f, "expr_b={}", b_plus);
+                let _ = f.flush();
+            }
+        }
 
         // Simplify both sides
         let (a_simp, _) = simplifier.simplify(a_expr);
