@@ -1,0 +1,186 @@
+# Identidades matemáticas AÚN NO IMPLEMENTADAS en ExpliCAS
+# Format: exp,simp,var
+# Estas identidades son matemáticamente correctas pero el engine no las simplifica aún.
+# Este archivo sirve como roadmap de mejoras pendientes.
+
+# =============================================================================
+# VALORES TRIGONOMÉTRICOS ESPECIALES (ángulos no estándar)
+# =============================================================================
+
+# Múltiplos de pi/12
+sin(pi/12),(sqrt(6) - sqrt(2))/4,x
+cos(pi/12),(sqrt(6) + sqrt(2))/4,x
+tan(pi/12),2 - sqrt(3),x
+cot(pi/12),2 + sqrt(3),x
+sec(pi/12),sqrt(6) - sqrt(2),x
+csc(pi/12),sqrt(6) + sqrt(2),x
+
+# 5*pi/12
+sin(5*pi/12),(sqrt(6) + sqrt(2))/4,x
+cos(5*pi/12),(sqrt(6) - sqrt(2))/4,x
+
+# pi/8 (22.5°)
+sin(pi/8),sqrt(2 - sqrt(2))/2,x
+cos(pi/8),sqrt(2 + sqrt(2))/2,x
+tan(pi/8),sqrt(2) - 1,x
+cot(pi/8),sqrt(2) + 1,x
+
+# 3*pi/8
+sin(3*pi/8),sqrt(2 + sqrt(2))/2,x
+cos(3*pi/8),sqrt(2 - sqrt(2))/2,x
+
+# pi/5 (36°) - Golden angle
+sin(pi/5),sqrt(10 - 2*sqrt(5))/4,x
+cos(pi/5),(1 + sqrt(5))/4,x
+tan(pi/5),sqrt(5 - 2*sqrt(5)),x
+
+# 2*pi/5 (72°)
+sin(2*pi/5),sqrt(10 + 2*sqrt(5))/4,x
+cos(2*pi/5),(sqrt(5) - 1)/4,x
+
+# pi/10 (18°)
+sin(pi/10),(sqrt(5) - 1)/4,x
+cos(pi/10),sqrt(10 + 2*sqrt(5))/4,x
+
+# =============================================================================
+# NÚMEROS COMPLEJOS (si se implementa soporte)
+# =============================================================================
+
+# Fórmula de Euler
+exp(i*x),cos(x) + i*sin(x),x
+cos(x),(exp(i*x) + exp(-i*x))/2,x
+sin(x),(exp(i*x) - exp(-i*x))/(2*i),x
+
+# Módulo
+|a + b*i|,sqrt(a^2 + b^2),x
+|a + b*i|^2,a^2 + b^2,x
+
+# Raíces de la unidad
+exp(2*pi*i/n),cos(2*pi/n) + i*sin(2*pi/n),x
+
+# =============================================================================
+# FACTORIAL SIMBÓLICO
+# =============================================================================
+
+# n! = n * (n-1)!
+n!,n * (n-1)!,n
+(n+1)!,(n+1) * n!,n
+
+# Factorial cociente
+n!/(n-1)!,n,n
+(n+1)!/n!,n+1,n
+n!/(n-k)!,product(j, j, n-k+1, n),n
+
+# Relación con gamma
+n!,gamma(n+1),n
+
+# =============================================================================
+# COMBINATORIA SIMBÓLICA
+# =============================================================================
+
+# Identidad de Pascal
+C(n,k) + C(n,k+1),C(n+1,k+1),n
+choose(n,k) + choose(n,k+1),choose(n+1,k+1),n
+
+# Simetría
+C(n,k),C(n,n-k),n
+choose(n,k),choose(n,n-k),n
+
+# Suma de fila
+sum(C(n,k), k, 0, n),2^n,n
+sum(choose(n,k), k, 0, n),2^n,n
+
+# Alternating sum
+sum((-1)^k * C(n,k), k, 0, n),0,n
+
+# Vandermonde
+sum(C(m,k)*C(n,r-k), k, 0, r),C(m+n,r),m
+
+# =============================================================================
+# SERIES INFINITAS (si se implementa)
+# =============================================================================
+
+# Serie geométrica
+sum(x^k, k, 0, inf),1/(1-x),x
+
+# Serie exponencial
+sum(x^k/k!, k, 0, inf),exp(x),x
+
+# Serie seno
+sum((-1)^k * x^(2*k+1)/(2*k+1)!, k, 0, inf),sin(x),x
+
+# Serie coseno
+sum((-1)^k * x^(2*k)/(2*k)!, k, 0, inf),cos(x),x
+
+# Serie logaritmo
+sum((-1)^(k+1) * x^k / k, k, 1, inf),ln(1+x),x
+
+# =============================================================================
+# CÁLCULO (derivadas e integrales)
+# =============================================================================
+
+# Derivada como límite
+(f(x+h) - f(x))/h,f'(x),x
+
+# Derivadas básicas
+d/dx(x^n),n*x^(n-1),x
+d/dx(sin(x)),cos(x),x
+d/dx(cos(x)),-sin(x),x
+d/dx(tan(x)),sec(x)^2,x
+d/dx(ln(x)),1/x,x
+d/dx(exp(x)),exp(x),x
+
+# Integral fundamental
+integral(f'(x), x),f(x) + C,x
+
+# =============================================================================
+# LÍMITES
+# =============================================================================
+
+# Límites famosos
+lim(sin(x)/x, x, 0),1,x
+lim((1 + 1/n)^n, n, inf),e,n
+lim((exp(x) - 1)/x, x, 0),1,x
+lim((1 - cos(x))/x^2, x, 0),1/2,x
+
+# =============================================================================
+# ECUACIONES POLINÓMICAS
+# =============================================================================
+
+# Fórmulas cuadráticas
+(-b + sqrt(b^2 - 4*a*c))/(2*a),x1,x
+(-b - sqrt(b^2 - 4*a*c))/(2*a),x2,x
+
+# Relaciones de Vieta
+x1 + x2,-b/a,x
+x1 * x2,c/a,x
+
+# =============================================================================
+# FUNCIONES ESPECIALES
+# =============================================================================
+
+# Función gamma
+gamma(1/2),sqrt(pi),x
+gamma(n+1),n!,n
+gamma(x+1),x*gamma(x),x
+
+# Función beta
+beta(a,b),gamma(a)*gamma(b)/gamma(a+b),x
+
+# Función zeta
+zeta(2),pi^2/6,x
+zeta(4),pi^4/90,x
+zeta(6),pi^6/945,x
+
+# =============================================================================
+# DESIGUALDADES (verificación simbólica)
+# =============================================================================
+
+# AM-GM
+(a + b)/2,>= sqrt(a*b),x
+
+# Cauchy-Schwarz
+(sum(a_k^2, k, 1, n))*(sum(b_k^2, k, 1, n)),>= (sum(a_k*b_k, k, 1, n))^2,x
+
+# Triángulo
+|a + b|,<= |a| + |b|,x

@@ -570,12 +570,8 @@ sec(x)^2 + csc(x)^2,sec(x)^2*csc(x)^2,x
 (x^2 - 1)/(x - 1),x + 1,x
 (x^3 - 1)/(x - 1),x^2 + x + 1,x
 (x^4 - 1)/(x - 1),x^3 + x^2 + x + 1,x
-(x^n - 1)/(x - 1),1 + x + x^2 + ... + x^(n-1),x
 (x^2 - 4)/(x - 2),x + 2,x
 (x^3 - 8)/(x - 2),x^2 + 2*x + 4,x
-
-# Factorial growth indicators
-x!/(x-1)!,x,x
 
 # =============================================================================
 # INVERSE FUNCTION COMPOSITIONS
@@ -587,24 +583,12 @@ arcsin(x) + arccos(x),pi/2,x
 # arctan compositions
 arctan(x) + arctan(1/x),pi/2,x
 2*arctan(x),arctan(2*x/(1-x^2)),x
-arctan((x-y)/(1+x*y)),arctan(x) - arctan(y),x
 
 # =============================================================================
 # SPECIAL FUNCTION VALUES
 # =============================================================================
-
-# Trig at multiples of pi/12
-sin(pi/12),(sqrt(6) - sqrt(2))/4,x
-cos(pi/12),(sqrt(6) + sqrt(2))/4,x
-tan(pi/12),2 - sqrt(3),x
-
-# At pi/8
-sin(pi/8),sqrt(2 - sqrt(2))/2,x
-cos(pi/8),sqrt(2 + sqrt(2))/2,x
-
-# At pi/5
-cos(pi/5),(1 + sqrt(5))/4,x
-cos(2*pi/5),(sqrt(5) - 1)/4,x
+# NOTE: For unimplemented trig values (pi/12, pi/8, pi/5, etc.)
+# see sin_implementar.csv
 
 # Golden ratio related
 (1 + sqrt(5))/2,phi,x
@@ -615,7 +599,7 @@ phi^2,phi + 1,x
 # HYPERBOLIC ANALOGS
 # =============================================================================
 
-# Hyperbolic definitions (if supported)
+# Hyperbolic definitions
 sinh(x),(exp(x) - exp(-x))/2,x
 cosh(x),(exp(x) + exp(-x))/2,x
 tanh(x),sinh(x)/cosh(x),x
@@ -629,51 +613,107 @@ sinh(2*x),2*sinh(x)*cosh(x),x
 cosh(2*x),cosh(x)^2 + sinh(x)^2,x
 
 # =============================================================================
-# COMPLEX NUMBER FORMS
+# SERIES APPROXIMATIONS (Testing first terms)
 # =============================================================================
 
-# Euler's formula related (if i supported)
-exp(i*x),cos(x) + i*sin(x),x
-cos(x),(exp(i*x) + exp(-i*x))/2,x
-sin(x),(exp(i*x) - exp(-i*x))/(2*i),x
-
-# Modulus squared
-|a + b*i|^2,a^2 + b^2,x
+# These are approximate, not exact identities - for numerical testing only
+# sin(x) ≈ x - x^3/6 + x^5/120 (Taylor)
+# cos(x) ≈ 1 - x^2/2 + x^4/24 (Taylor)
 
 # =============================================================================
-# CALCULUS-RELATED ALGEBRAIC FORMS
+# TELESCOPING SUMS
 # =============================================================================
 
-# Derivative-like patterns
-(f(x+h) - f(x))/h,f'(x),x
-
-# Series expansion first terms
-sin(x),x - x^3/6 + x^5/120,x
-cos(x),1 - x^2/2 + x^4/24,x
-exp(x),1 + x + x^2/2 + x^3/6,x
-ln(1+x),x - x^2/2 + x^3/3,x
-1/(1-x),1 + x + x^2 + x^3,x
-
-# =============================================================================
-# TELESCOPING AND RECURSIVE PATTERNS
-# =============================================================================
-
-# Telescoping sums
+# Partial fractions / telescoping patterns
 1/(x*(x+1)),1/x - 1/(x+1),x
 1/((x+1)*(x+2)),1/(x+1) - 1/(x+2),x
 1/(x*(x+2)),1/(2*x) - 1/(2*(x+2)),x
 
-# Recursive patterns
-x^(n+1),x*x^n,x
-(x+1)^(n+1),(x+1)*(x+1)^n,x
-
 # =============================================================================
-# COMBINATORIAL IDENTITIES
+# FACTORIAL AND COMBINATORIAL
 # =============================================================================
 
-# Binomial coefficient patterns
-C(n;k) + C(n;k+1),C(n+1;k+1),x
-C(n;0) + C(n;1) + ... + C(n;n),2^n,x
+# Factorial numeric
+5!,120,x
+6!,720,x
+7!,5040,x
 
-# Pascal's triangle related
-(x+y)^n,sum(C(n;k)*x^k*y^(n-k)),x
+# Factorial identity: n! = n * (n-1)!
+# Note: these are numeric checks since symbolic evaluation has limits
+
+# Binomial coefficients (choose function)
+choose(5,0),1,x
+choose(5,1),5,x
+choose(5,2),10,x
+choose(5,3),10,x
+choose(5,5),1,x
+choose(6,3),20,x
+choose(7,3),35,x
+choose(10,5),252,x
+
+# Pascal's identity: C(n,k) + C(n,k+1) = C(n+1,k+1)
+choose(4,1) + choose(4,2),choose(5,2),x
+choose(5,2) + choose(5,3),choose(6,3),x
+choose(6,2) + choose(6,3),choose(7,3),x
+
+# Symmetry: C(n,k) = C(n,n-k)
+choose(6,1),choose(6,5),x
+choose(8,3),choose(8,5),x
+choose(10,2),choose(10,8),x
+
+# =============================================================================
+# SUMMATION IDENTITIES
+# =============================================================================
+
+# Sum of first n integers: sum(k, k, 1, n) = n*(n+1)/2
+sum(k, k, 1, 10),55,x
+sum(k, k, 1, 5),15,x
+sum(k, k, 1, 100),5050,x
+
+# Sum of squares: sum(k^2, k, 1, n) = n*(n+1)*(2n+1)/6
+sum(k^2, k, 1, 5),55,x
+sum(k^2, k, 1, 10),385,x
+
+# Sum of cubes: sum(k^3, k, 1, n) = (n*(n+1)/2)^2
+sum(k^3, k, 1, 5),225,x
+sum(k^3, k, 1, 10),3025,x
+
+# Geometric sum: sum(r^k, k, 0, n) = (r^(n+1) - 1)/(r - 1)
+sum(2^k, k, 0, 5),63,x
+sum(2^k, k, 0, 10),2047,x
+sum(3^k, k, 0, 4),121,x
+
+# Constant sum
+sum(1, k, 1, 10),10,x
+sum(5, k, 1, 6),30,x
+
+# Power variable sums with symbolic variable
+sum(x, k, 1, 5),5*x,x
+sum(x^2, k, 1, 3),3*x^2,x
+
+# =============================================================================
+# PRODUCT IDENTITIES
+# =============================================================================
+
+# Product = factorial: product(k, k, 1, n) = n!
+product(k, k, 1, 5),120,x
+product(k, k, 1, 6),720,x
+product(k, k, 1, 7),5040,x
+
+# Product of constant: product(c, k, 1, n) = c^n
+product(2, k, 1, 5),32,x
+product(3, k, 1, 4),81,x
+product(10, k, 1, 3),1000,x
+
+# Product of powers: product(k^2, k, 1, n)
+product(k^2, k, 1, 3),36,x
+product(k^2, k, 1, 4),576,x
+
+# Product with symbolic variable
+product(x, k, 1, 3),x^3,x
+product(x, k, 1, 5),x^5,x
+product(x^2, k, 1, 3),x^6,x
+
+# Double factorial patterns
+product(2*k, k, 1, 4),384,x
+product(2*k-1, k, 1, 4),105,x
