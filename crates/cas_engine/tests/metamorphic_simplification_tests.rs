@@ -900,3 +900,89 @@ fn metatest_csv_combinations_full() {
     // Full run: all pairs with triples
     run_csv_combination_tests(100, true);
 }
+
+/// Test individual identity pairs (not combinations) to see which simplify symbolically
+#[test]
+#[ignore = "Diagnostic test - run manually to check symbolic vs numeric equivalence"]
+fn metatest_individual_identities() {
+    let pairs = load_identity_pairs();
+    let config = metatest_config();
+
+    let mut symbolic_passed = 0;
+    let mut numeric_only_passed = 0;
+    let mut failed = 0;
+    let mut numeric_only_examples: Vec<String> = Vec::new();
+
+    for pair in &pairs {
+        let mut simplifier = Simplifier::with_default_rules();
+
+        // Parse both expressions
+        let exp_parsed = match parse(&pair.exp, &mut simplifier.context) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let simp_parsed = match parse(&pair.simp, &mut simplifier.context) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        // Simplify both
+        let (exp_simplified, _) = simplifier.simplify(exp_parsed);
+        let (simp_simplified, _) = simplifier.simplify(simp_parsed);
+
+        // Check symbolic equality
+        let symbolic_match = cas_engine::ordering::compare_expr(
+            &simplifier.context,
+            exp_simplified,
+            simp_simplified,
+        ) == std::cmp::Ordering::Equal;
+
+        if symbolic_match {
+            symbolic_passed += 1;
+        } else {
+            // Check numeric equivalence
+            let result = check_numeric_equiv_1var(
+                &simplifier.context,
+                exp_simplified,
+                simp_simplified,
+                &pair.var,
+                &config,
+            );
+
+            if result.is_ok() {
+                numeric_only_passed += 1;
+                if numeric_only_examples.len() < 20 {
+                    numeric_only_examples.push(format!("{} ≡ {}", pair.exp, pair.simp));
+                }
+            } else {
+                failed += 1;
+                if failed <= 5 {
+                    eprintln!("❌ Identity failed: {} ≡ {}", pair.exp, pair.simp);
+                }
+            }
+        }
+    }
+
+    let total = symbolic_passed + numeric_only_passed + failed;
+    let symbolic_pct = (symbolic_passed as f64 / total as f64 * 100.0) as u32;
+
+    eprintln!("\n📊 Individual Identity Results:");
+    eprintln!("   Total: {}", total);
+    eprintln!("   ✅ Symbolic: {} ({}%)", symbolic_passed, symbolic_pct);
+    eprintln!("   🔢 Numeric-only: {}", numeric_only_passed);
+    eprintln!("   ❌ Failed: {}", failed);
+
+    if !numeric_only_examples.is_empty() {
+        eprintln!("\n📝 Examples of numeric-only (first 20):");
+        for ex in &numeric_only_examples {
+            eprintln!("   • {}", ex);
+        }
+    }
+
+    if failed > 0 {
+        eprintln!(
+            "\n⚠️  {} identities failed numeric equivalence - may need domain restrictions",
+            failed
+        );
+    }
+}
