@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \tan(x)\cdot \tan(x + \frac{\pi}{3})\cdot \tan(\frac{\pi}{3} - x)</title>
+    <title>CAS Steps: \frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,43 +451,86 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\tan(x)\cdot \tan(x + \frac{\pi}{3})\cdot \tan(\frac{\pi}{3} - x)\]
+            \[\frac{1}{\sqrt{x} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
         </div>
         <div class="timeline">
             <div class="step">
                 <div class="step-number">1</div>
                 <div class="step-content">
-                    <h3>Triple Tangent Product (π/3)</h3>
+                    <h3>Rationalize Denominator</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\tan(x)\cdot \tan(x + \frac{\pi}{3})\cdot \tan(\frac{\pi}{3} - x)}}\]
+                        \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                    </div>
+                    <details class="substeps-details">
+                            <summary>Pasos intermedios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Denominador binomial con radical</span><div class="substep-math">\[\frac{1}{\sqrt{x} - 1} \rightarrow \text{Conjugado: } \sqrt{x} + 1\]</div></div><div class="substep">
+                                    <span class="substep-desc">(a+b)(a-b) = a² - b²</span><div class="substep-math">\[\frac{(1) \cdot (\sqrt{x} + 1)}{\sqrt{x} - 1 \cdot (\sqrt{x} + 1)} \rightarrow \frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}\]</div></div></div></details>
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{Rationalize denominator (diff squares)}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{\frac{1}{\sqrt{x} - 1}}} \rightarrow {\color{green}{\frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}}}\]
+                        </div>
+                    </div>
+                    
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{\color{green}{\frac{1 + \sqrt{x}}{{\sqrt{x}}^{2} - 1}}} - \frac{1 + \sqrt{x}}{x - 1}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Power of a Power</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[\frac{1 + \sqrt{x}}{{\color{red}{{\sqrt{x}}^{2}}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{tan(u)·tan(π/3+u)·tan(π/3−u) = tan(3u)}\)</div>
+                        <div class="rule-name">\(\text{Multiply exponents}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\tan(x)\cdot \tan(x + \frac{\pi}{3})\cdot \tan(-x + \frac{\pi}{3})}} \rightarrow {\color{green}{\tan(3\cdot x)}}\]
+                            \[{\color{red}{{\sqrt{x}}^{2}}} \rightarrow {\color{green}{x}}\]
                         </div>
                     </div>
-                    <details class="substeps-details" open>
-                    <summary>Pasos didácticos</summary>
-                    <div class="substeps-content"><div class="substep">
-                            <strong>[Normalizar argumentos]</strong><div class="substep-line">• π/3 − u se representa como −u + π/3 para comparar como u + const</div></div><div class="substep">
-                            <strong>[Reconocer patrón]</strong><div class="substep-line">• Sea u = x</div><div class="substep-line">• Factores: tan(u), tan(u + π/3), tan(π/3 − u)</div></div><div class="substep">
-                            <strong>[Aplicar identidad]</strong><div class="substep-line">• tan(u)·tan(u + π/3)·tan(π/3 − u) = tan(3u)</div></div></div></details>
+                    
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\tan(3\cdot x)}}\]
+                        \[\frac{1 + \sqrt{x}}{{\color{green}{x}} - 1} - \frac{1 + \sqrt{x}}{x - 1}\]
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Add Inverse</h3>
+                    <div class="math-expr before">
+                        \(\textbf{Before:}\)
+                        \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}}\]
+                    </div>
+                    
+                    <div class="rule-description">
+                        <div class="rule-name">\(\text{a + (-a) = 0}\)</div>
+                        <div class="local-change">
+                            \[{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}} \rightarrow {\color{green}{0}}\]
+                        </div>
+                    </div>
+                    
+                    <div class="math-expr after">
+                        \(\textbf{After:}\)
+                        \[{\color{green}{0}}\]
                     </div>
                 </div>
             </div>
         </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
-            \[\tan(3\cdot x)\]
+            \[0\]
         </div>
         <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> 3 ≠ 0
+            <strong>ℹ️ Requires:</strong> x ≥ 0, x - 1 ≠ 0, sqrt(x) - 1 ≠ 0
         </div>
     </div>
     <footer>

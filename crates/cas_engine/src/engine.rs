@@ -1258,7 +1258,7 @@ fn eval_f64_depth(
 /// on step recording, frames are small enough for 50+ on 8MB stack.
 ///
 /// For deeper expressions, use `recursion_guard::with_stack(16MB, || ...)`.
-/// Note: depth=100 still overflows due to Div/Pow/Function inline code.
+/// Note: All major arms extracted to helpers; depth=100 still overflows due to base frame size.
 const MAX_SIMPLIFY_DEPTH: usize = 50;
 
 /// Path to log expressions that exceed the depth limit for later investigation.
@@ -1498,6 +1498,181 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
     }
 
+    /// Transform Pow expression with early detection for sqrt-of-square patterns.
+    /// Extracted with #[inline(never)] to reduce stack frame size.
+    #[inline(never)]
+    fn transform_pow(&mut self, id: ExprId, base: ExprId, exp: ExprId) -> ExprId {
+        // EARLY DETECTION: sqrt-of-square pattern (u^2)^(1/2) -> |u|
+        // Must check BEFORE recursing into children to prevent binomial expansion
+        if crate::helpers::is_half(self.context, exp) {
+            // Try (something^2)^(1/2) -> |something|
+            if let Some(result) = self.try_sqrt_of_square(id, base) {
+                return result;
+            }
+            // Try (u * u)^(1/2) -> |u|
+            if let Some(result) = self.try_sqrt_of_product(id, base) {
+                return result;
+            }
+        }
+
+        // Check if this Pow is canonical before recursing into children
+        if crate::canonical_forms::is_canonical_form(self.context, id) {
+            debug!(
+                "Skipping simplification of canonical Pow: {:?}",
+                self.context.get(id)
+            );
+            return id;
+        }
+
+        // Simplify children
+        self.current_path.push(crate::step::PathStep::Base);
+        self.ancestor_stack.push(id);
+        let new_b = self.transform_expr_recursive(base);
+        self.ancestor_stack.pop();
+        self.current_path.pop();
+
+        self.current_path.push(crate::step::PathStep::Exponent);
+        self.ancestor_stack.push(id);
+        let new_e = self.transform_expr_recursive(exp);
+        self.ancestor_stack.pop();
+        self.current_path.pop();
+
+        if new_b != base || new_e != exp {
+            self.context.add(Expr::Pow(new_b, new_e))
+        } else {
+            id
+        }
+    }
+
+    /// Try to simplify (u^2)^(1/2) -> |u|
+    #[inline(never)]
+    fn try_sqrt_of_square(&mut self, id: ExprId, base: ExprId) -> Option<ExprId> {
+        if let Expr::Pow(inner_base, inner_exp) = self.context.get(base) {
+            if let Expr::Number(n) = self.context.get(*inner_exp) {
+                if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
+                    let abs_expr = self
+                        .context
+                        .add(Expr::Function("abs".to_string(), vec![*inner_base]));
+                    self.record_step(
+                        "sqrt(u^2) = |u|",
+                        "Simplify Square Root of Square",
+                        id,
+                        abs_expr,
+                    );
+                    return Some(self.transform_expr_recursive(abs_expr));
+                }
+            }
+        }
+        None
+    }
+
+    /// Try to simplify (u * u)^(1/2) -> |u|
+    #[inline(never)]
+    fn try_sqrt_of_product(&mut self, id: ExprId, base: ExprId) -> Option<ExprId> {
+        if let Expr::Mul(left, right) = self.context.get(base) {
+            if crate::ordering::compare_expr(self.context, *left, *right)
+                == std::cmp::Ordering::Equal
+            {
+                let abs_expr = self
+                    .context
+                    .add(Expr::Function("abs".to_string(), vec![*left]));
+                self.record_step(
+                    "sqrt(u * u) = |u|",
+                    "Simplify Square Root of Product",
+                    id,
+                    abs_expr,
+                );
+                return Some(self.transform_expr_recursive(abs_expr));
+            }
+        }
+        None
+    }
+
+    /// Transform Function expression by simplifying children.
+    /// Extracted with #[inline(never)] to reduce stack frame size.
+    #[inline(never)]
+    fn transform_function(&mut self, id: ExprId, name: String, args: Vec<ExprId>) -> ExprId {
+        // Check if this function is canonical before recursing into children
+        if (name == "sqrt" || name == "abs")
+            && crate::canonical_forms::is_canonical_form(self.context, id)
+        {
+            debug!(
+                "Skipping simplification of canonical Function: {:?}",
+                self.context.get(id)
+            );
+            return id;
+        }
+
+        // HoldAll semantics: do NOT simplify arguments for these functions
+        if is_hold_all_function(&name) {
+            debug!(
+                "HoldAll function, skipping child simplification: {:?}",
+                self.context.get(id)
+            );
+            return id;
+        }
+
+        // Simplify children
+        let mut new_args = Vec::with_capacity(args.len());
+        let mut changed = false;
+        for (i, arg) in args.iter().enumerate() {
+            self.current_path.push(crate::step::PathStep::Arg(i));
+            self.ancestor_stack.push(id);
+            let new_arg = self.transform_expr_recursive(*arg);
+            self.ancestor_stack.pop();
+            self.current_path.pop();
+
+            if new_arg != *arg {
+                changed = true;
+            }
+            new_args.push(new_arg);
+        }
+
+        if changed {
+            self.context.add(Expr::Function(name, new_args))
+        } else {
+            id
+        }
+    }
+
+    /// Transform Div expression with early detection for difference-of-squares pattern.
+    /// Extracted with #[inline(never)] to reduce stack frame size.
+    #[inline(never)]
+    fn transform_div(&mut self, id: ExprId, l: ExprId, r: ExprId) -> ExprId {
+        // EARLY DETECTION: (A² - B²) / (A ± B) pattern
+        if let Some(early_result) = crate::rules::algebra::try_difference_of_squares_preorder(
+            self.context,
+            id,
+            l,
+            r,
+            self.steps_mode != StepsMode::Off,
+            &mut self.steps,
+            &self.current_path,
+        ) {
+            // Note: don't decrement depth here - transform_expr_recursive manages it
+            return self.transform_expr_recursive(early_result);
+        }
+
+        // Simplify children
+        self.current_path.push(crate::step::PathStep::Left);
+        self.ancestor_stack.push(id);
+        let new_l = self.transform_expr_recursive(l);
+        self.ancestor_stack.pop();
+        self.current_path.pop();
+
+        self.current_path.push(crate::step::PathStep::Right);
+        self.ancestor_stack.push(id);
+        let new_r = self.transform_expr_recursive(r);
+        self.ancestor_stack.pop();
+        self.current_path.pop();
+
+        if new_l != l || new_r != r {
+            self.context.add(Expr::Div(new_l, new_r))
+        } else {
+            id
+        }
+    }
+
     fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
         // Depth guard: prevent stack overflow by limiting recursion depth
         self.current_depth += 1;
@@ -1563,124 +1738,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
             Expr::Add(l, r) => self.transform_binary(id, l, r, BinaryOp::Add),
             Expr::Sub(l, r) => self.transform_binary(id, l, r, BinaryOp::Sub),
             Expr::Mul(l, r) => self.transform_binary(id, l, r, BinaryOp::Mul),
-            Expr::Div(l, r) => {
-                // EARLY DETECTION: (A² - B²) / (A ± B) pattern
-                // Must check BEFORE recursing into children to prevent auto-expand from destroying the pattern
-                // This enables didactic "Factor and cancel: A² - B² = (A-B)(A+B)" output
-                if let Some(early_result) =
-                    crate::rules::algebra::try_difference_of_squares_preorder(
-                        self.context,
-                        id,
-                        l,
-                        r,
-                        self.steps_mode != StepsMode::Off,
-                        &mut self.steps,
-                        &self.current_path,
-                    )
-                {
-                    self.current_depth -= 1;
-                    return self.transform_expr_recursive(early_result);
-                }
-
-                self.current_path.push(crate::step::PathStep::Left);
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_l = self.transform_expr_recursive(l);
-                self.ancestor_stack.pop();
-                self.current_path.pop();
-
-                self.current_path.push(crate::step::PathStep::Right);
-                self.ancestor_stack.push(id); // Track current node as parent for children
-                let new_r = self.transform_expr_recursive(r);
-                self.ancestor_stack.pop();
-                self.current_path.pop();
-
-                if new_l != l || new_r != r {
-                    self.context.add(Expr::Div(new_l, new_r))
-                } else {
-                    id
-                }
-            }
-            Expr::Pow(b, e) => {
-                // EARLY DETECTION: sqrt-of-square pattern (u^2)^(1/2) -> |u|
-                // Must check BEFORE recursing into children to prevent binomial expansion
-                if crate::helpers::is_half(self.context, e) {
-                    // Outer is ^(1/2), check if base is (something)^2
-                    if let Expr::Pow(inner_base, inner_exp) = self.context.get(b) {
-                        if let Expr::Number(n) = self.context.get(*inner_exp) {
-                            if n.is_integer()
-                                && *n == num_rational::BigRational::from_integer(2.into())
-                            {
-                                // Pattern matched: (inner_base^2)^(1/2) -> |inner_base|
-                                let abs_expr = self
-                                    .context
-                                    .add(Expr::Function("abs".to_string(), vec![*inner_base]));
-
-                                // Record the step (using helper to reduce frame size)
-                                self.record_step(
-                                    "sqrt(u^2) = |u|",
-                                    "Simplify Square Root of Square",
-                                    id,
-                                    abs_expr,
-                                );
-
-                                // Continue simplifying the result
-                                return self.transform_expr_recursive(abs_expr);
-                            }
-                        }
-                    }
-                    // Also check for (u * u)^(1/2) -> |u| directly
-                    // This prevents binomial expansion from firing on the squared form
-                    if let Expr::Mul(left, right) = self.context.get(b) {
-                        if crate::ordering::compare_expr(self.context, *left, *right)
-                            == std::cmp::Ordering::Equal
-                        {
-                            // Pattern matched: (u * u)^(1/2) -> |u|
-                            let abs_expr = self
-                                .context
-                                .add(Expr::Function("abs".to_string(), vec![*left]));
-
-                            // Record the step (using helper to reduce frame size)
-                            self.record_step(
-                                "sqrt(u * u) = |u|",
-                                "Simplify Square Root of Product",
-                                id,
-                                abs_expr,
-                            );
-
-                            // Continue simplifying the result
-                            return self.transform_expr_recursive(abs_expr);
-                        }
-                    }
-                }
-
-                // Check if this Pow is canonical before recursing into children
-                // If it's canonical (like ((x+1)*(x-1))^2), we should NOT simplify the base
-                if crate::canonical_forms::is_canonical_form(self.context, id) {
-                    debug!(
-                        "Skipping simplification of canonical Pow: {:?}",
-                        self.context.get(id)
-                    );
-                    id // Return as-is without recursing
-                } else {
-                    self.current_path.push(crate::step::PathStep::Base);
-                    self.ancestor_stack.push(id); // Track current node as parent for children
-                    let new_b = self.transform_expr_recursive(b);
-                    self.ancestor_stack.pop();
-                    self.current_path.pop();
-
-                    self.current_path.push(crate::step::PathStep::Exponent);
-                    self.ancestor_stack.push(id); // Track current node as parent for children
-                    let new_e = self.transform_expr_recursive(e);
-                    self.ancestor_stack.pop();
-                    self.current_path.pop();
-
-                    if new_b != b || new_e != e {
-                        self.context.add(Expr::Pow(new_b, new_e))
-                    } else {
-                        id
-                    }
-                }
-            }
+            Expr::Div(l, r) => self.transform_div(id, l, r),
+            Expr::Pow(b, e) => self.transform_pow(id, b, e),
             Expr::Neg(e) => {
                 self.current_path.push(crate::step::PathStep::Inner);
                 self.ancestor_stack.push(id); // Track current node as parent for children
@@ -1694,47 +1753,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     id
                 }
             }
-            Expr::Function(name, args) => {
-                // Check if this function is canonical before recursing into children
-                // For sqrt() and abs(), we might want to preserve certain forms like sqrt((x-1)^2)
-                if (name == "sqrt" || name == "abs")
-                    && crate::canonical_forms::is_canonical_form(self.context, id)
-                {
-                    debug!(
-                        "Skipping simplification of canonical Function: {:?}",
-                        self.context.get(id)
-                    );
-                    id // Return as-is without recursing into children
-                } else if is_hold_all_function(&name) {
-                    // HoldAll semantics: do NOT simplify arguments for these functions
-                    // This allows poly_gcd(a*g, b*g) to see the raw structure
-                    debug!(
-                        "HoldAll function, skipping child simplification: {:?}",
-                        self.context.get(id)
-                    );
-                    id // Return as-is, let the rule handle raw args
-                } else {
-                    let mut new_args = Vec::new();
-                    let mut changed = false;
-                    for (i, arg) in args.iter().enumerate() {
-                        self.current_path.push(crate::step::PathStep::Arg(i));
-                        self.ancestor_stack.push(id); // Track current node as parent for children
-                        let new_arg = self.transform_expr_recursive(*arg);
-                        self.ancestor_stack.pop();
-                        self.current_path.pop();
-
-                        if new_arg != *arg {
-                            changed = true;
-                        }
-                        new_args.push(new_arg);
-                    }
-                    if changed {
-                        self.context.add(Expr::Function(name, new_args))
-                    } else {
-                        id
-                    }
-                }
-            }
+            Expr::Function(name, args) => self.transform_function(id, name, args),
             Expr::Matrix { rows, cols, data } => {
                 // Recursively simplify matrix elements
                 let mut new_data = Vec::new();
