@@ -729,13 +729,16 @@ fn assert_metamorphic_combine_triple(
 // CSV-Based Identity Pairs
 // =============================================================================
 
-/// An identity pair loaded from CSV
+/// An identity pair loaded from CSV (supports both legacy 4-col and extended 7-col format)
 #[derive(Clone, Debug)]
 struct IdentityPair {
     exp: String,
     simp: String,
     vars: Vec<String>,
     mode: DomainRequirement,
+    bucket: Bucket,
+    branch_mode: BranchMode,
+    filter_spec: String, // e.g., "abs_lt(0.9)" or "" for none
 }
 
 /// Domain requirement for an identity
@@ -747,22 +750,24 @@ enum DomainRequirement {
 
 /// Classification bucket for identity pairs
 /// Determines how the test should be run and results interpreted
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[allow(dead_code)]
 enum Bucket {
     /// Pure algebraic/trig identity without branch issues
     Unconditional,
     /// True under domain conditions (requires x≠0, cos(x)≠0, etc.)
+    #[default]
     ConditionalRequires,
     /// Involves inverse trig, log, or complex pow - branch sensitive
     BranchSensitive,
 }
 
 /// Branch comparison mode for inverse trig and log identities
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[allow(dead_code)]
 enum BranchMode {
     /// Compare values directly (principal value strict)
+    #[default]
     PrincipalStrict,
     /// Compare with domain filtering (e.g., |x| < 1 for arctan)
     PrincipalWithFilter,
@@ -820,8 +825,11 @@ fn filter_abs_lt_and_away(bound: f64, singularities: Vec<f64>, eps: f64) -> impl
 // Numeric Equivalence Statistics
 // =============================================================================
 
+/// Maximum number of mismatches to record (avoid log bloat)
+const MAX_MISMATCH_RECORDS: usize = 5;
+
 /// Detailed statistics from numeric equivalence checking
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct NumericEquivStats {
     pub valid: usize,
@@ -831,6 +839,26 @@ struct NumericEquivStats {
     pub eval_failed: usize,
     pub filtered_out: usize,
     pub mismatches: Vec<String>,
+    pub max_abs_err: f64,
+    pub max_rel_err: f64,
+    pub worst_sample: Option<(f64, f64, f64)>, // (x, a, b)
+}
+
+impl Default for NumericEquivStats {
+    fn default() -> Self {
+        Self {
+            valid: 0,
+            near_pole: 0,
+            domain_error: 0,
+            asymmetric_invalid: 0,
+            eval_failed: 0,
+            filtered_out: 0,
+            mismatches: Vec::new(),
+            max_abs_err: 0.0,
+            max_rel_err: 0.0,
+            worst_sample: None,
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -847,6 +875,55 @@ impl NumericEquivStats {
             + self.eval_failed
             + self.filtered_out
     }
+
+    /// Record a mismatch (capped at MAX_MISMATCH_RECORDS)
+    fn record_mismatch(&mut self, x: f64, a: f64, b: f64, var: &str) {
+        let abs_err = (a - b).abs();
+        let scale = a.abs().max(b.abs()).max(1.0);
+        let rel_err = abs_err / scale;
+
+        // Update worst sample
+        if abs_err > self.max_abs_err {
+            self.max_abs_err = abs_err;
+            self.max_rel_err = rel_err;
+            self.worst_sample = Some((x, a, b));
+        }
+
+        // Record mismatch description (limited)
+        if self.mismatches.len() < MAX_MISMATCH_RECORDS {
+            self.mismatches.push(format!(
+                "{}={:.6}: a={:.10}, b={:.10}, diff={:.3e}",
+                var, x, a, b, abs_err
+            ));
+        }
+    }
+
+    /// Check if test is fragile (too many poles/domain errors)
+    fn is_fragile(&self) -> bool {
+        let total = self.total_samples();
+        if total == 0 {
+            return false;
+        }
+
+        let problematic = self.near_pole + self.domain_error;
+        (problematic as f64 / total as f64) > 0.30
+    }
+
+    /// Check for suspicious asymmetric failures
+    fn has_asymmetric_failures(&self) -> bool {
+        self.asymmetric_invalid > 0
+    }
+}
+
+/// Get minimum valid samples required based on bucket type
+#[allow(dead_code)]
+fn min_valid_for_bucket(bucket: Bucket, total_samples: usize) -> usize {
+    let ratio = match bucket {
+        Bucket::Unconditional => 0.70,       // 70% for pure identities
+        Bucket::ConditionalRequires => 0.50, // 50% for conditional
+        Bucket::BranchSensitive => 0.35,     // 35% for branch-sensitive
+    };
+    ((total_samples as f64) * ratio).ceil() as usize
 }
 
 /// Check numeric equivalence with BranchMode support
@@ -925,9 +1002,7 @@ where
                 if is_equal {
                     stats.valid += 1;
                 } else {
-                    stats
-                        .mismatches
-                        .push(format!("{}={}: a={:.10}, b={:.10}", var, x, va, vb));
+                    stats.record_mismatch(x, *va, *vb, var);
                 }
             }
             // Symmetric failures
@@ -951,9 +1026,9 @@ where
 }
 
 /// Load identity pairs from CSV file
-/// Format: exp,simp,vars,mode
-/// - vars: semicolon-separated variable names (e.g., "x" or "x;y")
-/// - mode: "g" for generic (default), "a" for assume-only
+/// Supports two formats:
+/// - Legacy 4-col: exp,simp,vars,mode (bucket=conditional_requires, branch=principal_strict)
+/// - Extended 7-col: exp,simp,vars,domain_mode,bucket,branch_mode,filter
 fn load_identity_pairs() -> Vec<IdentityPair> {
     let csv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/identity_pairs.csv");
     let content = std::fs::read_to_string(csv_path).expect("Failed to read identity_pairs.csv");
@@ -966,22 +1041,41 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
             continue;
         }
 
-        // Parse CSV: exp,simp,vars[,mode]
-        let parts: Vec<&str> = line.splitn(4, ',').collect();
-        if parts.len() >= 3 {
-            // Parse vars (semicolon-separated)
+        // Count columns to determine format
+        let parts: Vec<&str> = line.split(',').collect();
+
+        if parts.len() >= 7 {
+            // Extended 7-column format: exp,simp,vars,domain_mode,bucket,branch_mode,filter
             let vars: Vec<String> = parts[2]
                 .trim()
                 .split(';')
                 .map(|s| s.trim().to_string())
                 .collect();
 
-            // Parse mode (default to generic if not specified)
+            let mode = parse_domain_mode(parts[3].trim());
+            let bucket = parse_bucket(parts[4].trim());
+            let branch_mode = parse_branch_mode(parts[5].trim());
+            let filter_spec = parts[6].trim().to_string();
+
+            pairs.push(IdentityPair {
+                exp: parts[0].trim().to_string(),
+                simp: parts[1].trim().to_string(),
+                vars,
+                mode,
+                bucket,
+                branch_mode,
+                filter_spec,
+            });
+        } else if parts.len() >= 3 {
+            // Legacy 4-column format: exp,simp,vars,mode
+            let vars: Vec<String> = parts[2]
+                .trim()
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .collect();
+
             let mode = if parts.len() >= 4 {
-                match parts[3].trim() {
-                    "a" => DomainRequirement::Assume,
-                    _ => DomainRequirement::Generic,
-                }
+                parse_domain_mode(parts[3].trim())
             } else {
                 DomainRequirement::Generic
             };
@@ -991,11 +1085,41 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
                 simp: parts[1].trim().to_string(),
                 vars,
                 mode,
+                bucket: Bucket::default(),          // ConditionalRequires
+                branch_mode: BranchMode::default(), // PrincipalStrict
+                filter_spec: String::new(),
             });
         }
     }
 
     pairs
+}
+
+/// Parse domain mode from string
+fn parse_domain_mode(s: &str) -> DomainRequirement {
+    match s.to_lowercase().as_str() {
+        "a" | "assume" => DomainRequirement::Assume,
+        _ => DomainRequirement::Generic,
+    }
+}
+
+/// Parse bucket from string
+fn parse_bucket(s: &str) -> Bucket {
+    match s.to_lowercase().as_str() {
+        "unconditional" | "u" => Bucket::Unconditional,
+        "branch_sensitive" | "branch" | "b" => Bucket::BranchSensitive,
+        _ => Bucket::ConditionalRequires, // Default
+    }
+}
+
+/// Parse branch mode from string
+fn parse_branch_mode(s: &str) -> BranchMode {
+    match s.to_lowercase().as_str() {
+        "modulo_pi" | "mod_pi" => BranchMode::ModuloPi,
+        "modulo_2pi" | "mod_2pi" => BranchMode::Modulo2Pi,
+        "principal_with_filter" | "filter" => BranchMode::PrincipalWithFilter,
+        _ => BranchMode::PrincipalStrict, // Default
+    }
 }
 
 /// Run combination tests from CSV pairs
