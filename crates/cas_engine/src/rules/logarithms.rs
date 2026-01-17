@@ -1135,7 +1135,8 @@ impl crate::rule::Rule for ExponentialLogRule {
             };
 
             // Case 1: b^log(b, x) → x
-            // Requires Positive(x) - Analytic class (Generic blocks, only Assume allows)
+            // The condition x > 0 is IMPLICIT from ln(x)/log(b,x) being defined.
+            // This is NOT a new assumption - it's already required by the expression.
             if let Some((log_base, log_arg)) = get_log_parts(ctx, exp) {
                 if compare_expr(ctx, log_base, base) == Ordering::Equal {
                     let mode = parent_ctx.domain_mode();
@@ -1144,41 +1145,34 @@ impl crate::rule::Rule for ExponentialLogRule {
                     // Use prove_positive with ValueDomain
                     let arg_positive = crate::helpers::prove_positive(ctx, log_arg, vd);
 
-                    // Use Analytic gate with hint: Generic blocks with pedagogical message
-                    let key = crate::assumptions::AssumptionKey::positive_key(ctx, log_arg);
-                    let decision = crate::domain::can_apply_analytic_with_hint(
-                        mode,
-                        arg_positive,
-                        key,
-                        log_arg, // expr_id for pretty-printing
-                        "Exponential-Log Inverse",
-                    );
-
-                    if !decision.allow {
-                        return None; // Strict/Generic: block if not proven
+                    // In Strict mode: only allow if proven
+                    if mode == crate::domain::DomainMode::Strict
+                        && arg_positive != crate::domain::Proof::Proven
+                    {
+                        return None;
                     }
 
-                    // Build assumption events for unproven
-                    let assumption_events: smallvec::SmallVec<
-                        [crate::assumptions::AssumptionEvent; 1],
-                    > = if decision.assumption.is_some() {
-                        smallvec::smallvec![crate::assumptions::AssumptionEvent::positive_assumed(
-                            ctx, log_arg
-                        )]
-                    } else {
-                        smallvec::SmallVec::new()
-                    };
+                    // In Generic/Assume: allow with implicit requires
+                    // The condition x > 0 is ALREADY implied by log(b, x) existing.
+                    // This is like sqrt(x)^2 → x with requires x ≥ 0.
+                    use crate::implicit_domain::ImplicitCondition;
 
+                    if arg_positive == crate::domain::Proof::Proven {
+                        // Already proven positive, no requires needed
+                        return Some(crate::rule::Rewrite::new(log_arg).desc("b^log(b, x) = x"));
+                    }
+
+                    // Emit implicit requires (like sqrt(x)^2 → x)
                     return Some(
                         crate::rule::Rewrite::new(log_arg)
                             .desc("b^log(b, x) = x")
-                            .assume_all(assumption_events),
+                            .requires(ImplicitCondition::Positive(log_arg)),
                     );
                 }
             }
 
             // Case 2: b^(c * log(b, x)) → x^c
-            // Requires Positive(x) - Analytic class (Generic blocks, only Assume allows)
+            // Same logic as Case 1: x > 0 is IMPLICIT from log(b, x) existing.
             if let Expr::Mul(lhs, rhs) = &exp_data {
                 let vd = parent_ctx.value_domain();
                 let mode = parent_ctx.domain_mode();
@@ -1191,32 +1185,29 @@ impl crate::rule::Rule for ExponentialLogRule {
                             // Use prove_positive with ValueDomain
                             let arg_positive = crate::helpers::prove_positive(ctx, log_arg, vd);
 
-                            // Use Analytic gate: Generic blocks, only Assume allows unproven
-                            let decision = crate::domain::can_apply_analytic(mode, arg_positive);
-
-                            if !decision.allow {
-                                return None; // Strict/Generic: block if not proven
+                            // In Strict mode: only allow if proven
+                            if mode == crate::domain::DomainMode::Strict
+                                && arg_positive != crate::domain::Proof::Proven
+                            {
+                                return None;
                             }
 
                             let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
 
-                            // Build assumption events for unproven
-                            let assumption_events: smallvec::SmallVec<
-                                [crate::assumptions::AssumptionEvent; 1],
-                            > = if decision.assumption.is_some() {
-                                smallvec::smallvec![
-                                    crate::assumptions::AssumptionEvent::positive_assumed(
-                                        ctx, log_arg
-                                    )
-                                ]
-                            } else {
-                                smallvec::SmallVec::new()
-                            };
+                            // In Generic/Assume: allow with implicit requires
+                            use crate::implicit_domain::ImplicitCondition;
+
+                            if arg_positive == crate::domain::Proof::Proven {
+                                return Some(
+                                    crate::rule::Rewrite::new(new_expr)
+                                        .desc("b^(c*log(b, x)) = x^c"),
+                                );
+                            }
 
                             return Some(
                                 crate::rule::Rewrite::new(new_expr)
                                     .desc("b^(c*log(b, x)) = x^c")
-                                    .assume_all(assumption_events),
+                                    .requires(ImplicitCondition::Positive(log_arg)),
                             );
                         }
                     }
