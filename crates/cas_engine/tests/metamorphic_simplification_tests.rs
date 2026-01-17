@@ -738,7 +738,7 @@ struct IdentityPair {
     mode: DomainRequirement,
     bucket: Bucket,
     branch_mode: BranchMode,
-    filter_spec: String, // e.g., "abs_lt(0.9)" or "" for none
+    filter_spec: FilterSpec, // Parsed from CSV, e.g., "abs_lt(0.9)" → AbsLt { limit: 0.9 }
 }
 
 /// Domain requirement for an identity
@@ -819,6 +819,131 @@ fn filter_away_from(singularities: Vec<f64>, eps: f64) -> impl Fn(f64) -> bool {
 #[allow(dead_code)]
 fn filter_abs_lt_and_away(bound: f64, singularities: Vec<f64>, eps: f64) -> impl Fn(f64) -> bool {
     move |x| x.abs() < bound && singularities.iter().all(|&s| (x - s).abs() > eps)
+}
+
+// =============================================================================
+// FilterSpec for CSV-driven Filtering
+// =============================================================================
+
+/// Runtime-parseable filter specification (no closures, serializable)
+#[derive(Debug, Clone)]
+enum FilterSpec {
+    None,
+    AbsLt {
+        limit: f64,
+    },
+    AwayFrom {
+        centers: Vec<f64>,
+        eps: f64,
+    },
+    AbsLtAndAway {
+        limit: f64,
+        centers: Vec<f64>,
+        eps: f64,
+    },
+}
+
+impl FilterSpec {
+    /// Check if sample x should be included
+    fn accept(&self, x: f64) -> bool {
+        match self {
+            FilterSpec::None => true,
+            FilterSpec::AbsLt { limit } => x.abs() < *limit,
+            FilterSpec::AwayFrom { centers, eps } => centers.iter().all(|c| (x - c).abs() > *eps),
+            FilterSpec::AbsLtAndAway {
+                limit,
+                centers,
+                eps,
+            } => x.abs() < *limit && centers.iter().all(|c| (x - c).abs() > *eps),
+        }
+    }
+}
+
+/// Parse filter spec from CSV string
+/// Valid formats:
+///   "" or empty → None
+///   "abs_lt(0.9)" → AbsLt { limit: 0.9 }
+///   "away_from(1.57;-1.57;eps=0.01)" → AwayFrom { centers: [1.57, -1.57], eps: 0.01 }
+///   "abs_lt_and_away(0.9;1.0;-1.0;eps=0.1)" → AbsLtAndAway { limit: 0.9, centers: [1.0, -1.0], eps: 0.1 }
+fn parse_filter_spec(spec: &str, line_num: usize) -> FilterSpec {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return FilterSpec::None;
+    }
+
+    // abs_lt(limit)
+    if spec.starts_with("abs_lt(") && spec.ends_with(')') {
+        let inner = &spec[7..spec.len() - 1];
+        let limit: f64 = inner.parse().unwrap_or_else(|_| {
+            panic!("Invalid abs_lt limit at line {}: '{}'", line_num, spec);
+        });
+        return FilterSpec::AbsLt { limit };
+    }
+
+    // away_from(c1;c2;...;eps=<val>)
+    if spec.starts_with("away_from(") && spec.ends_with(')') {
+        let inner = &spec[10..spec.len() - 1];
+        return parse_away_from_inner(inner, line_num, spec);
+    }
+
+    // abs_lt_and_away(limit;c1;c2;...;eps=<val>)
+    if spec.starts_with("abs_lt_and_away(") && spec.ends_with(')') {
+        let inner = &spec[16..spec.len() - 1];
+        let parts: Vec<&str> = inner.split(';').collect();
+        if parts.is_empty() {
+            panic!("Invalid abs_lt_and_away at line {}: '{}'", line_num, spec);
+        }
+        let limit: f64 = parts[0].parse().unwrap_or_else(|_| {
+            panic!(
+                "Invalid abs_lt_and_away limit at line {}: '{}'",
+                line_num, spec
+            );
+        });
+        let remaining = parts[1..].join(";");
+        let away = parse_away_from_inner(&remaining, line_num, spec);
+        match away {
+            FilterSpec::AwayFrom { centers, eps } => {
+                return FilterSpec::AbsLtAndAway {
+                    limit,
+                    centers,
+                    eps,
+                };
+            }
+            _ => panic!("Invalid abs_lt_and_away at line {}: '{}'", line_num, spec),
+        }
+    }
+
+    panic!(
+        "Unknown filter_spec at line {}: '{}'. \
+         Expected: abs_lt(<f64>), away_from(<f64>;...; eps=<f64>), or abs_lt_and_away(...)",
+        line_num, spec
+    );
+}
+
+/// Parse the inner part of away_from: "c1;c2;...;eps=<val>"
+fn parse_away_from_inner(inner: &str, line_num: usize, spec: &str) -> FilterSpec {
+    let parts: Vec<&str> = inner.split(';').collect();
+    let mut centers = Vec::new();
+    let mut eps = 0.01; // default
+
+    for part in parts {
+        let part = part.trim();
+        if let Some(eps_str) = part.strip_prefix("eps=") {
+            eps = eps_str.parse().unwrap_or_else(|_| {
+                panic!("Invalid eps value at line {}: '{}'", line_num, spec);
+            });
+        } else if !part.is_empty() {
+            let c: f64 = part.parse().unwrap_or_else(|_| {
+                panic!(
+                    "Invalid center value '{}' at line {}: '{}'",
+                    part, line_num, spec
+                );
+            });
+            centers.push(c);
+        }
+    }
+
+    FilterSpec::AwayFrom { centers, eps }
 }
 
 // =============================================================================
@@ -1077,7 +1202,8 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
     let content = std::fs::read_to_string(csv_path).expect("Failed to read identity_pairs.csv");
 
     let mut pairs = Vec::new();
-    for line in content.lines() {
+    for (line_num, line) in content.lines().enumerate() {
+        let line_num = line_num + 1; // 1-indexed for humans
         let line = line.trim();
         // Skip comments and empty lines
         if line.is_empty() || line.starts_with('#') {
@@ -1098,7 +1224,7 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
             let mode = parse_domain_mode(parts[3].trim());
             let bucket = parse_bucket(parts[4].trim());
             let branch_mode = parse_branch_mode(parts[5].trim());
-            let filter_spec = parts[6].trim().to_string();
+            let filter_spec = parse_filter_spec(parts[6].trim(), line_num);
 
             pairs.push(IdentityPair {
                 exp: parts[0].trim().to_string(),
@@ -1130,7 +1256,7 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
                 mode,
                 bucket: legacy_bucket_from_env(), // Configurable via METATEST_LEGACY_BUCKET
                 branch_mode: BranchMode::default(),
-                filter_spec: String::new(),
+                filter_spec: FilterSpec::None,
             });
         }
     }

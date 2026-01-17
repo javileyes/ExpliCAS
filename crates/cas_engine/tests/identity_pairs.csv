@@ -424,6 +424,12 @@ sqrt(x^5),x^2*sqrt(x),x,g
 |x|^2,x^2,x,g
 sqrt(|x|^2),|x|,x,g
 
+# Regression: abs must never be incorrectly removed (soundness guards)
+abs(sin(x)),abs(sin(x)),x,g
+abs(cos(x)),abs(cos(x)),x,g
+abs(sin(x/2)),abs(sin(x/2)),x,g
+abs(cos(x/2)),abs(cos(x/2)),x,g
+
 # =============================================================================
 # SPECIAL VALUES AND LIMITS
 # =============================================================================
