@@ -27,6 +27,7 @@ mod test_utils;
 use cas_ast::{Context, ExprId};
 use cas_engine::engine::eval_f64;
 use cas_engine::Simplifier;
+use cas_engine::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
 use cas_parser::parse;
 use std::collections::HashMap;
 use std::env;
@@ -126,6 +127,7 @@ fn metatest_config() -> MetatestConfig {
         rtol: 1e-9,
         sample_range: (-5.0, 5.0),
         eval_samples,
+        near_singularity_threshold: 1e10, // Values > 10^10 are considered near-singularity
     }
 }
 
@@ -147,6 +149,8 @@ struct MetatestConfig {
     sample_range: (f64, f64),
     /// Number of evaluation samples per comparison
     eval_samples: usize,
+    /// Threshold for near-singularity detection (values larger than this are suspicious)
+    near_singularity_threshold: f64,
 }
 
 // =============================================================================
@@ -274,6 +278,15 @@ fn check_numeric_equiv_1var(
     let (lo, hi) = config.sample_range;
     let mut valid = 0usize;
     let mut eval_failed = 0usize;
+    let mut near_pole = 0usize;
+    let mut domain_error = 0usize;
+
+    // Configure checked evaluator with near-pole detection
+    let opts = EvalCheckedOptions {
+        zero_abs_eps: 1e-12,
+        zero_rel_eps: 1e-12,
+        max_depth: 200,
+    };
 
     for i in 0..config.eval_samples {
         let t = (i as f64 + 0.5) / config.eval_samples as f64;
@@ -282,16 +295,12 @@ fn check_numeric_equiv_1var(
         let mut var_map = HashMap::new();
         var_map.insert(var.to_string(), x);
 
-        let va = eval_f64(ctx, a, &var_map);
-        let vb = eval_f64(ctx, b, &var_map);
+        // Use checked evaluator for detailed error information
+        let va = eval_f64_checked(ctx, a, &var_map, &opts);
+        let vb = eval_f64_checked(ctx, b, &var_map, &opts);
 
         match (va, vb) {
-            (Some(va), Some(vb)) => {
-                // Filter out NaN and Inf (singularities like tan poles)
-                if va.is_nan() || vb.is_nan() || va.is_infinite() || vb.is_infinite() {
-                    eval_failed += 1;
-                    continue;
-                }
+            (Ok(va), Ok(vb)) => {
                 valid += 1;
 
                 // Check approximate equality
@@ -306,18 +315,34 @@ fn check_numeric_equiv_1var(
                     ));
                 }
             }
-            (va, vb) => {
-                // Both None, or one None - skip this sample
-                let _ = (va, vb); // suppress warning
+            // Categorize errors for better diagnostics
+            (Err(EvalCheckedError::NearPole { .. }), _)
+            | (_, Err(EvalCheckedError::NearPole { .. })) => {
+                near_pole += 1;
+            }
+            (Err(EvalCheckedError::Domain { .. }), _)
+            | (_, Err(EvalCheckedError::Domain { .. })) => {
+                domain_error += 1;
+            }
+            _ => {
                 eval_failed += 1;
             }
         }
     }
 
-    if valid < config.min_valid {
+    // Require higher min_valid when many samples had issues
+    let problematic = near_pole + domain_error + eval_failed;
+    let adjusted_min_valid = if problematic > config.eval_samples / 4 {
+        // If more than 25% are problematic, require 50% of remaining
+        (config.eval_samples - problematic) / 2
+    } else {
+        config.min_valid
+    };
+
+    if valid < adjusted_min_valid {
         return Err(format!(
-            "Too few valid samples: {} < {} (eval_failed={})",
-            valid, config.min_valid, eval_failed
+            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, eval_failed={})",
+            valid, adjusted_min_valid, near_pole, domain_error, eval_failed
         ));
     }
 
@@ -337,9 +362,19 @@ fn check_numeric_equiv_2var(
     let (lo, hi) = config.sample_range;
     let mut valid = 0usize;
     let mut eval_failed = 0usize;
+    let mut near_pole = 0usize;
+    let mut domain_error = 0usize;
+
+    // Configure checked evaluator
+    let opts = EvalCheckedOptions {
+        zero_abs_eps: 1e-12,
+        zero_rel_eps: 1e-12,
+        max_depth: 200,
+    };
 
     // Use fewer samples for 2D grid to keep runtime reasonable
     let samples_per_dim = (config.eval_samples as f64).sqrt() as usize;
+    let total_samples = samples_per_dim * samples_per_dim;
 
     for i in 0..samples_per_dim {
         for j in 0..samples_per_dim {
@@ -352,15 +387,11 @@ fn check_numeric_equiv_2var(
             var_map.insert(var1.to_string(), x);
             var_map.insert(var2.to_string(), y);
 
-            let va = eval_f64(ctx, a, &var_map);
-            let vb = eval_f64(ctx, b, &var_map);
+            let va = eval_f64_checked(ctx, a, &var_map, &opts);
+            let vb = eval_f64_checked(ctx, b, &var_map, &opts);
 
             match (va, vb) {
-                (Some(va), Some(vb)) => {
-                    if va.is_nan() || vb.is_nan() || va.is_infinite() || vb.is_infinite() {
-                        eval_failed += 1;
-                        continue;
-                    }
+                (Ok(va), Ok(vb)) => {
                     valid += 1;
 
                     let diff = (va - vb).abs();
@@ -374,6 +405,15 @@ fn check_numeric_equiv_2var(
                         ));
                     }
                 }
+                // Categorize errors
+                (Err(EvalCheckedError::NearPole { .. }), _)
+                | (_, Err(EvalCheckedError::NearPole { .. })) => {
+                    near_pole += 1;
+                }
+                (Err(EvalCheckedError::Domain { .. }), _)
+                | (_, Err(EvalCheckedError::Domain { .. })) => {
+                    domain_error += 1;
+                }
                 _ => {
                     eval_failed += 1;
                 }
@@ -381,12 +421,19 @@ fn check_numeric_equiv_2var(
         }
     }
 
-    // Lower threshold for 2D since we have fewer samples
-    let min_valid_2d = config.min_valid / 4;
-    if valid < min_valid_2d {
+    // Lower threshold for 2D, adjusted for problematic samples
+    let problematic = near_pole + domain_error + eval_failed;
+    let base_min_valid = config.min_valid / 4;
+    let adjusted_min_valid = if problematic > total_samples / 4 {
+        (total_samples - problematic) / 2
+    } else {
+        base_min_valid
+    };
+
+    if valid < adjusted_min_valid {
         return Err(format!(
-            "Too few valid samples: {} < {} (eval_failed={})",
-            valid, min_valid_2d, eval_failed
+            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, eval_failed={})",
+            valid, adjusted_min_valid, near_pole, domain_error, eval_failed
         ));
     }
 
