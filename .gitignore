@@ -19,3 +19,4 @@ desarrollo
 /crates/metatest_log.jsonl
 
 salida*
+crates/cas_engine/tests/baselines/metatest_baseline.jsonl

@@ -31,8 +31,8 @@ use cas_engine::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
 use cas_parser::parse;
 use std::collections::HashMap;
 use std::env;
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
 use std::time::SystemTime;
@@ -259,6 +259,19 @@ fn gen_expr(vars: &[&str], depth: usize, rng: &mut Lcg) -> String {
                 gen_expr(vars, 0, rng)
             }
         }
+    }
+}
+
+// =============================================================================
+// Reporting Helpers
+// =============================================================================
+
+/// Truncate an identity string for display (avoids log bloat)
+fn truncate_identity(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len - 3])
     }
 }
 
@@ -894,6 +907,41 @@ impl FilterSpec {
             FilterSpec::Range { min, max } => x >= *min && x <= *max,
         }
     }
+
+    /// Check if filter is None (no filtering applied)
+    fn is_none(&self) -> bool {
+        matches!(self, FilterSpec::None)
+    }
+
+    /// Convert to string representation (for reporting)
+    fn to_string(&self) -> String {
+        match self {
+            FilterSpec::None => String::new(),
+            FilterSpec::AbsLt { limit } => format!("abs_lt({})", limit),
+            FilterSpec::AwayFrom { centers, eps } => {
+                let centers_str: Vec<String> = centers.iter().map(|c| c.to_string()).collect();
+                format!("away_from({};eps={})", centers_str.join(";"), eps)
+            }
+            FilterSpec::AbsLtAndAway {
+                limit,
+                centers,
+                eps,
+            } => {
+                let centers_str: Vec<String> = centers.iter().map(|c| c.to_string()).collect();
+                format!(
+                    "abs_lt_and_away({};{};eps={})",
+                    limit,
+                    centers_str.join(";"),
+                    eps
+                )
+            }
+            FilterSpec::Gt { limit } => format!("gt({})", limit),
+            FilterSpec::Ge { limit } => format!("ge({})", limit),
+            FilterSpec::Lt { limit } => format!("lt({})", limit),
+            FilterSpec::Le { limit } => format!("le({})", limit),
+            FilterSpec::Range { min, max } => format!("range({};{})", min, max),
+        }
+    }
 }
 
 /// Parse filter spec from CSV string
@@ -1269,6 +1317,249 @@ fn classify_diagnostic(stats: &NumericEquivStats) -> DiagCategory {
 
     // Priority 5: Ok
     DiagCategory::Ok
+}
+
+// =============================================================================
+// JSONL Baseline System (Phase 2)
+// =============================================================================
+
+/// Snapshot of an identity's test results for baseline comparison
+#[derive(Clone, Debug)]
+struct IdentitySnapshot {
+    /// Stable ID: first 16 chars of hash(exp|simp|vars|mode|bucket|branch|filter)
+    id: String,
+    exp: String,
+    simp: String,
+    category: String,
+    // Raw stats (not rates - derive rates in comparator)
+    valid: usize,
+    filtered_out: usize,
+    near_pole: usize,
+    domain_error: usize,
+    eval_failed: usize,
+    asymmetric_invalid: usize,
+    mismatches: usize,
+    total_samples: usize,
+}
+
+impl IdentitySnapshot {
+    /// Create from IdentityPair and NumericEquivStats
+    fn from_pair_stats(
+        pair: &IdentityPair,
+        stats: &NumericEquivStats,
+        category: DiagCategory,
+    ) -> Self {
+        let id = generate_identity_id(pair);
+        Self {
+            id,
+            exp: pair.exp.clone(),
+            simp: pair.simp.clone(),
+            category: category.name().to_string(),
+            valid: stats.valid,
+            filtered_out: stats.filtered_out,
+            near_pole: stats.near_pole,
+            domain_error: stats.domain_error,
+            eval_failed: stats.eval_failed,
+            asymmetric_invalid: stats.asymmetric_invalid,
+            mismatches: stats.mismatches.len(),
+            total_samples: stats.total_samples(),
+        }
+    }
+
+    /// Serialize to JSON line
+    fn to_json(&self) -> String {
+        format!(
+            r#"{{"id":"{}","exp":"{}","simp":"{}","category":"{}","valid":{},"filtered_out":{},"near_pole":{},"domain_error":{},"eval_failed":{},"asymmetric":{},"mismatches":{},"total":{}}}"#,
+            self.id,
+            escape_json(&self.exp),
+            escape_json(&self.simp),
+            self.category,
+            self.valid,
+            self.filtered_out,
+            self.near_pole,
+            self.domain_error,
+            self.eval_failed,
+            self.asymmetric_invalid,
+            self.mismatches,
+            self.total_samples,
+        )
+    }
+
+    /// Parse from JSON line
+    fn from_json(line: &str) -> Option<Self> {
+        // Simple manual parsing (avoid serde dependency)
+        let get_str = |key: &str| -> Option<String> {
+            let pattern = format!(r#""{}":""#, key);
+            let start = line.find(&pattern)? + pattern.len();
+            let end = line[start..].find('"')? + start;
+            Some(line[start..end].to_string())
+        };
+        let get_usize = |key: &str| -> Option<usize> {
+            let pattern = format!(r#""{}":"#, key);
+            let start = line.find(&pattern)? + pattern.len();
+            let end_candidates = [',', '}'];
+            let end = end_candidates
+                .iter()
+                .filter_map(|c| line[start..].find(*c))
+                .min()?
+                + start;
+            line[start..end].parse().ok()
+        };
+
+        Some(Self {
+            id: get_str("id")?,
+            exp: unescape_json(&get_str("exp")?),
+            simp: unescape_json(&get_str("simp")?),
+            category: get_str("category")?,
+            valid: get_usize("valid")?,
+            filtered_out: get_usize("filtered_out")?,
+            near_pole: get_usize("near_pole")?,
+            domain_error: get_usize("domain_error")?,
+            eval_failed: get_usize("eval_failed")?,
+            asymmetric_invalid: get_usize("asymmetric")?,
+            mismatches: get_usize("mismatches")?,
+            total_samples: get_usize("total")?,
+        })
+    }
+
+    /// Calculate filtered_rate (for comparison)
+    fn filtered_rate(&self) -> f64 {
+        if self.total_samples == 0 {
+            0.0
+        } else {
+            self.filtered_out as f64 / self.total_samples as f64
+        }
+    }
+
+    /// Calculate invalid_rate (for comparison)
+    fn invalid_rate(&self) -> f64 {
+        if self.total_samples == 0 {
+            0.0
+        } else {
+            (self.near_pole + self.domain_error + self.eval_failed) as f64
+                / self.total_samples as f64
+        }
+    }
+}
+
+/// Generate stable ID for an identity (hash of canonical representation)
+fn generate_identity_id(pair: &IdentityPair) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    pair.exp.hash(&mut hasher);
+    pair.simp.hash(&mut hasher);
+    pair.vars.join(";").hash(&mut hasher);
+    format!("{:?}", pair.mode).hash(&mut hasher);
+    format!("{:?}", pair.bucket).hash(&mut hasher);
+    format!("{:?}", pair.branch_mode).hash(&mut hasher);
+    pair.filter_spec.to_string().hash(&mut hasher);
+
+    format!("{:016x}", hasher.finish())
+}
+
+/// Escape string for JSON output
+fn escape_json(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+/// Unescape JSON string
+fn unescape_json(s: &str) -> String {
+    s.replace("\\\"", "\"")
+        .replace("\\\\", "\\")
+        .replace("\\n", "\n")
+        .replace("\\r", "\r")
+        .replace("\\t", "\t")
+}
+
+/// Baseline file path
+fn baseline_file_path() -> PathBuf {
+    let base = env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+    base.join("tests/baselines/metatest_baseline.jsonl")
+}
+
+/// Category ranking for regression detection (higher = worse)
+fn category_rank(cat: &str) -> u8 {
+    match cat {
+        "Ok" => 0,
+        "Fragile" => 1,
+        "NeedsFilter" => 2,
+        "ConfigError" => 3,
+        "BugSignal" => 4,
+        _ => 5,
+    }
+}
+
+/// Check if a snapshot represents a regression compared to baseline
+#[derive(Debug)]
+struct RegressionResult {
+    id: String,
+    exp: String,
+    reasons: Vec<String>,
+}
+
+fn check_regression(
+    baseline: &IdentitySnapshot,
+    current: &IdentitySnapshot,
+) -> Option<RegressionResult> {
+    let mut reasons = Vec::new();
+
+    // 1. Category worsened
+    if category_rank(&current.category) > category_rank(&baseline.category) {
+        reasons.push(format!(
+            "category {} → {}",
+            baseline.category, current.category
+        ));
+    }
+
+    // 2. asymmetric went from 0 to >0
+    if baseline.asymmetric_invalid == 0 && current.asymmetric_invalid > 0 {
+        reasons.push(format!("asymmetric 0 → {}", current.asymmetric_invalid));
+    }
+
+    // 3. invalid_rate increased by >5%
+    let base_rate = baseline.invalid_rate();
+    let curr_rate = current.invalid_rate();
+    if curr_rate > base_rate + 0.05 {
+        reasons.push(format!(
+            "invalid_rate {:.1}% → {:.1}%",
+            base_rate * 100.0,
+            curr_rate * 100.0
+        ));
+    }
+
+    // 4. filtered_rate increased by >20% (absolute)
+    let base_filt = baseline.filtered_rate();
+    let curr_filt = current.filtered_rate();
+    if curr_filt > base_filt + 0.20 {
+        reasons.push(format!(
+            "filtered_rate {:.1}% → {:.1}%",
+            base_filt * 100.0,
+            curr_filt * 100.0
+        ));
+    }
+
+    // 5. mismatches went from 0 to >0 (for non-BranchSensitive)
+    if baseline.mismatches == 0 && current.mismatches > 0 {
+        reasons.push(format!("mismatches 0 → {}", current.mismatches));
+    }
+
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(RegressionResult {
+            id: current.id.clone(),
+            exp: truncate_identity(&current.exp, 50),
+            reasons,
+        })
+    }
 }
 
 /// Check fragility level based on bucket-specific thresholds
@@ -1784,11 +2075,17 @@ fn metatest_individual_identities_impl() {
         simp: String,
         bucket: Bucket,
         stats: NumericEquivStats,
+        filter_str: String, // Original filter spec from CSV (empty if None)
     }
 
     // Only collect diagnostics if METATEST_DIAG=1
     let diag_enabled = env::var("METATEST_DIAG").is_ok();
     let mut diagnostics: Vec<IdentityDiag> = Vec::new();
+
+    // Snapshot/baseline mode detection
+    let snapshot_enabled = env::var("METATEST_SNAPSHOT").is_ok();
+    let update_baseline = env::var("METATEST_UPDATE_BASELINE").is_ok();
+    let mut snapshots: Vec<(IdentityPair, NumericEquivStats)> = Vec::new();
 
     for pair in &pairs {
         // Skip assume-only identities in generic mode
@@ -1890,8 +2187,14 @@ fn metatest_individual_identities_impl() {
                     exp: pair.exp.clone(),
                     simp: pair.simp.clone(),
                     bucket: pair.bucket,
-                    stats,
+                    stats: stats.clone(),
+                    filter_str: pair.filter_spec.to_string(),
                 });
+
+                // Collect snapshot for baseline comparison
+                if snapshot_enabled || update_baseline {
+                    snapshots.push((pair.clone(), stats));
+                }
             }
 
             if result.is_ok() {
@@ -1963,6 +2266,50 @@ fn metatest_individual_identities_impl() {
             ok_count, bug_count, config_count, filter_count, fragile_count
         );
 
+        // Filter Coverage Report
+        let with_filter: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| !d.filter_str.is_empty())
+            .collect();
+        let filtered_count = with_filter.len();
+        let total_diag = diagnostics.len();
+
+        if filtered_count > 0 {
+            eprintln!(
+                "🔍 Filter Coverage: {}/{} identities have filters ({:.1}%)",
+                filtered_count,
+                total_diag,
+                filtered_count as f64 / total_diag as f64 * 100.0
+            );
+
+            // Sort by filtered_rate DESC (potential "cheating" filters)
+            let mut by_filtered: Vec<_> = diagnostics
+                .iter()
+                .filter(|d| !d.filter_str.is_empty())
+                .map(|d| {
+                    let total = d.stats.total_samples();
+                    let filtered_rate = if total > 0 {
+                        d.stats.filtered_out as f64 / total as f64
+                    } else {
+                        0.0
+                    };
+                    (filtered_rate, d)
+                })
+                .collect();
+            by_filtered.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+
+            eprintln!("   Top-5 by filtered_rate (potential 'cheating' filters):");
+            for (i, (rate, d)) in by_filtered.iter().take(5).enumerate() {
+                eprintln!(
+                    "   {:2}. [{:4.0}%] {} → {}",
+                    i + 1,
+                    rate * 100.0,
+                    d.filter_str,
+                    truncate_identity(&d.exp, 40)
+                );
+            }
+            eprintln!();
+        }
         // Helper to print a ranking section
         let print_ranking = |category: DiagCategory, items: Vec<&IdentityDiag>, max_show: usize| {
             if items.is_empty() {
@@ -2089,5 +2436,118 @@ fn metatest_individual_identities_impl() {
             "\n⚠️  {} identities failed numeric equivalence - may need domain restrictions",
             failed
         );
+    }
+
+    // JSONL Baseline Processing
+    if snapshot_enabled || update_baseline {
+        // Generate current snapshots
+        let current_snapshots: Vec<IdentitySnapshot> = snapshots
+            .iter()
+            .map(|(pair, stats)| {
+                let category = classify_diagnostic(stats);
+                IdentitySnapshot::from_pair_stats(pair, stats, category)
+            })
+            .collect();
+
+        let baseline_path = baseline_file_path();
+
+        if update_baseline {
+            // Write new baseline
+            if let Some(parent) = baseline_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let mut file = File::create(&baseline_path).expect("Failed to create baseline file");
+            for snap in &current_snapshots {
+                writeln!(file, "{}", snap.to_json()).expect("Failed to write baseline");
+            }
+            eprintln!(
+                "\n✅ Baseline updated: {} identities written to {}",
+                current_snapshots.len(),
+                baseline_path.display()
+            );
+        } else if snapshot_enabled {
+            // Compare against baseline
+            if !baseline_path.exists() {
+                eprintln!("\n⚠️  No baseline found at {}", baseline_path.display());
+                eprintln!("   Run with METATEST_UPDATE_BASELINE=1 to create one.");
+            } else {
+                // Load baseline
+                let file = File::open(&baseline_path).expect("Failed to open baseline file");
+                let reader = BufReader::new(file);
+                let baseline: HashMap<String, IdentitySnapshot> = reader
+                    .lines()
+                    .filter_map(|l| l.ok())
+                    .filter_map(|l| IdentitySnapshot::from_json(&l))
+                    .map(|s| (s.id.clone(), s))
+                    .collect();
+
+                // Check for regressions
+                let mut regressions: Vec<RegressionResult> = Vec::new();
+                let mut new_ids: Vec<String> = Vec::new();
+                let mut missing_ids: Vec<String> = Vec::new();
+
+                for snap in &current_snapshots {
+                    if let Some(base) = baseline.get(&snap.id) {
+                        if let Some(reg) = check_regression(base, snap) {
+                            regressions.push(reg);
+                        }
+                    } else {
+                        new_ids.push(snap.id.clone());
+                    }
+                }
+
+                let current_ids: std::collections::HashSet<_> =
+                    current_snapshots.iter().map(|s| &s.id).collect();
+                for (id, _) in &baseline {
+                    if !current_ids.contains(id) {
+                        missing_ids.push(id.clone());
+                    }
+                }
+
+                // Report results
+                eprintln!("\n📊 Baseline Comparison (METATEST_SNAPSHOT=1):");
+                eprintln!(
+                    "   Current: {} | Baseline: {} | Regressions: {} | New: {} | Missing: {}",
+                    current_snapshots.len(),
+                    baseline.len(),
+                    regressions.len(),
+                    new_ids.len(),
+                    missing_ids.len()
+                );
+
+                if !regressions.is_empty() {
+                    eprintln!("\n🚨 REGRESSIONS DETECTED:");
+                    for reg in &regressions {
+                        eprintln!("   • {}: {}", reg.exp, reg.reasons.join(", "));
+                    }
+                }
+
+                if !new_ids.is_empty() && new_ids.len() <= 5 {
+                    eprintln!("\n➕ New identities (not in baseline):");
+                    for id in &new_ids {
+                        eprintln!("   • {}", id);
+                    }
+                } else if !new_ids.is_empty() {
+                    eprintln!("\n➕ {} new identities not in baseline", new_ids.len());
+                }
+
+                if !missing_ids.is_empty() && missing_ids.len() <= 5 {
+                    eprintln!("\n➖ Missing identities (in baseline, not in current):");
+                    for id in &missing_ids {
+                        eprintln!("   • {}", id);
+                    }
+                } else if !missing_ids.is_empty() {
+                    eprintln!("\n➖ {} identities missing from current", missing_ids.len());
+                }
+
+                // Fail on regressions in CI
+                if !regressions.is_empty() {
+                    panic!(
+                        "Baseline regression detected: {} identities worsened",
+                        regressions.len()
+                    );
+                }
+            }
+        }
     }
 }
