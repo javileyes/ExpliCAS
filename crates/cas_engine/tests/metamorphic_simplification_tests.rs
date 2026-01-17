@@ -280,11 +280,13 @@ fn check_numeric_equiv_1var(
     let mut eval_failed = 0usize;
     let mut near_pole = 0usize;
     let mut domain_error = 0usize;
+    let mut asymmetric_invalid = 0usize; // L=Ok + R=Err or vice versa (suspicious)
 
     // Configure checked evaluator with near-pole detection
     let opts = EvalCheckedOptions {
         zero_abs_eps: 1e-12,
         zero_rel_eps: 1e-12,
+        trig_pole_eps: 1e-9, // Larger for trig due to FP errors near π/2
         max_depth: 200,
     };
 
@@ -299,7 +301,7 @@ fn check_numeric_equiv_1var(
         let va = eval_f64_checked(ctx, a, &var_map, &opts);
         let vb = eval_f64_checked(ctx, b, &var_map, &opts);
 
-        match (va, vb) {
+        match (&va, &vb) {
             (Ok(va), Ok(vb)) => {
                 valid += 1;
 
@@ -315,15 +317,18 @@ fn check_numeric_equiv_1var(
                     ));
                 }
             }
-            // Categorize errors for better diagnostics
-            (Err(EvalCheckedError::NearPole { .. }), _)
-            | (_, Err(EvalCheckedError::NearPole { .. })) => {
+            // Symmetric failures: both have same error type
+            (Err(EvalCheckedError::NearPole { .. }), Err(EvalCheckedError::NearPole { .. })) => {
                 near_pole += 1;
             }
-            (Err(EvalCheckedError::Domain { .. }), _)
-            | (_, Err(EvalCheckedError::Domain { .. })) => {
+            (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
                 domain_error += 1;
             }
+            // Asymmetric: one Ok, one Err (suspicious - may indicate bug)
+            (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+                asymmetric_invalid += 1;
+            }
+            // Other symmetric failures
             _ => {
                 eval_failed += 1;
             }
@@ -331,7 +336,7 @@ fn check_numeric_equiv_1var(
     }
 
     // Require higher min_valid when many samples had issues
-    let problematic = near_pole + domain_error + eval_failed;
+    let problematic = near_pole + domain_error + eval_failed + asymmetric_invalid;
     let adjusted_min_valid = if problematic > config.eval_samples / 4 {
         // If more than 25% are problematic, require 50% of remaining
         (config.eval_samples - problematic) / 2
@@ -341,8 +346,8 @@ fn check_numeric_equiv_1var(
 
     if valid < adjusted_min_valid {
         return Err(format!(
-            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, eval_failed={})",
-            valid, adjusted_min_valid, near_pole, domain_error, eval_failed
+            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, asymmetric={}, eval_failed={})",
+            valid, adjusted_min_valid, near_pole, domain_error, asymmetric_invalid, eval_failed
         ));
     }
 
@@ -364,11 +369,13 @@ fn check_numeric_equiv_2var(
     let mut eval_failed = 0usize;
     let mut near_pole = 0usize;
     let mut domain_error = 0usize;
+    let mut asymmetric_invalid = 0usize;
 
     // Configure checked evaluator
     let opts = EvalCheckedOptions {
         zero_abs_eps: 1e-12,
         zero_rel_eps: 1e-12,
+        trig_pole_eps: 1e-9,
         max_depth: 200,
     };
 
@@ -390,7 +397,7 @@ fn check_numeric_equiv_2var(
             let va = eval_f64_checked(ctx, a, &var_map, &opts);
             let vb = eval_f64_checked(ctx, b, &var_map, &opts);
 
-            match (va, vb) {
+            match (&va, &vb) {
                 (Ok(va), Ok(vb)) => {
                     valid += 1;
 
@@ -405,14 +412,19 @@ fn check_numeric_equiv_2var(
                         ));
                     }
                 }
-                // Categorize errors
-                (Err(EvalCheckedError::NearPole { .. }), _)
-                | (_, Err(EvalCheckedError::NearPole { .. })) => {
+                // Symmetric failures
+                (
+                    Err(EvalCheckedError::NearPole { .. }),
+                    Err(EvalCheckedError::NearPole { .. }),
+                ) => {
                     near_pole += 1;
                 }
-                (Err(EvalCheckedError::Domain { .. }), _)
-                | (_, Err(EvalCheckedError::Domain { .. })) => {
+                (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
                     domain_error += 1;
+                }
+                // Asymmetric: one Ok, one Err
+                (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+                    asymmetric_invalid += 1;
                 }
                 _ => {
                     eval_failed += 1;
@@ -422,7 +434,7 @@ fn check_numeric_equiv_2var(
     }
 
     // Lower threshold for 2D, adjusted for problematic samples
-    let problematic = near_pole + domain_error + eval_failed;
+    let problematic = near_pole + domain_error + eval_failed + asymmetric_invalid;
     let base_min_valid = config.min_valid / 4;
     let adjusted_min_valid = if problematic > total_samples / 4 {
         (total_samples - problematic) / 2
@@ -432,8 +444,8 @@ fn check_numeric_equiv_2var(
 
     if valid < adjusted_min_valid {
         return Err(format!(
-            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, eval_failed={})",
-            valid, adjusted_min_valid, near_pole, domain_error, eval_failed
+            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, asymmetric={}, eval_failed={})",
+            valid, adjusted_min_valid, near_pole, domain_error, asymmetric_invalid, eval_failed
         ));
     }
 

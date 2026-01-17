@@ -1140,9 +1140,16 @@ pub fn eval_f64(ctx: &Context, expr: ExprId, var_map: &HashMap<String, f64>) -> 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalCheckedError {
     /// Denominator is too close to zero (likely a pole)
-    NearPole { denom: f64, threshold: f64 },
+    NearPole {
+        /// Operation that caused the pole (e.g., "Div", "Tan", "Sec")
+        op: &'static str,
+        /// Denominator value
+        denom: f64,
+        /// Threshold that was exceeded
+        threshold: f64,
+    },
     /// Division by exactly zero
-    DivisionByZero,
+    DivisionByZero { op: &'static str },
     /// Domain error (e.g., log of non-positive, sqrt of negative in RealOnly)
     Domain { function: String, arg: f64 },
     /// Result is not finite (NaN or Inf)
@@ -1158,10 +1165,13 @@ pub enum EvalCheckedError {
 /// Options for checked evaluation.
 #[derive(Debug, Clone)]
 pub struct EvalCheckedOptions {
-    /// Absolute epsilon for near-zero denominator detection
+    /// Absolute epsilon for near-zero denominator detection in Div
     pub zero_abs_eps: f64,
-    /// Relative epsilon for near-zero denominator detection  
+    /// Relative epsilon for near-zero denominator detection in Div
     pub zero_rel_eps: f64,
+    /// Epsilon for trigonometric pole detection (tan, sec, csc, cot)
+    /// Should be larger than zero_abs_eps due to floating point errors near π/2
+    pub trig_pole_eps: f64,
     /// Maximum recursion depth
     pub max_depth: usize,
 }
@@ -1171,6 +1181,7 @@ impl Default for EvalCheckedOptions {
         Self {
             zero_abs_eps: 1e-12,
             zero_rel_eps: 1e-12,
+            trig_pole_eps: 1e-9, // Larger for trig due to FP errors near π/2
             max_depth: 200,
         }
     }
@@ -1233,7 +1244,7 @@ fn eval_f64_checked_depth(
             }
 
             if b == 0.0 {
-                return Err(EvalCheckedError::DivisionByZero);
+                return Err(EvalCheckedError::DivisionByZero { op: "Div" });
             }
 
             // Evaluate numerator for relative threshold calculation
@@ -1249,6 +1260,7 @@ fn eval_f64_checked_depth(
 
             if b.abs() <= threshold {
                 return Err(EvalCheckedError::NearPole {
+                    op: "Div",
                     denom: b,
                     threshold,
                 });
@@ -1326,9 +1338,10 @@ fn eval_function_checked(
         "tan" => {
             let x = arg_vals.first().copied().unwrap_or(0.0);
             let cos_x = x.cos();
-            let threshold = opts.zero_abs_eps;
+            let threshold = opts.trig_pole_eps;
             if cos_x.abs() <= threshold {
                 return Err(EvalCheckedError::NearPole {
+                    op: "Tan",
                     denom: cos_x,
                     threshold,
                 });
@@ -1340,9 +1353,10 @@ fn eval_function_checked(
         "sec" => {
             let x = arg_vals.first().copied().unwrap_or(0.0);
             let cos_x = x.cos();
-            let threshold = opts.zero_abs_eps;
+            let threshold = opts.trig_pole_eps;
             if cos_x.abs() <= threshold {
                 return Err(EvalCheckedError::NearPole {
+                    op: "Sec",
                     denom: cos_x,
                     threshold,
                 });
@@ -1352,9 +1366,10 @@ fn eval_function_checked(
         "csc" => {
             let x = arg_vals.first().copied().unwrap_or(0.0);
             let sin_x = x.sin();
-            let threshold = opts.zero_abs_eps;
+            let threshold = opts.trig_pole_eps;
             if sin_x.abs() <= threshold {
                 return Err(EvalCheckedError::NearPole {
+                    op: "Csc",
                     denom: sin_x,
                     threshold,
                 });
@@ -1364,9 +1379,10 @@ fn eval_function_checked(
         "cot" => {
             let x = arg_vals.first().copied().unwrap_or(0.0);
             let sin_x = x.sin();
-            let threshold = opts.zero_abs_eps;
+            let threshold = opts.trig_pole_eps;
             if sin_x.abs() <= threshold {
                 return Err(EvalCheckedError::NearPole {
+                    op: "Cot",
                     denom: sin_x,
                     threshold,
                 });

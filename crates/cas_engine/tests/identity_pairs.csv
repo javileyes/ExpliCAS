@@ -467,8 +467,8 @@ cos(x)*cos(y),(cos(x-y) + cos(x+y))/2,x;y,g
 sin(x)*cos(y),(sin(x+y) + sin(x-y))/2,x;y,g
 
 # Advanced half-angle
-sin(x/2),sqrt((1 - cos(x))/2),x,g
-cos(x/2),sqrt((1 + cos(x))/2),x,g
+abs(sin(x/2)),sqrt((1 - cos(x))/2),x,g
+abs(cos(x/2)),sqrt((1 + cos(x))/2),x,g
 
 # Tangent addition
 tan(x) + tan(y),sin(x+y)/(cos(x)*cos(y)),x;y,g
@@ -481,7 +481,7 @@ tan(x) + tan(y),sin(x+y)/(cos(x)*cos(y)),x;y,g
 x^4 + 4,(x^2 + 2*x + 2)*(x^2 - 2*x + 2),x,g
 
 # Cyclotomic-like
-x^4 + x^3 + x^2 + x + 1,(x^2 + x + 1)*(x^2 - x + 1) - x^2,x,g
+x^4 + x^3 + x^2 + x + 1,(x^5 - 1)/(x - 1),x,a
 x^3 + x^2 + x + 1,(x+1)*(x^2+1),x,g
 
 # Higher binomials
@@ -539,7 +539,6 @@ x^(ln(y)/ln(x)),y,x;y,g
 # =============================================================================
 
 # AM-GM related (constant cases)
-(x + 1/x)/2,|x + 1/x|/2,x,g
 
 # Cauchy-Schwarz related structure
 (x^2 + y^2)*(a^2 + b^2),(x*a + y*b)^2 + (x*b - y*a)^2,a;b;x;y,g
@@ -552,10 +551,8 @@ x^(ln(y)/ln(x)),y,x;y,g
 # =============================================================================
 
 # Chebyshev products
-sin(x)*sin(2*x)*sin(3*x),sin(6*x)/(4*8),x,g
 
 # Tangent products
-tan(x)*tan(2*x)*tan(3*x),tan(x) + tan(2*x) + tan(3*x) - tan(6*x),x,g
 
 # Secant/Cosecant relations
 sec(x)^2 - tan(x)^2,1,x,g
@@ -582,7 +579,6 @@ arcsin(x) + arccos(x),pi/2,x,g
 
 # arctan compositions
 arctan(x) + arctan(1/x),pi/2,x,g
-2*arctan(x),arctan(2*x/(1-x^2)),x,g
 
 # =============================================================================
 # SPECIAL TRIG VALUES 
