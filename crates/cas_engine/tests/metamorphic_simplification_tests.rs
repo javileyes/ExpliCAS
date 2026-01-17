@@ -1085,14 +1085,47 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
                 simp: parts[1].trim().to_string(),
                 vars,
                 mode,
-                bucket: Bucket::default(),          // ConditionalRequires
-                branch_mode: BranchMode::default(), // PrincipalStrict
+                bucket: legacy_bucket_from_env(), // Configurable via METATEST_LEGACY_BUCKET
+                branch_mode: BranchMode::default(),
                 filter_spec: String::new(),
             });
         }
     }
 
     pairs
+}
+
+/// Get legacy bucket from environment variable (for migration flexibility)
+/// METATEST_LEGACY_BUCKET=unconditional|conditional_requires (default)
+fn legacy_bucket_from_env() -> Bucket {
+    match env::var("METATEST_LEGACY_BUCKET").ok().as_deref() {
+        Some("unconditional") => Bucket::Unconditional,
+        _ => Bucket::ConditionalRequires,
+    }
+}
+
+/// Validate filter spec - fail-fast if malformed
+/// Valid formats: "", "abs_lt(0.9)", "away_from(1.0;-1.0;eps=0.1)", "abs_lt_and_away(...)"
+#[allow(dead_code)]
+fn validate_filter_spec(spec: &str, line_num: usize) {
+    if spec.is_empty() {
+        return; // Empty is valid (no filter)
+    }
+
+    // Basic syntax check: must start with known function name and have balanced parens
+    let valid_prefixes = ["abs_lt(", "away_from(", "abs_lt_and_away("];
+    let has_valid_prefix = valid_prefixes.iter().any(|p| spec.starts_with(p));
+    let has_balanced_parens =
+        spec.chars().filter(|&c| c == '(').count() == spec.chars().filter(|&c| c == ')').count();
+    let ends_with_paren = spec.ends_with(')');
+
+    if !has_valid_prefix || !has_balanced_parens || !ends_with_paren {
+        panic!(
+            "Invalid filter_spec at line {}: '{}'. \
+             Expected: abs_lt(<f64>), away_from(<f64>;...; eps=<f64>), or abs_lt_and_away(...)",
+            line_num, spec
+        );
+    }
 }
 
 /// Parse domain mode from string

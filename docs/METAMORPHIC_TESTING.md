@@ -1,159 +1,295 @@
-# Metamorphic Testing Framework
+# Metamorphic Equivalence Testing
 
-ExpliCAS includes a **metamorphic testing** framework that validates mathematical correctness through invariant properties, catching bugs that traditional golden tests miss.
+> Motor de mejora continua para el engine CAS basado en tests de identidades matemáticas.
 
-## Overview
+## Introducción
 
-Metamorphic testing exploits the property that if `A` simplifies to `B`, then `A + e` must equal `B + e` for any expression `e`. This catches:
-- Incomplete `requires` conditions
-- Rule priority issues
-- Cancellation failures in context
-- Soundness bugs in transformation rules
+El sistema de **Metamorphic Equivalence Testing** es la herramienta principal para:
 
-## Quick Start
+1. **Validar** que el engine simplifica correctamente expresiones matemáticas
+2. **Detectar** debilidades en las reglas de simplificación (identidades que no pasan simbólicamente)
+3. **Identificar** bugs reales mediante detección de asimetrías numéricas
+4. **Medir** la cobertura de simplificación del engine
 
-```bash
-# Run metatests (CI mode: 50 samples, depth 3)
-cargo test -p cas_engine --test metamorphic_simplification_tests
+---
 
-# Stress mode (local: 500 samples, depth 5)
-METATEST_STRESS=1 cargo test -p cas_engine --test metamorphic_simplification_tests
+## Arquitectura del Sistema
 
-# Reproduce with specific seed
-METATEST_SEED=12345 cargo test -p cas_engine --test metamorphic_simplification_tests
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    identity_pairs.csv                        │
+│  (347+ identidades: algebra, trig, log, rationales, etc.)   │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   load_identity_pairs()                      │
+│  Soporta: 4-col legacy | 7-col extended                     │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+           ┌───────────────┴───────────────┐
+           ▼                               ▼
+┌─────────────────────┐         ┌────────────────────────────┐
+│  Symbolic Check     │         │    Numeric Check           │
+│  simplify(L) == R   │         │  eval_f64_checked(L, R)    │
+│  (engine-level)     │         │  (fallback validation)     │
+└─────────┬───────────┘         └─────────────┬──────────────┘
+          │                                   │
+          ▼                                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    NumericEquivStats                         │
+│  valid | near_pole | domain_error | asymmetric_invalid      │
+│  max_abs_err | worst_sample | is_fragile()                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Configuration
+---
 
-| Environment Variable | Default | Stress Mode | Description |
-|---------------------|---------|-------------|-------------|
-| `METATEST_STRESS` | `0` | `1` | Enable stress mode |
-| `METATEST_SEED` | `0xC0FFEE` | - | RNG seed for reproducibility |
+## Formato CSV de Identidades
 
-| Parameter | CI Mode | Stress Mode |
-|-----------|---------|-------------|
-| `samples` | 50 | 200 |
-| `min_valid` | 20 | 100 |
-| `depth` | 3 | 3 |
-| `eval_samples` | 200 | 300 |
-| `atol/rtol` | 1e-9 | 1e-9 |
-
-## Expression Generator
-
-The random expression generator uses only "safe" operations to avoid domain issues:
-
-### Allowed
-- Variables from the identity
-- Small integer constants (-3 to 3)
-- `+`, `-`, `*`
-- `pow(base, k)` with `k ∈ {0,1,2,3,4}`
-- `sin(...)`, `cos(...)` (total functions)
-
-### NOT Allowed (domain issues)
-- Division (`/`)
-- `log`, `ln`, `sqrt`, `root`
-- Negative exponents
-
-## Historical Logging
-
-Every test run is logged to `crates/metatest_log.jsonl` in JSON Lines format:
-
-```json
-{"timestamp":1768499153,"test":"pythagorean_identity","seed":12648430,"samples":50,"depth":3,"min_valid":20,"stress":false,"passed":1,"failed":0,"skipped":0}
+### Legacy (4 columnas)
+```csv
+# exp,simp,vars,domain_mode
+sin(x)^2+cos(x)^2,1,x,g
 ```
 
-### Analyzing Logs
-
-```bash
-# View last 5 runs
-tail -5 crates/metatest_log.jsonl
-
-# Filter failures
-jq 'select(.failed > 0)' crates/metatest_log.jsonl
-
-# Summary by test
-jq -s 'group_by(.test) | map({test: .[0].test, runs: length, passed: [.[] | .passed] | add})' crates/metatest_log.jsonl
+### Extended (7 columnas)
+```csv
+# exp,simp,vars,domain_mode,bucket,branch_mode,filter
+2*arctan(x),arctan(2*x/(1-x^2)),x,a,branch_sensitive,modulo_pi,abs_lt(0.9)
 ```
 
-## Test Cases
+### Campos
 
-| Test | Identity | Status |
-|------|----------|--------|
-| `pythagorean_identity` | sin²x + cos²x = 1 | ✅ |
-| `double_angle_sin` | sin(2x) = 2·sin(x)·cos(x) | ✅ |
-| `double_angle_cos` | cos(2x) = cos²x - sin²x | ✅ |
-| `add_zero` | x + 0 = x | ✅ |
-| `mul_one` | x · 1 = x | ✅ |
-| `binomial_square` | (x+1)² = x² + 2x + 1 | ✅ |
-| `difference_of_squares` | (x-1)(x+1) = x² - 1 | ✅ |
-| `polynomial_simplify` | (x+1)(x-1) + 1 = x² | ✅ |
-| `log_product` | ln(2) + ln(3) = ln(6) | ⏸️ Skipped (no vars) |
-| `triple_tan_identity` | tan(x)·tan(π/3-x)·tan(π/3+x) = tan(3x) | ✅ |
+| Campo | Valores | Descripción |
+|-------|---------|-------------|
+| `exp` | expresión | Left-hand side (forma expandida) |
+| `simp` | expresión | Right-hand side (forma simplificada) |
+| `vars` | `x` o `x;y` | Variables separadas por `;` |
+| `domain_mode` | `g`/`a` | Generic o Assume (DomainMode) |
+| `bucket` | ver abajo | Clasificación de la identidad |
+| `branch_mode` | ver abajo | Modo de comparación numérica |
+| `filter` | spec | Filtro de muestreo |
 
-## Failure Output
+---
 
-When a test fails, it outputs full context for reproduction:
+## Sistema de Buckets
 
-```text
-Metatest FAILED (seed=12648430, iter=42)
-A = tan(x) * tan(pi/3 - x) * tan(pi/3 + x)
-B = tan(3*x)
-e = (x) + (sin(x * 2))
-A+e = (tan(x) * tan(pi/3 - x) * tan(pi/3 + x)) + ((x) + (sin(x * 2)))
-B+e = (tan(3*x)) + ((x) + (sin(x * 2)))
-A+e simplified = 1 + tan(3 * x) + cos(x) + x^2
-B+e simplified = 1 + cos(x) + x^2 + (3 * sin(x) - 4 * sin(x)^3) / (4 * cos(x)^3 - 3 * cos(x))
-Error: Too few valid samples: 0 < 20 (eval_failed=200)
+Los buckets clasifican identidades por su "tipo de verdad":
+
+### `unconditional`
+- Identidades algebraicas/trigonométricas puras
+- **min_valid: 70%** de muestras
+- `asymmetric_invalid > 0` → **FAIL**
+- Ejemplo: `sin(x)^2 + cos(x)^2 = 1`
+
+### `conditional_requires`
+- Requieren condiciones de dominio (`x ≠ 0`, `cos(x) ≠ 0`)
+- **min_valid: 50%** de muestras
+- El evaluador checked detecta NearPole/Domain automáticamente
+- Ejemplo: `tan(x) = sin(x)/cos(x)`
+
+### `branch_sensitive`
+- Involucran arctan/arcsin/log/pow con bases negativas
+- **min_valid: 35%** de muestras
+- `asymmetric_invalid` solo es warning
+- Ejemplo: `2*arctan(x) = arctan(2x/(1-x²))`
+
+---
+
+## Modos de Comparación (BranchMode)
+
+### `principal_strict`
+Comparación directa con atol/rtol:
+```rust
+|L - R| <= atol + rtol * max(|L|, |R|, 1.0)
 ```
 
-## Adding New Tests
+### `modulo_pi`
+Para identidades de arctan (difieren por kπ):
+```rust
+circular_dist(L, R, π) <= tolerance
+```
+
+### `modulo_2pi`
+Para identidades trigonométricas generales:
+```rust
+circular_dist(L, R, 2π) <= tolerance
+```
+
+### `principal_with_filter`
+Como `principal_strict` pero **requiere** filter no vacío. Panic si filter = None.
+
+---
+
+## Evaluador Checked (`eval_f64_checked`)
+
+### Errores Detectados
+
+| Error | Causa | Tratamiento |
+|-------|-------|-------------|
+| `NearPole { op, denom, threshold }` | Denominador ≈ 0 | sample inválido |
+| `DivisionByZero { op }` | Denominador = 0 | sample inválido |
+| `Domain { function, arg }` | log(≤0), sqrt(<0) | sample inválido |
+| `NonFinite` | NaN o Inf | sample inválido |
+| `DepthExceeded` | Recursión excesiva | sample inválido |
+
+### Opciones
 
 ```rust
-#[test]
-fn metatest_my_identity() {
-    // Document the identity being tested
-    // sum_formula: sin(a+b) = sin(a)cos(b) + cos(a)sin(b)
-    assert_metamorphic_addition(
-        "sum_formula",           // Test name (for logging)
-        "sin(a + b)",            // Expression A
-        "sin(a)*cos(b) + cos(a)*sin(b)",  // Expected simplified B
-        &["a", "b"],             // Variables (max 1 for now)
-    );
+EvalCheckedOptions {
+    zero_abs_eps: 1e-12,   // Para divisiones
+    zero_rel_eps: 1e-12,   // Escala con numerador
+    trig_pole_eps: 1e-9,   // Mayor para trig (FP errors en π/2)
+    max_depth: 200,
 }
 ```
 
-## Implementation Details
+---
 
-### Deterministic RNG
+## Filtros de Muestreo
 
-Uses a Linear Congruential Generator (LCG) for reproducibility:
+### Sintaxis CSV
+
+```csv
+# Sin filtro
+...,,
+
+# |x| < 0.9
+...abs_lt(0.9),
+
+# Evitar singularidades
+...away_from(1.5707963;-1.5707963;eps=0.01),
+
+# Combinado
+...abs_lt_and_away(0.95;1.0;-1.0;eps=0.1),
+```
+
+### Funciones Disponibles
 
 ```rust
-struct Lcg(u64);
-impl Lcg {
-    fn new(seed: u64) -> Self { Self(seed) }
-    fn next_u64(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1);
-        self.0
-    }
+filter_abs_lt(bound)           // |x| < bound
+filter_away_from(vals, eps)    // evita valores específicos
+filter_abs_lt_and_away(...)    // combinación
+```
+
+---
+
+## Métricas y Diagnósticos
+
+### NumericEquivStats
+
+```rust
+struct NumericEquivStats {
+    valid: usize,              // Samples que pasaron
+    near_pole: usize,          // Ambos L y R tienen polo
+    domain_error: usize,       // Ambos L y R tienen error de dominio
+    asymmetric_invalid: usize, // L ok, R err (o viceversa) - SOSPECHOSO
+    eval_failed: usize,        // Otros fallos
+    filtered_out: usize,       // Rechazados por filtro
+    mismatches: Vec<String>,   // Top 5 discrepancias
+    max_abs_err: f64,          // Mayor error absoluto
+    max_rel_err: f64,          // Mayor error relativo
+    worst_sample: (x, a, b),   // Punto con mayor error
 }
 ```
 
-### Numeric Verification
+### Indicadores Clave
 
-- Expressions are parsed, simplified, then evaluated at sample points
-- Uses `atol + rtol * scale` tolerance for comparison
-- Requires `min_valid` successful evaluations (filters NaN/Inf)
+| Métrica | Significado | Acción |
+|---------|-------------|--------|
+| `asymmetric_invalid > 0` | Bug probable en engine | Investigar |
+| `is_fragile()` | >30% near_pole/domain | Revisar muestreo |
+| `mismatches.len() > 0` | Fallo numérico real | Verificar identidad |
 
-## Resolved Issues
+---
 
-### Triple Tan Identity (Fixed)
+## Ejecución de Tests
 
-**Original problem**: When `tan(3*x)` appeared in sum context (B+e), `TanToSinCosRule` expanded it to complex sin/cos forms, while the identity result from A was protected. This caused different canonical forms.
+### Test Individual (diagnóstico)
 
-**Fix implemented** (V2.15):
-1. **Anti-worsen guard** on `TanToSinCosRule`: Don't expand `tan(n*x)` where n is integer > 1
-2. **Inf filtering** in numeric verification: Filter out infinity values from singularities
-3. **`__hold` support** in `eval_f64`: Transparently evaluate held expressions
+```bash
+# Modo genérico (default)
+cargo test --package cas_engine --test metamorphic_simplification_tests \
+    -- metatest_individual --ignored --nocapture
 
-Both A+e and B+e now simplify to `1 + tan(3·x) + cos(x) + x²` and pass numeric verification.
+# Modo assume
+METATEST_MODE=assume cargo test ...
+
+# Migración: bucket legacy = unconditional
+METATEST_LEGACY_BUCKET=unconditional cargo test ...
+```
+
+### Test de Combinaciones
+
+```bash
+# Pequeño (CI)
+cargo test metatest_csv_combinations_small
+
+# Completo
+cargo test metatest_csv_combinations_full --ignored
+```
+
+---
+
+## Interpretación de Resultados
+
+### Salida Típica
+
+```
+📊 Individual Identity Results:
+   Total tested: 347
+   ✅ Symbolic: 241 (69%)
+   ❌ Failed: 0
+   ⏭️  Skipped: 18
+```
+
+### Qué Significan
+
+- **Symbolic**: Engine produjo la forma canónica esperada
+- **Failed**: Ni simbólico ni numérico equivalentes (bug o identidad incorrecta)
+- **Skipped**: Identidad requiere modo `assume` y test corre en `generic`
+
+### Mejorar el Engine
+
+1. **Aumentar Symbolic %**: Añadir reglas de simplificación
+2. **Reducir Failed**: Verificar identidad matemática o corregir regla
+3. **Investigar asymmetric_invalid**: Señal de bug en evaluación
+
+---
+
+## Agregar Nuevas Identidades
+
+### Proceso
+
+1. Añadir línea a `identity_pairs.csv`
+2. Ejecutar test para verificar
+3. Si falla simbólicamente pero pasa numéricamente → oportunidad de mejora del engine
+4. Si falla numéricamente → verificar matemáticamente la identidad
+
+### Buenas Prácticas
+
+- Usar `unconditional` solo para identidades realmente universales
+- Añadir filtros para identidades con singularidades conocidas
+- Documentar identidades branch-sensitive con comentarios
+
+---
+
+## Variables de Entorno
+
+| Variable | Valores | Default | Descripción |
+|----------|---------|---------|-------------|
+| `METATEST_MODE` | `generic`/`assume` | `generic` | DomainMode del engine |
+| `METATEST_STRESS` | `0`/`1` | `0` | Más samples, mayor depth |
+| `METATEST_LEGACY_BUCKET` | `unconditional`/`conditional_requires` | `conditional_requires` | Bucket para CSV 4-col |
+
+---
+
+## Archivo de Referencia
+
+```
+crates/cas_engine/tests/
+├── identity_pairs.csv              # Base de identidades
+├── metamorphic_simplification_tests.rs  # Implementación
+└── metatest.log                    # Historial de ejecuciones
+```
