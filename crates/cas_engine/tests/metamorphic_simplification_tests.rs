@@ -745,6 +745,211 @@ enum DomainRequirement {
     Assume,  // Requires DomainMode::Assume (a)
 }
 
+/// Classification bucket for identity pairs
+/// Determines how the test should be run and results interpreted
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+enum Bucket {
+    /// Pure algebraic/trig identity without branch issues
+    Unconditional,
+    /// True under domain conditions (requires x≠0, cos(x)≠0, etc.)
+    ConditionalRequires,
+    /// Involves inverse trig, log, or complex pow - branch sensitive
+    BranchSensitive,
+}
+
+/// Branch comparison mode for inverse trig and log identities
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+enum BranchMode {
+    /// Compare values directly (principal value strict)
+    PrincipalStrict,
+    /// Compare with domain filtering (e.g., |x| < 1 for arctan)
+    PrincipalWithFilter,
+    /// Compare modulo π (for arctan identities)
+    ModuloPi,
+    /// Compare modulo 2π (for general trig identities)
+    Modulo2Pi,
+}
+
+/// Check approximate equality modulo a period (for branch-sensitive comparisons)
+///
+/// Returns true if the circular distance between a and b (mod period) is within tolerance.
+/// Used for arctan identities (mod π) and general trig (mod 2π).
+/// Handles NaN/Inf by returning false.
+#[allow(dead_code)]
+fn approx_eq_mod_period(a: f64, b: f64, period: f64, atol: f64, rtol: f64) -> bool {
+    // Handle non-finite values
+    if !a.is_finite() || !b.is_finite() || !period.is_finite() || period <= 0.0 {
+        return false;
+    }
+
+    // Calculate circular distance
+    let diff = (a - b).rem_euclid(period);
+    let circular_dist = diff.min(period - diff);
+
+    let scale = a.abs().max(b.abs()).max(1.0);
+    let allowed = atol + rtol * scale;
+
+    circular_dist <= allowed
+}
+
+// =============================================================================
+// Standard Sample Filters
+// =============================================================================
+
+/// Filter: |x| < bound
+#[allow(dead_code)]
+fn filter_abs_lt(bound: f64) -> impl Fn(f64) -> bool {
+    move |x| x.abs() < bound
+}
+
+/// Filter: keep samples away from singularities
+#[allow(dead_code)]
+fn filter_away_from(singularities: Vec<f64>, eps: f64) -> impl Fn(f64) -> bool {
+    move |x| singularities.iter().all(|&s| (x - s).abs() > eps)
+}
+
+/// Filter: |x| < bound AND away from singularities
+#[allow(dead_code)]
+fn filter_abs_lt_and_away(bound: f64, singularities: Vec<f64>, eps: f64) -> impl Fn(f64) -> bool {
+    move |x| x.abs() < bound && singularities.iter().all(|&s| (x - s).abs() > eps)
+}
+
+// =============================================================================
+// Numeric Equivalence Statistics
+// =============================================================================
+
+/// Detailed statistics from numeric equivalence checking
+#[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
+struct NumericEquivStats {
+    pub valid: usize,
+    pub near_pole: usize,
+    pub domain_error: usize,
+    pub asymmetric_invalid: usize,
+    pub eval_failed: usize,
+    pub filtered_out: usize,
+    pub mismatches: Vec<String>,
+}
+
+#[allow(dead_code)]
+impl NumericEquivStats {
+    fn is_pass(&self, min_valid: usize) -> bool {
+        self.valid >= min_valid && self.mismatches.is_empty()
+    }
+
+    fn total_samples(&self) -> usize {
+        self.valid
+            + self.near_pole
+            + self.domain_error
+            + self.asymmetric_invalid
+            + self.eval_failed
+            + self.filtered_out
+    }
+}
+
+/// Check numeric equivalence with BranchMode support
+///
+/// This is the unified branch-aware numeric equivalence checker.
+/// - PrincipalStrict: direct comparison with atol/rtol
+/// - ModuloPi: compare modulo π (for arctan identities)
+/// - Modulo2Pi: compare modulo 2π (for trig identities)
+/// - PrincipalWithFilter: direct comparison but requires filter (panics if None)
+#[allow(dead_code)]
+fn check_numeric_equiv_branch_1var<F>(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var: &str,
+    branch_mode: BranchMode,
+    config: &MetatestConfig,
+    filter: Option<F>,
+) -> NumericEquivStats
+where
+    F: Fn(f64) -> bool,
+{
+    use std::f64::consts::PI;
+
+    // PrincipalWithFilter requires a filter
+    if branch_mode == BranchMode::PrincipalWithFilter && filter.is_none() {
+        panic!("PrincipalWithFilter mode requires a non-None filter");
+    }
+
+    let (lo, hi) = config.sample_range;
+    let mut stats = NumericEquivStats::default();
+
+    let opts = EvalCheckedOptions {
+        zero_abs_eps: 1e-12,
+        zero_rel_eps: 1e-12,
+        trig_pole_eps: 1e-9,
+        max_depth: 200,
+    };
+
+    for i in 0..config.eval_samples {
+        let t = (i as f64 + 0.5) / config.eval_samples as f64;
+        let x = lo + (hi - lo) * t;
+
+        // Apply optional filter
+        if let Some(ref f) = filter {
+            if !f(x) {
+                stats.filtered_out += 1;
+                continue;
+            }
+        }
+
+        let mut var_map = HashMap::new();
+        var_map.insert(var.to_string(), x);
+
+        let va = eval_f64_checked(ctx, a, &var_map, &opts);
+        let vb = eval_f64_checked(ctx, b, &var_map, &opts);
+
+        match (&va, &vb) {
+            (Ok(va), Ok(vb)) => {
+                // Choose comparison method based on branch mode
+                let is_equal = match branch_mode {
+                    BranchMode::PrincipalStrict | BranchMode::PrincipalWithFilter => {
+                        let diff = (va - vb).abs();
+                        let scale = va.abs().max(vb.abs()).max(1.0);
+                        let allowed = config.atol + config.rtol * scale;
+                        diff <= allowed
+                    }
+                    BranchMode::ModuloPi => {
+                        approx_eq_mod_period(*va, *vb, PI, config.atol, config.rtol)
+                    }
+                    BranchMode::Modulo2Pi => {
+                        approx_eq_mod_period(*va, *vb, 2.0 * PI, config.atol, config.rtol)
+                    }
+                };
+
+                if is_equal {
+                    stats.valid += 1;
+                } else {
+                    stats
+                        .mismatches
+                        .push(format!("{}={}: a={:.10}, b={:.10}", var, x, va, vb));
+                }
+            }
+            // Symmetric failures
+            (Err(EvalCheckedError::NearPole { .. }), Err(EvalCheckedError::NearPole { .. })) => {
+                stats.near_pole += 1;
+            }
+            (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
+                stats.domain_error += 1;
+            }
+            // Asymmetric: one Ok, one Err (suspicious)
+            (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
+                stats.asymmetric_invalid += 1;
+            }
+            _ => {
+                stats.eval_failed += 1;
+            }
+        }
+    }
+
+    stats
+}
+
 /// Load identity pairs from CSV file
 /// Format: exp,simp,vars,mode
 /// - vars: semicolon-separated variable names (e.g., "x" or "x;y")
