@@ -615,6 +615,119 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// Abs Sqrt Rule: |sqrt(x)| → sqrt(x)
+// Square root is always non-negative (when it exists in reals)
+// =============================================================================
+define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
+    // Match abs(sqrt(x)) or abs(x^(1/2))
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "abs" && args.len() == 1 {
+            let arg = args[0];
+
+            // Check for sqrt(x) function
+            if let Expr::Function(inner_name, _inner_args) = ctx.get(arg) {
+                if inner_name == "sqrt" {
+                    // |sqrt(x)| → sqrt(x)
+                    return Some(Rewrite::new(arg).desc("|√x| = √x"));
+                }
+            }
+
+            // Check for x^(1/2) form
+            if let Expr::Pow(_base, exp) = ctx.get(arg) {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    // Check if exponent is 1/2
+                    if n.numer() == &num_bigint::BigInt::from(1)
+                        && n.denom() == &num_bigint::BigInt::from(2)
+                    {
+                        // |x^(1/2)| → x^(1/2)
+                        return Some(Rewrite::new(arg).desc("|√x| = √x"));
+                    }
+                }
+            }
+        }
+    }
+    None
+});
+
+// =============================================================================
+// Abs Exp Rule: |e^x| → e^x
+// Exponential is always positive
+// =============================================================================
+define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
+    // Match abs(exp(x)) or abs(e^x)
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "abs" && args.len() == 1 {
+            let arg = args[0];
+
+            // Check for exp(x) function
+            if let Expr::Function(inner_name, _inner_args) = ctx.get(arg) {
+                if inner_name == "exp" {
+                    // |exp(x)| → exp(x)
+                    return Some(Rewrite::new(arg).desc("|e^x| = e^x"));
+                }
+            }
+
+            // Check for e^x form (Pow with base = Constant(E))
+            if let Expr::Pow(base, _exp) = ctx.get(arg) {
+                if let Expr::Constant(c) = ctx.get(*base) {
+                    if matches!(c, cas_ast::Constant::E) {
+                        // |e^x| → e^x
+                        return Some(Rewrite::new(arg).desc("|e^x| = e^x"));
+                    }
+                }
+            }
+        }
+    }
+    None
+});
+
+// =============================================================================
+// Abs Sum Of Squares Rule: |x² + y²| → x² + y²
+// Sum of squares is always non-negative
+// =============================================================================
+define_rule!(AbsSumOfSquaresRule, "Abs Of Sum Of Squares", |ctx, expr| {
+    // Match abs(a + b) where both a and b are non-negative (squares, abs, etc.)
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "abs" && args.len() == 1 {
+            let arg = args[0];
+
+            // Check if the argument is provably non-negative
+            if is_sum_of_nonnegative(ctx, arg) {
+                return Some(Rewrite::new(arg).desc("|x² + ...| = x² + ..."));
+            }
+        }
+    }
+    None
+});
+
+/// Helper: Check if an expression is a sum of non-negative terms
+fn is_sum_of_nonnegative(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    match ctx.get(expr) {
+        // x² is non-negative
+        Expr::Pow(_, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                n.is_integer() && n.to_integer().is_even()
+            } else {
+                false
+            }
+        }
+        // |x| is non-negative
+        Expr::Function(name, _) if name == "abs" => true,
+        // sqrt(x) is non-negative
+        Expr::Function(name, _) if name == "sqrt" => true,
+        // exp(x) is positive
+        Expr::Function(name, _) if name == "exp" => true,
+        // Positive number is non-negative
+        Expr::Number(n) => !n.is_negative(),
+        // Sum: both sides must be non-negative
+        Expr::Add(l, r) => is_sum_of_nonnegative(ctx, *l) && is_sum_of_nonnegative(ctx, *r),
+        // Product of two non-negatives is non-negative
+        Expr::Mul(l, r) => is_sum_of_nonnegative(ctx, *l) && is_sum_of_nonnegative(ctx, *r),
+        _ => false,
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
                                                            // V2.14.45: SimplifySqrtOddPowerRule DISABLED - causes split/merge cycle with ProductPowerRule
@@ -630,5 +743,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AbsOfEvenPowerRule)); // |x^2k| → x^2k
     simplifier.add_rule(Box::new(AbsProductRule)); // |x|*|y| → |xy|
     simplifier.add_rule(Box::new(AbsQuotientRule)); // |x|/|y| → |x/y|
+    simplifier.add_rule(Box::new(AbsSqrtRule)); // |sqrt(x)| → sqrt(x)
+    simplifier.add_rule(Box::new(AbsExpRule)); // |e^x| → e^x
+    simplifier.add_rule(Box::new(AbsSumOfSquaresRule)); // |x² + y²| → x² + y²
     simplifier.add_rule(Box::new(EvaluateMetaFunctionsRule)); // Make simplify/factor/expand transparent
 }
