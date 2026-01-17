@@ -602,6 +602,101 @@ Una transición hacia la derecha es regresión; hacia la izquierda es mejora.
 
 ---
 
+## Shuffle Canonicalization Test
+
+Verifica que `simplify(E) == simplify(shuffle(E))` para detectar bugs de canonicalización orden-dependiente.
+
+### Dual Check
+
+| Check | Propósito | Resultado esperado |
+|-------|-----------|-------------------|
+| **Semántico** | `simplify(E) ≡ simplify(shuffle(E))` numéricamente | **0 failures** (bug si falla) |
+| **Estructural** | `simplify(E) == simplify(shuffle(E))` exacto | Métrica (ideal: 0) |
+
+### Comandos
+
+```bash
+# Modo métrica (no bloquea, reporta)
+METATEST_SHUFFLE=1 cargo test --package cas_engine \
+    --test metamorphic_simplification_tests -- metatest_shuffle --ignored --nocapture
+
+# Modo estricto (falla si hay structural diffs)
+METATEST_SHUFFLE=1 METATEST_STRICT_CANON=1 cargo test --package cas_engine \
+    --test metamorphic_simplification_tests -- metatest_shuffle --ignored --nocapture
+```
+
+### Output
+
+```
+🔀 Shuffle Canonicalization Test
+   Mode: METRIC (report only)
+📊 Shuffle Results:
+   Tested: 778 expressions
+   Semantic failures: 0 (MUST be 0)
+   Structural diffs: 164 (canonicalization gaps)
+✅ Semantic checks passed. 164 structural diffs (non-blocking).
+```
+
+### Variables de Entorno
+
+| Variable | Valor | Descripción |
+|----------|-------|-------------|
+| `METATEST_SHUFFLE` | `1` | Activa el test de shuffle |
+| `METATEST_STRICT_CANON` | `1` | Falla CI si hay structural diffs |
+
+---
+
+## MetaTransform Test
+
+Verifica que identidades se mantienen bajo transformaciones: `A(T(x)) ≡ B(T(x))`.
+
+### Transforms Disponibles
+
+| Transform | Descripción | Uso |
+|-----------|-------------|-----|
+| `scale:k` | x → k·x | Detecta errores de paridad, trig odd/even |
+| `shift:k` | x → x+k | Desplaza dominio, puede acercarse a polos |
+| `square` | x → x² | Cambia dominio fuerte (x≥0) |
+
+### Comandos
+
+```bash
+# Defaults: scale(2), scale(-1)
+METATEST_TRANSFORMS_DEFAULT=1 cargo test --package cas_engine \
+    --test metamorphic_simplification_tests -- metatest_transform --ignored --nocapture
+
+# Custom transforms
+METATEST_TRANSFORMS=scale:2,shift:1,square cargo test --package cas_engine \
+    --test metamorphic_simplification_tests -- metatest_transform --ignored --nocapture
+```
+
+### Output
+
+```
+🔄 MetaTransform Test
+   Transforms: ["scale(2)", "scale(-1)"]
+📊 Transform Results:
+   Total tests: 778
+   Passed: 775 (99.6%)
+   Skipped (bucket gate): 0
+   Semantic failures: 3
+```
+
+### Variables de Entorno
+
+| Variable | Valor | Descripción |
+|----------|-------|-------------|
+| `METATEST_TRANSFORMS` | `scale:2,shift:1` | Lista de transforms |
+| `METATEST_TRANSFORMS_DEFAULT` | `1` | Usa defaults (scale:2, scale:-1) |
+| `METATEST_TRANSFORM_MIN_VALID_FACTOR` | `0.6` | Factor para min_valid |
+
+### Bucket Gating
+
+- **Unconditional/ConditionalRequires**: Todos los transforms
+- **BranchSensitive**: Solo `scale(2)` (evita cruces de rama)
+
+---
+
 ## Identidades de Regresión (Soundness Guards)
 
 Identidades "idempotentes" que garantizan que reglas peligrosas no se apliquen incorrectamente:

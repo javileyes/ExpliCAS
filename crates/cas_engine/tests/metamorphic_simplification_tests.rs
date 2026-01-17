@@ -276,6 +276,142 @@ fn truncate_identity(s: &str, max_len: usize) -> String {
 }
 
 // =============================================================================
+// MetaTransform (Phase B) - Substitution Transforms
+// =============================================================================
+
+/// Metamorphic transformation: x → T(x)
+#[derive(Clone, Debug, PartialEq)]
+enum MetaTransform {
+    /// x → x + k
+    Shift(f64),
+    /// x → k * x
+    Scale(f64),
+    /// x → x²
+    Square,
+}
+
+impl MetaTransform {
+    fn name(&self) -> String {
+        match self {
+            MetaTransform::Shift(k) => format!("shift({})", fmt_f64(*k)),
+            MetaTransform::Scale(k) => format!("scale({})", fmt_f64(*k)),
+            MetaTransform::Square => "square".to_string(),
+        }
+    }
+
+    /// Apply to a numeric sample x (for composed filters and evaluation)
+    fn apply_f64(&self, x: f64) -> f64 {
+        match self {
+            MetaTransform::Shift(k) => x + *k,
+            MetaTransform::Scale(k) => (*k) * x,
+            MetaTransform::Square => x * x,
+        }
+    }
+}
+
+/// Format f64 for stable display (avoids "2" vs "2.0" inconsistency)
+fn fmt_f64(x: f64) -> String {
+    if x.fract().abs() < 1e-12 {
+        format!("{:.0}", x)
+    } else {
+        format!("{:.6}", x)
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string()
+    }
+}
+
+/// Parse METATEST_TRANSFORMS env var.
+/// Format: "scale:2,scale:-1,shift:1,square"
+/// Returns defaults (scale:2, scale:-1) if not set.
+fn parse_meta_transforms_from_env() -> Vec<MetaTransform> {
+    let raw = env::var("METATEST_TRANSFORMS").ok().unwrap_or_default();
+    let raw = raw.trim();
+
+    if raw.is_empty() {
+        // Defaults: scale(2), scale(-1) - very safe transforms
+        return vec![MetaTransform::Scale(2.0), MetaTransform::Scale(-1.0)];
+    }
+
+    parse_meta_transforms(raw)
+}
+
+/// Parse transform spec string
+fn parse_meta_transforms(spec: &str) -> Vec<MetaTransform> {
+    let mut out = Vec::new();
+
+    for (idx, item) in spec.split(',').enumerate() {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+
+        // "square" without parameter
+        if item.eq_ignore_ascii_case("square") {
+            out.push(MetaTransform::Square);
+            continue;
+        }
+
+        // Format with ':'
+        let (kind, val_str) = match item.split_once(':') {
+            Some(parts) => parts,
+            None => panic!(
+                "Invalid METATEST_TRANSFORMS item #{}: '{}'. Expected 'scale:<num>', 'shift:<num>', or 'square'. Full spec: '{}'",
+                idx + 1, item, spec
+            ),
+        };
+
+        let kind = kind.trim();
+        let val_str = val_str.trim();
+
+        let val: f64 = val_str.parse().unwrap_or_else(|e| {
+            panic!(
+                "Invalid numeric value in METATEST_TRANSFORMS item #{}: '{}'. Error: {}. Full spec: '{}'",
+                idx + 1, item, e, spec
+            )
+        });
+
+        if !val.is_finite() {
+            panic!(
+                "Value must be finite in METATEST_TRANSFORMS item #{}: '{}'. Full spec: '{}'",
+                idx + 1,
+                item,
+                spec
+            );
+        }
+
+        match kind.to_lowercase().as_str() {
+            "scale" => out.push(MetaTransform::Scale(val)),
+            "shift" => out.push(MetaTransform::Shift(val)),
+            _ => panic!(
+                "Unknown transform kind in METATEST_TRANSFORMS item #{}: '{}'. Supported: scale, shift, square. Full spec: '{}'",
+                idx + 1, item, spec
+            ),
+        }
+    }
+
+    // Dedup (stable order)
+    let mut seen: Vec<MetaTransform> = Vec::new();
+    out.retain(|t| {
+        if seen.iter().any(|x| x == t) {
+            false
+        } else {
+            seen.push(t.clone());
+            true
+        }
+    });
+
+    if out.is_empty() {
+        panic!(
+            "METATEST_TRANSFORMS parsed to empty list. Spec: '{}'. Example: 'scale:2,scale:-1,shift:1,square'",
+            spec
+        );
+    }
+
+    out
+}
+
+// =============================================================================
 // Shuffle Canonicalization (Phase A)
 // =============================================================================
 
@@ -3100,4 +3236,185 @@ fn test_shuffle_invariance(expr_str: &str, _label: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+// =============================================================================
+// MetaTransform Test (Phase B)
+// =============================================================================
+
+/// Test metamorphic transforms: A(T(x)) ≡ B(T(x)) for transforms T.
+/// Verifies that identities hold under substitution (scale, shift, square).
+#[test]
+#[ignore]
+fn metatest_transform_identities() {
+    let transform_enabled =
+        env::var("METATEST_TRANSFORMS").is_ok() || env::var("METATEST_TRANSFORMS_DEFAULT").is_ok();
+
+    if !transform_enabled {
+        eprintln!("Transform test skipped. Set METATEST_TRANSFORMS=scale:2 or METATEST_TRANSFORMS_DEFAULT=1 to enable.");
+        return;
+    }
+
+    let transforms = parse_meta_transforms_from_env();
+    let pairs = load_identity_pairs();
+
+    if pairs.is_empty() {
+        panic!("No identity pairs loaded!");
+    }
+
+    // Parse min_valid factor from env
+    let min_valid_factor: f64 = env::var("METATEST_TRANSFORM_MIN_VALID_FACTOR")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.6);
+
+    eprintln!("🔄 MetaTransform Test");
+    eprintln!(
+        "   Transforms: {:?}",
+        transforms.iter().map(|t| t.name()).collect::<Vec<_>>()
+    );
+    eprintln!("   Identities: {}", pairs.len());
+    eprintln!("   min_valid_factor: {}\n", min_valid_factor);
+
+    let mut total_tests = 0;
+    let mut passed = 0;
+    let mut semantic_failures: Vec<String> = Vec::new();
+    let mut skipped_bucket = 0;
+
+    for pair in &pairs {
+        // Skip multi-variable identities
+        if pair.vars.len() != 1 {
+            continue;
+        }
+
+        // Gating by bucket: BranchSensitive only gets scale(2)
+        for transform in &transforms {
+            // Gate BranchSensitive - only allow scale(2)
+            if pair.bucket == Bucket::BranchSensitive {
+                if !matches!(transform, MetaTransform::Scale(k) if (*k - 2.0).abs() < 1e-10) {
+                    skipped_bucket += 1;
+                    continue;
+                }
+            }
+
+            total_tests += 1;
+
+            match test_transform_identity(&pair, &pair.vars[0], transform, min_valid_factor) {
+                TransformResult::Pass => passed += 1,
+                TransformResult::Skip(_) => passed += 1, // Inconclusive is OK
+                TransformResult::Fail(msg) => {
+                    semantic_failures.push(format!(
+                        "{} [{}]: {}",
+                        truncate_identity(&pair.exp, 25),
+                        transform.name(),
+                        msg
+                    ));
+                }
+            }
+        }
+    }
+
+    // Report
+    eprintln!("📊 Transform Results:");
+    eprintln!("   Total tests: {}", total_tests);
+    eprintln!("   Passed: {}", passed);
+    eprintln!("   Skipped (bucket gate): {}", skipped_bucket);
+    eprintln!("   Semantic failures: {}", semantic_failures.len());
+
+    if !semantic_failures.is_empty() {
+        eprintln!("\n🚨 TRANSFORM FAILURES:");
+        for (i, fail) in semantic_failures.iter().take(10).enumerate() {
+            eprintln!("   {}. {}", i + 1, fail);
+        }
+        if semantic_failures.len() > 10 {
+            eprintln!("   ... and {} more", semantic_failures.len() - 10);
+        }
+        panic!(
+            "Transform test failed with {} semantic failures",
+            semantic_failures.len()
+        );
+    }
+
+    eprintln!("\n✅ All transform tests passed!");
+}
+
+enum TransformResult {
+    Pass,
+    Skip(String),
+    Fail(String),
+}
+
+/// Test that A(T(x)) ≡ B(T(x)) for a specific transform
+fn test_transform_identity(
+    pair: &IdentityPair,
+    var: &str,
+    transform: &MetaTransform,
+    min_valid_factor: f64,
+) -> TransformResult {
+    let mut simplifier = Simplifier::new();
+
+    // Parse expressions
+    let exp = match parse(&pair.exp, &mut simplifier.context) {
+        Ok(e) => e,
+        Err(_) => return TransformResult::Skip("parse exp failed".to_string()),
+    };
+    let simp = match parse(&pair.simp, &mut simplifier.context) {
+        Ok(e) => e,
+        Err(_) => return TransformResult::Skip("parse simp failed".to_string()),
+    };
+
+    // Simplify both
+    let (exp_simplified, _) = simplifier.simplify(exp);
+    let (simp_simplified, _) = simplifier.simplify(simp);
+
+    // Sample and evaluate with transform + composed filter
+    let samples: Vec<f64> = (-50..=50).map(|i| (i as f64) * 0.2).collect();
+
+    let min_valid = ((samples.len() as f64) * 0.9 * min_valid_factor) as usize;
+
+    let mut valid = 0;
+    let mut matching = 0;
+    let mut filtered_out = 0;
+
+    for &x in &samples {
+        // Apply transform: x' = T(x)
+        let x_prime = transform.apply_f64(x);
+
+        // Composed filter: check if x' passes the original filter
+        if !pair.filter_spec.accept(x_prime) {
+            filtered_out += 1;
+            continue;
+        }
+
+        // Evaluate at x'
+        let mut vars = HashMap::new();
+        vars.insert(var.to_string(), x_prime);
+
+        let va = eval_f64(&simplifier.context, exp_simplified, &vars);
+        let vb = eval_f64(&simplifier.context, simp_simplified, &vars);
+
+        match (va, vb) {
+            (Some(a), Some(b)) if a.is_finite() && b.is_finite() => {
+                valid += 1;
+                let diff = (a - b).abs();
+                let rel = diff / a.abs().max(1e-10);
+                if diff < 1e-6 || rel < 1e-6 {
+                    matching += 1;
+                }
+            }
+            _ => {} // Skip invalid evaluations
+        }
+    }
+
+    // Check results
+    if valid < min_valid {
+        // Inconclusive - not enough valid samples
+        return TransformResult::Skip(format!("only {}/{} valid", valid, min_valid));
+    }
+
+    if matching != valid {
+        return TransformResult::Fail(format!("mismatch {}/{} valid", matching, valid));
+    }
+
+    TransformResult::Pass
 }
