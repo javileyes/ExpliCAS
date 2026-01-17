@@ -136,16 +136,17 @@ mod analytic_class {
         );
     }
 
-    /// CRITICAL FIX: exp(ln(x)) → x requires Positive(x)
-    /// This is the exact case reported by the user
+    /// V2.15.4 POLICY CHANGE: exp(ln(x)) → x now ALLOWED in Generic mode.
+    /// The condition x > 0 is IMPLICIT from ln(x), not a new assumption.
+    /// Similar to how sqrt(x)^2 → x with requires x ≥ 0.
     #[test]
     fn exp_ln_x_generic_blocked() {
-        // exp(ln(x)) → x requires Positive(x) - Analytic
+        // exp(ln(x)) → x: x > 0 is IMPLICIT from ln(x) existing
         let output = simplify_with_mode("exp(ln(x))", DomainMode::Generic);
-        // Should NOT simplify to just "x"
-        assert_ne!(
+        // SHOULD simplify to x with implicit requires
+        assert_eq!(
             output, "x",
-            "Generic should BLOCK exp(ln(x)) → x (Positive is Analytic), got: {}",
+            "Generic should ALLOW exp(ln(x)) → x (implicit domain from ln(x)), got: {}",
             output
         );
     }

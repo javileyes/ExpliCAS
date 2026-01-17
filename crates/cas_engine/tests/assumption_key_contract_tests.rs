@@ -162,14 +162,39 @@ fn positive_emitted_for_log_product_expansion() {
     );
 }
 
-/// CONTRACT: e^ln(x) → x emits Positive(x) assumption in Assume mode
+/// CONTRACT: e^ln(x) → x emits Positive(x) as IMPLICIT requirement in Generic/Assume mode
+/// This is NOT an assumption (heuristic) but an IMPLICIT domain requirement from ln(x).
+/// Similar to how sqrt(x)^2 → x requires x ≥ 0.
 #[test]
 fn positive_emitted_for_exp_ln_inverse() {
-    let steps = simplify_with_assume_steps("exp(ln(x))");
+    // Use Generic mode - should work with implicit requires
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.set_collect_steps(true);
+    let expr = parse("exp(ln(x))", &mut simplifier.context).expect("parse failed");
+
+    let opts = SimplifyOptions {
+        domain: DomainMode::Generic,
+        collect_steps: true,
+        ..Default::default()
+    };
+
+    let (_, steps) = simplifier.simplify_with_options(expr, opts);
+
+    // The condition x > 0 should be in required_conditions (implicit domain), not assumption_events
+    let has_positive_require = steps.iter().any(|s| {
+        s.required_conditions.iter().any(|c| {
+            let display = c.display(&simplifier.context);
+            display.contains("x") && display.contains("> 0")
+        })
+    });
 
     assert!(
-        has_assumption_kind(&steps, "positive"),
-        "exp(ln(x)) should emit Positive assumption for x"
+        has_positive_require,
+        "exp(ln(x)) should emit x > 0 as required_condition (implicit domain from ln). Steps: {:?}",
+        steps
+            .iter()
+            .map(|s| (&s.required_conditions, &s.assumption_events))
+            .collect::<Vec<_>>()
     );
 }
 

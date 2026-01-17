@@ -18,16 +18,16 @@
 //! | ComplexEnabled | Generic    | YES         | YES      | ln multivalued, principal branch |
 //! | ComplexEnabled | Assume     | YES         | YES      | Same warning for complex |
 //!
-//! ## e^(ln(x)) → x (ExponentialLogRule) [V1.3 ConditionClass Contract]
+//! ## e^(ln(x)) → x (ExponentialLogRule) [V2.15.4 Implicit Domain]
 //!
-//! | ValueDomain    | DomainMode | Simplifies? | Warning? | Reason |
-//! |----------------|------------|-------------|----------|--------|
+//! | ValueDomain    | DomainMode | Simplifies? | Requires? | Reason |
+//! |----------------|------------|-------------|-----------|--------|
 //! | RealOnly       | Strict     | NO (if x unknown) | -  | Can't prove x > 0 |
-//! | RealOnly       | Generic    | NO          | -        | x > 0 is Analytic, blocked in Generic |
-//! | RealOnly       | Assume     | YES         | YES      | Only Assume allows Analytic |
+//! | RealOnly       | Generic    | YES         | x > 0     | x > 0 is IMPLICIT from ln(x) |
+//! | RealOnly       | Assume     | YES         | x > 0     | Same as Generic |
 //! | ComplexEnabled | Strict     | NO          | -        | Can't prove x > 0 |
-//! | ComplexEnabled | Generic    | NO          | -        | x > 0 is Analytic, blocked in Generic |
-//! | ComplexEnabled | Assume     | YES         | YES      | Only Assume allows Analytic |
+//! | ComplexEnabled | Generic    | YES         | x > 0     | x > 0 is IMPLICIT from ln(x) |
+//! | ComplexEnabled | Assume     | YES         | x > 0     | Same as Generic |
 
 use cas_ast::DisplayExpr;
 use cas_engine::semantics::ValueDomain;
@@ -268,17 +268,17 @@ mod exp_ln_inverse {
     }
 
     // ------------------------------------------------------------------------
-    // RealOnly × Generic: NO simplification (V1.3 CONTRACT)
-    // x > 0 is Analytic class, Generic blocks Analytic conditions
+    // RealOnly × Generic: YES simplification (V2.15.4 IMPLICIT DOMAIN)
+    // x > 0 is IMPLICIT from ln(x), not a new assumption
     // ------------------------------------------------------------------------
     #[test]
     fn real_generic_blocks_analytic() {
         let r = simplify_with_config("exp(ln(x))", ValueDomain::RealOnly, DomainMode::Generic);
 
-        // V1.3 CONTRACT: Generic blocks Analytic (Positive is Analytic)
-        assert!(
-            r.result.contains("exp") || r.result.contains("e^") || r.result.contains("ln"),
-            "RealOnly+Generic: exp(ln(x)) should remain unchanged (Positive is Analytic, blocked in Generic), got: {}",
+        // V2.15.4: exp(ln(x)) SIMPLIFIES with implicit requires (like sqrt(x)^2)
+        assert_eq!(
+            r.result, "x",
+            "RealOnly+Generic: exp(ln(x)) should simplify to x (implicit domain from ln), got: {}",
             r.result
         );
     }
@@ -321,8 +321,8 @@ mod exp_ln_inverse {
     }
 
     // ------------------------------------------------------------------------
-    // ComplexEnabled × Generic: NO simplification (V1.3 CONTRACT)
-    // x > 0 is Analytic class, Generic blocks Analytic conditions
+    // ComplexEnabled × Generic: YES simplification (V2.15.4 IMPLICIT DOMAIN)
+    // x > 0 is IMPLICIT from ln(x), not a new assumption
     // ------------------------------------------------------------------------
     #[test]
     fn complex_generic_blocks_analytic() {
@@ -332,10 +332,10 @@ mod exp_ln_inverse {
             DomainMode::Generic,
         );
 
-        // V1.3 CONTRACT: Generic blocks Analytic (Positive is Analytic)
-        assert!(
-            r.result.contains("exp") || r.result.contains("e^") || r.result.contains("ln"),
-            "ComplexEnabled+Generic: exp(ln(x)) should remain unchanged (Positive is Analytic), got: {}",
+        // V2.15.4: exp(ln(x)) SIMPLIFIES with implicit requires
+        assert_eq!(
+            r.result, "x",
+            "ComplexEnabled+Generic: exp(ln(x)) should simplify to x (implicit domain), got: {}",
             r.result
         );
     }
@@ -357,7 +357,12 @@ mod exp_ln_inverse {
             r.result
         );
 
-        assert!(r.has_warning, "ComplexEnabled+Assume: WARNING expected");
+        // V2.15.4: No warning expected - x > 0 is IMPLICIT from ln(x), not an assumption
+        assert!(
+            !r.has_warning,
+            "ComplexEnabled+Assume: No warning expected (implicit domain), got: {:?}",
+            r.warning_messages
+        );
     }
 
     // ------------------------------------------------------------------------
@@ -386,8 +391,11 @@ mod exp_ln_inverse {
 mod combined_expressions {
     use super::*;
 
-    /// V1.3 CONTRACT: In Generic mode, exp(ln(x)) stays (Positive is Analytic, blocked)
-    /// Only ln(exp(x)) simplifies (no conditions needed in RealOnly)
+    /// V2.15.4: In Generic mode, BOTH parts simplify:
+    /// - exp(ln(x)) → x (implicit domain from ln(x))
+    /// - ln(exp(x)) → x (no conditions needed in RealOnly)
+    ///
+    /// Result: x + x = 2x
     #[test]
     fn combined_real_generic_partial_simplify() {
         let r = simplify_with_config(
@@ -396,12 +404,10 @@ mod combined_expressions {
             DomainMode::Generic,
         );
 
-        // V1.3 CONTRACT: exp(ln(x)) is BLOCKED in Generic (Positive is Analytic)
-        // Only ln(exp(x)) → x simplifies (RealOnly guarantees e^x > 0)
-        // Result should contain "exp" or "ln" from the blocked part
-        assert!(
-            r.result.contains("exp") || r.result.contains("ln"),
-            "RealOnly+Generic: exp(ln(x)) should remain unchanged (Positive is Analytic), got: {}",
+        // V2.15.4: Both parts simplify to x, result is 2*x
+        assert_eq!(
+            r.result, "2 * x",
+            "RealOnly+Generic: exp(ln(x)) + ln(exp(x)) should simplify to 2*x, got: {}",
             r.result
         );
     }

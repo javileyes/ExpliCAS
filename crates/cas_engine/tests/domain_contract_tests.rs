@@ -759,12 +759,11 @@ fn value_domain_complex_i_fourth() {
 // Blocked Hints Tests (V1.3.1)
 // =============================================================================
 
-/// CONTRACT: exp(ln(x)) in Generic mode does NOT simplify to x, and emits x > 0 as a require
+/// CONTRACT: exp(ln(x)) in Generic mode SIMPLIFIES to x with x > 0 as implicit require.
 ///
-/// NOTE: Originally this test expected a BlockedHint, but the current system design:
-/// 1. exp(ln(x)) parses as Function("exp", [ln(x)]) not Pow(e, ln(x))
-/// 2. ExponentialLogRule only matches Pow(base, log(base, arg))
-/// 3. The require x > 0 comes from the ln(x) sub-expression, not from a blocked rule
+/// V2.15.4: Changed from blocking to allowing with implicit domain.
+/// The condition x > 0 is IMPLICIT from ln(x), so it's not a new assumption.
+/// Similar to how sqrt(x)^2 → x with requires x ≥ 0.
 #[test]
 fn exp_ln_x_generic_emits_positive_require() {
     use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
@@ -787,7 +786,7 @@ fn exp_ln_x_generic_emits_positive_require() {
 
     let output = engine.eval(&mut state, req).expect("eval failed");
 
-    // Result should NOT be simplified to x (would require x > 0 proof)
+    // Result SHOULD be simplified to x (with implicit requires)
     let result_str = match &output.result {
         EvalResult::Expr(e) => cas_ast::DisplayExpr {
             context: &engine.simplifier.context,
@@ -797,14 +796,12 @@ fn exp_ln_x_generic_emits_positive_require() {
         _ => "error".to_string(),
     };
 
-    // Should still contain exp and ln (not simplified)
-    assert!(
-        result_str.contains("e") || result_str.contains("exp"),
-        "exp(ln(x)) should NOT simplify to just x in Generic mode, got: {}",
-        result_str
+    assert_eq!(
+        result_str, "x",
+        "exp(ln(x)) should simplify to x in Generic mode with implicit requires"
     );
 
-    // Should have x > 0 in required conditions (from ln(x) domain)
+    // Should have x > 0 in required conditions (implicit domain)
     let required = &output.required_conditions;
     let has_positive_x = required.iter().any(|cond| {
         let display = cond.display(&engine.simplifier.context);
@@ -915,9 +912,10 @@ fn step_tracks_assumed_nonzero_in_generic() {
     );
 }
 
-/// Contract test: Verify that exp(ln(x)) in Assume mode produces a step with Positive assumption.
+/// Contract test: Verify that exp(ln(x)) produces x > 0 as implicit require.
 ///
-/// This tests Analytic condition tracking in timeline.
+/// V2.15.4: Now uses required_conditions (implicit domain) instead of assumption_events.
+/// This tests the "implicit domain requirement" pattern where ln(x) already implies x > 0.
 #[test]
 fn step_tracks_assumed_positive_in_assume() {
     use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
@@ -925,8 +923,8 @@ fn step_tracks_assumed_positive_in_assume() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
 
-    // Use Assume mode (allows Analytic conditions)
-    state.options.domain_mode = cas_engine::DomainMode::Assume;
+    // Use Generic mode - now works with implicit requires
+    state.options.domain_mode = cas_engine::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("exp(ln(x))", &mut engine.simplifier.context).expect("parse failed");
@@ -951,22 +949,23 @@ fn step_tracks_assumed_positive_in_assume() {
     };
     assert_eq!(
         result_str, "x",
-        "exp(ln(x)) should simplify to x in Assume mode"
+        "exp(ln(x)) should simplify to x with implicit requires"
     );
 
-    // Check that at least one step has assumption_events with Positive(x)
-    let has_positive_assumption = output.steps.iter().any(|step| {
-        step.assumption_events.iter().any(|event| {
-            matches!(
-                event.key,
-                cas_engine::assumptions::AssumptionKey::Positive { .. }
-            )
-        })
+    // Check that required_conditions contain x > 0 (implicit domain)
+    let has_positive_require = output.required_conditions.iter().any(|cond| {
+        let display = cond.display(&engine.simplifier.context);
+        display.contains("x") && display.contains("> 0")
     });
 
     assert!(
-        has_positive_assumption,
-        "At least one step should have Positive assumption event for x"
+        has_positive_require,
+        "Should have x > 0 in required_conditions (implicit from ln(x)). Got: {:?}",
+        output
+            .required_conditions
+            .iter()
+            .map(|c| c.display(&engine.simplifier.context))
+            .collect::<Vec<_>>()
     );
 }
 

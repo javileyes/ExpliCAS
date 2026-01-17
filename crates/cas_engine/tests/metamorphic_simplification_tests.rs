@@ -1355,7 +1355,7 @@ impl FilterSpec {
     }
 
     /// Convert to string representation (for reporting)
-    fn to_string(&self) -> String {
+    fn as_str(&self) -> String {
         match self {
             FilterSpec::None => String::new(),
             FilterSpec::AbsLt { limit } => format!("abs_lt({})", limit),
@@ -1895,7 +1895,7 @@ fn generate_identity_id(pair: &IdentityPair) -> String {
     format!("{:?}", pair.mode).hash(&mut hasher);
     format!("{:?}", pair.bucket).hash(&mut hasher);
     format!("{:?}", pair.branch_mode).hash(&mut hasher);
-    pair.filter_spec.to_string().hash(&mut hasher);
+    pair.filter_spec.as_str().hash(&mut hasher);
 
     format!("{:016x}", hasher.finish())
 }
@@ -2665,7 +2665,7 @@ fn metatest_individual_identities_impl() {
                     simp: pair.simp.clone(),
                     bucket: pair.bucket,
                     stats: stats.clone(),
-                    filter_str: pair.filter_spec.to_string(),
+                    filter_str: pair.filter_spec.as_str(),
                 });
 
                 // Collect snapshot for baseline comparison
@@ -2962,7 +2962,7 @@ fn metatest_individual_identities_impl() {
                 // Load baseline and validate config hash
                 let file = File::open(&baseline_path).expect("Failed to open baseline file");
                 let reader = BufReader::new(file);
-                let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+                let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
                 // Check config hash from first line
                 let current_cfg_hash = generate_config_hash(&config);
@@ -3014,7 +3014,7 @@ fn metatest_individual_identities_impl() {
 
                 let current_ids: std::collections::HashSet<_> =
                     current_snapshots.iter().map(|s| &s.id).collect();
-                for (id, _) in &baseline {
+                for id in baseline.keys() {
                     if !current_ids.contains(id) {
                         missing_ids.push(id.clone());
                     }
@@ -3363,16 +3363,16 @@ fn metatest_transform_identities() {
         // Gating by bucket: BranchSensitive only gets scale(2)
         for transform in &transforms {
             // Gate BranchSensitive - only allow scale(2)
-            if pair.bucket == Bucket::BranchSensitive {
-                if !matches!(transform, MetaTransform::Scale(k) if (*k - 2.0).abs() < 1e-10) {
-                    skipped_bucket += 1;
-                    continue;
-                }
+            if pair.bucket == Bucket::BranchSensitive
+                && !matches!(transform, MetaTransform::Scale(k) if (*k - 2.0).abs() < 1e-10)
+            {
+                skipped_bucket += 1;
+                continue;
             }
 
             total_tests += 1;
 
-            match test_transform_identity(&pair, &pair.vars[0], transform, min_valid_factor) {
+            match test_transform_identity(pair, &pair.vars[0], transform, min_valid_factor) {
                 TransformResult::Pass => passed += 1,
                 TransformResult::Skip(_) => passed += 1, // Inconclusive is OK
                 TransformResult::Fail(msg) => {
@@ -3447,7 +3447,7 @@ fn test_transform_identity(
 
     let mut valid = 0;
     let mut matching = 0;
-    let mut filtered_out = 0;
+    let mut _filtered_out = 0;
 
     for &x in &samples {
         // Apply transform: x' = T(x)
@@ -3455,7 +3455,7 @@ fn test_transform_identity(
 
         // Composed filter: check if x' passes the original filter
         if !pair.filter_spec.accept(x_prime) {
-            filtered_out += 1;
+            _filtered_out += 1;
             continue;
         }
 
