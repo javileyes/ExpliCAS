@@ -1,67 +1,67 @@
-La idea: **cada regla declara su “soundness class”** y el engine decide si:
+The idea: **each rule declares its “soundness class”** and the engine decides whether to:
 
-* **aplica sin condiciones**
-* **aplica introduciendo requires**
-* **bloquea**
-* **solo en assume**
-* **solo en strict**
-* **skip simbólico y deja solo numérico** (para branch-sensitive en metatest / equiv)
-
----
-
-## Tabla 1 — Política por modo (DomainMode)
-
-| SoundnessLabel / Clase                 | Qué significa                                                                            |                                                             Generic |                                                                                           Assume |                                                                                               Strict |
-| -------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------: | -----------------------------------------------------------------------------------------------: | ---------------------------------------------------------------------------------------------------: |
-| **UnconditionalEquivalence**           | Equivalencia algebraica “siempre” válida (en el ValueDomain actual)                      |                                                            ✅ aplica |                                                                                         ✅ aplica |                                                                                             ✅ aplica |
-| **EquivalenceUnderInheritedRequires**  | Válida si **ya** tienes requires suficientes (heredados/implícitos)                      |                            ✅ aplica **solo si** `requires ⊇ needed` | ✅ aplica **solo si** `requires ⊇ needed` (o las puede heredar de implicit_domain si lo permites) |                                                             ✅ aplica **solo si** `requires ⊇ needed` |
-| **EquivalenceUnderIntroducedRequires** | Válida si introduces condiciones (ej. `x>0`, `cos(x)≠0`, `base≠1`)                       |                                    ✅ aplica **y emite** `Requires:` |                                ✅ aplica (puede emitir además `Assumes:` si hay heurística extra) | ✅ aplica **solo si** esos requires se pueden justificar o ya estaban (según tu definición de Strict) |
-| **HeuristicAssumption**                | Correcta “típicamente”, pero no garantizable sin asumir (paridad simbólica, “x≥0”, etc.) |                                        ⛔ bloquea (o deja “Blocked”) |                                            ✅ aplica con ⚠️ `Assumes:` (+ `Requires:` si procede) |                                                                                            ⛔ bloquea |
-| **BranchSensitivePrincipal**           | Depende de rama principal / discontinuidades (log complejo, atan, etc.)                  | ⛔ bloquea (o ✅ solo si `ValueDomain=RealOnly` y con guards fuertes) |                          ✅ aplica si `RealOnly` y condiciones; en `ComplexEnabled` normalmente ⛔ |                                                            ⛔ bloquea (o requiere verificación extra) |
-| **NormalizationOnly**                  | Reescritura de forma normal (conmutatividad/orden) sin cambiar significado               |                                                            ✅ aplica |                                                                                         ✅ aplica |                                                                                             ✅ aplica |
-
-**Nota clave:** si quieres que `exp(ln(x))` en RealOnly se comporte como `sqrt(x)^2`, entonces su regla debe ser `EquivalenceUnderIntroducedRequires` (con `x>0`) y **no** `HeuristicAssumption/BranchSensitive`.
+* **apply unconditionally**
+* **apply by introducing requires**
+* **block**
+* **apply only in "assume" mode**
+* **apply only in "strict" mode**
+* **perform a symbolic skip and leave only the numeric result** (for branch-sensitive rules in metatest / equivalence checking)
 
 ---
 
-## Tabla 2 — Gate adicional por ValueDomain (RealOnly vs ComplexEnabled)
+## Table 1 — Policy by Mode (DomainMode)
 
-| Regla / Identidad típica       |                                  RealOnly |                             ComplexEnabled |                      |                                              |
-| ------------------------------ | ----------------------------------------: | -----------------------------------------: | -------------------- | -------------------------------------------- |
-| `sqrt(u^2) =                   |                                         u |                                          ` | ✅ (con su semántica) | ⛔ o cambia a `sqrt(u^2)=±u` no representable |
-| `(x^n)^(1/n)` cancelaciones    |                  ✅ con paridad + requires |                      ⛔ normalmente (ramas) |                      |                                              |
-| `log(b, b^y)=y`                | ✅ con `b>0, b≠1` (+ si variable, cuidado) |                         ⛔ (rama principal) |                      |                                              |
-| `exp(ln(x))=x`                 |             ✅ con `x>0` (si `ln` es real) |                ⛔ en general (log complejo) |                      |                                              |
-| identidades `atan` con módulos |                 ✅ (pero branch-sensitive) | ⛔ o requiere comparación mod (2π) con rama |                      |                                              |
+| SoundnessLabel / Class | Meaning | Generic | Assume | Strict |
+| --- | --- | --- | --- | --- |
+| **UnconditionalEquivalence** | Algebraic equivalence that is "always" valid (within the current ValueDomain) | ✅ apply | ✅ apply | ✅ apply |
+| **EquivalenceUnderInheritedRequires** | Valid if you **already** have sufficient "requires" (inherited/implicit) | ✅ apply **only if** `requires ⊇ needed` | ✅ apply **only if** `requires ⊇ needed` (or can inherit from implicit_domain if allowed) | ✅ apply **only if** `requires ⊇ needed` |
+| **EquivalenceUnderIntroducedRequires** | Valid if conditions are introduced (e.g., `x>0`, `cos(x)≠0`, `base≠1`) | ✅ apply **and emit** `Requires:` | ✅ apply (may also emit `Assumes:` if extra heuristics are involved) | ✅ apply **only if** those "requires" can be justified or were already present (per your Strict definition) |
+| **HeuristicAssumption** | Correct "typically," but cannot be guaranteed without assuming (symbolic parity, "x≥0", etc.) | ⛔ block (or mark as “Blocked”) | ✅ apply with ⚠️ `Assumes:` (+ `Requires:` if applicable) | ⛔ block |
+| **BranchSensitivePrincipal** | Depends on the principal branch / discontinuities (complex log, atan, etc.) | ⛔ block (or ✅ only if `ValueDomain=RealOnly` with strong guards) | ✅ apply if `RealOnly` and conditions met; normally ⛔ in `ComplexEnabled` | ⛔ block (or requires extra verification) |
+| **NormalizationOnly** | Normal form rewriting (commutativity/ordering) without changing meaning | ✅ apply | ✅ apply | ✅ apply |
 
----
-
-## Tabla 3 — Qué hacer con Requires en cada modo
-
-| Acción                                                      |                                                          Generic |           Assume |                                                Strict |
-| ----------------------------------------------------------- | ---------------------------------------------------------------: | ---------------: | ----------------------------------------------------: |
-| Introducir `Requires:` (condiciones matemáticas explícitas) |                          ✅ solo para reglas “IntroducedRequires” |                ✅ | ✅ pero idealmente solo si demostrables o ya heredadas |
-| Introducir `Assumes:` (heurísticas, “suponemos x≥0”)        |                                                                ⛔ |                ✅ |                                                     ⛔ |
-| Bloquear con “Blocked: requires …”                          | ✅ cuando la regla es heurística/branch o no permitida en generic | (normalmente no) |                                                     ✅ |
-
-Esto explica tu caso:
-
-* `sqrt(x)^2 → x` está permitido en generic como **IntroducedRequires** (y tu `implicit_domain` además lo infiere).
-* `exp(ln(x)) → x` está clasificada como **no permitida en generic**, así que se marca **Blocked** en lugar de emitir `Requires: x>0`.
+**Key Note:** If you want `exp(ln(x))` in RealOnly to behave like `sqrt(x)^2`, then its rule must be classified as `EquivalenceUnderIntroducedRequires` (with `x>0`) and **not** as `HeuristicAssumption/BranchSensitive`.
 
 ---
 
-## Recomendación concreta para tu engine (para que sea consistente)
+## Table 2 — Additional Gate by ValueDomain (RealOnly vs ComplexEnabled)
 
-1. Define **un mapping único**: `SoundnessLabel → AllowedIn(Generic/Assume/Strict)`.
-2. Define un flag por regla:
+| Rule / Typical Identity | RealOnly | ComplexEnabled |  |  |
+| --- | --- | --- | --- | --- |
+| `sqrt(u^2) = u` | ✅ (with its semantics) | ⛔ or changes to `sqrt(u^2)=±u` (non-representable) |  |  |
+| `(x^n)^(1/n)` cancellations | ✅ with parity + requires | ⛔ usually (branch issues) |  |  |
+| `log(b, b^y)=y` | ✅ with `b>0, b≠1` (+ care if variable) | ⛔ (principal branch) |  |  |
+| `exp(ln(x))=x` | ✅ with `x>0` (if `ln` is real) | ⛔ in general (complex log) |  |  |
+| `atan` identities with moduli | ✅ (but branch-sensitive) | ⛔ or requires mod (2π) branch comparison |  |  |
 
-   * `introduces_requires: bool`
-   * `introduces_assumptions: bool`
-   * `branch_sensitive: bool`
-3. Política sugerida:
+---
 
-   * **Generic**: permite `introduces_requires`, prohibe `introduces_assumptions` y prohibe `branch_sensitive` (salvo whitelist en RealOnly).
-   * **Assume**: permite todo, pero marca ⚠️.
-   * **Strict**: permite solo `Unconditional` o `UnderInheritedRequires` (o `IntroducedRequires` solo si la condición ya está probada/heredada).
+## Table 3 — How to Handle "Requires" in Each Mode
+
+| Action | Generic | Assume | Strict |
+| --- | --- | --- | --- |
+| Introduce `Requires:` (explicit math conditions) | ✅ only for “IntroducedRequires” rules | ✅ | ✅ but ideally only if provable or already inherited |
+| Introduce `Assumes:` (heuristics, “we assume x≥0”) | ⛔ | ✅ | ⛔ |
+| Block with “Blocked: requires …” | ✅ when rule is heuristic/branch or not allowed in generic | (usually no) | ✅ |
+
+This explains your case:
+
+* `sqrt(x)^2 → x` is allowed in generic as **IntroducedRequires** (and your `implicit_domain` also infers it).
+* `exp(ln(x)) → x` is classified as **not allowed in generic**, so it is marked **Blocked** instead of emitting `Requires: x>0`.
+
+---
+
+## Concrete Recommendation for your Engine (to ensure consistency)
+
+1. Define **a single mapping**: `SoundnessLabel → AllowedIn(Generic/Assume/Strict)`.
+2. Define flags per rule:
+* `introduces_requires: bool`
+* `introduces_assumptions: bool`
+* `branch_sensitive: bool`
+
+
+3. Suggested Policy:
+* **Generic**: allows `introduces_requires`, forbids `introduces_assumptions`, and forbids `branch_sensitive` (except for a whitelist in RealOnly).
+* **Assume**: allows everything, but flags with ⚠️.
+* **Strict**: allows only `Unconditional` or `UnderInheritedRequires` (or `IntroducedRequires` only if the condition is already proven/inherited).
 

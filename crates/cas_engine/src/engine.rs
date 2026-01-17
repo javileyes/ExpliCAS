@@ -1122,6 +1122,201 @@ impl Simplifier {
         collector.visit_expr(&self.context, expr_id);
         collector.vars
     }
+
+    // =========================================================================
+    // Step Validation API (Educational Tool)
+    // =========================================================================
+
+    /// Validate if `student_expr` is a valid partial simplification of `initial_expr`.
+    ///
+    /// This is an educational tool that checks:
+    /// 1. If `student_expr` appears in the simplification timeline of `initial_expr`
+    ///    (returns direct transformation steps)
+    /// 2. If not, uses equivalence checking to prove `initial - student → 0`
+    ///    (returns equivalence proof steps)
+    ///
+    /// # Returns
+    ///
+    /// - `ValidAndSimpler`: Expressions are equivalent and student reduces complexity
+    /// - `ValidButNotSimpler`: Expressions are equivalent but student doesn't simplify
+    /// - `Invalid`: Expressions are NOT equivalent (with counterexample if found)
+    /// - `Unknown`: Cannot determine equivalence
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let verdict = simplifier.validate_step(initial, student);
+    /// match verdict {
+    ///     StepCheckVerdict::ValidAndSimpler { route, .. } => {
+    ///         // Show the route (either timeline steps or equivalence proof)
+    ///     }
+    ///     StepCheckVerdict::Invalid { counterexample, reason } => {
+    ///         println!("Invalid step: {}", reason);
+    ///     }
+    ///     _ => {}
+    /// }
+    /// ```
+    pub fn validate_step(
+        &mut self,
+        initial_expr: ExprId,
+        student_expr: ExprId,
+    ) -> crate::step_validation::StepCheckVerdict {
+        use crate::step_validation::{
+            compute_complexity, find_counterexample, find_in_timeline, StepCheckVerdict,
+            ValidationRoute,
+        };
+
+        // Compute complexity delta
+        let initial_complexity = compute_complexity(&self.context, initial_expr);
+        let student_complexity = compute_complexity(&self.context, student_expr);
+        let complexity_delta = student_complexity - initial_complexity;
+
+        // =====================================================================
+        // Route 1: Timeline Search (preferred)
+        // Check if student_expr appears in the simplification timeline
+        // =====================================================================
+
+        let was_collecting = self.collect_steps();
+        self.set_collect_steps(true);
+
+        let (_, steps) = self.simplify(initial_expr);
+
+        self.set_collect_steps(was_collecting);
+
+        // Check if student expression matches any step's "after"
+        if let Some(idx) = find_in_timeline(&self.context, &steps, student_expr) {
+            // Found in timeline! Return direct steps
+            let route_steps: Vec<_> = steps.into_iter().take(idx + 1).collect();
+
+            // Collect requires from steps
+            let mut requires = Vec::new();
+            for step in &route_steps {
+                for req in &step.required_conditions {
+                    if !requires.contains(req) {
+                        requires.push(req.clone());
+                    }
+                }
+            }
+
+            let route = ValidationRoute::DirectTimeline { steps: route_steps };
+
+            return if complexity_delta < 0 {
+                StepCheckVerdict::ValidAndSimpler {
+                    requires,
+                    route,
+                    complexity_delta,
+                }
+            } else {
+                StepCheckVerdict::ValidButNotSimpler {
+                    requires,
+                    route,
+                    complexity_delta,
+                }
+            };
+        }
+
+        // =====================================================================
+        // Route 2: Equivalence Proof (fallback)
+        // Prove A ≡ B using are_equivalent_extended
+        // =====================================================================
+
+        let equiv_result = self.are_equivalent_extended(initial_expr, student_expr);
+
+        match equiv_result {
+            EquivalenceResult::True => {
+                // Equivalent! Get proof via diff
+                let diff = self.context.add(Expr::Sub(initial_expr, student_expr));
+                self.set_collect_steps(true);
+                let (_, diff_steps) = self.simplify(diff);
+                self.set_collect_steps(was_collecting);
+
+                let route = ValidationRoute::EquivalenceProof { diff_steps };
+
+                if complexity_delta < 0 {
+                    StepCheckVerdict::ValidAndSimpler {
+                        requires: Vec::new(),
+                        route,
+                        complexity_delta,
+                    }
+                } else {
+                    StepCheckVerdict::ValidButNotSimpler {
+                        requires: Vec::new(),
+                        route,
+                        complexity_delta,
+                    }
+                }
+            }
+
+            EquivalenceResult::ConditionalTrue {
+                requires: _requires,
+            } => {
+                // Conditionally equivalent
+                let diff = self.context.add(Expr::Sub(initial_expr, student_expr));
+                self.set_collect_steps(true);
+                let (_, diff_steps) = self.simplify(diff);
+                self.set_collect_steps(was_collecting);
+
+                // Convert string requires to ImplicitCondition
+                // For now, we just use empty vec since we have string conditions
+                let route = ValidationRoute::EquivalenceProof { diff_steps };
+
+                // Store the string requirements in a custom way
+                // (for full implementation, parse back to ImplicitCondition)
+                if complexity_delta < 0 {
+                    StepCheckVerdict::ValidAndSimpler {
+                        requires: Vec::new(), // TODO: convert requires strings
+                        route,
+                        complexity_delta,
+                    }
+                } else {
+                    StepCheckVerdict::ValidButNotSimpler {
+                        requires: Vec::new(),
+                        route,
+                        complexity_delta,
+                    }
+                }
+            }
+
+            EquivalenceResult::False => {
+                // Not equivalent - try to find counterexample
+                let vars: Vec<String> = self
+                    .collect_variables(initial_expr)
+                    .into_iter()
+                    .chain(self.collect_variables(student_expr))
+                    .collect();
+
+                let counterexample =
+                    find_counterexample(&self.context, initial_expr, student_expr, &vars);
+
+                StepCheckVerdict::Invalid {
+                    counterexample,
+                    reason: "Expressions are not equivalent".to_string(),
+                }
+            }
+
+            EquivalenceResult::Unknown => {
+                // Try numeric counterexample
+                let vars: Vec<String> = self
+                    .collect_variables(initial_expr)
+                    .into_iter()
+                    .chain(self.collect_variables(student_expr))
+                    .collect();
+
+                if let Some(ce) =
+                    find_counterexample(&self.context, initial_expr, student_expr, &vars)
+                {
+                    StepCheckVerdict::Invalid {
+                        counterexample: Some(ce),
+                        reason: "Numeric evaluation shows expressions differ".to_string(),
+                    }
+                } else {
+                    StepCheckVerdict::Unknown {
+                        reason: "Cannot determine if expressions are equivalent".to_string(),
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Evaluate an expression numerically with f64 values.
