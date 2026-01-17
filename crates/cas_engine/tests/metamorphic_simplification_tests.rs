@@ -1389,6 +1389,10 @@ fn metatest_individual_identities_impl() {
     let mut failed = 0;
     let mut skipped = 0;
     let mut numeric_only_examples: Vec<String> = Vec::new();
+    #[allow(unused_mut, unused_variables)]
+    let mut fragile_identities: Vec<String> = Vec::new(); // High near_pole/domain rate
+    #[allow(unused_mut, unused_variables)]
+    let mut asymmetric_count = 0; // Suspicious L=Ok/R=Err cases
 
     for pair in &pairs {
         // Skip assume-only identities in generic mode
@@ -1487,6 +1491,23 @@ fn metatest_individual_identities_impl() {
     eprintln!("   🔢 Numeric-only: {}", numeric_only_passed);
     eprintln!("   ❌ Failed: {}", failed);
     eprintln!("   ⏭️  Skipped: {}", skipped);
+
+    // Show fragile identities (high near_pole/domain rate)
+    if !fragile_identities.is_empty() {
+        eprintln!("\n⚠️  Fragile Identities (>30% near_pole/domain):");
+        for (i, id) in fragile_identities.iter().take(10).enumerate() {
+            eprintln!("   {}. {}", i + 1, id);
+        }
+        if fragile_identities.len() > 10 {
+            eprintln!("   ... and {} more", fragile_identities.len() - 10);
+        }
+    }
+
+    // Show asymmetric failures (suspicious - may indicate bugs)
+    if asymmetric_count > 0 {
+        eprintln!("\n🚨 Asymmetric Failures Detected: {}", asymmetric_count);
+        eprintln!("   This may indicate engine bugs (L=Ok but R=Err or vice versa)");
+    }
 
     if !numeric_only_examples.is_empty() {
         eprintln!("\n📝 Numeric-only identities (showing simplifications):");
