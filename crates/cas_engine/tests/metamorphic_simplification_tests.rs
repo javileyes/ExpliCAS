@@ -909,9 +909,52 @@ impl NumericEquivStats {
         (problematic as f64 / total as f64) > 0.30
     }
 
+    /// Get invalid rate (near_pole + domain_error as percentage)
+    fn invalid_rate(&self) -> f64 {
+        let total = self.total_samples();
+        if total == 0 {
+            return 0.0;
+        }
+        (self.near_pole + self.domain_error) as f64 / total as f64
+    }
+
     /// Check for suspicious asymmetric failures
     fn has_asymmetric_failures(&self) -> bool {
         self.asymmetric_invalid > 0
+    }
+}
+
+/// Fragility severity levels for CI
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+enum FragilityLevel {
+    Ok,      // Within normal bounds
+    Warning, // Elevated but acceptable
+    Fail,    // Should fail CI
+}
+
+/// Check fragility level based on bucket-specific thresholds
+///
+/// Thresholds (warning/fail):
+/// - Unconditional: 10% / 25% (pure identities should rarely hit poles)
+/// - ConditionalRequires: 30% / 50% (some poles expected)
+/// - BranchSensitive: 40% / 60% (more tolerance for complex cases)
+#[allow(dead_code)]
+fn fragility_level_for_bucket(stats: &NumericEquivStats, bucket: Bucket) -> FragilityLevel {
+    let rate = stats.invalid_rate();
+
+    let (warn_threshold, fail_threshold) = match bucket {
+        Bucket::Unconditional => (0.10, 0.25),
+        Bucket::ConditionalRequires => (0.30, 0.50),
+        Bucket::BranchSensitive => (0.40, 0.60),
+    };
+
+    if rate >= fail_threshold {
+        FragilityLevel::Fail
+    } else if rate >= warn_threshold {
+        FragilityLevel::Warning
+    } else {
+        FragilityLevel::Ok
     }
 }
 
