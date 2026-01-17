@@ -49,7 +49,7 @@ cos(x)*sec(x),1,x,g
 
 # Log/Exp Inverse
 ln(exp(x)),x,x,g
-exp(ln(x)),x,x,g
+exp(ln(x)),x,x,g,,,gt(0.0)
 
 # Log Properties
 ln(x*e),ln(x) + 1,x,a
@@ -263,7 +263,7 @@ exp(1),e,x,g
 1/(sqrt(2)+1),sqrt(2)-1,x,g
 1/(sqrt(3)+1),(sqrt(3)-1)/2,x,g
 1/(sqrt(5)+2),sqrt(5)-2,x,g
-1/(sqrt(x)+1),(sqrt(x)-1)/(x-1),x,g
+1/(sqrt(x)+1),(sqrt(x)-1)/(x-1),x,g,,,ge(0.0)
 2/(sqrt(3)-1),sqrt(3)+1,x,g
 3/(sqrt(2)+sqrt(3)),(sqrt(2)-sqrt(3))*(-3),x,g
 
@@ -273,7 +273,7 @@ sqrt(6 + 2*sqrt(5)),sqrt(5)+1,x,g
 sqrt(6 - 2*sqrt(5)),sqrt(5)-1,x,g
 
 # Rationalize with cube roots
-1/(1+x^(1/3)),(1-x^(1/3)+x^(2/3))/(1+x),x,g
+1/(1+x^(1/3)),(1-x^(1/3)+x^(2/3))/(1+x),x,g,,,ge(0.0)
 
 # =============================================================================
 # ADVANCED TRIGONOMETRIC IDENTITIES
@@ -344,10 +344,10 @@ ln(x/y),ln(x) - ln(y),x;y,a
 
 # Nested logs
 ln(e^x),x,x,a
-e^(ln(x)),x,x,g
+e^(ln(x)),x,x,g,,,gt(0.0)
 ln(e^(2*x)),2*x,x,a
-e^(2*ln(x)),x^2,x,g
-e^(3*ln(x)),x^3,x,g
+e^(2*ln(x)),x^2,x,g,,,gt(0.0)
+e^(3*ln(x)),x^3,x,g,,,gt(0.0)
 
 # Log of roots
 ln(x^(1/2)),ln(x)/2,x,a
@@ -378,13 +378,13 @@ exp(x)/exp(2*x),exp(-x),x,g
 
 # Radical products
 sqrt(a)*sqrt(b),sqrt(a*b),a;b,a
-sqrt(x)*sqrt(4*x),2*x,x,g
-sqrt(2*x)*sqrt(8*x),4*x,x,g
+sqrt(x)*sqrt(4*x),2*x,x,g,,,ge(0.0)
+sqrt(2*x)*sqrt(8*x),4*x,x,g,,,ge(0.0)
 
 # Radical quotients
 sqrt(a)/sqrt(b),sqrt(a/b),a;b,a
-sqrt(8*x)/sqrt(2*x),2,x,g
-sqrt(27*x)/sqrt(3*x),3,x,g
+sqrt(8*x)/sqrt(2*x),2,x,g,,,ge(0.0)
+sqrt(27*x)/sqrt(3*x),3,x,g,,,ge(0.0)
 
 # Rationalizing higher radicals
 x^(1/2)*x^(1/2),x,x,g
@@ -448,7 +448,7 @@ sqrt(2)/sqrt(2),1,x,g
 0*x,0,x,g
 x*0,0,x,g
 0/x,0,x,g
-0^x,0,x,g
+0^x,0,x,g,,,gt(0.0)
 
 # =============================================================================
 # ADVANCED COMPLEX IDENTITIES
@@ -523,7 +523,7 @@ sqrt(8 + 4*sqrt(3)),sqrt(6) + sqrt(2),x,g
 # =============================================================================
 
 # Nested exponentials
-exp(exp(ln(x))),exp(x),x,g
+exp(exp(ln(x))),exp(x),x,g,,,gt(0.0)
 ln(exp(exp(x))),exp(x),x,g
 
 # Log of complex products

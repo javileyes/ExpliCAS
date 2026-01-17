@@ -275,7 +275,7 @@ fn check_numeric_equiv_1var(
     var: &str,
     config: &MetatestConfig,
 ) -> Result<usize, String> {
-    let stats = check_numeric_equiv_1var_stats(ctx, a, b, var, config);
+    let stats = check_numeric_equiv_1var_stats(ctx, a, b, var, config, &FilterSpec::None);
 
     // Require higher min_valid when many samples had issues
     let problematic =
@@ -310,6 +310,7 @@ fn check_numeric_equiv_1var_stats(
     b: ExprId,
     var: &str,
     config: &MetatestConfig,
+    filter_spec: &FilterSpec,
 ) -> NumericEquivStats {
     let (lo, hi) = config.sample_range;
     let mut stats = NumericEquivStats::default();
@@ -325,6 +326,12 @@ fn check_numeric_equiv_1var_stats(
     for i in 0..config.eval_samples {
         let t = (i as f64 + 0.5) / config.eval_samples as f64;
         let x = lo + (hi - lo) * t;
+
+        // Apply filter if specified
+        if !filter_spec.accept(x) {
+            stats.filtered_out += 1;
+            continue;
+        }
 
         let mut var_map = HashMap::new();
         var_map.insert(var.to_string(), x);
@@ -1144,6 +1151,33 @@ impl NumericEquivStats {
     fn has_asymmetric_failures(&self) -> bool {
         self.asymmetric_invalid > 0
     }
+
+    /// Get domain error rate (domain_error / total)
+    fn domain_rate(&self) -> f64 {
+        let total = self.total_samples();
+        if total == 0 {
+            return 0.0;
+        }
+        self.domain_error as f64 / total as f64
+    }
+
+    /// Get near-pole rate (near_pole / total)
+    fn pole_rate(&self) -> f64 {
+        let total = self.total_samples();
+        if total == 0 {
+            return 0.0;
+        }
+        self.near_pole as f64 / total as f64
+    }
+
+    /// Get eval_failed rate (eval_failed / total)
+    fn eval_failed_rate(&self) -> f64 {
+        let total = self.total_samples();
+        if total == 0 {
+            return 0.0;
+        }
+        self.eval_failed as f64 / total as f64
+    }
 }
 
 /// Fragility severity levels for CI
@@ -1153,6 +1187,88 @@ enum FragilityLevel {
     Ok,      // Within normal bounds
     Warning, // Elevated but acceptable
     Fail,    // Should fail CI
+}
+
+// =============================================================================
+// Diagnostic Category Classification (Phase 3)
+// =============================================================================
+
+/// Diagnostic category for identity classification
+/// Ordered by priority (higher priority = checked first)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+enum DiagCategory {
+    /// Potential bug: asymmetric failures (one side evaluates, other doesn't)
+    BugSignal,
+    /// Configuration error: unbound variables, unsupported operations
+    ConfigError,
+    /// Needs domain filter: high domain_error rate (ln/sqrt with negative inputs)
+    NeedsFilter,
+    /// Fragile near poles: high near_pole rate (tan/sec near π/2)
+    Fragile,
+    /// All good: within acceptable thresholds
+    Ok,
+}
+
+impl DiagCategory {
+    fn emoji(&self) -> &'static str {
+        match self {
+            DiagCategory::BugSignal => "🐛",
+            DiagCategory::ConfigError => "⚙️",
+            DiagCategory::NeedsFilter => "🔧",
+            DiagCategory::Fragile => "⚠️",
+            DiagCategory::Ok => "✅",
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            DiagCategory::BugSignal => "BugSignal",
+            DiagCategory::ConfigError => "ConfigError",
+            DiagCategory::NeedsFilter => "NeedsFilter",
+            DiagCategory::Fragile => "Fragile",
+            DiagCategory::Ok => "Ok",
+        }
+    }
+}
+
+/// Classification thresholds
+const DOMAIN_ERROR_THRESHOLD: f64 = 0.20; // 20% domain_error → NeedsFilter
+const POLE_RATE_THRESHOLD: f64 = 0.15; // 15% near_pole → Fragile
+const EVAL_FAILED_THRESHOLD: f64 = 0.50; // 50% eval_failed → ConfigError
+
+/// Classify an identity into a diagnostic category
+///
+/// Precedence (highest to lowest):
+/// 1. BugSignal: asymmetric_invalid > 0
+/// 2. ConfigError: eval_failed_rate > 50% (likely unbound variable)
+/// 3. NeedsFilter: domain_rate > 20%
+/// 4. Fragile: pole_rate > 15%
+/// 5. Ok: everything else
+#[allow(dead_code)]
+fn classify_diagnostic(stats: &NumericEquivStats) -> DiagCategory {
+    // Priority 1: BugSignal (asymmetric failures indicate potential engine bugs)
+    if stats.asymmetric_invalid > 0 {
+        return DiagCategory::BugSignal;
+    }
+
+    // Priority 2: ConfigError (high eval_failed usually means unbound variable)
+    if stats.eval_failed_rate() > EVAL_FAILED_THRESHOLD {
+        return DiagCategory::ConfigError;
+    }
+
+    // Priority 3: NeedsFilter (high domain_error means function called outside domain)
+    if stats.domain_rate() > DOMAIN_ERROR_THRESHOLD {
+        return DiagCategory::NeedsFilter;
+    }
+
+    // Priority 4: Fragile (high pole_rate means near singularities)
+    if stats.pole_rate() > POLE_RATE_THRESHOLD {
+        return DiagCategory::Fragile;
+    }
+
+    // Priority 5: Ok
+    DiagCategory::Ok
 }
 
 /// Check fragility level based on bucket-specific thresholds
@@ -1725,6 +1841,7 @@ fn metatest_individual_identities_impl() {
                             simp_simplified,
                             &pair.vars[0],
                             &config,
+                            &pair.filter_spec,
                         );
                         let pass = stats.valid >= config.min_valid && stats.mismatches.is_empty();
                         (
@@ -1812,49 +1929,134 @@ fn metatest_individual_identities_impl() {
 
     // Top-10 fragility ranking (only when METATEST_DIAG=1)
     if diag_enabled && !diagnostics.is_empty() {
-        // Sort by invalid_rate DESC, then asymmetric DESC, then idx ASC (stable)
-        diagnostics.sort_by(|a, b| {
-            b.stats
-                .invalid_rate()
-                .partial_cmp(&a.stats.invalid_rate())
-                .unwrap()
-                .then_with(|| b.stats.asymmetric_invalid.cmp(&a.stats.asymmetric_invalid))
-                .then_with(|| a.idx.cmp(&b.idx))
-        });
+        // Classify all diagnostics
+        let classified: Vec<_> = diagnostics
+            .iter()
+            .map(|d| (classify_diagnostic(&d.stats), d))
+            .collect();
 
-        eprintln!("\n📊 Top-10 Fragility Ranking (METATEST_DIAG=1):");
+        // Count by category
+        let bug_count = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::BugSignal)
+            .count();
+        let config_count = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::ConfigError)
+            .count();
+        let filter_count = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::NeedsFilter)
+            .count();
+        let fragile_count = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::Fragile)
+            .count();
+        let ok_count = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::Ok)
+            .count();
+
+        eprintln!("\n📊 Diagnostic Classification (METATEST_DIAG=1):");
         eprintln!(
-            "   Sorted by invalid_rate DESC (near_pole + domain_error + eval_failed) / total\n"
+            "   Summary: ✅ Ok={} | 🐛 BugSignal={} | ⚙️ ConfigError={} | 🔧 NeedsFilter={} | ⚠️ Fragile={}\n",
+            ok_count, bug_count, config_count, filter_count, fragile_count
         );
 
-        for (rank, diag) in diagnostics.iter().take(10).enumerate() {
-            let total = diag.stats.total_samples();
-            let invalid_pct = diag.stats.invalid_rate() * 100.0;
-            eprintln!(
-                "   {:2}. [{:5.1}%] valid={:3}/{:3} pole={:2} domain={:2} eval_fail={:2} asym={:2} | {:?}",
-                rank + 1,
-                invalid_pct,
-                diag.stats.valid,
-                total,
-                diag.stats.near_pole,
-                diag.stats.domain_error,
-                diag.stats.eval_failed,
-                diag.stats.asymmetric_invalid,
-                diag.bucket,
-            );
-            eprintln!("       {} ≡ {}", diag.exp, diag.simp);
-            if let Some((x, l, r)) = diag.stats.worst_sample {
-                eprintln!("       worst_sample: x={:.6} L={:.6} R={:.6}", x, l, r);
+        // Helper to print a ranking section
+        let print_ranking = |category: DiagCategory, items: Vec<&IdentityDiag>, max_show: usize| {
+            if items.is_empty() {
+                return;
             }
-        }
+            eprintln!(
+                "   {} {} ({})",
+                category.emoji(),
+                category.name(),
+                items.len()
+            );
+            for (i, d) in items.iter().take(max_show).enumerate() {
+                let total = d.stats.total_samples();
+                eprintln!(
+                    "      {:2}. valid={:3}/{:3} pole={:.0}% domain={:.0}% eval={:.0}% asym={}",
+                    i + 1,
+                    d.stats.valid,
+                    total,
+                    d.stats.pole_rate() * 100.0,
+                    d.stats.domain_rate() * 100.0,
+                    d.stats.eval_failed_rate() * 100.0,
+                    d.stats.asymmetric_invalid,
+                );
+                eprintln!("          {} ≡ {}", d.exp, d.simp);
+            }
+            if items.len() > max_show {
+                eprintln!("          ... and {} more", items.len() - max_show);
+            }
+            eprintln!();
+        };
 
-        // Summary
+        // 1. BugSignal ranking (sorted by asymmetric_invalid DESC)
+        let mut bug_items: Vec<_> = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::BugSignal)
+            .map(|(_, d)| *d)
+            .collect();
+        bug_items.sort_by(|a, b| {
+            b.stats
+                .asymmetric_invalid
+                .cmp(&a.stats.asymmetric_invalid)
+                .then_with(|| a.idx.cmp(&b.idx))
+        });
+        print_ranking(DiagCategory::BugSignal, bug_items, 10);
+
+        // 2. ConfigError ranking (sorted by eval_failed_rate DESC)
+        let mut config_items: Vec<_> = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::ConfigError)
+            .map(|(_, d)| *d)
+            .collect();
+        config_items.sort_by(|a, b| {
+            b.stats
+                .eval_failed_rate()
+                .partial_cmp(&a.stats.eval_failed_rate())
+                .unwrap()
+                .then_with(|| a.idx.cmp(&b.idx))
+        });
+        print_ranking(DiagCategory::ConfigError, config_items, 5);
+
+        // 3. NeedsFilter ranking (sorted by domain_rate DESC)
+        let mut filter_items: Vec<_> = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::NeedsFilter)
+            .map(|(_, d)| *d)
+            .collect();
+        filter_items.sort_by(|a, b| {
+            b.stats
+                .domain_rate()
+                .partial_cmp(&a.stats.domain_rate())
+                .unwrap()
+                .then_with(|| a.idx.cmp(&b.idx))
+        });
+        print_ranking(DiagCategory::NeedsFilter, filter_items, 10);
+
+        // 4. Fragile ranking (sorted by pole_rate DESC)
+        let mut fragile_items: Vec<_> = classified
+            .iter()
+            .filter(|(c, _)| *c == DiagCategory::Fragile)
+            .map(|(_, d)| *d)
+            .collect();
+        fragile_items.sort_by(|a, b| {
+            b.stats
+                .pole_rate()
+                .partial_cmp(&a.stats.pole_rate())
+                .unwrap()
+                .then_with(|| a.idx.cmp(&b.idx))
+        });
+        print_ranking(DiagCategory::Fragile, fragile_items, 10);
+
+        // Total asymmetric summary
         let total_asym: usize = diagnostics.iter().map(|d| d.stats.asymmetric_invalid).sum();
         if total_asym > 0 {
-            eprintln!(
-                "\n   🚨 Total asymmetric_invalid across all: {}",
-                total_asym
-            );
+            eprintln!("   🚨 Total asymmetric_invalid across all: {}", total_asym);
         }
     }
 
