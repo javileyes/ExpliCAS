@@ -307,6 +307,11 @@ fn parse_constant(input: &str) -> IResult<&str, ParseNode> {
         return Ok((&input[2..], ParseNode::Constant(Constant::Pi)));
     }
 
+    // Try 'phi' (golden ratio)
+    if input.starts_with("phi") && is_word_boundary(&input[3..]) {
+        return Ok((&input[3..], ParseNode::Constant(Constant::Phi)));
+    }
+
     // Try 'e' (must not be followed by alphanumeric)
     if input.starts_with('e') && is_word_boundary(&input[1..]) {
         return Ok((&input[1..], ParseNode::Constant(Constant::E)));

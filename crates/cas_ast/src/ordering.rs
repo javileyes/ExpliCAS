@@ -141,6 +141,7 @@ fn compare_constant(c1: &Constant, c2: &Constant) -> Ordering {
         Infinity => 2,
         Undefined => 3,
         I => 4,
+        Phi => 5,
     };
     let r2 = match c2 {
         Pi => 0,
@@ -148,6 +149,7 @@ fn compare_constant(c1: &Constant, c2: &Constant) -> Ordering {
         Infinity => 2,
         Undefined => 3,
         I => 4,
+        Phi => 5,
     };
     r1.cmp(&r2)
 }

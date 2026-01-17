@@ -275,18 +275,50 @@ fn check_numeric_equiv_1var(
     var: &str,
     config: &MetatestConfig,
 ) -> Result<usize, String> {
+    let stats = check_numeric_equiv_1var_stats(ctx, a, b, var, config);
+
+    // Require higher min_valid when many samples had issues
+    let problematic =
+        stats.near_pole + stats.domain_error + stats.eval_failed + stats.asymmetric_invalid;
+    let adjusted_min_valid = if problematic > config.eval_samples / 4 {
+        (config.eval_samples - problematic) / 2
+    } else {
+        config.min_valid
+    };
+
+    if stats.valid < adjusted_min_valid {
+        return Err(format!(
+            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, asymmetric={}, eval_failed={})",
+            stats.valid, adjusted_min_valid, stats.near_pole, stats.domain_error, stats.asymmetric_invalid, stats.eval_failed
+        ));
+    }
+
+    if !stats.mismatches.is_empty() {
+        return Err(format!(
+            "Numeric mismatches: {}",
+            stats.mismatches.join("; ")
+        ));
+    }
+
+    Ok(stats.valid)
+}
+
+/// Stats-returning version of check_numeric_equiv_1var for diagnostics
+fn check_numeric_equiv_1var_stats(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    var: &str,
+    config: &MetatestConfig,
+) -> NumericEquivStats {
     let (lo, hi) = config.sample_range;
-    let mut valid = 0usize;
-    let mut eval_failed = 0usize;
-    let mut near_pole = 0usize;
-    let mut domain_error = 0usize;
-    let mut asymmetric_invalid = 0usize; // L=Ok + R=Err or vice versa (suspicious)
+    let mut stats = NumericEquivStats::default();
 
     // Configure checked evaluator with near-pole detection
     let opts = EvalCheckedOptions {
         zero_abs_eps: 1e-12,
         zero_rel_eps: 1e-12,
-        trig_pole_eps: 1e-9, // Larger for trig due to FP errors near π/2
+        trig_pole_eps: 1e-9,
         max_depth: 200,
     };
 
@@ -297,61 +329,37 @@ fn check_numeric_equiv_1var(
         let mut var_map = HashMap::new();
         var_map.insert(var.to_string(), x);
 
-        // Use checked evaluator for detailed error information
         let va = eval_f64_checked(ctx, a, &var_map, &opts);
         let vb = eval_f64_checked(ctx, b, &var_map, &opts);
 
         match (&va, &vb) {
             (Ok(va), Ok(vb)) => {
-                valid += 1;
-
-                // Check approximate equality
                 let diff = (va - vb).abs();
                 let scale = va.abs().max(vb.abs()).max(1.0);
                 let allowed = config.atol + config.rtol * scale;
 
-                if diff > allowed {
-                    return Err(format!(
-                        "Numeric mismatch at {}={}:\n  a={:.15}\n  b={:.15}\n  diff={:.3e} > allowed={:.3e}",
-                        var, x, va, vb, diff, allowed
-                    ));
+                if diff <= allowed {
+                    stats.valid += 1;
+                } else {
+                    stats.record_mismatch(x, *va, *vb, var);
                 }
             }
-            // Symmetric failures: both have same error type
             (Err(EvalCheckedError::NearPole { .. }), Err(EvalCheckedError::NearPole { .. })) => {
-                near_pole += 1;
+                stats.near_pole += 1;
             }
             (Err(EvalCheckedError::Domain { .. }), Err(EvalCheckedError::Domain { .. })) => {
-                domain_error += 1;
+                stats.domain_error += 1;
             }
-            // Asymmetric: one Ok, one Err (suspicious - may indicate bug)
             (Ok(_), Err(_)) | (Err(_), Ok(_)) => {
-                asymmetric_invalid += 1;
+                stats.asymmetric_invalid += 1;
             }
-            // Other symmetric failures
             _ => {
-                eval_failed += 1;
+                stats.eval_failed += 1;
             }
         }
     }
 
-    // Require higher min_valid when many samples had issues
-    let problematic = near_pole + domain_error + eval_failed + asymmetric_invalid;
-    let adjusted_min_valid = if problematic > config.eval_samples / 4 {
-        // If more than 25% are problematic, require 50% of remaining
-        (config.eval_samples - problematic) / 2
-    } else {
-        config.min_valid
-    };
-
-    if valid < adjusted_min_valid {
-        return Err(format!(
-            "Too few valid samples: {} < {} (near_pole={}, domain_error={}, asymmetric={}, eval_failed={})",
-            valid, adjusted_min_valid, near_pole, domain_error, asymmetric_invalid, eval_failed
-        ));
-    }
-
-    Ok(valid)
+    stats
 }
 
 /// Check if two expressions are numerically equivalent for 2 variables.
@@ -841,6 +849,23 @@ enum FilterSpec {
         centers: Vec<f64>,
         eps: f64,
     },
+    // New domain filters for ln/sqrt/etc.
+    Gt {
+        limit: f64,
+    }, // x > limit
+    Ge {
+        limit: f64,
+    }, // x >= limit
+    Lt {
+        limit: f64,
+    }, // x < limit
+    Le {
+        limit: f64,
+    }, // x <= limit
+    Range {
+        min: f64,
+        max: f64,
+    }, // min <= x <= max (inclusive)
 }
 
 impl FilterSpec {
@@ -855,6 +880,11 @@ impl FilterSpec {
                 centers,
                 eps,
             } => x.abs() < *limit && centers.iter().all(|c| (x - c).abs() > *eps),
+            FilterSpec::Gt { limit } => x > *limit,
+            FilterSpec::Ge { limit } => x >= *limit,
+            FilterSpec::Lt { limit } => x < *limit,
+            FilterSpec::Le { limit } => x <= *limit,
+            FilterSpec::Range { min, max } => x >= *min && x <= *max,
         }
     }
 }
@@ -865,6 +895,11 @@ impl FilterSpec {
 ///   "abs_lt(0.9)" → AbsLt { limit: 0.9 }
 ///   "away_from(1.57;-1.57;eps=0.01)" → AwayFrom { centers: [1.57, -1.57], eps: 0.01 }
 ///   "abs_lt_and_away(0.9;1.0;-1.0;eps=0.1)" → AbsLtAndAway { limit: 0.9, centers: [1.0, -1.0], eps: 0.1 }
+///   "gt(0.0)" → Gt { limit: 0.0 }
+///   "ge(0.0)" → Ge { limit: 0.0 }
+///   "lt(1.0)" → Lt { limit: 1.0 }
+///   "le(1.0)" → Le { limit: 1.0 }
+///   "range(0.1;3.0)" → Range { min: 0.1, max: 3.0 }
 fn parse_filter_spec(spec: &str, line_num: usize) -> FilterSpec {
     let spec = spec.trim();
     if spec.is_empty() {
@@ -913,9 +948,71 @@ fn parse_filter_spec(spec: &str, line_num: usize) -> FilterSpec {
         }
     }
 
+    // gt(limit) - x > limit
+    if spec.starts_with("gt(") && spec.ends_with(')') {
+        let inner = &spec[3..spec.len() - 1];
+        let limit: f64 = inner.parse().unwrap_or_else(|_| {
+            panic!("Invalid gt limit at line {}: '{}'", line_num, spec);
+        });
+        return FilterSpec::Gt { limit };
+    }
+
+    // ge(limit) - x >= limit
+    if spec.starts_with("ge(") && spec.ends_with(')') {
+        let inner = &spec[3..spec.len() - 1];
+        let limit: f64 = inner.parse().unwrap_or_else(|_| {
+            panic!("Invalid ge limit at line {}: '{}'", line_num, spec);
+        });
+        return FilterSpec::Ge { limit };
+    }
+
+    // lt(limit) - x < limit
+    if spec.starts_with("lt(") && spec.ends_with(')') {
+        let inner = &spec[3..spec.len() - 1];
+        let limit: f64 = inner.parse().unwrap_or_else(|_| {
+            panic!("Invalid lt limit at line {}: '{}'", line_num, spec);
+        });
+        return FilterSpec::Lt { limit };
+    }
+
+    // le(limit) - x <= limit
+    if spec.starts_with("le(") && spec.ends_with(')') {
+        let inner = &spec[3..spec.len() - 1];
+        let limit: f64 = inner.parse().unwrap_or_else(|_| {
+            panic!("Invalid le limit at line {}: '{}'", line_num, spec);
+        });
+        return FilterSpec::Le { limit };
+    }
+
+    // range(min;max) - min <= x <= max
+    if spec.starts_with("range(") && spec.ends_with(')') {
+        let inner = &spec[6..spec.len() - 1];
+        let parts: Vec<&str> = inner.split(';').collect();
+        if parts.len() != 2 {
+            panic!(
+                "Invalid range at line {}: '{}'. Expected range(min;max)",
+                line_num, spec
+            );
+        }
+        let min: f64 = parts[0].trim().parse().unwrap_or_else(|_| {
+            panic!("Invalid range min at line {}: '{}'", line_num, spec);
+        });
+        let max: f64 = parts[1].trim().parse().unwrap_or_else(|_| {
+            panic!("Invalid range max at line {}: '{}'", line_num, spec);
+        });
+        if min > max {
+            panic!(
+                "Invalid range at line {}: '{}'. min ({}) > max ({})",
+                line_num, spec, min, max
+            );
+        }
+        return FilterSpec::Range { min, max };
+    }
+
     panic!(
         "Unknown filter_spec at line {}: '{}'. \
-         Expected: abs_lt(<f64>), away_from(<f64>;...; eps=<f64>), or abs_lt_and_away(...)",
+         Expected: abs_lt(<f64>), away_from(<f64>;...; eps=<f64>), abs_lt_and_away(...), \
+         gt(<f64>), ge(<f64>), lt(<f64>), le(<f64>), or range(<min>;<max>)",
         line_num, spec
     );
 }
@@ -1566,17 +1663,15 @@ fn metatest_individual_identities_impl() {
     // Diagnostics: track per-identity fragility (infrastructure for future use)
     #[allow(dead_code)]
     struct IdentityDiag {
+        idx: usize,
         exp: String,
         simp: String,
-        is_legacy: bool, // 4-col vs 7-col
-        samples_valid: usize,
-        samples_total: usize,
-        near_pole: usize,
-        domain_error: usize,
-        eval_failed: usize,
-        asymmetric: usize,
+        bucket: Bucket,
+        stats: NumericEquivStats,
     }
-    #[allow(unused_mut, unused_variables)]
+
+    // Only collect diagnostics if METATEST_DIAG=1
+    let diag_enabled = env::var("METATEST_DIAG").is_ok();
     let mut diagnostics: Vec<IdentityDiag> = Vec::new();
 
     for pair in &pairs {
@@ -1621,21 +1716,48 @@ fn metatest_individual_identities_impl() {
             let simp_simplified_str = format!("{:?}", simplifier.context.get(simp_simplified));
 
             // Check numeric equivalence - select function based on variable count
-            let result = match pair.vars.len() {
-                1 => check_numeric_equiv_1var(
-                    &simplifier.context,
-                    exp_simplified,
-                    simp_simplified,
-                    &pair.vars[0],
-                    &config,
-                ),
-                2 => check_numeric_equiv_2var(
-                    &simplifier.context,
-                    exp_simplified,
-                    simp_simplified,
-                    &pair.vars[0],
-                    &pair.vars[1],
-                    &config,
+            let (result, stats_opt) = match pair.vars.len() {
+                1 => {
+                    if diag_enabled {
+                        let stats = check_numeric_equiv_1var_stats(
+                            &simplifier.context,
+                            exp_simplified,
+                            simp_simplified,
+                            &pair.vars[0],
+                            &config,
+                        );
+                        let pass = stats.valid >= config.min_valid && stats.mismatches.is_empty();
+                        (
+                            if pass {
+                                Ok(stats.valid)
+                            } else {
+                                Err("failed".to_string())
+                            },
+                            Some(stats),
+                        )
+                    } else {
+                        (
+                            check_numeric_equiv_1var(
+                                &simplifier.context,
+                                exp_simplified,
+                                simp_simplified,
+                                &pair.vars[0],
+                                &config,
+                            ),
+                            None,
+                        )
+                    }
+                }
+                2 => (
+                    check_numeric_equiv_2var(
+                        &simplifier.context,
+                        exp_simplified,
+                        simp_simplified,
+                        &pair.vars[0],
+                        &pair.vars[1],
+                        &config,
+                    ),
+                    None,
                 ),
                 _ => {
                     // 3+ variables: skip for now
@@ -1643,6 +1765,17 @@ fn metatest_individual_identities_impl() {
                     continue;
                 }
             };
+
+            // Collect stats for diagnostics if enabled
+            if let Some(stats) = stats_opt {
+                diagnostics.push(IdentityDiag {
+                    idx: diagnostics.len(),
+                    exp: pair.exp.clone(),
+                    simp: pair.simp.clone(),
+                    bucket: pair.bucket,
+                    stats,
+                });
+            }
 
             if result.is_ok() {
                 numeric_only_passed += 1;
@@ -1676,6 +1809,54 @@ fn metatest_individual_identities_impl() {
     eprintln!("   🔢 Numeric-only: {}", numeric_only_passed);
     eprintln!("   ❌ Failed: {}", failed);
     eprintln!("   ⏭️  Skipped: {}", skipped);
+
+    // Top-10 fragility ranking (only when METATEST_DIAG=1)
+    if diag_enabled && !diagnostics.is_empty() {
+        // Sort by invalid_rate DESC, then asymmetric DESC, then idx ASC (stable)
+        diagnostics.sort_by(|a, b| {
+            b.stats
+                .invalid_rate()
+                .partial_cmp(&a.stats.invalid_rate())
+                .unwrap()
+                .then_with(|| b.stats.asymmetric_invalid.cmp(&a.stats.asymmetric_invalid))
+                .then_with(|| a.idx.cmp(&b.idx))
+        });
+
+        eprintln!("\n📊 Top-10 Fragility Ranking (METATEST_DIAG=1):");
+        eprintln!(
+            "   Sorted by invalid_rate DESC (near_pole + domain_error + eval_failed) / total\n"
+        );
+
+        for (rank, diag) in diagnostics.iter().take(10).enumerate() {
+            let total = diag.stats.total_samples();
+            let invalid_pct = diag.stats.invalid_rate() * 100.0;
+            eprintln!(
+                "   {:2}. [{:5.1}%] valid={:3}/{:3} pole={:2} domain={:2} eval_fail={:2} asym={:2} | {:?}",
+                rank + 1,
+                invalid_pct,
+                diag.stats.valid,
+                total,
+                diag.stats.near_pole,
+                diag.stats.domain_error,
+                diag.stats.eval_failed,
+                diag.stats.asymmetric_invalid,
+                diag.bucket,
+            );
+            eprintln!("       {} ≡ {}", diag.exp, diag.simp);
+            if let Some((x, l, r)) = diag.stats.worst_sample {
+                eprintln!("       worst_sample: x={:.6} L={:.6} R={:.6}", x, l, r);
+            }
+        }
+
+        // Summary
+        let total_asym: usize = diagnostics.iter().map(|d| d.stats.asymmetric_invalid).sum();
+        if total_asym > 0 {
+            eprintln!(
+                "\n   🚨 Total asymmetric_invalid across all: {}",
+                total_asym
+            );
+        }
+    }
 
     // Show fragile identities (high near_pole/domain rate)
     if !fragile_identities.is_empty() {

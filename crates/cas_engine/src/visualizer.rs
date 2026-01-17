@@ -68,6 +68,7 @@ impl<'a> AstVisualizer<'a> {
                     Constant::Infinity => "∞",
                     Constant::Undefined => "?",
                     Constant::I => "i",
+                    Constant::Phi => "φ",
                 };
                 output.push_str(&format!(
                     "  n{} [label=\"{}\", shape=diamond, fillcolor=\"#fff9c4\"];\n",

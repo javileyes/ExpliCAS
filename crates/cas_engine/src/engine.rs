@@ -1291,6 +1291,7 @@ fn eval_f64_checked_depth(
         Expr::Constant(c) => match c {
             cas_ast::Constant::Pi => std::f64::consts::PI,
             cas_ast::Constant::E => std::f64::consts::E,
+            cas_ast::Constant::Phi => 1.618033988749895, // (1+√5)/2
             cas_ast::Constant::Infinity => return Err(EvalCheckedError::NonFinite),
             cas_ast::Constant::Undefined => return Err(EvalCheckedError::NonFinite),
             cas_ast::Constant::I => {
@@ -1591,6 +1592,7 @@ fn eval_f64_depth(
         Expr::Constant(c) => match c {
             cas_ast::Constant::Pi => Some(std::f64::consts::PI),
             cas_ast::Constant::E => Some(std::f64::consts::E),
+            cas_ast::Constant::Phi => Some(1.618033988749895), // (1+√5)/2
             cas_ast::Constant::Infinity => Some(f64::INFINITY),
             cas_ast::Constant::Undefined => Some(f64::NAN),
             cas_ast::Constant::I => None, // Imaginary unit cannot be evaluated to f64

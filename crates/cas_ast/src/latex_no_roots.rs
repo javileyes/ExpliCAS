@@ -28,6 +28,7 @@ impl<'a> LatexNoRoots<'a> {
                 Constant::Infinity => "\\infty".to_string(),
                 Constant::Undefined => "\\text{undefined}".to_string(),
                 Constant::I => "i".to_string(),
+                Constant::Phi => "\\phi".to_string(),
             },
             Expr::Add(l, r) => {
                 let left = self.expr_to_latex(*l, false);

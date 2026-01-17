@@ -363,6 +363,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 Constant::Infinity => write!(f, "infinity"),
                 Constant::Undefined => write!(f, "undefined"),
                 Constant::I => write!(f, "i"),
+                Constant::Phi => write!(f, "phi"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(_, _) => {
@@ -1131,6 +1132,7 @@ impl<'a> fmt::Display for RawDisplayExpr<'a> {
                 Constant::Infinity => write!(f, "infinity"),
                 Constant::Undefined => write!(f, "undefined"),
                 Constant::I => write!(f, "i"),
+                Constant::Phi => write!(f, "phi"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(l, r) => write!(
@@ -1305,6 +1307,7 @@ impl<'a> DisplayExprWithHints<'a> {
                 Constant::Infinity => write!(f, "infinity"),
                 Constant::Undefined => write!(f, "undefined"),
                 Constant::I => write!(f, "i"),
+                Constant::Phi => write!(f, "phi"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
             Expr::Add(_, _) => {
@@ -1798,6 +1801,7 @@ impl<'a> DisplayExprStyled<'a> {
                 Constant::Infinity => write!(f, "infinity"),
                 Constant::Undefined => write!(f, "undefined"),
                 Constant::I => write!(f, "i"),
+                Constant::Phi => write!(f, "phi"),
             },
             Expr::Variable(s) => write!(f, "{}", s),
 

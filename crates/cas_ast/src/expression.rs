@@ -55,6 +55,8 @@ pub enum Constant {
     Undefined,
     /// Imaginary unit i (where i² = -1)
     I,
+    /// Golden ratio φ = (1+√5)/2 ≈ 1.618
+    Phi,
 }
 
 /// Check if a function is known to return a commutative (scalar) result.

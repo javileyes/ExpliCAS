@@ -134,6 +134,7 @@ pub trait LaTeXRenderer {
             Constant::Infinity => "\\infty".to_string(),
             Constant::Undefined => "\\text{undefined}".to_string(),
             Constant::I => "i".to_string(),
+            Constant::Phi => "\\phi".to_string(),
         }
     }
 
@@ -820,6 +821,7 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             Constant::Infinity => "\\infty".to_string(),
             Constant::Undefined => "\\text{undefined}".to_string(),
             Constant::I => "i".to_string(),
+            Constant::Phi => "\\phi".to_string(),
         }
     }
 
