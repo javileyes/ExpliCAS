@@ -56,7 +56,6 @@ pub mod solve_safety;
 pub mod solver;
 pub mod step;
 pub(crate) mod step_optimization;
-pub mod step_validation;
 pub(crate) mod strategies;
 pub mod substitute;
 pub mod telescoping;
@@ -113,8 +112,4 @@ pub use semantics::{
 pub use session::{resolve_session_refs, Entry, EntryId, EntryKind, ResolveError, SessionStore};
 pub use session_state::SessionState;
 pub use step::{DisplayEvalSteps, Step};
-pub use step_validation::{
-    compute_complexity, expressions_match_soft, find_counterexample, find_in_timeline,
-    CounterExample, StepCheckVerdict, ValidationRoute,
-};
 pub use visitors::{DepthVisitor, VariableCollector};
