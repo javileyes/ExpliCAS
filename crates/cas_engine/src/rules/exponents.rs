@@ -297,6 +297,71 @@ define_rule!(
     }
 );
 
+// a^n / b^n = (a/b)^n - combines quotients of powers with same exponent
+// This rule is the quotient analog of ProductSameExponentRule
+// Example: sqrt(27x)/sqrt(3x) = (27x/3x)^(1/2) = 9^(1/2) = 3
+// Guard: at least one base must be a number to avoid infinite loop with PowerQuotientRule
+define_rule!(
+    QuotientSameExponentRule,
+    "Quotient Same Exponent",
+    None,
+    PhaseMask::CORE | PhaseMask::TRANSFORM, // Before RATIONALIZE to prevent wrong path
+    |ctx, expr| {
+        // a^n / b^n -> (a/b)^n
+        use cas_ast::views::FractionParts;
+
+        // Use FractionParts to detect division structure
+        let fp = FractionParts::from(&*ctx, expr);
+        if !fp.is_fraction() {
+            return None;
+        }
+
+        let (num, den, _) = fp.to_num_den(ctx);
+
+        // Both num and den must be powers with same exponent
+        let num_data = ctx.get(num).clone();
+        let den_data = ctx.get(den).clone();
+
+        if let (Expr::Pow(base_num, exp_num), Expr::Pow(base_den, exp_den)) = (&num_data, &den_data)
+        {
+            // Check same exponent
+            if compare_expr(ctx, *exp_num, *exp_den) == Ordering::Equal {
+                // Guard: at least one base must be a number to avoid infinite loop
+                // with PowerQuotientRule (a/b)^n -> a^n/b^n
+                let base_num_is_num = matches!(ctx.get(*base_num), Expr::Number(_));
+                let base_den_is_num = matches!(ctx.get(*base_den), Expr::Number(_));
+
+                // Also allow if base_num or base_den is a product containing a number
+                // This handles sqrt(27x)/sqrt(3x) where bases are Mul(27, x) and Mul(3, x)
+                let base_num_has_num = base_num_is_num || has_numeric_factor(ctx, *base_num);
+                let base_den_has_num = base_den_is_num || has_numeric_factor(ctx, *base_den);
+
+                if !base_num_has_num && !base_den_has_num {
+                    return None; // Skip if both are purely symbolic (would loop)
+                }
+
+                // Build new base: base_num / base_den
+                let new_base = ctx.add(Expr::Div(*base_num, *base_den));
+                let new_expr = ctx.add(Expr::Pow(new_base, *exp_num));
+                return Some(Rewrite::new(new_expr).desc("a^n / b^n = (a/b)^n"));
+            }
+        }
+
+        None
+    }
+);
+
+/// Check if an expression contains a numeric factor at the top level
+fn has_numeric_factor(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) => true,
+        Expr::Mul(l, r) => {
+            matches!(ctx.get(*l), Expr::Number(_)) || matches!(ctx.get(*r), Expr::Number(_))
+        }
+        _ => false,
+    }
+}
+
 // ============================================================================
 // RootPowCancelRule: (x^n)^(1/n) → x (odd n) or |x| (even n)
 // ============================================================================
@@ -1128,7 +1193,8 @@ define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(ProductSameExponentRule));
-    // V2.14.45: RootPowCancelRule BEFORE PowerPowerRule for (x^n)^(1/n) with parity
+    simplifier.add_rule(Box::new(QuotientSameExponentRule)); // a^n / b^n = (a/b)^n
+                                                             // V2.14.45: RootPowCancelRule BEFORE PowerPowerRule for (x^n)^(1/n) with parity
     simplifier.add_rule(Box::new(RootPowCancelRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
