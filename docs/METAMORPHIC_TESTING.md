@@ -18,7 +18,7 @@ El sistema de **Metamorphic Equivalence Testing** es la herramienta principal pa
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                    identity_pairs.csv                        │
-│  (347+ identidades: algebra, trig, log, rationales, etc.)   │
+│  (351+ identidades: algebra, trig, log, rationales, etc.)   │
 └──────────────────────────┬───────────────────────────────────┘
                            │
                            ▼
@@ -147,30 +147,49 @@ EvalCheckedOptions {
 
 ---
 
-## Filtros de Muestreo
+## Filtros de Muestreo (FilterSpec)
+
+El sistema soporta filtros compilados en runtime desde el CSV (sin closures, determinista).
 
 ### Sintaxis CSV
 
 ```csv
-# Sin filtro
-...,,
+# Sin filtro (campo vacío o no especificado)
+sin(x)^2+cos(x)^2,1,x,g,unconditional,principal_strict,
 
 # |x| < 0.9
-...abs_lt(0.9),
+...,abs_lt(0.9)
 
-# Evitar singularidades
-...away_from(1.5707963;-1.5707963;eps=0.01),
+# Evitar singularidades (π/2, -π/2)
+...,away_from(1.5707963;-1.5707963;eps=0.01)
 
-# Combinado
-...abs_lt_and_away(0.95;1.0;-1.0;eps=0.1),
+# Combinado: |x| < 0.95 AND away from 1.0, -1.0
+...,abs_lt_and_away(0.95;1.0;-1.0;eps=0.1)
 ```
 
-### Funciones Disponibles
+### FilterSpec Enum (Runtime)
 
 ```rust
-filter_abs_lt(bound)           // |x| < bound
-filter_away_from(vals, eps)    // evita valores específicos
-filter_abs_lt_and_away(...)    // combinación
+enum FilterSpec {
+    None,                                               // Sin filtro
+    AbsLt { limit: f64 },                               // |x| < limit
+    AwayFrom { centers: Vec<f64>, eps: f64 },           // |x - c| > eps
+    AbsLtAndAway { limit: f64, centers: Vec<f64>, eps: f64 },
+}
+
+impl FilterSpec {
+    fn accept(&self, x: f64) -> bool { ... }
+}
+```
+
+### Uso en Tests
+
+```rust
+// Durante muestreo numérico:
+if !pair.filter_spec.accept(x) {
+    stats.filtered_out += 1;
+    continue;
+}
 ```
 
 ---
@@ -192,6 +211,11 @@ struct NumericEquivStats {
     max_rel_err: f64,          // Mayor error relativo
     worst_sample: (x, a, b),   // Punto con mayor error
 }
+
+impl NumericEquivStats {
+    fn invalid_rate(&self) -> f64; // (near_pole + domain_error + eval_failed) / total
+    fn is_fragile(&self) -> bool;  // invalid_rate > 30%
+}
 ```
 
 ### Indicadores Clave
@@ -201,6 +225,39 @@ struct NumericEquivStats {
 | `asymmetric_invalid > 0` | Bug probable en engine | Investigar |
 | `is_fragile()` | >30% near_pole/domain | Revisar muestreo |
 | `mismatches.len() > 0` | Fallo numérico real | Verificar identidad |
+
+---
+
+## Políticas de CI (FragilityLevel)
+
+### Niveles de Fragilidad
+
+```rust
+enum FragilityLevel {
+    Ok,      // Dentro de umbrales normales
+    Warning, // Elevado pero aceptable
+    Fail,    // Debe fallar CI
+}
+```
+
+### Umbrales por Bucket
+
+| Bucket | Warning | Fail |
+|--------|---------|------|
+| `Unconditional` | ≥10% invalid | ≥25% invalid |
+| `ConditionalRequires` | ≥30% invalid | ≥50% invalid |
+| `BranchSensitive` | ≥40% invalid | ≥60% invalid |
+
+### Reglas CI
+
+1. **`asymmetric_invalid > 0`** → **FAIL** (todos los buckets)
+   - Indica cambio de dominio asimétrico o bug en evaluador
+   
+2. **`FragilityLevel::Fail`** → **FAIL**
+   - Demasiados samples inválidos para el bucket
+
+3. **`FragilityLevel::Warning`** → **WARNING** (log, no fail)
+   - Identidad frágil pero dentro de tolerancia
 
 ---
 
