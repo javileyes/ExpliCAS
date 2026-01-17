@@ -1563,6 +1563,22 @@ fn metatest_individual_identities_impl() {
     #[allow(unused_mut, unused_variables)]
     let mut asymmetric_count = 0; // Suspicious L=Ok/R=Err cases
 
+    // Diagnostics: track per-identity fragility (infrastructure for future use)
+    #[allow(dead_code)]
+    struct IdentityDiag {
+        exp: String,
+        simp: String,
+        is_legacy: bool, // 4-col vs 7-col
+        samples_valid: usize,
+        samples_total: usize,
+        near_pole: usize,
+        domain_error: usize,
+        eval_failed: usize,
+        asymmetric: usize,
+    }
+    #[allow(unused_mut, unused_variables)]
+    let mut diagnostics: Vec<IdentityDiag> = Vec::new();
+
     for pair in &pairs {
         // Skip assume-only identities in generic mode
         if pair.mode == DomainRequirement::Assume && !use_assume_mode {

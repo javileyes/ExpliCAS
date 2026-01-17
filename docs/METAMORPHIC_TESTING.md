@@ -295,8 +295,8 @@ cargo test metatest_csv_combinations_full --ignored
 
 ```
 📊 Individual Identity Results:
-   Total tested: 347
-   ✅ Symbolic: 241 (69%)
+   Total tested: 351
+   ✅ Symbolic: 245 (69%)
    ❌ Failed: 0
    ⏭️  Skipped: 18
 ```
@@ -339,6 +339,41 @@ cargo test metatest_csv_combinations_full --ignored
 | `METATEST_MODE` | `generic`/`assume` | `generic` | DomainMode del engine |
 | `METATEST_STRESS` | `0`/`1` | `0` | Más samples, mayor depth |
 | `METATEST_LEGACY_BUCKET` | `unconditional`/`conditional_requires` | `conditional_requires` | Bucket para CSV 4-col |
+
+---
+
+## Identidades de Regresión (Soundness Guards)
+
+Identidades "idempotentes" que garantizan que reglas peligrosas no se apliquen incorrectamente:
+
+```csv
+# abs() no debe eliminarse de trig sin proof de signo
+abs(sin(x)),abs(sin(x)),x,g
+abs(cos(x)),abs(cos(x)),x,g
+abs(sin(x/2)),abs(sin(x/2)),x,g
+abs(cos(x/2)),abs(cos(x/2)),x,g
+```
+
+Si algún refactor futuro añade `abs(u) → u` incorrecto, CI fallará.
+
+---
+
+## Guía de Migración Legacy → 7-col
+
+### Criterios para Migrar
+
+1. **asymmetric_invalid > 0** → Investigar bug primero
+2. **invalid_rate alto** → Añadir `filter` apropiado
+3. **Identidades de ramas** → `branch_mode=ModuloPi/Modulo2Pi`
+
+### Filtros Comunes
+
+| Situación | Filter |
+|-----------|--------|
+| Polos en x=0 | `away_from(0.0;eps=0.05)` |
+| Polos en ±π/2 | `away_from(1.5707963;-1.5707963;eps=0.01)` |
+| arctan con división | `abs_lt(0.9)` |
+| Combinado | `abs_lt_and_away(0.95;1.0;-1.0;eps=0.1)` |
 
 ---
 
