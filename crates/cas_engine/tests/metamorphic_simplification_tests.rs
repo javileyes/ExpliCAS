@@ -1485,6 +1485,37 @@ fn baseline_file_path() -> PathBuf {
     base.join("tests/baselines/metatest_baseline.jsonl")
 }
 
+/// Generate deterministic hash of test configuration for baseline validation
+fn generate_config_hash(config: &MetatestConfig) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    config.eval_samples.hash(&mut hasher);
+    config.min_valid.hash(&mut hasher);
+    // Hash floats as bits for determinism
+    config.atol.to_bits().hash(&mut hasher);
+    config.rtol.to_bits().hash(&mut hasher);
+    config.sample_range.0.to_bits().hash(&mut hasher);
+    config.sample_range.1.to_bits().hash(&mut hasher);
+
+    format!("{:016x}", hasher.finish())
+}
+
+/// Config header line for baseline file
+fn config_header_json(config: &MetatestConfig) -> String {
+    format!(
+        r#"{{"_type":"config","cfg_hash":"{}","samples":{},"min_valid":{},"atol":{},"rtol":{},"range":[{},{}]}}"#,
+        generate_config_hash(config),
+        config.eval_samples,
+        config.min_valid,
+        config.atol,
+        config.rtol,
+        config.sample_range.0,
+        config.sample_range.1
+    )
+}
+
 /// Category ranking for regression detection (higher = worse)
 fn category_rank(cat: &str) -> u8 {
     match cat {
@@ -2275,11 +2306,16 @@ fn metatest_individual_identities_impl() {
         let total_diag = diagnostics.len();
 
         if filtered_count > 0 {
+            // Dual coverage: snapshot vs total loaded
+            let total_loaded = pairs.len();
             eprintln!(
-                "🔍 Filter Coverage: {}/{} identities have filters ({:.1}%)",
+                "🔍 Filter Coverage: {}/{} snapshot ({:.1}%) | {}/{} total loaded ({:.1}%)",
                 filtered_count,
                 total_diag,
-                filtered_count as f64 / total_diag as f64 * 100.0
+                filtered_count as f64 / total_diag as f64 * 100.0,
+                filtered_count,
+                total_loaded,
+                filtered_count as f64 / total_loaded as f64 * 100.0
             );
 
             // Sort by filtered_rate DESC (potential "cheating" filters)
@@ -2301,11 +2337,13 @@ fn metatest_individual_identities_impl() {
             eprintln!("   Top-5 by filtered_rate (potential 'cheating' filters):");
             for (i, (rate, d)) in by_filtered.iter().take(5).enumerate() {
                 eprintln!(
-                    "   {:2}. [{:4.0}%] {} → {}",
+                    "   {:2}. [{:4.0}%] valid={:3}/{:3} {} → {}",
                     i + 1,
                     rate * 100.0,
+                    d.stats.valid,
+                    d.stats.total_samples(),
                     d.filter_str,
-                    truncate_identity(&d.exp, 40)
+                    truncate_identity(&d.exp, 35)
                 );
             }
             eprintln!();
@@ -2457,27 +2495,59 @@ fn metatest_individual_identities_impl() {
                 let _ = fs::create_dir_all(parent);
             }
             let mut file = File::create(&baseline_path).expect("Failed to create baseline file");
+            // Write config header as first line
+            writeln!(file, "{}", config_header_json(&config))
+                .expect("Failed to write config header");
             for snap in &current_snapshots {
                 writeln!(file, "{}", snap.to_json()).expect("Failed to write baseline");
             }
             eprintln!(
-                "\n✅ Baseline updated: {} identities written to {}",
+                "\n✅ Baseline updated: {} identities + config written to {}",
                 current_snapshots.len(),
                 baseline_path.display()
             );
+            eprintln!("   cfg_hash: {}", generate_config_hash(&config));
         } else if snapshot_enabled {
             // Compare against baseline
             if !baseline_path.exists() {
                 eprintln!("\n⚠️  No baseline found at {}", baseline_path.display());
                 eprintln!("   Run with METATEST_UPDATE_BASELINE=1 to create one.");
             } else {
-                // Load baseline
+                // Load baseline and validate config hash
                 let file = File::open(&baseline_path).expect("Failed to open baseline file");
                 let reader = BufReader::new(file);
-                let baseline: HashMap<String, IdentitySnapshot> = reader
-                    .lines()
-                    .filter_map(|l| l.ok())
-                    .filter_map(|l| IdentitySnapshot::from_json(&l))
+                let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+
+                // Check config hash from first line
+                let current_cfg_hash = generate_config_hash(&config);
+                if let Some(first_line) = lines.first() {
+                    if first_line.contains("\"_type\":\"config\"") {
+                        // Extract cfg_hash from first line
+                        if let Some(start) = first_line.find("\"cfg_hash\":\"") {
+                            let hash_start = start + 12;
+                            if let Some(end) = first_line[hash_start..].find('"') {
+                                let baseline_hash = &first_line[hash_start..hash_start + end];
+                                if baseline_hash != current_cfg_hash {
+                                    eprintln!("\n⚠️  Config mismatch detected!");
+                                    eprintln!("   Baseline cfg_hash: {}", baseline_hash);
+                                    eprintln!("   Current cfg_hash:  {}", current_cfg_hash);
+                                    eprintln!(
+                                        "   Run with METATEST_UPDATE_BASELINE=1 to regenerate."
+                                    );
+                                    panic!(
+                                        "Baseline/config mismatch - test parameters have changed"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Skip config line when loading identities
+                let baseline: HashMap<String, IdentitySnapshot> = lines
+                    .iter()
+                    .filter(|l| !l.contains("\"_type\":\"config\""))
+                    .filter_map(|l| IdentitySnapshot::from_json(l))
                     .map(|s| (s.id.clone(), s))
                     .collect();
 
