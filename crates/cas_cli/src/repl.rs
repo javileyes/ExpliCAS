@@ -1058,12 +1058,6 @@ impl Repl {
             return;
         }
 
-        // Check for "check_step" command (educational tool)
-        if line.starts_with("check_step ") {
-            self.handle_check_step(&line);
-            return;
-        }
-
         // Check for "subst" command
         if line.starts_with("subst ") {
             self.handle_subst(&line);
@@ -1922,7 +1916,6 @@ impl Repl {
         println!("Equation Solving:");
         println!("  solve <eq>, <var>       Solve equation for variable");
         println!("  equiv <e1>, <e2>        Check if two expressions are equivalent");
-        println!("  check_step <a>, <b>     Validate if b is a valid simplification of a");
         println!("  subst <expr>, <var>=<val> Substitute a variable and simplify");
         println!();
 
@@ -2052,164 +2045,6 @@ impl Repl {
             }
         } else {
             println!("Usage: equiv <expr1>, <expr2>");
-        }
-    }
-
-    /// Educational tool: Validate if student_expr is a valid step from initial_expr
-    ///
-    /// Usage: check_step <initial>, <student>
-    ///
-    /// This checks:
-    /// 1. If student appears in the simplification timeline (preferred route)
-    /// 2. If not, proves equivalence via (initial - student) → 0
-    fn handle_check_step(&mut self, line: &str) {
-        use cas_engine::{StepCheckVerdict, ValidationRoute};
-        use cas_parser::Statement;
-
-        let rest = line["check_step ".len()..].trim();
-
-        if let Some((initial_str, student_str)) = rsplit_ignoring_parens(rest, ',') {
-            let initial_str = initial_str.trim();
-            let student_str = student_str.trim();
-
-            // Parse both expressions
-            fn parse_expr(s: &str, ctx: &mut cas_ast::Context) -> Result<cas_ast::ExprId, String> {
-                match cas_parser::parse_statement(s, ctx) {
-                    Ok(Statement::Expression(e)) => Ok(e),
-                    Ok(Statement::Equation(_)) => Err("Expected expression, got equation".into()),
-                    Err(e) => Err(format!("{}", e)),
-                }
-            }
-
-            let initial_res = parse_expr(initial_str, &mut self.engine.simplifier.context);
-            let student_res = parse_expr(student_str, &mut self.engine.simplifier.context);
-
-            match (initial_res, student_res) {
-                (Ok(initial), Ok(student)) => {
-                    let verdict = self.engine.simplifier.validate_step(initial, student);
-
-                    match verdict {
-                        StepCheckVerdict::ValidAndSimpler {
-                            requires,
-                            route,
-                            complexity_delta,
-                        } => {
-                            println!("✅ Valid step (simplifies)");
-                            println!();
-                            println!("📉 Complexity: {} (simpler)", complexity_delta);
-
-                            // Show route type
-                            match &route {
-                                ValidationRoute::DirectTimeline { steps } => {
-                                    println!(
-                                        "📍 Route: Direct (found in timeline, {} steps)",
-                                        steps.len()
-                                    );
-                                    if !steps.is_empty() {
-                                        println!();
-                                        println!("Steps:");
-                                        for (i, step) in steps.iter().enumerate().take(10) {
-                                            println!("  {}. {}", i + 1, step.description);
-                                        }
-                                        if steps.len() > 10 {
-                                            println!("  ... ({} more)", steps.len() - 10);
-                                        }
-                                    }
-                                }
-                                ValidationRoute::EquivalenceProof { diff_steps } => {
-                                    println!("📍 Route: Equivalence proof (A - B → 0)");
-                                    if !diff_steps.is_empty() && diff_steps.len() <= 10 {
-                                        println!();
-                                        println!("Proof steps:");
-                                        for (i, step) in diff_steps.iter().enumerate() {
-                                            println!("  {}. {}", i + 1, step.description);
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Show requires
-                            if !requires.is_empty() {
-                                println!();
-                                println!("ℹ️ Requires:");
-                                for req in &requires {
-                                    let display = req.display(&self.engine.simplifier.context);
-                                    println!("  • {}", display);
-                                }
-                            }
-                        }
-
-                        StepCheckVerdict::ValidButNotSimpler {
-                            requires,
-                            route,
-                            complexity_delta,
-                        } => {
-                            println!("⚠️  Valid step (but doesn't simplify)");
-                            println!();
-                            if complexity_delta == 0 {
-                                println!("📊 Complexity: unchanged");
-                            } else {
-                                println!("📈 Complexity: +{} (more complex)", complexity_delta);
-                            }
-
-                            match &route {
-                                ValidationRoute::DirectTimeline { steps } => {
-                                    println!("📍 Route: Direct ({} steps)", steps.len());
-                                }
-                                ValidationRoute::EquivalenceProof { .. } => {
-                                    println!("📍 Route: Equivalence proof");
-                                }
-                            }
-
-                            if !requires.is_empty() {
-                                println!();
-                                println!("ℹ️ Requires:");
-                                for req in &requires {
-                                    let display = req.display(&self.engine.simplifier.context);
-                                    println!("  • {}", display);
-                                }
-                            }
-                        }
-
-                        StepCheckVerdict::Invalid {
-                            counterexample,
-                            reason,
-                        } => {
-                            println!("❌ Invalid step");
-                            println!();
-                            println!("Reason: {}", reason);
-
-                            if let Some(ce) = counterexample {
-                                println!();
-                                println!("📌 Counterexample:");
-                                for (var, val) in &ce.variable_values {
-                                    println!("  {} = {}", var, val);
-                                }
-                                println!();
-                                println!("  Initial evaluates to: {:.6}", ce.a_value);
-                                println!("  Student evaluates to: {:.6}", ce.b_value);
-                                println!("  Difference: {:.6}", ce.difference);
-                            }
-                        }
-
-                        StepCheckVerdict::Unknown { reason } => {
-                            println!("❓ Unknown");
-                            println!();
-                            println!("Cannot determine if the step is valid.");
-                            println!("Reason: {}", reason);
-                        }
-                    }
-                }
-                (Err(e), _) => println!("Error parsing initial expression: {}", e),
-                (_, Err(e)) => println!("Error parsing student expression: {}", e),
-            }
-        } else {
-            println!("Usage: check_step <initial_expr>, <student_expr>");
-            println!();
-            println!("Examples:");
-            println!("  check_step x^2 + 2*x + 1, (x + 1)^2");
-            println!("  check_step 2 + 3, 5");
-            println!("  check_step sqrt(x)^2, x");
         }
     }
 
