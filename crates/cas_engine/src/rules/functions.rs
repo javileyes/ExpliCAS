@@ -481,6 +481,140 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// Abs Idempotent Rule: ||x|| → |x|
+// Absolute value of absolute value is just absolute value
+// =============================================================================
+define_rule!(AbsIdempotentRule, "Abs Idempotent", |ctx, expr| {
+    // Match abs(abs(inner))
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "abs" && args.len() == 1 {
+            let arg = args[0];
+            if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
+                if inner_name == "abs" && inner_args.len() == 1 {
+                    // ||x|| → |x|
+                    return Some(Rewrite::new(arg).desc("||x|| = |x|"));
+                }
+            }
+        }
+    }
+    None
+});
+
+// =============================================================================
+// Abs Of Even Power Rule: |x^(2k)| → x^(2k)
+// Absolute value of even power is just the even power (always non-negative)
+// =============================================================================
+define_rule!(AbsOfEvenPowerRule, "Abs Of Even Power", |ctx, expr| {
+    // Match abs(x^n) where n is even integer
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "abs" && args.len() == 1 {
+            let arg = args[0];
+            if let Expr::Pow(_base, exp) = ctx.get(arg) {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() && n.to_integer().is_even() {
+                        // |x^(2k)| → x^(2k) since x^(2k) ≥ 0 always
+                        return Some(Rewrite::new(arg).desc(format!("|x^{}| = x^{}", n, n)));
+                    }
+                }
+            }
+        }
+    }
+    None
+});
+
+// =============================================================================
+// Abs Product Rule: |x| * |y| → |x * y|
+// Multiplicative property of absolute value
+// =============================================================================
+define_rule!(
+    AbsProductRule,
+    "Abs Product",
+    Some(vec!["Mul"]),
+    PhaseMask::CORE | PhaseMask::TRANSFORM,
+    |ctx, expr| {
+        use crate::build::mul2_raw;
+
+        // Match Mul(abs(a), abs(b))
+        if let Expr::Mul(lhs, rhs) = ctx.get(expr) {
+            // Check if lhs is abs(a)
+            let lhs_inner = if let Expr::Function(name, args) = ctx.get(*lhs) {
+                if name == "abs" && args.len() == 1 {
+                    Some(args[0])
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Check if rhs is abs(b)
+            let rhs_inner = if let Expr::Function(name, args) = ctx.get(*rhs) {
+                if name == "abs" && args.len() == 1 {
+                    Some(args[0])
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let (Some(a), Some(b)) = (lhs_inner, rhs_inner) {
+                // |a| * |b| → |a * b|
+                let product = mul2_raw(ctx, a, b);
+                let abs_product = ctx.add(Expr::Function("abs".to_string(), vec![product]));
+                return Some(Rewrite::new(abs_product).desc("|x|·|y| = |x·y|"));
+            }
+        }
+        None
+    }
+);
+
+// =============================================================================
+// Abs Quotient Rule: |x| / |y| → |x / y|
+// Quotient property of absolute value
+// =============================================================================
+define_rule!(
+    AbsQuotientRule,
+    "Abs Quotient",
+    Some(vec!["Div"]),
+    PhaseMask::CORE | PhaseMask::TRANSFORM,
+    |ctx, expr| {
+        // Match Div(abs(a), abs(b))
+        if let Expr::Div(lhs, rhs) = ctx.get(expr) {
+            // Check if lhs is abs(a)
+            let lhs_inner = if let Expr::Function(name, args) = ctx.get(*lhs) {
+                if name == "abs" && args.len() == 1 {
+                    Some(args[0])
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Check if rhs is abs(b)
+            let rhs_inner = if let Expr::Function(name, args) = ctx.get(*rhs) {
+                if name == "abs" && args.len() == 1 {
+                    Some(args[0])
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let (Some(a), Some(b)) = (lhs_inner, rhs_inner) {
+                // |a| / |b| → |a / b|
+                let quotient = ctx.add(Expr::Div(a, b));
+                let abs_quotient = ctx.add(Expr::Function("abs".to_string(), vec![quotient]));
+                return Some(Rewrite::new(abs_quotient).desc("|x| / |y| = |x / y|"));
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
                                                            // V2.14.45: SimplifySqrtOddPowerRule DISABLED - causes split/merge cycle with ProductPowerRule
@@ -492,5 +626,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
     simplifier.add_rule(Box::new(AbsSquaredRule));
+    simplifier.add_rule(Box::new(AbsIdempotentRule)); // ||x|| → |x|
+    simplifier.add_rule(Box::new(AbsOfEvenPowerRule)); // |x^2k| → x^2k
+    simplifier.add_rule(Box::new(AbsProductRule)); // |x|*|y| → |xy|
+    simplifier.add_rule(Box::new(AbsQuotientRule)); // |x|/|y| → |x/y|
     simplifier.add_rule(Box::new(EvaluateMetaFunctionsRule)); // Make simplify/factor/expand transparent
 }
