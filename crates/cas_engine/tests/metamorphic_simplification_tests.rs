@@ -675,10 +675,21 @@ fn assert_metamorphic_combine_triple(
 struct IdentityPair {
     exp: String,
     simp: String,
-    var: String,
+    vars: Vec<String>,
+    mode: DomainRequirement,
+}
+
+/// Domain requirement for an identity
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DomainRequirement {
+    Generic, // Works in both modes (g)
+    Assume,  // Requires DomainMode::Assume (a)
 }
 
 /// Load identity pairs from CSV file
+/// Format: exp,simp,vars,mode
+/// - vars: semicolon-separated variable names (e.g., "x" or "x;y")
+/// - mode: "g" for generic (default), "a" for assume-only
 fn load_identity_pairs() -> Vec<IdentityPair> {
     let csv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/identity_pairs.csv");
     let content = std::fs::read_to_string(csv_path).expect("Failed to read identity_pairs.csv");
@@ -691,13 +702,31 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
             continue;
         }
 
-        // Parse CSV: exp,simp,var
-        let parts: Vec<&str> = line.splitn(3, ',').collect();
+        // Parse CSV: exp,simp,vars[,mode]
+        let parts: Vec<&str> = line.splitn(4, ',').collect();
         if parts.len() >= 3 {
+            // Parse vars (semicolon-separated)
+            let vars: Vec<String> = parts[2]
+                .trim()
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .collect();
+
+            // Parse mode (default to generic if not specified)
+            let mode = if parts.len() >= 4 {
+                match parts[3].trim() {
+                    "a" => DomainRequirement::Assume,
+                    _ => DomainRequirement::Generic,
+                }
+            } else {
+                DomainRequirement::Generic
+            };
+
             pairs.push(IdentityPair {
                 exp: parts[0].trim().to_string(),
                 simp: parts[1].trim().to_string(),
-                var: parts[2].trim().to_string(),
+                vars,
+                mode,
             });
         }
     }
@@ -728,8 +757,8 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
             let pair2 = &pairs[j];
 
             // Alpha-rename pair2
-            let pair2_exp = alpha_rename(&pair2.exp, &pair2.var, "u");
-            let pair2_simp = alpha_rename(&pair2.simp, &pair2.var, "u");
+            let pair2_exp = alpha_rename(&pair2.exp, &pair2.vars[0], "u");
+            let pair2_simp = alpha_rename(&pair2.simp, &pair2.vars[0], "u");
 
             let combined_exp = format!("({}) + ({})", pair1.exp, pair2_exp);
             let combined_simp = format!("({}) + ({})", pair1.simp, pair2_simp);
@@ -764,7 +793,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                     &simplifier.context,
                     exp_simplified,
                     simp_simplified,
-                    &pair1.var,
+                    &pair1.vars[0],
                     "u",
                     &config,
                 );
@@ -806,10 +835,10 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                     let pair3 = &pairs[k];
 
                     // Alpha-rename
-                    let pair2_exp = alpha_rename(&pair2.exp, &pair2.var, "u");
-                    let pair2_simp = alpha_rename(&pair2.simp, &pair2.var, "u");
-                    let pair3_exp = alpha_rename(&pair3.exp, &pair3.var, "v");
-                    let pair3_simp = alpha_rename(&pair3.simp, &pair3.var, "v");
+                    let pair2_exp = alpha_rename(&pair2.exp, &pair2.vars[0], "u");
+                    let pair2_simp = alpha_rename(&pair2.simp, &pair2.vars[0], "u");
+                    let pair3_exp = alpha_rename(&pair3.exp, &pair3.vars[0], "v");
+                    let pair3_simp = alpha_rename(&pair3.simp, &pair3.vars[0], "v");
 
                     let combined_exp =
                         format!("(({}) + ({})) + ({})", pair1.exp, pair2_exp, pair3_exp);
@@ -837,7 +866,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                         let x_val = lo + (hi - lo) * t.clamp(0.0, 1.0);
 
                         let mut var_map = HashMap::new();
-                        var_map.insert(pair1.var.clone(), x_val);
+                        var_map.insert(pair1.vars[0].clone(), x_val);
                         var_map.insert("u".to_string(), x_val * 1.1);
                         var_map.insert("v".to_string(), x_val * 0.9);
 
@@ -902,18 +931,51 @@ fn metatest_csv_combinations_full() {
 }
 
 /// Test individual identity pairs (not combinations) to see which simplify symbolically
+///
+/// Environment variables:
+/// - METATEST_MODE=assume : Use DomainMode::Assume (includes all identities)
+/// - METATEST_MODE=generic (or unset) : Use DomainMode::Generic (skips assume-only identities)
 #[test]
 #[ignore = "Diagnostic test - run manually to check symbolic vs numeric equivalence"]
 fn metatest_individual_identities() {
+    // Run in a thread with larger stack to avoid overflow
+    let handle = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024) // 16 MB stack
+        .spawn(metatest_individual_identities_impl)
+        .expect("Failed to spawn test thread");
+    handle.join().expect("Test thread panicked");
+}
+
+fn metatest_individual_identities_impl() {
     let pairs = load_identity_pairs();
     let config = metatest_config();
+
+    // Determine test mode from environment
+    let use_assume_mode = env::var("METATEST_MODE").ok().as_deref() == Some("assume");
+    let domain_mode = if use_assume_mode {
+        cas_engine::domain::DomainMode::Assume
+    } else {
+        cas_engine::domain::DomainMode::Generic
+    };
+
+    eprintln!(
+        "🔧 Running in {} mode",
+        if use_assume_mode { "ASSUME" } else { "GENERIC" }
+    );
 
     let mut symbolic_passed = 0;
     let mut numeric_only_passed = 0;
     let mut failed = 0;
+    let mut skipped = 0;
     let mut numeric_only_examples: Vec<String> = Vec::new();
 
     for pair in &pairs {
+        // Skip assume-only identities in generic mode
+        if pair.mode == DomainRequirement::Assume && !use_assume_mode {
+            skipped += 1;
+            continue;
+        }
+
         let mut simplifier = Simplifier::with_default_rules();
 
         // Parse both expressions
@@ -926,13 +988,11 @@ fn metatest_individual_identities() {
             Err(_) => continue,
         };
 
-        // Use Assume domain mode to allow sqrt(a)*sqrt(b) = sqrt(a*b) etc.
+        // Simplify with selected domain mode
         let opts = cas_engine::phase::SimplifyOptions {
-            domain: cas_engine::domain::DomainMode::Assume,
+            domain: domain_mode,
             ..Default::default()
         };
-
-        // Simplify both with assume mode
         let (exp_simplified, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
         let (simp_simplified, _) = simplifier.simplify_with_options(simp_parsed, opts);
 
@@ -950,14 +1010,29 @@ fn metatest_individual_identities() {
             let exp_simplified_str = format!("{:?}", simplifier.context.get(exp_simplified));
             let simp_simplified_str = format!("{:?}", simplifier.context.get(simp_simplified));
 
-            // Check numeric equivalence
-            let result = check_numeric_equiv_1var(
-                &simplifier.context,
-                exp_simplified,
-                simp_simplified,
-                &pair.var,
-                &config,
-            );
+            // Check numeric equivalence - select function based on variable count
+            let result = match pair.vars.len() {
+                1 => check_numeric_equiv_1var(
+                    &simplifier.context,
+                    exp_simplified,
+                    simp_simplified,
+                    &pair.vars[0],
+                    &config,
+                ),
+                2 => check_numeric_equiv_2var(
+                    &simplifier.context,
+                    exp_simplified,
+                    simp_simplified,
+                    &pair.vars[0],
+                    &pair.vars[1],
+                    &config,
+                ),
+                _ => {
+                    // 3+ variables: skip for now
+                    skipped += 1;
+                    continue;
+                }
+            };
 
             if result.is_ok() {
                 numeric_only_passed += 1;
@@ -979,13 +1054,18 @@ fn metatest_individual_identities() {
     }
 
     let total = symbolic_passed + numeric_only_passed + failed;
-    let symbolic_pct = (symbolic_passed as f64 / total as f64 * 100.0) as u32;
+    let symbolic_pct = if total > 0 {
+        (symbolic_passed as f64 / total as f64 * 100.0) as u32
+    } else {
+        0
+    };
 
     eprintln!("\n📊 Individual Identity Results:");
-    eprintln!("   Total: {}", total);
+    eprintln!("   Total tested: {}", total);
     eprintln!("   ✅ Symbolic: {} ({}%)", symbolic_passed, symbolic_pct);
     eprintln!("   🔢 Numeric-only: {}", numeric_only_passed);
     eprintln!("   ❌ Failed: {}", failed);
+    eprintln!("   ⏭️  Skipped: {}", skipped);
 
     if !numeric_only_examples.is_empty() {
         eprintln!("\n📝 Numeric-only identities (showing simplifications):");

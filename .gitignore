@@ -15,3 +15,7 @@ target/
 
 # Desarrollo
 desarrollo
+
+/crates/metatest_log.jsonl
+
+salida.txt
