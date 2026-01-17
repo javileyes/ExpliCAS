@@ -584,7 +584,7 @@ sec(x)^2 + csc(x)^2,sec(x)^2*csc(x)^2,x,g
 arcsin(x) + arccos(x),pi/2,x,g
 
 # arctan compositions
-arctan(x) + arctan(1/x),pi/2,x,g
+arctan(x) + arctan(1/x),pi/2,x,g,unconditional,unconditional,gt(0.0)
 
 # =============================================================================
 # SPECIAL TRIG VALUES 
@@ -665,7 +665,7 @@ tanh(x),sinh(x)/cosh(x),x,g
 tanh(x),(exp(x) - exp(-x))/(exp(x) + exp(-x)),x,g
 
 # Hyperbolic Pythagorean
-cosh(x)^2 - sinh(x)^2,1,x,g
+cosh(x)^2 - sinh(x)^2,1,x,g,unconditional,unconditional,range(-5.0;5.0)
 
 # Hyperbolic double angle
 sinh(2*x),2*sinh(x)*cosh(x),x,g

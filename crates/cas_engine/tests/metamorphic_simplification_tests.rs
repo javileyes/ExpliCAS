@@ -26,6 +26,7 @@ mod test_utils;
 
 use cas_ast::{Context, ExprId};
 use cas_engine::engine::eval_f64;
+use cas_engine::EquivalenceResult;
 use cas_engine::Simplifier;
 use cas_engine::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
 use cas_parser::parse;
@@ -259,6 +260,73 @@ fn gen_expr(vars: &[&str], depth: usize, rng: &mut Lcg) -> String {
                 gen_expr(vars, 0, rng)
             }
         }
+    }
+}
+
+// =============================================================================
+// Symbolic Equivalence Check (Bucket-aware)
+// =============================================================================
+
+/// Result of bucket-aware symbolic equivalence check
+#[derive(Debug, Clone, PartialEq)]
+enum SymbolicResult {
+    /// A ≡ B unconditionally (pure equivalence)
+    Pass,
+    /// A ≡ B with conditions (allowed for ConditionalRequires bucket)
+    PassConditional(Vec<String>),
+    /// A ≡ B but required conditions in Unconditional bucket (not counted as symbolic)
+    Conditional(Vec<String>),
+    /// A ≢ B (proved non-equivalent)
+    Fail,
+    /// Cannot determine symbolically
+    Unknown,
+    /// Skip symbolic check (for BranchSensitive)
+    SkipSymbolic,
+}
+
+/// Check symbolic equivalence using are_equivalent_extended with bucket gating.
+///
+/// Uses the engine's equivalence API which tracks soundness labels and
+/// introduced requires, then gates the result based on bucket.
+fn check_symbolic_equiv_bucket_aware(
+    simplifier: &mut Simplifier,
+    exp_expr: ExprId,
+    simp_expr: ExprId,
+    bucket: Bucket,
+) -> SymbolicResult {
+    // Fast path: structural comparison after simplification
+    let (exp_simplified, _) = simplifier.simplify(exp_expr);
+    let (simp_simplified, _) = simplifier.simplify(simp_expr);
+
+    if cas_engine::ordering::compare_expr(&simplifier.context, exp_simplified, simp_simplified)
+        == std::cmp::Ordering::Equal
+    {
+        return SymbolicResult::Pass;
+    }
+
+    // Slow path: full equivalence check with tracking
+    let eq = simplifier.are_equivalent_extended(exp_expr, simp_expr);
+
+    match (&bucket, eq) {
+        // Unconditional bucket: only pure True counts as symbolic pass
+        (Bucket::Unconditional, EquivalenceResult::True) => SymbolicResult::Pass,
+        (Bucket::Unconditional, EquivalenceResult::ConditionalTrue { requires }) => {
+            SymbolicResult::Conditional(requires) // NOT symbolic pass, falls to numeric
+        }
+        (Bucket::Unconditional, EquivalenceResult::False) => SymbolicResult::Fail,
+        (Bucket::Unconditional, EquivalenceResult::Unknown) => SymbolicResult::Unknown,
+
+        // ConditionalRequires: conditional counts as pass
+        (Bucket::ConditionalRequires, EquivalenceResult::True) => SymbolicResult::Pass,
+        (Bucket::ConditionalRequires, EquivalenceResult::ConditionalTrue { requires }) => {
+            SymbolicResult::PassConditional(requires)
+        }
+        (Bucket::ConditionalRequires, EquivalenceResult::False) => SymbolicResult::Fail,
+        (Bucket::ConditionalRequires, EquivalenceResult::Unknown) => SymbolicResult::Unknown,
+
+        // BranchSensitive: skip symbolic except for pure True
+        (Bucket::BranchSensitive, EquivalenceResult::True) => SymbolicResult::Pass,
+        (Bucket::BranchSensitive, _) => SymbolicResult::SkipSymbolic,
     }
 }
 
@@ -2509,8 +2577,15 @@ fn metatest_individual_identities_impl() {
             Ok(e) => e,
             Err(_) => continue,
         };
+        // Check symbolic equality using bucket-aware equivalence
+        let sym_result = check_symbolic_equiv_bucket_aware(
+            &mut simplifier,
+            exp_parsed,
+            simp_parsed,
+            pair.bucket,
+        );
 
-        // Simplify with selected domain mode
+        // Simplify for display and numeric fallback
         let opts = cas_engine::phase::SimplifyOptions {
             domain: domain_mode,
             ..Default::default()
@@ -2518,12 +2593,10 @@ fn metatest_individual_identities_impl() {
         let (exp_simplified, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
         let (simp_simplified, _) = simplifier.simplify_with_options(simp_parsed, opts);
 
-        // Check symbolic equality
-        let symbolic_match = cas_engine::ordering::compare_expr(
-            &simplifier.context,
-            exp_simplified,
-            simp_simplified,
-        ) == std::cmp::Ordering::Equal;
+        let symbolic_match = matches!(
+            sym_result,
+            SymbolicResult::Pass | SymbolicResult::PassConditional(_)
+        );
 
         if symbolic_match {
             symbolic_passed += 1;
