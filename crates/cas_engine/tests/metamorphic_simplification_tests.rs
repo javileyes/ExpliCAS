@@ -276,6 +276,243 @@ fn truncate_identity(s: &str, max_len: usize) -> String {
 }
 
 // =============================================================================
+// Shuffle Canonicalization (Phase A)
+// =============================================================================
+
+/// Collect all addends from a flattened Add tree (recursive)
+/// Returns vec of ExprIds in order they appear in the tree
+fn collect_addends(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    match ctx.nodes.get(expr.index()) {
+        Some(cas_ast::Expr::Add(a, b)) => {
+            let mut result = collect_addends(ctx, *a);
+            result.extend(collect_addends(ctx, *b));
+            result
+        }
+        _ => vec![expr],
+    }
+}
+
+/// Collect all factors from a flattened Mul tree (recursive)
+fn collect_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    match ctx.nodes.get(expr.index()) {
+        Some(cas_ast::Expr::Mul(a, b)) => {
+            let mut result = collect_factors(ctx, *a);
+            result.extend(collect_factors(ctx, *b));
+            result
+        }
+        _ => vec![expr],
+    }
+}
+
+/// Rebuild Add tree from terms (left-associative)
+fn rebuild_add(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
+    if terms.is_empty() {
+        ctx.add_raw(cas_ast::Expr::Number(
+            num_rational::BigRational::from_integer(0.into()),
+        ))
+    } else if terms.len() == 1 {
+        terms[0]
+    } else {
+        let mut result = terms[0];
+        for &term in &terms[1..] {
+            result = ctx.add_raw(cas_ast::Expr::Add(result, term));
+        }
+        result
+    }
+}
+
+/// Rebuild Mul tree from factors (left-associative)
+fn rebuild_mul(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
+    if factors.is_empty() {
+        ctx.add_raw(cas_ast::Expr::Number(
+            num_rational::BigRational::from_integer(1.into()),
+        ))
+    } else if factors.len() == 1 {
+        factors[0]
+    } else {
+        let mut result = factors[0];
+        for &factor in &factors[1..] {
+            result = ctx.add_raw(cas_ast::Expr::Mul(result, factor));
+        }
+        result
+    }
+}
+
+/// Stable hash for an expression (FNV-1a based, deterministic)
+fn stable_expr_hash(ctx: &Context, expr: ExprId) -> u64 {
+    const FNV_OFFSET: u64 = 14695981039346656037;
+    const FNV_PRIME: u64 = 1099511628211;
+
+    fn hash_combine(hash: u64, byte: u8) -> u64 {
+        (hash ^ (byte as u64)).wrapping_mul(FNV_PRIME)
+    }
+
+    fn hash_u64(hash: u64, val: u64) -> u64 {
+        let mut h = hash;
+        for i in 0..8 {
+            h = hash_combine(h, ((val >> (i * 8)) & 0xff) as u8);
+        }
+        h
+    }
+
+    fn hash_expr(ctx: &Context, expr: ExprId, h: u64) -> u64 {
+        match ctx.nodes.get(expr.index()) {
+            Some(cas_ast::Expr::Number(n)) => {
+                let mut h = hash_combine(h, b'N');
+                for b in n.to_string().bytes() {
+                    h = hash_combine(h, b);
+                }
+                h
+            }
+            Some(cas_ast::Expr::Variable(name)) => {
+                let mut h = hash_combine(h, b'V');
+                for b in name.bytes() {
+                    h = hash_combine(h, b);
+                }
+                h
+            }
+            Some(cas_ast::Expr::Add(a, b)) => {
+                let h = hash_combine(h, b'+');
+                let h = hash_expr(ctx, *a, h);
+                hash_expr(ctx, *b, h)
+            }
+            Some(cas_ast::Expr::Mul(a, b)) => {
+                let h = hash_combine(h, b'*');
+                let h = hash_expr(ctx, *a, h);
+                hash_expr(ctx, *b, h)
+            }
+            Some(cas_ast::Expr::Pow(base, exp)) => {
+                let h = hash_combine(h, b'^');
+                let h = hash_expr(ctx, *base, h);
+                hash_expr(ctx, *exp, h)
+            }
+            Some(cas_ast::Expr::Function(name, args)) => {
+                let mut h = hash_combine(h, b'F');
+                for b in name.bytes() {
+                    h = hash_combine(h, b);
+                }
+                for arg in args {
+                    h = hash_expr(ctx, *arg, h);
+                }
+                h
+            }
+            Some(cas_ast::Expr::Neg(inner)) => {
+                let h = hash_combine(h, b'-');
+                hash_expr(ctx, *inner, h)
+            }
+            Some(cas_ast::Expr::Sub(a, b)) => {
+                let h = hash_combine(h, b'S');
+                let h = hash_expr(ctx, *a, h);
+                hash_expr(ctx, *b, h)
+            }
+            Some(cas_ast::Expr::Div(a, b)) => {
+                let h = hash_combine(h, b'/');
+                let h = hash_expr(ctx, *a, h);
+                hash_expr(ctx, *b, h)
+            }
+            Some(cas_ast::Expr::Constant(c)) => {
+                let mut h = hash_combine(h, b'C');
+                for b in format!("{:?}", c).bytes() {
+                    h = hash_combine(h, b);
+                }
+                h
+            }
+            _ => hash_combine(h, b'?'),
+        }
+    }
+
+    hash_expr(ctx, expr, FNV_OFFSET)
+}
+
+/// Deterministic shuffle based on expr hash (Fisher-Yates with seeded PRNG)
+fn shuffle_vec<T>(items: &mut [T], seed: u64) {
+    let mut rng = seed;
+    for i in (1..items.len()).rev() {
+        // Simple LCG PRNG
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let j = (rng as usize) % (i + 1);
+        items.swap(i, j);
+    }
+}
+
+/// Shuffle an expression by permuting Add/Mul children deterministically
+/// Only touches commutative nodes (Add, Mul), preserves structure of other nodes
+fn shuffle_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let seed = stable_expr_hash(ctx, expr);
+    shuffle_expr_seeded(ctx, expr, seed)
+}
+
+fn shuffle_expr_seeded(ctx: &mut Context, expr: ExprId, seed: u64) -> ExprId {
+    match ctx.nodes.get(expr.index()).cloned() {
+        Some(cas_ast::Expr::Add(_, _)) => {
+            // Flatten, shuffle, rebuild
+            let mut terms = collect_addends(ctx, expr);
+            if terms.len() > 1 {
+                // Shuffle terms
+                shuffle_vec(&mut terms, seed);
+                // Recursively shuffle each term
+                let shuffled_terms: Vec<_> = terms
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &t)| shuffle_expr_seeded(ctx, t, seed.wrapping_add(i as u64)))
+                    .collect();
+                rebuild_add(ctx, &shuffled_terms)
+            } else {
+                expr
+            }
+        }
+        Some(cas_ast::Expr::Mul(_, _)) => {
+            // Flatten, shuffle, rebuild
+            let mut factors = collect_factors(ctx, expr);
+            if factors.len() > 1 {
+                shuffle_vec(&mut factors, seed.wrapping_add(1000));
+                let shuffled_factors: Vec<_> = factors
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &f)| shuffle_expr_seeded(ctx, f, seed.wrapping_add(2000 + i as u64)))
+                    .collect();
+                rebuild_mul(ctx, &shuffled_factors)
+            } else {
+                expr
+            }
+        }
+        Some(cas_ast::Expr::Pow(base, exp)) => {
+            // Don't shuffle base/exp order, just recurse
+            let new_base = shuffle_expr_seeded(ctx, base, seed.wrapping_add(100));
+            let new_exp = shuffle_expr_seeded(ctx, exp, seed.wrapping_add(200));
+            ctx.add_raw(cas_ast::Expr::Pow(new_base, new_exp))
+        }
+        Some(cas_ast::Expr::Function(name, args)) => {
+            // Recurse into args (don't reorder - function args aren't commutative)
+            let new_args: Vec<_> = args
+                .iter()
+                .enumerate()
+                .map(|(i, &a)| shuffle_expr_seeded(ctx, a, seed.wrapping_add(300 + i as u64)))
+                .collect();
+            ctx.add_raw(cas_ast::Expr::Function(name, new_args))
+        }
+        Some(cas_ast::Expr::Neg(inner)) => {
+            let new_inner = shuffle_expr_seeded(ctx, inner, seed.wrapping_add(400));
+            ctx.add_raw(cas_ast::Expr::Neg(new_inner))
+        }
+        Some(cas_ast::Expr::Sub(a, b)) => {
+            // Sub is not commutative - just recurse
+            let new_a = shuffle_expr_seeded(ctx, a, seed.wrapping_add(500));
+            let new_b = shuffle_expr_seeded(ctx, b, seed.wrapping_add(600));
+            ctx.add_raw(cas_ast::Expr::Sub(new_a, new_b))
+        }
+        Some(cas_ast::Expr::Div(a, b)) => {
+            // Div is not commutative - just recurse
+            let new_a = shuffle_expr_seeded(ctx, a, seed.wrapping_add(700));
+            let new_b = shuffle_expr_seeded(ctx, b, seed.wrapping_add(800));
+            ctx.add_raw(cas_ast::Expr::Div(new_a, new_b))
+        }
+        // Leaf nodes - no change
+        _ => expr,
+    }
+}
+
+// =============================================================================
 // Numeric Equivalence Check
 // =============================================================================
 
@@ -2620,4 +2857,247 @@ fn metatest_individual_identities_impl() {
             }
         }
     }
+}
+
+// =============================================================================
+// Shuffle Canonicalization Test (Phase A)
+// =============================================================================
+
+/// Test shuffle canonicalization with dual checks:
+/// 1. Semantic: simplify(E) ≡ simplify(shuffle(E)) numerically (must pass - bug if fails)
+/// 2. Structural: simplify(E) == simplify(shuffle(E)) exactly (metric, optional strict mode)
+#[test]
+#[ignore]
+fn metatest_shuffle_canonicalization() {
+    let shuffle_enabled = env::var("METATEST_SHUFFLE").is_ok();
+    if !shuffle_enabled {
+        eprintln!("Shuffle test skipped. Set METATEST_SHUFFLE=1 to enable.");
+        return;
+    }
+
+    let strict_canon = env::var("METATEST_STRICT_CANON").is_ok();
+    let pairs = load_identity_pairs();
+    if pairs.is_empty() {
+        panic!("No identity pairs loaded!");
+    }
+
+    eprintln!("🔀 Shuffle Canonicalization Test");
+    eprintln!(
+        "   Mode: {}",
+        if strict_canon {
+            "STRICT (fail on structural diff)"
+        } else {
+            "METRIC (report only)"
+        }
+    );
+    eprintln!("   Testing {} identity expressions...\n", pairs.len());
+
+    let mut semantic_failures: Vec<String> = Vec::new();
+    let mut structural_failures: Vec<String> = Vec::new();
+    let mut tested = 0;
+
+    for pair in &pairs {
+        if pair.vars.len() != 1 {
+            continue;
+        }
+
+        // Test LHS
+        match test_shuffle_dual(&pair.exp, &pair.vars[0]) {
+            ShuffleResult::Ok => {}
+            ShuffleResult::ParseSkip => {} // Skip unsupported syntax
+            ShuffleResult::StructuralDiff(msg) => {
+                structural_failures.push(format!(
+                    "{} (LHS): {}",
+                    truncate_identity(&pair.exp, 30),
+                    msg
+                ));
+            }
+            ShuffleResult::SemanticFail(msg) => {
+                semantic_failures.push(format!("{} (LHS): {}", pair.exp, msg));
+            }
+        }
+
+        // Test RHS
+        match test_shuffle_dual(&pair.simp, &pair.vars[0]) {
+            ShuffleResult::Ok => {}
+            ShuffleResult::ParseSkip => {} // Skip unsupported syntax
+            ShuffleResult::StructuralDiff(msg) => {
+                structural_failures.push(format!(
+                    "{} (RHS): {}",
+                    truncate_identity(&pair.simp, 30),
+                    msg
+                ));
+            }
+            ShuffleResult::SemanticFail(msg) => {
+                semantic_failures.push(format!("{} (RHS): {}", pair.simp, msg));
+            }
+        }
+
+        tested += 1;
+    }
+
+    // Report results
+    eprintln!("📊 Shuffle Results:");
+    eprintln!("   Tested: {} expressions", tested * 2);
+    eprintln!(
+        "   Semantic failures: {} (MUST be 0)",
+        semantic_failures.len()
+    );
+    eprintln!(
+        "   Structural diffs: {} (canonicalization gaps)",
+        structural_failures.len()
+    );
+
+    // Semantic failures are always fatal (indicates a real bug)
+    if !semantic_failures.is_empty() {
+        eprintln!("\n🚨 SEMANTIC FAILURES (shuffle broke equivalence!):");
+        for (i, fail) in semantic_failures.iter().take(5).enumerate() {
+            eprintln!("   {}. {}", i + 1, fail);
+        }
+        panic!(
+            "Shuffle caused {} semantic failures - this is a BUG!",
+            semantic_failures.len()
+        );
+    }
+
+    // Structural diffs are informative (or fatal in strict mode)
+    if !structural_failures.is_empty() {
+        eprintln!("\n⚠️  STRUCTURAL DIFFS (order-dependent canonicalization):");
+        for (i, fail) in structural_failures.iter().take(5).enumerate() {
+            eprintln!("   {}. {}", i + 1, fail);
+        }
+        if structural_failures.len() > 5 {
+            eprintln!("   ... and {} more", structural_failures.len() - 5);
+        }
+
+        if strict_canon {
+            panic!(
+                "Strict canon mode: {} structural diffs - canonicalization not stable",
+                structural_failures.len()
+            );
+        } else {
+            eprintln!("\n💡 Run with METATEST_STRICT_CANON=1 to fail on structural diffs.");
+        }
+    }
+
+    if semantic_failures.is_empty() && structural_failures.is_empty() {
+        eprintln!("\n✅ All shuffle checks passed (semantic + structural)!");
+    } else if semantic_failures.is_empty() {
+        eprintln!(
+            "\n✅ Semantic checks passed. {} structural diffs (non-blocking).",
+            structural_failures.len()
+        );
+    }
+}
+
+enum ShuffleResult {
+    Ok,
+    StructuralDiff(String),
+    SemanticFail(String),
+    ParseSkip, // Expression couldn't be parsed (syntax not supported)
+}
+
+/// Test shuffle with dual check: semantic (numeric) + structural (exact)
+fn test_shuffle_dual(expr_str: &str, var: &str) -> ShuffleResult {
+    let mut simplifier = Simplifier::new();
+
+    // Parse - skip if syntax not supported
+    let expr = match parse(expr_str, &mut simplifier.context) {
+        Ok(e) => e,
+        Err(_) => return ShuffleResult::ParseSkip,
+    };
+
+    // Simplify original
+    let (simplified_original, _) = simplifier.simplify(expr);
+
+    // Shuffle and simplify
+    let shuffled = shuffle_expr(&mut simplifier.context, expr);
+    let (simplified_shuffled, _) = simplifier.simplify(shuffled);
+
+    // 1. Structural check (Debug representation)
+    let original_debug = format!("{:?}", simplifier.context.get(simplified_original));
+    let shuffled_debug = format!("{:?}", simplifier.context.get(simplified_shuffled));
+    let structural_match = original_debug == shuffled_debug;
+
+    // 2. Semantic check (numeric evaluation at a few points)
+    let semantic_match = check_numeric_equiv_quick(
+        &simplifier.context,
+        simplified_original,
+        simplified_shuffled,
+        var,
+    );
+
+    match (structural_match, semantic_match) {
+        (true, true) => ShuffleResult::Ok,
+        (false, true) => ShuffleResult::StructuralDiff("different debug repr".to_string()),
+        (_, false) => ShuffleResult::SemanticFail("numeric mismatch after shuffle".to_string()),
+    }
+}
+
+/// Quick numeric equivalence check (5 sample points)
+fn check_numeric_equiv_quick(ctx: &Context, a: ExprId, b: ExprId, var: &str) -> bool {
+    let samples = [-2.0, -0.5, 0.5, 1.5, 3.0];
+    let mut valid_checks = 0;
+    let mut matching = 0;
+
+    for x in samples {
+        let mut vars = HashMap::new();
+        vars.insert(var.to_string(), x);
+
+        let va = eval_f64(ctx, a, &vars);
+        let vb = eval_f64(ctx, b, &vars);
+
+        match (va, vb) {
+            (Some(a_val), Some(b_val)) if a_val.is_finite() && b_val.is_finite() => {
+                valid_checks += 1;
+                let diff = (a_val - b_val).abs();
+                let rel = diff / a_val.abs().max(1e-10);
+                if diff < 1e-8 || rel < 1e-8 {
+                    matching += 1;
+                }
+            }
+            _ => {} // Skip invalid samples
+        }
+    }
+
+    // If no valid samples, return true (inconclusive, not a failure)
+    // If at least 2 valid samples, require all to match
+    if valid_checks < 2 {
+        true // Inconclusive - skip this check
+    } else {
+        matching == valid_checks
+    }
+}
+
+/// Test that simplify(E) == simplify(shuffle(E)) for a single expression
+fn test_shuffle_invariance(expr_str: &str, _label: &str) -> Result<(), String> {
+    // Create simplifier (which owns Context)
+    let mut simplifier = Simplifier::new();
+
+    // Parse the expression
+    let expr = match parse(expr_str, &mut simplifier.context) {
+        Ok(e) => e,
+        Err(_) => return Err("parse failed".to_string()),
+    };
+
+    // Simplify original
+    let (simplified_original, _) = simplifier.simplify(expr);
+    let original_str = format!("{:?}", simplifier.context.get(simplified_original));
+
+    // Shuffle the expression
+    let shuffled = shuffle_expr(&mut simplifier.context, expr);
+
+    // Simplify shuffled
+    let (simplified_shuffled, _) = simplifier.simplify(shuffled);
+    let shuffled_str = format!("{:?}", simplifier.context.get(simplified_shuffled));
+
+    // Compare (structural equality via Debug representation)
+    if original_str != shuffled_str {
+        return Err(format!(
+            "shuffle mismatch: '{}' vs '{}'",
+            original_str, shuffled_str
+        ));
+    }
+
+    Ok(())
 }

@@ -519,7 +519,13 @@ El sistema de baseline permite detectar regresiones en la calidad del engine ent
 crates/cas_engine/tests/baselines/metatest_baseline.jsonl
 ```
 
-Cada línea es un JSON con el snapshot de una identidad:
+**Primera línea**: Header de configuración con `cfg_hash`:
+
+```json
+{"_type":"config","cfg_hash":"b1e48281af9a6844","samples":200,"min_valid":180,"atol":1e-8,"rtol":1e-8,"range":[-10,10]}
+```
+
+**Líneas siguientes**: Snapshot por identidad:
 
 ```json
 {"id":"c81215fe481d1332","exp":"tan(x)^2 + 1","simp":"sec(x)^2","category":"Ok","valid":200,"filtered_out":0,"near_pole":0,"domain_error":0,"eval_failed":0,"asymmetric":0,"mismatches":0,"total":200}
@@ -537,12 +543,32 @@ METATEST_DIAG=1 METATEST_SNAPSHOT=1 cargo test --package cas_engine \
     --test metamorphic_simplification_tests -- metatest_individual --ignored --nocapture
 ```
 
-### Output de Comparación
+### Output de Diagnóstico
 
 ```
+🔍 Filter Coverage: 12/97 snapshot (12.4%) | 12/419 total loaded (2.9%)
+   Top-5 by filtered_rate (potential 'cheating' filters):
+    1. [  50%] valid=100/200 gt(0) → exp(ln(x))
+    2. [  50%] valid=100/200 ge(0) → 1/(sqrt(x)+1)
+    ...
+
 📊 Baseline Comparison (METATEST_SNAPSHOT=1):
    Current: 97 | Baseline: 97 | Regressions: 0 | New: 0 | Missing: 0
 ```
+
+### Validación de Configuración
+
+Si los parámetros de test cambian (samples, tolerancias, rango), el sistema detecta el mismatch:
+
+```
+⚠️  Config mismatch detected!
+   Baseline cfg_hash: b1e48281af9a6844
+   Current cfg_hash:  XXXX...
+   Run with METATEST_UPDATE_BASELINE=1 to regenerate.
+→ panic!("Baseline/config mismatch")
+```
+
+Esto evita falsos positivos/negativos por cambios de configuración.
 
 ### Detección de Regresión
 
@@ -555,6 +581,7 @@ El sistema falla CI si ocurre cualquiera de:
 | Invalid rate spike | `+5% absoluto` | Más fallos de evaluación |
 | Filter rate spike | `+20% absoluto` | Filtro se volvió más restrictivo |
 | Mismatches appear | `0 → >0` | Discrepancias numéricas nuevas |
+| Config mismatch | `cfg_hash` diferente | Parámetros de test cambiaron |
 
 ### Ranking de Categorías
 
@@ -569,8 +596,9 @@ Una transición hacia la derecha es regresión; hacia la izquierda es mejora.
 1. **Desarrollo local**: Hacer cambios al engine
 2. **Verificar**: `METATEST_SNAPSHOT=1` para comparar vs baseline
 3. **Si hay regresiones**: Investigar y corregir
-4. **Si todo Ok**: `METATEST_UPDATE_BASELINE=1` para actualizar
-5. **Commit**: Incluir cambios al baseline en el PR
+4. **Si config mismatch**: Decidir si actualizar baseline conscientemente
+5. **Si todo Ok**: `METATEST_UPDATE_BASELINE=1` para actualizar
+6. **Commit**: Incluir cambios al baseline en el PR (o añadir a `.gitignore` si es local)
 
 ---
 
