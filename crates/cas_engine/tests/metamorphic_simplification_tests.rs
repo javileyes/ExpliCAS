@@ -909,13 +909,13 @@ impl NumericEquivStats {
         (problematic as f64 / total as f64) > 0.30
     }
 
-    /// Get invalid rate (near_pole + domain_error as percentage)
+    /// Get invalid rate (near_pole + domain_error + eval_failed as percentage)
     fn invalid_rate(&self) -> f64 {
         let total = self.total_samples();
         if total == 0 {
             return 0.0;
         }
-        (self.near_pole + self.domain_error) as f64 / total as f64
+        (self.near_pole + self.domain_error + self.eval_failed) as f64 / total as f64
     }
 
     /// Check for suspicious asymmetric failures
