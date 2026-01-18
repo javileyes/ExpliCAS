@@ -228,14 +228,36 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
     }
 }
 
-define_rule!(
-    AbsSquaredRule,
-    "Abs Squared Identity",
-    Some(vec!["Pow"]),
-    PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE, // Exclude POST to prevent loop with SimplifySqrtOddPowerRule
-    |ctx, expr| {
-        // abs(x)^2 -> x^2
-        // General: abs(x)^(2k) -> x^(2k) for integer k
+/// AbsSquaredRule: |x|^(2k) → x^(2k) for even integer k
+///
+/// This rule simplifies absolute values raised to even powers since the result
+/// is always non-negative. However, we SKIP this transformation when the parent
+/// is a logarithm (ln, log) because it would prevent the more educational
+/// transformation ln(|x|^n) → n·ln(|x|).
+///
+/// V2.15.9: Converted from define_rule! to structured Rule to access parent_ctx.
+pub struct AbsSquaredRule;
+
+impl crate::rule::Rule for AbsSquaredRule {
+    fn name(&self) -> &str {
+        "Abs Squared Identity"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        // V2.15.9: Skip if parent is ln or log to allow LogAbsPowerRule to apply first
+        if let Some(parent_id) = parent_ctx.immediate_parent() {
+            if let Expr::Function(name, _) = ctx.get(parent_id) {
+                if name == "ln" || name == "log" {
+                    return None;
+                }
+            }
+        }
+
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
             let base_data = ctx.get(base).clone();
@@ -259,7 +281,15 @@ define_rule!(
         }
         None
     }
-);
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Pow"])
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE
+    }
+}
 
 define_rule!(
     SimplifySqrtSquareRule,

@@ -727,6 +727,103 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
     }
 }
 
+/// LogAbsPowerRule: ln(|u|^n) → n·ln(|u|) for positive integer n
+///
+/// This rule handles the case where the argument of the log is already wrapped
+/// in abs(), so we don't "introduce" a new abs - it's already there.
+///
+/// Priority: Very high (15) - must apply BEFORE:
+/// - AbsSquareRule (|x|^2 → x^2) which would lose the abs
+/// - LogEvenPowerWithChainedAbsRule which handles ln(x^n) without abs
+///
+/// Requires: u ≠ 0 (so ln(|u|) is defined)
+pub struct LogAbsPowerRule;
+
+impl crate::rule::Rule for LogAbsPowerRule {
+    fn name(&self) -> &str {
+        "Log Abs Power"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let expr_data = ctx.get(expr).clone();
+        let Expr::Function(name, args) = expr_data else {
+            return None;
+        };
+
+        // Handle ln(x) or log(base, x)
+        let (base, arg) = if name == "ln" && args.len() == 1 {
+            let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+            (e, args[0])
+        } else if name == "log" && args.len() == 2 {
+            (args[0], args[1])
+        } else {
+            return None;
+        };
+
+        // Match log(base, |u|^n)
+        let arg_data = ctx.get(arg).clone();
+        let Expr::Pow(p_base, p_exp) = arg_data else {
+            return None;
+        };
+
+        // Check if base of power is abs(u)
+        let Expr::Function(abs_name, abs_args) = ctx.get(p_base).clone() else {
+            return None;
+        };
+        if abs_name != "abs" || abs_args.len() != 1 {
+            return None;
+        }
+        let inner = abs_args[0]; // This is 'u' in |u|^n
+
+        // Check if exponent is a positive integer
+        let is_positive_integer = match ctx.get(p_exp) {
+            Expr::Number(n) if n.is_integer() => {
+                let int_val = n.to_integer();
+                int_val > 0.into()
+            }
+            _ => false,
+        };
+
+        if !is_positive_integer {
+            return None;
+        }
+
+        // Build n·ln(|u|)
+        // Keep the abs - don't remove it
+        let log_abs = make_log(ctx, base, p_base); // log(base, |u|)
+        let result = smart_mul(ctx, p_exp, log_abs); // n · log(base, |u|)
+
+        // Register hint that u ≠ 0 is required (for ln(|u|) to be defined)
+        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, inner);
+        let hint = crate::domain::BlockedHint {
+            key,
+            expr_id: inner,
+            rule: "Log Abs Power".to_string(),
+            suggestion: "requires u ≠ 0 for ln(|u|) to be defined",
+        };
+        crate::domain::register_blocked_hint(hint);
+
+        Some(crate::rule::Rewrite::new(result).desc("ln(|u|^n) = n·ln(|u|)"))
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn priority(&self) -> i32 {
+        15 // Higher than LogEvenPowerWithChainedAbsRule (10) and AbsSquareRule
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
+}
+
 pub struct LogAbsSimplifyRule;
 
 impl crate::rule::Rule for LogAbsSimplifyRule {
@@ -1888,6 +1985,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // V2.14.45: LogPowerBaseRule MUST come BEFORE LogEvenPowerRule
     // Otherwise log(x^2, x^6) gets expanded to 6·log(x², |x|) before simplifying to 3
     simplifier.add_rule(Box::new(LogPowerBaseRule)); // log(a^m, a^n) → n/m
+
+    // LogAbsPowerRule: ln(|u|^n) → n·ln(|u|) - highest priority (15)
+    // MUST come BEFORE AbsSquareRule which would turn |u|^2 → u^2 and lose the abs
+    simplifier.add_rule(Box::new(LogAbsPowerRule));
 
     // V2.14.20: LogEvenPowerWithChainedAbsRule handles ln(x^even) with ChainedRewrite
     // Has higher priority (10) than EvaluateLogRule (0) so matches first
