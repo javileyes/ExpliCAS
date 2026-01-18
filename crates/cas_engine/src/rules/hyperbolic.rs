@@ -226,6 +226,55 @@ define_rule!(
     }
 );
 
+// Rule 5: Hyperbolic double angle identity: cosh²(x) + sinh²(x) = cosh(2x)
+// This direction collapses two squared terms into a single term, reducing complexity.
+// The inverse (expansion) is not implemented to avoid loops.
+define_rule!(
+    HyperbolicDoubleAngleRule,
+    "Hyperbolic Double Angle",
+    Some(vec!["Add"]),
+    |ctx, expr| {
+        if let Expr::Add(l, r) = ctx.get(expr) {
+            let l_data = ctx.get(*l).clone();
+            let r_data = ctx.get(*r).clone();
+
+            // Check pattern: cosh(x)^2 + sinh(x)^2 or sinh(x)^2 + cosh(x)^2
+            if let (Expr::Pow(l_base, l_exp), Expr::Pow(r_base, r_exp)) = (&l_data, &r_data) {
+                // Both should be squared
+                if is_two(ctx, *l_exp) && is_two(ctx, *r_exp) {
+                    if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
+                        (ctx.get(*l_base), ctx.get(*r_base))
+                    {
+                        // Check cosh + sinh or sinh + cosh with same argument
+                        let is_cosh_sinh = l_fn == "cosh" && r_fn == "sinh";
+                        let is_sinh_cosh = l_fn == "sinh" && r_fn == "cosh";
+
+                        if (is_cosh_sinh || is_sinh_cosh) && l_args.len() == 1 && r_args.len() == 1
+                        {
+                            // Check if arguments are the same
+                            if crate::ordering::compare_expr(ctx, l_args[0], r_args[0])
+                                == Ordering::Equal
+                            {
+                                // Build cosh(2*x)
+                                let x = l_args[0];
+                                let two = ctx.num(2);
+                                let two_x = ctx.add(Expr::Mul(two, x));
+                                let cosh_2x =
+                                    ctx.add(Expr::Function("cosh".to_string(), vec![two_x]));
+
+                                return Some(
+                                    Rewrite::new(cosh_2x).desc("cosh²(x) + sinh²(x) = cosh(2x)"),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 // ==================== Recognize Hyperbolic From Exponential ====================
 
 /// Helper: Check if expression is e^arg and return Some(arg), handling both Pow(e, arg) and exp(arg)
@@ -447,6 +496,7 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(HyperbolicCompositionRule));
     simplifier.add_rule(Box::new(HyperbolicNegativeRule));
     simplifier.add_rule(Box::new(HyperbolicPythagoreanRule));
+    simplifier.add_rule(Box::new(HyperbolicDoubleAngleRule));
     simplifier.add_rule(Box::new(RecognizeHyperbolicFromExpRule));
 }
 
@@ -604,5 +654,40 @@ mod tests {
         );
 
         assert!(rewrite.is_none(), "Should NOT match divisor != 2");
+    }
+
+    #[test]
+    fn test_hyperbolic_double_angle_rule() {
+        // cosh(x)^2 + sinh(x)^2 -> cosh(2*x)
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let cosh_x = ctx.add(Expr::Function("cosh".to_string(), vec![x]));
+        let sinh_x = ctx.add(Expr::Function("sinh".to_string(), vec![x]));
+        let two = ctx.num(2);
+        let two2 = ctx.num(2);
+        let cosh_sq = ctx.add(Expr::Pow(cosh_x, two));
+        let sinh_sq = ctx.add(Expr::Pow(sinh_x, two2));
+        let expr = ctx.add(Expr::Add(cosh_sq, sinh_sq));
+
+        let rule = HyperbolicDoubleAngleRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        assert!(rewrite.is_some(), "Should apply cosh²+sinh² -> cosh(2x)");
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.unwrap().new_expr
+            }
+        );
+        assert!(
+            result.contains("cosh") && result.contains("2"),
+            "Should be cosh(2*x), got: {}",
+            result
+        );
     }
 }
