@@ -349,9 +349,12 @@ pub struct SimplifyOptions {
 
     /// V2.15.8: Auto-expand small binomial powers (e.g., (x+1)^5 → x^5+5x^4+...).
     /// - Off: Never auto-expand (default)
-    /// - Heuristic: Expand only in marked cancellation contexts
     /// - On: Always expand small binomials
     pub autoexpand_binomials: crate::options::AutoExpandBinomials,
+    /// V2.15.9: Smart polynomial simplification in Add/Sub contexts.
+    /// - Off: Only identity → 0 (default)
+    /// - On: Extract common factor + poly normalize
+    pub heuristic_poly: crate::options::HeuristicPoly,
 }
 
 impl Default for SimplifyOptions {
@@ -364,7 +367,7 @@ impl Default for SimplifyOptions {
             expand_mode: false,
             expand_policy: ExpandPolicy::default(),
             expand_budget: ExpandBudget::default(),
-            log_expand_policy: ExpandPolicy::Off, // Off by default to avoid surprises
+            log_expand_policy: ExpandPolicy::Off, // On by default to avoid surprises
             context_mode: crate::options::ContextMode::default(),
             domain: crate::domain::DomainMode::default(), // Generic
             inv_trig: crate::semantics::InverseTrigPolicy::default(), // Strict
@@ -374,7 +377,8 @@ impl Default for SimplifyOptions {
             goal: crate::semantics::NormalFormGoal::default(),                  // Simplify
             assume_scope: crate::semantics::AssumeScope::default(),             // Real
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),  // Eval
-            autoexpand_binomials: crate::options::AutoExpandBinomials::Off, // V2.15.8: Off by default
+            autoexpand_binomials: crate::options::AutoExpandBinomials::Off, // V2.15.8: On by default
+            heuristic_poly: crate::options::HeuristicPoly::On, // V2.15.9: On by default
         }
     }
 }

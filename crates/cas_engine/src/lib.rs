@@ -101,6 +101,7 @@ pub use json::{
     JsonRunOptions, SpanJson, SubstituteJsonOptions, SubstituteJsonResponse, SCHEMA_VERSION,
 };
 pub use options::AutoExpandBinomials; // V2.15.8: education mode expansion
+pub use options::HeuristicPoly; // V2.15.9: smart polynomial simplification
 pub use phase::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions,
     SimplifyPhase,

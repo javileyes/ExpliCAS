@@ -38,6 +38,8 @@ pub struct ParentContext {
     pub(crate) trig_large_coeff_protected: bool,
     /// V2.15.8: Auto-expand small binomial powers (education mode)
     pub(crate) autoexpand_binomials: crate::options::AutoExpandBinomials,
+    /// V2.15.9: Smart polynomial simplification in Add/Sub contexts
+    pub(crate) heuristic_poly: crate::options::HeuristicPoly,
 }
 
 impl ParentContext {
@@ -61,6 +63,7 @@ impl ParentContext {
             div_ancestor_count: 0,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
+            heuristic_poly: crate::options::HeuristicPoly::On,
         }
     }
 
@@ -84,6 +87,7 @@ impl ParentContext {
             div_ancestor_count: 0,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
+            heuristic_poly: crate::options::HeuristicPoly::On,
         }
     }
 
@@ -107,6 +111,7 @@ impl ParentContext {
             div_ancestor_count: 0,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
+            heuristic_poly: crate::options::HeuristicPoly::On,
         }
     }
 
@@ -133,6 +138,7 @@ impl ParentContext {
             div_ancestor_count: 0,
             trig_large_coeff_protected: false,
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
+            heuristic_poly: crate::options::HeuristicPoly::On,
         }
     }
 
@@ -159,6 +165,7 @@ impl ParentContext {
             div_ancestor_count: self.div_ancestor_count,
             trig_large_coeff_protected: self.trig_large_coeff_protected,
             autoexpand_binomials: self.autoexpand_binomials,
+            heuristic_poly: self.heuristic_poly,
         }
     }
 
@@ -247,7 +254,7 @@ impl ParentContext {
         self.auto_expand_budget.as_ref()
     }
 
-    /// V2.15.8: Get auto-expand binomials mode (Off/Heuristic/On)
+    /// V2.15.8: Get auto-expand binomials mode (Off/On)
     pub fn autoexpand_binomials(&self) -> crate::options::AutoExpandBinomials {
         self.autoexpand_binomials
     }
@@ -255,6 +262,17 @@ impl ParentContext {
     /// V2.15.8: Set auto-expand binomials mode
     pub fn with_autoexpand_binomials(mut self, mode: crate::options::AutoExpandBinomials) -> Self {
         self.autoexpand_binomials = mode;
+        self
+    }
+
+    /// V2.15.9: Get heuristic polynomial simplification mode (Off/On)
+    pub fn heuristic_poly(&self) -> crate::options::HeuristicPoly {
+        self.heuristic_poly
+    }
+
+    /// V2.15.9: Set heuristic polynomial simplification mode
+    pub fn with_heuristic_poly(mut self, mode: crate::options::HeuristicPoly) -> Self {
+        self.heuristic_poly = mode;
         self
     }
 
@@ -459,6 +477,7 @@ impl ParentContext {
             // Once protected, stays protected (OR with current state)
             trig_large_coeff_protected: self.trig_large_coeff_protected || is_trig_large_coeff,
             autoexpand_binomials: self.autoexpand_binomials,
+            heuristic_poly: self.heuristic_poly,
         }
     }
 }

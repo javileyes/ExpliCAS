@@ -64,20 +64,29 @@ pub enum ComplexMode {
     On,
 }
 
-/// Auto-expand mode for small binomial powers (education mode).
+/// V2.15.8: Controls automatic binomial/polynomial expansion.
 ///
-/// - `Off` (default): Never auto-expand standalone binomials
-/// - `Heuristic`: Expand only in cancellation contexts (smart mode)
-/// - `On`: Always expand small binomials (education mode)
+/// - `Off`: Never auto-expand standalone binomials (default)
+/// - `On`: Always expand small binomials (subject to budget: n≤6, base≤3 terms)
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AutoExpandBinomials {
     /// Never auto-expand standalone binomials
     #[default]
     Off,
-    /// Expand only when in a marked cancellation context (smart heuristic)
-    /// Uses auto_expand_scan infrastructure to detect beneficial expansion points
-    Heuristic,
     /// Always expand small binomials (subject to budget: n≤6, base≤3 terms)
+    On,
+}
+
+/// V2.15.9: Controls smart polynomial simplification in Add/Sub contexts.
+///
+/// - `Off`: Only polynomial identity → 0 (default)
+/// - `On`: Smart mode - extract common factor, then poly normalize
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HeuristicPoly {
+    /// Only PolynomialIdentityZeroRule active
+    #[default]
+    Off,
+    /// Smart: HeuristicExtractCommonFactorAddRule + HeuristicPolyNormalizeAddRule
     On,
 }
 
@@ -144,6 +153,8 @@ pub struct EvalOptions {
     pub requires_display: crate::implicit_domain::RequiresDisplayLevel,
     /// V2.15.8: Auto-expand small binomial powers (education mode)
     pub autoexpand_binomials: AutoExpandBinomials,
+    /// V2.15.9: Smart polynomial simplification in Add/Sub contexts
+    pub heuristic_poly: HeuristicPoly,
 }
 
 impl EvalOptions {
@@ -207,6 +218,7 @@ impl EvalOptions {
             assumption_reporting: self.assumption_reporting,
             assume_scope: self.assume_scope,
             autoexpand_binomials: self.autoexpand_binomials, // V2.15.8
+            heuristic_poly: self.heuristic_poly,             // V2.15.9
             ..Default::default()
         }
     }
@@ -224,7 +236,7 @@ impl Default for EvalOptions {
             steps_mode: StepsMode::default(),
             expand_policy: crate::phase::ExpandPolicy::default(),
             expand_budget: crate::phase::ExpandBudget::default(),
-            log_expand_policy: crate::phase::ExpandPolicy::Off, // Off by default to avoid surprises
+            log_expand_policy: crate::phase::ExpandPolicy::Off, // On by default to avoid surprises
             domain_mode: crate::DomainMode::default(),
             inv_trig: crate::semantics::InverseTrigPolicy::default(),
             value_domain: crate::semantics::ValueDomain::default(),
@@ -237,7 +249,8 @@ impl Default for EvalOptions {
             budget: crate::solver::SolveBudget::default(),
             check_solutions: false, // Solution verification off by default
             requires_display: crate::implicit_domain::RequiresDisplayLevel::Essential,
-            autoexpand_binomials: AutoExpandBinomials::Off, // V2.15.8: Off by default
+            autoexpand_binomials: AutoExpandBinomials::Off, // V2.15.8: On by default
+            heuristic_poly: HeuristicPoly::On,             // V2.15.9: On by default
         }
     }
 }

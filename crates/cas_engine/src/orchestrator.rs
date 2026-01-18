@@ -102,6 +102,7 @@ impl Orchestrator {
                 self.options.simplify_purpose,
                 self.options.context_mode,
                 self.options.autoexpand_binomials, // V2.15.8: education mode
+                self.options.heuristic_poly,       // V2.15.9: smart polynomial simplification
             );
 
             // Log budget stats for this iteration (actual charging done by caller if Budget provided)
