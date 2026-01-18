@@ -1537,10 +1537,13 @@ mod denest_cube_quadratic_tests {
                 id: result
             }
         );
-        // Should be (1 + √5)/2 which may display as "(1 + √(5))/2"
+        // Should be φ (phi) since (1 + √5)/2 is recognized as phi
         assert!(
-            result_str.contains("1") && result_str.contains("5") && result_str.contains("2"),
-            "Should be (1+√5)/2, got: {}",
+            result_str.contains("phi")
+                || (result_str.contains("1")
+                    && result_str.contains("5")
+                    && result_str.contains("2")),
+            "Should be phi or (1+√5)/2, got: {}",
             result_str
         );
     }

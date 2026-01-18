@@ -429,6 +429,7 @@ impl Simplifier {
         arithmetic::register(self);
         infinity::register(self); // Infinity arithmetic (∞ absorption, indeterminates)
         canonicalization::register(self);
+        constants::register(self); // Algebraic constants (phi)
         exponents::register(self);
         logarithms::register(self);
 
