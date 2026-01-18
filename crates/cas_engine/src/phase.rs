@@ -241,7 +241,7 @@ pub struct ExpandBudget {
 impl Default for ExpandBudget {
     fn default() -> Self {
         Self {
-            max_pow_exp: 4,
+            max_pow_exp: 6, // V2.15.8: Increased from 4 to support (x+1)^5, (x+1)^6
             max_base_terms: 4,
             max_generated_terms: 300,
             max_vars: 4,
@@ -346,6 +346,12 @@ pub struct SimplifyOptions {
     /// - SolvePrepass: only SolveSafety::Always rules (no conditional rules)
     /// - SolveTactic: allows conditional rules based on DomainMode
     pub simplify_purpose: crate::solve_safety::SimplifyPurpose,
+
+    /// V2.15.8: Auto-expand small binomial powers (e.g., (x+1)^5 → x^5+5x^4+...).
+    /// - Off: Never auto-expand (default)
+    /// - Heuristic: Expand only in marked cancellation contexts
+    /// - On: Always expand small binomials
+    pub autoexpand_binomials: crate::options::AutoExpandBinomials,
 }
 
 impl Default for SimplifyOptions {
@@ -368,6 +374,7 @@ impl Default for SimplifyOptions {
             goal: crate::semantics::NormalFormGoal::default(),                  // Simplify
             assume_scope: crate::semantics::AssumeScope::default(),             // Real
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),  // Eval
+            autoexpand_binomials: crate::options::AutoExpandBinomials::Off, // V2.15.8: Off by default
         }
     }
 }

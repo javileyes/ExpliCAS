@@ -558,6 +558,8 @@ impl Repl {
         // (self.simplify_options is legacy and doesn't sync expand_policy)
         let mut opts = self.state.options.to_simplify_options();
         opts.collect_steps = self.engine.simplifier.collect_steps();
+        // V2.15.8: Copy autoexpand_binomials from simplify_options (set by 'set autoexpand_binomials on')
+        opts.autoexpand_binomials = self.simplify_options.autoexpand_binomials;
 
         // Note: Tool dispatcher for collect/expand_log is in Engine::eval (cas_engine/src/eval.rs)
         // This function is dead code but kept for internal use; no dispatcher needed here.
@@ -1413,6 +1415,25 @@ impl Repl {
                     println!("Transform phase DISABLED (no distribution/expansion)");
                 }
                 _ => println!("Usage: set transform <on|off>"),
+            },
+            "autoexpand_binomials" => match parts[2] {
+                "on" | "true" | "1" => {
+                    self.state.options.autoexpand_binomials = cas_engine::AutoExpandBinomials::On;
+                    println!("Auto-expand binomials: ON (always expand)");
+                    println!("  (x+1)^5 will now expand to x⁵+5x⁴+10x³+10x²+5x+1");
+                }
+                "heuristic" | "smart" | "auto" => {
+                    self.state.options.autoexpand_binomials =
+                        cas_engine::AutoExpandBinomials::Heuristic;
+                    println!("Auto-expand binomials: HEURISTIC (expand in cancellation contexts)");
+                    println!("  (x+1)^2 - (x^2+2x+1) → will expand to cancel to 0");
+                    println!("  (x+1)^5 alone → stays as (x+1)⁵");
+                }
+                "off" | "false" | "0" => {
+                    self.state.options.autoexpand_binomials = cas_engine::AutoExpandBinomials::Off;
+                    println!("Auto-expand binomials: OFF (default, never expand)");
+                }
+                _ => println!("Usage: set autoexpand_binomials <off|heuristic|on>"),
             },
             "rationalize" => match parts[2] {
                 "on" | "true" | "auto" => {

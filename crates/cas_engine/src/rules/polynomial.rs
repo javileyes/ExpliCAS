@@ -1463,12 +1463,13 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
 pub struct PolynomialIdentityZeroRule;
 
 impl PolynomialIdentityZeroRule {
-    /// Budget limits for polynomial conversion (stricter than AutoExpandSubCancelRule)
+    /// Budget limits for polynomial conversion
+    /// V2.15.8: Increased max_pow_exp to 6 for binomial identities like (x+1)^5 - expansion = 0
     fn poly_budget() -> PolyBudget {
         PolyBudget {
             max_terms: 50,       // Max monomials in result
-            max_total_degree: 5, // Max total degree (covers cubes)
-            max_pow_exp: 4,      // Max exponent in Pow nodes
+            max_total_degree: 6, // Max total degree (covers up to n=6)
+            max_pow_exp: 6,      // Max exponent in Pow nodes
         }
     }
 
@@ -1496,8 +1497,8 @@ impl PolynomialIdentityZeroRule {
                     if n.is_integer() && !n.is_negative() {
                         use num_traits::ToPrimitive;
                         if let Some(e) = n.to_integer().to_u32() {
-                            if e <= 4 {
-                                // Budget limit
+                            if e <= 6 {
+                                // V2.15.8: Extended budget for binomial identities
                                 return Self::is_polynomial_candidate_inner(ctx, *base, depth + 1);
                             }
                         }
@@ -1676,11 +1677,113 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
     }
 }
 
+// =============================================================================
+// ExpandSmallBinomialPowRule: Always-on expansion for small integer powers
+// =============================================================================
+//
+// V2.15.8: Expands (a+b)^n automatically when:
+// - n is a small positive integer (2 ≤ n ≤ 6)
+// - Base is a simple polynomial (≤3 linear terms: constants, variables, c*x)
+// - Estimated output terms ≤ 20
+//
+// This enables `simplify((x+1)^5 - polynomial)` to work without explicit expand().
+// The result is wrapped in __hold() to prevent factorization rules from undoing it.
+
+use crate::multinomial_expand::{try_expand_multinomial_direct, MultinomialExpandBudget};
+
+/// ExpandSmallBinomialPowRule: Always-on expansion for small binomial/trinomial powers
+/// Priority 40 (before AutoExpandPowSumRule at 50, after most algebraic rules)
+pub struct ExpandSmallBinomialPowRule;
+
+impl crate::rule::Rule for ExpandSmallBinomialPowRule {
+    fn name(&self) -> &str {
+        "Expand Small Power"
+    }
+
+    fn priority(&self) -> i32 {
+        40 // Before AutoExpandPowSumRule (50), after basic algebra
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        // Only in TRANSFORM phase to avoid interfering with early simplification
+        PhaseMask::TRANSFORM
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Pow"])
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // V2.15.8: Check autoexpand_binomials mode (Off/Heuristic/On)
+        use crate::options::AutoExpandBinomials;
+        match parent_ctx.autoexpand_binomials() {
+            AutoExpandBinomials::Off => return None, // Never expand
+            AutoExpandBinomials::Heuristic => {
+                // Only expand if in a marked cancellation context
+                if !parent_ctx.in_auto_expand_context() {
+                    return None;
+                }
+            }
+            AutoExpandBinomials::On => {
+                // Always expand (subject to budget checks below)
+            }
+        }
+
+        // Skip in Solve mode - preserve structure for equation solving
+        if parent_ctx.is_solve_context() {
+            return None;
+        }
+
+        // Skip if already in auto-expand context (let AutoExpandPowSumRule handle)
+        if parent_ctx.in_auto_expand_context()
+            && parent_ctx.autoexpand_binomials() != AutoExpandBinomials::On
+        {
+            return None;
+        }
+
+        // Pattern: Pow(base, exp)
+        let (base, exp) = crate::helpers::as_pow(ctx, expr)?;
+
+        // Very restrictive budget for automatic expansion in generic mode
+        // - max_exp: 6 (binomial (x+1)^6 = 7 terms, trinomial (a+b+c)^4 = 15 terms)
+        // - max_base_terms: 3 (binomial or trinomial only)
+        // - max_vars: 2 (keeps output manageable)
+        // - max_output_terms: 20 (strict limit to prevent bloat)
+        let budget = MultinomialExpandBudget {
+            max_exp: 6,
+            max_base_terms: 3,
+            max_vars: 2,
+            max_output_terms: 20,
+        };
+
+        // try_expand_multinomial_direct already:
+        // 1. Checks exponent is small positive integer
+        // 2. Extracts linear terms (fails if base has functions/div)
+        // 3. Estimates output terms and checks budget
+        // 4. Wraps result in __hold() for anti-cycle protection
+        let expanded = try_expand_multinomial_direct(ctx, base, exp, &budget)?;
+
+        Some(
+            Rewrite::new(expanded)
+                .desc("Expand binomial/trinomial power")
+                .local(expr, expanded),
+        )
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(BinomialExpansionRule));
+    // V2.15.8: ExpandSmallBinomialPowRule - controlled by autoexpand_binomials flag
+    // Enable via REPL: set autoexpand_binomials on
+    simplifier.add_rule(Box::new(ExpandSmallBinomialPowRule));
     simplifier.add_rule(Box::new(AutoExpandPowSumRule));
     simplifier.add_rule(Box::new(AutoExpandSubCancelRule));
     simplifier.add_rule(Box::new(PolynomialIdentityZeroRule));

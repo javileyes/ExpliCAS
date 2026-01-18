@@ -100,6 +100,7 @@ pub use json::{
     EngineJsonError, EngineJsonResponse, EngineJsonStep, EngineJsonSubstep, EngineJsonWarning,
     JsonRunOptions, SpanJson, SubstituteJsonOptions, SubstituteJsonResponse, SCHEMA_VERSION,
 };
+pub use options::AutoExpandBinomials; // V2.15.8: education mode expansion
 pub use phase::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions,
     SimplifyPhase,

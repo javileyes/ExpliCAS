@@ -149,8 +149,9 @@ fn try_mark_sub_cancellation(
             return false;
         }
 
-        // For Sub, use stricter budget (max exp 3)
-        if n > 3 {
+        // V2.15.8: Relax to n≤6 to match ExpandSmallBinomialPowRule budget
+        // (previously n≤3, but users expect identities like (x+1)^5 - expansion = 0)
+        if n > 6 {
             return false;
         }
 
@@ -463,9 +464,10 @@ fn try_mark_add_neg_cancellation(
         return false;
     }
 
-    // Strict budget for V1: squares only, small base
-    if n != 2 {
-        return false; // Only squares for now
+    // V2.15.8: Extended to n≤6 for consistency with ExpandSmallBinomialPowRule
+    // (previously n=2 only, but users expect identities like (x+1)^5 - expansion = 0)
+    if !(2..=6).contains(&n) {
+        return false;
     }
 
     let base_term_count = count_add_terms(ctx, base);
@@ -498,12 +500,9 @@ fn try_mark_add_neg_cancellation(
 
 /// Speculative expand + score: check if expanding the Pow would likely lead to cancellation.
 ///
-/// V1 Heuristic: For squares of small sums, expansion is beneficial if:
-/// 1. Enough other terms exist to potentially cancel with expansion terms
-/// 2. The base sum has 2-3 terms (binomial/trinomial square)
-///
-/// This is a simplified "airbag" - the strict budget (n=2, base≤3 terms) already
-/// filters out most problematic cases. A future V2 could add actual term matching.
+/// V2.15.8: Extended to handle binomial powers up to n=6 for education mode.
+/// Heuristic: expansion is beneficial if other_terms count is close to
+/// the number of terms that would be produced by expansion.
 fn speculative_expand_reduces_nodes(
     ctx: &Context,
     _original_id: ExprId,
@@ -512,30 +511,28 @@ fn speculative_expand_reduces_nodes(
     _pow_sign: i8,
     other_terms: &[ExprId],
 ) -> bool {
-    // For V1, only accept squares (n=2) of binomials/trinomials
-    if pow_exp != 2 {
+    // Only handle 2 <= n <= 6
+    if !(2..=6).contains(&pow_exp) {
         return false;
     }
 
-    // Count terms in base
+    // Count terms in base - only handle binomials (2 terms) for simplicity
     let base_term_count = count_add_terms(ctx, pow_base);
+    if base_term_count != 2 {
+        // For trinomials, only handle n=2
+        if base_term_count == 3 && pow_exp == 2 {
+            // Trinomial square produces 6 terms
+            return other_terms.len() >= 3;
+        }
+        return false;
+    }
 
-    // Binomial square: (a+b)^2 = a^2 + 2ab + b^2 (3 terms)
-    // Sophie-Germain pattern has 3 other terms (a^4, 4b^4, 4a^2b^2)
-    // Trinomial square: (a+b+c)^2 = a^2 + b^2 + c^2 + 2ab + 2bc + 2ac (6 terms)
+    // Binomial expansion: (a+b)^n produces n+1 terms
+    let expansion_term_count = pow_exp + 1;
 
-    // Heuristic: expansion is likely beneficial if other_terms count is close to
-    // the number of terms that would be produced by expansion
-    let expansion_term_count = match base_term_count {
-        2 => 3,            // Binomial square produces 3 terms
-        3 => 6,            // Trinomial square produces 6 terms
-        _ => return false, // Only handle 2-3 term bases in V1
-    };
-
-    // For Sophie-Germain: other_terms = 3 (a^4, 4b^4, 4a^2b^2) vs expansion = 3
-    // This suggests potential cancellation
-    // Accept if other_terms >= expansion_term_count / 2 (at least half the terms might cancel)
-    other_terms.len() >= expansion_term_count / 2
+    // Accept if other_terms count is close to expansion term count
+    // (at least half the terms might cancel)
+    other_terms.len() >= (expansion_term_count as usize) / 2
 }
 
 // =============================================================================

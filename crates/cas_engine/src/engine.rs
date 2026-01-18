@@ -738,6 +738,7 @@ impl Simplifier {
             crate::semantics::NormalFormGoal::default(),
             crate::solve_safety::SimplifyPurpose::default(),
             crate::options::ContextMode::default(),
+            crate::options::AutoExpandBinomials::Off, // autoexpand_binomials: Off by default
         )
     }
 
@@ -758,6 +759,7 @@ impl Simplifier {
         goal: crate::semantics::NormalFormGoal,
         simplify_purpose: crate::solve_safety::SimplifyPurpose,
         context_mode: crate::options::ContextMode,
+        autoexpand_binomials: crate::options::AutoExpandBinomials, // V2.15.8
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         let rules = &self.rules;
         let global_rules = &self.global_rules;
@@ -791,6 +793,7 @@ impl Simplifier {
             .with_context_mode(context_mode)
             .with_root_expr_only(sticky_root)
             .with_implicit_domain(Some(sticky_domain.clone()))
+            .with_autoexpand_binomials(autoexpand_binomials)
         } else {
             crate::parent_context::ParentContext::with_expand_mode(
                 pattern_marks.clone(),
@@ -811,6 +814,7 @@ impl Simplifier {
             .with_simplify_purpose(simplify_purpose)
             .with_context_mode(context_mode)
             .with_root_expr(&self.context, expr_id)
+            .with_autoexpand_binomials(autoexpand_binomials)
         };
 
         // Capture nodes_created BEFORE creating transformer (can't access while borrowed)
@@ -2290,6 +2294,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         for &ancestor in &self.ancestor_stack {
                             ctx = ctx.extend_with_div_check(ancestor, self.context);
                         }
+                        // V2.15.8: Copy autoexpand_binomials from initial context
+                        ctx = ctx.with_autoexpand_binomials(
+                            self.initial_parent_ctx.autoexpand_binomials(),
+                        );
                         ctx
                     };
 
@@ -2670,6 +2678,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     for &ancestor in &self.ancestor_stack {
                         ctx = ctx.extend_with_div_check(ancestor, self.context);
                     }
+                    // V2.15.8: Copy autoexpand_binomials from initial context
+                    ctx = ctx
+                        .with_autoexpand_binomials(self.initial_parent_ctx.autoexpand_binomials());
                     ctx
                 };
                 if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {

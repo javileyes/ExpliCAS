@@ -64,6 +64,23 @@ pub enum ComplexMode {
     On,
 }
 
+/// Auto-expand mode for small binomial powers (education mode).
+///
+/// - `Off` (default): Never auto-expand standalone binomials
+/// - `Heuristic`: Expand only in cancellation contexts (smart mode)
+/// - `On`: Always expand small binomials (education mode)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AutoExpandBinomials {
+    /// Never auto-expand standalone binomials
+    #[default]
+    Off,
+    /// Expand only when in a marked cancellation context (smart heuristic)
+    /// Uses auto_expand_scan infrastructure to detect beneficial expansion points
+    Heuristic,
+    /// Always expand small binomials (subject to budget: n≤6, base≤3 terms)
+    On,
+}
+
 /// Steps mode controls whether simplification steps are collected.
 ///
 /// - `On` (default): Full steps with before/after expressions
@@ -125,6 +142,8 @@ pub struct EvalOptions {
     pub check_solutions: bool,
     /// Display level for required conditions (Essential hides witness-surviving requires)
     pub requires_display: crate::implicit_domain::RequiresDisplayLevel,
+    /// V2.15.8: Auto-expand small binomial powers (education mode)
+    pub autoexpand_binomials: AutoExpandBinomials,
 }
 
 impl EvalOptions {
@@ -187,6 +206,7 @@ impl EvalOptions {
             branch: self.branch,
             assumption_reporting: self.assumption_reporting,
             assume_scope: self.assume_scope,
+            autoexpand_binomials: self.autoexpand_binomials, // V2.15.8
             ..Default::default()
         }
     }
@@ -217,6 +237,7 @@ impl Default for EvalOptions {
             budget: crate::solver::SolveBudget::default(),
             check_solutions: false, // Solution verification off by default
             requires_display: crate::implicit_domain::RequiresDisplayLevel::Essential,
+            autoexpand_binomials: AutoExpandBinomials::Off, // V2.15.8: Off by default
         }
     }
 }
