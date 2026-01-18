@@ -65,3 +65,60 @@ Esto explica tu caso:
    * **Assume**: permite todo, pero marca ⚠️.
    * **Strict**: permite solo `Unconditional` o `UnderInheritedRequires` (o `IntroducedRequires` solo si la condición ya está probada/heredada).
 
+---
+
+## Tabla 4 — Condiciones Implícitas: Cerradas vs Estrictas
+
+No todas las restricciones implícitas del dominio se tratan igual. El engine distingue entre:
+
+| Característica | sqrt(x), ln(x) | 0^x |
+|----------------|----------------|-----|
+| **Tipo de condición** | Cerrada (x ≥ 0, x > 0) | Estricta (x > 0) |
+| **Punto singular** | Incluido en el dominio (borde) | Excluido (0^0 indeterminado) |
+| **Ambigüedad semántica** | Mínima | Alta (entero vs real, real vs complejo) |
+| **Inferencia automática** | ✅ Sí | ⛔ No en generic |
+
+### ¿Por qué `sqrt(x)` infiere `x ≥ 0` pero `0^x` no infiere `x > 0`?
+
+**1. `sqrt(x)` — Restricción cerrada, canónica y directa**
+- La condición `x ≥ 0` es una **precondición directa del operador** sobre su argumento
+- Es **cerrada** (incluye el borde `x = 0`)
+- No depende del tipo de `x` (entero, racional, real): siempre es `x ≥ 0`
+- Por eso `infer_implicit_domain` la añade como `NonNegative(x)` heredable
+
+**2. `0^x` — Restricción estricta, con punto singular y ambigüedad**
+- La condición es **estricta** (`x > 0`), no cerrada
+- En `x = 0` cae en `0^0` (indeterminado por convención)
+- En `x < 0` es `1/0^{|x|}` (división por cero)
+- **Depende de la semántica de `Pow`**:
+  - En RealOnly: `0^x` definida solo para x > 0
+  - En ComplexEnabled: entra en ramas de log (`0^x = exp(x·ln(0))` no definido)
+  - Si permitimos exponente entero: `0^n` definido para n ∈ ℤ, n > 0
+
+> [!IMPORTANT]
+> Inferir `x > 0` automáticamente para `0^x` equivale a **elegir una semántica fuerte** y **forzar una desigualdad estricta sobre variable libre**. Esto es comportamiento de `assume`, no de `generic`.
+
+### Comportamiento en cada modo
+
+| Expresión | Generic | Assume | Strict |
+|-----------|---------|--------|--------|
+| `sqrt(x)^2 → x` | ✅ con `Requires: x ≥ 0` | ✅ | ✅ solo si probado |
+| `0^x → 0` | ⛔ Blocked (a menos que `x` sea literal > 0) | ✅ con `Assumes: x > 0` | ⛔ Blocked |
+| `exp(ln(x)) → x` | ✅ con `Requires: x > 0` | ✅ | ✅ solo si probado |
+
+### Criterio de diseño
+
+El engine usa esta heurística para decidir si una condición es "implícitamente heredable":
+
+```
+Heredable SI:
+  - Condición cerrada (≥, ≤, ≠) 
+  - Directa del operador (sqrt, ln, abs)
+  - No ambigua semánticamente
+
+NO heredable SI:
+  - Condición estricta (>, <) con punto singular
+  - Depende de semánticas opcionales (entero vs real)
+  - Requiere "elegir" una interpretación entre varias válidas
+```
+

@@ -1846,6 +1846,20 @@ define_rule!(
             return None;
         }
 
+        // V2.15.8: Guard: Skip if term is or contains a Div (let AddFractionsRule handle both fractions)
+        // This fixes: 1/(x-1) - 1/(x+1) should use AddFractionsRule, not treat -1/(x+1) as scalar k
+        fn is_or_contains_div(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Div(_, _) => true,
+                Expr::Neg(inner) => is_or_contains_div(ctx, *inner),
+                Expr::Mul(l, r) => is_or_contains_div(ctx, *l) || is_or_contains_div(ctx, *r),
+                _ => false,
+            }
+        }
+        if is_or_contains_div(ctx, term) {
+            return None;
+        }
+
         // Guard: Skip if term contains functions or roots (preserve arctan(x) + 1/y)
         fn contains_function_or_root(ctx: &Context, id: ExprId) -> bool {
             match ctx.get(id) {
@@ -2182,14 +2196,28 @@ define_rule!(
         // V2.15.8: Also allow small growth for same-sign fractions with unrelated denominators
         // This enables: 1/x + 1/(x+1) -> (2x+1)/(x*(x+1))
         // But keeps strict behavior for opposite signs to preserve telescoping: 1/x - 1/(x+1)
+        //
+        // V2.15.8b: Also allow for opposite signs when BOTH numerators are simple (±1)
+        // This enables: 1/(x-1) - 1/(x+1) -> 2/((x-1)(x+1))
+        // The result simplifies well because the numerator cancellation is straightforward
         let growth_ok = new_complexity <= old_complexity * 3 / 2 + 2;
-        let allow_same_sign_growth = same_sign && growth_ok && !opposite_denom && !same_denom;
+
+        fn is_simple_num(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Number(n) => n.abs() <= num_rational::BigRational::from_integer(2.into()),
+                Expr::Neg(inner) => is_simple_num(ctx, *inner),
+                _ => false,
+            }
+        }
+        let both_simple_numerators = is_simple_num(ctx, n1) && is_simple_num(ctx, n2);
+        let allow_growth =
+            growth_ok && !opposite_denom && !same_denom && (same_sign || both_simple_numerators);
 
         if opposite_denom
             || same_denom
             || new_complexity <= old_complexity
             || (does_simplify && is_proper && new_complexity < (old_complexity * 2))
-            || allow_same_sign_growth
+            || allow_growth
         {
             // println!("AddFractions APPLIED: old={} new={} simplify={}", old_complexity, new_complexity, does_simplify);
             return Some(Rewrite::new(new_expr).desc("Add fractions: a/b + c/d -> (ad+bc)/bd"));

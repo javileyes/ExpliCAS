@@ -64,3 +64,72 @@ This explains your case:
 * **Generic**: allows `introduces_requires`, forbids `introduces_assumptions`, and forbids `branch_sensitive` (except for a whitelist in RealOnly).
 * **Assume**: allows everything, but flags with ⚠️.
 * **Strict**: allows only `Unconditional` or `UnderInheritedRequires` (or `IntroducedRequires` only if the condition is already proven/inherited).
+
+---
+
+## Table 4 — Implicit Conditions: Closed vs. Strict
+
+Not all implicit domain restrictions are treated equally. The engine distinguishes between:
+
+| Feature | sqrt(x), ln(x) | 0^x |
+| --- | --- | --- |
+| **Condition Type** | Closed () | Strict () |
+| **Singular Point** | Included in domain (boundary) | Excluded ( indeterminate) |
+| **Semantic Ambiguity** | Minimal | High (integer vs. real, real vs. complex) |
+| **Automatic Inference** | ✅ Yes | ⛔ No in generic |
+
+---
+
+### Why does `sqrt(x)` infer `x ≥ 0` but `0^x` does not infer `x > 0`?
+
+**1. `sqrt(x)` — Closed, canonical, and direct restriction**
+
+* The condition  is a **direct precondition of the operator** on its argument.
+* It is **closed** (it includes the boundary ).
+* It does not depend on the type of  (integer, rational, real): it is always .
+* Therefore, `infer_implicit_domain` adds it as an inheritable `NonNegative(x)`.
+
+**2. `0^x` — Strict restriction with a singular point and ambiguity**
+
+* The condition is **strict** (), not closed.
+* At , it falls into  (indeterminate by convention).
+* At , it becomes  (division by zero).
+* **Depends on the semantics of `Pow**`:
+* In `RealOnly`:  is defined only for .
+* In `ComplexEnabled`: It enters log branches (, undefined).
+* If integer exponents are allowed:  is defined for .
+
+
+
+> [!IMPORTANT]
+> Automatically inferring  for  is equivalent to **choosing a strong semantics** and **forcing a strict inequality on a free variable**. This is `assume` behavior, not `generic`.
+
+---
+
+### Behavior in Each Mode
+
+| Expression | Generic | Assume | Strict |
+| --- | --- | --- | --- |
+| `sqrt(x)^2 → x` | ✅ with `Requires: x ≥ 0` | ✅ | ✅ only if proven |
+| `0^x → 0` | ⛔ Blocked (unless `x` is literal > 0) | ✅ with `Assumes: x > 0` | ⛔ Blocked |
+| `exp(ln(x)) → x` | ✅ with `Requires: x > 0` | ✅ | ✅ only if proven |
+
+---
+
+### Design Criteria
+
+The engine uses this heuristic to decide if a condition is "implicitly inheritable":
+
+```
+Inheritable IF:
+  - Closed condition (≥, ≤, ≠) 
+  - Direct operator precondition (sqrt, ln, abs)
+  - Semantically unambiguous
+
+NOT inheritable IF:
+  - Strict condition (>, <) with a singular point
+  - Depends on optional semantics (integer vs. real)
+  - Requires "choosing" one interpretation among several valid ones
+
+```
+
