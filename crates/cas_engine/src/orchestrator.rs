@@ -194,6 +194,11 @@ impl Orchestrator {
             &mut self.pattern_marks,
         );
 
+        // V2.15.8: Set sticky implicit domain from original input to propagate inherited requires
+        // across all phases. This allows AbsNonNegativeSimplifyRule to see x≥0 from sqrt(x)
+        // even after the sqrt witness is consumed.
+        simplifier.set_sticky_implicit_domain(expr, self.options.value_domain);
+
         // Check for specialized strategies first
         if let Some(result) =
             crate::telescoping::try_dirichlet_kernel_identity_pub(&simplifier.context, expr)
@@ -213,6 +218,7 @@ impl Orchestrator {
                     Some(&simplifier.context),
                 ));
             }
+            simplifier.clear_sticky_implicit_domain();
             return (zero, steps, crate::phase::PipelineStats::default());
         }
 
@@ -368,6 +374,9 @@ impl Orchestrator {
             }
             pipeline_stats.assumptions = collector.finish();
         }
+
+        // V2.15.8: Clear sticky domain when pipeline completes
+        simplifier.clear_sticky_implicit_domain();
 
         (current, optimized_steps, pipeline_stats)
     }

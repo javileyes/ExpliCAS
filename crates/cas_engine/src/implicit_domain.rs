@@ -497,6 +497,37 @@ fn is_power_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
     false
 }
 
+/// Check if source is k*target where k > 0.
+/// Used to deduce x ≥ 0 from k*x ≥ 0 when k is positive.
+/// e.g., is_positive_multiple_of(ctx, 4*x, x) = true
+fn is_positive_multiple_of(ctx: &Context, source: ExprId, target: ExprId) -> bool {
+    use num_traits::Zero;
+
+    // First check direct equivalence
+    if exprs_equivalent(ctx, source, target) {
+        return true;
+    }
+
+    // Check if source is Mul(k, target) or Mul(target, k) where k > 0
+    if let Expr::Mul(l, r) = ctx.get(source) {
+        // Check k * target
+        if let Expr::Number(n) = ctx.get(*l) {
+            let zero = num_rational::BigRational::zero();
+            if *n > zero && exprs_equivalent(ctx, *r, target) {
+                return true;
+            }
+        }
+        // Check target * k
+        if let Expr::Number(n) = ctx.get(*r) {
+            let zero = num_rational::BigRational::zero();
+            if *n > zero && exprs_equivalent(ctx, *l, target) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Check if a product expression is dominated by known positive expressions.
 /// E.g., a^2 * b^3 > 0 is dominated if we have both a > 0 and b > 0
 /// Only applies to actual products (≥2 factors) to avoid removing single conditions.
@@ -1576,6 +1607,24 @@ impl DomainContext {
                     // NEW: Check if target is source^n -> target is implied by source
                     // e.g., a^2 > 0 is implied by a > 0
                     if is_power_of_base(ctx, *target, *source) {
+                        return true;
+                    }
+                }
+                // V2.15.8: x ≥ 0 is implied by x > 0 (strict positivity implies non-negativity)
+                (ImplicitCondition::NonNegative(target), ImplicitCondition::Positive(source)) => {
+                    if exprs_equivalent(ctx, *target, *source) {
+                        return true;
+                    }
+                }
+                // V2.15.8: x ≥ 0 is implied by k*x ≥ 0 when k > 0
+                // e.g., x ≥ 0 implied by 4*x ≥ 0 (since we know 4 > 0)
+                (
+                    ImplicitCondition::NonNegative(target),
+                    ImplicitCondition::NonNegative(source),
+                ) => {
+                    // Check direct equivalence first (handled above in conditions_equivalent)
+                    // Check if source is k*target where k > 0
+                    if is_positive_multiple_of(ctx, *source, *target) {
                         return true;
                     }
                 }

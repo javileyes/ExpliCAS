@@ -195,6 +195,12 @@ pub struct Simplifier {
     last_domain_warnings: Vec<(String, String)>,
     /// Blocked hints from last simplify() call (pedagogical hints for blocked Analytic conditions)
     last_blocked_hints: Vec<crate::domain::BlockedHint>,
+    /// Sticky root expression: when set, this is used instead of recalculating per-phase
+    /// This preserves inherited requires across all phases (e.g., x≥0 from sqrt(x))
+    sticky_root_expr: Option<ExprId>,
+    /// Sticky implicit domain: when set, this is propagated to all phases
+    /// Computed from the original input, survives even after witnesses are consumed
+    sticky_implicit_domain: Option<crate::implicit_domain::ImplicitDomain>,
 }
 
 impl Default for Simplifier {
@@ -220,6 +226,8 @@ impl Simplifier {
             profiler: RuleProfiler::new(false), // Disabled by default
             last_domain_warnings: Vec::new(),
             last_blocked_hints: Vec::new(),
+            sticky_root_expr: None,
+            sticky_implicit_domain: None,
         }
     }
 
@@ -301,6 +309,8 @@ impl Simplifier {
             profiler: RuleProfiler::new(false),
             last_domain_warnings: Vec::new(),
             last_blocked_hints: Vec::new(),
+            sticky_root_expr: None,
+            sticky_implicit_domain: None,
         }
     }
 
@@ -356,6 +366,36 @@ impl Simplifier {
     /// Hints will be deduplicated when take_blocked_hints is called.
     pub fn extend_blocked_hints(&mut self, hints: Vec<crate::domain::BlockedHint>) {
         self.last_blocked_hints.extend(hints);
+    }
+
+    /// Set sticky implicit domain from the original input expression.
+    /// This domain will be used for all phases instead of recalculating per-phase.
+    /// Call this at the start of a simplification pipeline to preserve inherited requires.
+    pub fn set_sticky_implicit_domain(
+        &mut self,
+        root: ExprId,
+        value_domain: crate::semantics::ValueDomain,
+    ) {
+        use crate::implicit_domain::infer_implicit_domain;
+        self.sticky_root_expr = Some(root);
+        self.sticky_implicit_domain =
+            Some(infer_implicit_domain(&self.context, root, value_domain));
+    }
+
+    /// Clear sticky implicit domain (call after pipeline completes).
+    pub fn clear_sticky_implicit_domain(&mut self) {
+        self.sticky_root_expr = None;
+        self.sticky_implicit_domain = None;
+    }
+
+    /// Get the sticky implicit domain, if set.
+    pub fn sticky_implicit_domain(&self) -> Option<&crate::implicit_domain::ImplicitDomain> {
+        self.sticky_implicit_domain.as_ref()
+    }
+
+    /// Get the sticky root expression, if set.
+    pub fn sticky_root_expr(&self) -> Option<ExprId> {
+        self.sticky_root_expr
     }
 
     pub fn enable_debug(&mut self) {
@@ -727,25 +767,51 @@ impl Simplifier {
         // V2.15: Reset domain inference call counter for regression testing
         crate::implicit_domain::infer_domain_calls_reset();
 
-        let initial_parent_ctx = crate::parent_context::ParentContext::with_expand_mode(
-            pattern_marks.clone(),
-            expand_mode,
-        )
-        .with_auto_expand_flag(
-            auto_expand,
-            if auto_expand {
-                Some(expand_budget)
-            } else {
-                None
-            },
-        )
-        .with_domain_mode(domain_mode)
-        .with_inv_trig(inv_trig)
-        .with_value_domain(value_domain)
-        .with_goal(goal)
-        .with_simplify_purpose(simplify_purpose)
-        .with_context_mode(context_mode)
-        .with_root_expr(&self.context, expr_id);
+        // V2.15.8: Use sticky implicit domain if set (from original input), otherwise calculate from current expr
+        // This preserves inherited requires (e.g., x≥0 from sqrt) across all phases
+        let initial_parent_ctx = if let Some(sticky_domain) = &self.sticky_implicit_domain {
+            let sticky_root = self.sticky_root_expr.unwrap_or(expr_id);
+            crate::parent_context::ParentContext::with_expand_mode(
+                pattern_marks.clone(),
+                expand_mode,
+            )
+            .with_auto_expand_flag(
+                auto_expand,
+                if auto_expand {
+                    Some(expand_budget)
+                } else {
+                    None
+                },
+            )
+            .with_domain_mode(domain_mode)
+            .with_inv_trig(inv_trig)
+            .with_value_domain(value_domain)
+            .with_goal(goal)
+            .with_simplify_purpose(simplify_purpose)
+            .with_context_mode(context_mode)
+            .with_root_expr_only(sticky_root)
+            .with_implicit_domain(Some(sticky_domain.clone()))
+        } else {
+            crate::parent_context::ParentContext::with_expand_mode(
+                pattern_marks.clone(),
+                expand_mode,
+            )
+            .with_auto_expand_flag(
+                auto_expand,
+                if auto_expand {
+                    Some(expand_budget)
+                } else {
+                    None
+                },
+            )
+            .with_domain_mode(domain_mode)
+            .with_inv_trig(inv_trig)
+            .with_value_domain(value_domain)
+            .with_goal(goal)
+            .with_simplify_purpose(simplify_purpose)
+            .with_context_mode(context_mode)
+            .with_root_expr(&self.context, expr_id)
+        };
 
         // Capture nodes_created BEFORE creating transformer (can't access while borrowed)
         let nodes_snap = self.context.stats().nodes_created;
@@ -2214,9 +2280,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if let Some(root) = self.initial_parent_ctx.root_expr() {
                             ctx = ctx.with_root_expr_only(root);
                         }
-                        // NOTE: We intentionally do NOT propagate implicit_domain here.
-                        // Doing so would trigger check_analytic_expansion gates that would
-                        // block valid simplifications like ln(exp(x)) → x in Strict mode.
+                        // V2.15.8: Propagate implicit_domain for domain-aware simplifications
+                        // (e.g., AbsNonNegativeSimplifyRule needs to see x≥0 from sqrt)
+                        // Note: check_analytic_expansion is gated by rule.solve_safety() below
+                        ctx = ctx.with_implicit_domain(
+                            self.initial_parent_ctx.implicit_domain().cloned(),
+                        );
                         // Build ancestor chain from stack (for Div tracking)
                         for &ancestor in &self.ancestor_stack {
                             ctx = ctx.extend_with_div_check(ancestor, self.context);
@@ -2271,12 +2340,21 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                         // Domain Delta Airbag: Check if rewrite expands analytic domain
                         // This catches any rewrite that removes implicit constraints like x≥0 from sqrt(x)
+                        // V2.15.8: Only run this check for rules that declare NeedsCondition(Analytic)
+                        // This allows rules like AbsNonNegativeSimplifyRule to use implicit_domain
+                        // without triggering the airbag that would block LogExpInverseRule
                         // Behavior by mode:
                         // - Strict/Generic: Block if expansion detected
                         // - Assume: Allow but register dropped predicates as assumptions
                         let vd = parent_ctx.value_domain();
                         let mode = parent_ctx.domain_mode();
-                        if parent_ctx.implicit_domain().is_some() {
+                        let needs_analytic_check = matches!(
+                            rule.solve_safety(),
+                            crate::solve_safety::SolveSafety::NeedsCondition(
+                                crate::assumptions::ConditionClass::Analytic
+                            )
+                        );
+                        if parent_ctx.implicit_domain().is_some() && needs_analytic_check {
                             use crate::implicit_domain::{
                                 check_analytic_expansion, AnalyticExpansionResult,
                                 ImplicitCondition,

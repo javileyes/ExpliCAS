@@ -172,6 +172,7 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
                 let mut is_implied = nonneg == Proof::Proven;
 
                 // If not proven directly, check implicit domain (from sqrt requirements, etc.)
+                // V2.15.8: Uses sticky domain from parent_ctx, set by orchestrator pipeline
                 if !is_implied {
                     if let Some(id) = parent_ctx.implicit_domain() {
                         let dc = crate::implicit_domain::DomainContext::new(
