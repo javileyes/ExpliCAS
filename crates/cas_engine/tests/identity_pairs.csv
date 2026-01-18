@@ -776,3 +776,149 @@ product(x^2, k,k;x,g
 # Double factorial patterns
 product(2*k, k, 1,g
 product(2*k-1, k, 1,g
+
+# =============================================================================
+# TRIGONOMETRY: SUM AND DIFFERENCE OF ANGLES
+# =============================================================================
+
+# Core angle sum/difference (unlocks product-to-sum and vice versa)
+sin(x+y),sin(x)*cos(y) + cos(x)*sin(y),x;y,g
+sin(x-y),sin(x)*cos(y) - cos(x)*sin(y),x;y,g
+cos(x+y),cos(x)*cos(y) - sin(x)*sin(y),x;y,g
+cos(x-y),cos(x)*cos(y) + sin(x)*sin(y),x;y,g
+tan(x+y),(tan(x)+tan(y))/(1 - tan(x)*tan(y)),x;y,g
+tan(x-y),(tan(x)-tan(y))/(1 + tan(x)*tan(y)),x;y,g
+
+# =============================================================================
+# TRIGONOMETRY: PERIODICITY AND SHIFTS
+# =============================================================================
+
+# Period 2π
+sin(x + 2*pi),sin(x),x,g
+cos(x + 2*pi),cos(x),x,g
+sin(x - 2*pi),sin(x),x,g
+cos(x - 2*pi),cos(x),x,g
+
+# Period π for tan/cot
+tan(x + pi),tan(x),x,g
+cot(x + pi),cot(x),x,g
+
+# Half-period shifts
+sin(x + pi),-sin(x),x,g
+cos(x + pi),-cos(x),x,g
+sin(x - pi),-sin(x),x,g
+cos(x - pi),-cos(x),x,g
+
+# Reflection about π
+sin(pi - x),sin(x),x,g
+cos(pi - x),-cos(x),x,g
+tan(pi - x),-tan(x),x,g
+
+# =============================================================================
+# SEC/CSC PYTHAGOREAN VARIANTS
+# =============================================================================
+
+sec(x)^2,1 + tan(x)^2,x,g
+csc(x)^2,1 + cot(x)^2,x,g
+1 - sin(x)^2,cos(x)^2,x,g
+1 - cos(x)^2,sin(x)^2,x,g
+tan(x)^2,sec(x)^2 - 1,x,g
+cot(x)^2,csc(x)^2 - 1,x,g
+
+# =============================================================================
+# HYPERBOLIC: ADDITIONAL IDENTITIES
+# =============================================================================
+
+# Quotient identity
+tanh(x),sinh(x)/cosh(x),x,g
+
+# Hyperbolic Pythagorean variant
+1 - tanh(x)^2,1/cosh(x)^2,x,g
+1/cosh(x)^2,1 - tanh(x)^2,x,g
+
+# Even/odd properties
+cosh(-x),cosh(x),x,g
+sinh(-x),-sinh(x),x,g
+tanh(-x),-tanh(x),x,g
+
+# Hyperbolic half-angle
+cosh(x/2)^2,(cosh(x) + 1)/2,x,g
+sinh(x/2)^2,(cosh(x) - 1)/2,x,g
+
+# =============================================================================
+# SIGNED POWERS AND PARITY
+# =============================================================================
+
+(-x)^2,x^2,x,g
+(-x)^4,x^4,x,g
+(-x)^6,x^6,x,g
+(-x)^3,-x^3,x,g
+(-x)^5,-x^5,x,g
+(-x)^7,-x^7,x,g
+(-1)^2,1,x,g
+(-1)^4,1,x,g
+(-1)^3,-1,x,g
+(-1)^5,-1,x,g
+
+# Negative exponents
+x^(-1),1/x,x,g
+x^(-2),1/x^2,x,g
+x^(-3),1/x^3,x,g
+(x^(-1))^(-1),x,x,g
+
+# =============================================================================
+# FRACTION NORMALIZATION (Common denominator patterns)
+# =============================================================================
+
+a/b + c/b,(a+c)/b,a;b;c,g
+a/b - c/b,(a-c)/b,a;b;c,g
+a/b + c/d,(a*d + b*c)/(b*d),a;b;c;d,g
+a/b - c/d,(a*d - b*c)/(b*d),a;b;c;d,g
+
+# =============================================================================
+# FACTORIZATION: GENERAL PATTERNS
+# =============================================================================
+
+# Perfect square trinomials (general)
+x^2 - y^2,(x-y)*(x+y),x;y,g
+x^3 - y^3,(x-y)*(x^2 + x*y + y^2),x;y,g
+x^3 + y^3,(x+y)*(x^2 - x*y + y^2),x;y,g
+
+# Completing the square (additional)
+x^2 + 2*x + 1,(x+1)^2,x,g
+x^2 - 2*x + 1,(x-1)^2,x,g
+
+# =============================================================================
+# RADICAL: FACTOR EXTRACTION
+# =============================================================================
+
+# Note: These require x >= 0 in RealOnly mode
+sqrt(4*x),2*sqrt(x),x,a
+sqrt(9*x),3*sqrt(x),x,a
+sqrt(16*x),4*sqrt(x),x,a
+sqrt(25*x),5*sqrt(x),x,a
+
+# Radical simplification patterns
+sqrt(x)/x,1/sqrt(x),x,a
+x/sqrt(x),sqrt(x),x,a
+
+# =============================================================================
+# LOG/EXP: ADDITIONAL SOUND IDENTITIES
+# =============================================================================
+
+# Exponential combination
+exp(a)*exp(b),exp(a+b),a;b,g
+exp(a)/exp(b),exp(a-b),a;b,g
+
+# Log of absolute value (RealOnly)
+ln(|x|^2),2*ln(|x|),x,g
+exp(ln(|x|)),|x|,x,g
+
+# =============================================================================
+# QUOTIENT NOTABLES (Limit-related)
+# =============================================================================
+
+(x^5 - 1)/(x - 1),x^4 + x^3 + x^2 + x + 1,x,g
+(x^6 - 1)/(x - 1),x^5 + x^4 + x^3 + x^2 + x + 1,x,g
+(x^2 - y^2)/(x - y),x + y,x;y,g
+(x^3 - y^3)/(x - y),x^2 + x*y + y^2,x;y,g
