@@ -1678,8 +1678,142 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
 }
 
 // =============================================================================
-// ExpandSmallBinomialPowRule: Always-on expansion for small integer powers
+// HeuristicPolyNormalizeAddRule: Poly-normalize Add/Sub with binomial powers
 // =============================================================================
+//
+// V2.15.8: In Heuristic mode, normalizes Add/Sub expressions containing Pow(Add, n)
+// to polynomial form using MultiPoly arithmetic, producing flattened results with
+// combined like terms.
+//
+// Example: (x+1)^3 + x^3 → 2x³ + 3x² + 3x + 1 (not x³ + ... + x³)
+
+/// HeuristicPolyNormalizeAddRule: Poly-normalize sums with binomial powers
+/// Priority 42 (after ExpandSmallBinomialPowRule at 40, before others)
+pub struct HeuristicPolyNormalizeAddRule;
+
+impl HeuristicPolyNormalizeAddRule {
+    /// Check if expression contains Pow(Add, n) with 2 ≤ n ≤ 6
+    fn contains_pow_add(ctx: &Context, expr: ExprId) -> bool {
+        Self::contains_pow_add_inner(ctx, expr, 0)
+    }
+
+    fn contains_pow_add_inner(ctx: &Context, expr: ExprId, depth: usize) -> bool {
+        if depth > 20 {
+            return false;
+        }
+        match ctx.get(expr) {
+            Expr::Pow(base, exp) => {
+                if matches!(ctx.get(*base), Expr::Add(_, _)) {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        if n.is_integer() && !n.is_negative() {
+                            use num_traits::ToPrimitive;
+                            if let Some(e) = n.to_integer().to_u32() {
+                                if (2..=6).contains(&e) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+                Self::contains_pow_add_inner(ctx, *base, depth + 1)
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                Self::contains_pow_add_inner(ctx, *l, depth + 1)
+                    || Self::contains_pow_add_inner(ctx, *r, depth + 1)
+            }
+            Expr::Neg(inner) => Self::contains_pow_add_inner(ctx, *inner, depth + 1),
+            _ => false,
+        }
+    }
+}
+
+impl crate::rule::Rule for HeuristicPolyNormalizeAddRule {
+    fn name(&self) -> &str {
+        "Heuristic Poly Normalize"
+    }
+
+    fn priority(&self) -> i32 {
+        100 // Very high priority - must process Add BEFORE children Pow are expanded
+    }
+
+    fn allowed_phases(&self) -> PhaseMask {
+        PhaseMask::TRANSFORM
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Add", "Sub"])
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Only trigger in Heuristic mode
+        use crate::options::AutoExpandBinomials;
+        if parent_ctx.autoexpand_binomials() != AutoExpandBinomials::Heuristic {
+            return None;
+        }
+
+        // Skip in Solve mode
+        if parent_ctx.is_solve_context() {
+            return None;
+        }
+
+        // Must be Add or Sub
+        if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+            return None;
+        }
+
+        // Must contain at least one Pow(Add, n) with 2 ≤ n ≤ 6
+        // We process the ORIGINAL Add before children are expanded by ExpandSmallBinomialPowRule
+        if !Self::contains_pow_add(ctx, expr) {
+            return None;
+        }
+
+        // Quick size check
+        let node_count = cas_ast::count_nodes(ctx, expr);
+        if node_count > 80 {
+            return None;
+        }
+
+        // Try to convert to MultiPoly (this expands and combines terms)
+        let budget = PolyBudget {
+            max_terms: 40,
+            max_total_degree: 6,
+            max_pow_exp: 6,
+        };
+
+        let mut vars = Vec::new();
+        let poly = AutoExpandSubCancelRule::expr_to_multipoly(ctx, expr, &mut vars, &budget)?;
+
+        // Check if result is reasonable
+        if poly.terms.len() > 30 || vars.len() > 3 {
+            return None;
+        }
+
+        // If polynomial is zero, let PolynomialIdentityZeroRule handle it
+        if poly.is_zero() {
+            return None;
+        }
+
+        // Convert back to expression using multipoly_to_expr (produces flattened Add)
+        let new_expr = crate::multipoly::multipoly_to_expr(&poly, ctx);
+
+        // Don't rewrite to same expression
+        if new_expr == expr {
+            return None;
+        }
+
+        Some(
+            Rewrite::new(new_expr)
+                .desc("Expand and combine polynomial terms (heuristic)")
+                .local(expr, new_expr),
+        )
+    }
+}
+
 //
 // V2.15.8: Expands (a+b)^n automatically when:
 // - n is a small positive integer (2 ≤ n ≤ 6)
@@ -1724,7 +1858,19 @@ impl crate::rule::Rule for ExpandSmallBinomialPowRule {
         match parent_ctx.autoexpand_binomials() {
             AutoExpandBinomials::Off => return None, // Never expand
             AutoExpandBinomials::Heuristic => {
-                // Only expand if in a marked cancellation context
+                // V2.15.8: In Heuristic mode, let HeuristicPolyNormalizeAddRule handle Add/Sub
+                // contexts with polynomial normalization (which combines like terms).
+                // Only expand here if NOT in an additive context.
+                let parent_is_additive = parent_ctx.ancestors.first().is_some_and(|&p| {
+                    matches!(ctx.get(p), Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_))
+                });
+
+                // Skip if parent is Add/Sub - let HeuristicPolyNormalizeAddRule handle
+                if parent_is_additive {
+                    return None;
+                }
+
+                // Also skip if not in a cancellation context and parent is not additive
                 if !parent_ctx.in_auto_expand_context() {
                     return None;
                 }
@@ -1787,6 +1933,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AutoExpandPowSumRule));
     simplifier.add_rule(Box::new(AutoExpandSubCancelRule));
     simplifier.add_rule(Box::new(PolynomialIdentityZeroRule));
+    // V2.15.8: HeuristicPolyNormalizeAddRule - poly-normalize Add/Sub in Heuristic mode
+    simplifier.add_rule(Box::new(HeuristicPolyNormalizeAddRule));
 }
 
 #[cfg(test)]

@@ -182,7 +182,7 @@ fn find_pow_add_in_expr(ctx: &Context, id: ExprId) -> Option<(ExprId, u32)> {
 
 /// Heuristic: check if expression looks like an expanded polynomial
 /// (contains Add, Mul, Pow with integer exponents, but no functions)
-fn looks_polynomial_like(ctx: &Context, id: ExprId) -> bool {
+pub fn looks_polynomial_like(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
         Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => true,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
