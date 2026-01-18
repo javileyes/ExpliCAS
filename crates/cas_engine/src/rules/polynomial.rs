@@ -1703,12 +1703,16 @@ impl HeuristicPolyNormalizeAddRule {
         }
         match ctx.get(expr) {
             Expr::Pow(base, exp) => {
+                // Check if this is Pow(Add, n) with 2 ≤ n ≤ 6 AND base is polynomial-like
                 if matches!(ctx.get(*base), Expr::Add(_, _)) {
                     if let Expr::Number(n) = ctx.get(*exp) {
                         if n.is_integer() && !n.is_negative() {
                             use num_traits::ToPrimitive;
                             if let Some(e) = n.to_integer().to_u32() {
-                                if (2..=6).contains(&e) {
+                                // Must be polynomial-like base (no functions like sqrt, sin)
+                                if (2..=6).contains(&e)
+                                    && crate::auto_expand_scan::looks_polynomial_like(ctx, *base)
+                                {
                                     return true;
                                 }
                             }
