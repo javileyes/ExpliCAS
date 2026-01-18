@@ -137,6 +137,96 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
     }
 }
 
+/// Simplify absolute value under non-negativity
+/// |x| → x when x ≥ 0 is proven or implied (e.g., from sqrt(x) requirements)
+/// This complements AbsPositiveSimplifyRule for the non-strict case
+pub struct AbsNonNegativeSimplifyRule;
+
+impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
+    fn name(&self) -> &str {
+        "Abs Under Non-Negativity"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        use crate::domain::{DomainMode, Proof};
+        use crate::helpers::prove_nonnegative;
+
+        // Match abs(inner)
+        let inner = match ctx.get(expr).clone() {
+            Expr::Function(name, args) if name == "abs" && args.len() == 1 => args[0],
+            _ => return None,
+        };
+
+        let vd = parent_ctx.value_domain();
+        let dm = parent_ctx.domain_mode();
+        let nonneg = prove_nonnegative(ctx, inner, vd);
+
+        match dm {
+            DomainMode::Strict | DomainMode::Generic => {
+                // Check if proven non-negative directly
+                let mut is_implied = nonneg == Proof::Proven;
+
+                // If not proven directly, check implicit domain (from sqrt requirements, etc.)
+                if !is_implied {
+                    if let Some(id) = parent_ctx.implicit_domain() {
+                        let dc = crate::implicit_domain::DomainContext::new(
+                            id.conditions().iter().cloned().collect(),
+                        );
+                        let cond = crate::implicit_domain::ImplicitCondition::NonNegative(inner);
+                        is_implied = dc.is_condition_implied(ctx, &cond);
+                    }
+                }
+
+                if !is_implied {
+                    return None;
+                }
+
+                Some(
+                    Rewrite::new(inner)
+                        .desc("|x| = x for x ≥ 0")
+                        .local(expr, inner),
+                )
+            }
+            DomainMode::Assume => {
+                // In Assume mode: if proven, no warning; if not, emit assumption
+                if nonneg == Proof::Proven {
+                    Some(
+                        Rewrite::new(inner)
+                            .desc("|x| = x for x ≥ 0")
+                            .local(expr, inner),
+                    )
+                } else {
+                    // Emit non_negative assumed warning
+                    Some(
+                        Rewrite::new(inner)
+                            .desc("|x| = x (assuming x ≥ 0)")
+                            .local(expr, inner)
+                            .assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, inner)),
+                    )
+                }
+            }
+        }
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    // Run in POST phase only, after abs values from other rules exist
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::POST
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
 define_rule!(
     AbsSquaredRule,
     "Abs Squared Identity",
@@ -738,6 +828,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SymbolicRootCancelRule)); // V2.14.45: sqrt(x^n, n) -> x in Assume mode
     simplifier.add_rule(Box::new(EvaluateAbsRule));
     simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
+    simplifier.add_rule(Box::new(AbsNonNegativeSimplifyRule)); // |x| -> x when x >= 0 (from sqrt requirements)
     simplifier.add_rule(Box::new(AbsSquaredRule));
     simplifier.add_rule(Box::new(AbsIdempotentRule)); // ||x|| → |x|
     simplifier.add_rule(Box::new(AbsOfEvenPowerRule)); // |x^2k| → x^2k

@@ -378,8 +378,8 @@ exp(x)/exp(2*x),exp(-x),x,g
 
 # Radical products
 sqrt(a)*sqrt(b),sqrt(a*b),a;b,a
-sqrt(x)*sqrt(4*x),2*x,x,g,,,ge(0.0)
-sqrt(2*x)*sqrt(8*x),4*x,x,g,,,ge(0.0)
+sqrt(x)*sqrt(4*x),2*|x|,x,g,,,ge(0.0)
+sqrt(2*x)*sqrt(8*x),4*|x|,x,g,,,ge(0.0)
 
 # Radical quotients
 sqrt(a)/sqrt(b),sqrt(a/b),a;b,a

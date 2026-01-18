@@ -238,7 +238,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
 });
 
 // a^n * b^n = (ab)^n - combines products of powers with same exponent
-// Only applies when at least one base is a number to avoid infinite loop with PowerProductRule
+// Guard: at least one base must contain a numeric factor to avoid infinite loop with PowerProductRule
+// This allows sqrt(x)*sqrt(4*x) to combine into sqrt(4*x^2) since 4*x has numeric factor
 define_rule!(
     ProductSameExponentRule,
     "Product Same Exponent",
@@ -246,7 +247,7 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE, // Exclude POST to prevent loop with SimplifySqrtOddPowerRule
     |ctx, expr| {
         // a^n * b^n -> (a*b)^n
-        // Guard: only apply when at least one base is a number (to avoid infinite loop)
+        // Guard: only apply when at least one base has a numeric factor (to avoid infinite loop)
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
             let lhs_data = ctx.get(lhs).clone();
@@ -255,11 +256,15 @@ define_rule!(
             // Case 1: Both are powers with same exponent: a^n * b^n
             if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
                 if compare_expr(ctx, *exp1, *exp2) == Ordering::Equal {
-                    // Guard: at least one base must be a number to avoid infinite loop
+                    // Guard: at least one base must have a numeric factor to avoid infinite loop
+                    // with PowerProductRule ((a*b)^n -> a^n * b^n)
                     let base1_is_num = matches!(ctx.get(*base1), Expr::Number(_));
                     let base2_is_num = matches!(ctx.get(*base2), Expr::Number(_));
-                    if !base1_is_num && !base2_is_num {
-                        return None; // Skip if both are non-numeric (would loop with PowerProductRule)
+                    let base1_has_num = base1_is_num || has_numeric_factor(ctx, *base1);
+                    let base2_has_num = base2_is_num || has_numeric_factor(ctx, *base2);
+
+                    if !base1_has_num && !base2_has_num {
+                        return None; // Skip if both are purely symbolic (would loop with PowerProductRule)
                     }
 
                     // Same exponent - combine bases
@@ -274,10 +279,13 @@ define_rule!(
                 if let Expr::Mul(rl, rr) = &rhs_data {
                     if let Expr::Pow(base2, exp2) = ctx.get(*rl) {
                         if compare_expr(ctx, *exp1, *exp2) == Ordering::Equal {
-                            // Guard: at least one base must be a number
+                            // Guard: at least one base must have a numeric factor
                             let base1_is_num = matches!(ctx.get(*base1), Expr::Number(_));
                             let base2_is_num = matches!(ctx.get(*base2), Expr::Number(_));
-                            if !base1_is_num && !base2_is_num {
+                            let base1_has_num = base1_is_num || has_numeric_factor(ctx, *base1);
+                            let base2_has_num = base2_is_num || has_numeric_factor(ctx, *base2);
+
+                            if !base1_has_num && !base2_has_num {
                                 return None;
                             }
 
