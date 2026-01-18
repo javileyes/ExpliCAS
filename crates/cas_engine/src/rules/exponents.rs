@@ -480,16 +480,36 @@ impl crate::rule::Rule for RootPowCancelRule {
         match dm {
             crate::domain::DomainMode::Strict | crate::domain::DomainMode::Generic => {
                 // Block: can't determine if n is even or odd
+                // V2.15.9: Register two BlockedHints to guide user to Assume mode
+                // For symbolic n, we need x > 0 (not just ≥ 0) because x^n with negative base
+                // and symbolic exponent is problematic in reals. Also n ≠ 0 for 1/n.
+                let hint1 = crate::domain::BlockedHint {
+                    key: crate::assumptions::AssumptionKey::positive_key(ctx, inner_base),
+                    expr_id: inner_base,
+                    rule: "Root Power Cancel".to_string(),
+                    suggestion: "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.",
+                };
+                let hint2 = crate::domain::BlockedHint {
+                    key: crate::assumptions::AssumptionKey::nonzero_key(ctx, inner_exp),
+                    expr_id: inner_exp,
+                    rule: "Root Power Cancel".to_string(),
+                    suggestion: "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.",
+                };
+                crate::domain::register_blocked_hint(hint1);
+                crate::domain::register_blocked_hint(hint2);
                 None
             }
             crate::domain::DomainMode::Assume => {
-                // Return x with requires x ≥ 0 (valid for both even and odd n)
+                // Return x with requires x > 0, n ≠ 0
+                // x > 0 ensures x^n is well-defined for any real n
+                // n ≠ 0 ensures 1/n is defined
                 use crate::implicit_domain::ImplicitCondition;
                 Some(
                     crate::rule::Rewrite::new(inner_base)
-                        .desc("(x^n)^(1/n) = x (assuming x ≥ 0)")
-                        .requires(ImplicitCondition::NonNegative(inner_base))
-                        .assume(crate::assumptions::AssumptionEvent::nonnegative(
+                        .desc("(x^n)^(1/n) = x (assuming x > 0, n ≠ 0)")
+                        .requires(ImplicitCondition::Positive(inner_base))
+                        .requires(ImplicitCondition::NonZero(inner_exp))
+                        .assume(crate::assumptions::AssumptionEvent::positive_assumed(
                             ctx, inner_base,
                         )),
                 )
@@ -655,18 +675,36 @@ define_rule!(
                     match dm {
                         crate::domain::DomainMode::Strict | crate::domain::DomainMode::Generic => {
                             // Block: can't determine if n is even or odd
+                            // V2.15.9: Register two BlockedHints to guide user to Assume mode
+                            // x > 0 required because x^n with negative base and symbolic exp is problematic
+                            // n ≠ 0 required for 1/n to be defined
+                            let hint1 = crate::domain::BlockedHint {
+                                key: crate::assumptions::AssumptionKey::positive_key(ctx, inner_base),
+                                expr_id: inner_base,
+                                rule: "Power of a Power".to_string(),
+                                suggestion: "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.",
+                            };
+                            let hint2 = crate::domain::BlockedHint {
+                                key: crate::assumptions::AssumptionKey::nonzero_key(ctx, inner_exp),
+                                expr_id: inner_exp,
+                                rule: "Power of a Power".to_string(),
+                                suggestion: "Use 'semantics set domain assume' to simplify (x^n)^(1/n) → x.",
+                            };
+                            crate::domain::register_blocked_hint(hint1);
+                            crate::domain::register_blocked_hint(hint2);
                             return None;
                         }
                         crate::domain::DomainMode::Assume => {
-                            // Allow with NonNegative assumption (valid for both parities)
+                            // Allow with Positive(x) + NonZero(n) assumption
                             use crate::implicit_domain::ImplicitCondition;
                             let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
                             let new_expr = ctx.add(Expr::Pow(inner_base, prod_exp));
                             return Some(
                                 Rewrite::new(new_expr)
-                                    .desc("(x^n)^(1/n) = x (assuming x ≥ 0)")
-                                    .requires(ImplicitCondition::NonNegative(inner_base))
-                                    .assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, inner_base))
+                                    .desc("(x^n)^(1/n) = x (assuming x > 0, n ≠ 0)")
+                                    .requires(ImplicitCondition::Positive(inner_base))
+                                    .requires(ImplicitCondition::NonZero(inner_exp))
+                                    .assume(crate::assumptions::AssumptionEvent::positive_assumed(ctx, inner_base))
                             );
                         }
                     }

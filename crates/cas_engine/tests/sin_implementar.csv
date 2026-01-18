@@ -3,6 +3,9 @@
 # Estas identidades son matemáticamente correctas pero el engine no las simplifica aún.
 # Este archivo sirve como roadmap de mejoras pendientes.
 
+# Esta necesita requerimientos como even(y) etc:
+(x^y)^(1/y),x,y
+
 # =============================================================================
 # VALORES TRIGONOMÉTRICOS ESPECIALES (ángulos no estándar)
 # =============================================================================
