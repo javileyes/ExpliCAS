@@ -489,6 +489,7 @@ impl Completer for CasHelper {
                     "rationalize",
                     "max-rewrites",
                     "heuristic_poly",
+                    "autoexpand",
                 ];
                 for opt in options {
                     if opt.starts_with(word) {
@@ -506,7 +507,7 @@ impl Completer for CasHelper {
                 && ((parts.len() == 2 && ends_with_space) || (parts.len() == 3 && !ends_with_space))
             {
                 let values = match parts[1] {
-                    "debug" | "transform" | "heuristic_poly" => vec!["on", "off"],
+                    "debug" | "transform" | "heuristic_poly" | "autoexpand" => vec!["on", "off"],
                     "rationalize" => vec!["off", "0", "1", "1.5"],
                     _ => vec![],
                 };

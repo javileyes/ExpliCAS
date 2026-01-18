@@ -1417,17 +1417,21 @@ impl Repl {
                 }
                 _ => println!("Usage: set transform <on|off>"),
             },
-            "autoexpand_binomials" => match parts[2] {
+            "autoexpand" | "autoexpand_binomials" => match parts[2] {
                 "on" | "true" | "1" => {
                     self.state.options.autoexpand_binomials = cas_engine::AutoExpandBinomials::On;
-                    println!("Auto-expand binomials: ON (always expand)");
+                    self.simplify_options.autoexpand_binomials =
+                        cas_engine::AutoExpandBinomials::On;
+                    println!("Autoexpand binomials: ON (always expand)");
                     println!("  (x+1)^5 will now expand to x⁵+5x⁴+10x³+10x²+5x+1");
                 }
                 "off" | "false" | "0" => {
                     self.state.options.autoexpand_binomials = cas_engine::AutoExpandBinomials::Off;
-                    println!("Auto-expand binomials: OFF (default, never expand)");
+                    self.simplify_options.autoexpand_binomials =
+                        cas_engine::AutoExpandBinomials::Off;
+                    println!("Autoexpand binomials: OFF (default, keep factored form)");
                 }
-                _ => println!("Usage: set autoexpand_binomials <off|on>"),
+                _ => println!("Usage: set autoexpand <off|on>"),
             },
             "heuristic_poly" => match parts[2] {
                 "on" | "true" | "1" => {
@@ -1501,6 +1505,9 @@ impl Repl {
         println!("  set transform <on|off>         Enable/disable distribution & expansion");
         println!("  set rationalize <on|off|0|1|1.5>  Set rationalization level");
         println!("  set heuristic_poly <on|off>    Smart polynomial simplification/factorization");
+        println!(
+            "  set autoexpand <on|off>        Force expansion of binomial powers like (x+1)^n"
+        );
         println!("  set max-rewrites <N>           Set max total rewrites (safety limit)");
         println!("  set debug <on|off>             Show pipeline diagnostics after operations");
         println!();
@@ -1521,6 +1528,15 @@ impl Repl {
         println!(
             "  heuristic_poly: {}",
             if self.simplify_options.heuristic_poly == HeuristicPoly::On {
+                "on"
+            } else {
+                "off"
+            }
+        );
+        use cas_engine::options::AutoExpandBinomials;
+        println!(
+            "  autoexpand: {}",
+            if self.simplify_options.autoexpand_binomials == AutoExpandBinomials::On {
                 "on"
             } else {
                 "off"
