@@ -3,6 +3,26 @@ use std::collections::HashSet;
 
 /// Marks for expressions that are part of special patterns.
 /// This is populated by a pre-analysis pass before simplification.
+///
+/// # Lifecycle: Build-Then-Freeze Pattern
+///
+/// PatternMarks is designed with a "build-then-freeze" lifecycle:
+/// 1. **Build phase**: Created and mutated during pre-analysis (in `orchestrator.rs`)
+/// 2. **Freeze phase**: Wrapped in `Rc<PatternMarks>` when passed to `ParentContext`
+/// 3. **Read-only phase**: Shared across all recursive calls via `Rc` clone (O(1))
+///
+/// **IMPORTANT**: Once wrapped in `Rc` and stored in `ParentContext`, this struct
+/// MUST NOT be mutated. All `mark_*` methods should only be called during the
+/// build phase, before wrapping in `Rc`.
+///
+/// This pattern is critical for stack frame size: without `Rc`, cloning the 7
+/// `HashSet`s on every recursive call caused ~150KB frames and stack overflow.
+/// With `Rc`, clone is O(1) and frames are safe at depth 50+.
+///
+/// # Thread Safety
+///
+/// Uses `Rc` (not `Arc`) because `Simplifier` is single-threaded.
+/// Switch to `Arc` if parallelizing simplification in the future.
 #[derive(Clone, Debug, Default)]
 pub struct PatternMarks {
     /// ExprIds that are part of Pythagorean identity patterns
