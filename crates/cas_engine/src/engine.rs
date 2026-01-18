@@ -1684,7 +1684,7 @@ fn eval_f64_depth(
 /// optimizations, limiting safe depth to ~50 on 16MB stacks and ~30 on 8MB stacks.
 ///
 /// For deeper expressions, use `RUST_MIN_STACK=16777216` (16MB).
-const MAX_SIMPLIFY_DEPTH: usize = 30;
+const MAX_SIMPLIFY_DEPTH: usize = 50;
 
 /// Path to log expressions that exceed the depth limit for later investigation.
 const DEPTH_OVERFLOW_LOG_PATH: &str = "/tmp/cas_depth_overflow_expressions.log";

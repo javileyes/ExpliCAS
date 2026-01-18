@@ -1,13 +1,17 @@
 use cas_ast::{Context, ExprId};
+use std::rc::Rc;
 
 /// ParentContext tracks the ancestor chain of an expression without holding a Context reference.
 /// Used by context-aware rules to detect special patterns like Pythagorean identities.
+///
+/// V2.15.9: PatternMarks is now wrapped in Rc for O(1) clone during recursive simplification.
+/// This is critical for stack frame size reduction.
 #[derive(Clone)]
 pub struct ParentContext {
     /// IDs of ancestor expressions, from closest to furthest
     pub(crate) ancestors: Vec<ExprId>,
-    /// Pre-scanned pattern marks for context-aware guards
-    pub(crate) pattern_marks: Option<crate::pattern_marks::PatternMarks>,
+    /// Pre-scanned pattern marks for context-aware guards (shared via Rc for O(1) clone)
+    pub(crate) pattern_marks: Option<Rc<crate::pattern_marks::PatternMarks>>,
     /// Whether we're in "expand mode" - forces aggressive distribution/expansion
     pub(crate) expand_mode: bool,
     /// Whether auto-expand is enabled (expand cheap cases within budget)
@@ -95,7 +99,7 @@ impl ParentContext {
     pub fn with_marks(pattern_marks: crate::pattern_marks::PatternMarks) -> Self {
         Self {
             ancestors: Vec::new(),
-            pattern_marks: Some(pattern_marks),
+            pattern_marks: Some(Rc::new(pattern_marks)),
             expand_mode: false,
             auto_expand: false,
             auto_expand_budget: None,
@@ -122,7 +126,7 @@ impl ParentContext {
     ) -> Self {
         Self {
             ancestors: Vec::new(),
-            pattern_marks: Some(pattern_marks),
+            pattern_marks: Some(Rc::new(pattern_marks)),
             expand_mode,
             auto_expand: false,
             auto_expand_budget: None,
@@ -180,7 +184,7 @@ impl ParentContext {
     }
 
     pub fn pattern_marks(&self) -> Option<&crate::pattern_marks::PatternMarks> {
-        self.pattern_marks.as_ref()
+        self.pattern_marks.as_deref()
     }
 
     /// Check if we're in expand mode (aggressive distribution/expansion)
