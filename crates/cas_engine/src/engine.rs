@@ -739,7 +739,7 @@ impl Simplifier {
             crate::solve_safety::SimplifyPurpose::default(),
             crate::options::ContextMode::default(),
             crate::options::AutoExpandBinomials::Off, // autoexpand_binomials: On by default
-            crate::options::HeuristicPoly::On,       // heuristic_poly: On by default
+            crate::options::HeuristicPoly::On,        // heuristic_poly: On by default
         )
     }
 

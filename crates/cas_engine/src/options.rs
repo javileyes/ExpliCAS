@@ -250,7 +250,7 @@ impl Default for EvalOptions {
             check_solutions: false, // Solution verification off by default
             requires_display: crate::implicit_domain::RequiresDisplayLevel::Essential,
             autoexpand_binomials: AutoExpandBinomials::Off, // V2.15.8: On by default
-            heuristic_poly: HeuristicPoly::On,             // V2.15.9: On by default
+            heuristic_poly: HeuristicPoly::On,              // V2.15.9: On by default
         }
     }
 }

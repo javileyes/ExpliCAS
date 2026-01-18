@@ -28,7 +28,6 @@ impl CasHelper {
                 "simplify".to_string(),
                 "rationalize".to_string(),
                 "config".to_string(),
-                "steps".to_string(),
                 "explain".to_string(),
                 "det".to_string(),
                 "transpose".to_string(),
@@ -47,7 +46,6 @@ impl CasHelper {
                 "reset".to_string(),
                 "semantics".to_string(),
                 "context".to_string(),
-                "autoexpand".to_string(),
                 "budget".to_string(),
                 "limit".to_string(),
                 "expand_log".to_string(),
@@ -484,12 +482,14 @@ impl Completer for CasHelper {
             // First argument: option name
             if (parts.len() == 1 && ends_with_space) || (parts.len() == 2 && !ends_with_space) {
                 let options = vec![
+                    "show",
                     "debug",
                     "transform",
                     "rationalize",
                     "max-rewrites",
                     "heuristic_poly",
                     "autoexpand",
+                    "steps",
                 ];
                 for opt in options {
                     if opt.starts_with(word) {
@@ -509,6 +509,9 @@ impl Completer for CasHelper {
                 let values = match parts[1] {
                     "debug" | "transform" | "heuristic_poly" | "autoexpand" => vec!["on", "off"],
                     "rationalize" => vec!["off", "0", "1", "1.5"],
+                    "steps" => vec![
+                        "on", "off", "compact", "verbose", "succinct", "normal", "none",
+                    ],
                     _ => vec![],
                 };
                 for val in values {

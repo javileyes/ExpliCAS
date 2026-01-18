@@ -1400,11 +1400,87 @@ impl Repl {
     /// Handle 'set' command for pipeline phase control
     fn handle_set_command(&mut self, line: &str) {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 3 {
+
+        // `set` or `set show` → show all settings
+        if parts.len() == 1 || (parts.len() == 2 && parts[1] == "show") {
             self.print_set_help();
             return;
         }
 
+        // `set <option>` → show that option's current value
+        if parts.len() == 2 {
+            match parts[1] {
+                "transform" => {
+                    println!(
+                        "transform: {}",
+                        if self.simplify_options.enable_transform {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    );
+                }
+                "rationalize" => {
+                    println!(
+                        "rationalize: {:?}",
+                        self.simplify_options.rationalize.auto_level
+                    );
+                }
+                "heuristic_poly" => {
+                    use cas_engine::options::HeuristicPoly;
+                    println!(
+                        "heuristic_poly: {}",
+                        if self.simplify_options.heuristic_poly == HeuristicPoly::On {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    );
+                }
+                "autoexpand" | "autoexpand_binomials" => {
+                    use cas_engine::options::AutoExpandBinomials;
+                    println!(
+                        "autoexpand: {}",
+                        if self.simplify_options.autoexpand_binomials == AutoExpandBinomials::On {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    );
+                }
+                "max-rewrites" => {
+                    println!(
+                        "max-rewrites: {}",
+                        self.simplify_options.budgets.max_total_rewrites
+                    );
+                }
+                "debug" => {
+                    println!("debug: {}", if self.debug_mode { "on" } else { "off" });
+                }
+                "steps" => {
+                    use cas_engine::options::StepsMode;
+                    let mode_str = match self.state.options.steps_mode {
+                        StepsMode::On => "on",
+                        StepsMode::Off => "off",
+                        StepsMode::Compact => "compact",
+                    };
+                    let verbosity_str = match self.verbosity {
+                        Verbosity::None => "none",
+                        Verbosity::Succinct => "succinct",
+                        Verbosity::Normal => "normal",
+                        Verbosity::Verbose => "verbose",
+                    };
+                    println!("steps: {} (display: {})", mode_str, verbosity_str);
+                }
+                _ => {
+                    println!("Unknown option: {}", parts[1]);
+                    println!("Use 'set show' to see available options");
+                }
+            }
+            return;
+        }
+
+        // `set <option> <value>` → change value
         match parts[1] {
             "transform" => match parts[2] {
                 "on" | "true" | "1" => {
@@ -1485,6 +1561,51 @@ impl Repl {
                     println!("Usage: set max-rewrites <number>");
                 }
             }
+            "steps" => {
+                use cas_engine::options::StepsMode;
+                match parts[2] {
+                    "on" => {
+                        self.state.options.steps_mode = StepsMode::On;
+                        self.engine.simplifier.set_steps_mode(StepsMode::On);
+                        self.verbosity = Verbosity::Normal;
+                        println!("Steps: on (full collection, normal display)");
+                    }
+                    "off" => {
+                        self.state.options.steps_mode = StepsMode::Off;
+                        self.engine.simplifier.set_steps_mode(StepsMode::Off);
+                        self.verbosity = Verbosity::None;
+                        println!("Steps: off");
+                    }
+                    "compact" => {
+                        self.state.options.steps_mode = StepsMode::Compact;
+                        self.engine.simplifier.set_steps_mode(StepsMode::Compact);
+                        println!("Steps: compact (no before/after snapshots)");
+                    }
+                    "verbose" => {
+                        self.state.options.steps_mode = StepsMode::On;
+                        self.engine.simplifier.set_steps_mode(StepsMode::On);
+                        self.verbosity = Verbosity::Verbose;
+                        println!("Steps: verbose (all rules, full detail)");
+                    }
+                    "succinct" => {
+                        self.state.options.steps_mode = StepsMode::On;
+                        self.engine.simplifier.set_steps_mode(StepsMode::On);
+                        self.verbosity = Verbosity::Succinct;
+                        println!("Steps: succinct (compact 1-line per step)");
+                    }
+                    "normal" => {
+                        self.state.options.steps_mode = StepsMode::On;
+                        self.engine.simplifier.set_steps_mode(StepsMode::On);
+                        self.verbosity = Verbosity::Normal;
+                        println!("Steps: normal (default display)");
+                    }
+                    "none" => {
+                        self.verbosity = Verbosity::None;
+                        println!("Steps display: none (collection still active)");
+                    }
+                    _ => println!("Usage: set steps <on|off|compact|verbose|succinct|normal|none>"),
+                }
+            }
             "debug" => match parts[2] {
                 "on" | "true" | "1" => {
                     self.debug_mode = true;
@@ -1508,6 +1629,7 @@ impl Repl {
         println!(
             "  set autoexpand <on|off>        Force expansion of binomial powers like (x+1)^n"
         );
+        println!("  set steps <on|off|...>         Step collection and display mode");
         println!("  set max-rewrites <N>           Set max total rewrites (safety limit)");
         println!("  set debug <on|off>             Show pipeline diagnostics after operations");
         println!();
@@ -1542,6 +1664,19 @@ impl Repl {
                 "off"
             }
         );
+        use cas_engine::options::StepsMode;
+        let mode_str = match self.state.options.steps_mode {
+            StepsMode::On => "on",
+            StepsMode::Off => "off",
+            StepsMode::Compact => "compact",
+        };
+        let verbosity_str = match self.verbosity {
+            Verbosity::None => "none",
+            Verbosity::Succinct => "succinct",
+            Verbosity::Normal => "normal",
+            Verbosity::Verbose => "verbose",
+        };
+        println!("  steps: {} (display: {})", mode_str, verbosity_str);
         println!(
             "  max-rewrites: {}",
             self.simplify_options.budgets.max_total_rewrites

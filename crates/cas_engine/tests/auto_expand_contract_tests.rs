@@ -47,9 +47,11 @@ fn simplify_auto(input: &str) -> String {
 
 /// Helper for Solve mode with auto-expand enabled (should still block)
 fn simplify_solve_with_auto(input: &str) -> String {
+    use cas_engine::options::HeuristicPoly;
     let mut opts = SimplifyOptions::default();
     opts.expand_policy = ExpandPolicy::Auto;
     opts.context_mode = ContextMode::Solve;
+    opts.heuristic_poly = HeuristicPoly::Off; // Disable heuristic poly in Solve mode tests
     simplify_with_opts(input, &opts)
 }
 
