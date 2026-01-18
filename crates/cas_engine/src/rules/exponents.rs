@@ -454,6 +454,9 @@ impl crate::rule::Rule for RootPowCancelRule {
         }
 
         // Check if n is a numeric integer and get its parity
+        // V2.15.9: RootPowCancelRule ONLY handles (x^n)^(1/n) where n is INTEGER
+        // For (x^(1/n))^n patterns like sqrt(x)^2, let PowerPowerRule handle it
+        // (it has even-root logic that properly uses NonNegative, not Positive)
         if let Expr::Number(n) = &inner_exp_data {
             if n.is_integer() {
                 let n_int = n.to_integer();
@@ -471,6 +474,11 @@ impl crate::rule::Rule for RootPowCancelRule {
                         crate::rule::Rewrite::new(inner_base).desc("(x^n)^(1/n) = x for odd n"),
                     );
                 }
+            } else {
+                // inner_exp is a fractional number like 1/2, 1/4, etc.
+                // This means we have (x^(1/n))^n pattern, NOT (x^n)^(1/n)
+                // Let PowerPowerRule handle this - it has proper even-root logic
+                return None;
             }
         }
 
