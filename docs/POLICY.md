@@ -117,15 +117,32 @@ max_vars: 4             # Maximum variables in base
 ### CLI Usage
 
 ```text
-> autoexpand
+> set autoexpand          # Show current mode
 Auto-expand: off
-  (use 'autoexpand on|off' to change)
+  (use 'set autoexpand on|off' to change)
 
-> autoexpand on
+> set autoexpand on       # Enable auto-expand
 Auto-expand: on
   Budget: max_exp=4, max_terms=4, max_result=300, max_vars=4
   Cheap polynomial powers will be expanded automatically.
 ```
+
+### V2.15.9: Heuristic Polynomial Simplification
+
+`heuristic_poly` enables smart factorization for polynomial expressions:
+
+```text
+> set heuristic_poly      # Show current mode (default: on)
+Heuristic poly: on
+
+> (x+1)^4 + 4*(x+1)^3     # With heuristic_poly on
+= (x+1)³·(x+5)            # Factors out common term
+```
+
+| Setting | Effect |
+|---------|--------|
+| `set heuristic_poly on` | Factor common terms like `(x+1)³` from `(x+1)⁴ + 4(x+1)³` |
+| `set heuristic_poly off` | Leave polynomials in original form |
 
 ### Library Usage
 

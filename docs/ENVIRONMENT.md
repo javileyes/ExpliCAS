@@ -87,19 +87,19 @@ The `steps` command controls how simplification steps are recorded and displayed
 ### Commands
 
 ```text
-> steps              # Show current mode
+> set steps              # Show current mode
 Current steps mode: on
-  (use 'steps on|off|compact' to change)
+  (use 'set steps on|off|compact' to change)
 
-> steps off          # Disable step recording
+> set steps off          # Disable step recording
 Steps mode: off
   ⚡ Steps disabled (faster). Warnings still enabled.
 
-> steps compact      # Compact mode (no snapshots)
+> set steps compact      # Compact mode (no snapshots)
 Steps mode: compact
   Compact steps (no before/after snapshots).
 
-> steps on           # Full step recording
+> set steps on           # Full step recording
 Steps mode: on
   Full step recording with before/after snapshots.
 ```
@@ -111,7 +111,7 @@ When steps mode is not `on` (default), the prompt shows the current mode:
 ```text
 > x + 1                           # Default: no indicator
 
-> steps off
+> set steps off
 [steps:off] > x + 1               # Indicator visible
 
 > context integrate
