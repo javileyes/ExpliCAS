@@ -1678,13 +1678,13 @@ fn eval_f64_depth(
 
 /// Maximum recursion depth for simplification to prevent stack overflow.
 ///
-/// V2.15: Set to 50 after frame size optimizations (see `record_step()`).
-/// Previously 30 was needed due to ~150KB frames; with `#[inline(never)]`
-/// on step recording, frames are small enough for 50+ on 8MB stack.
+/// V2.15.9: REVERTED to 30 for 8MB stack stability after observing stack overflow
+/// in expressions like sin((3-x+sin(x))^4). The KI documents that each recursive
+/// frame in `transform_expr_recursive` consumes ~150KB even with `#[inline(never)]`
+/// optimizations, limiting safe depth to ~50 on 16MB stacks and ~30 on 8MB stacks.
 ///
-/// For deeper expressions, use `recursion_guard::with_stack(16MB, || ...)`.
-/// Note: All major arms extracted to helpers; depth=100 still overflows due to base frame size.
-const MAX_SIMPLIFY_DEPTH: usize = 50;
+/// For deeper expressions, use `RUST_MIN_STACK=16777216` (16MB).
+const MAX_SIMPLIFY_DEPTH: usize = 30;
 
 /// Path to log expressions that exceed the depth limit for later investigation.
 const DEPTH_OVERFLOW_LOG_PATH: &str = "/tmp/cas_depth_overflow_expressions.log";

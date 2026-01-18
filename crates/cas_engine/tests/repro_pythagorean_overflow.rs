@@ -14,7 +14,6 @@ use cas_parser::parse;
 /// Minimal reproduction of the stack overflow.
 /// Run with: cargo test -p cas_engine --test repro_pythagorean_overflow -- --nocapture
 #[test]
-#[ignore = "Stack overflow in trig expansion - pre-existing bug"]
 fn repro_pythagorean_stack_overflow() {
     // The expression that caused the crash at iter=6
     let expr_str = "(sin(x)^2 + cos(x)^2) + ((sin((((3) - (x)) + (sin(x)))^(4)))^(2))";
@@ -141,7 +140,6 @@ fn repro_one_plus_sin_power() {
 
 /// Variant with sin(a+b) where a has sin and ^4 power
 #[test]
-#[ignore = "Stack overflow in trig expansion - pre-existing bug"]
 fn repro_pythagorean_plus_sin_sum_inner_pow4() {
     // This is closer to the original - the ^(4) is INSIDE the sin arg
     let expr_str = "(sin(x)^2 + cos(x)^2) + sin((3 - x + sin(x))^4)^2";
@@ -171,7 +169,6 @@ fn repro_simple_plus_sin_sum_squared() {
 
 /// Without sin²+cos²: just sin((3 - x + sin(x))^4)^2
 #[test]
-#[ignore = "Stack overflow in trig expansion - pre-existing bug"]
 fn repro_just_sin_pow4_squared() {
     let expr_str = "sin((3 - x + sin(x))^4)^2";
 
@@ -193,7 +190,6 @@ fn repro_just_sin_pow4_squared() {
 
 /// With 1 instead of sin²+cos²  
 #[test]
-#[ignore = "Stack overflow in trig expansion - pre-existing bug"]
 fn repro_one_plus_sin_pow4_squared() {
     let expr_str = "1 + sin((3 - x + sin(x))^4)^2";
 
@@ -267,7 +263,6 @@ fn repro_sin_sub_add_pow4() {
 /// The issue is pre-existing and unrelated to HeuristicPoly changes.
 /// TODO: Fix the underlying trig expansion recursion issue.
 #[test]
-#[ignore = "Stack overflow in trig expansion - pre-existing bug, needs investigation"]
 fn bisect_no_outer_pow2() {
     let expr_str = "sin((3 - x + sin(x))^4)";
     eprintln!("BISECT no outer ^2: {}", expr_str);
@@ -321,7 +316,6 @@ fn bisect_only_sub() {
 /// The original bug caused 98+ calls for a simple expression.
 /// With the fix, it should be called only 1-3 times (cache + fallback).
 #[test]
-#[ignore = "Stack overflow in trig expansion - pre-existing bug"]
 fn test_domain_inference_call_count_regression() {
     use cas_engine::implicit_domain::{infer_domain_calls_get, infer_domain_calls_reset};
 
