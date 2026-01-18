@@ -2309,38 +2309,54 @@ define_rule!(
         let (num, den, _) = fp.to_num_den(ctx);
 
         // Match den = t ± r where t = base^(1/n) with n >= 3
-        // Use zero-clone destructuring
-        let (t, r, is_sub) = if let Some((l, r)) = crate::helpers::as_add(ctx, den) {
-            (l, r, false)
-        } else if let Some((l, r)) = crate::helpers::as_sub(ctx, den) {
-            (l, r, true)
-        } else {
-            return None;
-        };
+        // NOTE: Add is commutative and canonicalization often places numbers first,
+        // so we must detect the nth-root term on either side.
 
-        // Check if t is a^(1/n) with n >= 3
-        let (base, n) = match ctx.get(t) {
-            Expr::Pow(b, exp) => {
-                if let Expr::Number(e) = ctx.get(*exp) {
-                    // e must be 1/n with n >= 3
-                    if e.numer() == &num_bigint::BigInt::from(1) {
-                        if let Some(denom) = e.denom().to_u32() {
+        // Helper to extract nth-root info from an expression
+        let extract_nth_root = |e: ExprId| -> Option<(ExprId, u32)> {
+            if let Expr::Pow(b, exp) = ctx.get(e) {
+                if let Expr::Number(ev) = ctx.get(*exp) {
+                    // ev must be 1/n with n >= 3
+                    if ev.numer() == &num_bigint::BigInt::from(1) {
+                        if let Some(denom) = ev.denom().to_u32() {
                             if denom >= 3 {
-                                (*b, denom)
-                            } else {
-                                return None; // degree 2 handled by diff squares
+                                return Some((*b, denom));
                             }
-                        } else {
-                            return None;
                         }
-                    } else {
-                        return None; // numerator must be 1
                     }
-                } else {
-                    return None;
                 }
             }
-            _ => return None,
+            None
+        };
+
+        // Track if we need to flip the sign (for r - t case, handle as -(t - r))
+        let mut sign_flip = false;
+
+        let (t, r, base, n, is_sub) = if let Some((l, r_side)) = crate::helpers::as_add(ctx, den) {
+            // den = l + r_side
+            if let Some((base, n)) = extract_nth_root(l) {
+                // t is on left: t + r
+                (l, r_side, base, n, false)
+            } else if let Some((base, n)) = extract_nth_root(r_side) {
+                // t is on right: r + t (same as t + r due to commutativity)
+                (r_side, l, base, n, false)
+            } else {
+                return None;
+            }
+        } else if let Some((l, r_side)) = crate::helpers::as_sub(ctx, den) {
+            // den = l - r_side
+            if let Some((base, n)) = extract_nth_root(l) {
+                // t is on left: t - r
+                (l, r_side, base, n, true)
+            } else if let Some((base, n)) = extract_nth_root(r_side) {
+                // t is on right: r - t => need sign flip: 1/(r - t) = -1/(t - r)
+                sign_flip = true;
+                (r_side, l, base, n, true)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
         };
 
         // Limit n to prevent explosion (max 8 terms)
@@ -2397,8 +2413,12 @@ define_rule!(
         // Build M as sum of terms
         let multiplier = build_sum(ctx, &m_terms);
 
-        // New numerator: num * M
-        let new_num = mul2_raw(ctx, num, multiplier);
+        // New numerator: num * M (negate if we had r - t instead of t - r)
+        let mut new_num = mul2_raw(ctx, num, multiplier);
+        if sign_flip {
+            // 1/(r - t) = -1/(t - r), so negate numerator
+            new_num = ctx.add(Expr::Neg(new_num));
+        }
 
         // New denominator: base - r^n (for t - r) or base - (-1)^n * r^n (for t + r)
         let r_to_n = {
