@@ -288,6 +288,10 @@ enum SymbolicResult {
 ///
 /// Uses the engine's equivalence API which tracks soundness labels and
 /// introduced requires, then gates the result based on bucket.
+///
+/// V2.15.8: Adds polynomial normalization fallback when equivalence is Unknown.
+/// This enables proving identities like (x+1)^5 ≡ x^5 + 5x^4 + ... without
+/// requiring simplify to auto-expand binomials.
 fn check_symbolic_equiv_bucket_aware(
     simplifier: &mut Simplifier,
     exp_expr: ExprId,
@@ -306,6 +310,21 @@ fn check_symbolic_equiv_bucket_aware(
 
     // Slow path: full equivalence check with tracking
     let eq = simplifier.are_equivalent_extended(exp_expr, simp_expr);
+
+    // V2.15.8: Polynomial normalization fallback for Unknown results
+    // This catches cases like (x+1)^5 vs expanded polynomial where simplify
+    // doesn't expand but the expressions are polynomially equivalent
+    let eq = if matches!(eq, EquivalenceResult::Unknown) {
+        if let Some(poly_result) =
+            check_polynomial_equivalence(&simplifier.context, exp_simplified, simp_simplified)
+        {
+            poly_result
+        } else {
+            eq
+        }
+    } else {
+        eq
+    };
 
     match (&bucket, eq) {
         // Unconditional bucket: only pure True counts as symbolic pass
@@ -327,6 +346,31 @@ fn check_symbolic_equiv_bucket_aware(
         // BranchSensitive: skip symbolic except for pure True
         (Bucket::BranchSensitive, EquivalenceResult::True) => SymbolicResult::Pass,
         (Bucket::BranchSensitive, _) => SymbolicResult::SkipSymbolic,
+    }
+}
+
+/// V2.15.8: Check if two expressions are equivalent as polynomials.
+/// Returns Some(True) if they canonicalize to the same polynomial,
+/// None if either expression is not a polynomial (contains trig, log, etc.)
+fn check_polynomial_equivalence(ctx: &Context, a: ExprId, b: ExprId) -> Option<EquivalenceResult> {
+    use cas_engine::multipoly::{multipoly_from_expr, PolyBudget};
+
+    // Use a generous budget for polynomial equivalence checking
+    // (higher than normal since this is for testing, not runtime)
+    let budget = PolyBudget {
+        max_terms: 500,       // Allow up to 500 terms (covers (x+1)^8 etc.)
+        max_total_degree: 15, // Allow up to degree 15
+        max_pow_exp: 10,      // Allow exponents up to 10
+    };
+
+    let pa = multipoly_from_expr(ctx, a, &budget).ok()?;
+    let pb = multipoly_from_expr(ctx, b, &budget).ok()?;
+
+    if pa == pb {
+        Some(EquivalenceResult::True)
+    } else {
+        // Polynomials are different - this is a definite non-equivalence
+        Some(EquivalenceResult::False)
     }
 }
 
