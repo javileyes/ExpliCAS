@@ -1976,38 +1976,12 @@ fn count_mul_factors(ctx: &Context, expr: ExprId) -> u32 {
     }
 }
 
-/// Check if an expression is provably positive (for Generic mode proof).
-/// Returns true for positive literals and known-positive expressions.
-fn is_provably_positive(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(n) => *n > num_rational::BigRational::zero(),
-        Expr::Constant(cas_ast::Constant::E) => true,
-        Expr::Constant(cas_ast::Constant::Pi) => true,
-        Expr::Function(name, args) if name == "exp" && args.len() == 1 => true, // e^x > 0 always
-        Expr::Function(name, args) if name == "abs" && args.len() == 1 => {
-            // abs(x) >= 0, but only > 0 if x != 0; we'll be conservative
-            false
-        }
-        Expr::Pow(base, exp) => {
-            // Check exponent type
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n.is_integer() {
-                    let exp_int = n.to_integer();
-                    // x^(even positive) > 0 for all real x ≠ 0
-                    // Since log(x^n) already requires x^n > 0, we can assume x ≠ 0
-                    if &exp_int % 2 == num_bigint::BigInt::from(0)
-                        && exp_int >= num_bigint::BigInt::from(0)
-                    {
-                        return true; // x^2, x^4, etc. are always positive for x ≠ 0
-                    }
-                }
-            }
-            // For odd powers or non-integer exponents, check if base is positive
-            is_provably_positive(ctx, *base)
-        }
-        _ => false,
-    }
-}
+// NOTE: Local is_provably_positive was removed in V2.15.9.
+// Use crate::helpers::prove_positive instead, which handles:
+// - base > 0 → base^(p/q) > 0 (RealOnly)
+// - sqrt(x) > 0 when x > 0
+// - exp(x) > 0 in RealOnly
+// - etc.
 
 /// AutoExpandLogRule: Automatically expand log(a*b) -> log(a) + log(b) during simplify
 /// when log_expand_policy = Auto and the expansion passes budget checks.
@@ -2073,7 +2047,10 @@ impl crate::rule::Rule for AutoExpandLogRule {
             crate::domain::DomainMode::Strict => {
                 // In Strict, never auto-expand unless proven
                 let factors = collect_mul_factors(ctx, arg);
-                let all_positive = factors.iter().all(|&f| is_provably_positive(ctx, f));
+                let vd = parent_ctx.value_domain();
+                let all_positive = factors
+                    .iter()
+                    .all(|&f| crate::helpers::prove_positive(ctx, f, vd).is_proven());
                 if !all_positive {
                     return None; // Block silently in Strict
                 }
@@ -2097,7 +2074,12 @@ impl crate::rule::Rule for AutoExpandLogRule {
 
                 let mut unproven_factor: Option<ExprId> = None;
                 for &factor in &factors {
-                    if is_provably_positive(ctx, factor) {
+                    // V2.15.9: Use canonical prove_positive which handles:
+                    // - base > 0 → base^(p/q) > 0 (RealOnly)
+                    // - sqrt(x) > 0 when x > 0
+                    // - etc.
+                    let vd = parent_ctx.value_domain();
+                    if crate::helpers::prove_positive(ctx, factor, vd).is_proven() {
                         continue; // Algebraically proven
                     }
 
@@ -2137,9 +2119,10 @@ impl crate::rule::Rule for AutoExpandLogRule {
             crate::domain::DomainMode::Assume => {
                 // In Assume mode, expand and emit HeuristicAssumption events
                 let factors = collect_mul_factors(ctx, arg);
+                let vd = parent_ctx.value_domain();
                 let mut events = Vec::new();
                 for &factor in &factors {
-                    if !is_provably_positive(ctx, factor) {
+                    if !crate::helpers::prove_positive(ctx, factor, vd).is_proven() {
                         events.push(crate::assumptions::AssumptionEvent::positive_assumed(
                             ctx, factor,
                         ));

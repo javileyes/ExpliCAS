@@ -485,12 +485,12 @@ fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>)
 fn is_power_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
     if let Expr::Pow(pow_base, exp) = ctx.get(expr) {
         if let Expr::Number(n) = ctx.get(*exp) {
-            if n.is_integer() {
-                let exp_int = n.to_integer();
-                let zero: num_bigint::BigInt = 0.into();
-                if exp_int > zero {
-                    return exprs_equivalent(ctx, *pow_base, base);
-                }
+            // V2.15.9: In RealOnly, base > 0 → base^p > 0 for ANY real p (not just integers)
+            // This includes x^(1/2), x^(3/4), etc.
+            // The only exception is p = 0 (base^0 = 1, not related to base positivity)
+            let zero = num_rational::BigRational::from_integer(0.into());
+            if *n != zero {
+                return exprs_equivalent(ctx, *pow_base, base);
             }
         }
     }
