@@ -2018,9 +2018,36 @@ define_rule!(
         // Complexity heuristic
         let old_complexity = count_nodes(ctx, expr);
 
+        // V2.15.8: Detect same-sign fractions for growth allowance
+        // (same_sign = both positive or both negative; opposite = one +, one -)
+        let same_sign = fp_l.sign == fp_r.sign;
+
+        // V2.15.8: Optimized numerator construction - avoid multiplying by 1 or -1
+        fn is_one_val(ctx: &Context, id: ExprId) -> bool {
+            matches!(ctx.get(id), Expr::Number(n) if n.is_one())
+        }
+        fn is_minus_one_val(ctx: &Context, id: ExprId) -> bool {
+            use num_rational::BigRational;
+            matches!(ctx.get(id), Expr::Number(n) if *n == BigRational::from_integer((-1).into()))
+        }
+
         // a/b + c/d = (ad + bc) / bd
-        let ad = mul2_raw(ctx, n1, d2);
-        let bc = mul2_raw(ctx, n2, d1);
+        // Optimize: if n1=1, ad=d2; if n1=-1, ad=-d2; else ad=n1*d2
+        let ad = if is_one_val(ctx, n1) {
+            d2
+        } else if is_minus_one_val(ctx, n1) {
+            ctx.add(Expr::Neg(d2))
+        } else {
+            mul2_raw(ctx, n1, d2)
+        };
+
+        let bc = if is_one_val(ctx, n2) {
+            d1
+        } else if is_minus_one_val(ctx, n2) {
+            ctx.add(Expr::Neg(d1))
+        } else {
+            mul2_raw(ctx, n2, d1)
+        };
 
         let new_num = if opposite_denom || same_denom {
             ctx.add(Expr::Add(n1, n2))
@@ -2151,10 +2178,18 @@ define_rule!(
         // Allow complexity growth if we found a simplification (GCD)
         // BUT strict check against improper fractions to prevent loops with polynomial division
         // (DividePolynomialsRule splits improper fractions, AddFractions combines them -> loop)
+        //
+        // V2.15.8: Also allow small growth for same-sign fractions with unrelated denominators
+        // This enables: 1/x + 1/(x+1) -> (2x+1)/(x*(x+1))
+        // But keeps strict behavior for opposite signs to preserve telescoping: 1/x - 1/(x+1)
+        let growth_ok = new_complexity <= old_complexity * 3 / 2 + 2;
+        let allow_same_sign_growth = same_sign && growth_ok && !opposite_denom && !same_denom;
+
         if opposite_denom
             || same_denom
             || new_complexity <= old_complexity
             || (does_simplify && is_proper && new_complexity < (old_complexity * 2))
+            || allow_same_sign_growth
         {
             // println!("AddFractions APPLIED: old={} new={} simplify={}", old_complexity, new_complexity, does_simplify);
             return Some(Rewrite::new(new_expr).desc("Add fractions: a/b + c/d -> (ad+bc)/bd"));
