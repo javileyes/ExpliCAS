@@ -537,7 +537,7 @@ exp(ln(x) - ln(y)),x/y,x;y,g
 
 # Power tower identities
 x^(y*z),(x^y)^z,x;y;z,g
-(x^y)^(1/y),x,x;y,g
+(x^y)^(1/y),x,x;y,a
 x^(ln(y)/ln(x)),y,x;y,g
 
 # =============================================================================

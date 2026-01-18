@@ -551,6 +551,116 @@ fn build_sub_like(
     let neg_b = ctx.add(Expr::Neg(b));
     ctx.add(Expr::Add(a, neg_b))
 }
+
+/// Peel negation from an expression, returning (core, was_negation).
+/// Recognizes:
+/// - Neg(t) → (t, true)
+/// - Mul(-1, t) or Mul(t, -1) → (t, true)
+/// - Sub(a, b) where a > b in canonical order → (Sub(b, a), true)
+///   This treats (1 - x) as the negation of (x - 1) when x < 1 canonically
+/// - Otherwise → (original, false)
+fn peel_negation(ctx: &cas_ast::Context, id: cas_ast::ExprId) -> (cas_ast::ExprId, bool) {
+    match ctx.get(id) {
+        // Case 1: Explicit Neg(t)
+        Expr::Neg(inner) => (*inner, true),
+
+        // Case 2: Mul(-1, t) or Mul(t, -1)
+        Expr::Mul(l, r) => {
+            let minus_one = num_rational::BigRational::from_integer((-1).into());
+            if let Expr::Number(n) = ctx.get(*l) {
+                if *n == minus_one {
+                    return (*r, true);
+                }
+            }
+            if let Expr::Number(n) = ctx.get(*r) {
+                if *n == minus_one {
+                    return (*l, true);
+                }
+            }
+            (id, false)
+        }
+
+        // Case 3: Sub(a, b) where a > b canonically
+        // This means (a - b) = -(b - a), so the "core" is (b - a)
+        _ => {
+            if let Some((a, b)) = as_sub_like(ctx, id) {
+                // Check if a < b in canonical order
+                // If so, (a - b) is the "negative form" of (b - a)
+                // e.g., (1 - x) = -(x - 1) when 1 < x canonically
+                if compare_expr(ctx, a, b) == Ordering::Less {
+                    // Return (b - a) as the core, but we need to build it
+                    // We can't build here (ctx is immutable), so we return a flag
+                    // that the caller can use to build the flipped version
+                    return (id, true); // Signal that this is a "negated" sub
+                }
+            }
+            (id, false)
+        }
+    }
+}
+
+/// Build the "un-negated" version of a sub-like expression.
+/// For Sub(a, b) where a < b, returns Sub(b, a).
+fn build_unnegated_sub(ctx: &mut cas_ast::Context, id: cas_ast::ExprId) -> cas_ast::ExprId {
+    if let Some((a, b)) = as_sub_like(ctx, id) {
+        // Build (b - a) in canonical form: Add(b, Neg(a))
+        build_sub_like(ctx, b, a)
+    } else {
+        // For Neg(t) or Mul(-1, t), just return the inner
+        match ctx.get(id) {
+            Expr::Neg(inner) => *inner,
+            Expr::Mul(l, r) => {
+                let minus_one = num_rational::BigRational::from_integer((-1).into());
+                if let Expr::Number(n) = ctx.get(*l) {
+                    if *n == minus_one {
+                        return *r;
+                    }
+                }
+                if let Expr::Number(n) = ctx.get(*r) {
+                    if *n == minus_one {
+                        return *l;
+                    }
+                }
+                id
+            }
+            _ => id,
+        }
+    }
+}
+
+// Rule: (-A)/(-B) → A/B - Cancel double negation in fractions
+// This handles cases like (1-√x)/(1-x) → (√x-1)/(x-1)
+// by recognizing that (1-√x) is the negation of (√x-1), etc.
+//
+// No loop risk: produces canonical order which won't match again.
+define_rule!(
+    CancelFractionSignsRule,
+    "Cancel Fraction Signs",
+    importance: crate::step::ImportanceLevel::Low,
+    |ctx, expr| {
+        // Match Div(num, den)
+        let Expr::Div(num, den) = ctx.get(expr) else { return None; };
+        let num_id = *num;
+        let den_id = *den;
+
+        // Check if both num and den are "negations"
+        let (_, num_is_neg) = peel_negation(ctx, num_id);
+        let (_, den_is_neg) = peel_negation(ctx, den_id);
+
+        if !(num_is_neg && den_is_neg) {
+            return None;
+        }
+
+        // Both are negations - cancel the double sign
+        let new_num = build_unnegated_sub(ctx, num_id);
+        let new_den = build_unnegated_sub(ctx, den_id);
+
+        let new_expr = ctx.add(Expr::Div(new_num, new_den));
+
+        Some(Rewrite::new(new_expr).desc("(-A)/(-B) = A/B (cancel double sign)"))
+    }
+);
+
 // Rule: (-k) * (...) * (a - b) → k * (...) * (b - a) when k > 0
 // This produces cleaner output like "1/2 * x * (√2 - 1)" instead of "-1/2 * x * (1 - √2)"
 // No loop risk: produces positive coefficient which won't match again
@@ -663,6 +773,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CanonicalizeAddRule));
     simplifier.add_rule(Box::new(CanonicalizeMulRule));
     simplifier.add_rule(Box::new(CanonicalizeDivRule));
+    simplifier.add_rule(Box::new(CancelFractionSignsRule)); // (-A)/(-B) → A/B
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(NormalizeSignsRule));
     // NormalizeBinomialOrderRule DISABLED - causes stack overflow in asin_acos tests
@@ -780,5 +891,93 @@ mod tests {
             ),
             "x^(1 / 4)"
         );
+    }
+
+    #[test]
+    fn test_cancel_fraction_signs_explicit_neg() {
+        // (-a)/(-b) -> a/b
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let neg_a = ctx.add(Expr::Neg(a));
+        let neg_b = ctx.add(Expr::Neg(b));
+        let expr = ctx.add(Expr::Div(neg_a, neg_b));
+
+        let rule = CancelFractionSignsRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        assert!(rewrite.is_some(), "Should apply to (-a)/(-b)");
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.unwrap().new_expr
+            }
+        );
+        assert_eq!(result, "a / b");
+    }
+
+    #[test]
+    fn test_cancel_fraction_signs_sub_implicit() {
+        // (1-x)/(1-y) -> (x-1)/(y-1) because 1 < x and 1 < y canonically
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        // Build Sub(1, x) and Sub(1, y)
+        let num = ctx.add(Expr::Sub(one, x));
+        let den = ctx.add(Expr::Sub(one, y));
+        let expr = ctx.add(Expr::Div(num, den));
+
+        let rule = CancelFractionSignsRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        assert!(rewrite.is_some(), "Should apply to (1-x)/(1-y)");
+    }
+
+    #[test]
+    fn test_cancel_fraction_signs_single_neg_unchanged() {
+        // (-a)/b should NOT be changed by this rule (only one is negative)
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let neg_a = ctx.add(Expr::Neg(a));
+        let expr = ctx.add(Expr::Div(neg_a, b));
+
+        let rule = CancelFractionSignsRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        assert!(rewrite.is_none(), "Should NOT apply to (-a)/b");
+    }
+
+    #[test]
+    fn test_cancel_fraction_signs_single_neg_den_unchanged() {
+        // a/(-b) should NOT be changed by this rule (only one is negative)
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let neg_b = ctx.add(Expr::Neg(b));
+        let expr = ctx.add(Expr::Div(a, neg_b));
+
+        let rule = CancelFractionSignsRule;
+        let rewrite = rule.apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        assert!(rewrite.is_none(), "Should NOT apply to a/(-b)");
     }
 }
