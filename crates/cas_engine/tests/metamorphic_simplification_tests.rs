@@ -155,6 +155,108 @@ struct MetatestConfig {
 }
 
 // =============================================================================
+// Shape Signature Analysis (for Top-N pattern identification)
+// =============================================================================
+
+use cas_ast::Expr;
+
+/// Generate a stable shape signature from an expression.
+/// Collapses literals to NUM, variables to SYM, and marks negative exponents.
+/// Used to identify dominant patterns in numeric-only cases.
+fn expr_shape_signature(ctx: &Context, expr: ExprId) -> String {
+    fn inner(ctx: &Context, expr: ExprId, depth: usize) -> String {
+        if depth > 10 {
+            return "...".to_string();
+        }
+        match ctx.get(expr) {
+            Expr::Number(n) => {
+                if n.is_integer() {
+                    let val = n.numer().to_string().parse::<i64>().unwrap_or(0);
+                    if val < 0 {
+                        format!("INT_NEG({})", val)
+                    } else {
+                        "INT".to_string()
+                    }
+                } else {
+                    "FRAC".to_string()
+                }
+            }
+            Expr::Variable(_) => "SYM".to_string(),
+            Expr::Constant(_) => "CONST".to_string(),
+            Expr::Add(l, r) => {
+                let mut parts = [inner(ctx, *l, depth + 1), inner(ctx, *r, depth + 1)];
+                parts.sort(); // Canonical order for commutativity
+                format!("Add({})", parts.join(","))
+            }
+            Expr::Sub(l, r) => {
+                format!(
+                    "Sub({},{})",
+                    inner(ctx, *l, depth + 1),
+                    inner(ctx, *r, depth + 1)
+                )
+            }
+            Expr::Mul(l, r) => {
+                let mut parts = [inner(ctx, *l, depth + 1), inner(ctx, *r, depth + 1)];
+                parts.sort(); // Canonical order for commutativity
+                format!("Mul({})", parts.join(","))
+            }
+            Expr::Div(l, r) => {
+                format!(
+                    "Div({},{})",
+                    inner(ctx, *l, depth + 1),
+                    inner(ctx, *r, depth + 1)
+                )
+            }
+            Expr::Pow(base, exp) => {
+                // Special handling for negative integer exponents
+                let exp_sig = match ctx.get(*exp) {
+                    Expr::Number(n) if n.is_integer() => {
+                        let val = n.numer().to_string().parse::<i64>().unwrap_or(0);
+                        if val < 0 {
+                            format!("INT_NEG({})", val)
+                        } else if val == 2 {
+                            "2".to_string()
+                        } else {
+                            "INT".to_string()
+                        }
+                    }
+                    Expr::Number(n) => {
+                        // Check for 1/n fractions (roots)
+                        if *n.numer() == 1.into() {
+                            "1/N".to_string()
+                        } else {
+                            "FRAC".to_string()
+                        }
+                    }
+                    _ => inner(ctx, *exp, depth + 1),
+                };
+                format!("Pow({},{})", inner(ctx, *base, depth + 1), exp_sig)
+            }
+            Expr::Neg(inner_expr) => {
+                format!("Neg({})", inner(ctx, *inner_expr, depth + 1))
+            }
+            Expr::Function(name, args) => {
+                let arg_sigs: Vec<_> = args.iter().map(|a| inner(ctx, *a, depth + 1)).collect();
+                format!("{}({})", name, arg_sigs.join(","))
+            }
+            Expr::Matrix { .. } => "MAT".to_string(),
+            Expr::SessionRef(_) => "REF".to_string(),
+        }
+    }
+    inner(ctx, expr, 0)
+}
+
+/// Check if a shape signature contains negative exponent patterns
+fn shape_has_neg_exp(shape: &str) -> bool {
+    shape.contains("INT_NEG")
+}
+
+/// Check if a shape signature is a Div structure
+fn shape_has_div(shape: &str) -> bool {
+    shape.contains("Div(")
+}
+
+// =============================================================================
 // Deterministic RNG (avoid external dependencies)
 // =============================================================================
 
@@ -2372,7 +2474,8 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     let mut proved_symbolic = 0;
     let mut numeric_only = 0;
     let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
-    let mut numeric_only_examples: Vec<(String, String, String, String, String)> = Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual)
+    let mut numeric_only_examples: Vec<(String, String, String, String, String, String)> =
+        Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape)
 
     // Double combinations: all pairs of different identities
     for i in 0..n {
@@ -2456,12 +2559,14 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                             // Get the diff residual string using Format trait
                             use cas_format::Format;
                             let diff_str = diff_simplified.to_latex(&simplifier.context);
+                            let shape = expr_shape_signature(&simplifier.context, diff_simplified);
                             numeric_only_examples.push((
                                 combined_exp.clone(),
                                 combined_simp.clone(),
                                 pair1.simp.clone(),
                                 pair2.simp.clone(),
                                 diff_str,
+                                shape,
                             ));
                         }
                     } else {
@@ -2504,7 +2609,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     // Print numeric-only examples if verbose
     if verbose && !numeric_only_examples.is_empty() {
         eprintln!("🌡️ Numeric-only examples (no symbolic proof found):");
-        for (i, (lhs, rhs, _simp1, _simp2, diff_residual)) in
+        for (i, (lhs, rhs, _simp1, _simp2, diff_residual, _shape)) in
             numeric_only_examples.iter().take(max_examples).enumerate()
         {
             eprintln!("   {:2}. LHS: {}", i + 1, lhs);
@@ -2522,7 +2627,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
         // Family classifier for numeric-only cases - stores expressions per family
         let mut family_examples: HashMap<&str, Vec<(String, String)>> = HashMap::new();
 
-        for (lhs, rhs, _, _, _) in &numeric_only_examples {
+        for (lhs, rhs, _, _, _, _) in &numeric_only_examples {
             let combined = format!("{} {}", lhs, rhs);
             let expr_pair = (lhs.clone(), rhs.clone());
 
@@ -2578,6 +2683,61 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
             }
             eprintln!();
         }
+
+        // Top-N Shape Analysis: identify dominant patterns in residuals
+        eprintln!("📈 Top-N Shape Analysis (residual patterns):");
+        let mut shape_counts: HashMap<String, (usize, String)> = HashMap::new(); // shape -> (count, example_diff)
+
+        for (_lhs, _rhs, _, _, diff_residual, shape) in &numeric_only_examples {
+            let entry = shape_counts
+                .entry(shape.clone())
+                .or_insert((0, diff_residual.clone()));
+            entry.0 += 1;
+        }
+
+        let mut sorted_shapes: Vec<_> = shape_counts.into_iter().collect();
+        sorted_shapes.sort_by(|a, b| b.1 .0.cmp(&a.1 .0)); // Sort by count descending
+
+        let total = numeric_only_examples.len();
+        for (i, (shape, (count, example))) in sorted_shapes.iter().take(20).enumerate() {
+            let pct = (*count as f64 / total as f64) * 100.0;
+            let markers = format!(
+                "{}{}",
+                if shape_has_neg_exp(shape) {
+                    " [NEG_EXP]"
+                } else {
+                    ""
+                },
+                if shape_has_div(shape) { " [DIV]" } else { "" }
+            );
+            eprintln!(
+                "   {:2}. {:5.1}% ({:3}) {}{}",
+                i + 1,
+                pct,
+                count,
+                if shape.len() > 60 {
+                    &shape[..60]
+                } else {
+                    shape
+                },
+                markers
+            );
+            if i < 5 {
+                // Show example for top 5
+                eprintln!(
+                    "       Example: {}",
+                    if example.len() > 80 {
+                        &example[..80]
+                    } else {
+                        example
+                    }
+                );
+            }
+        }
+        if sorted_shapes.len() > 20 {
+            eprintln!("   ... and {} more unique shapes", sorted_shapes.len() - 20);
+        }
+        eprintln!();
     }
 
     // Triple combinations (optional, limited)

@@ -728,6 +728,46 @@ define_rule!(
     None
 });
 
+// ============================================================================
+// NegativeExponentNormalizationRule: x^(-n) → 1/x^n
+// ============================================================================
+//
+// Normalizes negative integer exponents to fraction form.
+// This ensures a unique canonical form: x^(-2) and 1/x^2 both become 1/x^2.
+//
+// This improves NF-convergence by eliminating the ambiguity between
+// Pow(x, -2) and Div(1, Pow(x, 2)) representations.
+//
+// Priority: HIGH (runs early to normalize before other rules)
+// ============================================================================
+define_rule!(
+    NegativeExponentNormalizationRule,
+    "Normalize Negative Exponent",
+    importance: crate::step::ImportanceLevel::Low,
+    |ctx, expr| {
+        // x^(-n) → 1/x^n  where n is a positive integer
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            if let Expr::Number(n) = ctx.get(exp) {
+                // Check if exponent is a negative integer
+                if n.is_integer() && n.is_negative() {
+                    // n is negative, convert to positive
+                    let pos_n = -n.clone();
+                    let pos_exp = ctx.add(Expr::Number(pos_n));
+
+                    // Build 1 / base^pos_n
+                    let one = ctx.num(1);
+                    let pos_pow = ctx.add(Expr::Pow(base, pos_exp));
+                    let result = ctx.add(Expr::Div(one, pos_pow));
+
+                    return Some(Rewrite::new(result).desc("x^(-n) → 1/x^n"));
+                }
+            }
+        }
+        None
+    }
+);
+
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Pow(base, exp) = expr_data {
@@ -1442,6 +1482,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
                                                              // V2.14.45: RootPowCancelRule BEFORE PowerPowerRule for (x^n)^(1/n) with parity
     simplifier.add_rule(Box::new(RootPowCancelRule));
     simplifier.add_rule(Box::new(PowerPowerRule));
+    simplifier.add_rule(Box::new(NegativeExponentNormalizationRule)); // x^(-n) → 1/x^n
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(ExpQuotientRule)); // V2.14.45: e^a/e^b → e^(a-b)
 
