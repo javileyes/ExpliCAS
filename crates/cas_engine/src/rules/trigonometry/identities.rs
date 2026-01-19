@@ -1265,6 +1265,16 @@ impl crate::rule::Rule for TanToSinCosRule {
             if marks.is_tan_triple_product_protected(expr) {
                 return None;
             }
+            // Identity cancellation protection: tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b))
+            // Don't expand tan() if part of this pattern - let TanDifferenceIdentityZeroRule handle it.
+            if marks.is_identity_cancellation_protected(expr) {
+                return None;
+            }
+            // Global flag: if ANY tan identity pattern was detected, block ALL tan→sin/cos expansion
+            // This is needed because ExprIds change during bottom-up simplification
+            if marks.has_tan_identity_pattern {
+                return None;
+            }
         }
 
         // GUARD: Also check immediate parent for inverse trig composition.
@@ -2560,6 +2570,10 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::High
     }
+
+    fn priority(&self) -> i32 {
+        200 // Run before expansion rules to prevent ping-pong
+    }
 }
 
 impl DoubleAngleContractionRule {
@@ -3684,6 +3698,11 @@ fn verify_dyadic_sequence(ctx: &mut cas_ast::Context, theta: ExprId, cos_args: &
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // ABSOLUTE FIRST: Identity Zero Rules that must run before ANY expansion
+    // These recognize exact identity forms and short-circuit to 0
+    simplifier.add_rule(Box::new(Sin4xIdentityZeroRule));
+    simplifier.add_rule(Box::new(TanDifferenceIdentityZeroRule));
+
     // PRE-ORDER: Evaluate sin(n·π) = 0 and cos(n·π) = (-1)^n BEFORE any expansion
     // This prevents unnecessary triple/double angle expansions on integer multiples of π
     simplifier.add_rule(Box::new(SinCosIntegerPiRule));
@@ -3777,6 +3796,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(HyperbolicTanhPythRule));
     // Hyperbolic half-angle: cosh²(x/2), sinh²(x/2) → cosh form
     simplifier.add_rule(Box::new(HyperbolicHalfAngleSquaresRule));
+    // Generalized sin*cos contraction: k*sin(t)*cos(t) → (k/2)*sin(2t) for even k≥4
+    simplifier.add_rule(Box::new(GeneralizedSinCosContractionRule));
 }
 
 define_rule!(
@@ -5177,6 +5198,409 @@ impl WeierstrassCosIdentityZeroRule {
     }
 }
 
+// =============================================================================
+// Sin4xIdentityZeroRule: sin(4t) - 4*sin(t)*cos(t)*(cos²(t)-sin²(t)) → 0
+// =============================================================================
+// Recognizes the sin(4x) expansion identity directly in cancellation context.
+
+struct Sin4xIdentityZeroRule;
+
+impl crate::rule::Rule for Sin4xIdentityZeroRule {
+    fn name(&self) -> &str {
+        "Sin 4x Identity Zero"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Only match Sub nodes or Add with negated term
+        let (left, right) = match ctx.get(expr).clone() {
+            Expr::Sub(l, r) => (l, r),
+            Expr::Add(l, r) => {
+                if let Expr::Neg(inner) = ctx.get(r) {
+                    (l, *inner)
+                } else if let Expr::Neg(inner) = ctx.get(l) {
+                    (r, *inner)
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // Try both orderings
+        if let Some(result) = self.try_match(ctx, left, right) {
+            return Some(result);
+        }
+        if let Some(result) = self.try_match(ctx, right, left) {
+            return Some(result);
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Sub", "Add"])
+    }
+
+    fn priority(&self) -> i32 {
+        200 // Run before expansion
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+impl Sin4xIdentityZeroRule {
+    fn try_match(&self, ctx: &mut cas_ast::Context, lhs: ExprId, rhs: ExprId) -> Option<Rewrite> {
+        // LHS should be sin(4*t)
+        if let Expr::Function(name, args) = ctx.get(lhs) {
+            if name != "sin" || args.len() != 1 {
+                return None;
+            }
+            let sin_arg = args[0];
+
+            // Check if arg is 4*t
+            let t = match ctx.get(sin_arg) {
+                Expr::Mul(l, r) => {
+                    // Check for Mul(4, t) or Mul(t, 4)
+                    let l = *l;
+                    let r = *r;
+                    if let Expr::Number(n) = ctx.get(l) {
+                        if *n == num_rational::BigRational::from_integer(4.into()) {
+                            r
+                        } else {
+                            return None;
+                        }
+                    } else if let Expr::Number(n) = ctx.get(r) {
+                        if *n == num_rational::BigRational::from_integer(4.into()) {
+                            l
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+                _ => return None,
+            };
+
+            // RHS should be 4*sin(t)*cos(t)*(cos(t)^2 - sin(t)^2)
+            // Flatten multiplication to get factors
+            let mut factors = Vec::new();
+            crate::helpers::flatten_mul(ctx, rhs, &mut factors);
+
+            if factors.len() < 4 {
+                return None;
+            }
+
+            // Look for: 4, sin(t), cos(t), (cos(t)^2 - sin(t)^2) or cos(2t)
+            let mut has_four = false;
+            let mut has_sin_t = false;
+            let mut has_cos_t = false;
+            let mut has_diff_squares = false;
+
+            for &factor in &factors {
+                // Check for 4
+                if let Expr::Number(n) = ctx.get(factor) {
+                    if *n == num_rational::BigRational::from_integer(4.into()) {
+                        has_four = true;
+                        continue;
+                    }
+                }
+                // Check for sin(t)
+                if let Expr::Function(fn_name, fn_args) = ctx.get(factor) {
+                    if fn_name == "sin"
+                        && fn_args.len() == 1
+                        && crate::ordering::compare_expr(ctx, fn_args[0], t)
+                            == std::cmp::Ordering::Equal
+                    {
+                        has_sin_t = true;
+                        continue;
+                    }
+                    if fn_name == "cos" && fn_args.len() == 1 {
+                        let arg = fn_args[0];
+                        if crate::ordering::compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal {
+                            has_cos_t = true;
+                            continue;
+                        }
+                        // Also check for cos(2t) which equals cos²-sin²
+                        if let Expr::Mul(cl, cr) = ctx.get(arg) {
+                            let cl = *cl;
+                            let cr = *cr;
+                            let is_2t = if let Expr::Number(n) = ctx.get(cl) {
+                                *n == num_rational::BigRational::from_integer(2.into())
+                                    && crate::ordering::compare_expr(ctx, cr, t)
+                                        == std::cmp::Ordering::Equal
+                            } else if let Expr::Number(n) = ctx.get(cr) {
+                                *n == num_rational::BigRational::from_integer(2.into())
+                                    && crate::ordering::compare_expr(ctx, cl, t)
+                                        == std::cmp::Ordering::Equal
+                            } else {
+                                false
+                            };
+                            if is_2t {
+                                has_diff_squares = true;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                // Check for cos²(t) - sin²(t)
+                if let Expr::Sub(sl, sr) = ctx.get(factor) {
+                    let sl = *sl;
+                    let sr = *sr;
+                    if self.is_cos_squared_t(ctx, sl, t) && self.is_sin_squared_t(ctx, sr, t) {
+                        has_diff_squares = true;
+                        continue;
+                    }
+                }
+            }
+
+            if has_four && has_sin_t && has_cos_t && has_diff_squares {
+                let zero = ctx.num(0);
+                return Some(
+                    Rewrite::new(zero).desc("sin(4t) = 4·sin(t)·cos(t)·(cos²(t)-sin²(t))"),
+                );
+            }
+        }
+        None
+    }
+
+    fn is_sin_squared_t(&self, ctx: &cas_ast::Context, expr: ExprId, t: ExprId) -> bool {
+        if let Expr::Pow(base, exp) = ctx.get(expr) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n == num_rational::BigRational::from_integer(2.into()) {
+                    if let Expr::Function(name, args) = ctx.get(*base) {
+                        if name == "sin" && args.len() == 1 {
+                            return crate::ordering::compare_expr(ctx, args[0], t)
+                                == std::cmp::Ordering::Equal;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn is_cos_squared_t(&self, ctx: &cas_ast::Context, expr: ExprId, t: ExprId) -> bool {
+        if let Expr::Pow(base, exp) = ctx.get(expr) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n == num_rational::BigRational::from_integer(2.into()) {
+                    if let Expr::Function(name, args) = ctx.get(*base) {
+                        if name == "cos" && args.len() == 1 {
+                            return crate::ordering::compare_expr(ctx, args[0], t)
+                                == std::cmp::Ordering::Equal;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+// =============================================================================
+// TanDifferenceIdentityZeroRule: tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b)) → 0
+// =============================================================================
+// Recognizes the tangent difference identity directly in cancellation context.
+
+struct TanDifferenceIdentityZeroRule;
+
+impl crate::rule::Rule for TanDifferenceIdentityZeroRule {
+    fn name(&self) -> &str {
+        "Tangent Difference Identity Zero"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Only match Sub nodes or Add with negated term
+        let (left, right, _negated) = match ctx.get(expr).clone() {
+            Expr::Sub(l, r) => (l, r, false),
+            Expr::Add(l, r) => {
+                if let Expr::Neg(inner) = ctx.get(r) {
+                    (l, *inner, true)
+                } else if let Expr::Neg(inner) = ctx.get(l) {
+                    (r, *inner, true)
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // Try both orderings: tan(a-b) - RHS or RHS - tan(a-b)
+        if let Some(result) = self.try_match(ctx, left, right) {
+            return Some(result);
+        }
+        if let Some(result) = self.try_match(ctx, right, left) {
+            return Some(result);
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Sub", "Add"])
+    }
+
+    fn priority(&self) -> i32 {
+        200 // Run before tan→sin/cos expansion
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+impl TanDifferenceIdentityZeroRule {
+    fn try_match(&self, ctx: &mut cas_ast::Context, lhs: ExprId, rhs: ExprId) -> Option<Rewrite> {
+        // LHS should be tan(a - b)
+        if let Expr::Function(name, args) = ctx.get(lhs) {
+            if name != "tan" || args.len() != 1 {
+                return None;
+            }
+            let tan_arg = args[0];
+
+            // Extract a and b from (a - b) or (a + (-b))
+            let (a, b) = match ctx.get(tan_arg) {
+                Expr::Sub(l, r) => (*l, *r),
+                Expr::Add(l, r) => {
+                    if let Expr::Neg(inner) = ctx.get(*r) {
+                        (*l, *inner)
+                    } else if let Expr::Neg(inner) = ctx.get(*l) {
+                        (*r, *inner)
+                    } else {
+                        return None;
+                    }
+                }
+                _ => return None,
+            };
+
+            // RHS should be (tan(a) - tan(b)) / (1 + tan(a)*tan(b))
+            if let Expr::Div(num, den) = ctx.get(rhs) {
+                let num = *num;
+                let den = *den;
+
+                // Check numerator: tan(a) - tan(b)
+                let (tan_a_num, tan_b_num) = match ctx.get(num) {
+                    Expr::Sub(l, r) => (*l, *r),
+                    Expr::Add(l, r) => {
+                        if let Expr::Neg(inner) = ctx.get(*r) {
+                            (*l, *inner)
+                        } else {
+                            return None;
+                        }
+                    }
+                    _ => return None,
+                };
+
+                // Verify tan_a_num is tan(a)
+                if let Expr::Function(name_a, args_a) = ctx.get(tan_a_num) {
+                    if name_a != "tan" || args_a.len() != 1 {
+                        return None;
+                    }
+                    if crate::ordering::compare_expr(ctx, args_a[0], a) != std::cmp::Ordering::Equal
+                    {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+
+                // Verify tan_b_num is tan(b)
+                if let Expr::Function(name_b, args_b) = ctx.get(tan_b_num) {
+                    if name_b != "tan" || args_b.len() != 1 {
+                        return None;
+                    }
+                    if crate::ordering::compare_expr(ctx, args_b[0], b) != std::cmp::Ordering::Equal
+                    {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+
+                // Check denominator: 1 + tan(a)*tan(b)
+                if !self.match_one_plus_tan_product(ctx, den, a, b) {
+                    return None;
+                }
+
+                // All matched! Return 0
+                let zero = ctx.num(0);
+                return Some(
+                    Rewrite::new(zero).desc("tan(a-b) = (tan(a)-tan(b))/(1+tan(a)·tan(b))"),
+                );
+            }
+        }
+        None
+    }
+
+    fn match_one_plus_tan_product(
+        &self,
+        ctx: &cas_ast::Context,
+        expr: ExprId,
+        a: ExprId,
+        b: ExprId,
+    ) -> bool {
+        // Match 1 + tan(a)*tan(b) (in any order)
+        if let Expr::Add(l, r) = ctx.get(expr) {
+            let (one_part, product_part) = if let Expr::Number(n) = ctx.get(*l) {
+                if *n == num_rational::BigRational::from_integer(1.into()) {
+                    (*l, *r)
+                } else {
+                    return false;
+                }
+            } else if let Expr::Number(n) = ctx.get(*r) {
+                if *n == num_rational::BigRational::from_integer(1.into()) {
+                    (*r, *l)
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            };
+            let _ = one_part;
+
+            // product_part should be tan(a)*tan(b)
+            if let Expr::Mul(ml, mr) = ctx.get(product_part) {
+                let (tan1, tan2) = (*ml, *mr);
+
+                // Check if both are tan functions
+                if let (Expr::Function(n1, args1), Expr::Function(n2, args2)) =
+                    (ctx.get(tan1), ctx.get(tan2))
+                {
+                    if n1 == "tan" && n2 == "tan" && args1.len() == 1 && args2.len() == 1 {
+                        let arg1 = args1[0];
+                        let arg2 = args2[0];
+
+                        // Check (arg1==a && arg2==b) or (arg1==b && arg2==a)
+                        let match1 = crate::ordering::compare_expr(ctx, arg1, a)
+                            == std::cmp::Ordering::Equal
+                            && crate::ordering::compare_expr(ctx, arg2, b)
+                                == std::cmp::Ordering::Equal;
+                        let match2 = crate::ordering::compare_expr(ctx, arg1, b)
+                            == std::cmp::Ordering::Equal
+                            && crate::ordering::compare_expr(ctx, arg2, a)
+                                == std::cmp::Ordering::Equal;
+
+                        return match1 || match2;
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
 define_rule!(
     CotHalfAngleDifferenceRule,
     "Cotangent Half-Angle Difference",
@@ -5559,6 +5983,104 @@ define_rule!(
                             return Some(Rewrite::new(result).desc("sinh²(x/2) = (cosh(x)-1)/2"));
                         }
                     }
+                }
+            }
+        }
+        None
+    }
+);
+
+// =============================================================================
+// GeneralizedSinCosContractionRule: k*sin(t)*cos(t) → (k/2)*sin(2t) for even k
+// =============================================================================
+// Extends DoubleAngleContractionRule to handle k*sin*cos where k is even (4, 6, 8, etc.)
+
+define_rule!(
+    GeneralizedSinCosContractionRule,
+    "Generalized Sin Cos Contraction",
+    |ctx, expr| {
+        // Only match Mul at top level
+        if let Expr::Mul(_l, _r) = ctx.get(expr) {
+            // Flatten the multiplication to find all factors
+            let mut factors = Vec::new();
+            crate::helpers::flatten_mul(ctx, expr, &mut factors);
+
+            if factors.len() < 3 {
+                return None;
+            }
+
+            // Look for: coefficient (even ≥ 4), sin(t), cos(t)
+            let mut coef_idx: Option<usize> = None;
+            let mut coef_val: Option<num_rational::BigRational> = None;
+            let mut sin_idx: Option<usize> = None;
+            let mut sin_arg: Option<ExprId> = None;
+            let mut cos_idx: Option<usize> = None;
+            let mut cos_arg: Option<ExprId> = None;
+
+            for (i, &factor) in factors.iter().enumerate() {
+                // Check for numeric coefficient
+                if let Expr::Number(n) = ctx.get(factor) {
+                    // Check if n is even and ≥ 4
+                    let two = num_rational::BigRational::from_integer(2.into());
+                    let four = num_rational::BigRational::from_integer(4.into());
+                    if n >= &four && (n / &two).is_integer() {
+                        coef_idx = Some(i);
+                        coef_val = Some(n.clone());
+                        continue;
+                    }
+                }
+                // Check for sin(t)
+                if let Expr::Function(name, args) = ctx.get(factor) {
+                    if name == "sin" && args.len() == 1 && sin_idx.is_none() {
+                        sin_idx = Some(i);
+                        sin_arg = Some(args[0]);
+                        continue;
+                    }
+                    if name == "cos" && args.len() == 1 && cos_idx.is_none() {
+                        cos_idx = Some(i);
+                        cos_arg = Some(args[0]);
+                        continue;
+                    }
+                }
+            }
+
+            // If we found all three and sin_arg == cos_arg (same angle)
+            if let (Some(c_i), Some(c_val), Some(s_i), Some(s_arg), Some(o_i), Some(c_arg)) =
+                (coef_idx, coef_val, sin_idx, sin_arg, cos_idx, cos_arg)
+            {
+                // Check that sin and cos have the same argument
+                if s_arg == c_arg {
+                    // Build (k/2)*sin(2*t)
+                    let two = num_rational::BigRational::from_integer(2.into());
+                    let half_coef = c_val / &two;
+                    let half_coef_expr = ctx.add(Expr::Number(half_coef));
+
+                    let two_expr = ctx.num(2);
+                    let double_arg = ctx.add(Expr::Mul(two_expr, s_arg));
+                    let sin_2t = ctx.add(Expr::Function("sin".to_string(), vec![double_arg]));
+
+                    // Build the result: (k/2)*sin(2t) * [remaining factors]
+                    let contracted = ctx.add(Expr::Mul(half_coef_expr, sin_2t));
+
+                    // Collect remaining factors
+                    let mut remaining: Vec<ExprId> = Vec::new();
+                    for (j, &f) in factors.iter().enumerate() {
+                        if j != c_i && j != s_i && j != o_i {
+                            remaining.push(f);
+                        }
+                    }
+
+                    let result = if remaining.is_empty() {
+                        contracted
+                    } else {
+                        let mut acc = contracted;
+                        for &f in remaining.iter() {
+                            acc = ctx.add(Expr::Mul(acc, f));
+                        }
+                        acc
+                    };
+
+                    return Some(Rewrite::new(result).desc("k·sin(t)·cos(t) = (k/2)·sin(2t)"));
                 }
             }
         }

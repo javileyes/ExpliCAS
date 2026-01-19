@@ -47,6 +47,13 @@ pub struct PatternMarks {
     /// ExprIds of tan() nodes that are part of tan(u)·tan(π/3+u)·tan(π/3-u) triple product.
     /// Protected from TanToSinCosRule expansion to allow TanTripleProductRule to fire.
     pub tan_triple_product_protected: HashSet<ExprId>,
+    /// ExprIds of tan() nodes that are part of identity cancellation patterns
+    /// like tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b)).
+    /// Protected from TanToSinCosRule expansion to allow TanDifferenceIdentityZeroRule to fire.
+    pub identity_cancellation_protected: HashSet<ExprId>,
+    /// Global flag: true if the expression contains a tan difference identity pattern.
+    /// When true, ALL tan→sin/cos expansions are blocked to allow IdentityZeroRule to fire.
+    pub has_tan_identity_pattern: bool,
 }
 
 impl PatternMarks {
@@ -59,6 +66,8 @@ impl PatternMarks {
             inverse_trig_protected: HashSet::new(),
             sum_quotient_protected: HashSet::new(),
             tan_triple_product_protected: HashSet::new(),
+            identity_cancellation_protected: HashSet::new(),
+            has_tan_identity_pattern: false,
         }
     }
 
@@ -142,5 +151,16 @@ impl PatternMarks {
     /// Mark an expression as part of tan triple product pattern
     pub fn mark_tan_triple_product(&mut self, expr: ExprId) {
         self.tan_triple_product_protected.insert(expr);
+    }
+
+    /// Check if an expression is protected as part of identity cancellation pattern
+    /// (e.g., tan(x) in tan(x-y) - (tan(x)-tan(y))/(1+tan(x)*tan(y)) should not be converted to sin/cos)
+    pub fn is_identity_cancellation_protected(&self, expr: ExprId) -> bool {
+        self.identity_cancellation_protected.contains(&expr)
+    }
+
+    /// Mark an expression as part of identity cancellation pattern
+    pub fn mark_identity_cancellation(&mut self, expr: ExprId) {
+        self.identity_cancellation_protected.insert(expr);
     }
 }

@@ -53,6 +53,7 @@ fn scan_recursive(ctx: &Context, root: ExprId, marks: &mut PatternMarks) {
         check_and_mark_inverse_trig_pattern(ctx, expr_id, marks);
         check_and_mark_sum_quotient_pattern(ctx, expr_id, marks);
         check_and_mark_tan_triple_product_pattern(ctx, expr_id, marks);
+        check_and_mark_tan_difference_identity_pattern(ctx, expr_id, marks);
     }
 }
 
@@ -480,6 +481,205 @@ fn is_pi_over_3_check(ctx: &Context, expr: ExprId) -> bool {
     }
 
     false
+}
+
+/// Detect tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b)) patterns.
+/// Mark all tan() function nodes for protection so TanToSinCosRule won't expand them,
+/// allowing TanDifferenceIdentityZeroRule to fire.
+fn check_and_mark_tan_difference_identity_pattern(
+    ctx: &Context,
+    expr_id: ExprId,
+    marks: &mut PatternMarks,
+) {
+    // Only check Sub nodes or Add with negation (a + (-b) form)
+    let (left, right) = match ctx.get(expr_id) {
+        Expr::Sub(l, r) => (*l, *r),
+        Expr::Add(l, r) => {
+            // Check for Add(a, Neg(b)) form
+            if let Expr::Neg(inner) = ctx.get(*r) {
+                (*l, *inner)
+            } else if let Expr::Neg(inner) = ctx.get(*l) {
+                (*r, *inner)
+            } else {
+                return;
+            }
+        }
+        _ => return,
+    };
+
+    // Try both orderings: tan(a-b) - RHS or RHS - tan(a-b)
+    if try_match_tan_diff_identity(ctx, left, right, marks) {
+        return;
+    }
+    try_match_tan_diff_identity(ctx, right, left, marks);
+}
+
+/// Try to match tan(a-b) on lhs and (tan(a)-tan(b))/(1+tan(a)*tan(b)) on rhs
+fn try_match_tan_diff_identity(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    marks: &mut PatternMarks,
+) -> bool {
+    // LHS should be tan(a - b)
+    let Expr::Function(name, args) = ctx.get(lhs) else {
+        return false;
+    };
+    if name != "tan" || args.len() != 1 {
+        return false;
+    }
+    let tan_arg = args[0];
+
+    // Extract a and b from (a - b) or (a + (-b))
+    let (a, b) = match ctx.get(tan_arg) {
+        Expr::Sub(l, r) => (*l, *r),
+        Expr::Add(l, r) => {
+            if let Expr::Neg(inner) = ctx.get(*r) {
+                (*l, *inner)
+            } else if let Expr::Neg(inner) = ctx.get(*l) {
+                (*r, *inner)
+            } else {
+                return false;
+            }
+        }
+        _ => return false,
+    };
+
+    // RHS should be (tan(a) - tan(b)) / (1 + tan(a)*tan(b))
+    let Expr::Div(num, den) = ctx.get(rhs) else {
+        return false;
+    };
+    let num = *num;
+    let den = *den;
+
+    // Check numerator: tan(a) - tan(b)
+    let (tan_a_num, tan_b_num) = match ctx.get(num) {
+        Expr::Sub(l, r) => (*l, *r),
+        Expr::Add(l, r) => {
+            if let Expr::Neg(inner) = ctx.get(*r) {
+                (*l, *inner)
+            } else {
+                return false;
+            }
+        }
+        _ => return false,
+    };
+
+    // Verify tan_a_num is tan(a)
+    if let Expr::Function(name_a, args_a) = ctx.get(tan_a_num) {
+        if name_a != "tan" || args_a.len() != 1 {
+            return false;
+        }
+        if crate::ordering::compare_expr(ctx, args_a[0], a) != std::cmp::Ordering::Equal {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    // Verify tan_b_num is tan(b)
+    if let Expr::Function(name_b, args_b) = ctx.get(tan_b_num) {
+        if name_b != "tan" || args_b.len() != 1 {
+            return false;
+        }
+        if crate::ordering::compare_expr(ctx, args_b[0], b) != std::cmp::Ordering::Equal {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    // Check denominator: 1 + tan(a)*tan(b)
+    if !matches_one_plus_tan_product(ctx, den, a, b) {
+        return false;
+    }
+
+    // All matched! Set global flag to block ALL tan expansion
+    marks.has_tan_identity_pattern = true;
+
+    // Also mark individual nodes (for completeness)
+    marks.mark_identity_cancellation(lhs); // tan(a-b)
+    marks.mark_identity_cancellation(tan_a_num); // tan(a) in numerator
+    marks.mark_identity_cancellation(tan_b_num); // tan(b) in numerator
+
+    // Mark tan nodes in denominator product
+    if let Expr::Add(add_l, add_r) = ctx.get(den) {
+        let product_part = if let Expr::Number(n) = ctx.get(*add_l) {
+            if *n == num_rational::BigRational::from_integer(1.into()) {
+                *add_r
+            } else {
+                *add_l
+            }
+        } else if let Expr::Number(n) = ctx.get(*add_r) {
+            if *n == num_rational::BigRational::from_integer(1.into()) {
+                *add_l
+            } else {
+                *add_r
+            }
+        } else {
+            return true; // Pattern matched, even if we can't mark all tan nodes
+        };
+
+        if let Expr::Mul(ml, mr) = ctx.get(product_part) {
+            marks.mark_identity_cancellation(*ml);
+            marks.mark_identity_cancellation(*mr);
+        }
+    }
+
+    true
+}
+
+/// Helper to match 1 + tan(a)*tan(b)
+fn matches_one_plus_tan_product(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> bool {
+    let Expr::Add(l, r) = ctx.get(expr) else {
+        return false;
+    };
+    let l = *l;
+    let r = *r;
+
+    let (one_part, product_part) = if let Expr::Number(n) = ctx.get(l) {
+        if *n == num_rational::BigRational::from_integer(1.into()) {
+            (l, r)
+        } else {
+            return false;
+        }
+    } else if let Expr::Number(n) = ctx.get(r) {
+        if *n == num_rational::BigRational::from_integer(1.into()) {
+            (r, l)
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    };
+    let _ = one_part;
+
+    // product_part should be tan(a)*tan(b)
+    let Expr::Mul(ml, mr) = ctx.get(product_part) else {
+        return false;
+    };
+    let ml = *ml;
+    let mr = *mr;
+
+    // Check if both are tan functions
+    let (Expr::Function(n1, args1), Expr::Function(n2, args2)) = (ctx.get(ml), ctx.get(mr)) else {
+        return false;
+    };
+
+    if n1 != "tan" || n2 != "tan" || args1.len() != 1 || args2.len() != 1 {
+        return false;
+    }
+
+    let arg1 = args1[0];
+    let arg2 = args2[0];
+
+    // Check (arg1==a && arg2==b) or (arg1==b && arg2==a)
+    let match1 = crate::ordering::compare_expr(ctx, arg1, a) == std::cmp::Ordering::Equal
+        && crate::ordering::compare_expr(ctx, arg2, b) == std::cmp::Ordering::Equal;
+    let match2 = crate::ordering::compare_expr(ctx, arg1, b) == std::cmp::Ordering::Equal
+        && crate::ordering::compare_expr(ctx, arg2, a) == std::cmp::Ordering::Equal;
+
+    match1 || match2
 }
 
 #[cfg(test)]
