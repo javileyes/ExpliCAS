@@ -1491,6 +1491,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PowerQuotientRule));
     simplifier.add_rule(Box::new(NegativeBasePowerRule));
     simplifier.add_rule(Box::new(EvenPowSubSwapRule)); // (b-a)^even → (a-b)^even
+                                                       // Rationalize sqrt denominators: 1/(sqrt(t)+c) → (sqrt(t)-c)/(t-c²)
+    simplifier.add_rule(Box::new(RationalizeLinearSqrtDenRule));
 }
 
 define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
@@ -1649,4 +1651,104 @@ fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
     }
 
     (outside, inside)
+}
+
+// =============================================================================
+// RationalizeLinearSqrtDenRule: 1/(sqrt(t)+c) → (sqrt(t)-c)/(t-c²)
+// =============================================================================
+// Rationalizes denominators with linear sqrt terms by multiplying by conjugate.
+// This is a canonical transformation that eliminates radicals from denominators.
+//
+// Examples:
+//   1/(sqrt(2)+1) → (sqrt(2)-1)/1 = sqrt(2)-1
+//   1/(sqrt(3)+1) → (sqrt(3)-1)/2
+//   1/(sqrt(u)+1) → (sqrt(u)-1)/(u-1)
+//   2/(sqrt(3)-1) → 2*(sqrt(3)+1)/2 = sqrt(3)+1
+//
+// Guard: Only apply when result is simpler (no radicals in denominator)
+// =============================================================================
+define_rule!(
+    RationalizeLinearSqrtDenRule,
+    "Rationalize Linear Sqrt Denominator",
+    |ctx, expr| {
+        // Match Div(num, Add(sqrt_term, const_term)) or Div(num, Sub(...))
+        let (numerator, denominator) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            _ => return None,
+        };
+
+        // Parse denominator as sqrt(t) ± c
+        let (sqrt_arg, const_part, is_plus) = match ctx.get(denominator).clone() {
+            Expr::Add(l, r) => {
+                // sqrt(t) + c or c + sqrt(t)
+                if let Some(arg) = extract_sqrt_arg(ctx, l) {
+                    // sqrt(t) + c
+                    (arg, r, true)
+                } else if let Some(arg) = extract_sqrt_arg(ctx, r) {
+                    // c + sqrt(t) - treat as sqrt(t) + c
+                    (arg, l, true)
+                } else {
+                    return None;
+                }
+            }
+            Expr::Sub(l, r) => {
+                // sqrt(t) - c
+                if let Some(arg) = extract_sqrt_arg(ctx, l) {
+                    (arg, r, false)
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // const_part should be a simple expression (number or variable)
+        // For now, focus on integer constants where we can verify simplification
+        let const_is_simple = matches!(ctx.get(const_part), Expr::Number(_) | Expr::Variable(_));
+        if !const_is_simple {
+            // Skip complex const_part to avoid explosion
+            return None;
+        }
+
+        // Build conjugate: if denom = sqrt(t)+c, conjugate = sqrt(t)-c
+        // Result: num*(sqrt(t)-c) / ((sqrt(t)+c)*(sqrt(t)-c)) = num*(sqrt(t)-c) / (t - c²)
+        let half_exp = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let sqrt_t = ctx.add(Expr::Pow(sqrt_arg, half_exp));
+
+        let conjugate_num = if is_plus {
+            // denom = sqrt(t)+c → conjugate = sqrt(t)-c
+            ctx.add(Expr::Sub(sqrt_t, const_part))
+        } else {
+            // denom = sqrt(t)-c → conjugate = sqrt(t)+c
+            ctx.add(Expr::Add(sqrt_t, const_part))
+        };
+
+        // New numerator: original_num * conjugate
+        let new_num = ctx.add(Expr::Mul(numerator, conjugate_num));
+
+        // New denominator: t - c²
+        let two = ctx.num(2);
+        let c_squared = ctx.add(Expr::Pow(const_part, two));
+        let new_den = ctx.add(Expr::Sub(sqrt_arg, c_squared));
+
+        let result = ctx.add(Expr::Div(new_num, new_den));
+
+        Some(Rewrite::new(result).desc("Rationalize: multiply by conjugate"))
+    }
+);
+
+/// Extract the argument from a sqrt expression (Pow(t, 1/2))
+fn extract_sqrt_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            let half = num_rational::BigRational::new(1.into(), 2.into());
+            if *n == half {
+                return Some(*base);
+            }
+        }
+    }
+    None
 }
