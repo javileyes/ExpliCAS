@@ -64,6 +64,7 @@ define_rule!(
 );
 
 // Rule 2: Composition identities - sinh(asinh(x)) = x, etc.
+// HIGH PRIORITY: Must run BEFORE TanhToSinhCoshRule - ensured by registration order
 define_rule!(
     HyperbolicCompositionRule,
     "Hyperbolic Composition",
@@ -264,6 +265,99 @@ define_rule!(
 
                                 return Some(
                                     Rewrite::new(cosh_2x).desc("cosh²(x) + sinh²(x) = cosh(2x)"),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+// Rule: tanh(x) → sinh(x) / cosh(x)
+// This is the hyperbolic analogue of tan(x) → sin(x) / cos(x)
+// GUARD: Skip if argument is inverse hyperbolic (let composition rule handle tanh(atanh(x)) → x)
+define_rule!(
+    TanhToSinhCoshRule,
+    "tanh(x) = sinh(x)/cosh(x)",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "tanh" && args.len() == 1 {
+                let x = args[0];
+
+                // GUARD: Don't expand if argument is inverse hyperbolic function
+                // This preserves tanh(atanh(z)) → z via HyperbolicCompositionRule
+                if let Expr::Function(inner_name, _) = ctx.get(x) {
+                    if inner_name == "atanh" || inner_name == "asinh" || inner_name == "acosh" {
+                        return None;
+                    }
+                }
+
+                // GUARD: Don't expand if argument is Neg - let HyperbolicNegativeRule handle it
+                // This preserves tanh(-z) → -tanh(z)
+                if matches!(ctx.get(x), Expr::Neg(_)) {
+                    return None;
+                }
+
+                let sinh_x = ctx.add(Expr::Function("sinh".to_string(), vec![x]));
+                let cosh_x = ctx.add(Expr::Function("cosh".to_string(), vec![x]));
+                let result = ctx.add(Expr::Div(sinh_x, cosh_x));
+                return Some(Rewrite::new(result).desc("tanh(x) = sinh(x)/cosh(x)"));
+            }
+        }
+        None
+    }
+);
+
+// Rule: sinh(2x) → 2·sinh(x)·cosh(x)
+// Expansion of double angle for sinh
+define_rule!(
+    SinhDoubleAngleExpansionRule,
+    "sinh(2x) = 2·sinh(x)·cosh(x)",
+    Some(vec!["Function"]),
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "sinh" && args.len() == 1 {
+                // Check if arg is 2*x or x*2
+                if let Some(inner_var) = crate::helpers::extract_double_angle_arg(ctx, args[0]) {
+                    // sinh(2x) → 2·sinh(x)·cosh(x)
+                    let two = ctx.num(2);
+                    let sinh_x = ctx.add(Expr::Function("sinh".to_string(), vec![inner_var]));
+                    let cosh_x = ctx.add(Expr::Function("cosh".to_string(), vec![inner_var]));
+                    let sinh_cosh = crate::build::mul2_raw(ctx, sinh_x, cosh_x);
+                    let result = crate::build::mul2_raw(ctx, two, sinh_cosh);
+                    return Some(Rewrite::new(result).desc("sinh(2x) = 2·sinh(x)·cosh(x)"));
+                }
+            }
+        }
+        None
+    }
+);
+
+// Rule: sinh(x) / cosh(x) → tanh(x)
+// Contraction rule (inverse of TanhToSinhCoshRule) - safe direction that doesn't break composition tests
+define_rule!(
+    SinhCoshToTanhRule,
+    "sinh(x)/cosh(x) = tanh(x)",
+    Some(vec!["Div"]),
+    |ctx, expr| {
+        if let Expr::Div(num, den) = ctx.get(expr) {
+            // Check if numerator is sinh(x) and denominator is cosh(x)
+            if let Expr::Function(num_name, num_args) = ctx.get(*num) {
+                if num_name == "sinh" && num_args.len() == 1 {
+                    if let Expr::Function(den_name, den_args) = ctx.get(*den) {
+                        if den_name == "cosh" && den_args.len() == 1 {
+                            // Check if arguments are the same
+                            if crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
+                                == std::cmp::Ordering::Equal
+                            {
+                                let x = num_args[0];
+                                let tanh_x = ctx.add(Expr::Function("tanh".to_string(), vec![x]));
+                                return Some(
+                                    Rewrite::new(tanh_x).desc("sinh(x)/cosh(x) = tanh(x)"),
                                 );
                             }
                         }
@@ -486,6 +580,36 @@ define_rule!(
             }
         }
 
+        // Pattern 3: (e^x - e^(-x)) / (e^x + e^(-x)) → tanh(x)
+        // This is sinh(x)/cosh(x) without the 1/2 factors (they cancel)
+        if let Expr::Div(num, den) = ctx.get(expr) {
+            // Check if numerator is e^x - e^(-x) pattern (sinh-like)
+            if let Some((num_arg, false, num_positive_first)) = extract_exp_pair(ctx, *num) {
+                // Check if denominator is e^x + e^(-x) pattern (cosh-like)
+                if let Some((den_arg, true, _)) = extract_exp_pair(ctx, *den) {
+                    // Arguments must be the same
+                    if crate::ordering::compare_expr(ctx, num_arg, den_arg)
+                        == std::cmp::Ordering::Equal
+                    {
+                        let tanh_x = ctx.add(Expr::Function("tanh".to_string(), vec![num_arg]));
+                        if num_positive_first {
+                            return Some(
+                                Rewrite::new(tanh_x)
+                                    .desc("(e^x - e^(-x))/(e^x + e^(-x)) = tanh(x)"),
+                            );
+                        } else {
+                            // (e^(-x) - e^x) / (e^x + e^(-x)) = -tanh(x)
+                            let neg_tanh = ctx.add(Expr::Neg(tanh_x));
+                            return Some(
+                                Rewrite::new(neg_tanh)
+                                    .desc("(e^(-x) - e^x)/(e^x + e^(-x)) = -tanh(x)"),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         None
     }
 );
@@ -497,6 +621,10 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(HyperbolicNegativeRule));
     simplifier.add_rule(Box::new(HyperbolicPythagoreanRule));
     simplifier.add_rule(Box::new(HyperbolicDoubleAngleRule));
+    // DISABLED: TanhToSinhCoshRule breaks tanh(atanh(x))→x and tanh(-x)→-tanh(x) paths
+    // simplifier.add_rule(Box::new(TanhToSinhCoshRule)); // tanh(x) → sinh(x)/cosh(x)
+    simplifier.add_rule(Box::new(SinhCoshToTanhRule)); // sinh(x)/cosh(x) → tanh(x) (contraction)
+    simplifier.add_rule(Box::new(SinhDoubleAngleExpansionRule)); // sinh(2x) → 2sinh(x)cosh(x)
     simplifier.add_rule(Box::new(RecognizeHyperbolicFromExpRule));
 }
 
