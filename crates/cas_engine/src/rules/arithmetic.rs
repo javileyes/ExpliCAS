@@ -246,7 +246,76 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
                 let new_expr = ctx.add(Expr::Number(prod.clone()));
                 return Some(Rewrite::new(new_expr).desc(format!("{} * {} = {}", n1, n2, prod)));
             }
-            // Handle nested: c1 * (c2 * x) -> (c1*c2) * x
+
+            // V2.15.25: Flatten complete Mul chain and combine ALL numeric factors
+            // This handles cases like: 2 * (2 * (sin(u) * cos(u))) → 4 * sin(u) * cos(u)
+            let mut factors = Vec::new();
+            let mut stack = vec![expr];
+            while let Some(id) = stack.pop() {
+                if let Expr::Mul(l, r) = ctx.get(id) {
+                    stack.push(*r);
+                    stack.push(*l);
+                } else {
+                    factors.push(id);
+                }
+            }
+
+            // Separate numeric and non-numeric factors
+            let mut numeric_factors: Vec<num_rational::BigRational> = Vec::new();
+            let mut non_numeric: Vec<cas_ast::ExprId> = Vec::new();
+
+            for &f in &factors {
+                if let Expr::Number(n) = ctx.get(f) {
+                    numeric_factors.push(n.clone());
+                } else {
+                    non_numeric.push(f);
+                }
+            }
+
+            // Only proceed if we have 2+ numeric factors to combine
+            if numeric_factors.len() >= 2 {
+                // Multiply all numeric factors together
+                let product: num_rational::BigRational = numeric_factors.iter().fold(
+                    num_rational::BigRational::from_integer(1.into()),
+                    |acc, n| acc * n
+                );
+
+                // Build: if product is 1, skip it; if 0, return 0
+                if product.is_zero() {
+                    let zero = ctx.num(0);
+                    return Some(Rewrite::new(zero).desc("0 * x = 0"));
+                }
+
+                // Build new Mul chain: product * non_numeric[0] * non_numeric[1] * ...
+                let mut result: cas_ast::ExprId;
+                if product.is_one() && !non_numeric.is_empty() {
+                    // Product is 1, start with first non-numeric
+                    result = non_numeric[0];
+                    for &f in &non_numeric[1..] {
+                        result = smart_mul(ctx, result, f);
+                    }
+                } else if non_numeric.is_empty() {
+                    // Only numeric factors
+                    result = ctx.add(Expr::Number(product.clone()));
+                } else {
+                    // Normal case: product * rest
+                    let prod_expr = ctx.add(Expr::Number(product.clone()));
+                    result = prod_expr;
+                    for &f in &non_numeric {
+                        result = smart_mul(ctx, result, f);
+                    }
+                }
+
+                // Format description
+                let nums_str: Vec<String> = numeric_factors.iter().map(|n| format!("{}", n)).collect();
+                return Some(Rewrite::new(result).desc(format!(
+                    "Combine nested constants: {} = {}",
+                    nums_str.join(" * "),
+                    product
+                )));
+            }
+
+            // Fallback: Handle c1 * (c2 * x) -> (c1*c2) * x (single nested case)
             if let Expr::Number(ref n1) = lhs_data {
                 if let Expr::Mul(rl, rr) = rhs_data {
                     let rl_data = ctx.get(rl).clone();
