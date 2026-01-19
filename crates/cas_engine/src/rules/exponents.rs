@@ -1493,6 +1493,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(EvenPowSubSwapRule)); // (b-a)^even → (a-b)^even
                                                        // Rationalize sqrt denominators: 1/(sqrt(t)+c) → (sqrt(t)-c)/(t-c²)
     simplifier.add_rule(Box::new(RationalizeLinearSqrtDenRule));
+    // Rationalize sum of sqrts: 1/(sqrt(p)+sqrt(q)) → (sqrt(p)-sqrt(q))/(p-q)
+    simplifier.add_rule(Box::new(RationalizeSumOfSqrtsDenRule));
 }
 
 define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
@@ -1752,3 +1754,73 @@ fn extract_sqrt_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
     None
 }
+
+// =============================================================================
+// RationalizeSumOfSqrtsDenRule: k/(sqrt(p)+sqrt(q)) → k*(sqrt(p)-sqrt(q))/(p-q)
+// =============================================================================
+// Rationalizes denominators with sum of two square roots.
+//
+// Examples:
+//   3/(sqrt(2)+sqrt(3)) → 3*(sqrt(2)-sqrt(3))/(2-3) = -3*(sqrt(2)-sqrt(3))
+//   1/(sqrt(5)+sqrt(2)) → (sqrt(5)-sqrt(2))/3
+// =============================================================================
+define_rule!(
+    RationalizeSumOfSqrtsDenRule,
+    "Rationalize Sum of Sqrts Denominator",
+    |ctx, expr| {
+        // Match Div(num, Add/Sub of two sqrts)
+        let (numerator, denominator) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            _ => return None,
+        };
+
+        // Parse denominator as sqrt(p) ± sqrt(q)
+        let (sqrt_p_arg, sqrt_q_arg, is_plus) = match ctx.get(denominator).clone() {
+            Expr::Add(l, r) => {
+                // sqrt(p) + sqrt(q)
+                let p_arg = extract_sqrt_arg(ctx, l)?;
+                let q_arg = extract_sqrt_arg(ctx, r)?;
+                (p_arg, q_arg, true)
+            }
+            Expr::Sub(l, r) => {
+                // sqrt(p) - sqrt(q)
+                let p_arg = extract_sqrt_arg(ctx, l)?;
+                let q_arg = extract_sqrt_arg(ctx, r)?;
+                (p_arg, q_arg, false)
+            }
+            _ => return None,
+        };
+
+        // Build conjugate multiplication
+        // If denom = sqrt(p)+sqrt(q), conjugate is sqrt(p)-sqrt(q)
+        // New denominator = (sqrt(p)+sqrt(q))*(sqrt(p)-sqrt(q)) = p - q
+        let half_exp = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let sqrt_p = ctx.add(Expr::Pow(sqrt_p_arg, half_exp));
+        let half_exp2 = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let sqrt_q = ctx.add(Expr::Pow(sqrt_q_arg, half_exp2));
+
+        let conjugate = if is_plus {
+            // denom = sqrt(p)+sqrt(q) → conjugate = sqrt(p)-sqrt(q)
+            ctx.add(Expr::Sub(sqrt_p, sqrt_q))
+        } else {
+            // denom = sqrt(p)-sqrt(q) → conjugate = sqrt(p)+sqrt(q)
+            ctx.add(Expr::Add(sqrt_p, sqrt_q))
+        };
+
+        // New numerator: original_num * conjugate
+        let new_num = ctx.add(Expr::Mul(numerator, conjugate));
+
+        // New denominator: p - q
+        let new_den = ctx.add(Expr::Sub(sqrt_p_arg, sqrt_q_arg));
+
+        let result = ctx.add(Expr::Div(new_num, new_den));
+
+        Some(Rewrite::new(result).desc("Rationalize: (sqrt(p)±sqrt(q)) multiply by conjugate"))
+    }
+);
