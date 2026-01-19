@@ -3468,6 +3468,168 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// DivAddCommonFactorFromDenRule: Factor out common factor from Add numerator
+// when that factor appears in the denominator, enabling cancellation.
+// =============================================================================
+//
+// Pattern: Div(Add(f*a, f*b, ...), f*c) → Div(f*Add(a, b, ...), f*c) → Add(a, b, ...)/c
+//
+// This is a LOCAL factorization rule that only fires when:
+// 1. Numerator is Add with ≥2 terms
+// 2. All terms share a common factor f (or f^k)
+// 3. f (or a power of it) appears in the denominator
+//
+// This enables the existing CancelCommonFactorsRule to then cancel f.
+// =============================================================================
+define_rule!(
+    DivAddCommonFactorFromDenRule,
+    "Factor Common Factor from Add in Div",
+    importance: crate::step::ImportanceLevel::Medium,
+    |ctx, expr| {
+        // Helper to collect Add terms (flattened)
+        fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+            match ctx.get(expr) {
+                Expr::Add(l, r) => {
+                    collect_add_terms(ctx, *l, terms);
+                    collect_add_terms(ctx, *r, terms);
+                }
+                _ => terms.push(expr),
+            }
+        }
+
+        // Only match Div(num, den)
+        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+
+        // Numerator must be Add
+        if !matches!(ctx.get(num), Expr::Add(_, _)) {
+            return None;
+        }
+
+        let mut add_terms: Vec<ExprId> = Vec::new();
+        collect_add_terms(ctx, num, &mut add_terms);
+
+        if add_terms.len() < 2 {
+            return None;
+        }
+
+        // Collect factors from denominator (base, exponent)
+        let den_factors = collect_mul_factors_int_pow(ctx, den);
+
+        // For each non-numeric factor in den, check if it's common to ALL terms in num
+        for (den_base, den_exp) in &den_factors {
+            // Skip numeric factors
+            if matches!(ctx.get(*den_base), Expr::Number(_)) {
+                continue;
+            }
+
+            // Skip if den_exp is 0 or negative
+            if *den_exp <= 0 {
+                continue;
+            }
+
+            // Try to extract this factor from ALL terms in the Add
+            let mut term_quotients: Vec<ExprId> = Vec::new();
+            let mut min_exp: i64 = i64::MAX;
+            let mut all_match = true;
+
+            for term_id in &add_terms {
+                // Get factors from this term
+                let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
+
+                // Find if den_base appears in term_factors
+                let mut found_exp: Option<i64> = None;
+                for (base, exp) in &term_factors {
+                    if crate::ordering::compare_expr(ctx, *base, *den_base) == Ordering::Equal {
+                        found_exp = Some(*exp);
+                        break;
+                    }
+                }
+
+                if let Some(exp) = found_exp {
+                    if exp >= 1 {
+                        min_exp = min_exp.min(exp);
+                        term_quotients.push(*term_id);
+                    } else {
+                        all_match = false;
+                        break;
+                    }
+                } else {
+                    all_match = false;
+                    break;
+                }
+            }
+
+            if !all_match || min_exp < 1 {
+                continue;
+            }
+
+            // Cap the extraction to what's in the denominator
+            let extract_exp = min_exp.min(*den_exp);
+
+            // Now we can factor out den_base^extract_exp from all terms!
+            // Build the new Add with quotients
+            let mut new_terms: Vec<ExprId> = Vec::new();
+
+            for term_id in &term_quotients {
+                // Divide term by den_base^extract_exp
+                let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
+                let mut new_factors: Vec<(ExprId, i64)> = Vec::new();
+
+                for (base, exp) in term_factors {
+                    if crate::ordering::compare_expr(ctx, base, *den_base) == Ordering::Equal {
+                        let new_exp = exp - extract_exp;
+                        if new_exp > 0 {
+                            new_factors.push((base, new_exp));
+                        }
+                        // if new_exp == 0, factor is cancelled
+                    } else {
+                        new_factors.push((base, exp));
+                    }
+                }
+
+                // Build the quotient term
+                let quotient = build_mul_from_factors_a1(ctx, &new_factors);
+                new_terms.push(quotient);
+            }
+
+            // Build new numerator: f^k * Add(quotients...)
+            let new_add = if new_terms.len() == 1 {
+                new_terms[0]
+            } else {
+                // Build Add from terms
+                let mut result = new_terms[0];
+                for term in new_terms.iter().skip(1) {
+                    result = ctx.add(Expr::Add(result, *term));
+                }
+                result
+            };
+
+            // Build f^extract_exp
+            let factor = if extract_exp == 1 {
+                *den_base
+            } else {
+                let exp_expr = ctx.num(extract_exp);
+                ctx.add(Expr::Pow(*den_base, exp_expr))
+            };
+
+            // New numerator: factor * new_add
+            let new_num = mul2_raw(ctx, factor, new_add);
+
+            // Build result: Div(new_num, den)
+            let result = ctx.add(Expr::Div(new_num, den));
+
+            // Only return if we actually changed something
+            if result != expr {
+                return Some(Rewrite::new(result)
+                    .desc("Factor common factor from Add in Div"));
+            }
+        }
+
+        None
+    }
+);
+
 // Atomized rule for quotient of powers: a^n / a^m = a^(n-m)
 // This is separated from CancelCommonFactorsRule for pedagogical clarity
 define_rule!(
