@@ -123,6 +123,193 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// TrigPythagoreanGenericCoefficientRule: A*sin²(t) + A*cos²(t) → A
+// =============================================================================
+// Extends the Pythagorean identity to work when the coefficient is any expression,
+// not just a numeric constant. This enables simplifications like:
+//   cos(u)²*sin(x)² + cos(u)²*cos(x)² → cos(u)²
+// Which is needed to prove equivalences in combined identities.
+//
+// Key insight: when a term like cos(u)²*sin(x)² contains multiple trig², we
+// extract ALL possible candidates and match across terms.
+
+define_rule!(
+    TrigPythagoreanGenericCoefficientRule,
+    "Pythagorean with Generic Coefficient",
+    |ctx, expr| {
+        // Flatten the additive chain
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Extract ALL candidates from each term
+        // Candidate: (term_index, trig_kind, trig_arg, sorted_coef_factors)
+        // trig_kind: true = sin, false = cos
+        let mut all_sin_candidates: Vec<(usize, ExprId, Vec<ExprId>)> = Vec::new();
+        let mut all_cos_candidates: Vec<(usize, ExprId, Vec<ExprId>)> = Vec::new();
+
+        for (i, &term) in terms.iter().enumerate() {
+            let candidates = extract_all_trig_squared_candidates(ctx, term);
+            for (is_sin, arg, mut coef_factors) in candidates {
+                // Sort factors for canonical comparison
+                coef_factors.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
+                if is_sin {
+                    all_sin_candidates.push((i, arg, coef_factors));
+                } else {
+                    all_cos_candidates.push((i, arg, coef_factors));
+                }
+            }
+        }
+
+        // Find matching pairs: same argument AND same coefficient factors from DIFFERENT terms
+        for (sin_idx, sin_arg, sin_coef) in all_sin_candidates.iter() {
+            for (cos_idx, cos_arg, cos_coef) in all_cos_candidates.iter() {
+                // Must be different terms
+                if sin_idx == cos_idx {
+                    continue;
+                }
+
+                // Arguments must match
+                if crate::ordering::compare_expr(ctx, *sin_arg, *cos_arg)
+                    != std::cmp::Ordering::Equal
+                {
+                    continue;
+                }
+
+                // Coefficient factors must match (already sorted)
+                if sin_coef.len() != cos_coef.len() {
+                    continue;
+                }
+
+                // Skip if no coefficient (just sin² + cos², handled by basic rule)
+                if sin_coef.is_empty() {
+                    continue;
+                }
+
+                let mut all_match = true;
+                for (sf, cf) in sin_coef.iter().zip(cos_coef.iter()) {
+                    if crate::ordering::compare_expr(ctx, *sf, *cf) != std::cmp::Ordering::Equal {
+                        all_match = false;
+                        break;
+                    }
+                }
+                if !all_match {
+                    continue;
+                }
+
+                // Found a match! A*sin²(t) + A*cos²(t) → A
+                // Build the coefficient expression from sorted factors
+                let replacement = if sin_coef.len() == 1 {
+                    sin_coef[0]
+                } else {
+                    let mut coef = sin_coef[0];
+                    for &f in sin_coef.iter().skip(1) {
+                        coef = ctx.add(Expr::Mul(coef, f));
+                    }
+                    coef
+                };
+
+                // Build new expression with the pair removed and A added
+                let mut new_terms: Vec<ExprId> = Vec::new();
+                for (j, &t) in terms.iter().enumerate() {
+                    if j != *sin_idx && j != *cos_idx {
+                        new_terms.push(t);
+                    }
+                }
+                new_terms.push(replacement);
+
+                // Build result as sum
+                let result = if new_terms.len() == 1 {
+                    new_terms[0]
+                } else {
+                    let mut acc = new_terms[0];
+                    for &t in new_terms.iter().skip(1) {
+                        acc = ctx.add(Expr::Add(acc, t));
+                    }
+                    acc
+                };
+
+                return Some(Rewrite::new(result).desc("A·sin²(x) + A·cos²(x) = A"));
+            }
+        }
+
+        None
+    }
+);
+
+/// Extract ALL possible (is_sin, argument, coefficient_factors) candidates from a term.
+/// For a term like cos(u)²*sin(x)², returns TWO candidates:
+///   1. (true, x, [cos(u)²])   -- interpreting sin(x)² as the trig, cos(u)² as coef
+///   2. (false, u, [sin(x)²])  -- interpreting cos(u)² as the trig, sin(x)² as coef
+fn extract_all_trig_squared_candidates(
+    ctx: &Context,
+    term: ExprId,
+) -> Vec<(bool, ExprId, Vec<ExprId>)> {
+    let mut results = Vec::new();
+
+    // Case 1: Direct trig² (no coefficient)
+    if let Expr::Pow(base, exp) = ctx.get(term) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if *n == num_rational::BigRational::from_integer(2.into()) {
+                if let Expr::Function(name, args) = ctx.get(*base) {
+                    if args.len() == 1 {
+                        if name == "sin" {
+                            results.push((true, args[0], vec![]));
+                        } else if name == "cos" {
+                            results.push((false, args[0], vec![]));
+                        }
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    // Case 2: Mul - flatten and find ALL sin²/cos² factors
+    if let Expr::Mul(_, _) = ctx.get(term) {
+        let mut factors = Vec::new();
+        let mut stack = vec![term];
+        while let Some(curr) = stack.pop() {
+            if let Expr::Mul(l, r) = ctx.get(curr) {
+                stack.push(*r);
+                stack.push(*l);
+            } else {
+                factors.push(curr);
+            }
+        }
+
+        // Find ALL trig² factors
+        for (i, &f) in factors.iter().enumerate() {
+            if let Expr::Pow(base, exp) = ctx.get(f) {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n == num_rational::BigRational::from_integer(2.into()) {
+                        if let Expr::Function(name, args) = ctx.get(*base) {
+                            if args.len() == 1 && (name == "sin" || name == "cos") {
+                                // Build coefficient from all OTHER factors
+                                let coef_factors: Vec<ExprId> = factors
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(j, _)| *j != i)
+                                    .map(|(_, &g)| g)
+                                    .collect();
+
+                                let is_sin = name == "sin";
+                                results.push((is_sin, args[0], coef_factors));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    results
+}
+
 /// Extract (function_name, argument, coefficient) from sin²(t) or cos²(t) terms.
 /// Handles: sin(t)^2, cos(t)^2, k*sin(t)^2, k*cos(t)^2
 fn extract_trig_squared(

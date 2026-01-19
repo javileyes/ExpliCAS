@@ -3789,6 +3789,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanSimplifyRule));
     // N-ary Pythagorean: sin²(t) + cos²(t) → 1 in chains of any length
     simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanChainRule));
+    // Generic coefficient Pythagorean: A*sin²(x) + A*cos²(x) → A for any expression A
+    simplifier.add_rule(Box::new(
+        super::pythagorean::TrigPythagoreanGenericCoefficientRule,
+    ));
     // Contraction: 1 + tan²(x) → sec²(x), 1 + cot²(x) → csc²(x)
     simplifier.add_rule(Box::new(super::pythagorean::RecognizeSecSquaredRule));
     simplifier.add_rule(Box::new(super::pythagorean::RecognizeCscSquaredRule));
