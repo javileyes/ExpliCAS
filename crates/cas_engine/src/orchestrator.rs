@@ -1,3 +1,4 @@
+use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::{Simplifier, Step};
@@ -234,13 +235,22 @@ impl Orchestrator {
         let auto_level = self.options.rationalize.auto_level;
         let collect_steps = self.options.collect_steps;
 
-        // Phase 1: Core - Safe simplifications
+        // V2.15.25: Best-So-Far tracking to prevent returning worse expressions
+        // Initialize BSF AFTER Core phase (not from raw input) to preserve Phase 1 canonicalizations
+        // This prevents reverting beneficial transformations like tan→sin/cos, arcsec→arccos, etc.
+        let budget = BestSoFarBudget::default();
+
+        // Phase 1: Core - Safe simplifications (canonicalizations, basic identities)
         let (next, steps, stats) =
             self.run_phase(simplifier, current, SimplifyPhase::Core, budgets.core_iters);
         current = next;
         all_steps.extend(steps);
         pipeline_stats.core = stats;
         pipeline_stats.total_rewrites += pipeline_stats.core.rewrites_used;
+
+        // Initialize BSF with post-Core state as baseline
+        // This ensures canonicalizations from Core are preserved
+        let mut best = BestSoFar::new(current, &all_steps, &simplifier.context, budget);
 
         // Phase 2: Transform - Distribution, expansion (if enabled)
         if enable_transform {
@@ -254,6 +264,7 @@ impl Orchestrator {
             all_steps.extend(steps);
             pipeline_stats.transform = stats;
             pipeline_stats.total_rewrites += pipeline_stats.transform.rewrites_used;
+            best.consider(current, &all_steps, &simplifier.context);
         }
 
         // Phase 3: Rationalize - Auto-rationalization per policy
@@ -283,6 +294,7 @@ impl Orchestrator {
             all_steps.extend(steps);
             pipeline_stats.rationalize = stats;
             pipeline_stats.total_rewrites += pipeline_stats.rationalize.rewrites_used;
+            best.consider(current, &all_steps, &simplifier.context);
         } else {
             pipeline_stats.rationalize_level = Some(AutoRationalizeLevel::Off);
             pipeline_stats.rationalize_outcome =
@@ -302,6 +314,7 @@ impl Orchestrator {
         all_steps.extend(steps);
         pipeline_stats.post_cleanup = stats;
         pipeline_stats.total_rewrites += pipeline_stats.post_cleanup.rewrites_used;
+        best.consider(current, &all_steps, &simplifier.context);
 
         // Log pipeline summary
         tracing::info!(
@@ -380,7 +393,35 @@ impl Orchestrator {
         // V2.15.8: Clear sticky domain when pipeline completes
         simplifier.clear_sticky_implicit_domain();
 
-        (current, optimized_steps, pipeline_stats)
+        // V2.15.25: Best-So-Far guard - use best if current is worse
+        // After all processing, compare current to best seen during phases
+        let (best_expr, _best_steps) = best.into_parts();
+        let current_score = crate::best_so_far::score_expr(&simplifier.context, current);
+        let best_score = crate::best_so_far::score_expr(&simplifier.context, best_expr);
+
+        // Only rollback if:
+        // 1. Best is strictly better AND
+        // 2. Current has significantly more nodes (> 12 extra) to avoid reverting expansions
+        // Moderate-to-large increases (1-12 nodes) are allowed to preserve:
+        // - Canonicalizations (tan→sin/cos, arcsec→arccos)
+        // - Deliberate expansions (AutoExpandBinomials::On)
+        let significant_increase = current_score.nodes > best_score.nodes + 12;
+
+        if best_score < current_score && significant_increase {
+            // The best seen during phases is better than final result
+            // This can happen when expansion rules don't close with cancellation
+            tracing::debug!(
+                target: "simplify",
+                best_nodes = best_score.nodes,
+                current_nodes = current_score.nodes,
+                "best_so_far_rollback"
+            );
+            // Use best expression but keep optimized steps for now
+            // TODO: In phase 2, also use best_steps for consistency
+            (best_expr, optimized_steps, pipeline_stats)
+        } else {
+            (current, optimized_steps, pipeline_stats)
+        }
     }
 }
 

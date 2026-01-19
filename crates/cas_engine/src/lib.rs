@@ -4,6 +4,7 @@
 
 pub mod assumptions;
 pub mod auto_expand_scan;
+pub mod best_so_far;
 pub mod budget;
 pub mod canonical_forms;
 pub mod collect;
