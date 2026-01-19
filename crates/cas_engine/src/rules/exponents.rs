@@ -1244,7 +1244,198 @@ define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
     None
 });
 
+// ============================================================================
+// MulNaryCombinePowersRule: Flatten mul chains and combine powers with same base
+// ============================================================================
+//
+// This rule handles cases like (a*b)*a^2 → a^3*b where the binary tree structure
+// prevents direct adjacency of combinable factors.
+//
+// Pipeline:
+// 1. Flatten: Mul(Mul(a,b), a^2) → [a, b, a^2]
+// 2. Extract base/exp: a → (a, 1), a^2 → (a, 2)
+// 3. Combine same base: sum exponents for matching bases
+// 4. Reconstruct: maintain first-occurrence order for bases
+//
+// Gating:
+// - Budget: max 12 factors
+// - Only combine when exponents are numeric literals
+// - Skip if no combinable pairs found
+// ============================================================================
+
+pub struct MulNaryCombinePowersRule;
+
+impl crate::rule::Rule for MulNaryCombinePowersRule {
+    fn name(&self) -> &str {
+        "N-ary Mul Combine Powers"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Only match Mul nodes
+        if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+            return None;
+        }
+
+        // 1. Flatten the mul chain
+        let mut factors = Vec::new();
+        crate::helpers::flatten_mul(ctx, expr, &mut factors);
+
+        // Budget: skip if too many factors (prevent explosion)
+        if factors.len() > 12 || factors.len() < 2 {
+            return None;
+        }
+
+        // 2. Extract (base, exponent, is_combinable) for each factor
+        // - Pow(x, n) → (x, n, true) where n is numeric
+        // - Variable/Function/Constant → (itself, 1, true) - can combine
+        // - Number → (itself, 1, false) - DON'T combine to avoid 2*sqrt(2) → 2^(3/2)
+        let mut base_exp_pairs: Vec<(ExprId, Option<BigRational>, bool)> = Vec::new();
+        for &factor in &factors {
+            match ctx.get(factor) {
+                Expr::Pow(base, exp) => {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        base_exp_pairs.push((*base, Some(n.clone()), true));
+                    } else {
+                        // Non-numeric exponent: treat as opaque
+                        base_exp_pairs.push((factor, None, false));
+                    }
+                }
+                Expr::Number(_) => {
+                    // Numbers are NOT combinable to preserve coefficient structure
+                    base_exp_pairs.push((factor, Some(BigRational::one()), false));
+                }
+                _ => {
+                    // Variable, Function, Constant: treat as base^1, combinable
+                    base_exp_pairs.push((factor, Some(BigRational::one()), true));
+                }
+            }
+        }
+
+        // 3. Find bases that appear multiple times with combinable exponents
+        // Use structural equality (compare_expr) for base comparison
+        let mut combined: Vec<(ExprId, BigRational, usize)> = Vec::new(); // (base, sum_exp, first_index)
+        let mut absorbed = vec![false; factors.len()];
+        let mut any_combined = false;
+
+        for i in 0..base_exp_pairs.len() {
+            if absorbed[i] {
+                continue;
+            }
+
+            let (base_i, exp_i, is_pow_i) = &base_exp_pairs[i];
+            let Some(mut sum_exp) = exp_i.clone() else {
+                // Non-combinable (non-numeric exp): keep as-is
+                continue;
+            };
+
+            // Only combine if this factor is an explicit Pow
+            if !is_pow_i {
+                continue;
+            }
+
+            let mut found_match = false;
+
+            // Look for other factors with same base
+            for j in (i + 1)..base_exp_pairs.len() {
+                if absorbed[j] {
+                    continue;
+                }
+
+                let (base_j, exp_j, is_pow_j) = &base_exp_pairs[j];
+
+                // Only combine with explicit Pow factors
+                if !is_pow_j {
+                    continue;
+                }
+
+                let Some(exp_j_val) = exp_j else {
+                    continue;
+                };
+
+                // Check if bases are structurally equal
+                if compare_expr(ctx, *base_i, *base_j) == Ordering::Equal {
+                    sum_exp += exp_j_val;
+                    absorbed[j] = true;
+                    found_match = true;
+                }
+            }
+
+            if found_match {
+                absorbed[i] = true;
+                combined.push((*base_i, sum_exp, i));
+                any_combined = true;
+            }
+        }
+
+        // If nothing was combined, skip
+        if !any_combined {
+            return None;
+        }
+
+        // 4. Reconstruct the product in order of first appearance
+        let mut result_factors: Vec<ExprId> = Vec::new();
+
+        // Track which combined group each index belongs to
+        let mut combined_map: std::collections::HashMap<usize, (ExprId, BigRational)> =
+            std::collections::HashMap::new();
+        for (base, sum_exp, first_idx) in &combined {
+            combined_map.insert(*first_idx, (*base, sum_exp.clone()));
+        }
+
+        for i in 0..factors.len() {
+            if let Some((base, sum_exp)) = combined_map.get(&i) {
+                // This is the anchor for a combined group
+                let new_factor = if sum_exp.is_one() {
+                    *base
+                } else if sum_exp.is_zero() {
+                    ctx.num(1)
+                } else {
+                    let exp_id = ctx.add(Expr::Number(sum_exp.clone()));
+                    ctx.add(Expr::Pow(*base, exp_id))
+                };
+                result_factors.push(new_factor);
+            } else if !absorbed[i] {
+                // Not absorbed: keep original factor
+                result_factors.push(factors[i]);
+            }
+            // absorbed but not anchor: skip (already merged into anchor)
+        }
+
+        // Build result product (right-associative)
+        if result_factors.is_empty() {
+            return Some(Rewrite::new(ctx.num(1)).desc("All factors cancelled"));
+        }
+
+        let mut result = *result_factors.last().unwrap();
+        for factor in result_factors.iter().rev().skip(1) {
+            result = mul2_raw(ctx, *factor, result);
+        }
+
+        // Only return if we actually changed something
+        if result_factors.len() < factors.len() {
+            Some(Rewrite::new(result).desc("Combine powers with same base (n-ary)"))
+        } else {
+            None
+        }
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Mul"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Low
+    }
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // N-ary mul combine rule: handles (a*b)*a^2 → a^3*b
+    simplifier.add_rule(Box::new(MulNaryCombinePowersRule));
     simplifier.add_rule(Box::new(ProductPowerRule));
     simplifier.add_rule(Box::new(ProductSameExponentRule));
     simplifier.add_rule(Box::new(QuotientSameExponentRule)); // a^n / b^n = (a/b)^n
