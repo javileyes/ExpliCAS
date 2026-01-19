@@ -682,12 +682,64 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// NormalizeMulNegRule: Lift Neg out of Mul for canonical form
+// =============================================================================
+//
+// Canonical form: Neg should be at the TOP of Mul, not buried inside.
+// This unlocks cancellations in Add like: a*(-b) + (-a)*b → Neg(a*b) + Neg(a*b) → -2*a*b
+//
+// Rewrites:
+// - Mul(Neg(a), b) → Neg(Mul(a, b))
+// - Mul(a, Neg(b)) → Neg(Mul(a, b))
+// - Mul(Neg(a), Neg(b)) → Mul(a, b)  (double negation cancels)
+//
+// This is idempotent and always reduces complexity.
+// =============================================================================
+define_rule!(
+    NormalizeMulNegRule,
+    "Normalize Negation in Product",
+    importance: crate::step::ImportanceLevel::Low,
+    |ctx, expr| {
+        if let Expr::Mul(l, r) = ctx.get(expr) {
+            let l = *l;
+            let r = *r;
+
+            let l_neg = if let Expr::Neg(inner) = ctx.get(l) { Some(*inner) } else { None };
+            let r_neg = if let Expr::Neg(inner) = ctx.get(r) { Some(*inner) } else { None };
+
+            match (l_neg, r_neg) {
+                // Mul(Neg(a), Neg(b)) → Mul(a, b) (double negation)
+                (Some(a), Some(b)) => {
+                    let new_mul = crate::build::mul2_raw(ctx, a, b);
+                    return Some(Rewrite::new(new_mul).desc("(-a) * (-b) = a * b"));
+                }
+                // Mul(Neg(a), b) → Neg(Mul(a, b))
+                (Some(a), None) => {
+                    let new_mul = crate::build::mul2_raw(ctx, a, r);
+                    let result = ctx.add(Expr::Neg(new_mul));
+                    return Some(Rewrite::new(result).desc("(-a) * b = -(a * b)"));
+                }
+                // Mul(a, Neg(b)) → Neg(Mul(a, b))
+                (None, Some(b)) => {
+                    let new_mul = crate::build::mul2_raw(ctx, l, b);
+                    let result = ctx.add(Expr::Neg(new_mul));
+                    return Some(Rewrite::new(result).desc("a * (-b) = -(a * b)"));
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     // High-priority short-circuit rules first
     simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion
 
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
+    simplifier.add_rule(Box::new(NormalizeMulNegRule)); // Lift Neg out of Mul for canonical form
     simplifier.add_rule(Box::new(MulZeroRule));
     simplifier.add_rule(Box::new(DivZeroRule));
     simplifier.add_rule(Box::new(CombineConstantsRule));
