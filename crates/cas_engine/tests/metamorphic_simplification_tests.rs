@@ -2372,6 +2372,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     let mut proved_symbolic = 0;
     let mut numeric_only = 0;
     let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
+    let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
 
     // Double combinations: all pairs of different identities
     for i in 0..n {
@@ -2449,6 +2450,16 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                     if result.is_ok() {
                         numeric_only += 1;
                         passed += 1;
+
+                        // Collect numeric-only example for verbose output (all, for classifier)
+                        if verbose {
+                            numeric_only_examples.push((
+                                combined_exp.clone(),
+                                combined_simp.clone(),
+                                pair1.simp.clone(),
+                                pair2.simp.clone(),
+                            ));
+                        }
                     } else {
                         failed += 1;
                         if failed <= 5 {
@@ -2484,6 +2495,78 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
             );
         }
         eprintln!();
+    }
+
+    // Print numeric-only examples if verbose
+    if verbose && !numeric_only_examples.is_empty() {
+        eprintln!("🌡️ Numeric-only examples (no symbolic proof found):");
+        for (i, (lhs, rhs, simp1, simp2)) in
+            numeric_only_examples.iter().take(max_examples).enumerate()
+        {
+            eprintln!("   {:2}. LHS: {}", i + 1, lhs);
+            eprintln!("       RHS: {}", rhs);
+            eprintln!("       (simplifies: {} + {})", simp1, simp2);
+        }
+        if numeric_only > max_examples {
+            eprintln!(
+                "   ... and {} more (set METATEST_MAX_EXAMPLES=N to show more)",
+                numeric_only - max_examples
+            );
+        }
+        eprintln!();
+
+        // Family classifier for numeric-only cases
+        let mut family_counts: HashMap<String, usize> = HashMap::new();
+        for (lhs, rhs, _, _) in &numeric_only_examples {
+            let combined = format!("{} {}", lhs, rhs);
+            // Detect function families
+            if combined.contains("sec") || combined.contains("csc") {
+                *family_counts
+                    .entry("sec/csc (reciprocal trig)".to_string())
+                    .or_insert(0) += 1;
+            }
+            if combined.contains("tan(") && !combined.contains("arctan") {
+                *family_counts.entry("tan".to_string()).or_insert(0) += 1;
+            }
+            if combined.contains("cot(") {
+                *family_counts.entry("cot".to_string()).or_insert(0) += 1;
+            }
+            if combined.contains("sin(") && (combined.contains("/2") || combined.contains("*2")) {
+                *family_counts
+                    .entry("half/double angle".to_string())
+                    .or_insert(0) += 1;
+            }
+            if combined.contains("ln(") || combined.contains("log(") {
+                *family_counts.entry("ln/log".to_string()).or_insert(0) += 1;
+            }
+            if combined.contains("exp(") {
+                *family_counts.entry("exp".to_string()).or_insert(0) += 1;
+            }
+            if combined.contains("sqrt(") || combined.contains("^(1/") {
+                *family_counts.entry("sqrt/roots".to_string()).or_insert(0) += 1;
+            }
+            if combined.contains("abs(") {
+                *family_counts.entry("abs".to_string()).or_insert(0) += 1;
+            }
+            if combined.contains("arctan")
+                || combined.contains("arcsin")
+                || combined.contains("arccos")
+            {
+                *family_counts
+                    .entry("arc* (inverse trig)".to_string())
+                    .or_insert(0) += 1;
+            }
+        }
+
+        if !family_counts.is_empty() {
+            eprintln!("📊 Numeric-only family breakdown (overlapping):");
+            let mut sorted: Vec<_> = family_counts.into_iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            for (family, count) in sorted {
+                eprintln!("   {:3} × {}", count, family);
+            }
+            eprintln!();
+        }
     }
 
     // Triple combinations (optional, limited)
