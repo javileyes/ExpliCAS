@@ -1497,6 +1497,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RationalizeSumOfSqrtsDenRule));
     // Rationalize cube root: 1/(1+u^(1/3)) → (1-u^(1/3)+u^(2/3))/(1+u)
     simplifier.add_rule(Box::new(CubeRootDenRationalizeRule));
+    // Merge sqrt products: sqrt(a)*sqrt(b) → sqrt(a*b) (with requires a≥0, b≥0)
+    simplifier.add_rule(Box::new(RootMergeMulRule));
+    // Merge sqrt quotients: sqrt(a)/sqrt(b) → sqrt(a/b) (with requires a≥0, b>0)
+    simplifier.add_rule(Box::new(RootMergeDivRule));
 }
 
 define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
@@ -1945,4 +1949,178 @@ fn extract_cbrt_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         }
     }
     None
+}
+
+// =============================================================================
+// RootMergeMulRule: sqrt(a) * sqrt(b) → sqrt(a*b)
+// =============================================================================
+// Merges products of square roots into a single root.
+// This is valid for non-negative real a and b.
+//
+// Examples:
+//   sqrt(u) * sqrt(b) → sqrt(u*b)
+//   u^(1/2) * b^(1/2) → (u*b)^(1/2)
+//
+// Requires: a ≥ 0 and b ≥ 0 (or they are squared terms)
+// =============================================================================
+pub struct RootMergeMulRule;
+
+impl crate::rule::Rule for RootMergeMulRule {
+    fn name(&self) -> &str {
+        "Merge Sqrt Product"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        use crate::domain::Proof;
+        use crate::helpers::prove_nonnegative;
+
+        // Match Mul(Pow(a, 1/2), Pow(b, 1/2))
+        let (left, right) = match ctx.get(expr).clone() {
+            Expr::Mul(l, r) => (l, r),
+            _ => return None,
+        };
+
+        // Both must be sqrt (Pow with exponent 1/2)
+        let a = extract_sqrt_arg(ctx, left)?;
+        let b = extract_sqrt_arg(ctx, right)?;
+
+        // Check if both are provably non-negative
+        let vd = parent_ctx.value_domain();
+        let proof_a = prove_nonnegative(ctx, a, vd);
+        let proof_b = prove_nonnegative(ctx, b, vd);
+
+        // Only proceed if both are proven or we can safely assume
+        // For educational mode, we apply with assumption
+        let mode = parent_ctx.domain_mode();
+        let can_apply = match mode {
+            crate::domain::DomainMode::Generic => true, // Apply with assumption
+            crate::domain::DomainMode::Assume => true,
+            crate::domain::DomainMode::Strict => {
+                proof_a == Proof::Proven && proof_b == Proof::Proven
+            }
+        };
+
+        if !can_apply {
+            return None;
+        }
+
+        // Build sqrt(a*b)
+        let product = ctx.add(Expr::Mul(a, b));
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let result = ctx.add(Expr::Pow(product, half));
+
+        let mut rewrite = Rewrite::new(result).desc("√a · √b = √(a·b)");
+
+        // Add assumptions if needed
+        if proof_a != Proof::Proven {
+            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, a));
+        }
+        if proof_b != Proof::Proven {
+            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, b));
+        }
+
+        Some(rewrite)
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Mul"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
+}
+
+// =============================================================================
+// RootMergeDivRule: sqrt(a) / sqrt(b) → sqrt(a/b)
+// =============================================================================
+// Merges quotients of square roots into a single root.
+// This is valid for non-negative real a and positive b.
+//
+// Examples:
+//   sqrt(u) / sqrt(b) → sqrt(u/b)
+//   u^(1/2) / b^(1/2) → (u/b)^(1/2)
+//
+// Requires: a ≥ 0 and b > 0
+// =============================================================================
+pub struct RootMergeDivRule;
+
+impl crate::rule::Rule for RootMergeDivRule {
+    fn name(&self) -> &str {
+        "Merge Sqrt Quotient"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        use crate::domain::Proof;
+        use crate::helpers::{prove_nonnegative, prove_positive};
+
+        // Match Div(Pow(a, 1/2), Pow(b, 1/2))
+        let (num, den) = match ctx.get(expr).clone() {
+            Expr::Div(n, d) => (n, d),
+            _ => return None,
+        };
+
+        // Both must be sqrt (Pow with exponent 1/2)
+        let a = extract_sqrt_arg(ctx, num)?;
+        let b = extract_sqrt_arg(ctx, den)?;
+
+        // Check domain conditions
+        let vd = parent_ctx.value_domain();
+        let proof_a = prove_nonnegative(ctx, a, vd);
+        let proof_b = prove_positive(ctx, b, vd); // b > 0 for division
+
+        let mode = parent_ctx.domain_mode();
+        let can_apply = match mode {
+            crate::domain::DomainMode::Generic => true,
+            crate::domain::DomainMode::Assume => true,
+            crate::domain::DomainMode::Strict => {
+                proof_a == Proof::Proven && proof_b == Proof::Proven
+            }
+        };
+
+        if !can_apply {
+            return None;
+        }
+
+        // Build sqrt(a/b)
+        let quotient = ctx.add(Expr::Div(a, b));
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+        let result = ctx.add(Expr::Pow(quotient, half));
+
+        let mut rewrite = Rewrite::new(result).desc("√a / √b = √(a/b)");
+
+        // Add assumptions if needed
+        if proof_a != Proof::Proven {
+            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonnegative(ctx, a));
+        }
+        if proof_b != Proof::Proven {
+            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::positive(ctx, b));
+        }
+
+        Some(rewrite)
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Div"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
 }
