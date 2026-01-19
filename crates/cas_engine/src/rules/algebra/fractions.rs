@@ -3469,24 +3469,23 @@ define_rule!(
 );
 
 // =============================================================================
-// DivAddCommonFactorFromDenRule: Factor out common factor from Add numerator
-// when that factor appears in the denominator, enabling cancellation.
+// DivAddCommonFactorFromDenRule: Factor out MULTI-FACTOR from Add numerator
+// when those factors appear in the denominator, enabling cancellation.
 // =============================================================================
 //
-// Pattern: Div(Add(f*a, f*b, ...), f*c) → Div(f*Add(a, b, ...), f*c) → Add(a, b, ...)/c
+// V2: Multi-factor version - extracts the MAXIMUM common factor:
+// - Intersects factor multisets across ALL Add terms
+// - Caps each factor exponent by what's in the denominator
+// - Only fires if the common factor is non-trivial
 //
-// This is a LOCAL factorization rule that only fires when:
-// 1. Numerator is Add with ≥2 terms
-// 2. All terms share a common factor f (or f^k)
-// 3. f (or a power of it) appears in the denominator
-//
-// This enables the existing CancelCommonFactorsRule to then cancel f.
+// Pattern: Div(Add(f*g*a, f*g*b), f*g*c) → Div(f*g*Add(a, b), f*g*c) → Add(a, b)/c
 // =============================================================================
 define_rule!(
     DivAddCommonFactorFromDenRule,
-    "Factor Common Factor from Add in Div",
+    "Factor Common Factors from Add in Div",
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
+        use std::collections::HashMap;
         // Helper to collect Add terms (flattened)
         fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
             match ctx.get(expr) {
@@ -3513,117 +3512,129 @@ define_rule!(
             return None;
         }
 
-        // Collect factors from denominator (base, exponent)
-        let den_factors = collect_mul_factors_int_pow(ctx, den);
-
-        // For each non-numeric factor in den, check if it's common to ALL terms in num
-        for (den_base, den_exp) in &den_factors {
-            // Skip numeric factors
-            if matches!(ctx.get(*den_base), Expr::Number(_)) {
-                continue;
-            }
-
-            // Skip if den_exp is 0 or negative
-            if *den_exp <= 0 {
-                continue;
-            }
-
-            // Try to extract this factor from ALL terms in the Add
-            let mut term_quotients: Vec<ExprId> = Vec::new();
-            let mut min_exp: i64 = i64::MAX;
-            let mut all_match = true;
-
-            for term_id in &add_terms {
-                // Get factors from this term
-                let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
-
-                // Find if den_base appears in term_factors
-                let mut found_exp: Option<i64> = None;
-                for (base, exp) in &term_factors {
-                    if crate::ordering::compare_expr(ctx, *base, *den_base) == Ordering::Equal {
-                        found_exp = Some(*exp);
-                        break;
-                    }
+        // Collect factors from denominator (key -> (ExprId, exp))
+        // Helper to build factor map from (ExprId, exp) list
+        // Uses string repr as key for structural equality
+        fn factors_to_map(ctx: &Context, factors: &[(ExprId, i64)]) -> HashMap<String, (ExprId, i64)> {
+            let mut map = HashMap::new();
+            for &(base, exp) in factors {
+                // Skip numeric factors (we're only interested in symbolic)
+                if matches!(ctx.get(base), Expr::Number(_)) {
+                    continue;
                 }
+                let key = format!("{}", cas_ast::DisplayExpr { context: ctx, id: base });
+                let entry = map.entry(key).or_insert((base, 0));
+                entry.1 += exp;
+            }
+            map
+        }
 
-                if let Some(exp) = found_exp {
-                    if exp >= 1 {
-                        min_exp = min_exp.min(exp);
-                        term_quotients.push(*term_id);
-                    } else {
-                        all_match = false;
-                        break;
-                    }
+        let den_factors_raw = collect_mul_factors_int_pow(ctx, den);
+        let den_map = factors_to_map(ctx, &den_factors_raw);
+
+        // If denominator has no symbolic factors, nothing to do
+        if den_map.is_empty() {
+            return None;
+        }
+
+        // Compute intersection of factor exponents across all Add terms
+        // Start with factors from first term
+        let first_factors = collect_mul_factors_int_pow(ctx, add_terms[0]);
+        let mut common_map = factors_to_map(ctx, &first_factors);
+
+        // Intersect with each subsequent term
+        for term_id in add_terms.iter().skip(1) {
+            let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
+            let term_map = factors_to_map(ctx, &term_factors);
+
+            // Keep only keys present in both, with min exponent
+            common_map.retain(|key, (_, exp)| {
+                if let Some((_, term_exp)) = term_map.get(key) {
+                    *exp = (*exp).min(*term_exp);
+                    *exp >= 1 // Only keep if exponent is positive
                 } else {
-                    all_match = false;
-                    break;
+                    false // Factor not present in this term
                 }
+            });
+
+            // Early exit if nothing left
+            if common_map.is_empty() {
+                return None;
             }
+        }
 
-            if !all_match || min_exp < 1 {
-                continue;
-            }
-
-            // Cap the extraction to what's in the denominator
-            let extract_exp = min_exp.min(*den_exp);
-
-            // Now we can factor out den_base^extract_exp from all terms!
-            // Build the new Add with quotients
-            let mut new_terms: Vec<ExprId> = Vec::new();
-
-            for term_id in &term_quotients {
-                // Divide term by den_base^extract_exp
-                let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
-                let mut new_factors: Vec<(ExprId, i64)> = Vec::new();
-
-                for (base, exp) in term_factors {
-                    if crate::ordering::compare_expr(ctx, base, *den_base) == Ordering::Equal {
-                        let new_exp = exp - extract_exp;
-                        if new_exp > 0 {
-                            new_factors.push((base, new_exp));
-                        }
-                        // if new_exp == 0, factor is cancelled
-                    } else {
-                        new_factors.push((base, exp));
-                    }
-                }
-
-                // Build the quotient term
-                let quotient = build_mul_from_factors_a1(ctx, &new_factors);
-                new_terms.push(quotient);
-            }
-
-            // Build new numerator: f^k * Add(quotients...)
-            let new_add = if new_terms.len() == 1 {
-                new_terms[0]
+        // Cap by denominator: only extract what the denominator has
+        for (key, (_, exp)) in common_map.iter_mut() {
+            if let Some((_, den_exp)) = den_map.get(key) {
+                *exp = (*exp).min(*den_exp);
             } else {
-                // Build Add from terms
-                let mut result = new_terms[0];
-                for term in new_terms.iter().skip(1) {
-                    result = ctx.add(Expr::Add(result, *term));
-                }
-                result
-            };
-
-            // Build f^extract_exp
-            let factor = if extract_exp == 1 {
-                *den_base
-            } else {
-                let exp_expr = ctx.num(extract_exp);
-                ctx.add(Expr::Pow(*den_base, exp_expr))
-            };
-
-            // New numerator: factor * new_add
-            let new_num = mul2_raw(ctx, factor, new_add);
-
-            // Build result: Div(new_num, den)
-            let result = ctx.add(Expr::Div(new_num, den));
-
-            // Only return if we actually changed something
-            if result != expr {
-                return Some(Rewrite::new(result)
-                    .desc("Factor common factor from Add in Div"));
+                *exp = 0; // Don't extract factors not in denominator
             }
+        }
+
+        // Remove factors with 0 exponent
+        common_map.retain(|_, (_, exp)| *exp >= 1);
+
+        // If nothing to extract, bail
+        if common_map.is_empty() {
+            return None;
+        }
+
+        // Build the common factor list
+        let common_factors: Vec<(ExprId, i64)> = common_map.values().cloned().collect();
+
+        // Now extract common_factors from each Add term
+        let mut new_terms: Vec<ExprId> = Vec::new();
+
+        for term_id in &add_terms {
+            let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
+
+            // Build quotient factors: original - common
+            let mut quotient_factors: Vec<(ExprId, i64)> = Vec::new();
+
+            for (base, exp) in term_factors {
+                if matches!(ctx.get(base), Expr::Number(_)) {
+                    // Keep numeric factors as-is
+                    quotient_factors.push((base, exp));
+                    continue;
+                }
+
+                let key = format!("{}", cas_ast::DisplayExpr { context: ctx, id: base });
+                let common_exp = common_map.get(&key).map(|(_, e)| *e).unwrap_or(0);
+                let new_exp = exp - common_exp;
+                if new_exp > 0 {
+                    quotient_factors.push((base, new_exp));
+                }
+            }
+
+            let quotient = build_mul_from_factors_a1(ctx, &quotient_factors);
+            new_terms.push(quotient);
+        }
+
+        // Build new Add from quotient terms
+        let new_add = if new_terms.len() == 1 {
+            new_terms[0]
+        } else {
+            let mut result = new_terms[0];
+            for term in new_terms.iter().skip(1) {
+                result = ctx.add(Expr::Add(result, *term));
+            }
+            result
+        };
+
+        // Build common factor product
+        let common_product = build_mul_from_factors_a1(ctx, &common_factors);
+
+        // New numerator: common_product * new_add
+        let new_num = mul2_raw(ctx, common_product, new_add);
+
+        // Build result: Div(new_num, den)
+        let result = ctx.add(Expr::Div(new_num, den));
+
+        // Only return if we actually changed something
+        if result != expr {
+            return Some(Rewrite::new(result)
+                .desc("Factor common factors from Add in Div"));
         }
 
         None
