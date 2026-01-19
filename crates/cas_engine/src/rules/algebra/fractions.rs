@@ -3641,6 +3641,198 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// DivAddSymmetricFactorRule: Extract common factor from BOTH Add num AND Add den
+// =============================================================================
+//
+// Pattern: Div(Add(f*a, f*b), Add(f*c, f*d)) → Div(Add(a, b), Add(c, d))
+//
+// This complements DivAddCommonFactorFromDenRule by handling cases where
+// both numerator AND denominator are Adds that share a common factor.
+// The factor cancels completely, simplifying the fraction.
+// =============================================================================
+define_rule!(
+    DivAddSymmetricFactorRule,
+    "Cancel Common Factor from Add/Add Fraction",
+    importance: crate::step::ImportanceLevel::Medium,
+    |ctx, expr| {
+        use std::collections::HashMap;
+
+        // Helper to collect Add terms (flattened)
+        fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+            match ctx.get(expr) {
+                Expr::Add(l, r) => {
+                    collect_add_terms(ctx, *l, terms);
+                    collect_add_terms(ctx, *r, terms);
+                }
+                _ => terms.push(expr),
+            }
+        }
+
+        // Helper to build factor map from (ExprId, exp) list
+        fn factors_to_map(ctx: &Context, factors: &[(ExprId, i64)]) -> HashMap<String, (ExprId, i64)> {
+            let mut map = HashMap::new();
+            for &(base, exp) in factors {
+                if matches!(ctx.get(base), Expr::Number(_)) {
+                    continue;
+                }
+                let key = format!("{}", cas_ast::DisplayExpr { context: ctx, id: base });
+                let entry = map.entry(key).or_insert((base, 0));
+                entry.1 += exp;
+            }
+            map
+        }
+
+        // Helper to compute common factors across all Add terms
+        fn compute_common_factors(ctx: &Context, terms: &[ExprId]) -> HashMap<String, (ExprId, i64)> {
+            if terms.is_empty() {
+                return HashMap::new();
+            }
+
+            let first_factors = collect_mul_factors_int_pow(ctx, terms[0]);
+            let mut common_map = factors_to_map(ctx, &first_factors);
+
+            for term_id in terms.iter().skip(1) {
+                let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
+                let term_map = factors_to_map(ctx, &term_factors);
+
+                common_map.retain(|key, (_, exp)| {
+                    if let Some((_, term_exp)) = term_map.get(key) {
+                        *exp = (*exp).min(*term_exp);
+                        *exp >= 1
+                    } else {
+                        false
+                    }
+                });
+
+                if common_map.is_empty() {
+                    return HashMap::new();
+                }
+            }
+
+            common_map
+        }
+
+        // Helper to divide each term by common factors
+        fn divide_terms_by_common(
+            ctx: &mut Context,
+            terms: &[ExprId],
+            common_map: &HashMap<String, (ExprId, i64)>
+        ) -> Vec<ExprId> {
+            let mut new_terms = Vec::new();
+
+            for term_id in terms {
+                let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
+                let mut quotient_factors: Vec<(ExprId, i64)> = Vec::new();
+
+                for (base, exp) in term_factors {
+                    if matches!(ctx.get(base), Expr::Number(_)) {
+                        quotient_factors.push((base, exp));
+                        continue;
+                    }
+
+                    let key = format!("{}", cas_ast::DisplayExpr { context: ctx, id: base });
+                    let common_exp = common_map.get(&key).map(|(_, e)| *e).unwrap_or(0);
+                    let new_exp = exp - common_exp;
+                    if new_exp > 0 {
+                        quotient_factors.push((base, new_exp));
+                    }
+                }
+
+                let quotient = build_mul_from_factors_a1(ctx, &quotient_factors);
+                new_terms.push(quotient);
+            }
+
+            new_terms
+        }
+
+        // Only match Div(num, den)
+        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+
+        // BOTH must be Add
+        if !matches!(ctx.get(num), Expr::Add(_, _)) {
+            return None;
+        }
+        if !matches!(ctx.get(den), Expr::Add(_, _)) {
+            return None;
+        }
+
+        // Collect terms from both
+        let mut num_terms: Vec<ExprId> = Vec::new();
+        let mut den_terms: Vec<ExprId> = Vec::new();
+        collect_add_terms(ctx, num, &mut num_terms);
+        collect_add_terms(ctx, den, &mut den_terms);
+
+        if num_terms.len() < 2 || den_terms.len() < 2 {
+            return None;
+        }
+
+        // Compute common factors for numerator
+        let num_common = compute_common_factors(ctx, &num_terms);
+        if num_common.is_empty() {
+            return None;
+        }
+
+        // Compute common factors for denominator
+        let den_common = compute_common_factors(ctx, &den_terms);
+        if den_common.is_empty() {
+            return None;
+        }
+
+        // Intersect: only keep factors common to BOTH num and den
+        let mut shared_common: HashMap<String, (ExprId, i64)> = HashMap::new();
+        for (key, (base, num_exp)) in &num_common {
+            if let Some((_, den_exp)) = den_common.get(key) {
+                let min_exp = (*num_exp).min(*den_exp);
+                if min_exp >= 1 {
+                    shared_common.insert(key.clone(), (*base, min_exp));
+                }
+            }
+        }
+
+        if shared_common.is_empty() {
+            return None;
+        }
+
+        // Divide both num and den terms by shared_common
+        let new_num_terms = divide_terms_by_common(ctx, &num_terms, &shared_common);
+        let new_den_terms = divide_terms_by_common(ctx, &den_terms, &shared_common);
+
+        // Build new Add for numerator
+        let new_num = if new_num_terms.len() == 1 {
+            new_num_terms[0]
+        } else {
+            let mut result = new_num_terms[0];
+            for term in new_num_terms.iter().skip(1) {
+                result = ctx.add(Expr::Add(result, *term));
+            }
+            result
+        };
+
+        // Build new Add for denominator
+        let new_den = if new_den_terms.len() == 1 {
+            new_den_terms[0]
+        } else {
+            let mut result = new_den_terms[0];
+            for term in new_den_terms.iter().skip(1) {
+                result = ctx.add(Expr::Add(result, *term));
+            }
+            result
+        };
+
+        // Build result: Div(new_num, new_den)
+        let result = ctx.add(Expr::Div(new_num, new_den));
+
+        // Only return if we actually changed something
+        if result != expr {
+            return Some(Rewrite::new(result)
+                .desc("Cancel common factor from Add/Add fraction"));
+        }
+
+        None
+    }
+);
+
 // Atomized rule for quotient of powers: a^n / a^m = a^(n-m)
 // This is separated from CancelCommonFactorsRule for pedagogical clarity
 define_rule!(

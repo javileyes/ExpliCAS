@@ -263,6 +263,49 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     None
 });
 
+// =============================================================================
+// LnEProductRule: ln(e*x) → 1 + ln(x)
+// =============================================================================
+// This is a SAFE, targeted expansion because ln(e) = 1 is a known constant.
+// Unlike general LogExpansionRule, this doesn't risk explosion because it only
+// extracts the known constant `e` factor.
+//
+// This enables residuals like `2*ln(e*u) - 2 - 2*ln(u)` to simplify:
+// → 2*(1 + ln(u)) - 2 - 2*ln(u) → 2 + 2*ln(u) - 2 - 2*ln(u) → 0
+// =============================================================================
+define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
+    // Match ln(arg)
+    if let Expr::Function(name, args) = ctx.get(expr).clone() {
+        if name != "ln" || args.len() != 1 {
+            return None;
+        }
+        let arg = args[0];
+
+        // Match Mul(e, x) or Mul(x, e) in the argument
+        if let Expr::Mul(l, r) = ctx.get(arg).clone() {
+            let l_is_e = matches!(ctx.get(l), Expr::Constant(cas_ast::Constant::E));
+            let r_is_e = matches!(ctx.get(r), Expr::Constant(cas_ast::Constant::E));
+
+            // ln(e*x) → 1 + ln(x) or ln(x*e) → 1 + ln(x)
+            let other = if l_is_e {
+                Some(r)
+            } else if r_is_e {
+                Some(l)
+            } else {
+                None
+            };
+
+            if let Some(x) = other {
+                let one = ctx.num(1);
+                let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![x]));
+                let result = ctx.add(Expr::Add(one, ln_x));
+                return Some(Rewrite::new(result).desc("ln(e*x) = 1 + ln(x)"));
+            }
+        }
+    }
+    None
+});
+
 /// Domain-aware expansion rule for log products/quotients.
 ///
 /// log(b, x*y) → log(b, x) + log(b, y) and log(b, x/y) → log(b, x) - log(b, y)
@@ -1994,6 +2037,11 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Has higher priority (10) than EvaluateLogRule (0) so matches first
     simplifier.add_rule(Box::new(LogEvenPowerWithChainedAbsRule));
     simplifier.add_rule(Box::new(EvaluateLogRule));
+
+    // LnEProductRule: ln(e*x) → 1 + ln(x) - safe targeted expansion
+    // This enables residuals like `2*ln(e*u) - 2 - 2*ln(u)` to simplify to 0
+    simplifier.add_rule(Box::new(LnEProductRule));
+
     // NOTE: LogExpansionRule removed from auto-registration.
     // Log expansion increases node count (ln(xy) → ln(x) + ln(y)) and is not always desirable.
     // Use the `expand_log` command for explicit expansion.

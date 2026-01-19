@@ -60,6 +60,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CancelCommonFactorsRule));
     simplifier.add_rule(Box::new(DivAddCommonFactorFromDenRule)); // Factor out common from Add in Div to enable cancel
+    simplifier.add_rule(Box::new(DivAddSymmetricFactorRule)); // Cancel common factor from Add/Add fraction
     simplifier.add_rule(Box::new(QuotientOfPowersRule));
     simplifier.add_rule(Box::new(CancelNthRootBinomialFactorRule)); // (x+1)/(x^(1/3)+1) → x^(2/3)-x^(1/3)+1
     simplifier.add_rule(Box::new(SqrtConjugateCollapseRule)); // sqrt(A)*B → sqrt(B) when A*B=1
