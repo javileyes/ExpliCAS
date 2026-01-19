@@ -3771,6 +3771,12 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 
     // Cotangent half-angle difference: cot(u/2) - cot(u) = 1/sin(u)
     simplifier.add_rule(Box::new(CotHalfAngleDifferenceRule));
+    // Tangent difference: tan(a-b) → (tan(a)-tan(b))/(1+tan(a)*tan(b))
+    simplifier.add_rule(Box::new(TanDifferenceRule));
+    // Hyperbolic Pythagorean: 1 - tanh²(x) → 1/cosh²(x)
+    simplifier.add_rule(Box::new(HyperbolicTanhPythRule));
+    // Hyperbolic half-angle: cosh²(x/2), sinh²(x/2) → cosh form
+    simplifier.add_rule(Box::new(HyperbolicHalfAngleSquaresRule));
 }
 
 define_rule!(
@@ -5351,6 +5357,211 @@ define_rule!(
             }
         }
 
+        None
+    }
+);
+
+// =============================================================================
+// TanDifferenceRule: tan(a - b) → (tan(a) - tan(b)) / (1 + tan(a)*tan(b))
+// =============================================================================
+
+define_rule!(TanDifferenceRule, "Tangent Difference", |ctx, expr| {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "tan" && args.len() == 1 {
+            let arg = args[0];
+            // Check if argument is a - b
+            if let Expr::Sub(a, b) = ctx.get(arg) {
+                let a = *a;
+                let b = *b;
+
+                // Build tan(a) - tan(b)
+                let tan_a = ctx.add(Expr::Function("tan".to_string(), vec![a]));
+                let tan_b = ctx.add(Expr::Function("tan".to_string(), vec![b]));
+                let numerator = ctx.add(Expr::Sub(tan_a, tan_b));
+
+                // Build 1 + tan(a)*tan(b)
+                let tan_a2 = ctx.add(Expr::Function("tan".to_string(), vec![a]));
+                let tan_b2 = ctx.add(Expr::Function("tan".to_string(), vec![b]));
+                let product = ctx.add(Expr::Mul(tan_a2, tan_b2));
+                let one = ctx.num(1);
+                let denominator = ctx.add(Expr::Add(one, product));
+
+                let result = ctx.add(Expr::Div(numerator, denominator));
+                return Some(
+                    Rewrite::new(result).desc("tan(a-b) = (tan(a)-tan(b))/(1+tan(a)·tan(b))"),
+                );
+            }
+        }
+    }
+    None
+});
+
+// =============================================================================
+// HyperbolicTanhPythRule: 1 - tanh(x)² → 1/cosh(x)² (sech²)
+// =============================================================================
+// Canonical direction: contract to reciprocal form.
+
+define_rule!(
+    HyperbolicTanhPythRule,
+    "Hyperbolic Tanh Pythagorean",
+    |ctx, expr| {
+        // Flatten the additive chain
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Look for pattern: 1 + (-tanh²(x)) i.e. 1 - tanh²(x)
+        let mut one_idx: Option<usize> = None;
+        let mut tanh2_idx: Option<usize> = None;
+        let mut tanh_arg: Option<ExprId> = None;
+        let mut is_negative_tanh2 = false;
+
+        for (i, &term) in terms.iter().enumerate() {
+            // Check for literal 1
+            if let Expr::Number(n) = ctx.get(term) {
+                if *n == num_rational::BigRational::from_integer(1.into()) {
+                    one_idx = Some(i);
+                    continue;
+                }
+            }
+            // Check for -tanh²(x)
+            if let Expr::Neg(inner) = ctx.get(term) {
+                if let Expr::Pow(base, exp) = ctx.get(*inner) {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        if *n == num_rational::BigRational::from_integer(2.into()) {
+                            if let Expr::Function(fname, args) = ctx.get(*base) {
+                                if fname == "tanh" && args.len() == 1 {
+                                    tanh2_idx = Some(i);
+                                    tanh_arg = Some(args[0]);
+                                    is_negative_tanh2 = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // If we found 1 and -tanh²(x), replace with 1/cosh²(x)
+        if let (Some(one_i), Some(tanh_i), Some(arg)) = (one_idx, tanh2_idx, tanh_arg) {
+            if is_negative_tanh2 {
+                let cosh_func = ctx.add(Expr::Function("cosh".to_string(), vec![arg]));
+                let two = ctx.num(2);
+                let cosh_squared = ctx.add(Expr::Pow(cosh_func, two));
+                let one = ctx.num(1);
+                let sech_squared = ctx.add(Expr::Div(one, cosh_squared));
+
+                // Build new expression
+                let mut new_terms: Vec<ExprId> = Vec::new();
+                for (j, &t) in terms.iter().enumerate() {
+                    if j != one_i && j != tanh_i {
+                        new_terms.push(t);
+                    }
+                }
+                new_terms.push(sech_squared);
+
+                let result = if new_terms.len() == 1 {
+                    new_terms[0]
+                } else {
+                    let mut acc = new_terms[0];
+                    for &t in new_terms.iter().skip(1) {
+                        acc = ctx.add(Expr::Add(acc, t));
+                    }
+                    acc
+                };
+
+                return Some(Rewrite::new(result).desc("1 - tanh²(x) = 1/cosh²(x)"));
+            }
+        }
+
+        None
+    }
+);
+
+// =============================================================================
+// HyperbolicHalfAngleSquaresRule: cosh(x/2)² → (cosh(x)+1)/2, sinh(x/2)² → (cosh(x)-1)/2
+// =============================================================================
+
+define_rule!(
+    HyperbolicHalfAngleSquaresRule,
+    "Hyperbolic Half-Angle Squares",
+    |ctx, expr| {
+        if let Expr::Pow(base, exp) = ctx.get(expr) {
+            // Check if exponent is 2
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n != num_rational::BigRational::from_integer(2.into()) {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+
+            // Check if base is cosh(x/2) or sinh(x/2)
+            if let Expr::Function(name, args) = ctx.get(*base) {
+                if (name == "cosh" || name == "sinh") && args.len() == 1 {
+                    let func_name = name.clone(); // Clone to avoid borrow conflict
+                    let arg = args[0];
+
+                    // Check if argument is x/2 or (1/2)*x
+                    let full_angle = match ctx.get(arg) {
+                        Expr::Div(num, den) => {
+                            if let Expr::Number(d) = ctx.get(*den) {
+                                if *d == num_rational::BigRational::from_integer(2.into()) {
+                                    Some(*num)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                        Expr::Mul(l, r) => {
+                            let half = num_rational::BigRational::new(1.into(), 2.into());
+                            if let Expr::Number(n) = ctx.get(*l) {
+                                if *n == half {
+                                    Some(*r)
+                                } else {
+                                    None
+                                }
+                            } else if let Expr::Number(n) = ctx.get(*r) {
+                                if *n == half {
+                                    Some(*l)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+
+                    if let Some(x) = full_angle {
+                        let cosh_x = ctx.add(Expr::Function("cosh".to_string(), vec![x]));
+                        let one = ctx.num(1);
+                        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+                            1.into(),
+                            2.into(),
+                        )));
+
+                        if func_name == "cosh" {
+                            // cosh(x/2)² → (cosh(x)+1)/2
+                            let sum = ctx.add(Expr::Add(cosh_x, one));
+                            let result = ctx.add(Expr::Mul(half, sum));
+                            return Some(Rewrite::new(result).desc("cosh²(x/2) = (cosh(x)+1)/2"));
+                        } else {
+                            // sinh(x/2)² → (cosh(x)-1)/2
+                            let diff = ctx.add(Expr::Sub(cosh_x, one));
+                            let result = ctx.add(Expr::Mul(half, diff));
+                            return Some(Rewrite::new(result).desc("sinh²(x/2) = (cosh(x)-1)/2"));
+                        }
+                    }
+                }
+            }
+        }
         None
     }
 );
