@@ -2550,10 +2550,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                 "other"
             };
 
-            family_examples
-                .entry(family)
-                .or_insert_with(Vec::new)
-                .push(expr_pair);
+            family_examples.entry(family).or_default().push(expr_pair);
         }
 
         if !family_examples.is_empty() {
