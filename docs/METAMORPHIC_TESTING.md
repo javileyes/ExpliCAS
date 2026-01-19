@@ -448,9 +448,51 @@ METATEST_LEGACY_BUCKET=unconditional cargo test ...
 # Pequeño (CI)
 cargo test metatest_csv_combinations_small
 
+cargo test -p cas_engine --test metamorphic_simplification_tests metatest_csv_combinations_small -- --nocapture 2>&1
+
 # Completo
 cargo test metatest_csv_combinations_full --ignored
+
+cargo test -p cas_engine --test metamorphic_simplification_tests metatest_csv_combinations_full -- --nocapture --ignored 2>&1
 ```
+
+#### Modo Verbose para Combinaciones
+
+Para ver **qué combinaciones pasan solo numéricamente** (no simbólicamente):
+
+```bash
+# Ver 10 ejemplos de combinaciones numeric-only
+METATEST_VERBOSE=1 cargo test -p cas_engine --test metamorphic_simplification_tests metatest_csv_combinations_small -- --nocapture
+
+# Ver más ejemplos (hasta 50)
+METATEST_VERBOSE=1 METATEST_MAX_EXAMPLES=50 cargo test -p cas_engine --test metamorphic_simplification_tests metatest_csv_combinations_full -- --nocapture --ignored
+```
+
+**Variables de entorno:**
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `METATEST_VERBOSE` | (desactivado) | Activa la lista de ejemplos numeric-only |
+| `METATEST_MAX_EXAMPLES` | `10` | Número máximo de ejemplos a mostrar |
+
+**Output ejemplo:**
+
+```
+✅ Double combinations: 435 passed (199 symbolic, 236 numeric-only), 0 failed
+
+🔢 Numeric-only combination examples (METATEST_VERBOSE=1):
+    1. LHS: (sin(x)^2 + cos(x)^2) + (tan(u)^2 + 1)
+       RHS: (1) + (sec(u)^2)
+       (simplifies: 1 + sec(x)^2)
+    2. LHS: (sin(x)^2 + cos(x)^2) + (1 + cot(u)^2)
+       RHS: (1) + (csc(u)^2)
+       (simplifies: 1 + csc(x)^2)
+   ... and 226 more (set METATEST_MAX_EXAMPLES=N to show more)
+```
+
+**Interpretación:** Las combinaciones son numeric-only cuando el simplificador produce resultados
+diferentes pero matemáticamente equivalentes (ej. diferentes path de simplificación).
+Esto es normal y **no es un error** — lo importante es que `Failed = 0`.
 
 ---
 
@@ -507,6 +549,9 @@ cargo test metatest_csv_combinations_full --ignored
 | `METATEST_LEGACY_BUCKET` | `unconditional`/`conditional_requires` | `conditional_requires` | Bucket para CSV 4-col |
 | `METATEST_SNAPSHOT` | `0`/`1` | `0` | Compara resultados vs baseline |
 | `METATEST_UPDATE_BASELINE` | `0`/`1` | `0` | Regenera archivo baseline |
+| `METATEST_VERBOSE` | `0`/`1` | `0` | Muestra ejemplos de combinaciones numeric-only |
+| `METATEST_MAX_EXAMPLES` | número | `10` | Máximos ejemplos numeric-only a mostrar |
+
 ---
 
 ## Sistema de Baseline JSONL (Regresión Tracking)

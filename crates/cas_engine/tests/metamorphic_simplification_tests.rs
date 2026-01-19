@@ -2355,10 +2355,18 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
 
     eprintln!("📊 Running CSV combination tests with {} pairs", n);
 
+    // Verbose mode: show numeric-only examples
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let max_numeric_examples = std::env::var("METATEST_MAX_EXAMPLES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+
     let mut passed = 0;
     let mut failed = 0;
     let mut symbolic_passed = 0;
     let mut numeric_only_passed = 0;
+    let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
 
     // Double combinations: all pairs of different identities
     for i in 0..n {
@@ -2411,6 +2419,16 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                 if result.is_ok() {
                     numeric_only_passed += 1;
                     passed += 1;
+
+                    // Collect example for verbose output
+                    if verbose && numeric_only_examples.len() < max_numeric_examples {
+                        numeric_only_examples.push((
+                            combined_exp.clone(),
+                            combined_simp.clone(),
+                            pair1.simp.clone(),
+                            pair2.simp.clone(),
+                        ));
+                    }
                 } else {
                     failed += 1;
                     if failed <= 5 {
@@ -2425,6 +2443,23 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
         "✅ Double combinations: {} passed ({} symbolic, {} numeric-only), {} failed",
         passed, symbolic_passed, numeric_only_passed, failed
     );
+
+    // Print numeric-only examples if verbose
+    if verbose && !numeric_only_examples.is_empty() {
+        eprintln!("\n🔢 Numeric-only combination examples (METATEST_VERBOSE=1):");
+        for (i, (lhs, rhs, simp1, simp2)) in numeric_only_examples.iter().enumerate() {
+            eprintln!("   {:2}. LHS: {}", i + 1, lhs);
+            eprintln!("       RHS: {}", rhs);
+            eprintln!("       (simplifies: {} + {})", simp1, simp2);
+        }
+        if numeric_only_passed > max_numeric_examples {
+            eprintln!(
+                "   ... and {} more (set METATEST_MAX_EXAMPLES=N to show more)",
+                numeric_only_passed - max_numeric_examples
+            );
+        }
+        eprintln!();
+    }
 
     // Triple combinations (optional, limited)
     if include_triples && n >= 3 {
