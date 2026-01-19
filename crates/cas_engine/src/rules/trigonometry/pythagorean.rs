@@ -418,6 +418,28 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// CotToCosSinRule: cot(x) → cos(x)/sin(x) (canonical expansion)
+// =============================================================================
+// This ensures cot unifies with cos/sin forms for csc²-cot²=1 simplification.
+
+define_rule!(
+    CotToCosSinRule,
+    "Cotangent to Cosine over Sine",
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "cot" && args.len() == 1 {
+                let arg = args[0];
+                let cos_func = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                let sin_func = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                let result = ctx.add(Expr::Div(cos_func, sin_func));
+                return Some(Rewrite::new(result).desc("cot(x) = cos(x)/sin(x)"));
+            }
+        }
+        None
+    }
+);
+
 /// Check if (c_term, trig_term) matches the pattern k - k*trig²(x) = k*other²(x)
 /// where trig is sin or cos, and other is the complementary function.
 fn check_pythagorean_pattern(

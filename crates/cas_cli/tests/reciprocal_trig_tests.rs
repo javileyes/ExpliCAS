@@ -225,10 +225,14 @@ fn test_nested_with_negatives() {
 
 #[test]
 fn test_mixed_with_basic_trig() {
-    // This one might not fully simplify, just check it doesn't crash
+    // cot(x) + tan(x) = cos/sin + sin/cos = 1/(sin·cos)
+    // This is the mathematically correct simplified form
     let result = simplify_str("cot(x) + tan(x)");
     assert!(
-        result.contains("cot") || result.contains("tan"),
-        "Mixed reciprocal and basic trig should retain function calls"
+        result.contains("cot")
+            || result.contains("tan")
+            || result.contains("cos") && result.contains("sin"),
+        "Mixed reciprocal and basic trig should simplify to sin/cos form, got: {}",
+        result
     );
 }

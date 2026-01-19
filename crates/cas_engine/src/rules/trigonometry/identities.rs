@@ -3755,6 +3755,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Expansion: sec(x) → 1/cos(x), csc(x) → 1/sin(x) for canonical unification
     simplifier.add_rule(Box::new(super::pythagorean::SecToRecipCosRule));
     simplifier.add_rule(Box::new(super::pythagorean::CscToRecipSinRule));
+    // Expansion: cot(x) → cos(x)/sin(x) for canonical unification
+    simplifier.add_rule(Box::new(super::pythagorean::CotToCosSinRule));
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
 
