@@ -54,6 +54,9 @@ pub struct PatternMarks {
     /// Global flag: true if the expression contains a tan difference identity pattern.
     /// When true, ALL tan→sin/cos expansions are blocked to allow IdentityZeroRule to fire.
     pub has_tan_identity_pattern: bool,
+    /// Global flag: true if the expression contains sin(4t) - 4*sin(t)*cos(t)*(cos²-sin²) pattern.
+    /// When true, distribution of a*(b-c)→ab-ac is blocked for sin/cos products to allow Sin4xIdentityZeroRule to fire.
+    pub has_sin4x_identity_pattern: bool,
 }
 
 impl PatternMarks {
@@ -68,6 +71,7 @@ impl PatternMarks {
             tan_triple_product_protected: HashSet::new(),
             identity_cancellation_protected: HashSet::new(),
             has_tan_identity_pattern: false,
+            has_sin4x_identity_pattern: false,
         }
     }
 

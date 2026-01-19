@@ -54,6 +54,7 @@ fn scan_recursive(ctx: &Context, root: ExprId, marks: &mut PatternMarks) {
         check_and_mark_sum_quotient_pattern(ctx, expr_id, marks);
         check_and_mark_tan_triple_product_pattern(ctx, expr_id, marks);
         check_and_mark_tan_difference_identity_pattern(ctx, expr_id, marks);
+        check_and_mark_sin4x_identity_pattern(ctx, expr_id, marks);
     }
 }
 
@@ -680,6 +681,256 @@ fn matches_one_plus_tan_product(ctx: &Context, expr: ExprId, a: ExprId, b: ExprI
         && crate::ordering::compare_expr(ctx, arg2, a) == std::cmp::Ordering::Equal;
 
     match1 || match2
+}
+
+/// Detect sin(4t) - 4*sin(t)*cos(t)*(cos(t)^2-sin(t)^2) patterns.
+/// Sets has_sin4x_identity_pattern to true so DistributeRule won't distribute,
+/// allowing Sin4xIdentityZeroRule to fire.
+fn check_and_mark_sin4x_identity_pattern(ctx: &Context, expr_id: ExprId, marks: &mut PatternMarks) {
+    // Only check Sub nodes or Add with negation (a + (-b) form)
+    let (left, right) = match ctx.get(expr_id) {
+        Expr::Sub(l, r) => (*l, *r),
+        Expr::Add(l, r) => {
+            if let Expr::Neg(inner) = ctx.get(*r) {
+                (*l, *inner)
+            } else if let Expr::Neg(inner) = ctx.get(*l) {
+                (*r, *inner)
+            } else {
+                return;
+            }
+        }
+        _ => return,
+    };
+
+    // Try both orderings: sin(4t) - RHS or RHS - sin(4t)
+    if try_match_sin4x_identity(ctx, left, right, marks) {
+        return;
+    }
+    try_match_sin4x_identity(ctx, right, left, marks);
+}
+
+/// Try to match sin(4t) on lhs and 4*sin(t)*cos(t)*(cos²-sin²) on rhs
+fn try_match_sin4x_identity(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    marks: &mut PatternMarks,
+) -> bool {
+    // LHS should be sin(4*t)
+    let Expr::Function(name, args) = ctx.get(lhs) else {
+        return false;
+    };
+    if name != "sin" || args.len() != 1 {
+        return false;
+    }
+    let sin_arg = args[0];
+
+    // Check if arg is 4*t
+    let t = match ctx.get(sin_arg) {
+        Expr::Mul(l, r) => {
+            let l = *l;
+            let r = *r;
+            if let Expr::Number(n) = ctx.get(l) {
+                if *n == num_rational::BigRational::from_integer(4.into()) {
+                    r
+                } else {
+                    return false;
+                }
+            } else if let Expr::Number(n) = ctx.get(r) {
+                if *n == num_rational::BigRational::from_integer(4.into()) {
+                    l
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        _ => return false,
+    };
+
+    // RHS should be 4*sin(t)*cos(t)*(cos(t)^2 - sin(t)^2)
+    // Flatten multiplication to get factors
+    let mut factors = Vec::new();
+    let mut stack = vec![rhs];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Mul(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            _ => factors.push(id),
+        }
+    }
+
+    // Look for: 4, sin(t), cos(t), (cos(t)^2 - sin(t)^2) or cos(2t)
+    let mut has_four = false;
+    let mut has_sin_t = false;
+    let mut has_cos_t = false;
+    let mut has_diff_squares = false;
+
+    for &factor in &factors {
+        // Check for 4
+        if let Expr::Number(n) = ctx.get(factor) {
+            if *n == num_rational::BigRational::from_integer(4.into()) {
+                has_four = true;
+                continue;
+            }
+        }
+        // Check for sin(t) or cos(t)
+        if let Expr::Function(fn_name, fn_args) = ctx.get(factor) {
+            if fn_name == "sin" && fn_args.len() == 1 {
+                if crate::ordering::compare_expr(ctx, fn_args[0], t) == std::cmp::Ordering::Equal {
+                    has_sin_t = true;
+                    continue;
+                }
+            }
+            if fn_name == "cos" && fn_args.len() == 1 {
+                if crate::ordering::compare_expr(ctx, fn_args[0], t) == std::cmp::Ordering::Equal {
+                    has_cos_t = true;
+                    continue;
+                }
+                // Also check for cos(2t) which equals cos²-sin²
+                if let Expr::Mul(cl, cr) = ctx.get(fn_args[0]) {
+                    let cl = *cl;
+                    let cr = *cr;
+                    let is_2t = if let Expr::Number(n) = ctx.get(cl) {
+                        *n == num_rational::BigRational::from_integer(2.into())
+                            && crate::ordering::compare_expr(ctx, cr, t)
+                                == std::cmp::Ordering::Equal
+                    } else if let Expr::Number(n) = ctx.get(cr) {
+                        *n == num_rational::BigRational::from_integer(2.into())
+                            && crate::ordering::compare_expr(ctx, cl, t)
+                                == std::cmp::Ordering::Equal
+                    } else {
+                        false
+                    };
+                    if is_2t {
+                        has_diff_squares = true;
+                        continue;
+                    }
+                }
+            }
+        }
+        // Check for cos²(t) - sin²(t) or equivalent forms
+        if let Expr::Sub(sl, sr) = ctx.get(factor) {
+            let sl = *sl;
+            let sr = *sr;
+            // Standard: cos²(t) - sin²(t)
+            if is_cos_squared_t(ctx, sl, t) && is_sin_squared_t(ctx, sr, t) {
+                has_diff_squares = true;
+                continue;
+            }
+            // Alternate: 2·cos²(t) - 1 (also equals cos(2t))
+            if is_2cos_sq_minus_1(ctx, sl, sr, t) {
+                has_diff_squares = true;
+                continue;
+            }
+            // Alternate: 1 - 2·sin²(t) (also equals cos(2t))
+            if is_1_minus_2sin_sq(ctx, sl, sr, t) {
+                has_diff_squares = true;
+                continue;
+            }
+        }
+    }
+
+    if has_four && has_sin_t && has_cos_t && has_diff_squares {
+        marks.has_sin4x_identity_pattern = true;
+        return true;
+    }
+    false
+}
+
+fn is_sin_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if *n == num_rational::BigRational::from_integer(2.into()) {
+                if let Expr::Function(name, args) = ctx.get(*base) {
+                    if name == "sin" && args.len() == 1 {
+                        return crate::ordering::compare_expr(ctx, args[0], t)
+                            == std::cmp::Ordering::Equal;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn is_cos_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if *n == num_rational::BigRational::from_integer(2.into()) {
+                if let Expr::Function(name, args) = ctx.get(*base) {
+                    if name == "cos" && args.len() == 1 {
+                        return crate::ordering::compare_expr(ctx, args[0], t)
+                            == std::cmp::Ordering::Equal;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Check if lhs - rhs matches 2·cos²(t) - 1
+fn is_2cos_sq_minus_1(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> bool {
+    // rhs should be 1
+    if let Expr::Number(n) = ctx.get(rhs) {
+        if *n != num_rational::BigRational::from_integer(1.into()) {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    // lhs should be 2*cos²(t)
+    if let Expr::Mul(ml, mr) = ctx.get(lhs) {
+        let ml = *ml;
+        let mr = *mr;
+        // Check for 2 * cos²(t)
+        if let Expr::Number(n) = ctx.get(ml) {
+            if *n == num_rational::BigRational::from_integer(2.into()) {
+                return is_cos_squared_t(ctx, mr, t);
+            }
+        }
+        if let Expr::Number(n) = ctx.get(mr) {
+            if *n == num_rational::BigRational::from_integer(2.into()) {
+                return is_cos_squared_t(ctx, ml, t);
+            }
+        }
+    }
+    false
+}
+
+/// Check if lhs - rhs matches 1 - 2·sin²(t)
+fn is_1_minus_2sin_sq(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> bool {
+    // lhs should be 1
+    if let Expr::Number(n) = ctx.get(lhs) {
+        if *n != num_rational::BigRational::from_integer(1.into()) {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    // rhs should be 2*sin²(t)
+    if let Expr::Mul(ml, mr) = ctx.get(rhs) {
+        let ml = *ml;
+        let mr = *mr;
+        // Check for 2 * sin²(t)
+        if let Expr::Number(n) = ctx.get(ml) {
+            if *n == num_rational::BigRational::from_integer(2.into()) {
+                return is_sin_squared_t(ctx, mr, t);
+            }
+        }
+        if let Expr::Number(n) = ctx.get(mr) {
+            if *n == num_rational::BigRational::from_integer(2.into()) {
+                return is_sin_squared_t(ctx, ml, t);
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]

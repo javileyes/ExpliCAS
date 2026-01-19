@@ -43,6 +43,13 @@ define_rule!(
             return None;
         }
 
+        // GUARD: Block distribution when sin(4x) identity pattern is detected
+        // This allows Sin4xIdentityZeroRule to see 4*sin(t)*cos(t)*(cos²-sin²) as a single product
+        if let Some(marks) = parent_ctx.pattern_marks() {
+            if marks.has_sin4x_identity_pattern {
+                return None;
+            }
+        }
         // Use zero-clone destructuring pattern
         let (l, r) = crate::helpers::as_mul(ctx, expr)?;
 

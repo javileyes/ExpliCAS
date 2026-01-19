@@ -2467,6 +2467,14 @@ define_rule!(
             return None;
         }
 
+        // GUARD: Don't expand when sin(4x) identity pattern is detected
+        // This allows Sin4xIdentityZeroRule to see 4*sin*cos*cos(2t) intact
+        if let Some(marks) = parent_ctx.pattern_marks() {
+            if marks.has_sin4x_identity_pattern {
+                return None;
+            }
+        }
+
         if let Expr::Function(name, args) = ctx.get(expr) {
             if args.len() == 1 {
                 // Check if arg is 2*x or x*2
@@ -2529,6 +2537,14 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
+        // GUARD: Don't contract when sin(4x) identity pattern is detected
+        // This preserves 4*sin*cos*(cos²-sin²) for Sin4xIdentityZeroRule
+        if let Some(marks) = _parent_ctx.pattern_marks() {
+            if marks.has_sin4x_identity_pattern {
+                return None;
+            }
+        }
+
         // Pattern 1: 2·sin(t)·cos(t) → sin(2t)
         // Matches Mul(2, Mul(sin(t), cos(t))) or Mul(Mul(2, sin(t)), cos(t)) etc.
         if let Expr::Mul(l, r) = ctx.get(expr).clone() {
@@ -3357,6 +3373,11 @@ define_rule!(
         // GUARD 1: Skip if this trig function is marked for protection
         if let Some(marks) = parent_ctx.pattern_marks() {
             if marks.is_sum_quotient_protected(expr) {
+                return None;
+            }
+            // GUARD 1b: Skip if sin(4x) identity pattern detected
+            // This prevents sin(4*t) from expanding before Sin4xIdentityZeroRule can fire
+            if marks.has_sin4x_identity_pattern {
                 return None;
             }
         }
