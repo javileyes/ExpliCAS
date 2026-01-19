@@ -1495,6 +1495,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RationalizeLinearSqrtDenRule));
     // Rationalize sum of sqrts: 1/(sqrt(p)+sqrt(q)) → (sqrt(p)-sqrt(q))/(p-q)
     simplifier.add_rule(Box::new(RationalizeSumOfSqrtsDenRule));
+    // Rationalize cube root: 1/(1+u^(1/3)) → (1-u^(1/3)+u^(2/3))/(1+u)
+    simplifier.add_rule(Box::new(CubeRootDenRationalizeRule));
 }
 
 define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
@@ -1824,3 +1826,123 @@ define_rule!(
         Some(Rewrite::new(result).desc("Rationalize: (sqrt(p)±sqrt(q)) multiply by conjugate"))
     }
 );
+
+// =============================================================================
+// CubeRootDenRationalizeRule: k/(1+u^(1/3)) → k*(1-u^(1/3)+u^(2/3))/(1+u)
+// =============================================================================
+// Uses the sum of cubes identity: 1 + r³ = (1 + r)(1 - r + r²)
+// So: 1/(1+r) = (1-r+r²)/(1+r³)
+// With r = u^(1/3), r³ = u
+//
+// Similarly for difference: 1 - r³ = (1 - r)(1 + r + r²)
+// So: 1/(1-r) = (1+r+r²)/(1-r³)
+//
+// Examples:
+//   1/(1+u^(1/3)) → (1-u^(1/3)+u^(2/3))/(1+u)
+//   1/(1-u^(1/3)) → (1+u^(1/3)+u^(2/3))/(1-u)
+// =============================================================================
+define_rule!(
+    CubeRootDenRationalizeRule,
+    "Rationalize Cube Root Denominator",
+    |ctx, expr| {
+        // Match Div(num, Add/Sub with 1 and cube root)
+        let (numerator, denominator) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            _ => return None,
+        };
+
+        // Parse denominator as 1 ± u^(1/3)
+        let (cbrt_base, is_plus) = match ctx.get(denominator).clone() {
+            Expr::Add(l, r) => {
+                // 1 + r or r + 1
+                if is_one(ctx, l) {
+                    if let Some(base) = extract_cbrt_arg(ctx, r) {
+                        (base, true)
+                    } else {
+                        return None;
+                    }
+                } else if is_one(ctx, r) {
+                    if let Some(base) = extract_cbrt_arg(ctx, l) {
+                        (base, true)
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            }
+            Expr::Sub(l, r) => {
+                // 1 - r
+                if is_one(ctx, l) {
+                    if let Some(base) = extract_cbrt_arg(ctx, r) {
+                        (base, false) // 1 - r
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // Build the rationalization factor
+        // For 1+r: factor is (1 - r + r²)
+        // For 1-r: factor is (1 + r + r²)
+        let one = ctx.num(1);
+        let one_third = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            3.into(),
+        )));
+        let two_thirds = ctx.add(Expr::Number(num_rational::BigRational::new(
+            2.into(),
+            3.into(),
+        )));
+
+        let r = ctx.add(Expr::Pow(cbrt_base, one_third)); // u^(1/3)
+        let r_squared = ctx.add(Expr::Pow(cbrt_base, two_thirds)); // u^(2/3)
+
+        let factor = if is_plus {
+            // 1 - r + r² = (1 - r) + r² = 1 + r² - r
+            let one_minus_r = ctx.add(Expr::Sub(one, r));
+            ctx.add(Expr::Add(one_minus_r, r_squared))
+        } else {
+            // 1 + r + r² = (1 + r) + r²
+            let one_plus_r = ctx.add(Expr::Add(one, r));
+            ctx.add(Expr::Add(one_plus_r, r_squared))
+        };
+
+        // New numerator: original_num * factor
+        let new_num = ctx.add(Expr::Mul(numerator, factor));
+
+        // New denominator: 1 ± u (since r³ = u)
+        let one2 = ctx.num(1);
+        let new_den = if is_plus {
+            ctx.add(Expr::Add(one2, cbrt_base)) // 1 + u
+        } else {
+            ctx.add(Expr::Sub(one2, cbrt_base)) // 1 - u
+        };
+
+        let result = ctx.add(Expr::Div(new_num, new_den));
+
+        Some(Rewrite::new(result).desc("Rationalize: cube root denominator via sum of cubes"))
+    }
+);
+
+/// Check if expression is the number 1
+fn is_one(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_one())
+}
+
+/// Extract the base from a cube root expression (Pow(t, 1/3))
+fn extract_cbrt_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            let one_third = num_rational::BigRational::new(1.into(), 3.into());
+            if *n == one_third {
+                return Some(*base);
+            }
+        }
+    }
+    None
+}
