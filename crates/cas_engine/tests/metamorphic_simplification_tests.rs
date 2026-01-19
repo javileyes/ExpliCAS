@@ -2515,55 +2515,65 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
         }
         eprintln!();
 
-        // Family classifier for numeric-only cases
-        let mut family_counts: HashMap<String, usize> = HashMap::new();
+        // Family classifier for numeric-only cases - stores expressions per family
+        let mut family_examples: HashMap<&str, Vec<(String, String)>> = HashMap::new();
+
         for (lhs, rhs, _, _) in &numeric_only_examples {
             let combined = format!("{} {}", lhs, rhs);
-            // Detect function families
-            if combined.contains("sec") || combined.contains("csc") {
-                *family_counts
-                    .entry("sec/csc (reciprocal trig)".to_string())
-                    .or_insert(0) += 1;
-            }
-            if combined.contains("tan(") && !combined.contains("arctan") {
-                *family_counts.entry("tan".to_string()).or_insert(0) += 1;
-            }
-            if combined.contains("cot(") {
-                *family_counts.entry("cot".to_string()).or_insert(0) += 1;
-            }
-            if combined.contains("sin(") && (combined.contains("/2") || combined.contains("*2")) {
-                *family_counts
-                    .entry("half/double angle".to_string())
-                    .or_insert(0) += 1;
-            }
-            if combined.contains("ln(") || combined.contains("log(") {
-                *family_counts.entry("ln/log".to_string()).or_insert(0) += 1;
-            }
-            if combined.contains("exp(") {
-                *family_counts.entry("exp".to_string()).or_insert(0) += 1;
-            }
-            if combined.contains("sqrt(") || combined.contains("^(1/") {
-                *family_counts.entry("sqrt/roots".to_string()).or_insert(0) += 1;
-            }
-            if combined.contains("abs(") {
-                *family_counts.entry("abs".to_string()).or_insert(0) += 1;
-            }
-            if combined.contains("arctan")
+            let expr_pair = (lhs.clone(), rhs.clone());
+
+            // Detect function families (mutually exclusive for cleaner grouping)
+            let family = if combined.contains("sec") || combined.contains("csc") {
+                "sec/csc (Pythagorean: tan²+1=sec², 1+cot²=csc²)"
+            } else if combined.contains("tan(") && !combined.contains("arctan") {
+                "tan (without sec/csc)"
+            } else if combined.contains("cot(") {
+                "cot (without csc)"
+            } else if combined.contains("sin(")
+                && (combined.contains("/2") || combined.contains("*2"))
+            {
+                "half/double angle"
+            } else if combined.contains("ln(") || combined.contains("log(") {
+                "ln/log"
+            } else if combined.contains("exp(") {
+                "exp"
+            } else if combined.contains("sqrt(") || combined.contains("^(1/") {
+                "sqrt/roots"
+            } else if combined.contains("abs(") {
+                "abs"
+            } else if combined.contains("arctan")
                 || combined.contains("arcsin")
                 || combined.contains("arccos")
             {
-                *family_counts
-                    .entry("arc* (inverse trig)".to_string())
-                    .or_insert(0) += 1;
-            }
+                "arc* (inverse trig)"
+            } else {
+                "other"
+            };
+
+            family_examples
+                .entry(family)
+                .or_insert_with(Vec::new)
+                .push(expr_pair);
         }
 
-        if !family_counts.is_empty() {
-            eprintln!("📊 Numeric-only family breakdown (overlapping):");
-            let mut sorted: Vec<_> = family_counts.into_iter().collect();
-            sorted.sort_by(|a, b| b.1.cmp(&a.1));
-            for (family, count) in sorted {
-                eprintln!("   {:3} × {}", count, family);
+        if !family_examples.is_empty() {
+            eprintln!("📊 Numeric-only grouped by family:");
+
+            // Sort families by count
+            let mut sorted: Vec<_> = family_examples.into_iter().collect();
+            sorted.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+            for (family, examples) in sorted {
+                eprintln!("\n   ── {} ({} cases) ──", family, examples.len());
+                let show_count = examples.len().min(max_examples.max(3)); // Show at least 3
+                for (lhs, rhs) in examples.iter().take(show_count) {
+                    eprintln!("      LHS: {}", lhs);
+                    eprintln!("      RHS: {}", rhs);
+                    eprintln!();
+                }
+                if examples.len() > show_count {
+                    eprintln!("      ... and {} more", examples.len() - show_count);
+                }
             }
             eprintln!();
         }
