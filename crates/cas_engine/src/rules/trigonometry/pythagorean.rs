@@ -177,6 +177,247 @@ fn extract_trig_squared(
     None
 }
 
+// =============================================================================
+// RecognizeSecSquaredRule: 1 + tan²(x) → sec²(x) (contraction to canonical form)
+// =============================================================================
+// This is the CANONICAL direction - contracting to sec² is "simpler" (fewer nodes).
+// The reverse (expansion) should NOT be done in generic mode to avoid worsen.
+
+define_rule!(
+    RecognizeSecSquaredRule,
+    "Recognize Secant Squared",
+    |ctx, expr| {
+        // Flatten the additive chain
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Look for pattern: 1 + tan²(x)
+        let mut one_idx: Option<usize> = None;
+        let mut tan2_idx: Option<usize> = None;
+        let mut tan_arg: Option<ExprId> = None;
+
+        for (i, &term) in terms.iter().enumerate() {
+            // Check for literal 1
+            if let Expr::Number(n) = ctx.get(term) {
+                if *n == num_rational::BigRational::from_integer(1.into()) {
+                    one_idx = Some(i);
+                    continue;
+                }
+            }
+            // Check for tan²(x)
+            if let Some((func_name, arg, coef)) = extract_tan_or_cot_squared(ctx, term) {
+                let one = num_rational::BigRational::from_integer(1.into());
+                if func_name == "tan" && coef == one {
+                    tan2_idx = Some(i);
+                    tan_arg = Some(arg);
+                }
+            }
+        }
+
+        // If we found both 1 and tan²(x), replace with sec²(x)
+        if let (Some(one_i), Some(tan_i), Some(arg)) = (one_idx, tan2_idx, tan_arg) {
+            let sec_func = ctx.add(Expr::Function("sec".to_string(), vec![arg]));
+            let two = ctx.num(2);
+            let sec_squared = ctx.add(Expr::Pow(sec_func, two));
+
+            // Build new expression with the pair removed and sec²(x) added
+            let mut new_terms: Vec<ExprId> = Vec::new();
+            for (j, &t) in terms.iter().enumerate() {
+                if j != one_i && j != tan_i {
+                    new_terms.push(t);
+                }
+            }
+            new_terms.push(sec_squared);
+
+            // Build result as sum
+            let result = if new_terms.len() == 1 {
+                new_terms[0]
+            } else {
+                let mut acc = new_terms[0];
+                for &t in new_terms.iter().skip(1) {
+                    acc = ctx.add(Expr::Add(acc, t));
+                }
+                acc
+            };
+
+            return Some(Rewrite::new(result).desc("1 + tan²(x) = sec²(x)"));
+        }
+
+        None
+    }
+);
+
+// =============================================================================
+// RecognizeCscSquaredRule: 1 + cot²(x) → csc²(x) (contraction to canonical form)
+// =============================================================================
+
+define_rule!(
+    RecognizeCscSquaredRule,
+    "Recognize Cosecant Squared",
+    |ctx, expr| {
+        // Flatten the additive chain
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Look for pattern: 1 + cot²(x)
+        let mut one_idx: Option<usize> = None;
+        let mut cot2_idx: Option<usize> = None;
+        let mut cot_arg: Option<ExprId> = None;
+
+        for (i, &term) in terms.iter().enumerate() {
+            // Check for literal 1
+            if let Expr::Number(n) = ctx.get(term) {
+                if *n == num_rational::BigRational::from_integer(1.into()) {
+                    one_idx = Some(i);
+                    continue;
+                }
+            }
+            // Check for cot²(x)
+            if let Some((func_name, arg, coef)) = extract_tan_or_cot_squared(ctx, term) {
+                let one = num_rational::BigRational::from_integer(1.into());
+                if func_name == "cot" && coef == one {
+                    cot2_idx = Some(i);
+                    cot_arg = Some(arg);
+                }
+            }
+        }
+
+        // If we found both 1 and cot²(x), replace with csc²(x)
+        if let (Some(one_i), Some(cot_i), Some(arg)) = (one_idx, cot2_idx, cot_arg) {
+            let csc_func = ctx.add(Expr::Function("csc".to_string(), vec![arg]));
+            let two = ctx.num(2);
+            let csc_squared = ctx.add(Expr::Pow(csc_func, two));
+
+            // Build new expression with the pair removed and csc²(x) added
+            let mut new_terms: Vec<ExprId> = Vec::new();
+            for (j, &t) in terms.iter().enumerate() {
+                if j != one_i && j != cot_i {
+                    new_terms.push(t);
+                }
+            }
+            new_terms.push(csc_squared);
+
+            // Build result as sum
+            let result = if new_terms.len() == 1 {
+                new_terms[0]
+            } else {
+                let mut acc = new_terms[0];
+                for &t in new_terms.iter().skip(1) {
+                    acc = ctx.add(Expr::Add(acc, t));
+                }
+                acc
+            };
+
+            return Some(Rewrite::new(result).desc("1 + cot²(x) = csc²(x)"));
+        }
+
+        None
+    }
+);
+
+/// Extract (function_name, argument, coefficient) from tan²(t) or cot²(t) terms.
+fn extract_tan_or_cot_squared(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(String, ExprId, num_rational::BigRational)> {
+    use num_rational::BigRational;
+    use num_traits::One;
+
+    let mut coef = BigRational::one();
+    let mut working = term;
+
+    // Handle Neg wrapper
+    if let Expr::Neg(inner) = ctx.get(term) {
+        coef = -coef;
+        working = *inner;
+    }
+
+    // Check direct Pow(trig, 2)
+    if let Expr::Pow(base, exp) = ctx.get(working) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if *n == BigRational::from_integer(2.into()) {
+                if let Expr::Function(name, args) = ctx.get(*base) {
+                    if (name == "tan" || name == "cot") && args.len() == 1 {
+                        return Some((name.clone(), args[0], coef));
+                    }
+                }
+            }
+        }
+    }
+
+    // Check Mul(k, Pow(trig, 2)) or Mul(Pow(trig, 2), k)
+    if let Expr::Mul(l, r) = ctx.get(working) {
+        for (maybe_coef, maybe_pow) in [(*l, *r), (*r, *l)] {
+            if let Expr::Number(n) = ctx.get(maybe_coef) {
+                if let Expr::Pow(base, exp) = ctx.get(maybe_pow) {
+                    if let Expr::Number(e) = ctx.get(*exp) {
+                        if *e == BigRational::from_integer(2.into()) {
+                            if let Expr::Function(name, args) = ctx.get(*base) {
+                                if (name == "tan" || name == "cot") && args.len() == 1 {
+                                    return Some((name.clone(), args[0], coef * n.clone()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+// =============================================================================
+// SecToRecipCosRule: sec(x) → 1/cos(x) (canonical expansion)
+// =============================================================================
+// This ensures sec unifies with 1/cos forms from tan²+1 simplification.
+
+define_rule!(
+    SecToRecipCosRule,
+    "Secant to Reciprocal Cosine",
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "sec" && args.len() == 1 {
+                let arg = args[0];
+                let cos_func = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                let one = ctx.num(1);
+                let result = ctx.add(Expr::Div(one, cos_func));
+                return Some(Rewrite::new(result).desc("sec(x) = 1/cos(x)"));
+            }
+        }
+        None
+    }
+);
+
+// =============================================================================
+// CscToRecipSinRule: csc(x) → 1/sin(x) (canonical expansion)
+// =============================================================================
+
+define_rule!(
+    CscToRecipSinRule,
+    "Cosecant to Reciprocal Sine",
+    |ctx, expr| {
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if name == "csc" && args.len() == 1 {
+                let arg = args[0];
+                let sin_func = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                let one = ctx.num(1);
+                let result = ctx.add(Expr::Div(one, sin_func));
+                return Some(Rewrite::new(result).desc("csc(x) = 1/sin(x)"));
+            }
+        }
+        None
+    }
+);
+
 /// Check if (c_term, trig_term) matches the pattern k - k*trig²(x) = k*other²(x)
 /// where trig is sin or cos, and other is the complementary function.
 fn check_pythagorean_pattern(

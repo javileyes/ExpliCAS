@@ -3749,6 +3749,12 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanSimplifyRule));
     // N-ary Pythagorean: sin²(t) + cos²(t) → 1 in chains of any length
     simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanChainRule));
+    // Contraction: 1 + tan²(x) → sec²(x), 1 + cot²(x) → csc²(x)
+    simplifier.add_rule(Box::new(super::pythagorean::RecognizeSecSquaredRule));
+    simplifier.add_rule(Box::new(super::pythagorean::RecognizeCscSquaredRule));
+    // Expansion: sec(x) → 1/cos(x), csc(x) → 1/sin(x) for canonical unification
+    simplifier.add_rule(Box::new(super::pythagorean::SecToRecipCosRule));
+    simplifier.add_rule(Box::new(super::pythagorean::CscToRecipSinRule));
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
 
