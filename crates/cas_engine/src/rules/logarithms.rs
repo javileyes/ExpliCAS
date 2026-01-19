@@ -306,6 +306,43 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
     None
 });
 
+// =============================================================================
+// LnEDivRule: ln(x/e) → ln(x) - 1, ln(e/x) → 1 - ln(x)
+// =============================================================================
+// Companion to LnEProductRule. These are SAFE expansions because ln(e) = 1.
+// This enables residuals like `2*ln(u/e) - 2*(ln(u)-1)` to simplify to 0.
+// =============================================================================
+define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
+    // Match ln(arg)
+    if let Expr::Function(name, args) = ctx.get(expr).clone() {
+        if name != "ln" || args.len() != 1 {
+            return None;
+        }
+        let arg = args[0];
+
+        // Match Div(x, e) or Div(e, x) in the argument
+        if let Expr::Div(num, den) = ctx.get(arg).clone() {
+            let num_is_e = matches!(ctx.get(num), Expr::Constant(cas_ast::Constant::E));
+            let den_is_e = matches!(ctx.get(den), Expr::Constant(cas_ast::Constant::E));
+
+            if den_is_e && !num_is_e {
+                // ln(x/e) → ln(x) - 1
+                let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![num]));
+                let one = ctx.num(1);
+                let result = ctx.add(Expr::Sub(ln_x, one));
+                return Some(Rewrite::new(result).desc("ln(x/e) = ln(x) - 1"));
+            } else if num_is_e && !den_is_e {
+                // ln(e/x) → 1 - ln(x)
+                let one = ctx.num(1);
+                let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![den]));
+                let result = ctx.add(Expr::Sub(one, ln_x));
+                return Some(Rewrite::new(result).desc("ln(e/x) = 1 - ln(x)"));
+            }
+        }
+    }
+    None
+});
+
 /// Domain-aware expansion rule for log products/quotients.
 ///
 /// log(b, x*y) → log(b, x) + log(b, y) and log(b, x/y) → log(b, x) - log(b, y)
@@ -2041,6 +2078,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // LnEProductRule: ln(e*x) → 1 + ln(x) - safe targeted expansion
     // This enables residuals like `2*ln(e*u) - 2 - 2*ln(u)` to simplify to 0
     simplifier.add_rule(Box::new(LnEProductRule));
+    // LnEDivRule: ln(x/e) → ln(x) - 1, ln(e/x) → 1 - ln(x)
+    // Companion to LnEProductRule for quotient cases
+    simplifier.add_rule(Box::new(LnEDivRule));
 
     // NOTE: LogExpansionRule removed from auto-registration.
     // Log expansion increases node count (ln(xy) → ln(x) + ln(y)) and is not always desirable.

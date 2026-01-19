@@ -3732,6 +3732,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // sin(-u) = -sin(u), cos(-u) = cos(u), tan(-u) = -tan(u)
     simplifier.add_rule(Box::new(TrigOddEvenParityRule));
 
+    // NOTE: TrigQuotientToNamedRule and TanDoubleAngleContractionRule are defined but NOT registered
+    // They cause 9→16 numeric-only regression due to conflict with SecToRecipCosRule (ping-pong).
+    // To enable, first disable SecToRecipCosRule, CscToRecipSinRule, and TanToSinCosRule.
+
     // Use the new data-driven EvaluateTrigTableRule instead of deprecated EvaluateTrigRule
     simplifier.add_rule(Box::new(super::evaluation::EvaluateTrigTableRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
@@ -6112,6 +6116,197 @@ define_rule!(
                     };
 
                     return Some(Rewrite::new(result).desc("k·sin(t)·cos(t) = (k/2)·sin(2t)"));
+                }
+            }
+        }
+        None
+    }
+);
+
+// =============================================================================
+// TrigQuotientToNamedRule: sin(t)/cos(t) → tan(t), 1/cos(t) → sec(t), etc.
+// =============================================================================
+// Canonicalize trig quotients to named functions for better normalization.
+// This ensures that `sin(u)/cos(u)` and `tan(u)` converge to the same form.
+
+define_rule!(
+    TrigQuotientToNamedRule,
+    "Trig Quotient to Named Function",
+    |ctx, expr| {
+        if let Expr::Div(num, den) = ctx.get(expr).clone() {
+            // Pattern: 1/cos(t) → sec(t), 1/sin(t) → csc(t)
+            if let Expr::Number(n) = ctx.get(num) {
+                if n.is_one() {
+                    if let Expr::Function(name, args) = ctx.get(den).clone() {
+                        if args.len() == 1 {
+                            let arg = args[0];
+                            let result_info = match name.as_str() {
+                                "cos" => Some(("sec", name.clone())),
+                                "sin" => Some(("csc", name.clone())),
+                                _ => None,
+                            };
+                            if let Some((rn, orig_name)) = result_info {
+                                let result = ctx.add(Expr::Function(rn.to_string(), vec![arg]));
+                                return Some(
+                                    Rewrite::new(result)
+                                        .desc(format!("1/{}(t) = {}(t)", orig_name, rn)),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Pattern: sin(t)/cos(t) → tan(t), cos(t)/sin(t) → cot(t)
+            if let (Expr::Function(num_name, num_args), Expr::Function(den_name, den_args)) =
+                (ctx.get(num).clone(), ctx.get(den).clone())
+            {
+                if num_args.len() == 1 && den_args.len() == 1 {
+                    let num_arg = num_args[0];
+                    let den_arg = den_args[0];
+
+                    // Check same argument
+                    if crate::ordering::compare_expr(ctx, num_arg, den_arg)
+                        == std::cmp::Ordering::Equal
+                    {
+                        let result_name = match (num_name.as_str(), den_name.as_str()) {
+                            ("sin", "cos") => Some("tan"),
+                            ("cos", "sin") => Some("cot"),
+                            _ => None,
+                        };
+                        if let Some(rn) = result_name {
+                            let result = ctx.add(Expr::Function(rn.to_string(), vec![num_arg]));
+                            return Some(
+                                Rewrite::new(result)
+                                    .desc(format!("{}/{}(t) = {}(t)", num_name, den_name, rn)),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+// =============================================================================
+// TanDoubleAngleContractionRule: 2*tan(t)/(1 - tan(t)²) → tan(2*t)
+// =============================================================================
+// This contracts the expanded tan(2t) form back to the double angle form.
+// Prevents the engine from creating deeply nested fractions when tan²(t)
+// appears in denominators.
+
+define_rule!(
+    TanDoubleAngleContractionRule,
+    "Tan Double Angle Contraction",
+    |ctx, expr| {
+        // Match Div(numerator, denominator)
+        if let Expr::Div(num, den) = ctx.get(expr).clone() {
+            // Numerator should be 2*tan(t) (or tan(t)*2)
+            let tan_arg = if let Expr::Mul(l, r) = ctx.get(num).clone() {
+                let (coeff, tan_part) = if let Expr::Number(n) = ctx.get(l) {
+                    if *n == num_rational::BigRational::from_integer(2.into()) {
+                        (true, r)
+                    } else {
+                        (false, l) // dummy
+                    }
+                } else if let Expr::Number(n) = ctx.get(r) {
+                    if *n == num_rational::BigRational::from_integer(2.into()) {
+                        (true, l)
+                    } else {
+                        (false, l) // dummy
+                    }
+                } else {
+                    (false, l) // dummy
+                };
+
+                if coeff {
+                    if let Expr::Function(name, args) = ctx.get(tan_part) {
+                        if name == "tan" && args.len() == 1 {
+                            Some(args[0])
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some(t) = tan_arg {
+                // Denominator should be 1 - tan(t)² (or equivalently: 1 + (-tan(t)²) or Sub(1, tan(t)²))
+                let den_matches = match ctx.get(den).clone() {
+                    Expr::Sub(one_part, tan2_part) => {
+                        // Check 1 - tan(t)²
+                        let one_ok = matches!(ctx.get(one_part), Expr::Number(n) if n.is_one());
+                        let tan2_ok = if let Expr::Pow(base, exp) = ctx.get(tan2_part) {
+                            let exp_is_2 = matches!(ctx.get(*exp), Expr::Number(n)
+                                if *n == num_rational::BigRational::from_integer(2.into()));
+                            if exp_is_2 {
+                                if let Expr::Function(name, args) = ctx.get(*base) {
+                                    name == "tan"
+                                        && args.len() == 1
+                                        && crate::ordering::compare_expr(ctx, args[0], t)
+                                            == std::cmp::Ordering::Equal
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+                        one_ok && tan2_ok
+                    }
+                    Expr::Add(l, r) => {
+                        // Check 1 + (-tan(t)²) i.e. 1 + Neg(...)
+                        let (one_part, neg_part) = if matches!(ctx.get(l), Expr::Number(n) if n.is_one())
+                        {
+                            (l, r)
+                        } else if matches!(ctx.get(r), Expr::Number(n) if n.is_one()) {
+                            (r, l)
+                        } else {
+                            return None;
+                        };
+                        let _ = one_part;
+
+                        if let Expr::Neg(inner) = ctx.get(neg_part) {
+                            if let Expr::Pow(base, exp) = ctx.get(*inner) {
+                                let exp_is_2 = matches!(ctx.get(*exp), Expr::Number(n)
+                                    if *n == num_rational::BigRational::from_integer(2.into()));
+                                if exp_is_2 {
+                                    if let Expr::Function(name, args) = ctx.get(*base) {
+                                        name == "tan"
+                                            && args.len() == 1
+                                            && crate::ordering::compare_expr(ctx, args[0], t)
+                                                == std::cmp::Ordering::Equal
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
+                };
+
+                if den_matches {
+                    // Build tan(2*t)
+                    let two = ctx.num(2);
+                    let double_t = ctx.add(Expr::Mul(two, t));
+                    let result = ctx.add(Expr::Function("tan".to_string(), vec![double_t]));
+                    return Some(Rewrite::new(result).desc("2·tan(t)/(1-tan²(t)) = tan(2t)"));
                 }
             }
         }

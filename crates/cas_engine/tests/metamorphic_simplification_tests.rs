@@ -2448,14 +2448,27 @@ fn parse_branch_mode(s: &str) -> BranchMode {
 
 /// Run combination tests from CSV pairs
 fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
-    let pairs = load_identity_pairs();
+    let all_pairs = load_identity_pairs();
     let config = metatest_config();
 
-    // Limit pairs to avoid explosion
-    let pairs: Vec<_> = pairs.into_iter().take(max_pairs).collect();
+    // Offset support: METATEST_START_OFFSET=100 to skip first 100 identities
+    let start_offset = std::env::var("METATEST_START_OFFSET")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+
+    // Limit pairs to avoid explosion, starting from offset
+    let pairs: Vec<_> = all_pairs
+        .into_iter()
+        .skip(start_offset)
+        .take(max_pairs)
+        .collect();
     let n = pairs.len();
 
-    eprintln!("📊 Running CSV combination tests with {} pairs", n);
+    eprintln!(
+        "📊 Running CSV combination tests with {} pairs (offset {})",
+        n, start_offset
+    );
 
     // Verbose mode: show nf_mismatch examples
     let verbose = std::env::var("METATEST_VERBOSE").is_ok();
