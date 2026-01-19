@@ -2014,18 +2014,77 @@ define_rule!(
             return None;
         }
 
+        // Guard: Skip if one side contains roots (√a = a^(1/2)) with trivial denominator (=1)
+        // and the other side has a non-trivial fraction. This preserves structure for cancellation.
+        // Example: (√2 + √3) + 1/(u*(u+2)) should NOT become ((√2+√3)*u*(u+2) + 1) / (u*(u+2))
+        fn contains_root(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Function(name, _) if name == "sqrt" => true,
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                    contains_root(ctx, *l) || contains_root(ctx, *r)
+                }
+                Expr::Neg(e) => contains_root(ctx, *e),
+                Expr::Pow(_, exp) => {
+                    // Fractional exponent = root
+                    match ctx.get(*exp) {
+                        Expr::Number(n) => {
+                            !n.is_integer()
+                                && n.abs() < num_rational::BigRational::from_integer(1.into())
+                        }
+                        Expr::Div(_, _) => true,
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        fn is_trivial_denom(ctx: &Context, d: ExprId) -> bool {
+            matches!(ctx.get(d), Expr::Number(n) if n.is_one())
+        }
+
+        // Block: (√a + ...) + p/q where √a has den=1 and q is non-trivial
+        let l_has_root_trivial = !is_frac1 && contains_root(ctx, l);
+        let r_has_root_trivial = !is_frac2 && contains_root(ctx, r);
+        let l_has_real_frac = is_frac1 && !is_trivial_denom(ctx, d1);
+        let r_has_real_frac = is_frac2 && !is_trivial_denom(ctx, d2);
+
+        if (l_has_root_trivial && r_has_real_frac) || (r_has_root_trivial && l_has_real_frac) {
+            return None;
+        }
+
         // Check if d2 = -d1 or d2 == d1 (semantic comparison for cross-tree equality)
         let (n2, d2, opposite_denom, same_denom) = {
             // Use semantic comparison: denominators from different subexpressions may have same value but different ExprIds
             let cmp = crate::ordering::compare_expr(ctx, d1, d2);
             if d1 == d2 || cmp == Ordering::Equal {
                 (n2, d2, false, true)
-            } else if are_denominators_opposite(ctx, d1, d2) {
-                // Convert d2 -> d1, n2 -> -n2
-                let minus_n2 = ctx.add(Expr::Neg(n2));
-                (minus_n2, d1, true, false)
             } else {
-                (n2, d2, false, false)
+                // Algebraic check: expand and compare (catches u*(u+2) == u²+2u)
+                // Only do this if denominators look like polynomials (contain Mul/Add/Pow)
+                let worth_expanding = |id: ExprId| {
+                    matches!(
+                        ctx.get(id),
+                        Expr::Mul(_, _) | Expr::Add(_, _) | Expr::Sub(_, _)
+                    )
+                };
+                let algebraically_equal = if worth_expanding(d1) || worth_expanding(d2) {
+                    let d1_exp = crate::expand::expand(ctx, d1);
+                    let d2_exp = crate::expand::expand(ctx, d2);
+                    crate::ordering::compare_expr(ctx, d1_exp, d2_exp) == Ordering::Equal
+                } else {
+                    false
+                };
+
+                if algebraically_equal {
+                    (n2, d2, false, true) // same denom algebraically
+                } else if are_denominators_opposite(ctx, d1, d2) {
+                    // Convert d2 -> d1, n2 -> -n2
+                    let minus_n2 = ctx.add(Expr::Neg(n2));
+                    (minus_n2, d1, true, false)
+                } else {
+                    (n2, d2, false, false)
+                }
             }
         };
 
