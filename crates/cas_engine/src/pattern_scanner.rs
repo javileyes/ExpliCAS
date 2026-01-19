@@ -779,19 +779,21 @@ fn try_match_sin4x_identity(
         }
         // Check for sin(t) or cos(t)
         if let Expr::Function(fn_name, fn_args) = ctx.get(factor) {
-            if fn_name == "sin" && fn_args.len() == 1 {
-                if crate::ordering::compare_expr(ctx, fn_args[0], t) == std::cmp::Ordering::Equal {
-                    has_sin_t = true;
-                    continue;
-                }
+            if fn_name == "sin"
+                && fn_args.len() == 1
+                && crate::ordering::compare_expr(ctx, fn_args[0], t) == std::cmp::Ordering::Equal
+            {
+                has_sin_t = true;
+                continue;
             }
             if fn_name == "cos" && fn_args.len() == 1 {
-                if crate::ordering::compare_expr(ctx, fn_args[0], t) == std::cmp::Ordering::Equal {
+                let arg = fn_args[0];
+                if crate::ordering::compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal {
                     has_cos_t = true;
                     continue;
                 }
                 // Also check for cos(2t) which equals cos²-sin²
-                if let Expr::Mul(cl, cr) = ctx.get(fn_args[0]) {
+                if let Expr::Mul(cl, cr) = ctx.get(arg) {
                     let cl = *cl;
                     let cr = *cr;
                     let is_2t = if let Expr::Number(n) = ctx.get(cl) {
