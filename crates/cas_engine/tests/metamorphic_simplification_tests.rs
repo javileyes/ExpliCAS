@@ -2372,7 +2372,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     let mut proved_symbolic = 0;
     let mut numeric_only = 0;
     let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
-    let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
+    let mut numeric_only_examples: Vec<(String, String, String, String, String)> = Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual)
 
     // Double combinations: all pairs of different identities
     for i in 0..n {
@@ -2453,11 +2453,15 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
 
                         // Collect numeric-only example for verbose output (all, for classifier)
                         if verbose {
+                            // Get the diff residual string using Format trait
+                            use cas_format::Format;
+                            let diff_str = diff_simplified.to_latex(&simplifier.context);
                             numeric_only_examples.push((
                                 combined_exp.clone(),
                                 combined_simp.clone(),
                                 pair1.simp.clone(),
                                 pair2.simp.clone(),
+                                diff_str,
                             ));
                         }
                     } else {
@@ -2500,12 +2504,12 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     // Print numeric-only examples if verbose
     if verbose && !numeric_only_examples.is_empty() {
         eprintln!("🌡️ Numeric-only examples (no symbolic proof found):");
-        for (i, (lhs, rhs, simp1, simp2)) in
+        for (i, (lhs, rhs, _simp1, _simp2, diff_residual)) in
             numeric_only_examples.iter().take(max_examples).enumerate()
         {
             eprintln!("   {:2}. LHS: {}", i + 1, lhs);
             eprintln!("       RHS: {}", rhs);
-            eprintln!("       (simplifies: {} + {})", simp1, simp2);
+            eprintln!("       simplify(LHS-RHS): {}", diff_residual);
         }
         if numeric_only > max_examples {
             eprintln!(
@@ -2518,7 +2522,7 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
         // Family classifier for numeric-only cases - stores expressions per family
         let mut family_examples: HashMap<&str, Vec<(String, String)>> = HashMap::new();
 
-        for (lhs, rhs, _, _) in &numeric_only_examples {
+        for (lhs, rhs, _, _, _) in &numeric_only_examples {
             let combined = format!("{} {}", lhs, rhs);
             let expr_pair = (lhs.clone(), rhs.clone());
 

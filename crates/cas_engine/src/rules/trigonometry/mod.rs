@@ -18,7 +18,8 @@ pub use identities::*;
 pub use pythagorean::{
     CotToCosSinRule, CscToRecipSinRule, RecognizeCscSquaredRule, RecognizeSecSquaredRule,
     SecToRecipCosRule, TrigEvenPowerDifferenceRule, TrigPythagoreanChainRule,
-    TrigPythagoreanGenericCoefficientRule, TrigPythagoreanSimplifyRule,
+    TrigPythagoreanGenericCoefficientRule, TrigPythagoreanLinearFoldRule,
+    TrigPythagoreanLocalCollectFoldRule, TrigPythagoreanSimplifyRule,
 };
 pub use values::{detect_special_angle, lookup_trig_value, SpecialAngle, TrigValue};
 pub use weierstrass::{ReverseWeierstrassRule, WeierstrassSubstitutionRule};

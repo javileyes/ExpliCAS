@@ -310,7 +310,453 @@ fn extract_all_trig_squared_candidates(
     results
 }
 
-/// Extract (function_name, argument, coefficient) from sin²(t) or cos²(t) terms.
+// =============================================================================
+// TrigPythagoreanLinearFoldRule: a·sin²(t) + b·cos²(t) + c → (a-b)·sin²(t) + (b+c)
+// =============================================================================
+// Uses the identity sin²(t) + cos²(t) = 1 to reduce linear combinations.
+// Example: cos²(u) + 2·sin²(u) - 1 → sin²(u)
+// This handles cases where we have both sin² and cos² of the same argument
+// with numeric coefficients.
+
+define_rule!(
+    TrigPythagoreanLinearFoldRule,
+    "Pythagorean Linear Fold",
+    |ctx, expr| {
+        use num_rational::BigRational;
+        use num_traits::{One, Zero};
+
+        // Flatten the additive chain
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Find sin²(t) and cos²(t) terms with NUMERIC coefficients and the same argument
+        // We collect: (arg, is_sin, coef, term_index)
+        let mut trig_sq_terms: Vec<(ExprId, bool, BigRational, usize)> = Vec::new();
+        let mut numeric_constant: BigRational = BigRational::zero();
+        let mut constant_indices: Vec<usize> = Vec::new();
+
+        for (i, &term) in terms.iter().enumerate() {
+            // Check for numeric constant
+            if let Expr::Number(n) = ctx.get(term) {
+                numeric_constant += n.clone();
+                constant_indices.push(i);
+                continue;
+            }
+
+            // Check for Neg(Number)
+            if let Expr::Neg(inner) = ctx.get(term) {
+                if let Expr::Number(n) = ctx.get(*inner) {
+                    numeric_constant -= n.clone();
+                    constant_indices.push(i);
+                    continue;
+                }
+            }
+
+            // Try to extract sin²(t) or cos²(t) with numeric coefficient
+            if let Some((func_name, arg, coef)) = extract_trig_squared(ctx, term) {
+                let is_sin = func_name == "sin";
+                trig_sq_terms.push((arg, is_sin, coef, i));
+            }
+        }
+
+        // Look for pairs: sin²(t) and cos²(t) with same argument
+        for i in 0..trig_sq_terms.len() {
+            for j in (i + 1)..trig_sq_terms.len() {
+                let (arg_i, is_sin_i, coef_i, idx_i) = &trig_sq_terms[i];
+                let (arg_j, is_sin_j, coef_j, idx_j) = &trig_sq_terms[j];
+
+                // Must have same argument
+                if crate::ordering::compare_expr(ctx, *arg_i, *arg_j) != std::cmp::Ordering::Equal {
+                    continue;
+                }
+
+                // Must be different functions (one sin², one cos²)
+                if is_sin_i == is_sin_j {
+                    continue;
+                }
+
+                // Identify which is sin and which is cos
+                let (sin_coef, cos_coef, sin_idx, cos_idx) = if *is_sin_i {
+                    (coef_i.clone(), coef_j.clone(), *idx_i, *idx_j)
+                } else {
+                    (coef_j.clone(), coef_i.clone(), *idx_j, *idx_i)
+                };
+
+                let arg = *arg_i;
+
+                // Apply the transformation: a·sin²(t) + b·cos²(t) + c → (a-b)·sin²(t) + (b+c)
+                // where a = sin_coef, b = cos_coef, c = numeric_constant
+                let a_minus_b = &sin_coef - &cos_coef;
+                let b_plus_c = &cos_coef + &numeric_constant;
+
+                // Only apply if this reduces complexity:
+                // - Original: sin² term + cos² term + constant (if present)
+                // - New: (a-b)·sin² + (b+c)
+                // Reduction: we eliminate one trig² term
+                //
+                // Cases where we should apply:
+                // - a == b: sin² term disappears, result is just (b+c)
+                // - b + c == 0: constant term disappears, result is (a-b)·sin²
+                //
+                // Cases where we should NOT apply:
+                // - a != b AND b+c != 0: just rearranging, not reducing (e.g., sin²-cos² → 2sin²-1)
+                if !a_minus_b.is_zero() && !b_plus_c.is_zero() {
+                    continue;
+                }
+
+                // Build the new expression
+                let mut new_terms: Vec<ExprId> = Vec::new();
+
+                // Add terms that are NOT sin²(arg), cos²(arg), or numeric constants
+                for (k, &t) in terms.iter().enumerate() {
+                    if k == sin_idx || k == cos_idx || constant_indices.contains(&k) {
+                        continue;
+                    }
+                    new_terms.push(t);
+                }
+
+                // Add (a-b)·sin²(t) if non-zero
+                if !a_minus_b.is_zero() {
+                    let sin_t = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                    let two = ctx.num(2);
+                    let sin_sq = ctx.add(Expr::Pow(sin_t, two));
+
+                    let result_term = if a_minus_b.is_one() {
+                        sin_sq
+                    } else if a_minus_b == -BigRational::one() {
+                        ctx.add(Expr::Neg(sin_sq))
+                    } else {
+                        let coef_expr = ctx.add(Expr::Number(a_minus_b.clone()));
+                        ctx.add(Expr::Mul(coef_expr, sin_sq))
+                    };
+                    new_terms.push(result_term);
+                }
+
+                // Add (b+c) constant if non-zero
+                if !b_plus_c.is_zero() {
+                    let const_expr = ctx.add(Expr::Number(b_plus_c.clone()));
+                    new_terms.push(const_expr);
+                }
+
+                // Build result
+                let result = if new_terms.is_empty() {
+                    ctx.num(0)
+                } else if new_terms.len() == 1 {
+                    new_terms[0]
+                } else {
+                    let mut acc = new_terms[0];
+                    for &t in new_terms.iter().skip(1) {
+                        acc = ctx.add(Expr::Add(acc, t));
+                    }
+                    acc
+                };
+
+                return Some(Rewrite::new(result).desc("a·sin²+b·cos²+c = (a-b)·sin²+(b+c)"));
+            }
+        }
+
+        None
+    }
+);
+
+// =============================================================================
+// TrigPythagoreanLocalCollectFoldRule: k·R·sin²(t) + R·cos²(t) - R → (k-1)·R·sin²(t)
+// =============================================================================
+// Finds triplets in Add n-ary where:
+// - Two terms share a common residual factor R multiplied by sin²(t) and cos²(t)
+// - A third term is -R (or c·R where c allows folding)
+// Example: 2·cos(x)²·sin(u)² + cos(u)²·cos(x)² - cos(x)² → cos(x)²·sin(u)²
+
+define_rule!(
+    TrigPythagoreanLocalCollectFoldRule,
+    "Pythagorean Local Collect Fold",
+    |ctx, expr| {
+        use num_rational::BigRational;
+        use num_traits::{One, Zero};
+
+        // Flatten the additive chain
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        if terms.len() < 3 {
+            return None;
+        }
+
+        // Extract decompositions: (term_index, is_sin, arg, numeric_coef, residual_factors)
+        // Use multi-candidate to handle terms with multiple trig² factors
+        let mut decompositions: Vec<(usize, bool, ExprId, BigRational, Vec<ExprId>)> = Vec::new();
+        // Pure residuals for -R matching: (index, factors, coef)
+        let mut pure_residuals: Vec<(usize, Vec<ExprId>, BigRational)> = Vec::new();
+
+        for (i, &term) in terms.iter().enumerate() {
+            // Get ALL possible decompositions from this term
+            for decomp in decompose_term_with_residual_multi(ctx, term) {
+                decompositions.push((i, decomp.0, decomp.1, decomp.2, decomp.3));
+            }
+            if let Some((factors, coef)) = extract_as_product(ctx, term) {
+                pure_residuals.push((i, factors, coef));
+            }
+        }
+
+        // Find triplets: sin² term + cos² term + residual term
+        for (sin_idx, is_sin, sin_arg, sin_coef, sin_residual) in decompositions.iter() {
+            if !is_sin {
+                continue;
+            } // Must be sin² term
+
+            for (cos_idx, is_cos_sin, cos_arg, cos_coef, cos_residual) in decompositions.iter() {
+                if sin_idx == cos_idx {
+                    continue;
+                }
+                if *is_cos_sin {
+                    continue;
+                } // Must be cos² term
+
+                // Same argument
+                if crate::ordering::compare_expr(ctx, *sin_arg, *cos_arg)
+                    != std::cmp::Ordering::Equal
+                {
+                    continue;
+                }
+
+                // Same residual (sorted)
+                let mut sin_res_sorted = sin_residual.clone();
+                let mut cos_res_sorted = cos_residual.clone();
+                sin_res_sorted.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
+                cos_res_sorted.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
+
+                if sin_res_sorted.len() != cos_res_sorted.len() {
+                    continue;
+                }
+                if !sin_res_sorted
+                    .iter()
+                    .zip(cos_res_sorted.iter())
+                    .all(|(a, b)| {
+                        crate::ordering::compare_expr(ctx, *a, *b) == std::cmp::Ordering::Equal
+                    })
+                {
+                    continue;
+                }
+
+                // Look for matching -R term
+                for (res_idx, res_factors, res_coef) in pure_residuals.iter() {
+                    if res_idx == sin_idx || res_idx == cos_idx {
+                        continue;
+                    }
+
+                    let mut res_sorted = res_factors.clone();
+                    res_sorted.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
+
+                    if res_sorted.len() != sin_res_sorted.len() {
+                        continue;
+                    }
+                    if !res_sorted.iter().zip(sin_res_sorted.iter()).all(|(a, b)| {
+                        crate::ordering::compare_expr(ctx, *a, *b) == std::cmp::Ordering::Equal
+                    }) {
+                        continue;
+                    }
+
+                    // Apply: a·sin²+b·cos²+c = (a-b)·sin²+(b+c)
+                    let a_minus_b = sin_coef - cos_coef;
+                    let b_plus_c = cos_coef + res_coef;
+
+                    // Only proceed if b+c = 0 (reduces to single term) or a-b = 0 (reduces to constant)
+                    if !b_plus_c.is_zero() && !a_minus_b.is_zero() {
+                        continue;
+                    }
+
+                    // Build result
+                    let mut new_terms: Vec<ExprId> = Vec::new();
+                    for (k, &t) in terms.iter().enumerate() {
+                        if k != *sin_idx && k != *cos_idx && k != *res_idx {
+                            new_terms.push(t);
+                        }
+                    }
+
+                    if !a_minus_b.is_zero() {
+                        let sin_t = ctx.add(Expr::Function("sin".to_string(), vec![*sin_arg]));
+                        let two = ctx.num(2);
+                        let sin_sq = ctx.add(Expr::Pow(sin_t, two));
+
+                        let residual = if sin_residual.is_empty() {
+                            sin_sq
+                        } else {
+                            let mut r = sin_residual[0];
+                            for &f in sin_residual.iter().skip(1) {
+                                r = ctx.add(Expr::Mul(r, f));
+                            }
+                            ctx.add(Expr::Mul(r, sin_sq))
+                        };
+
+                        let result_term = if a_minus_b.is_one() {
+                            residual
+                        } else if a_minus_b == -BigRational::one() {
+                            ctx.add(Expr::Neg(residual))
+                        } else {
+                            let coef_expr = ctx.add(Expr::Number(a_minus_b.clone()));
+                            ctx.add(Expr::Mul(coef_expr, residual))
+                        };
+                        new_terms.push(result_term);
+                    }
+
+                    let result = if new_terms.is_empty() {
+                        ctx.num(0)
+                    } else if new_terms.len() == 1 {
+                        new_terms[0]
+                    } else {
+                        let mut acc = new_terms[0];
+                        for &t in new_terms.iter().skip(1) {
+                            acc = ctx.add(Expr::Add(acc, t));
+                        }
+                        acc
+                    };
+
+                    return Some(Rewrite::new(result).desc("k·R·sin²+R·cos²-R = (k-1)·R·sin²"));
+                }
+            }
+        }
+
+        None
+    }
+);
+
+/// Multi-candidate version: returns ALL possible (is_sin, arg, numeric_coef, residual_factors)
+/// decompositions from a term with potentially multiple trig² factors.
+/// For example, `2·cos(x)²·sin(u)²` generates:
+///   - (false, x, 2, [sin(u)²]) - treating cos(x)² as the main trig
+///   - (true, u, 2, [cos(x)²]) - treating sin(u)² as the main trig
+fn decompose_term_with_residual_multi(
+    ctx: &Context,
+    term: ExprId,
+) -> Vec<(bool, ExprId, num_rational::BigRational, Vec<ExprId>)> {
+    use num_rational::BigRational;
+    use num_traits::One;
+
+    let mut factors = Vec::new();
+    let mut stack = vec![term];
+    let mut is_negated = false;
+
+    if let Expr::Neg(inner) = ctx.get(term) {
+        is_negated = true;
+        stack = vec![*inner];
+    }
+
+    while let Some(curr) = stack.pop() {
+        match ctx.get(curr) {
+            Expr::Mul(l, r) => {
+                stack.push(*r);
+                stack.push(*l);
+            }
+            Expr::Neg(inner) => {
+                is_negated = !is_negated;
+                stack.push(*inner);
+            }
+            _ => factors.push(curr),
+        }
+    }
+
+    // Find ALL trig² factors (sin²/cos² with any argument)
+    let mut trig_indices: Vec<(usize, bool, ExprId)> = Vec::new(); // (index, is_sin, arg)
+
+    for (i, &f) in factors.iter().enumerate() {
+        if let Expr::Pow(base, exp) = ctx.get(f) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n == BigRational::from_integer(2.into()) {
+                    if let Expr::Function(name, args) = ctx.get(*base) {
+                        if args.len() == 1 && (name == "sin" || name == "cos") {
+                            trig_indices.push((i, name == "sin", args[0]));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Generate one candidate for each trig² factor
+    let mut results = Vec::new();
+    let base_numeric_coef: BigRational = if is_negated {
+        -BigRational::one()
+    } else {
+        BigRational::one()
+    };
+
+    for (trig_idx, is_sin, arg) in trig_indices {
+        let mut numeric_coef = base_numeric_coef.clone();
+        let mut residual: Vec<ExprId> = Vec::new();
+
+        for (i, &f) in factors.iter().enumerate() {
+            if i == trig_idx {
+                continue;
+            }
+            if let Expr::Number(n) = ctx.get(f) {
+                numeric_coef *= n.clone();
+            } else {
+                residual.push(f);
+            }
+        }
+
+        results.push((is_sin, arg, numeric_coef, residual));
+    }
+
+    // Cap at 6 candidates to avoid blow-up
+    results.truncate(6);
+    results
+}
+
+/// Extract term as product of factors with numeric coefficient
+fn extract_as_product(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(Vec<ExprId>, num_rational::BigRational)> {
+    use num_rational::BigRational;
+    use num_traits::One;
+
+    let mut factors = Vec::new();
+    let mut stack = vec![term];
+    let mut is_negated = false;
+
+    if let Expr::Neg(inner) = ctx.get(term) {
+        is_negated = true;
+        stack = vec![*inner];
+    }
+
+    while let Some(curr) = stack.pop() {
+        match ctx.get(curr) {
+            Expr::Mul(l, r) => {
+                stack.push(*r);
+                stack.push(*l);
+            }
+            Expr::Neg(inner) => {
+                is_negated = !is_negated;
+                stack.push(*inner);
+            }
+            _ => factors.push(curr),
+        }
+    }
+
+    let mut numeric_coef = BigRational::one();
+    let mut non_numeric: Vec<ExprId> = Vec::new();
+
+    for &f in &factors {
+        if let Expr::Number(n) = ctx.get(f) {
+            numeric_coef *= n.clone();
+        } else {
+            non_numeric.push(f);
+        }
+    }
+
+    if is_negated {
+        numeric_coef = -numeric_coef;
+    }
+
+    Some((non_numeric, numeric_coef))
+}
+
+///
 /// Handles: sin(t)^2, cos(t)^2, k*sin(t)^2, k*cos(t)^2
 fn extract_trig_squared(
     ctx: &Context,

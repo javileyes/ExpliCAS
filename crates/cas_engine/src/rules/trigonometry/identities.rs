@@ -3793,6 +3793,12 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(
         super::pythagorean::TrigPythagoreanGenericCoefficientRule,
     ));
+    // Linear fold: a·sin²(t) + b·cos²(t) + c → (a-b)·sin²(t) + (b+c) using sin²+cos²=1
+    simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanLinearFoldRule));
+    // Local collect fold: k·R·sin²(t) + R·cos²(t) - R → (k-1)·R·sin²(t) for residual R
+    simplifier.add_rule(Box::new(
+        super::pythagorean::TrigPythagoreanLocalCollectFoldRule,
+    ));
     // Contraction: 1 + tan²(x) → sec²(x), 1 + cot²(x) → csc²(x)
     simplifier.add_rule(Box::new(super::pythagorean::RecognizeSecSquaredRule));
     simplifier.add_rule(Box::new(super::pythagorean::RecognizeCscSquaredRule));
