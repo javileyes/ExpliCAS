@@ -1501,6 +1501,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RootMergeMulRule));
     // Merge sqrt quotients: sqrt(a)/sqrt(b) → sqrt(a/b) (with requires a≥0, b>0)
     simplifier.add_rule(Box::new(RootMergeDivRule));
+    // Cancel reciprocal exponents: (u^y)^(1/y) → u (with requires u>0, y≠0)
+    simplifier.add_rule(Box::new(PowPowCancelReciprocalRule));
 }
 
 define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
@@ -2118,6 +2120,110 @@ impl crate::rule::Rule for RootMergeDivRule {
 
     fn target_types(&self) -> Option<Vec<&str>> {
         Some(vec!["Div"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
+}
+
+// =============================================================================
+// PowPowCancelReciprocalRule: (u^y)^(1/y) → u
+// =============================================================================
+// Cancels reciprocal exponents in nested powers.
+// This is valid for u > 0 and y ≠ 0 in real domain.
+//
+// Examples:
+//   (u^y)^(1/y) → u
+//   (x^n)^(1/n) → x
+//
+// Requires: u > 0 (base), y ≠ 0 (exponent)
+// =============================================================================
+pub struct PowPowCancelReciprocalRule;
+
+impl crate::rule::Rule for PowPowCancelReciprocalRule {
+    fn name(&self) -> &str {
+        "Cancel Reciprocal Exponents"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        use crate::domain::Proof;
+        use crate::helpers::{prove_nonzero, prove_positive};
+
+        // Match Pow(Pow(u, y), Div(1, y)) or Pow(Pow(u, y), exp) where exp = 1/y
+        let (inner_pow, outer_exp) = match ctx.get(expr).clone() {
+            Expr::Pow(base, exp) => (base, exp),
+            _ => return None,
+        };
+
+        // Inner must be Pow(u, y)
+        let (u, y) = match ctx.get(inner_pow).clone() {
+            Expr::Pow(base, exp) => (base, exp),
+            _ => return None,
+        };
+
+        // Outer exponent must be 1/y (either Div(1, y) or a number that equals 1/y)
+        let is_reciprocal = match ctx.get(outer_exp).clone() {
+            Expr::Div(num, den) => {
+                // Check if num is 1 and den equals y
+                let is_one = matches!(ctx.get(num), Expr::Number(n) if n.is_one());
+                let same_exp = den == y;
+                is_one && same_exp
+            }
+            Expr::Number(outer_n) => {
+                // Check if y is a number and outer_exp = 1/y
+                if let Expr::Number(y_n) = ctx.get(y) {
+                    !y_n.is_zero() && outer_n == y_n.recip()
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+
+        if !is_reciprocal {
+            return None;
+        }
+
+        // Check domain conditions
+        let vd = parent_ctx.value_domain();
+        let proof_u_pos = prove_positive(ctx, u, vd);
+        let proof_y_nonzero = prove_nonzero(ctx, y);
+
+        let mode = parent_ctx.domain_mode();
+        let can_apply = match mode {
+            crate::domain::DomainMode::Generic => true,
+            crate::domain::DomainMode::Assume => true,
+            crate::domain::DomainMode::Strict => {
+                proof_u_pos == Proof::Proven && proof_y_nonzero == Proof::Proven
+            }
+        };
+
+        if !can_apply {
+            return None;
+        }
+
+        // Result is just u
+        let mut rewrite = Rewrite::new(u).desc("(u^y)^(1/y) = u");
+
+        // Add assumptions if needed
+        if proof_u_pos != Proof::Proven {
+            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::positive(ctx, u));
+        }
+        if proof_y_nonzero != Proof::Proven {
+            rewrite = rewrite.assume(crate::assumptions::AssumptionEvent::nonzero(ctx, y));
+        }
+
+        Some(rewrite)
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Pow"])
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {
