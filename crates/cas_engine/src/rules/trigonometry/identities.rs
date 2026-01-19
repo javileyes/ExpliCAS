@@ -2503,6 +2503,205 @@ define_rule!(
     }
 );
 
+// Double Angle Contraction Rule: 2·sin(t)·cos(t) → sin(2t), cos²(t) - sin²(t) → cos(2t)
+// This is the INVERSE of DoubleAngleRule - contracts expanded forms back to double angle.
+// Essential for recognizing Weierstrass substitution identities.
+struct DoubleAngleContractionRule;
+
+impl crate::rule::Rule for DoubleAngleContractionRule {
+    fn name(&self) -> &str {
+        "Double Angle Contraction"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Pattern 1: 2·sin(t)·cos(t) → sin(2t)
+        // Matches Mul(2, Mul(sin(t), cos(t))) or Mul(Mul(2, sin(t)), cos(t)) etc.
+        if let Expr::Mul(l, r) = ctx.get(expr).clone() {
+            if let Some((sin_arg, cos_arg)) = self.extract_two_sin_cos(ctx, l, r) {
+                // Check if sin and cos have the same argument
+                if crate::ordering::compare_expr(ctx, sin_arg, cos_arg) == std::cmp::Ordering::Equal
+                {
+                    // Build sin(2*t)
+                    let two = ctx.num(2);
+                    let double_arg = ctx.add(Expr::Mul(two, sin_arg));
+                    let sin_2t = ctx.add(Expr::Function("sin".to_string(), vec![double_arg]));
+                    return Some(Rewrite::new(sin_2t).desc("2·sin(t)·cos(t) = sin(2t)"));
+                }
+            }
+        }
+
+        // Pattern 2: cos²(t) - sin²(t) → cos(2t)
+        if let Expr::Sub(l, r) = ctx.get(expr).clone() {
+            if let Some((cos_arg, sin_arg)) = self.extract_cos2_minus_sin2(ctx, l, r) {
+                // Check if cos² and sin² have the same argument
+                if crate::ordering::compare_expr(ctx, cos_arg, sin_arg) == std::cmp::Ordering::Equal
+                {
+                    // Build cos(2*t)
+                    let two = ctx.num(2);
+                    let double_arg = ctx.add(Expr::Mul(two, cos_arg));
+                    let cos_2t = ctx.add(Expr::Function("cos".to_string(), vec![double_arg]));
+                    return Some(Rewrite::new(cos_2t).desc("cos²(t) - sin²(t) = cos(2t)"));
+                }
+            }
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Mul", "Sub"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+impl DoubleAngleContractionRule {
+    /// Extract (sin_arg, cos_arg) from 2·sin(t)·cos(t) pattern
+    fn extract_two_sin_cos(
+        &self,
+        ctx: &cas_ast::Context,
+        l: ExprId,
+        r: ExprId,
+    ) -> Option<(ExprId, ExprId)> {
+        // Check all possible arrangements of 2, sin(t), cos(t)
+        let two_rat = num_rational::BigRational::from_integer(2.into());
+
+        // Case: Mul(2, Mul(sin, cos))
+        if let Expr::Number(n) = ctx.get(l) {
+            if *n == two_rat {
+                if let Expr::Mul(a, b) = ctx.get(r) {
+                    return self.extract_sin_cos_pair(ctx, *a, *b);
+                }
+            }
+        }
+
+        // Case: Mul(Mul(...), 2)
+        if let Expr::Number(n) = ctx.get(r) {
+            if *n == two_rat {
+                if let Expr::Mul(a, b) = ctx.get(l) {
+                    return self.extract_sin_cos_pair(ctx, *a, *b);
+                }
+            }
+        }
+
+        // Case: Mul(Mul(2, sin), cos) or Mul(Mul(2, cos), sin)
+        if let Expr::Mul(inner_l, inner_r) = ctx.get(l) {
+            if let Expr::Number(n) = ctx.get(*inner_l) {
+                if *n == two_rat {
+                    // inner_r is either sin or cos
+                    return self.extract_trig_and_match(ctx, *inner_r, r);
+                }
+            }
+            if let Expr::Number(n) = ctx.get(*inner_r) {
+                if *n == two_rat {
+                    return self.extract_trig_and_match(ctx, *inner_l, r);
+                }
+            }
+        }
+
+        // Case: Mul(sin, Mul(2, cos)) or similar
+        if let Expr::Mul(inner_l, inner_r) = ctx.get(r) {
+            if let Expr::Number(n) = ctx.get(*inner_l) {
+                if *n == two_rat {
+                    return self.extract_trig_and_match(ctx, *inner_r, l);
+                }
+            }
+            if let Expr::Number(n) = ctx.get(*inner_r) {
+                if *n == two_rat {
+                    return self.extract_trig_and_match(ctx, *inner_l, l);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn extract_sin_cos_pair(
+        &self,
+        ctx: &cas_ast::Context,
+        a: ExprId,
+        b: ExprId,
+    ) -> Option<(ExprId, ExprId)> {
+        // Check if a is sin and b is cos, or vice versa
+        if let Expr::Function(name_a, args_a) = ctx.get(a) {
+            if let Expr::Function(name_b, args_b) = ctx.get(b) {
+                if args_a.len() == 1 && args_b.len() == 1 {
+                    if name_a == "sin" && name_b == "cos" {
+                        return Some((args_a[0], args_b[0]));
+                    }
+                    if name_a == "cos" && name_b == "sin" {
+                        return Some((args_b[0], args_a[0]));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn extract_trig_and_match(
+        &self,
+        ctx: &cas_ast::Context,
+        trig1: ExprId,
+        trig2: ExprId,
+    ) -> Option<(ExprId, ExprId)> {
+        if let Expr::Function(name1, args1) = ctx.get(trig1) {
+            if let Expr::Function(name2, args2) = ctx.get(trig2) {
+                if args1.len() == 1 && args2.len() == 1 {
+                    if name1 == "sin" && name2 == "cos" {
+                        return Some((args1[0], args2[0]));
+                    }
+                    if name1 == "cos" && name2 == "sin" {
+                        return Some((args2[0], args1[0]));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract (cos_arg, sin_arg) from cos²(t) - sin²(t) pattern
+    fn extract_cos2_minus_sin2(
+        &self,
+        ctx: &cas_ast::Context,
+        l: ExprId,
+        r: ExprId,
+    ) -> Option<(ExprId, ExprId)> {
+        // l should be cos²(t), r should be sin²(t)
+        let two_rat = num_rational::BigRational::from_integer(2.into());
+
+        if let Expr::Pow(base_l, exp_l) = ctx.get(l) {
+            if let Expr::Number(n) = ctx.get(*exp_l) {
+                if *n == two_rat {
+                    if let Expr::Function(name_l, args_l) = ctx.get(*base_l) {
+                        if name_l == "cos" && args_l.len() == 1 {
+                            // Check r is sin²
+                            if let Expr::Pow(base_r, exp_r) = ctx.get(r) {
+                                if let Expr::Number(m) = ctx.get(*exp_r) {
+                                    if *m == two_rat {
+                                        if let Expr::Function(name_r, args_r) = ctx.get(*base_r) {
+                                            if name_r == "sin" && args_r.len() == 1 {
+                                                return Some((args_l[0], args_r[0]));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
 // This is a performance optimization to avoid recursive expansion via double-angle rules.
 // Reduces ~23 rewrites to ~3-5 for triple angle expressions.
@@ -3507,12 +3706,17 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Triple tangent product: tan(u)·tan(π/3+u)·tan(π/3-u) → tan(3u)
     // Must run BEFORE TanToSinCosRule to prevent expansion
     simplifier.add_rule(Box::new(TanTripleProductRule));
+    // Weierstrass Identity Zero Rules: MUST run BEFORE TanToSinCosRule
+    // Pattern-driven cancellation: sin(x) - 2t/(1+t²) → 0, cos(x) - (1-t²)/(1+t²) → 0
+    simplifier.add_rule(Box::new(WeierstrassSinIdentityZeroRule));
+    simplifier.add_rule(Box::new(WeierstrassCosIdentityZeroRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     // Dyadic Cos Product: 2^n·∏cos(2^k·θ) → sin(2^n·θ)/sin(θ)
     // Must run BEFORE DoubleAngleRule to recognize the pattern
     simplifier.add_rule(Box::new(DyadicCosProductToSinRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
-    // Sum-to-Product Quotient: runs BEFORE TripleAngleRule to avoid polynomial explosion
+    simplifier.add_rule(Box::new(DoubleAngleContractionRule)); // 2sin·cos→sin(2t), cos²-sin²→cos(2t)
+                                                               // Sum-to-Product Quotient: runs BEFORE TripleAngleRule to avoid polynomial explosion
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
     // Standalone Sum-to-Product: sin(A)+sin(B), cos(A)+cos(B) etc. when args are k*π
     simplifier.add_rule(Box::new(TrigSumToProductRule));
@@ -3523,6 +3727,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(TrigQuotientRule));
     // Half-Angle Tangent: (1-cos(2x))/sin(2x) → tan(x), sin(2x)/(1+cos(2x)) → tan(x)
     simplifier.add_rule(Box::new(HalfAngleTangentRule));
+    // Weierstrass Contraction: 2*tan(x/2)/(1+tan²) → sin(x), (1-tan²)/(1+tan²) → cos(x)
+    simplifier.add_rule(Box::new(WeierstrassContractionRule));
 
     // DISABLED: ProductToSumRule conflicts with AngleIdentityRule creating infinite loops
     // ProductToSumRule: 2*sin(a)*cos(b) → sin(a+b) + sin(a-b)
@@ -3541,6 +3747,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Pythagorean Identity simplification: k - k*sin² → k*cos², k - k*cos² → k*sin²
     // This rule was extracted from CancelCommonFactorsRule for pedagogical clarity
     simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanSimplifyRule));
+    // N-ary Pythagorean: sin²(t) + cos²(t) → 1 in chains of any length
+    simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanChainRule));
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
 
@@ -4444,6 +4652,515 @@ fn extract_cot_term(
     }
 
     None
+}
+
+// =============================================================================
+// WEIERSTRASS HALF-ANGLE TANGENT CONTRACTION RULES
+// =============================================================================
+// Recognize patterns with t = tan(x/2) and contract to sin(x), cos(x):
+// - 2*t / (1 + t²) → sin(x)
+// - (1 - t²) / (1 + t²) → cos(x)
+// This is the CONTRACTION direction (safe, doesn't worsen expressions)
+
+/// Helper: Check if expr is tan(arg/2) and return Some(arg), i.e. the full angle
+fn extract_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "tan" && args.len() == 1 {
+            // Check if the argument is x/2 or (1/2)*x
+            let arg = args[0];
+            // Pattern: Div(x, 2) or Mul(1/2, x) or Mul(x, 1/2)
+            match ctx.get(arg) {
+                Expr::Div(num, den) => {
+                    // x/2 pattern
+                    if let Expr::Number(n) = ctx.get(*den) {
+                        if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into())
+                        {
+                            return Some(*num); // return x (the full angle)
+                        }
+                    }
+                }
+                Expr::Mul(l, r) => {
+                    // (1/2)*x or x*(1/2) pattern
+                    let half = num_rational::BigRational::new(1.into(), 2.into());
+                    if let Expr::Number(n) = ctx.get(*l) {
+                        if *n == half {
+                            return Some(*r);
+                        }
+                    }
+                    if let Expr::Number(n) = ctx.get(*r) {
+                        if *n == half {
+                            return Some(*l);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+/// Helper: Check if expr is 1 + tan(x/2)² and return (x, tan_half_id)
+fn match_one_plus_tan_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        // Check both orders: 1 + tan²(...) or tan²(...) + 1
+        let (one_id, pow_id) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one()) {
+            (*l, *r)
+        } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_one()) {
+            (*r, *l)
+        } else {
+            return None;
+        };
+        let _ = one_id;
+
+        // Check if pow_id is tan(x/2)^2
+        if let Expr::Pow(base, exp) = ctx.get(pow_id) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
+                    if let Some(full_angle) = extract_tan_half_angle(ctx, *base) {
+                        return Some((full_angle, *base));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Helper: Check if expr is 1 - tan(x/2)² and return (x, tan_half_id)
+fn match_one_minus_tan_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    // Check Sub(1, tan²)
+    if let Expr::Sub(l, r) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n.is_one() {
+                // Check if r is tan(x/2)^2
+                if let Expr::Pow(base, exp) = ctx.get(*r) {
+                    if let Expr::Number(e) = ctx.get(*exp) {
+                        if e.is_integer() && *e == num_rational::BigRational::from_integer(2.into())
+                        {
+                            if let Some(full_angle) = extract_tan_half_angle(ctx, *base) {
+                                return Some((full_angle, *base));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Also check Add(1, Neg(tan²)) which is canonicalized form
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        let (one_id, neg_id) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one()) {
+            (*l, *r)
+        } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_one()) {
+            (*r, *l)
+        } else {
+            return None;
+        };
+        let _ = one_id;
+
+        if let Expr::Neg(inner) = ctx.get(neg_id) {
+            if let Expr::Pow(base, exp) = ctx.get(*inner) {
+                if let Expr::Number(e) = ctx.get(*exp) {
+                    if e.is_integer() && *e == num_rational::BigRational::from_integer(2.into()) {
+                        if let Some(full_angle) = extract_tan_half_angle(ctx, *base) {
+                            return Some((full_angle, *base));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+// Weierstrass Contraction Rule: 2*tan(x/2)/(1+tan²(x/2)) → sin(x)
+// and (1-tan²(x/2))/(1+tan²(x/2)) → cos(x)
+struct WeierstrassContractionRule;
+
+impl crate::rule::Rule for WeierstrassContractionRule {
+    fn name(&self) -> &str {
+        "Weierstrass Half-Angle Contraction"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        // Only match Div nodes
+        let Expr::Div(num_id, den_id) = ctx.get(expr).clone() else {
+            return None;
+        };
+
+        // Pattern 1: 2*tan(x/2) / (1 + tan²(x/2)) → sin(x)
+        // Check denominator: 1 + tan²(x/2)
+        if let Some((full_angle, tan_half)) = match_one_plus_tan_squared(ctx, den_id) {
+            // Check numerator: 2*tan(x/2)
+            if let Expr::Mul(l, r) = ctx.get(num_id) {
+                let (two_id, tan_id) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()))
+                {
+                    (*l, *r)
+                } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()))
+                {
+                    (*r, *l)
+                } else {
+                    return self.try_cos_pattern(ctx, num_id, den_id, full_angle, tan_half);
+                };
+                let _ = two_id;
+
+                // Check if tan_id is tan(x/2) with same argument
+                if let Some(tan_arg) = extract_tan_half_angle(ctx, tan_id) {
+                    if crate::ordering::compare_expr(ctx, tan_arg, full_angle)
+                        == std::cmp::Ordering::Equal
+                    {
+                        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![full_angle]));
+                        return Some(
+                            Rewrite::new(sin_x).desc("2·tan(x/2)/(1 + tan²(x/2)) = sin(x)"),
+                        );
+                    }
+                }
+            }
+
+            // Pattern 2: (1 - tan²(x/2)) / (1 + tan²(x/2)) → cos(x)
+            return self.try_cos_pattern(ctx, num_id, den_id, full_angle, tan_half);
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Div"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+impl WeierstrassContractionRule {
+    fn try_cos_pattern(
+        &self,
+        ctx: &mut cas_ast::Context,
+        num_id: ExprId,
+        den_id: ExprId,
+        _expected_angle: ExprId,
+        _expected_tan_half: ExprId,
+    ) -> Option<Rewrite> {
+        // Pattern 2: (1 - tan²(x/2)) / (1 + tan²(x/2)) → cos(x)
+        if let Some((num_angle, _num_tan_half)) = match_one_minus_tan_squared(ctx, num_id) {
+            if let Some((den_angle, _den_tan_half)) = match_one_plus_tan_squared(ctx, den_id) {
+                // Check angles are the same
+                if crate::ordering::compare_expr(ctx, num_angle, den_angle)
+                    == std::cmp::Ordering::Equal
+                {
+                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![num_angle]));
+                    return Some(
+                        Rewrite::new(cos_x).desc("(1 - tan²(x/2))/(1 + tan²(x/2)) = cos(x)"),
+                    );
+                }
+            }
+        }
+
+        None
+    }
+}
+
+// =============================================================================
+// WEIERSTRASS IDENTITY ZERO RULES (Pattern-Driven Cancellation)
+// =============================================================================
+// These rules detect the complete Weierstrass identity patterns and cancel to 0
+// directly, avoiding explosive expansion through tan→sin/cos conversion.
+//
+// sin(x) - 2*tan(x/2)/(1 + tan(x/2)²) → 0
+// cos(x) - (1 - tan(x/2)²)/(1 + tan(x/2)²) → 0
+
+/// Helper: Check if expr matches 2*tan(x/2) and return the full angle x
+fn match_two_tan_half(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let two_rat = num_rational::BigRational::from_integer(2.into());
+
+    if let Expr::Mul(l, r) = ctx.get(expr) {
+        // Check Mul(2, tan(x/2)) or Mul(tan(x/2), 2)
+        if let Expr::Number(n) = ctx.get(*l) {
+            if *n == two_rat {
+                return extract_tan_half_angle(ctx, *r);
+            }
+        }
+        if let Expr::Number(n) = ctx.get(*r) {
+            if *n == two_rat {
+                return extract_tan_half_angle(ctx, *l);
+            }
+        }
+    }
+    None
+}
+
+/// Helper: Check if expr matches 1 + tan(x/2)² and return (full_angle, tan_half_id)
+fn match_one_plus_tan_half_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        let two_rat = num_rational::BigRational::from_integer(2.into());
+
+        // Pattern: 1 + tan²(x/2) or tan²(x/2) + 1
+        let (one_candidate, pow_candidate) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one())
+        {
+            (*l, *r)
+        } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_one()) {
+            (*r, *l)
+        } else {
+            return None;
+        };
+        let _ = one_candidate;
+
+        // Check pow_candidate is tan(x/2)^2
+        if let Expr::Pow(base, exp) = ctx.get(pow_candidate) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n == two_rat {
+                    return extract_tan_half_angle(ctx, *base);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Helper: Check if expr matches 1 - tan(x/2)² and return full_angle
+fn match_one_minus_tan_half_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let two_rat = num_rational::BigRational::from_integer(2.into());
+
+    // Pattern: 1 - tan²(x/2) as Sub(1, tan²)
+    if let Expr::Sub(l, r) = ctx.get(expr) {
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n.is_one() {
+                if let Expr::Pow(base, exp) = ctx.get(*r) {
+                    if let Expr::Number(e) = ctx.get(*exp) {
+                        if *e == two_rat {
+                            return extract_tan_half_angle(ctx, *base);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Also try Add(1, Neg(tan²)) or Add(Neg(tan²), 1)
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        // 1 + (-tan²) or (-tan²) + 1
+        let (one_candidate, neg_candidate) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one())
+        {
+            (*l, *r)
+        } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_one()) {
+            (*r, *l)
+        } else {
+            return None;
+        };
+        let _ = one_candidate;
+
+        if let Expr::Neg(inner) = ctx.get(neg_candidate) {
+            if let Expr::Pow(base, exp) = ctx.get(*inner) {
+                if let Expr::Number(e) = ctx.get(*exp) {
+                    if *e == two_rat {
+                        return extract_tan_half_angle(ctx, *base);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+// WeierstrassSinIdentityZeroRule: sin(x) - 2*tan(x/2)/(1+tan²(x/2)) → 0
+// Pattern-driven cancellation, no expansion.
+struct WeierstrassSinIdentityZeroRule;
+
+impl crate::rule::Rule for WeierstrassSinIdentityZeroRule {
+    fn name(&self) -> &str {
+        "Weierstrass Sin Identity Zero"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Only match Sub nodes: sin(x) - RHS or RHS - sin(x)
+        let (left, right, negated) = match ctx.get(expr).clone() {
+            Expr::Sub(l, r) => (l, r, false),
+            Expr::Add(l, r) => {
+                // Check if one side is negated
+                if let Expr::Neg(inner) = ctx.get(r) {
+                    (l, *inner, false)
+                } else if let Expr::Neg(inner) = ctx.get(l) {
+                    (r, *inner, false)
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+        let _ = negated;
+
+        // Try both orderings: sin(x) - RHS and RHS - sin(x)
+        if let Some(result) = self.try_match(ctx, left, right) {
+            return Some(result);
+        }
+        if let Some(result) = self.try_match(ctx, right, left) {
+            return Some(result);
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Sub", "Add"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+
+    fn priority(&self) -> i32 {
+        200 // Very high - must run BEFORE Pythagorean 1+tan²→sec²
+    }
+}
+
+impl WeierstrassSinIdentityZeroRule {
+    /// Try to match sin(x) = left, RHS = right
+    fn try_match(
+        &self,
+        ctx: &mut cas_ast::Context,
+        sin_side: ExprId,
+        rhs: ExprId,
+    ) -> Option<Rewrite> {
+        // Check if sin_side is sin(x)
+        if let Expr::Function(name, args) = ctx.get(sin_side) {
+            if name != "sin" || args.len() != 1 {
+                return None;
+            }
+            let full_angle = args[0];
+
+            // Check if rhs is 2*tan(x/2) / (1 + tan²(x/2))
+            if let Expr::Div(num, den) = ctx.get(rhs) {
+                // Numerator: 2*tan(x/2)
+                if let Some(num_angle) = match_two_tan_half(ctx, *num) {
+                    // Denominator: 1 + tan²(x/2)
+                    if let Some(den_angle) = match_one_plus_tan_half_squared(ctx, *den) {
+                        // Check all angles match
+                        if crate::ordering::compare_expr(ctx, full_angle, num_angle)
+                            == std::cmp::Ordering::Equal
+                            && crate::ordering::compare_expr(ctx, full_angle, den_angle)
+                                == std::cmp::Ordering::Equal
+                        {
+                            let zero = ctx.num(0);
+                            return Some(
+                                Rewrite::new(zero)
+                                    .desc("sin(x) = 2·tan(x/2)/(1 + tan²(x/2)) [Weierstrass]"),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+// WeierstrassCosIdentityZeroRule: cos(x) - (1-tan²(x/2))/(1+tan²(x/2)) → 0
+struct WeierstrassCosIdentityZeroRule;
+
+impl crate::rule::Rule for WeierstrassCosIdentityZeroRule {
+    fn name(&self) -> &str {
+        "Weierstrass Cos Identity Zero"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Only match Sub nodes: cos(x) - RHS or RHS - cos(x)
+        let (left, right) = match ctx.get(expr).clone() {
+            Expr::Sub(l, r) => (l, r),
+            Expr::Add(l, r) => {
+                // Check if one side is negated
+                if let Expr::Neg(inner) = ctx.get(r) {
+                    (l, *inner)
+                } else if let Expr::Neg(inner) = ctx.get(l) {
+                    (r, *inner)
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        };
+
+        // Try both orderings
+        if let Some(result) = self.try_match(ctx, left, right) {
+            return Some(result);
+        }
+        if let Some(result) = self.try_match(ctx, right, left) {
+            return Some(result);
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Sub", "Add"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+
+    fn priority(&self) -> i32 {
+        200 // Very high - must run BEFORE Pythagorean 1+tan²→sec²
+    }
+}
+
+impl WeierstrassCosIdentityZeroRule {
+    /// Try to match cos(x) = cos_side, RHS = rhs
+    fn try_match(
+        &self,
+        ctx: &mut cas_ast::Context,
+        cos_side: ExprId,
+        rhs: ExprId,
+    ) -> Option<Rewrite> {
+        // Check if cos_side is cos(x)
+        if let Expr::Function(name, args) = ctx.get(cos_side) {
+            if name != "cos" || args.len() != 1 {
+                return None;
+            }
+            let full_angle = args[0];
+
+            // Check if rhs is (1 - tan²(x/2)) / (1 + tan²(x/2))
+            if let Expr::Div(num, den) = ctx.get(rhs) {
+                // Numerator: 1 - tan²(x/2)
+                if let Some(num_angle) = match_one_minus_tan_half_squared(ctx, *num) {
+                    // Denominator: 1 + tan²(x/2)
+                    if let Some(den_angle) = match_one_plus_tan_half_squared(ctx, *den) {
+                        // Check all angles match
+                        if crate::ordering::compare_expr(ctx, full_angle, num_angle)
+                            == std::cmp::Ordering::Equal
+                            && crate::ordering::compare_expr(ctx, full_angle, den_angle)
+                                == std::cmp::Ordering::Equal
+                        {
+                            let zero = ctx.num(0);
+                            return Some(
+                                Rewrite::new(zero)
+                                    .desc("cos(x) = (1 - tan²(x/2))/(1 + tan²(x/2)) [Weierstrass]"),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 define_rule!(

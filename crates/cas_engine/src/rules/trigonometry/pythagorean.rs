@@ -43,6 +43,140 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// TrigPythagoreanChainRule: sin²(t) + cos²(t) → 1 (n-ary)
+// =============================================================================
+// Searches for sin²(t) and cos²(t) pairs with matching arguments in an additive
+// chain of ANY length and replaces the pair with 1.
+// This enables simplifications like: cos²(x/2) + sin²(x/2) - 1 → 0
+
+define_rule!(
+    TrigPythagoreanChainRule,
+    "Pythagorean Chain Identity",
+    |ctx, expr| {
+        // Flatten the additive chain
+        let mut terms = Vec::new();
+        crate::helpers::flatten_add(ctx, expr, &mut terms);
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Collect sin² and cos² terms with their (argument, index, coefficient)
+        let mut sin2_terms: Vec<(ExprId, usize, num_rational::BigRational)> = Vec::new();
+        let mut cos2_terms: Vec<(ExprId, usize, num_rational::BigRational)> = Vec::new();
+
+        for (i, &term) in terms.iter().enumerate() {
+            if let Some((func_name, arg, coef)) = extract_trig_squared(ctx, term) {
+                if func_name == "sin" {
+                    sin2_terms.push((arg, i, coef));
+                } else if func_name == "cos" {
+                    cos2_terms.push((arg, i, coef));
+                }
+            }
+        }
+
+        // Find matching pairs: same argument, same coefficient (both coefficient 1)
+        for (sin_arg, sin_idx, sin_coef) in sin2_terms.iter() {
+            for (cos_arg, cos_idx, cos_coef) in cos2_terms.iter() {
+                // Arguments must match
+                if crate::ordering::compare_expr(ctx, *sin_arg, *cos_arg)
+                    != std::cmp::Ordering::Equal
+                {
+                    continue;
+                }
+
+                // Coefficients must both be 1 (for basic sin²+cos² = 1)
+                let one = num_rational::BigRational::from_integer(1.into());
+                if *sin_coef != one || *cos_coef != one {
+                    continue;
+                }
+
+                // Found a match! Replace sin²(t) + cos²(t) with 1
+                let replacement = ctx.num(1);
+
+                // Build new expression with the pair removed and 1 added
+                let mut new_terms: Vec<ExprId> = Vec::new();
+                for (j, &t) in terms.iter().enumerate() {
+                    if j != *sin_idx && j != *cos_idx {
+                        new_terms.push(t);
+                    }
+                }
+                new_terms.push(replacement);
+
+                // Build result as sum
+                let result = if new_terms.len() == 1 {
+                    new_terms[0]
+                } else {
+                    let mut acc = new_terms[0];
+                    for &t in new_terms.iter().skip(1) {
+                        acc = ctx.add(Expr::Add(acc, t));
+                    }
+                    acc
+                };
+
+                return Some(Rewrite::new(result).desc("sin²(x) + cos²(x) = 1"));
+            }
+        }
+
+        None
+    }
+);
+
+/// Extract (function_name, argument, coefficient) from sin²(t) or cos²(t) terms.
+/// Handles: sin(t)^2, cos(t)^2, k*sin(t)^2, k*cos(t)^2
+fn extract_trig_squared(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(String, ExprId, num_rational::BigRational)> {
+    use num_rational::BigRational;
+    use num_traits::One;
+
+    let mut coef = BigRational::one();
+    let mut working = term;
+
+    // Handle Neg wrapper: -sin²(t) has coefficient -1
+    if let Expr::Neg(inner) = ctx.get(term) {
+        coef = -coef;
+        working = *inner;
+    }
+
+    // Check direct Pow(trig, 2)
+    if let Expr::Pow(base, exp) = ctx.get(working) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if *n == BigRational::from_integer(2.into()) {
+                if let Expr::Function(name, args) = ctx.get(*base) {
+                    if (name == "sin" || name == "cos") && args.len() == 1 {
+                        return Some((name.clone(), args[0], coef));
+                    }
+                }
+            }
+        }
+    }
+
+    // Check Mul(k, Pow(trig, 2)) or Mul(Pow(trig, 2), k)
+    if let Expr::Mul(l, r) = ctx.get(working) {
+        // Try both orderings
+        for (maybe_coef, maybe_pow) in [(*l, *r), (*r, *l)] {
+            if let Expr::Number(n) = ctx.get(maybe_coef) {
+                if let Expr::Pow(base, exp) = ctx.get(maybe_pow) {
+                    if let Expr::Number(e) = ctx.get(*exp) {
+                        if *e == BigRational::from_integer(2.into()) {
+                            if let Expr::Function(name, args) = ctx.get(*base) {
+                                if (name == "sin" || name == "cos") && args.len() == 1 {
+                                    return Some((name.clone(), args[0], coef * n.clone()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Check if (c_term, trig_term) matches the pattern k - k*trig²(x) = k*other²(x)
 /// where trig is sin or cos, and other is the complementary function.
 fn check_pythagorean_pattern(
