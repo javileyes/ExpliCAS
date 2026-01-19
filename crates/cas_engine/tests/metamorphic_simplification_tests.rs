@@ -2355,18 +2355,23 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
 
     eprintln!("📊 Running CSV combination tests with {} pairs", n);
 
-    // Verbose mode: show numeric-only examples
+    // Verbose mode: show nf_mismatch examples
     let verbose = std::env::var("METATEST_VERBOSE").is_ok();
-    let max_numeric_examples = std::env::var("METATEST_MAX_EXAMPLES")
+    let max_examples = std::env::var("METATEST_MAX_EXAMPLES")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(10);
 
     let mut passed = 0;
     let mut failed = 0;
-    let mut symbolic_passed = 0;
-    let mut numeric_only_passed = 0;
-    let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
+    // Classification counters:
+    // - nf_convergent: simplify(LHS) == simplify(RHS) structurally (ideal)
+    // - proved_symbolic: simplify(LHS - RHS) == 0 (correct but different normal forms)
+    // - numeric_only: only passes numeric check (potential issue or branch-sensitive)
+    let mut nf_convergent = 0;
+    let mut proved_symbolic = 0;
+    let mut numeric_only = 0;
+    let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
 
     // Double combinations: all pairs of different identities
     for i in 0..n {
@@ -2395,34 +2400,35 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
             let (exp_simplified, _) = simplifier.simplify(exp_parsed);
             let (simp_simplified, _) = simplifier.simplify(simp_parsed);
 
-            // First check: symbolic equality (exact match)
-            let symbolic_match = cas_engine::ordering::compare_expr(
+            // Check 1: Normal form convergence (exact structural match)
+            let nf_match = cas_engine::ordering::compare_expr(
                 &simplifier.context,
                 exp_simplified,
                 simp_simplified,
             ) == std::cmp::Ordering::Equal;
 
-            if symbolic_match {
-                symbolic_passed += 1;
+            if nf_match {
+                nf_convergent += 1;
                 passed += 1;
             } else {
-                // Fallback: check numeric equivalence
-                let result = check_numeric_equiv_2var(
-                    &simplifier.context,
-                    exp_simplified,
-                    simp_simplified,
-                    &pair1.vars[0],
-                    "u",
-                    &config,
+                // Check 2: Proved symbolic via simplify(LHS - RHS) == 0
+                let diff_expr = simplifier
+                    .context
+                    .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
+                let (diff_simplified, _) = simplifier.simplify(diff_expr);
+
+                let is_zero = matches!(
+                    simplifier.context.get(diff_simplified),
+                    cas_ast::Expr::Number(n) if *n == num_rational::BigRational::from_integer(0.into())
                 );
 
-                if result.is_ok() {
-                    numeric_only_passed += 1;
+                if is_zero {
+                    proved_symbolic += 1;
                     passed += 1;
 
-                    // Collect example for verbose output
-                    if verbose && numeric_only_examples.len() < max_numeric_examples {
-                        numeric_only_examples.push((
+                    // Collect example for verbose output (these are NF mismatches but proved)
+                    if verbose && nf_mismatch_examples.len() < max_examples {
+                        nf_mismatch_examples.push((
                             combined_exp.clone(),
                             combined_simp.clone(),
                             pair1.simp.clone(),
@@ -2430,9 +2436,24 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                         ));
                     }
                 } else {
-                    failed += 1;
-                    if failed <= 5 {
-                        eprintln!("❌ Double combo failed: ({}) + ({})", pair1.exp, pair2.exp);
+                    // Check 3: Fallback to numeric equivalence
+                    let result = check_numeric_equiv_2var(
+                        &simplifier.context,
+                        exp_simplified,
+                        simp_simplified,
+                        &pair1.vars[0],
+                        "u",
+                        &config,
+                    );
+
+                    if result.is_ok() {
+                        numeric_only += 1;
+                        passed += 1;
+                    } else {
+                        failed += 1;
+                        if failed <= 5 {
+                            eprintln!("❌ Double combo failed: ({}) + ({})", pair1.exp, pair2.exp);
+                        }
                     }
                 }
             }
@@ -2440,22 +2461,26 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     }
 
     eprintln!(
-        "✅ Double combinations: {} passed ({} symbolic, {} numeric-only), {} failed",
-        passed, symbolic_passed, numeric_only_passed, failed
+        "✅ Double combinations: {} passed, {} failed",
+        passed, failed
+    );
+    eprintln!(
+        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {}",
+        nf_convergent, proved_symbolic, numeric_only
     );
 
-    // Print numeric-only examples if verbose
-    if verbose && !numeric_only_examples.is_empty() {
-        eprintln!("\n🔢 Numeric-only combination examples (METATEST_VERBOSE=1):");
-        for (i, (lhs, rhs, simp1, simp2)) in numeric_only_examples.iter().enumerate() {
+    // Print NF-mismatch examples if verbose (proved_symbolic but different normal forms)
+    if verbose && !nf_mismatch_examples.is_empty() {
+        eprintln!("\n🔢 NF-mismatch examples (proved symbolic but different normal forms):");
+        for (i, (lhs, rhs, simp1, simp2)) in nf_mismatch_examples.iter().enumerate() {
             eprintln!("   {:2}. LHS: {}", i + 1, lhs);
             eprintln!("       RHS: {}", rhs);
             eprintln!("       (simplifies: {} + {})", simp1, simp2);
         }
-        if numeric_only_passed > max_numeric_examples {
+        if proved_symbolic > max_examples {
             eprintln!(
                 "   ... and {} more (set METATEST_MAX_EXAMPLES=N to show more)",
-                numeric_only_passed - max_numeric_examples
+                proved_symbolic - max_examples
             );
         }
         eprintln!();
