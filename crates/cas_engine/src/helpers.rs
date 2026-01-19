@@ -271,6 +271,24 @@ pub fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprI
     None
 }
 
+/// Extract inner variable from 5*x pattern (for quintuple angle identities).
+/// Matches both Mul(5, x) and Mul(x, 5).
+pub fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Mul(lhs, rhs) = context.get(expr) {
+        if let Expr::Number(n) = context.get(*lhs) {
+            if n.is_integer() && n.to_integer() == 5.into() {
+                return Some(*rhs);
+            }
+        }
+        if let Expr::Number(n) = context.get(*rhs) {
+            if n.is_integer() && n.to_integer() == 5.into() {
+                return Some(*lhs);
+            }
+        }
+    }
+    None
+}
+
 /// Flatten an Add chain into a list of terms (simple version).
 ///
 /// This only handles `Add` nodes. For handling `Sub` and `Neg`, use

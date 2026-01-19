@@ -2569,6 +2569,118 @@ define_rule!(
                                 Rewrite::new(new_expr).desc("cos(3x) → 4cos³(x) - 3cos(x)"),
                             );
                         }
+                        "tan" => {
+                            // tan(3x) → (3tan(x) - tan³(x)) / (1 - 3tan²(x))
+                            let one = ctx.num(1);
+                            let three = ctx.num(3);
+                            let exp_two = ctx.num(2);
+                            let exp_three = ctx.num(3);
+                            let tan_x = ctx.add(Expr::Function("tan".to_string(), vec![inner_var]));
+
+                            // Numerator: 3tan(x) - tan³(x)
+                            let three_tan = smart_mul(ctx, three, tan_x);
+                            let tan_cubed = ctx.add(Expr::Pow(tan_x, exp_three));
+                            let numer = ctx.add(Expr::Sub(three_tan, tan_cubed));
+
+                            // Denominator: 1 - 3tan²(x)
+                            let tan_squared = ctx.add(Expr::Pow(tan_x, exp_two));
+                            let three_tan_squared = smart_mul(ctx, three, tan_squared);
+                            let denom = ctx.add(Expr::Sub(one, three_tan_squared));
+
+                            let new_expr = ctx.add(Expr::Div(numer, denom));
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc("tan(3x) → (3tan(x) - tan³(x))/(1 - 3tan²(x))"),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+// Quintuple Angle Rule: sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)
+// This is a direct expansion to avoid recursive explosion via double/triple angle.
+define_rule!(
+    QuintupleAngleRule,
+    "Quintuple Angle Identity",
+    |ctx, expr, parent_ctx| {
+        // GUARD 1: Skip if marked for protection
+        if let Some(marks) = parent_ctx.pattern_marks() {
+            if marks.is_sum_quotient_protected(expr) {
+                return None;
+            }
+        }
+
+        // GUARD 2: Skip if inside sum-quotient pattern
+        if is_inside_trig_quotient_pattern(ctx, expr, parent_ctx) {
+            return None;
+        }
+
+        if let Expr::Function(name, args) = ctx.get(expr) {
+            if args.len() == 1 {
+                // Check if arg is 5*x or x*5
+                if let Some(inner_var) = crate::helpers::extract_quintuple_angle_arg(ctx, args[0]) {
+                    match name.as_str() {
+                        "sin" => {
+                            // sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)
+                            let five = ctx.num(5);
+                            let sixteen = ctx.num(16);
+                            let twenty = ctx.num(20);
+                            let exp_three = ctx.num(3);
+                            let exp_five = ctx.num(5);
+                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+
+                            // 16sin⁵(x)
+                            let sin_5 = ctx.add(Expr::Pow(sin_x, exp_five));
+                            let term1 = smart_mul(ctx, sixteen, sin_5);
+
+                            // 20sin³(x)
+                            let sin_3 = ctx.add(Expr::Pow(sin_x, exp_three));
+                            let term2 = smart_mul(ctx, twenty, sin_3);
+
+                            // 5sin(x)
+                            let term3 = smart_mul(ctx, five, sin_x);
+
+                            // 16sin⁵(x) - 20sin³(x) + 5sin(x)
+                            let sub1 = ctx.add(Expr::Sub(term1, term2));
+                            let new_expr = ctx.add(Expr::Add(sub1, term3));
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc("sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)"),
+                            );
+                        }
+                        "cos" => {
+                            // cos(5x) → 16cos⁵(x) - 20cos³(x) + 5cos(x)
+                            let five = ctx.num(5);
+                            let sixteen = ctx.num(16);
+                            let twenty = ctx.num(20);
+                            let exp_three = ctx.num(3);
+                            let exp_five = ctx.num(5);
+                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+
+                            // 16cos⁵(x)
+                            let cos_5 = ctx.add(Expr::Pow(cos_x, exp_five));
+                            let term1 = smart_mul(ctx, sixteen, cos_5);
+
+                            // 20cos³(x)
+                            let cos_3 = ctx.add(Expr::Pow(cos_x, exp_three));
+                            let term2 = smart_mul(ctx, twenty, cos_3);
+
+                            // 5cos(x)
+                            let term3 = smart_mul(ctx, five, cos_x);
+
+                            // 16cos⁵(x) - 20cos³(x) + 5cos(x)
+                            let sub1 = ctx.add(Expr::Sub(term1, term2));
+                            let new_expr = ctx.add(Expr::Add(sub1, term3));
+                            return Some(
+                                Rewrite::new(new_expr)
+                                    .desc("cos(5x) → 16cos⁵(x) - 20cos³(x) + 5cos(x)"),
+                            );
+                        }
                         _ => {}
                     }
                 }
@@ -3404,7 +3516,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
     // Standalone Sum-to-Product: sin(A)+sin(B), cos(A)+cos(B) etc. when args are k*π
     simplifier.add_rule(Box::new(TrigSumToProductRule));
-    simplifier.add_rule(Box::new(TripleAngleRule)); // Shortcut: sin(3x), cos(3x)
+    simplifier.add_rule(Box::new(TripleAngleRule)); // Shortcut: sin(3x), cos(3x), tan(3x)
+    simplifier.add_rule(Box::new(QuintupleAngleRule)); // Shortcut: sin(5x), cos(5x)
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
     // Trig Quotient: sin(x)/cos(x) → tan(x) - runs after sum-to-product
     simplifier.add_rule(Box::new(TrigQuotientRule));
