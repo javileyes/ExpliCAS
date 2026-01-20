@@ -669,8 +669,28 @@ fn check_poly_equal_modp(
     Ok(poly_a == poly_b)
 }
 
+/// Convert a mod-p coefficient to signed representation.
+///
+/// Uses symmetric representation: coefficients in [0, p/2] stay positive,
+/// coefficients in (p/2, p-1] become negative (c - p).
+///
+/// This is correct only if the original coefficient was in the range (-p/2, p/2).
+/// For typical polynomial operations with moderate coefficients, this holds.
+#[inline]
+fn modp_to_signed(c: u64, p: u64) -> i128 {
+    let half = p / 2;
+    if c <= half {
+        c as i128
+    } else {
+        (c as i128) - (p as i128) // Maps p-1 -> -1, p-2 -> -2, etc.
+    }
+}
+
 /// Convert MultiPolyModP back to Expr (balanced tree)
-fn multipoly_modp_to_expr(
+///
+/// Uses symmetric representation to reconstruct signed coefficients.
+/// Coefficients in (p/2, p-1] are interpreted as negative.
+pub fn multipoly_modp_to_expr(
     ctx: &mut Context,
     poly: &crate::multipoly_modp::MultiPolyModP,
     vars: &VarTable,
@@ -681,6 +701,8 @@ fn multipoly_modp_to_expr(
         return ctx.num(0);
     }
 
+    let p = poly.p;
+
     // Build term expressions
     let mut term_exprs: Vec<ExprId> = Vec::with_capacity(poly.terms.len());
 
@@ -689,12 +711,19 @@ fn multipoly_modp_to_expr(
             continue;
         }
 
+        // Convert coefficient to signed representation
+        let signed_coeff = modp_to_signed(*coeff, p);
+        let is_negative = signed_coeff < 0;
+        let abs_coeff = signed_coeff.unsigned_abs(); // i128 -> u128
+
         // Build monomial: coeff * x1^e1 * x2^e2 * ...
         let mut factors: Vec<ExprId> = Vec::new();
 
-        // Add coefficient if not 1 (or if monomial is constant)
-        if *coeff != 1 || mono.is_constant() {
-            factors.push(ctx.add(Expr::Number(BigRational::from_integer((*coeff).into()))));
+        // Add absolute coefficient if not 1 (or if monomial is constant)
+        if abs_coeff != 1 || mono.is_constant() {
+            factors.push(ctx.add(Expr::Number(BigRational::from_integer(
+                (abs_coeff as i64).into(),
+            ))));
         }
 
         // Add variable powers
@@ -723,7 +752,14 @@ fn multipoly_modp_to_expr(
                 .unwrap()
         };
 
-        term_exprs.push(term);
+        // Apply negation if coefficient was negative
+        let final_term = if is_negative {
+            ctx.add(Expr::Neg(term))
+        } else {
+            term
+        };
+
+        term_exprs.push(final_term);
     }
 
     // Build balanced sum tree

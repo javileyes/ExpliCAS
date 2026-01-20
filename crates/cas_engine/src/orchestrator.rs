@@ -402,15 +402,23 @@ impl Orchestrator {
         let current_score = crate::best_so_far::score_expr(&simplifier.context, current);
         let best_score = crate::best_so_far::score_expr(&simplifier.context, best_expr);
 
+        // V2.15.35: Skip rollback for explicit expand() calls
+        // When user explicitly calls expand(), they want the expanded form even if "worse"
+        let has_explicit_expand = matches!(
+            simplifier.context.get(expr),
+            cas_ast::Expr::Function(name, _) if name == "expand"
+        );
+
         // Only rollback if:
         // 1. Best is strictly better AND
         // 2. Current has significantly more nodes (> 12 extra) to avoid reverting expansions
+        // 3. NOT an explicit expand() call (user wants expansion)
         // Moderate-to-large increases (1-12 nodes) are allowed to preserve:
         // - Canonicalizations (tan→sin/cos, arcsec→arccos)
         // - Deliberate expansions (AutoExpandBinomials::On)
         let significant_increase = current_score.nodes > best_score.nodes + 12;
 
-        if best_score < current_score && significant_increase {
+        if best_score < current_score && significant_increase && !has_explicit_expand {
             // The best seen during phases is better than final result
             // This can happen when expansion rules don't close with cancellation
             tracing::debug!(

@@ -118,10 +118,54 @@ cas> poly_gcd(expand(a*g), expand(b*g), modp) - expand(g)
 Result: 0
 ```
 
-**How it works:**
-1. `expand(...)` returns `__hold(polynomial)` to prevent simplifier explosion
-2. `pre_evaluate_for_gcd()` evaluates `expand()` before passing to GCD algorithms
-3. `PolySubModpRule` handles `__hold(P) - __hold(Q)` in polynomial domain
+## Eager Evaluation Pre-Pass (V2.15.35)
+
+**Problem**: When `poly_gcd_modp(expand(a*g), expand(b*g))` is passed to the simplifier, it may exhaust the depth budget trying to simplify/expand the huge arguments **before** the GCD function even executes.
+
+**Solution**: The orchestrator runs an **eager evaluation pass** before the main simplification pipeline:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 Simplification Pipeline                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. eager_eval_poly_gcd_calls()   ← NEW: Runs FIRST          │
+│     • Traverses TOP-DOWN                                     │
+│     • Finds poly_gcd_modp(...) nodes                         │
+│     • Evaluates WITHOUT descending into arguments            │
+│     • Uses factor extraction optimization                    │
+│                                                              │
+│  2. Phase 1: Core                                            │
+│  3. Phase 2: Transform                                       │
+│  4. Phase 3: Rationalize                                     │
+│  5. Phase 4: PostCleanup                                     │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Factor Extraction Optimization
+
+The key insight: `gcd(a*g, b*g) = g * gcd(a, b)`
+
+When evaluating `poly_gcd_modp(expand(a*g), expand(b*g))`:
+
+1. **Strip `expand()` wrappers** (without actually expanding)
+2. **Extract common factors** from `a*g` and `b*g` by AST structure
+3. **Compute GCD on reduced polynomials** (much smaller: just `a` and `b`)
+4. **Return** `common * gcd(reduced_a, reduced_b)`
+
+This reduces computation from O(huge polynomial) to O(small factors).
+
+### How it works:
+
+1. `strip_expand_wrapper()` removes `expand(...)` and `__hold(...)` wrappers iteratively
+2. `extract_common_mul_factors()` finds shared multiplicative factors by AST comparison
+3. `compute_gcd_modp_with_options()` operates on the reduced expressions
+4. Result is reconstructed as `common_factors * gcd_rest`
+
+**Key implementation files:**
+- `orchestrator.rs`: Calls `eager_eval_poly_gcd_calls()` before Phase 1
+- `gcd_modp.rs`: Contains `compute_gcd_modp_with_factor_extraction()` and traversal
 
 ---
 

@@ -20,6 +20,7 @@ pub mod env;
 pub mod eval;
 pub mod eval_step_pipeline;
 pub mod expand;
+pub mod expand_strategy;
 pub mod factor;
 pub mod gcd_zippel_modp;
 pub mod helpers;

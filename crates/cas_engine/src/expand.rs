@@ -3,6 +3,44 @@ use cas_ast::{Context, Expr, ExprId};
 use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
 
+/// Expand polynomial using fast mod-p arithmetic (MultiPolyModP).
+///
+/// This is a **deliberate strategy choice** when the expand strategy selector
+/// determines that mod-p expansion is safe (coefficient bound < p/2).
+///
+/// Uses the same fast polynomial engine as poly_gcd_modp with O(1) multiplication
+/// per term and binary exponentiation for Pow. Coefficients are reconstructed
+/// using symmetric representation via `modp_to_signed`.
+///
+/// Returns Some(expanded) if successful, None if cannot convert to polynomial.
+fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
+    use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
+
+    // Budget for large polynomial expansion
+    let budget = PolyModpBudget {
+        max_vars: 8,
+        max_terms: 500_000, // Allow more terms for expansion
+        max_total_degree: 100,
+        max_pow_exp: 100,
+    };
+
+    // Prime for mod p arithmetic
+    // Coefficients are reconstructed using symmetric representation (modp_to_signed)
+    let p = crate::rules::algebra::gcd_modp::DEFAULT_PRIME;
+
+    let mut vars = VarTable::new();
+
+    // Convert to MultiPolyModP - uses fast binary exponentiation for Pow
+    let poly = expr_to_poly_modp(ctx, expr, p, &budget, &mut vars).ok()?;
+
+    // Convert back to expression with signed coefficient reconstruction
+    let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
+
+    // Wrap in __hold to prevent re-simplification of huge expression
+    Some(ctx.add(Expr::Function("__hold".to_string(), vec![expanded])))
+}
+
 /// Expand with budget tracking, returning PassStats for unified budget charging.
 ///
 /// Tracks `nodes_delta` and estimates `terms_materialized` based on the expansion.
@@ -87,11 +125,31 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
     // If user calls expand(), they want FULL expansion. Canonical preservation should
     // only be applied in simplify(), not expand().
 
-    // 1. Expand children first (bottom-up)
-    // Actually, for expansion, sometimes top-down is better?
-    // But let's stick to the pattern: expand arguments, then expand self.
-    // However, `expand(a*(b+c))` needs `b+c` to be available.
-    // If we expand children, we get `a*(b+c)`. Then we distribute.
+    // V2.15.35: Strategy selector for expand()
+    // Chooses between MultinomialExact and MultiPolyModpSafe based on complexity
+    use crate::expand_strategy::{
+        choose_expand_strategy, extract_expand_features, ExpandPolicy, ExpandStrategy,
+    };
+
+    let features = extract_expand_features(ctx, expr);
+    let policy = ExpandPolicy::default();
+    let strategy = choose_expand_strategy(&features, &policy);
+
+    // Try fast paths based on strategy
+    match strategy {
+        ExpandStrategy::MultiPolyModpSafe => {
+            // Large polynomial with safe coefficient bound → use mod-p
+            if let Some(result) = expand_modp_safe(ctx, expr) {
+                return result;
+            }
+            // Fall through to symbolic if mod-p fails
+        }
+        ExpandStrategy::MultinomialExact | ExpandStrategy::Normal => {
+            // Will try multinomial_direct in Pow branch below
+        }
+    }
+
+    // Symbolic expansion: expand children first (bottom-up), then apply rules
 
     let expr_data = ctx.get(expr).clone();
     let expanded_expr = match expr_data {
