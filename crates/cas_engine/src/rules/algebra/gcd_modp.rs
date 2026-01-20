@@ -36,6 +36,7 @@ fn strip_expand_wrapper(ctx: &Context, mut expr: ExprId) -> ExprId {
 /// - Mul(...) is flattened
 /// - Pow(base, k) with integer k becomes (base, k)
 /// - Neg(x) is unwrapped (handled by returning negative sign separately)
+///
 /// Returns (is_negative, factors)
 fn collect_mul_factors(ctx: &Context, expr: ExprId) -> (bool, Vec<(ExprId, i64)>) {
     let mut factors = Vec::new();
@@ -94,6 +95,7 @@ fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
 /// - reduced_a, reduced_b: original expressions with common factors removed
 ///
 /// Invariant: a = common * reduced_a, b = common * reduced_b
+#[allow(clippy::type_complexity)]
 fn extract_common_mul_factors(
     ctx: &mut Context,
     a: ExprId,
