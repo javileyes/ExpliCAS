@@ -1,0 +1,236 @@
+// Quadratic Formula Didactic Substeps
+//
+// This module generates step-by-step derivation of the quadratic formula
+// using the "completing the square" method for educational purposes.
+
+use cas_ast::{Context, Equation, Expr, ExprId};
+
+use crate::solver::SolveSubStep;
+use crate::step::ImportanceLevel;
+
+/// Build the didactic substeps for solving a quadratic equation.
+///
+/// Given ax² + bx + c = 0 with known coefficients a, b, c (ExprIds),
+/// generates 6 substeps showing the completing-the-square derivation:
+///
+/// 1. Identify coefficients a, b, c
+/// 2. Divide both sides by a
+/// 3. Move constant term to RHS
+/// 4. Complete the square (add (b/2a)² to both sides)
+/// 5. Factor LHS as perfect square
+/// 6. Take square root and isolate x
+pub fn build_quadratic_substeps(
+    ctx: &mut Context,
+    var: &str,
+    a: ExprId,
+    b: ExprId,
+    c: ExprId,
+    is_real_only: bool,
+) -> Vec<SolveSubStep> {
+    use cas_ast::DisplayExpr;
+
+    let mut steps = Vec::new();
+    let zero = ctx.num(0);
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let four = ctx.num(4);
+
+    // Helper for display
+    let disp =
+        |ctx: &Context, id: ExprId| -> String { format!("{}", DisplayExpr { context: ctx, id }) };
+
+    // Build x variable
+    let x = ctx.add(Expr::Variable(var.to_string()));
+
+    // Build x²
+    let x2 = ctx.add(Expr::Pow(x, two));
+
+    // =========================================================================
+    // Step 1: Identify the equation form
+    // ax² + bx + c = 0 with a, b, c values
+    // =========================================================================
+
+    // Build the standard form: ax² + bx + c
+    let ax2 = ctx.add(Expr::Mul(a, x2));
+    let bx = ctx.add(Expr::Mul(b, x));
+    let ax2_plus_bx = ctx.add(Expr::Add(ax2, bx));
+    let poly = ctx.add(Expr::Add(ax2_plus_bx, c));
+
+    steps.push(SolveSubStep {
+        description: format!(
+            "Identificar forma cuadrática: a·x² + b·x + c = 0 con a = {}, b = {}, c = {}",
+            disp(ctx, a),
+            disp(ctx, b),
+            disp(ctx, c)
+        ),
+        equation_after: Equation {
+            lhs: poly,
+            rhs: zero,
+            op: cas_ast::RelOp::Eq,
+        },
+        importance: ImportanceLevel::Low,
+    });
+
+    // =========================================================================
+    // Step 2: Divide both sides by a
+    // x² + (b/a)x + c/a = 0
+    // =========================================================================
+
+    let b_over_a = ctx.add(Expr::Div(b, a));
+    let c_over_a = ctx.add(Expr::Div(c, a));
+    let bax = ctx.add(Expr::Mul(b_over_a, x));
+    let x2_plus_bax = ctx.add(Expr::Add(x2, bax));
+    let step2_lhs = ctx.add(Expr::Add(x2_plus_bax, c_over_a));
+
+    steps.push(SolveSubStep {
+        description: "Dividir ambos lados por a (requiere a ≠ 0)".to_string(),
+        equation_after: Equation {
+            lhs: step2_lhs,
+            rhs: zero,
+            op: cas_ast::RelOp::Eq,
+        },
+        importance: ImportanceLevel::Low,
+    });
+
+    // =========================================================================
+    // Step 3: Move constant to RHS
+    // x² + (b/a)x = -c/a
+    // =========================================================================
+
+    let neg_c_over_a = ctx.add(Expr::Neg(c_over_a));
+    let step3_lhs = x2_plus_bax; // x² + (b/a)x
+
+    steps.push(SolveSubStep {
+        description: "Mover término constante al lado derecho".to_string(),
+        equation_after: Equation {
+            lhs: step3_lhs,
+            rhs: neg_c_over_a,
+            op: cas_ast::RelOp::Eq,
+        },
+        importance: ImportanceLevel::Low,
+    });
+
+    // =========================================================================
+    // Step 4: Complete the square
+    // Add (b/2a)² to both sides
+    // x² + (b/a)x + (b/2a)² = (b/2a)² - c/a
+    // =========================================================================
+
+    // (b/2a)
+    let two_a = ctx.add(Expr::Mul(two, a));
+    let b_over_2a = ctx.add(Expr::Div(b, two_a));
+
+    // (b/2a)²
+    let b_over_2a_sq = ctx.add(Expr::Pow(b_over_2a, two));
+
+    // LHS: x² + (b/a)x + (b/2a)²
+    let step4_lhs = ctx.add(Expr::Add(step3_lhs, b_over_2a_sq));
+
+    // RHS: (b/2a)² - c/a = b²/4a² - c/a
+    let step4_rhs = ctx.add(Expr::Add(b_over_2a_sq, neg_c_over_a));
+
+    steps.push(SolveSubStep {
+        description: "Completar el cuadrado: sumar (b/2a)² a ambos lados".to_string(),
+        equation_after: Equation {
+            lhs: step4_lhs,
+            rhs: step4_rhs,
+            op: cas_ast::RelOp::Eq,
+        },
+        importance: ImportanceLevel::Low,
+    });
+
+    // =========================================================================
+    // Step 5: Factor LHS as perfect square
+    // (x + b/2a)² = (b² - 4ac) / 4a²
+    // =========================================================================
+
+    // LHS: (x + b/2a)²
+    let x_plus_b_over_2a = ctx.add(Expr::Add(x, b_over_2a));
+    let step5_lhs = ctx.add(Expr::Pow(x_plus_b_over_2a, two));
+
+    // RHS: (b² - 4ac) / 4a²
+    let b2 = ctx.add(Expr::Pow(b, two));
+    let four_a = ctx.add(Expr::Mul(four, a));
+    let four_ac = ctx.add(Expr::Mul(four_a, c));
+    let discriminant = ctx.add(Expr::Sub(b2, four_ac)); // b² - 4ac
+    let a2 = ctx.add(Expr::Pow(a, two));
+    let four_a2 = ctx.add(Expr::Mul(four, a2));
+    let step5_rhs = ctx.add(Expr::Div(discriminant, four_a2));
+
+    steps.push(SolveSubStep {
+        description: "Escribir lado izquierdo como cuadrado perfecto".to_string(),
+        equation_after: Equation {
+            lhs: step5_lhs,
+            rhs: step5_rhs,
+            op: cas_ast::RelOp::Eq,
+        },
+        importance: ImportanceLevel::Low,
+    });
+
+    // =========================================================================
+    // Step 6: Take square root and isolate x
+    // x + b/2a = ±√((b² - 4ac) / 4a²)
+    // x = (-b ± √(b² - 4ac)) / 2a
+    // =========================================================================
+
+    // √(b² - 4ac)
+    let half = ctx.add(Expr::Div(one, two));
+    let sqrt_discriminant = ctx.add(Expr::Pow(discriminant, half));
+
+    // -b
+    let neg_b = ctx.add(Expr::Neg(b));
+
+    // Solution 1: (-b + √Δ) / 2a
+    let numerator1 = ctx.add(Expr::Add(neg_b, sqrt_discriminant));
+    let solution1 = ctx.add(Expr::Div(numerator1, two_a));
+
+    // Solution 2: (-b - √Δ) / 2a
+    let numerator2 = ctx.add(Expr::Sub(neg_b, sqrt_discriminant));
+    let _solution2 = ctx.add(Expr::Div(numerator2, two_a));
+
+    // For display, show the formula with ±
+    let description = if is_real_only {
+        "Tomar raíz cuadrada y despejar x (requiere Δ = b² - 4ac ≥ 0)".to_string()
+    } else {
+        "Tomar raíz cuadrada y despejar x".to_string()
+    };
+
+    // Show x = (-b ± √Δ) / 2a as the equation after
+    // We'll use solution1 as representative (the + case)
+    steps.push(SolveSubStep {
+        description,
+        equation_after: Equation {
+            lhs: x,
+            rhs: solution1, // Shows x = (-b + √Δ) / 2a
+            op: cas_ast::RelOp::Eq,
+        },
+        importance: ImportanceLevel::Low,
+    });
+
+    steps
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_quadratic_substeps() {
+        let mut ctx = Context::new();
+
+        // Test with numeric coefficients: x² + 2x + 1 = 0
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+        let c = ctx.num(1);
+
+        let steps = build_quadratic_substeps(&mut ctx, "x", a, b, c, true);
+
+        assert_eq!(steps.len(), 6, "Should generate 6 substeps");
+        assert!(steps[0].description.contains("Identificar"));
+        assert!(steps[1].description.contains("Dividir"));
+        assert!(steps[2].description.contains("Mover"));
+        assert!(steps[3].description.contains("Completar"));
+        assert!(steps[4].description.contains("cuadrado perfecto"));
+        assert!(steps[5].description.contains("raíz cuadrada"));
+    }
+}

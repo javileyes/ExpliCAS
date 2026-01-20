@@ -4757,6 +4757,36 @@ impl Repl {
                                     "   -> {} {} {}",
                                     lhs_str, step.equation_after.op, rhs_str
                                 );
+
+                                // Display substeps with indentation (educational details)
+                                if !step.substeps.is_empty() && self.verbosity == Verbosity::Verbose
+                                {
+                                    for (j, substep) in step.substeps.iter().enumerate() {
+                                        let sub_ctx = &self.engine.simplifier.context;
+                                        let (sub_lhs, sub_rhs) = (
+                                            DisplayExpr {
+                                                context: sub_ctx,
+                                                id: substep.equation_after.lhs,
+                                            }
+                                            .to_string(),
+                                            DisplayExpr {
+                                                context: sub_ctx,
+                                                id: substep.equation_after.rhs,
+                                            }
+                                            .to_string(),
+                                        );
+                                        println!(
+                                            "      {}.{}. {}",
+                                            i + 1,
+                                            j + 1,
+                                            substep.description
+                                        );
+                                        println!(
+                                            "          -> {} {} {}",
+                                            sub_lhs, substep.equation_after.op, sub_rhs
+                                        );
+                                    }
+                                }
                             }
                         }
 

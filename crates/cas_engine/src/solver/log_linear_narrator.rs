@@ -145,6 +145,7 @@ pub fn rewrite_log_linear_steps(
                 description: "Take log base e of both sides".to_string(),
                 equation_after: eq,
                 importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
             });
 
             i += 1;
@@ -164,6 +165,7 @@ pub fn rewrite_log_linear_steps(
                     description: "Collect and factor x terms".to_string(),
                     equation_after: step.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
                 });
             }
             i += 1;
@@ -203,6 +205,7 @@ fn generate_detailed_collect_steps_v2(
                 description: "Collect and factor x terms".to_string(),
                 equation_after: final_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
             });
             return sub_steps;
         }
@@ -224,6 +227,7 @@ fn generate_detailed_collect_steps_v2(
             description: "Expand distributive law".to_string(),
             equation_after: clean_expand_eq,
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
 
         // Step 2: Move x terms to one side
@@ -243,6 +247,7 @@ fn generate_detailed_collect_steps_v2(
                 description: "Move x terms to one side".to_string(),
                 equation_after: clean_move_eq,
                 importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
             });
 
             // Step 3: Factor out x
@@ -259,6 +264,7 @@ fn generate_detailed_collect_steps_v2(
                     description: "Factor out x".to_string(),
                     equation_after: clean_factor_eq,
                     importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
                 });
             }
         }
@@ -270,6 +276,7 @@ fn generate_detailed_collect_steps_v2(
             description: "Collect and factor x terms".to_string(),
             equation_after: final_eq.clone(),
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
     }
 
@@ -435,6 +442,7 @@ mod tests {
                 op: cas_ast::RelOp::Eq,
             },
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         }];
 
         assert!(is_log_linear_pattern(&steps));
@@ -453,6 +461,7 @@ mod tests {
                 op: cas_ast::RelOp::Eq,
             },
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         }];
 
         assert!(!is_log_linear_pattern(&steps));

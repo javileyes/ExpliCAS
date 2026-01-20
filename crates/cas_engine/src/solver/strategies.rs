@@ -228,6 +228,7 @@ impl SolverStrategy for SubstitutionStrategy {
                     description: format!("Detected substitution: u = {:?}", sub_var_expr), // Debug format
                     equation_after: eq.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
                 });
             }
 
@@ -251,6 +252,7 @@ impl SolverStrategy for SubstitutionStrategy {
                     ),
                     equation_after: new_eq.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
                 });
             }
 
@@ -282,6 +284,7 @@ impl SolverStrategy for SubstitutionStrategy {
                                 ),
                                 equation_after: sub_eq.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
                             });
                         }
                         let (x_sol, mut x_steps) = match solve(&sub_eq, var, simplifier) {
@@ -676,6 +679,7 @@ impl SolverStrategy for QuadraticStrategy {
                         op: RelOp::Eq,
                     },
                     importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
                 });
             }
 
@@ -706,6 +710,7 @@ impl SolverStrategy for QuadraticStrategy {
                                 op: RelOp::Eq,
                             },
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         });
                     }
                     let factor_eq = Equation {
@@ -763,7 +768,20 @@ impl SolverStrategy for QuadraticStrategy {
             }
 
             if simplifier.collect_steps() {
-                steps.push(SolveStep {
+                // Build didactic substeps showing completing-the-square derivation
+                let is_real_only =
+                    matches!(_opts.value_domain, crate::semantics::ValueDomain::RealOnly);
+                let substeps = crate::solver::quadratic_steps::build_quadratic_substeps(
+                    &mut simplifier.context,
+                    var,
+                    sim_a,
+                    sim_b,
+                    sim_c,
+                    is_real_only,
+                );
+
+                // Main step with substeps attached
+                let main_step = SolveStep {
                     description: "Detected quadratic equation. Applying quadratic formula."
                         .to_string(),
                     equation_after: Equation {
@@ -772,7 +790,9 @@ impl SolverStrategy for QuadraticStrategy {
                         op: RelOp::Eq,
                     },
                     importance: crate::step::ImportanceLevel::Medium,
-                });
+                    substeps,
+                };
+                steps.push(main_step);
             }
 
             // Check if coefficients are all numeric to support inequalities
@@ -1199,6 +1219,7 @@ impl SolverStrategy for IsolationStrategy {
                         op: new_op.clone(),
                     },
                     importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
                 });
             }
             // V2.0: Pass opts through to propagate budget
@@ -1259,6 +1280,7 @@ fn check_exponential_needs_complex(
                                 description: msg.clone(),
                                 equation_after: eq.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
                             });
                         }
                         return Some(Ok((SolutionSet::Empty, steps)));
@@ -1285,6 +1307,7 @@ fn check_exponential_needs_complex(
                                     ),
                                     equation_after: eq.clone(),
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
 
@@ -1315,6 +1338,7 @@ fn check_exponential_needs_complex(
                                 description: msg.clone(),
                                 equation_after: eq.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
                             });
                         }
                         return Some(Ok((SolutionSet::Empty, steps)));
@@ -1338,6 +1362,7 @@ fn check_exponential_needs_complex(
                                     ),
                                     equation_after: eq.clone(),
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
 
@@ -1643,6 +1668,7 @@ impl SolverStrategy for UnwrapStrategy {
                         description: desc,
                         equation_after: new_eq.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 match solve(&new_eq, var, simplifier) {
@@ -1664,6 +1690,7 @@ impl SolverStrategy for UnwrapStrategy {
                         description: desc,
                         equation_after: new_eq.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 match solve(&new_eq, var, simplifier) {
@@ -1742,6 +1769,7 @@ impl SolverStrategy for CollectTermsStrategy {
                     op: eq.op.clone(),
                 },
                 importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
             });
         }
 
@@ -1829,6 +1857,7 @@ impl SolverStrategy for RationalExponentStrategy {
                 ),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
             });
         }
 

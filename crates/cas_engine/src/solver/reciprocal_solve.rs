@@ -177,6 +177,7 @@ pub fn try_reciprocal_solve(
                 op: RelOp::Eq,
             },
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
     }
 
@@ -195,6 +196,7 @@ pub fn try_reciprocal_solve(
                 op: RelOp::Eq,
             },
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
     }
 

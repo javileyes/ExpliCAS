@@ -4,6 +4,7 @@ pub mod domain_guards;
 pub mod isolation;
 pub mod linear_collect;
 pub mod log_linear_narrator;
+pub mod quadratic_steps;
 pub mod reciprocal_solve;
 pub mod solution_set;
 pub mod step_cleanup;
@@ -210,7 +211,28 @@ impl SolveDiagnostics {
     }
 }
 
-/// Helper: Build a 2-factor product (no normalization).
+/// Educational sub-step for solver derivations (e.g., completing the square)
+/// Displayed as indented in REPL and collapsible in timeline.
+#[derive(Debug, Clone)]
+pub struct SolveSubStep {
+    /// Description of the substep (e.g., "Divide both sides by a")
+    pub description: String,
+    /// The equation state after this substep
+    pub equation_after: Equation,
+    /// Importance level for verbosity filtering
+    pub importance: crate::step::ImportanceLevel,
+}
+
+impl SolveSubStep {
+    /// Create a new SolveSubStep with Low importance (educational detail)
+    pub fn new(description: impl Into<String>, equation_after: Equation) -> Self {
+        Self {
+            description: description.into(),
+            equation_after,
+            importance: crate::step::ImportanceLevel::Low,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SolveStep {
@@ -219,6 +241,9 @@ pub struct SolveStep {
     /// Importance level for step filtering (matches Step::importance system)
     /// Default: Medium (visible in Normal verbosity)
     pub importance: crate::step::ImportanceLevel,
+    /// Educational sub-steps explaining the derivation (e.g., completing the square)
+    /// Displayed as indented in REPL and collapsible in timeline
+    pub substeps: Vec<SolveSubStep>,
 }
 
 impl SolveStep {
@@ -228,6 +253,7 @@ impl SolveStep {
             description: description.into(),
             equation_after,
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         }
     }
 
@@ -237,6 +263,7 @@ impl SolveStep {
             description: description.into(),
             equation_after,
             importance: crate::step::ImportanceLevel::Low,
+            substeps: vec![],
         }
     }
 
@@ -246,7 +273,14 @@ impl SolveStep {
             description: description.into(),
             equation_after,
             importance: crate::step::ImportanceLevel::High,
+            substeps: vec![],
         }
+    }
+
+    /// Add substeps to this step (builder pattern)
+    pub fn with_substeps(mut self, substeps: Vec<SolveSubStep>) -> Self {
+        self.substeps = substeps;
+        self
     }
 }
 
@@ -654,7 +688,7 @@ pub(crate) fn solve_with_options(
                             rhs: simplifier.context.add(Expr::Number(num_rational::BigRational::from_integer(0.into()))),
                             op: cas_ast::RelOp::Eq,
                         },
-                        importance: crate::step::ImportanceLevel::Medium,
+                        importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                     }]
                 } else {
                     vec![]
@@ -770,6 +804,7 @@ fn try_solve_rational_exponent(
             ),
             equation_after: new_eq.clone(),
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
     }
 

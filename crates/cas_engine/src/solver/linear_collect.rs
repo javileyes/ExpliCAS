@@ -122,6 +122,7 @@ pub fn try_linear_collect(
                 op: RelOp::Eq,
             },
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
         steps.push(SolveStep {
             description: format!(
@@ -137,6 +138,7 @@ pub fn try_linear_collect(
                 op: RelOp::Eq,
             },
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
     }
 
@@ -556,6 +558,7 @@ pub fn try_linear_collect_v2(
                 op: RelOp::Eq,
             },
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
 
         // Step 2: Divide by coefficient
@@ -573,6 +576,7 @@ pub fn try_linear_collect_v2(
                 op: RelOp::Eq,
             },
             importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
         });
     }
 

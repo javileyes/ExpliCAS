@@ -152,6 +152,7 @@ pub fn isolate(
                         ),
                         equation_after: new_eq,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results = isolate(l, sim_rhs, op, var, simplifier, opts)?;
@@ -176,6 +177,7 @@ pub fn isolate(
                         ),
                         equation_after: new_eq,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results = isolate(r, sim_rhs, op, var, simplifier, opts)?;
@@ -204,6 +206,7 @@ pub fn isolate(
                         ),
                         equation_after: new_eq,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results = isolate(l, sim_rhs, op, var, simplifier, opts)?;
@@ -230,6 +233,7 @@ pub fn isolate(
                         ),
                         equation_after: new_eq,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results = isolate(r, sim_rhs, new_op, var, simplifier, opts)?;
@@ -419,6 +423,7 @@ pub fn isolate(
                         ),
                         equation_after: new_eq,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results = isolate(l, new_rhs, new_op, var, simplifier, opts)?;
@@ -464,6 +469,7 @@ pub fn isolate(
                         ),
                         equation_after: new_eq,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results = isolate(r, new_rhs, new_op, var, simplifier, opts)?;
@@ -497,6 +503,7 @@ pub fn isolate(
                                 op: op_pos.clone(),
                             },
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         });
                     }
 
@@ -525,7 +532,7 @@ pub fn isolate(
                             description: format!("Case 2: Assume {} < 0. Multiply by negative denominator (flips inequality).",
                                 cas_ast::DisplayExpr { context: &simplifier.context, id: r }),
                             equation_after: Equation { lhs: l, rhs: sim_rhs, op: op_neg.clone() },
-                            importance: crate::step::ImportanceLevel::Medium,
+                            importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                         });
                     }
 
@@ -556,6 +563,7 @@ pub fn isolate(
                             op,
                         },
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                     all_steps.extend(steps_neg);
 
@@ -585,6 +593,7 @@ pub fn isolate(
                             ),
                             equation_after: new_eq,
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         });
                     }
                     let results = isolate(l, new_rhs, new_op, var, simplifier, opts)?;
@@ -652,7 +661,7 @@ pub fn isolate(
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r },
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r }),
                                  equation_after: Equation { lhs: r, rhs: sim_rhs, op: op_pos.clone() },
-                                 importance: crate::step::ImportanceLevel::Medium,
+                                 importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                              });
                         }
 
@@ -681,7 +690,7 @@ pub fn isolate(
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r },
                                   cas_ast::DisplayExpr { context: &simplifier.context, id: r }),
                                  equation_after: Equation { lhs: r, rhs: sim_rhs, op: op_neg.clone() },
-                                 importance: crate::step::ImportanceLevel::Medium,
+                                 importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                              });
                         }
 
@@ -712,6 +721,7 @@ pub fn isolate(
                                 op,
                             },
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         }); // Dummy eq
                         all_steps.extend(steps_neg);
 
@@ -740,6 +750,7 @@ pub fn isolate(
                             op: op.clone(),
                         },
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
 
                     // Step 2: Divide both sides by rhs (the original RHS)
@@ -754,6 +765,7 @@ pub fn isolate(
                         ),
                         equation_after: new_eq,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results = isolate(r, sim_rhs, op, var, simplifier, opts)?;
@@ -796,6 +808,7 @@ pub fn isolate(
                                 ),
                                 equation_after: Equation { lhs, rhs, op }, // No change
                                 importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
                             });
                         }
                         return Ok((result, steps));
@@ -827,6 +840,7 @@ pub fn isolate(
                             ),
                             equation_after: new_eq,
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         });
                     }
 
@@ -855,6 +869,7 @@ pub fn isolate(
                             ),
                             equation_after: new_eq,
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         });
                     }
 
@@ -903,7 +918,7 @@ pub fn isolate(
                                     var, var
                                 ),
                                 equation_after: Equation { lhs: e, rhs: zero, op: RelOp::Gt },
-                                importance: crate::step::ImportanceLevel::Medium,
+                                importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                             });
                         }
 
@@ -932,7 +947,7 @@ pub fn isolate(
                                         var
                                     ),
                                     equation_after: Equation { lhs: e, rhs: one, op: op.clone() },
-                                    importance: crate::step::ImportanceLevel::Medium,
+                                    importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                                 });
                             }
 
@@ -962,7 +977,7 @@ pub fn isolate(
                                         var
                                     ),
                                     equation_after: Equation { lhs: e, rhs: one, op: op.clone() },
-                                    importance: crate::step::ImportanceLevel::Medium,
+                                    importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                                 });
                             }
                             let results = isolate(e, one, op, var, simplifier, opts)?;
@@ -1010,7 +1025,7 @@ pub fn isolate(
                                     cas_ast::DisplayExpr { context: &simplifier.context, id: b }
                                 ),
                                 equation_after: Equation { lhs: e, rhs: b, op: op.clone() },
-                                importance: crate::step::ImportanceLevel::Medium,
+                                importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                             });
                         }
 
@@ -1051,7 +1066,7 @@ pub fn isolate(
                                     cas_ast::DisplayExpr { context: &simplifier.context, id: rhs_exp }
                                 ),
                                 equation_after: Equation { lhs: e, rhs: rhs_exp, op: op.clone() },
-                                importance: crate::step::ImportanceLevel::Medium,
+                                importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                             });
                         }
 
@@ -1099,6 +1114,7 @@ pub fn isolate(
                             description: desc,
                             equation_after: Equation { lhs, rhs, op },
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         });
                     }
                     return Ok((result, steps));
@@ -1137,7 +1153,7 @@ pub fn isolate(
                                 rhs: sim_rhs,
                                 op: op.clone(),
                             },
-                            importance: crate::step::ImportanceLevel::Medium,
+                            importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
                         });
                     }
 
@@ -1167,6 +1183,7 @@ pub fn isolate(
                                 description: msg,
                                 equation_after: Equation { lhs, rhs, op },
                                 importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
                             });
                         }
                         return Ok((SolutionSet::Empty, steps));
@@ -1185,6 +1202,7 @@ pub fn isolate(
                                     description: format!("{} (residual)", msg),
                                     equation_after: Equation { lhs, rhs, op },
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
                             return Ok((SolutionSet::Residual(residual), steps));
@@ -1205,6 +1223,7 @@ pub fn isolate(
                                     description: format!("{} (residual, budget exhausted)", msg),
                                     equation_after: Equation { lhs, rhs, op },
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
                             return Ok((SolutionSet::Residual(residual), steps));
@@ -1256,6 +1275,7 @@ pub fn isolate(
                                 ),
                                 equation_after: new_eq,
                                 importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
                             });
                         }
 
@@ -1284,6 +1304,7 @@ pub fn isolate(
                                         description: format!("Conditional solution: {}", msg),
                                         equation_after: Equation { lhs, rhs, op },
                                         importance: crate::step::ImportanceLevel::Medium,
+                                        substeps: vec![],
                                     });
                                 }
 
@@ -1296,6 +1317,7 @@ pub fn isolate(
                                         description: format!("{} (residual)", msg),
                                         equation_after: Equation { lhs, rhs, op },
                                         importance: crate::step::ImportanceLevel::Medium,
+                                        substeps: vec![],
                                     });
                                 }
                                 return Ok((SolutionSet::Residual(residual), steps));
@@ -1326,6 +1348,7 @@ pub fn isolate(
                         ),
                         equation_after: new_eq,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results = isolate(e, new_rhs, op, var, simplifier, opts)?;
@@ -1363,6 +1386,7 @@ pub fn isolate(
                         ),
                         equation_after: eq1,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results1 = isolate(arg, rhs, op.clone(), var, simplifier, opts)?;
@@ -1405,6 +1429,7 @@ pub fn isolate(
                         ),
                         equation_after: eq2,
                         importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     });
                 }
                 let results2 = isolate(arg, neg_rhs, op2, var, simplifier, opts)?;
@@ -1450,6 +1475,7 @@ pub fn isolate(
                             ),
                             equation_after: new_eq,
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         });
                     }
                     let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
@@ -1470,6 +1496,7 @@ pub fn isolate(
                             description: "Isolate base of logarithm".to_string(),
                             equation_after: new_eq,
                             importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
                         });
                     }
                     let results = isolate(base, new_rhs, op, var, simplifier, opts)?;
@@ -1497,6 +1524,7 @@ pub fn isolate(
                                     description: "Exponentiate both sides with base e".to_string(),
                                     equation_after: new_eq,
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
                             let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
@@ -1516,6 +1544,7 @@ pub fn isolate(
                                     description: "Take natural log of both sides".to_string(),
                                     equation_after: new_eq,
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
                             let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
@@ -1534,6 +1563,7 @@ pub fn isolate(
                                     description: "Square both sides".to_string(),
                                     equation_after: new_eq,
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
                             let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
@@ -1554,6 +1584,7 @@ pub fn isolate(
                                     description: "Take arcsin of both sides".to_string(),
                                     equation_after: new_eq,
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
 
@@ -1579,6 +1610,7 @@ pub fn isolate(
                                     description: "Take arccos of both sides".to_string(),
                                     equation_after: new_eq,
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
 
@@ -1604,6 +1636,7 @@ pub fn isolate(
                                     description: "Take arctan of both sides".to_string(),
                                     equation_after: new_eq,
                                     importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
                                 });
                             }
 
@@ -1647,6 +1680,7 @@ pub fn isolate(
                     description: "Multiply both sides by -1 (flips inequality)".to_string(),
                     equation_after: new_eq,
                     importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
                 });
             }
 
@@ -1703,6 +1737,7 @@ pub fn simplify_rhs(
                     op: op.clone(),
                 },
                 importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
             });
         }
     }

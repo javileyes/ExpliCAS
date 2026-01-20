@@ -2671,6 +2671,71 @@ impl<'a> SolveTimelineHtml<'a> {
         font-size: 0.9em;
         transition: color 0.3s ease;
     }}
+    /* Collapsible substeps styles */
+    .substeps-toggle {{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        padding: 8px 12px;
+        background: rgba(100, 181, 246, 0.15);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9em;
+        color: var(--step-number-color);
+        border: 1px solid rgba(100, 181, 246, 0.3);
+        transition: all 0.2s ease;
+    }}
+    .substeps-toggle:hover {{
+        background: rgba(100, 181, 246, 0.25);
+    }}
+    .substeps-toggle .arrow {{
+        transition: transform 0.3s ease;
+        font-size: 0.8em;
+    }}
+    .substeps-toggle.expanded .arrow {{
+        transform: rotate(90deg);
+    }}
+    .substeps-container {{
+        display: none;
+        margin-top: 12px;
+        padding-left: 20px;
+        border-left: 2px solid rgba(100, 181, 246, 0.3);
+    }}
+    .substeps-container.visible {{
+        display: block;
+        animation: slideDown 0.3s ease;
+    }}
+    @keyframes slideDown {{
+        from {{ opacity: 0; transform: translateY(-10px); }}
+        to {{ opacity: 1; transform: translateY(0); }}
+    }}
+    .substep {{
+        background: rgba(30, 40, 55, 0.6);
+        border-radius: 8px;
+        padding: 12px 15px;
+        margin-bottom: 10px;
+        border-left: 3px solid #90caf9;
+    }}
+    .substep-number {{
+        color: #90caf9;
+        font-weight: bold;
+        font-size: 0.85em;
+        margin-bottom: 4px;
+    }}
+    .substep-description {{
+        color: var(--description-color);
+        font-size: 0.9em;
+        margin-bottom: 8px;
+        font-style: italic;
+    }}
+    .substep-equation {{
+        background: rgba(20, 30, 45, 0.8);
+        padding: 10px;
+        border-radius: 6px;
+        text-align: center;
+        font-size: 1em;
+    }}
 </style>
 </head>
 <body>
@@ -2731,6 +2796,7 @@ impl<'a> SolveTimelineHtml<'a> {
                 .to_latex()
             );
 
+            // Start the step div
             html.push_str(&format!(
                 r#"        <div class="step">
             <div class="step-number">Step {}</div>
@@ -2738,12 +2804,63 @@ impl<'a> SolveTimelineHtml<'a> {
             <div class="equation">
                 \[{}\]
             </div>
-        </div>
 "#,
                 step_number,
                 html_escape(&step.description),
                 eq_latex
             ));
+
+            // Add collapsible substeps if any
+            if !step.substeps.is_empty() {
+                let substep_id = format!("substeps-{}", step_number);
+                html.push_str(&format!(
+                    r#"            <div class="substeps-toggle" onclick="toggleSubsteps('{}')">
+                <span class="arrow">▶</span>
+                <span>Show derivation ({} steps)</span>
+            </div>
+            <div id="{}" class="substeps-container">
+"#,
+                    substep_id,
+                    step.substeps.len(),
+                    substep_id
+                ));
+
+                for (j, substep) in step.substeps.iter().enumerate() {
+                    let sub_eq_latex = format!(
+                        "{} {} {}",
+                        LaTeXExpr {
+                            context: self.context,
+                            id: substep.equation_after.lhs
+                        }
+                        .to_latex(),
+                        self.relop_to_latex(&substep.equation_after.op),
+                        LaTeXExpr {
+                            context: self.context,
+                            id: substep.equation_after.rhs
+                        }
+                        .to_latex()
+                    );
+
+                    html.push_str(&format!(
+                        r#"                <div class="substep">
+                    <div class="substep-number">Step {}.{}</div>
+                    <div class="substep-description">{}</div>
+                    <div class="substep-equation">
+                        \[{}\]
+                    </div>
+                </div>
+"#,
+                        step_number,
+                        j + 1,
+                        html_escape(&substep.description),
+                        sub_eq_latex
+                    ));
+                }
+
+                html.push_str("            </div>\n");
+            }
+
+            html.push_str("        </div>\n");
 
             _current_eq = step.equation_after.clone();
         }
@@ -2892,7 +3009,26 @@ impl<'a> SolveTimelineHtml<'a> {
     }
 
     fn html_footer_solve() -> &'static str {
-        r#"    <footer>
+        r#"    <script>
+        function toggleSubsteps(id) {
+            const container = document.getElementById(id);
+            const toggle = document.querySelector(`[onclick*="${id}"]`);
+            if (container.classList.contains('visible')) {
+                container.classList.remove('visible');
+                toggle.classList.remove('expanded');
+                toggle.querySelector('span:last-child').textContent = 'Show derivation (' + container.children.length + ' steps)';
+            } else {
+                container.classList.add('visible');
+                toggle.classList.add('expanded');
+                toggle.querySelector('span:last-child').textContent = 'Hide derivation';
+                // Re-render MathJax for the newly visible content
+                if (window.MathJax) {
+                    MathJax.typeset([container]);
+                }
+            }
+        }
+    </script>
+    <footer>
         Generated by Rust CAS Engine - Equation Solver
     </footer>
 </body>
