@@ -2126,10 +2126,10 @@ impl<'a> TimelineHtml<'a> {
                                     <span class="substep-desc">{}</span>"#,
                                 html_escape(&sub.description)
                             ));
-                            if !sub.before_latex.is_empty() {
+                            if !sub.before_expr.is_empty() {
                                 details_html.push_str(&format!(
                                     r#"<div class="substep-math">\[{} \rightarrow {}\]</div>"#,
-                                    sub.before_latex, sub.after_latex
+                                    sub.before_expr, sub.after_expr
                                 ));
                             }
                             details_html.push_str("</div>");

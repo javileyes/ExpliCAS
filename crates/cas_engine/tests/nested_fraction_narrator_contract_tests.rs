@@ -127,15 +127,15 @@ fn substep_intermediate_shows_real_values() {
             let first_substep = &step.sub_steps[0];
             // Should NOT contain placeholder text
             assert!(
-                !first_substep.after_latex.contains("combinado"),
+                !first_substep.after_expr.contains("combinado"),
                 "Should not have placeholder 'combinado': {}",
-                first_substep.after_latex
+                first_substep.after_expr
             );
             // Should contain actual variable x
             assert!(
-                first_substep.after_latex.contains("x"),
+                first_substep.after_expr.contains("x"),
                 "Should contain variable x: {}",
-                first_substep.after_latex
+                first_substep.after_expr
             );
         }
     }
@@ -154,11 +154,11 @@ fn substep_has_parentheses_around_complex_denominator() {
         if !step.sub_steps.is_empty() {
             let first_substep = &step.sub_steps[0];
             // Should be LaTeX format with \frac (no need for parentheses in \frac{}{})
-            let has_latex_frac = first_substep.after_latex.contains("\\frac");
+            let has_latex_frac = first_substep.after_expr.contains("\\frac");
             assert!(
                 has_latex_frac,
                 "Complex denominator should use LaTeX \\frac format: {}",
-                first_substep.after_latex
+                first_substep.after_expr
             );
         }
     }

@@ -55,10 +55,10 @@ pub struct EnrichedStep {
 pub struct SubStep {
     /// Human-readable description of the operation
     pub description: String,
-    /// LaTeX representation of expression before
-    pub before_latex: String,
-    /// LaTeX representation of expression after
-    pub after_latex: String,
+    /// Expression before the operation (plain text or LaTeX depending on context)
+    pub before_expr: String,
+    /// Expression after the operation (plain text or LaTeX depending on context)
+    pub after_expr: String,
 }
 
 /// Enrich a list of steps with didactic sub-steps
@@ -394,20 +394,20 @@ fn generate_fraction_sum_substeps(info: &FractionSumInfo) -> Vec<SubStep> {
     if needs_conversion {
         sub_steps.push(SubStep {
             description: format!("Find common denominator: {}", lcm),
-            before_latex: original_sum.join(" + "),
-            after_latex: converted.join(" + "),
+            before_expr: original_sum.join(" + "),
+            after_expr: converted.join(" + "),
         });
     }
 
     // Step 4: Show the result
     sub_steps.push(SubStep {
         description: "Sum the fractions".to_string(),
-        before_latex: if needs_conversion {
+        before_expr: if needs_conversion {
             converted.join(" + ")
         } else {
             original_sum.join(" + ")
         },
-        after_latex: format_fraction(&info.result),
+        after_expr: format_fraction(&info.result),
     });
 
     sub_steps
@@ -471,8 +471,8 @@ fn generate_gcd_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
             if local_before_str.contains(gcd_str) && local_before_str.contains('*') {
                 sub_steps.push(SubStep {
                     description: format!("Factor: {} contains factor {}", num_str, gcd_str),
-                    before_latex: num_str.clone(),
-                    after_latex: local_before_str
+                    before_expr: num_str.clone(),
+                    after_expr: local_before_str
                         .split('/')
                         .next()
                         .unwrap_or(&local_before_str)
@@ -503,8 +503,8 @@ fn generate_gcd_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         );
         sub_steps.push(SubStep {
             description: format!("Cancel common factor: {}", gcd_str),
-            before_latex: before_formatted,
-            after_latex: after_str,
+            before_expr: before_formatted,
+            after_expr: after_str,
         });
     }
 
@@ -742,15 +742,15 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                 sub_steps.push(SubStep {
                     description: "Combinar términos del denominador (denominador común)"
                         .to_string(),
-                    before_latex: den_str.clone(),
-                    after_latex: intermediate_str.clone(),
+                    before_expr: den_str.clone(),
+                    after_expr: intermediate_str.clone(),
                 });
 
                 // Sub-step 2: Invert the fraction (use intermediate_str from step 1)
                 sub_steps.push(SubStep {
                     description: "Invertir la fracción: 1/(a/b) = b/a".to_string(),
-                    before_latex: format!("\\frac{{1}}{{{}}}", intermediate_str),
-                    after_latex: after_str,
+                    before_expr: format!("\\frac{{1}}{{{}}}", intermediate_str),
+                    after_expr: after_str,
                 });
             }
         }
@@ -768,15 +768,15 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                 sub_steps.push(SubStep {
                     description: "Combinar términos del denominador (denominador común)"
                         .to_string(),
-                    before_latex: den_str,
-                    after_latex: intermediate_str,
+                    before_expr: den_str,
+                    after_expr: intermediate_str,
                 });
 
                 // Sub-step 2: Multiply numerator by D and simplify
                 sub_steps.push(SubStep {
                     description: format!("Multiplicar {} por el denominador interno", num_str),
-                    before_latex: before_str,
-                    after_latex: after_str,
+                    before_expr: before_str,
+                    after_expr: after_str,
                 });
             }
         }
@@ -790,15 +790,15 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                 // Sub-step 1: Combine the numerator
                 sub_steps.push(SubStep {
                     description: "Combinar términos del numerador (denominador común)".to_string(),
-                    before_latex: num_str,
-                    after_latex: "(numerador combinado) / B".to_string(),
+                    before_expr: num_str,
+                    after_expr: "(numerador combinado) / B".to_string(),
                 });
 
                 // Sub-step 2: Divide by C (multiply denominators)
                 sub_steps.push(SubStep {
                     description: format!("Dividir por {}: multiplicar denominadores", den_str),
-                    before_latex: before_str,
-                    after_latex: after_str,
+                    before_expr: before_str,
+                    after_expr: after_str,
                 });
             }
         }
@@ -808,14 +808,14 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
             sub_steps.push(SubStep {
                 description: "Multiplicar numerador y denominador por los denominadores internos"
                     .to_string(),
-                before_latex: before_str.clone(),
-                after_latex: "(expresión expandida)".to_string(),
+                before_expr: before_str.clone(),
+                after_expr: "(expresión expandida)".to_string(),
             });
 
             sub_steps.push(SubStep {
                 description: "Simplificar la fracción resultante".to_string(),
-                before_latex: "(expresión expandida)".to_string(),
-                after_latex: after_str,
+                before_expr: "(expresión expandida)".to_string(),
+                after_expr: after_str,
             });
         }
     }
@@ -890,8 +890,8 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                 // Sub-step 1: Show the original fraction and grouping
                 sub_steps.push(SubStep {
                     description: "Agrupar términos del denominador".to_string(),
-                    before_latex: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
-                    after_latex: if group_terms.len() > 1 {
+                    before_expr: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
+                    after_expr: if group_terms.len() > 1 {
                         format!("\\frac{{{}}}{{({}) + {}}}", num_latex, group_str, last_term)
                     } else {
                         format!("\\frac{{{}}}{{{} + {}}}", num_latex, group_str, last_term)
@@ -907,12 +907,12 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
 
                 sub_steps.push(SubStep {
                     description: "Multiplicar por el conjugado".to_string(),
-                    before_latex: if group_terms.len() > 1 {
+                    before_expr: if group_terms.len() > 1 {
                         format!("({}) + {}", group_str, last_term)
                     } else {
                         format!("{} + {}", group_str, last_term)
                     },
-                    after_latex: conjugate.clone(),
+                    after_expr: conjugate.clone(),
                 });
 
                 // Sub-step 3: Apply difference of squares with specific terms
@@ -920,12 +920,12 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                     let after_den_latex = to_latex(*new_den);
                     sub_steps.push(SubStep {
                         description: "Diferencia de cuadrados".to_string(),
-                        before_latex: if group_terms.len() > 1 {
+                        before_expr: if group_terms.len() > 1 {
                             format!("({})^2 - ({})^2", group_str, last_term)
                         } else {
                             format!("{}^2 - {}^2", group_str, last_term)
                         },
-                        after_latex: after_den_latex,
+                        after_expr: after_den_latex,
                     });
                 }
             }
@@ -939,8 +939,8 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
             // Sub-step 1: Identify the radical in denominator
             sub_steps.push(SubStep {
                 description: "Denominador con producto de radical".to_string(),
-                before_latex: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
-                after_latex: "\\frac{a}{k \\cdot \\sqrt{n}}".to_string(),
+                before_expr: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
+                after_expr: "\\frac{a}{k \\cdot \\sqrt{n}}".to_string(),
             });
 
             // Sub-step 2: Multiply by √n/√n
@@ -949,11 +949,11 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                 let after_den_latex = to_latex(*new_den);
                 sub_steps.push(SubStep {
                     description: "Multiplicar por \\sqrt{n}/\\sqrt{n}".to_string(),
-                    before_latex: format!(
+                    before_expr: format!(
                         "\\frac{{{} \\cdot \\sqrt{{n}}}}{{{} \\cdot \\sqrt{{n}}}}",
                         num_latex, den_latex
                     ),
-                    after_latex: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
+                    after_expr: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
                 });
             }
         }
@@ -1010,8 +1010,8 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
             // Sub-step 1: Identify binomial and conjugate
             sub_steps.push(SubStep {
                 description: "Denominador binomial con radical".to_string(),
-                before_latex: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
-                after_latex: format!("\\text{{Conjugado: }} {}", conjugate),
+                before_expr: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
+                after_expr: format!("\\text{{Conjugado: }} {}", conjugate),
             });
 
             // Sub-step 2: Apply difference of squares
@@ -1021,11 +1021,11 @@ fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
 
                 sub_steps.push(SubStep {
                     description: "(a+b)(a-b) = a² - b²".to_string(),
-                    before_latex: format!(
+                    before_expr: format!(
                         "\\frac{{({}) \\cdot ({})}}{{{} \\cdot ({})}}",
                         num_latex, conjugate, den_latex, conjugate
                     ),
-                    after_latex: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
+                    after_expr: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
                 });
             }
         }
@@ -1077,25 +1077,25 @@ fn generate_polynomial_identity_substeps(ctx: &Context, step: &crate::step::Step
         // Sub-step 1: Show LHS normal form
         sub_steps.push(SubStep {
             description: "Expandir lado izquierdo".to_string(),
-            before_latex: "(a + b + c)³".to_string(), // Placeholder, will be overwritten
-            after_latex: format_poly_stats(lhs_stats),
+            before_expr: "(a + b + c)³".to_string(), // Placeholder, will be overwritten
+            after_expr: format_poly_stats(lhs_stats),
         });
 
         // Sub-step 2: Show RHS normal form
         sub_steps.push(SubStep {
             description: "Expandir lado derecho".to_string(),
-            before_latex: "a³ + b³ + c³ + ...".to_string(), // Placeholder
-            after_latex: format_poly_stats(rhs_stats),
+            before_expr: "a³ + b³ + c³ + ...".to_string(), // Placeholder
+            after_expr: format_poly_stats(rhs_stats),
         });
 
         // Sub-step 3: Compare and show they match
         sub_steps.push(SubStep {
             description: "Comparar formas normales".to_string(),
-            before_latex: format!(
+            before_expr: format!(
                 "LHS: {} monomios | RHS: {} monomios",
                 lhs_stats.monomials, rhs_stats.monomials
             ),
-            after_latex: "Coinciden ⇒ diferencia = 0".to_string(),
+            after_expr: "Coinciden ⇒ diferencia = 0".to_string(),
         });
     } else {
         // Fallback: single normal form display
@@ -1121,20 +1121,20 @@ fn generate_polynomial_identity_substeps(ctx: &Context, step: &crate::step::Step
 
         sub_steps.push(SubStep {
             description: "Convertir a forma normal polinómica".to_string(),
-            before_latex: format!(
+            before_expr: format!(
                 "{}",
                 DisplayExpr {
                     context: ctx,
                     id: step.before
                 }
             ),
-            after_latex: normal_form_description,
+            after_expr: normal_form_description,
         });
 
         sub_steps.push(SubStep {
             description: "Cancelar términos semejantes".to_string(),
-            before_latex: "todos los coeficientes".to_string(),
-            after_latex: "0".to_string(),
+            before_expr: "todos los coeficientes".to_string(),
+            after_expr: "0".to_string(),
         });
     }
 
@@ -1221,22 +1221,22 @@ fn generate_sum_three_cubes_substeps(ctx: &Context, step: &crate::step::Step) ->
     // Sub-step 1: Define x, y, z
     sub_steps.push(SubStep {
         description: "Definimos las bases de los cubos".to_string(),
-        before_latex: format!("x = {}, \\quad y = {}, \\quad z = {}", x_str, y_str, z_str),
-        after_latex: "x^3 + y^3 + z^3".to_string(),
+        before_expr: format!("x = {}, \\quad y = {}, \\quad z = {}", x_str, y_str, z_str),
+        after_expr: "x^3 + y^3 + z^3".to_string(),
     });
 
     // Sub-step 2: Show that x + y + z = 0
     sub_steps.push(SubStep {
         description: "Verificamos que x + y + z = 0".to_string(),
-        before_latex: format!("({}) + ({}) + ({})", x_str, y_str, z_str),
-        after_latex: "0 \\quad \\checkmark".to_string(),
+        before_expr: format!("({}) + ({}) + ({})", x_str, y_str, z_str),
+        after_expr: "0 \\quad \\checkmark".to_string(),
     });
 
     // Sub-step 3: Apply the identity
     sub_steps.push(SubStep {
         description: "Aplicamos la identidad: si x+y+z=0, entonces x³+y³+z³=3xyz".to_string(),
-        before_latex: format!("{}^3 + {}^3 + {}^3", x_str, y_str, z_str),
-        after_latex: format!("3 \\cdot ({}) \\cdot ({}) \\cdot ({})", x_str, y_str, z_str),
+        before_expr: format!("{}^3 + {}^3 + {}^3", x_str, y_str, z_str),
+        after_expr: format!("3 \\cdot ({}) \\cdot ({}) \\cdot ({})", x_str, y_str, z_str),
     });
 
     sub_steps
@@ -1257,8 +1257,10 @@ fn generate_root_denesting_substeps(ctx: &Context, step: &crate::step::Step) -> 
     // Get the before expression (should be sqrt(a + c·√d))
     let before_expr = step.before_local.unwrap_or(step.before);
 
-    // Build display hints
+    // Build display hints for proper sqrt notation
     let hints = DisplayContext::with_root_index(2);
+
+    // Helper for LaTeX display (for timeline)
     let to_latex = |id: ExprId| -> String {
         LaTeXExprWithHints {
             context: ctx,
@@ -1373,23 +1375,18 @@ fn generate_root_denesting_substeps(ctx: &Context, step: &crate::step::Step) -> 
 
     let op_sign = if is_add { "+" } else { "-" };
 
-    // Sub-step 1: Identify the pattern
+    // Sub-step 1: Identify the pattern - using LaTeX format
     sub_steps.push(SubStep {
         description: "Reconocer patrón √(a + c·√d)".to_string(),
-        before_latex: to_latex(before_expr),
-        after_latex: format!(
-            "a = {}, \\quad c = {}, \\quad d = {}",
-            a_val,
-            c_val.abs(),
-            d_val
-        ),
+        before_expr: to_latex(before_expr),
+        after_expr: format!("a = {}, c = {}, d = {}", a_val, c_val.abs(), d_val),
     });
 
-    // Sub-step 2: Calculate discriminant
+    // Sub-step 2: Calculate discriminant - LaTeX for timeline
     sub_steps.push(SubStep {
-        description: "Calcular discriminante Δ = a² − c²d".to_string(),
-        before_latex: format!("\\Delta = {}^2 - {}^2 \\cdot {}", a_val, c_val.abs(), d_val),
-        after_latex: format!("{} - {} = {}", a2, c2d, delta_int),
+        description: "Calcular Δ = a² − c²·d".to_string(),
+        before_expr: format!("{}^2 - {}^2 \\cdot {}", a_val, c_val.abs(), d_val),
+        after_expr: format!("{} - {} = {}", a2, c2d, delta_int),
     });
 
     // Sub-step 3: Verify perfect square and apply formula
@@ -1399,12 +1396,9 @@ fn generate_root_denesting_substeps(ctx: &Context, step: &crate::step::Step) -> 
     let amz_half = &amz / BigRational::from_integer(BigInt::from(2));
 
     sub_steps.push(SubStep {
-        description: "Δ es cuadrado perfecto, aplicar √((a+z)/2) ± √((a−z)/2)".to_string(),
-        before_latex: format!(
-            "\\Delta = {} = {}^2 \\quad \\Rightarrow \\quad z = {}",
-            delta_int, z, z
-        ),
-        after_latex: format!(
+        description: "Δ es cuadrado perfecto → aplicar sqrt((a+z)/2) ± sqrt((a−z)/2)".to_string(),
+        before_expr: format!("\\Delta = {} = {}^2 \\Rightarrow z = {}", delta_int, z, z),
+        after_expr: format!(
             "\\sqrt{{\\frac{{{}+{}}}{{2}}}} {} \\sqrt{{\\frac{{{}-{}}}{{2}}}} = \\sqrt{{{}}} {} \\sqrt{{{}}}",
             a_val, z, op_sign, a_val, z, az_half, op_sign, amz_half
         ),

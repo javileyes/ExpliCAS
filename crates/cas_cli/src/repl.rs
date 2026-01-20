@@ -5137,11 +5137,11 @@ impl Repl {
 
                 for sub in &standalone_substeps {
                     println!("   → {}", sub.description);
-                    if !sub.before_latex.is_empty() {
+                    if !sub.before_expr.is_empty() {
                         println!(
                             "     {} → {}",
-                            latex_to_text(&sub.before_latex),
-                            latex_to_text(&sub.after_latex)
+                            latex_to_text(&sub.before_expr),
+                            latex_to_text(&sub.after_expr)
                         );
                     }
                 }
@@ -5388,11 +5388,11 @@ impl Repl {
 
                                         for sub in &enriched_step.sub_steps {
                                             println!("      → {}", sub.description);
-                                            if !sub.before_latex.is_empty() {
+                                            if !sub.before_expr.is_empty() {
                                                 println!(
                                                     "        {} → {}",
-                                                    latex_to_text(&sub.before_latex),
-                                                    latex_to_text(&sub.after_latex)
+                                                    latex_to_text(&sub.before_expr),
+                                                    latex_to_text(&sub.after_expr)
                                                 );
                                             }
                                         }
