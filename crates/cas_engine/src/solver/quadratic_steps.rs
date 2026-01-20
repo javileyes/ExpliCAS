@@ -298,31 +298,47 @@ pub fn build_quadratic_substeps(
     });
 
     // =========================================================================
-    // Step 6: Take square root and isolate x
-    // x + b/2a = ±√((b² - 4ac) / 4a²)
-    // x = (-b ± √(b² - 4ac)) / 2a
+    // Step 6: Take square root → |x + b/2a| = √(RHS)
     // =========================================================================
 
-    // √(b² - 4ac)
     let half = ctx.add(Expr::Div(one, two));
-    let sqrt_discriminant = ctx.add(Expr::Pow(discriminant, half));
+    let sqrt_rhs = ctx.add(Expr::Pow(step5_rhs, half));
+    // |x + b/2a|
+    let abs_lhs = ctx.add(Expr::Function("abs".to_string(), vec![x_plus_b_over_2a]));
 
-    // -b
+    steps.push(SolveSubStep {
+        description: "Tomar raíz cuadrada en ambos lados".to_string(),
+        equation_after: Equation {
+            lhs: abs_lhs,
+            rhs: sqrt_rhs,
+            op: cas_ast::RelOp::Eq,
+        },
+        importance: ImportanceLevel::Low,
+    });
+
+    // =========================================================================
+    // Step 7: |u| = a se descompone en u = a y u = -a → x = -b/2a ± √(...)
+    // For numeric case: show the actual computed solutions
+    // =========================================================================
+
+    // Use the same sqrt_rhs from step 6 for consistency
+    // x = -b/2a ± sqrt_rhs (where sqrt_rhs = √((b²-4ac)/4a²) = √Δ/2a)
     let neg_b = ctx.add(Expr::Neg(b));
+    let neg_b_over_2a = ctx.add(Expr::Div(neg_b, two_a));
 
-    // Build x = (-b ± √Δ) / 2a using PlusMinus function for display
-    // (-b ± √Δ)
+    // For both numeric and symbolic: show formula with ± notation
+    // x = -b/2a ± √((b²-4ac)/4a²)
+    // The post-pass simplifier will clean up numeric values
     let plus_minus = ctx.add(Expr::Function(
         "PlusMinus".to_string(),
-        vec![neg_b, sqrt_discriminant],
+        vec![neg_b_over_2a, sqrt_rhs],
     ));
-    // (-b ± √Δ) / 2a
-    let formula = ctx.add(Expr::Div(plus_minus, two_a));
+    // No need to divide by 2a again - it's already incorporated in both terms
 
     let description = if is_real_only {
-        "Tomar raíz cuadrada y despejar x (requiere Δ = b² - 4ac ≥ 0)".to_string()
+        "|u| = a se descompone en u = a y u = -a. Despejando x (requiere Δ ≥ 0)".to_string()
     } else {
-        "Tomar raíz cuadrada y despejar x".to_string()
+        "|u| = a se descompone en u = a y u = -a. Despejando x".to_string()
     };
 
     // Show x = (-b ± √Δ) / 2a
@@ -330,7 +346,7 @@ pub fn build_quadratic_substeps(
         description,
         equation_after: Equation {
             lhs: x,
-            rhs: formula,
+            rhs: plus_minus,
             op: cas_ast::RelOp::Eq,
         },
         importance: ImportanceLevel::Low,
@@ -358,8 +374,8 @@ mod tests {
 
         assert_eq!(
             steps.len(),
-            6,
-            "General numeric case should generate 6 substeps"
+            7,
+            "General numeric case should generate 7 substeps"
         );
         assert!(steps[0].description.contains("Identificar"));
         assert!(steps[1].description.contains("Dividir"));
@@ -367,5 +383,6 @@ mod tests {
         assert!(steps[3].description.contains("Completar"));
         assert!(steps[4].description.contains("cuadrado perfecto"));
         assert!(steps[5].description.contains("raíz cuadrada"));
+        assert!(steps[6].description.contains("descompone"));
     }
 }
