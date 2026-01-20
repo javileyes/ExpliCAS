@@ -180,28 +180,27 @@ pub fn build_quadratic_substeps(
     // -b
     let neg_b = ctx.add(Expr::Neg(b));
 
-    // Solution 1: (-b + √Δ) / 2a
-    let numerator1 = ctx.add(Expr::Add(neg_b, sqrt_discriminant));
-    let solution1 = ctx.add(Expr::Div(numerator1, two_a));
+    // Build x = (-b ± √Δ) / 2a using PlusMinus function for display
+    // (-b ± √Δ)
+    let plus_minus = ctx.add(Expr::Function(
+        "PlusMinus".to_string(),
+        vec![neg_b, sqrt_discriminant],
+    ));
+    // (-b ± √Δ) / 2a
+    let formula = ctx.add(Expr::Div(plus_minus, two_a));
 
-    // Solution 2: (-b - √Δ) / 2a
-    let numerator2 = ctx.add(Expr::Sub(neg_b, sqrt_discriminant));
-    let _solution2 = ctx.add(Expr::Div(numerator2, two_a));
-
-    // For display, show the formula with ±
     let description = if is_real_only {
         "Tomar raíz cuadrada y despejar x (requiere Δ = b² - 4ac ≥ 0)".to_string()
     } else {
         "Tomar raíz cuadrada y despejar x".to_string()
     };
 
-    // Show x = (-b ± √Δ) / 2a as the equation after
-    // We'll use solution1 as representative (the + case)
+    // Show x = (-b ± √Δ) / 2a
     steps.push(SolveSubStep {
         description,
         equation_after: Equation {
             lhs: x,
-            rhs: solution1, // Shows x = (-b + √Δ) / 2a
+            rhs: formula,
             op: cas_ast::RelOp::Eq,
         },
         importance: ImportanceLevel::Low,

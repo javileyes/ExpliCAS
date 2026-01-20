@@ -505,6 +505,12 @@ pub trait LaTeXRenderer {
             }
             "abs" => format!("|{}|", self.expr_to_latex(args[0], false)),
             "exp" => format!("e^{{{}}}", self.expr_to_latex(args[0], false)),
+            // PlusMinus for quadratic formula display: PlusMinus(a, b) -> a ± b
+            "PlusMinus" if args.len() == 2 => {
+                let a = self.expr_to_latex(args[0], false);
+                let b = self.expr_to_latex(args[1], false);
+                format!("{} \\pm {}", a, b)
+            }
             "floor" => format!("\\lfloor {} \\rfloor", self.expr_to_latex(args[0], false)),
             "ceil" => format!("\\lceil {} \\rceil", self.expr_to_latex(args[0], false)),
             "diff" if args.len() >= 2 => {
