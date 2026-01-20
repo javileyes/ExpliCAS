@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: \sqrt{5 + 2\cdot \sqrt{6}} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{2\cdot (2 + u)})</title>
+    <title>CAS Steps: \sqrt{5 + 2\cdot \sqrt{6}} - \sqrt{3} - \sqrt{2}</title>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         * {
@@ -451,7 +451,7 @@
         <p class="subtitle">Step-by-step visualization</p>
         <div class="original">
             \(\textbf{Original Expression:}\)
-            \[\sqrt{5 + 2\cdot \sqrt{6}} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{2\cdot (2 + u)})\]
+            \[\sqrt{5 + 2\cdot \sqrt{6}} - \sqrt{3} - \sqrt{2}\]
         </div>
         <div class="timeline">
             <div class="step">
@@ -460,9 +460,14 @@
                     <h3>Root Denesting</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\sqrt{5 + 2\cdot \sqrt{6}}}} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{2\cdot (2 + u)})\]
+                        \[{\color{red}{\sqrt{5 + 2\cdot \sqrt{6}}}} - \sqrt{3} - \sqrt{2}\]
                     </div>
-                    
+                    <details class="substeps-details">
+                            <summary>Pasos intermedios</summary>
+                            <div class="substeps-content"><div class="substep">
+                                    <span class="substep-desc">Reconocer patrón √(a + c·√d)</span><div class="substep-math">\[\sqrt{5 + 2\cdot \sqrt{6}} \rightarrow a = 5, \quad c = 2, \quad d = 6\]</div></div><div class="substep">
+                                    <span class="substep-desc">Calcular discriminante Δ = a² − c²d</span><div class="substep-math">\[\Delta = 5^2 - 2^2 \cdot 6 \rightarrow 25 - 24 = 1\]</div></div><div class="substep">
+                                    <span class="substep-desc">Δ es cuadrado perfecto, aplicar √((a+z)/2) ± √((a−z)/2)</span><div class="substep-math">\[\Delta = 1 = 1^2 \quad \Rightarrow \quad z = 1 \rightarrow \sqrt{\frac{5+1}{2}} + \sqrt{\frac{5-1}{2}} = \sqrt{3} + \sqrt{2}\]</div></div></div></details>
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Denest square root}\)</div>
                         <div class="local-change">
@@ -472,177 +477,23 @@
                     
                     <div class="math-expr after">
                         \(\textbf{After:}\)
-                        \[{\color{green}{\sqrt{\frac{1 + 5}{2}} + \sqrt{\frac{5 - 1}{2}}}} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{2\cdot (2 + u)})\]
+                        \[{\color{green}{\sqrt{\frac{1 + 5}{2}} + \sqrt{\frac{5 - 1}{2}}}} - \sqrt{3} - \sqrt{2}\]
                     </div>
                 </div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
                 <div class="step-content">
-                    <h3>Distributive Property</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{{\color{red}{2\cdot (2 + u)}}})\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Distribute}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{2\cdot (u + 2)}} \rightarrow {\color{green}{2\cdot u + 2\cdot 2}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{1}{2\cdot u} - \frac{1}{{\color{green}{2\cdot 2 + 2\cdot u}}})\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Add Fractions</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{red}{\frac{1}{2\cdot u} - \frac{1}{4 + 2\cdot u}}})\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{1}{2\cdot u} - \frac{1}{2\cdot u + 4}}} \rightarrow {\color{green}{\frac{2\cdot u - (2\cdot u) + 4}{2\cdot u\cdot (2\cdot u + 4)}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{green}{\frac{4 + 2\cdot u - (2\cdot u)}{2\cdot u\cdot (4 + 2\cdot u)}}})\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
                     <h3>Combine Like Terms</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + \frac{4 + {\color{red}{2\cdot u}} - {\color{red}{2\cdot u}}}{2\cdot u\cdot (4 + 2\cdot u)})\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{2\cdot u - 2\cdot u}} \rightarrow {\color{green}{0}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\sqrt{2} + \sqrt{3} + \frac{1}{u\cdot (u + 2)} - (\sqrt{2} + \sqrt{3} + \frac{4}{2\cdot u\cdot (2\cdot u + 4)})\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{red}{\frac{4}{2\cdot u\cdot (4 + 2\cdot u)}}})\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Factor by GCD: 4}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{4}{2\cdot u\cdot (2\cdot u + 4)}}} \rightarrow {\color{green}{\frac{4}{({u}^{2} + 2\cdot u)\cdot 4}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{green}{\frac{4}{({u}^{2} + 2\cdot u)\cdot 4}}})\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">6</div>
-                <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{red}{\frac{4}{({u}^{2} + 2\cdot u)\cdot 4}}})\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel common factor}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{4}{({u}^{2} + 2\cdot u)\cdot 4}}} \rightarrow {\color{green}{\frac{1}{{u}^{2} + 2\cdot u}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\sqrt{3} + \sqrt{2} + \frac{1}{u\cdot (2 + u)} - (\sqrt{2} + \sqrt{3} + {\color{green}{\frac{1}{{u}^{2} + 2\cdot u}}})\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">7</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\sqrt{2}}} + {\color{red}{\sqrt{3}}} + \frac{1}{u\cdot (2 + u)} - \frac{1}{{u}^{2} + 2\cdot u} - {\color{red}{{\color{red}{\sqrt{2}}}}} - {\color{red}{{\color{red}{\sqrt{3}}}}}\]
+                        \[{\color{red}{\sqrt{3} + \sqrt{2} - \sqrt{2} - \sqrt{3}}}\]
                     </div>
                     
                     <div class="rule-description">
                         <div class="rule-name">\(\text{Cancel opposite terms}\)</div>
                         <div class="local-change">
                             \[{\color{red}{\sqrt{2} + \sqrt{3} - \sqrt{2} - \sqrt{3}}} \rightarrow {\color{green}{0}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{1}{u\cdot (u + 2)} - \frac{1}{{u}^{2} + 2\cdot u}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">8</div>
-                <div class="step-content">
-                    <h3>Add Fractions</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{1}{u\cdot (2 + u)} - \frac{1}{{u}^{2} + 2\cdot u}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{1}{u\cdot (u + 2)} - \frac{1}{{u}^{2} + 2\cdot u}}} \rightarrow {\color{green}{\frac{{u}^{2} + 2\cdot u - (u\cdot (u + 2))}{u\cdot (u + 2)\cdot ({u}^{2} + 2\cdot u)}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{{u}^{2} + 2\cdot u - (u\cdot (2 + u))}{u\cdot (2 + u)\cdot ({u}^{2} + 2\cdot u)}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">9</div>
-                <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{{u}^{2}}} + {\color{red}{2\cdot u}} - {\color{red}{{\color{red}{(u\cdot (2 + u))}}}}}{u\cdot (2 + u)\cdot ({u}^{2} + 2\cdot u)}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Numerator simplifies to 0}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{{u}^{2} + 2\cdot u - (u\cdot (u + 2))}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
                     
@@ -656,9 +507,6 @@
         <div class="final-result">
             \(\textbf{Final Result:}\)
             \[0\]
-        </div>
-        <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> u^2 + 2·u ≠ 0, 2·u ≠ 0, 2·u + 4 ≠ 0, 5 + 2·sqrt(6) ≥ 0
         </div>
     </div>
     <footer>

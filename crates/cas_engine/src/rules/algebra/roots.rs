@@ -119,10 +119,15 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
             if let (Expr::Number(val_a), Expr::Number(val_c), Expr::Number(val_d)) =
                 (ctx.get(term_a), ctx.get(c), ctx.get(d))
             {
-                let val_c2 = val_c * val_c;
-                let val_beff = val_c2 * val_d;
-                let val_a2 = val_a * val_a;
-                let val_delta = val_a2 - val_beff;
+                // Clone all values upfront to release the immutable borrow
+                let val_a = val_a.clone();
+                let val_c = val_c.clone();
+                let val_d = val_d.clone();
+
+                let val_c2 = &val_c * &val_c;
+                let val_beff = &val_c2 * &val_d;
+                let val_a2 = &val_a * &val_a;
+                let val_delta = &val_a2 - &val_beff;
 
                 if val_delta >= num_rational::BigRational::zero() && val_delta.is_integer() {
                     let int_delta = val_delta.to_integer();
@@ -146,12 +151,8 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                         let term2_frac = ctx.add(Expr::Div(term2_num, two));
                         let term2 = ctx.add(Expr::Function("sqrt".to_string(), vec![term2_frac]));
 
-                        // Check sign of C
-                        let c_is_negative = if let Expr::Number(n) = ctx.get(c) {
-                            n < &num_rational::BigRational::zero()
-                        } else {
-                            false
-                        };
+                        // Check sign of C - use our cloned value
+                        let c_is_negative = val_c < num_rational::BigRational::zero();
 
                         // If is_add is true, we have A + C*sqrt(D).
                         // If C is negative, effective operation is subtraction.
@@ -170,8 +171,11 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                             ctx.add(Expr::Add(term1, term2))
                         };
 
+                        // Simple description - didactic layer will add detailed substeps
                         return Some(
-                            crate::rule::Rewrite::new(new_expr).desc("Denest square root"),
+                            crate::rule::Rewrite::new(new_expr)
+                                .desc("Denest square root")
+                                .local(expr, new_expr),
                         );
                     }
                 }

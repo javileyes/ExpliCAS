@@ -147,6 +147,11 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
             sub_steps.extend(generate_sum_three_cubes_substeps(ctx, step));
         }
 
+        // Add sub-steps for Root Denesting
+        if step.rule_name.contains("Root Denesting") {
+            sub_steps.extend(generate_root_denesting_substeps(ctx, step));
+        }
+
         enriched.push(EnrichedStep {
             base_step: step.clone(),
             sub_steps,
@@ -1232,6 +1237,177 @@ fn generate_sum_three_cubes_substeps(ctx: &Context, step: &crate::step::Step) ->
         description: "Aplicamos la identidad: si x+y+z=0, entonces x³+y³+z³=3xyz".to_string(),
         before_latex: format!("{}^3 + {}^3 + {}^3", x_str, y_str, z_str),
         after_latex: format!("3 \\cdot ({}) \\cdot ({}) \\cdot ({})", x_str, y_str, z_str),
+    });
+
+    sub_steps
+}
+
+/// Generate sub-steps explaining root denesting process
+/// For √(a + c·√d), the substeps show:
+///   1. Identify the form √(a + c·√d) with values
+///   2. Calculate Δ = a² - c²d
+///   3. Verify Δ is a perfect square and apply the formula
+fn generate_root_denesting_substeps(ctx: &Context, step: &crate::step::Step) -> Vec<SubStep> {
+    use cas_ast::display_context::DisplayContext;
+    use cas_ast::LaTeXExprWithHints;
+    use num_traits::Signed;
+
+    let mut sub_steps = Vec::new();
+
+    // Get the before expression (should be sqrt(a + c·√d))
+    let before_expr = step.before_local.unwrap_or(step.before);
+
+    // Build display hints
+    let hints = DisplayContext::with_root_index(2);
+    let to_latex = |id: ExprId| -> String {
+        LaTeXExprWithHints {
+            context: ctx,
+            id,
+            hints: &hints,
+        }
+        .to_latex()
+    };
+
+    // Helper to extract sqrt radicand
+    let get_sqrt_inner = |id: ExprId| -> Option<ExprId> {
+        match ctx.get(id) {
+            Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => Some(args[0]),
+            Expr::Pow(base, exp) => {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n.numer() == BigInt::from(1) && *n.denom() == BigInt::from(2) {
+                        return Some(*base);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    };
+
+    // Get the inner expression of the sqrt
+    let inner = match get_sqrt_inner(before_expr) {
+        Some(id) => id,
+        None => return sub_steps,
+    };
+
+    // Extract a ± c·√d pattern
+    let (a_term, b_term, is_add) = match ctx.get(inner) {
+        Expr::Add(l, r) => (*l, *r, true),
+        Expr::Sub(l, r) => (*l, *r, false),
+        _ => return sub_steps,
+    };
+
+    // Try to identify which is the rational part and which is the surd part
+    // The surd should be c·√d or just √d
+    fn analyze_surd(ctx: &Context, e: ExprId) -> Option<(BigRational, ExprId)> {
+        match ctx.get(e) {
+            Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+                Some((BigRational::from_integer(BigInt::from(1)), args[0]))
+            }
+            Expr::Pow(base, exp) => {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n.numer() == BigInt::from(1) && *n.denom() == BigInt::from(2) {
+                        return Some((BigRational::from_integer(BigInt::from(1)), *base));
+                    }
+                }
+                None
+            }
+            Expr::Mul(l, r) => {
+                // Check both orderings
+                if let Expr::Number(coef) = ctx.get(*l) {
+                    if let Some((_, d)) = analyze_surd(ctx, *r) {
+                        return Some((coef.clone(), d));
+                    }
+                }
+                if let Expr::Number(coef) = ctx.get(*r) {
+                    if let Some((_, d)) = analyze_surd(ctx, *l) {
+                        return Some((coef.clone(), d));
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    // Determine which term is a (rational) and which is c·√d (surd)
+    let (a_val, c_val, d_val, _d_id) = if let Expr::Number(a) = ctx.get(a_term) {
+        if let Some((c, d_id)) = analyze_surd(ctx, b_term) {
+            if let Expr::Number(d) = ctx.get(d_id) {
+                (a.clone(), c, d.clone(), d_id)
+            } else {
+                return sub_steps;
+            }
+        } else {
+            return sub_steps;
+        }
+    } else if let Expr::Number(a) = ctx.get(b_term) {
+        if let Some((c, d_id)) = analyze_surd(ctx, a_term) {
+            if let Expr::Number(d) = ctx.get(d_id) {
+                (a.clone(), c, d.clone(), d_id)
+            } else {
+                return sub_steps;
+            }
+        } else {
+            return sub_steps;
+        }
+    } else {
+        return sub_steps;
+    };
+
+    // Calculate the discriminant: Δ = a² - c²d
+    let a2 = &a_val * &a_val;
+    let c2 = &c_val * &c_val;
+    let c2d = &c2 * &d_val;
+    let delta = &a2 - &c2d;
+
+    // Get z = √Δ if it's a perfect square
+    if delta.is_negative() || !delta.is_integer() {
+        return sub_steps;
+    }
+    let delta_int = delta.to_integer();
+    let z = delta_int.sqrt();
+    if &z * &z != delta_int {
+        return sub_steps;
+    }
+
+    let op_sign = if is_add { "+" } else { "-" };
+
+    // Sub-step 1: Identify the pattern
+    sub_steps.push(SubStep {
+        description: "Reconocer patrón √(a + c·√d)".to_string(),
+        before_latex: to_latex(before_expr),
+        after_latex: format!(
+            "a = {}, \\quad c = {}, \\quad d = {}",
+            a_val,
+            c_val.abs(),
+            d_val
+        ),
+    });
+
+    // Sub-step 2: Calculate discriminant
+    sub_steps.push(SubStep {
+        description: "Calcular discriminante Δ = a² − c²d".to_string(),
+        before_latex: format!("\\Delta = {}^2 - {}^2 \\cdot {}", a_val, c_val.abs(), d_val),
+        after_latex: format!("{} - {} = {}", a2, c2d, delta_int),
+    });
+
+    // Sub-step 3: Verify perfect square and apply formula
+    let az = &a_val + BigRational::from_integer(z.clone());
+    let az_half = &az / BigRational::from_integer(BigInt::from(2));
+    let amz = &a_val - BigRational::from_integer(z.clone());
+    let amz_half = &amz / BigRational::from_integer(BigInt::from(2));
+
+    sub_steps.push(SubStep {
+        description: "Δ es cuadrado perfecto, aplicar √((a+z)/2) ± √((a−z)/2)".to_string(),
+        before_latex: format!(
+            "\\Delta = {} = {}^2 \\quad \\Rightarrow \\quad z = {}",
+            delta_int, z, z
+        ),
+        after_latex: format!(
+            "\\sqrt{{\\frac{{{}+{}}}{{2}}}} {} \\sqrt{{\\frac{{{}-{}}}{{2}}}} = \\sqrt{{{}}} {} \\sqrt{{{}}}",
+            a_val, z, op_sign, a_val, z, az_half, op_sign, amz_half
+        ),
     });
 
     sub_steps
