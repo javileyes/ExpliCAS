@@ -151,12 +151,16 @@ fn extract_features_recursive(ctx: &Context, expr: ExprId, features: &mut Expand
 
 /// Choose expansion strategy based on features
 pub fn choose_expand_strategy(features: &ExpandFeatures, policy: &ExpandPolicy) -> ExpandStrategy {
-    // Small expressions → try MultinomialExact (fast and exact)
-    if features.nodes < policy.min_nodes_for_fast {
-        return ExpandStrategy::MultinomialExact;
+    // PRIORITY 1: If multipoly eligible AND estimated terms exceed threshold AND coeff bound safe
+    // → use MultiPolyModpSafe (even for compact input expressions like Pow(Add,7))
+    if features.multipoly_eligible
+        && features.est_terms >= policy.min_est_terms_for_modp
+        && features.log2_coeff_bound <= policy.max_log2_coeff_for_modp
+    {
+        return ExpandStrategy::MultiPolyModpSafe;
     }
 
-    // If not eligible for multipoly → MultinomialExact or Normal
+    // PRIORITY 2: If not eligible for multipoly → MultinomialExact or Normal
     if !features.multipoly_eligible {
         if features.pow_add_count > 0 {
             return ExpandStrategy::MultinomialExact;
@@ -164,15 +168,7 @@ pub fn choose_expand_strategy(features: &ExpandFeatures, policy: &ExpandPolicy) 
         return ExpandStrategy::Normal;
     }
 
-    // Large expression that IS multipoly eligible
-    // Check if mod-p is safe (coefficient bound check)
-    if features.est_terms >= policy.min_est_terms_for_modp
-        && features.log2_coeff_bound < policy.max_log2_coeff_for_modp
-    {
-        return ExpandStrategy::MultiPolyModpSafe;
-    }
-
-    // Default: try MultinomialExact first
+    // PRIORITY 3: For smaller expressions, use MultinomialExact (exact and fast)
     ExpandStrategy::MultinomialExact
 }
 

@@ -101,8 +101,8 @@ pub fn try_expand_multinomial_direct(
 
     // 4. Build variable ordering (canonical, deterministic)
     let mut var_ids: Vec<ExprId> = terms.iter().filter_map(|t| t.var).collect();
-    // Sort by expression ID for determinism (using debug format as stable key)
-    var_ids.sort_by_key(|id| format!("{:?}", id));
+    // Sort by expression ID index for determinism (stable u32 ordering)
+    var_ids.sort_by_key(|id| id.index());
     var_ids.dedup();
 
     // Map variable ExprId -> index in var_ids

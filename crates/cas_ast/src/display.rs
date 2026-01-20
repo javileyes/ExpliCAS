@@ -153,32 +153,40 @@ fn poly_degree_fast(ctx: &Context, id: ExprId) -> Option<i32> {
 }
 
 /// Compare terms for display ordering.
-/// Primary: polynomial degree descending (x² before x before constants)
-/// Secondary: positive terms before negative (for same degree)
-/// Tertiary: compare_expr for structural tie-breaking
+/// Primary: positive terms before negative (for "x + 1 - (...)" ordering)
+/// Secondary: non-polynomial before polynomial within same sign (for "2^(1/2) - 1" ordering)
+/// Tertiary: polynomial degree descending, then compare_expr for tie-breaking
 pub fn cmp_term_for_display(ctx: &Context, a: ExprId, b: ExprId) -> std::cmp::Ordering {
     use crate::ordering::compare_expr;
     use std::cmp::Ordering;
 
-    let deg_a = poly_degree_fast(ctx, a);
-    let deg_b = poly_degree_fast(ctx, b);
-
-    // Primary: descending degree
-    match (deg_a, deg_b) {
-        (Some(da), Some(db)) if da != db => return db.cmp(&da),
-        _ => {}
-    }
-
-    // Secondary: positive before negative (for same degree or non-polynomial)
+    // PRIMARY: Positive terms before negative terms
     let (a_neg, _, _) = check_negative(ctx, a);
     let (b_neg, _, _) = check_negative(ctx, b);
     match (a_neg, b_neg) {
         (false, true) => return Ordering::Less, // positive < negative
         (true, false) => return Ordering::Greater, // negative > positive
-        _ => {}
+        _ => {}                                 // Same sign: fall through to secondary
     }
 
-    // Tertiary: structural comparison
+    // SECONDARY: Within same sign, order by polynomial degree
+    let deg_a = poly_degree_fast(ctx, a);
+    let deg_b = poly_degree_fast(ctx, b);
+
+    match (deg_a, deg_b) {
+        (Some(da), Some(db)) => {
+            // Both polynomial: higher degree first
+            if da != db {
+                return db.cmp(&da);
+            }
+        }
+        // Non-polynomial before polynomial (for "2^(1/2) - 1" with root before constant)
+        (None, Some(_)) => return Ordering::Less,
+        (Some(_), None) => return Ordering::Greater,
+        (None, None) => {} // Both non-polynomial: fall through
+    }
+
+    // TERTIARY: Structural comparison for total order
     compare_expr(ctx, a, b)
 }
 

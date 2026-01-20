@@ -13,6 +13,7 @@ use num_traits::{Signed, ToPrimitive};
 /// using symmetric representation via `modp_to_signed`.
 ///
 /// Returns Some(expanded) if successful, None if cannot convert to polynomial.
+#[allow(dead_code)] // Kept for potential future use in poly_gcd_modp eager eval
 fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
     use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
@@ -125,29 +126,11 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
     // If user calls expand(), they want FULL expansion. Canonical preservation should
     // only be applied in simplify(), not expand().
 
-    // V2.15.35: Strategy selector for expand()
-    // Chooses between MultinomialExact and MultiPolyModpSafe based on complexity
-    use crate::expand_strategy::{
-        choose_expand_strategy, extract_expand_features, ExpandPolicy, ExpandStrategy,
-    };
-
-    let features = extract_expand_features(ctx, expr);
-    let policy = ExpandPolicy::default();
-    let strategy = choose_expand_strategy(&features, &policy);
-
-    // Try fast paths based on strategy
-    match strategy {
-        ExpandStrategy::MultiPolyModpSafe => {
-            // Large polynomial with safe coefficient bound → use mod-p
-            if let Some(result) = expand_modp_safe(ctx, expr) {
-                return result;
-            }
-            // Fall through to symbolic if mod-p fails
-        }
-        ExpandStrategy::MultinomialExact | ExpandStrategy::Normal => {
-            // Will try multinomial_direct in Pow branch below
-        }
-    }
+    // V2.15.35: mod-p expansion (expand_modp_safe) is NOT used here because:
+    // 1. The bottleneck is AST reconstruction, not polynomial arithmetic
+    // 2. mod-p is only useful for internal consumption (e.g., poly_gcd_modp)
+    //    where the result stays in mod-p form without AST reconstruction
+    // For user-facing expand(), we use MultinomialExact (in Pow branch below).
 
     // Symbolic expansion: expand children first (bottom-up), then apply rules
 
