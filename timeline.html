@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Solve Steps: a·x^2 + b·x + c = 0</title>
+<title>Solve Steps: x^2 + 3·x + 2 = 0</title>
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 <style>
     * {
@@ -329,14 +329,14 @@
     <p class="subtitle">Solving for <strong>x</strong></p>
     <div class="original">
         \(\textbf{Original Equation:}\)
-        \[a\cdot {x}^{2} + b\cdot x + c = 0\]
+        \[{x}^{2} + 3\cdot x + 2 = 0\]
     </div>
         <div class="timeline">
         <div class="step">
             <div class="step-number">Step 1</div>
             <div class="description">Detected quadratic equation. Applying quadratic formula.</div>
             <div class="equation">
-                \[a\cdot {x}^{2} + b\cdot x + c = 0\]
+                \[{x}^{2} + 3\cdot x + 2 = 0\]
             </div>
             <div class="substeps-toggle" onclick="toggleSubsteps('substeps-1')">
                 <span class="arrow">▶</span>
@@ -345,44 +345,44 @@
             <div id="substeps-1" class="substeps-container">
                 <div class="substep">
                     <div class="substep-number">Step 1.1</div>
-                    <div class="substep-description">Identificar forma cuadrática: a·x² + b·x + c = 0 con a = a, b = b, c = c</div>
+                    <div class="substep-description">Identificar forma cuadrática: a·x² + b·x + c = 0 con a = 1, b = 3, c = 2</div>
                     <div class="substep-equation">
-                        \[a\cdot {x}^{2} + b\cdot x + c = 0\]
+                        \[{x}^{2} + 3\cdot x + 2 = 0\]
                     </div>
                 </div>
                 <div class="substep">
                     <div class="substep-number">Step 1.2</div>
                     <div class="substep-description">Dividir ambos lados por a (requiere a ≠ 0)</div>
                     <div class="substep-equation">
-                        \[{x}^{2} + x\cdot \frac{b}{a} + \frac{c}{a} = 0\]
+                        \[{x}^{2} + 3\cdot x + 2 = 0\]
                     </div>
                 </div>
                 <div class="substep">
                     <div class="substep-number">Step 1.3</div>
                     <div class="substep-description">Mover término constante al lado derecho</div>
                     <div class="substep-equation">
-                        \[{x}^{2} + x\cdot \frac{b}{a} = -\frac{c}{a}\]
+                        \[{x}^{2} + 3\cdot x = -2\]
                     </div>
                 </div>
                 <div class="substep">
                     <div class="substep-number">Step 1.4</div>
                     <div class="substep-description">Completar el cuadrado: sumar (b/2a)² a ambos lados</div>
                     <div class="substep-equation">
-                        \[{x}^{2} + {(\frac{b}{2\cdot a})}^{2} + x\cdot \frac{b}{a} = {(\frac{b}{2\cdot a})}^{2} - \frac{c}{a}\]
+                        \[{x}^{2} + 3\cdot x + \frac{9}{4} = \frac{1}{4}\]
                     </div>
                 </div>
                 <div class="substep">
                     <div class="substep-number">Step 1.5</div>
                     <div class="substep-description">Escribir lado izquierdo como cuadrado perfecto</div>
                     <div class="substep-equation">
-                        \[{(x + \frac{b}{2\cdot a})}^{2} = \frac{{b}^{2} - (4\cdot a\cdot c)}{4\cdot {a}^{2}}\]
+                        \[{(x + \frac{3}{2})}^{2} = \frac{1}{4}\]
                     </div>
                 </div>
                 <div class="substep">
                     <div class="substep-number">Step 1.6</div>
                     <div class="substep-description">Tomar raíz cuadrada y despejar x (requiere Δ = b² - 4ac ≥ 0)</div>
                     <div class="substep-equation">
-                        \[x = \frac{-b \pm \sqrt{{b}^{2} - (4\cdot a\cdot c)}}{2\cdot a}\]
+                        \[x = \frac{-3 \pm 1}{2}\]
                     </div>
                 </div>
             </div>
@@ -390,7 +390,7 @@
         </div>
         <div class="final-result">
             \(\textbf{Solution: } x = \)
-            \[\left\{ \frac{-\sqrt{{b}^{2} - 4\cdot a\cdot c} - b}{2\cdot a}, \frac{\sqrt{{b}^{2} - 4\cdot a\cdot c} - b}{2\cdot a} \right\}\]
+            \[\left\{ -2, -1 \right\}\]
         </div>
     </div>
     <script>

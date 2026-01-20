@@ -771,13 +771,19 @@ impl SolverStrategy for QuadraticStrategy {
                 // Build didactic substeps showing completing-the-square derivation
                 let is_real_only =
                     matches!(_opts.value_domain, crate::semantics::ValueDomain::RealOnly);
-                let substeps = crate::solver::quadratic_steps::build_quadratic_substeps(
-                    &mut simplifier.context,
+                let mut substeps = crate::solver::quadratic_steps::build_quadratic_substeps(
+                    simplifier,
                     var,
                     sim_a,
                     sim_b,
                     sim_c,
                     is_real_only,
+                );
+
+                // Post-pass: apply didactic simplification to clean up expressions
+                crate::solver::quadratic_steps::didactic_simplify_substeps(
+                    simplifier,
+                    &mut substeps,
                 );
 
                 // Main step with substeps attached
