@@ -1,6 +1,7 @@
 use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::rationalize_policy::AutoRationalizeLevel;
+use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
 use cas_ast::ExprId;
 use std::collections::VecDeque;
@@ -202,31 +203,33 @@ impl Orchestrator {
         // even after the sqrt witness is consumed.
         simplifier.set_sticky_implicit_domain(expr, self.options.value_domain);
 
+        // PRE-PASS: Eager eval for special functions (poly_gcd_modp)
+        // This runs BEFORE any simplification to avoid budget exhaustion on huge arguments
+        let (current, eager_steps) = eager_eval_poly_gcd_calls(&mut simplifier.context, expr);
+        let mut all_steps = eager_steps;
+
         // Check for specialized strategies first
         if let Some(result) =
-            crate::telescoping::try_dirichlet_kernel_identity_pub(&simplifier.context, expr)
+            crate::telescoping::try_dirichlet_kernel_identity_pub(&simplifier.context, current)
         {
             let zero = simplifier.context.num(0);
-            let mut steps = Vec::new();
             if self.options.collect_steps {
-                steps.push(Step::new(
+                all_steps.push(Step::new(
                     &format!(
                         "Dirichlet Kernel Identity: 1 + 2Σcos(kx) = sin((n+½)x)/sin(x/2) for n={}",
                         result.n
                     ),
                     "Trig Summation Identity",
-                    expr,
+                    current,
                     zero,
                     Vec::new(),
                     Some(&simplifier.context),
                 ));
             }
             simplifier.clear_sticky_implicit_domain();
-            return (zero, steps, crate::phase::PipelineStats::default());
+            return (zero, all_steps, crate::phase::PipelineStats::default());
         }
 
-        let mut current = expr;
-        let mut all_steps = Vec::new();
         let mut pipeline_stats = crate::phase::PipelineStats::default();
 
         // Copy values to avoid borrow conflicts with &mut self in run_phase
@@ -243,7 +246,7 @@ impl Orchestrator {
         // Phase 1: Core - Safe simplifications (canonicalizations, basic identities)
         let (next, steps, stats) =
             self.run_phase(simplifier, current, SimplifyPhase::Core, budgets.core_iters);
-        current = next;
+        let mut current = next;
         all_steps.extend(steps);
         pipeline_stats.core = stats;
         pipeline_stats.total_rewrites += pipeline_stats.core.rewrites_used;
