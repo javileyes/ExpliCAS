@@ -1315,6 +1315,21 @@ define_rule!(
                     return None;
                 }
 
+                // Short-circuit: if new_num is 0, result is just 0 - avoid confusing 0*GCD/GCD pattern
+                // Let DivZeroRule or subsequent simplification handle it cleanly
+                let num_is_zero = matches!(ctx.get(new_num), Expr::Number(n) if n.is_zero());
+                if num_is_zero {
+                    // Just return 0 directly with a cleaner description
+                    let zero = ctx.num(0);
+                    use crate::implicit_domain::ImplicitCondition;
+                    return Some(
+                        Rewrite::new(zero)
+                            .desc("Numerator simplifies to 0")
+                            .local(num, zero)
+                            .requires(ImplicitCondition::NonZero(den))
+                    );
+                }
+
                 // Build factored form for display
                 let factored_num = mul2_raw(ctx, new_num, gcd_expr);
                 let factored_den = if let Expr::Number(n) = ctx.get(new_den) {
@@ -1452,6 +1467,19 @@ define_rule!(
             }
             // No numeric content to cancel, don't simplify
             return None;
+        }
+
+        // Short-circuit: if new_num is 0, result is just 0 - avoid confusing 0*GCD/GCD pattern
+        let num_is_zero = matches!(ctx.get(new_num), Expr::Number(n) if n.is_zero());
+        if num_is_zero {
+            let zero = ctx.num(0);
+            use crate::implicit_domain::ImplicitCondition;
+            return Some(
+                Rewrite::new(zero)
+                    .desc("Numerator simplifies to 0")
+                    .local(num, zero)
+                    .requires(ImplicitCondition::NonZero(den))
+            );
         }
 
         // Build factored form for "Rule:" display: (new_num * gcd) / (new_den * gcd)

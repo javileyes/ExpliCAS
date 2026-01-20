@@ -636,35 +636,13 @@
                     <h3>Simplify Nested Fraction</h3>
                     <div class="math-expr before">
                         \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{{u}^{2} + 2\cdot u - (u\cdot (2 + u))}{u\cdot (2 + u)\cdot ({u}^{2} + 2\cdot u)}}}\]
+                        \[\frac{{\color{red}{{u}^{2}}} + {\color{red}{2\cdot u}} - {\color{red}{{\color{red}{(u\cdot (2 + u))}}}}}{u\cdot (2 + u)\cdot ({u}^{2} + 2\cdot u)}\]
                     </div>
                     
                     <div class="rule-description">
-                        <div class="rule-name">\(\text{Factor by GCD: u^4 + 4·u^3 + 4·u^2}\)</div>
+                        <div class="rule-name">\(\text{Numerator simplifies to 0}\)</div>
                         <div class="local-change">
-                            \[{\color{red}{\frac{{u}^{2} + 2\cdot u - (u\cdot (u + 2))}{u\cdot (u + 2)\cdot ({u}^{2} + 2\cdot u)}}} \rightarrow {\color{green}{\frac{0\cdot ({u}^{4} + 4\cdot {u}^{3} + 4\cdot {u}^{2})}{{u}^{4} + 4\cdot {u}^{3} + 4\cdot {u}^{2}}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{0\cdot ({u}^{4} + 4\cdot {u}^{3} + 4\cdot {u}^{2})}{{u}^{4} + 4\cdot {u}^{3} + 4\cdot {u}^{2}}}}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">10</div>
-                <div class="step-content">
-                    <h3>Simplify Nested Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{0\cdot ({u}^{4} + 4\cdot {u}^{3} + 4\cdot {u}^{2})}{{u}^{4} + 4\cdot {u}^{3} + 4\cdot {u}^{2}}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Cancel common factor}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{0\cdot ({u}^{4} + 4\cdot {u}^{3} + 4\cdot {u}^{2})}{{u}^{4} + 4\cdot {u}^{3} + 4\cdot {u}^{2}}}} \rightarrow {\color{green}{0}}\]
+                            \[{\color{red}{{u}^{2} + 2\cdot u - (u\cdot (u + 2))}} \rightarrow {\color{green}{0}}\]
                         </div>
                     </div>
                     
@@ -680,7 +658,7 @@
             \[0\]
         </div>
         <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> 2·u + 4 ≠ 0, 5 + 2·sqrt(6) ≥ 0, 2·u ≠ 0, u^2 + 2·u ≠ 0
+            <strong>ℹ️ Requires:</strong> u^2 + 2·u ≠ 0, 2·u ≠ 0, 2·u + 4 ≠ 0, 5 + 2·sqrt(6) ≥ 0
         </div>
     </div>
     <footer>
