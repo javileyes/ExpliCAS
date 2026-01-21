@@ -420,6 +420,92 @@ pub fn try_render_poly_result(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> 
     None
 }
 
+/// Render a poly_result as LaTeX with optional max_terms limit.
+/// Returns None if the PolyId is invalid.
+pub fn render_poly_result_latex(id: PolyId, max_terms: usize) -> Option<String> {
+    use crate::mono::Mono;
+    use std::fmt::Write;
+
+    let (meta, poly) = THREAD_POLY_STORE.with(|store| {
+        let store = store.borrow();
+        store.get(id).map(|(m, p)| (m.clone(), p.clone()))
+    })?;
+
+    if poly.terms.is_empty() {
+        return Some("0".to_string());
+    }
+
+    // Sort by graded lexicographical order (descending)
+    let mut sorted_terms: Vec<&(Mono, u64)> = poly.terms.iter().collect();
+    sorted_terms.sort_by(|a, b| {
+        let deg_cmp = b.0.total_degree().cmp(&a.0.total_degree());
+        if deg_cmp != std::cmp::Ordering::Equal {
+            return deg_cmp;
+        }
+        b.0.cmp(&a.0)
+    });
+
+    let total_terms = sorted_terms.len();
+    let show_terms = total_terms.min(max_terms);
+    let truncated = total_terms > max_terms;
+
+    let mut result = String::with_capacity(show_terms * 40);
+
+    for (i, (mono, coeff)) in sorted_terms.iter().take(show_terms).enumerate() {
+        let is_constant = mono.total_degree() == 0;
+
+        if i == 0 {
+            if is_constant || *coeff != 1 {
+                write!(result, "{}", coeff).unwrap();
+            }
+        } else if is_constant || *coeff != 1 {
+            write!(result, " + {}", coeff).unwrap();
+        } else {
+            result.push_str(" + ");
+        }
+
+        // LaTeX formatting for variables
+        for (var_idx, &exp) in mono.0.iter().enumerate() {
+            if exp > 0 && var_idx < meta.var_names.len() {
+                let var = &meta.var_names[var_idx];
+                if exp == 1 {
+                    write!(result, " {}", var).unwrap();
+                } else {
+                    write!(result, " {}^{{{}}}", var, exp).unwrap();
+                }
+            }
+        }
+    }
+
+    if truncated {
+        let remaining = total_terms - max_terms;
+        write!(result, " + \\cdots \\text{{(+{} terms)}}", remaining).unwrap();
+    }
+
+    Some(result)
+}
+
+/// Check if an expression is a poly_result and render it as LaTeX.
+/// Returns None if not a poly_result or if rendering fails.
+pub fn try_render_poly_result_latex(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<String> {
+    use cas_ast::Expr;
+
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "poly_result" && args.len() == 1 {
+            if let Expr::Number(n) = ctx.get(args[0]) {
+                if let Ok(id) = n.to_integer().try_into() {
+                    let id: PolyId = id;
+                    return render_poly_result_latex(id, 100_000);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

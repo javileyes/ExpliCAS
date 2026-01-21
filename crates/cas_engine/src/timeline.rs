@@ -1,9 +1,21 @@
+use crate::poly_store::try_render_poly_result_latex;
 use crate::step::{pathsteps_to_expr_path, PathStep, Step};
 use cas_ast::{
     Context, DisplayExpr, Expr, ExprId, ExprPath, HighlightColor, HighlightConfig, LaTeXExpr,
     LaTeXExprHighlighted, PathHighlightConfig, PathHighlightedLatexRenderer,
 };
 use num_traits::Signed;
+
+/// Convert expression to LaTeX, intercepting poly_result for direct rendering.
+/// If the expression is a poly_result, renders the polynomial directly as LaTeX.
+/// Otherwise, falls back to standard LaTeXExpr rendering.
+#[allow(dead_code)]
+fn expr_to_latex_or_poly(ctx: &Context, id: ExprId) -> String {
+    if let Some(latex) = try_render_poly_result_latex(ctx, id) {
+        return latex;
+    }
+    LaTeXExpr { context: ctx, id }.to_latex()
+}
 
 /// Convert PathStep to u8 for ExprPath (V2.9.17)
 #[inline]
@@ -1543,6 +1555,28 @@ impl<'a> TimelineHtml<'a> {
             box-shadow: 0 4px 12px var(--final-shadow);
             transition: background 0.3s ease;
         }}
+        .poly-badge {{
+            background: rgba(255,255,255,0.25);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            margin-left: 10px;
+            font-weight: normal;
+        }}
+        .poly-output {{
+            text-align: left;
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.65em;
+            max-height: 400px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.4;
+        }}
         footer {{
             text-align: center;
             margin-top: 30px;
@@ -2285,28 +2319,54 @@ impl<'a> TimelineHtml<'a> {
         // Add final result with display hints for consistent root notation
         // Use simplified_result if available (passed from simplifier), otherwise use last_global_after
         let final_result_expr = self.simplified_result.unwrap_or(last_global_after);
-        // V2.14.40: Use styled renderer for consistent root notation
-        let empty_config = PathHighlightConfig::new();
-        let final_expr = PathHighlightedLatexRenderer {
-            context: self.context,
-            id: final_result_expr,
-            path_highlights: &empty_config,
-            hints: Some(&display_hints),
-            style_prefs: Some(&self.style_prefs),
-        }
-        .to_latex();
-        html.push_str(
-            r#"        </div>
+
+        // Check if result is a poly_result - render as text (not LaTeX) for large polynomials
+        if let Some(poly_text) =
+            crate::poly_store::try_render_poly_result(self.context, final_result_expr)
+        {
+            // Get term count for info badge
+            let term_count = poly_text.matches('+').count() + 1;
+            html.push_str(
+                r#"        </div>
+        <div class="final-result">
+            <strong>🧮 Final Result</strong> <span class="poly-badge">"#,
+            );
+            html.push_str(&format!("Polynomial: {} terms", term_count));
+            html.push_str(
+                r#"</span>
+            <pre class="poly-output">"#,
+            );
+            html.push_str(&html_escape(&poly_text));
+            html.push_str(
+                r#"</pre>
+        </div>
+"#,
+            );
+        } else {
+            // Standard LaTeX rendering for normal expressions
+            // V2.14.40: Use styled renderer for consistent root notation
+            let empty_config = PathHighlightConfig::new();
+            let final_expr = PathHighlightedLatexRenderer {
+                context: self.context,
+                id: final_result_expr,
+                path_highlights: &empty_config,
+                hints: Some(&display_hints),
+                style_prefs: Some(&self.style_prefs),
+            }
+            .to_latex();
+            html.push_str(
+                r#"        </div>
         <div class="final-result">
             \(\textbf{Final Result:}\)
             \["#,
-        );
-        html.push_str(&final_expr);
-        html.push_str(
-            r#"\]
+            );
+            html.push_str(&final_expr);
+            html.push_str(
+                r#"\]
         </div>
 "#,
-        );
+            );
+        }
 
         // V2.12.13: Add global requires section (inferred from input expression)
         // This ensures timeline shows the same requires as REPL
