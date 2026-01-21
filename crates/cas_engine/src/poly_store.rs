@@ -75,8 +75,10 @@ impl PolyStore {
     }
 
     /// Add two polynomials, returning new ID
-    /// Returns None if IDs invalid or moduli mismatch
+    /// Uses VarTable unification to handle different variable orderings
     pub fn add(&mut self, a: PolyId, b: PolyId) -> Option<PolyId> {
+        use crate::poly_modp_conv::VarTable;
+
         let (meta_a, poly_a) = self.get(a)?;
         let (meta_b, poly_b) = self.get(b)?;
 
@@ -85,66 +87,146 @@ impl PolyStore {
             return None;
         }
 
-        // Must have same variable order (for now)
-        if meta_a.var_names != meta_b.var_names {
-            return None;
+        // Fast path: same variable order
+        if meta_a.var_names == meta_b.var_names {
+            let result = poly_a.add(poly_b);
+            let meta = PolyMeta {
+                modulus: meta_a.modulus,
+                n_terms: result.num_terms(),
+                n_vars: meta_a.n_vars.max(meta_b.n_vars),
+                max_total_degree: meta_a.max_total_degree.max(meta_b.max_total_degree),
+                var_names: meta_a.var_names.clone(),
+            };
+            return Some(self.insert(meta, result));
         }
 
-        let result = poly_a.add(poly_b);
+        // Phase 3: Use VarTable unification for different orderings
+        let mut vt_a = VarTable::new();
+        for name in &meta_a.var_names {
+            vt_a.get_or_insert(name);
+        }
+        let mut vt_b = VarTable::new();
+        for name in &meta_b.var_names {
+            vt_b.get_or_insert(name);
+        }
+
+        let (unified, remap_a, remap_b) = vt_a.unify(&vt_b)?;
+
+        // Remap both polynomials to unified variable space
+        let poly_a_remapped = poly_a.remap(&remap_a, unified.len());
+        let poly_b_remapped = poly_b.remap(&remap_b, unified.len());
+
+        let result = poly_a_remapped.add(&poly_b_remapped);
         let meta = PolyMeta {
             modulus: meta_a.modulus,
             n_terms: result.num_terms(),
-            n_vars: meta_a.n_vars.max(meta_b.n_vars),
+            n_vars: unified.len(),
             max_total_degree: meta_a.max_total_degree.max(meta_b.max_total_degree),
-            var_names: meta_a.var_names.clone(),
+            var_names: unified.names().to_vec(),
         };
 
         Some(self.insert(meta, result))
     }
 
     /// Subtract two polynomials, returning new ID
+    /// Uses VarTable unification to handle different variable orderings
     pub fn sub(&mut self, a: PolyId, b: PolyId) -> Option<PolyId> {
+        use crate::poly_modp_conv::VarTable;
+
         let (meta_a, poly_a) = self.get(a)?;
         let (meta_b, poly_b) = self.get(b)?;
 
         if meta_a.modulus != meta_b.modulus {
             return None;
         }
-        if meta_a.var_names != meta_b.var_names {
-            return None;
+
+        // Fast path: same variable order
+        if meta_a.var_names == meta_b.var_names {
+            let result = poly_a.sub(poly_b);
+            let meta = PolyMeta {
+                modulus: meta_a.modulus,
+                n_terms: result.num_terms(),
+                n_vars: meta_a.n_vars.max(meta_b.n_vars),
+                max_total_degree: meta_a.max_total_degree.max(meta_b.max_total_degree),
+                var_names: meta_a.var_names.clone(),
+            };
+            return Some(self.insert(meta, result));
         }
 
-        let result = poly_a.sub(poly_b);
+        // Phase 3: Use VarTable unification
+        let mut vt_a = VarTable::new();
+        for name in &meta_a.var_names {
+            vt_a.get_or_insert(name);
+        }
+        let mut vt_b = VarTable::new();
+        for name in &meta_b.var_names {
+            vt_b.get_or_insert(name);
+        }
+
+        let (unified, remap_a, remap_b) = vt_a.unify(&vt_b)?;
+
+        let poly_a_remapped = poly_a.remap(&remap_a, unified.len());
+        let poly_b_remapped = poly_b.remap(&remap_b, unified.len());
+
+        let result = poly_a_remapped.sub(&poly_b_remapped);
         let meta = PolyMeta {
             modulus: meta_a.modulus,
             n_terms: result.num_terms(),
-            n_vars: meta_a.n_vars.max(meta_b.n_vars),
+            n_vars: unified.len(),
             max_total_degree: meta_a.max_total_degree.max(meta_b.max_total_degree),
-            var_names: meta_a.var_names.clone(),
+            var_names: unified.names().to_vec(),
         };
 
         Some(self.insert(meta, result))
     }
 
     /// Multiply two polynomials, returning new ID
+    /// Uses VarTable unification to handle different variable orderings
     pub fn mul(&mut self, a: PolyId, b: PolyId) -> Option<PolyId> {
+        use crate::poly_modp_conv::VarTable;
+
         let (meta_a, poly_a) = self.get(a)?;
         let (meta_b, poly_b) = self.get(b)?;
 
         if meta_a.modulus != meta_b.modulus {
             return None;
         }
-        if meta_a.var_names != meta_b.var_names {
-            return None;
+
+        // Fast path: same variable order
+        if meta_a.var_names == meta_b.var_names {
+            let result = poly_a.mul(poly_b);
+            let meta = PolyMeta {
+                modulus: meta_a.modulus,
+                n_terms: result.num_terms(),
+                n_vars: meta_a.n_vars.max(meta_b.n_vars),
+                max_total_degree: meta_a.max_total_degree + meta_b.max_total_degree,
+                var_names: meta_a.var_names.clone(),
+            };
+            return Some(self.insert(meta, result));
         }
 
-        let result = poly_a.mul(poly_b);
+        // Phase 3: Use VarTable unification
+        let mut vt_a = VarTable::new();
+        for name in &meta_a.var_names {
+            vt_a.get_or_insert(name);
+        }
+        let mut vt_b = VarTable::new();
+        for name in &meta_b.var_names {
+            vt_b.get_or_insert(name);
+        }
+
+        let (unified, remap_a, remap_b) = vt_a.unify(&vt_b)?;
+
+        let poly_a_remapped = poly_a.remap(&remap_a, unified.len());
+        let poly_b_remapped = poly_b.remap(&remap_b, unified.len());
+
+        let result = poly_a_remapped.mul(&poly_b_remapped);
         let meta = PolyMeta {
             modulus: meta_a.modulus,
             n_terms: result.num_terms(),
-            n_vars: meta_a.n_vars.max(meta_b.n_vars),
+            n_vars: unified.len(),
             max_total_degree: meta_a.max_total_degree + meta_b.max_total_degree,
-            var_names: meta_a.var_names.clone(),
+            var_names: unified.names().to_vec(),
         };
 
         Some(self.insert(meta, result))

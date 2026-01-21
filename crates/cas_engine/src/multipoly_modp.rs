@@ -372,6 +372,36 @@ impl MultiPolyModP {
             terms,
         }
     }
+
+    /// Remap variable indices according to a remap vector.
+    ///
+    /// `remap[old_index]` = new_index in the unified variable space.
+    /// `new_num_vars` is the number of variables in the unified space.
+    ///
+    /// This is used when combining polynomials with different variable orderings.
+    pub fn remap(&self, remap: &[usize], new_num_vars: usize) -> Self {
+        let mut new_terms: Vec<(Mono, u64)> = Vec::with_capacity(self.terms.len());
+
+        for (mono, coeff) in &self.terms {
+            let mut new_mono = Mono::zero();
+            for (old_idx, &exp) in mono.0.iter().enumerate().take(self.num_vars) {
+                if exp > 0 {
+                    let new_idx = remap[old_idx];
+                    new_mono.0[new_idx] = exp;
+                }
+            }
+            new_terms.push((new_mono, *coeff));
+        }
+
+        // Sort by monomial (descending lex)
+        new_terms.sort_by(|a, b| b.0.cmp(&a.0));
+
+        Self {
+            p: self.p,
+            num_vars: new_num_vars,
+            terms: new_terms,
+        }
+    }
 }
 
 // =============================================================================

@@ -67,6 +67,81 @@ impl VarTable {
     pub fn names(&self) -> &[String] {
         &self.names
     }
+
+    /// Get the index for a variable name, if it exists
+    pub fn get_index(&self, name: &str) -> Option<usize> {
+        self.map.get(name).copied()
+    }
+
+    /// Unify two VarTables into a canonical unified table.
+    ///
+    /// Returns:
+    /// - `unified`: The merged VarTable with lexicographically sorted variables
+    /// - `remap_a`: Map from this table's indices to unified indices
+    /// - `remap_b`: Map from other table's indices to unified indices
+    ///
+    /// Returns None if the unified table would exceed MAX_VARS.
+    pub fn unify(&self, other: &VarTable) -> Option<(VarTable, Vec<usize>, Vec<usize>)> {
+        // Collect all unique variable names
+        let mut all_names: Vec<&str> = Vec::new();
+        for name in &self.names {
+            if !all_names.contains(&name.as_str()) {
+                all_names.push(name);
+            }
+        }
+        for name in &other.names {
+            if !all_names.contains(&name.as_str()) {
+                all_names.push(name);
+            }
+        }
+
+        // Check if too many variables
+        if all_names.len() > MAX_VARS {
+            return None;
+        }
+
+        // Sort lexicographically for canonical ordering
+        all_names.sort();
+
+        // Build unified VarTable
+        let mut unified = VarTable::new();
+        for name in &all_names {
+            unified.get_or_insert(name)?;
+        }
+
+        // Build remap vectors
+        let remap_a: Vec<usize> = self
+            .names
+            .iter()
+            .map(|n| unified.get_index(n).unwrap())
+            .collect();
+
+        let remap_b: Vec<usize> = other
+            .names
+            .iter()
+            .map(|n| unified.get_index(n).unwrap())
+            .collect();
+
+        Some((unified, remap_a, remap_b))
+    }
+
+    /// Check if this VarTable has the same variables as another (same set, any order)
+    pub fn same_variables(&self, other: &VarTable) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        for name in &self.names {
+            if !other.map.contains_key(name) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Check if this VarTable has the same variables in the same order
+    pub fn same_order(&self, other: &VarTable) -> bool {
+        self.names == other.names
+    }
 }
 
 /// Error during conversion
