@@ -97,7 +97,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         """Evaluate expression, substituting known variables"""
         expr = expression
         
-        # Substitute session references: %n -> result of expression n
+        # Substitute session references: %n or #n -> result of expression n
         def replace_ref(match):
             idx = int(match.group(1)) - 1
             if 0 <= idx < len(session_results):
@@ -105,7 +105,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 return f"({ref_result})"
             return match.group(0)
         
-        expr = re.sub(r'%(\d+)', replace_ref, expr)
+        # Support both %n and #n syntax
+        expr = re.sub(r'[%#](\d+)', replace_ref, expr)
         
         # Substitute variables (careful with word boundaries)
         for var_name, var_value in session_variables.items():

@@ -116,9 +116,9 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 100%;
             margin: 0 auto;
-            padding: 20px;
+            padding: 20px 40px;
         }
 
         /* Expression Cards */
@@ -144,13 +144,55 @@
             }
         }
 
+        @keyframes slideOut {
+            from {
+                opacity: 1;
+                transform: translateX(0);
+            }
+
+            to {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+        }
+
         .expression-header {
             background: linear-gradient(135deg, var(--bg-secondary), rgba(233, 69, 96, 0.2));
             padding: 15px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+
+        .expression-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .expression-header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
             cursor: pointer;
+            font-size: 1.1em;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            opacity: 0.6;
+        }
+
+        .delete-btn:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.2);
+            opacity: 1;
         }
 
         .expression-ref {
@@ -258,6 +300,56 @@
 
         .step-item:last-child {
             margin-bottom: 0;
+        }
+
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .step-header:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        /* Sub-steps */
+        .substeps-container {
+            display: none;
+            margin-top: 10px;
+            margin-left: 20px;
+            padding-left: 15px;
+            border-left: 2px dashed var(--border);
+        }
+
+        .substeps-container.visible {
+            display: block;
+        }
+
+        .substep-item {
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 0.9em;
+        }
+
+        .substep-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .substeps-toggle {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.8em;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .substeps-toggle:hover {
+            background: rgba(255, 255, 255, 0.1);
         }
 
         .step-rule {
@@ -569,28 +661,25 @@
             const timeMs = result.timings_us ? Math.round(result.timings_us.total_us / 1000) : (result.time_ms || 0);
 
             card.innerHTML = `
-                <div class="expression-header" onclick="toggleSteps(${ref})">
-                    <div>
+                <div class="expression-header">
+                    <div class="expression-header-left">
                         <span class="expression-ref">#${ref}</span>
                         ${isAssignment ? `<span class="var-badge">${escapeHtml(result.assignment)}</span>` : ''}
                         <span class="expression-input">${escapeHtml(expr)}</span>
                     </div>
-                    <span class="expression-time">${timeMs}ms</span>
+                    <div class="expression-header-right">
+                        <span class="expression-time">${timeMs}ms</span>
+                        <button class="delete-btn" onclick="deleteCard(${ref})" title="Delete this expression">🗑️</button>
+                    </div>
                 </div>
                 <div class="expression-body">
                     ${hasSteps ? `
-                        <button class="steps-toggle" onclick="event.stopPropagation(); toggleSteps(${ref})">
+                        <button class="steps-toggle" onclick="toggleSteps(${ref})">
                             <span class="arrow">▶</span>
                             Show ${result.steps.length} steps
                         </button>
                         <div class="steps-container" id="steps-${ref}">
-                            ${result.steps.map((step, i) => `
-                                <div class="step-item">
-                                    <div class="step-rule">${i + 1}. ${escapeHtml(step.rule || 'Step')}</div>
-                                    ${step.before ? `<div class="step-before">${escapeHtml(step.before)}</div>` : ''}
-                                    ${step.after ? `<div class="step-after">${escapeHtml(step.after)}</div>` : ''}
-                                </div>
-                            `).join('')}
+                            ${renderSteps(result.steps)}
                         </div>
                     ` : ''}
                     
@@ -656,6 +745,68 @@
                 toggle.innerHTML = container.classList.contains('visible')
                     ? `<span class="arrow">▶</span> Hide ${stepCount} steps`
                     : `<span class="arrow">▶</span> Show ${stepCount} steps`;
+            }
+        }
+
+        function toggleSubsteps(stepId) {
+            const container = document.getElementById(`substeps-${stepId}`);
+            const toggle = document.getElementById(`substeps-toggle-${stepId}`);
+            if (container && toggle) {
+                container.classList.toggle('visible');
+                const isVisible = container.classList.contains('visible');
+                toggle.textContent = isVisible ? '▼ Hide sub-steps' : '▶ Show sub-steps';
+            }
+        }
+
+        function renderSteps(steps) {
+            if (!steps || steps.length === 0) return '';
+
+            return steps.map((step, i) => {
+                const stepId = `step-${Date.now()}-${i}`;
+                const hasSubsteps = step.substeps && step.substeps.length > 0;
+
+                return `
+                    <div class="step-item">
+                        <div class="step-header">
+                            <div class="step-rule">${i + 1}. ${escapeHtml(step.rule || 'Step')}</div>
+                            ${hasSubsteps ? `
+                                <button class="substeps-toggle" id="substeps-toggle-${stepId}" onclick="toggleSubsteps('${stepId}')">
+                                    ▶ Show ${step.substeps.length} sub-steps
+                                </button>
+                            ` : ''}
+                        </div>
+                        ${step.before ? `<div class="step-before">${escapeHtml(step.before)}</div>` : ''}
+                        ${step.after ? `<div class="step-after">${escapeHtml(step.after)}</div>` : ''}
+                        ${hasSubsteps ? `
+                            <div class="substeps-container" id="substeps-${stepId}">
+                                ${step.substeps.map((substep, j) => `
+                                    <div class="substep-item">
+                                        <div class="step-rule">${i + 1}.${j + 1} ${escapeHtml(substep.rule || 'Sub-step')}</div>
+                                        ${substep.before ? `<div class="step-before">${escapeHtml(substep.before)}</div>` : ''}
+                                        ${substep.after ? `<div class="step-after">${escapeHtml(substep.after)}</div>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function deleteCard(ref) {
+            const card = document.getElementById(`expr-${ref}`);
+            if (card) {
+                card.style.animation = 'slideOut 0.3s ease-out forwards';
+                setTimeout(() => {
+                    card.remove();
+                    delete sessionResults[ref];
+
+                    // Check if there are no more cards
+                    const remaining = document.querySelectorAll('.expression-card');
+                    if (remaining.length === 0) {
+                        document.getElementById('empty-state').style.display = 'block';
+                    }
+                }, 300);
             }
         }
 
