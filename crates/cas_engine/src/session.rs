@@ -293,6 +293,314 @@ pub fn resolve_session_refs_with_diagnostics(
     Ok((resolved, inherited))
 }
 
+/// Resolve session refs with mode selection and cache checking (V2.15.36).
+///
+/// This is the preferred resolution method when you have a `SimplifyCacheKey`.
+/// It checks the simplified cache before falling back to raw expressions.
+///
+/// # Arguments
+/// * `ctx` - The expression context
+/// * `expr` - Expression to resolve (may contain `#N` references)
+/// * `store` - Session store with entries
+/// * `mode` - PreferSimplified (use cache) or Raw (use parsed expr)
+/// * `cache_key` - Current context key for cache validation
+///
+/// # Returns
+/// * `ResolvedExpr` with resolved expression and accumulated requires
+pub fn resolve_session_refs_with_mode(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    store: &SessionStore,
+    mode: RefMode,
+    cache_key: &SimplifyCacheKey,
+) -> Result<ResolvedExpr, ResolveError> {
+    let mut memo: HashMap<ExprId, ExprId> = HashMap::new();
+    let mut visiting: Vec<EntryId> = Vec::new();
+    let mut requires: Vec<crate::diagnostics::RequiredItem> = Vec::new();
+    let mut used_cache = false;
+    let mut ref_chain: smallvec::SmallVec<[EntryId; 4]> = smallvec::SmallVec::new();
+
+    let resolved = resolve_with_mode_recursive(
+        ctx,
+        expr,
+        store,
+        mode,
+        cache_key,
+        &mut memo,
+        &mut visiting,
+        &mut requires,
+        &mut used_cache,
+        &mut ref_chain,
+    )?;
+
+    Ok(ResolvedExpr {
+        expr: resolved,
+        requires,
+        used_cache,
+        ref_chain,
+    })
+}
+
+/// Internal recursive resolver with cache checking
+#[allow(clippy::too_many_arguments)]
+fn resolve_with_mode_recursive(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    store: &SessionStore,
+    mode: RefMode,
+    cache_key: &SimplifyCacheKey,
+    memo: &mut HashMap<ExprId, ExprId>,
+    visiting: &mut Vec<EntryId>,
+    requires: &mut Vec<crate::diagnostics::RequiredItem>,
+    used_cache: &mut bool,
+    ref_chain: &mut smallvec::SmallVec<[EntryId; 4]>,
+) -> Result<ExprId, ResolveError> {
+    use cas_ast::Expr;
+
+    // Check memo first
+    if let Some(&cached) = memo.get(&expr) {
+        return Ok(cached);
+    }
+
+    let node = ctx.get(expr).clone();
+
+    let result = match node {
+        Expr::SessionRef(id) => resolve_entry_with_mode(
+            ctx, id, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+        )?,
+
+        // Handle Variable that might be a #N reference (legacy parsing)
+        Expr::Variable(ref name) => {
+            if name.starts_with('#') && name.len() > 1 && name[1..].chars().all(char::is_numeric) {
+                if let Ok(id) = name[1..].parse::<u64>() {
+                    resolve_entry_with_mode(
+                        ctx, id, store, mode, cache_key, memo, visiting, requires, used_cache,
+                        ref_chain,
+                    )?
+                } else {
+                    expr
+                }
+            } else {
+                expr
+            }
+        }
+
+        // Binary operators - recurse into children
+        Expr::Add(l, r) => {
+            let new_l = resolve_with_mode_recursive(
+                ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            let new_r = resolve_with_mode_recursive(
+                ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Add(new_l, new_r))
+            }
+        }
+        Expr::Sub(l, r) => {
+            let new_l = resolve_with_mode_recursive(
+                ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            let new_r = resolve_with_mode_recursive(
+                ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Sub(new_l, new_r))
+            }
+        }
+        Expr::Mul(l, r) => {
+            let new_l = resolve_with_mode_recursive(
+                ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            let new_r = resolve_with_mode_recursive(
+                ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Mul(new_l, new_r))
+            }
+        }
+        Expr::Div(l, r) => {
+            let new_l = resolve_with_mode_recursive(
+                ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            let new_r = resolve_with_mode_recursive(
+                ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            if new_l == l && new_r == r {
+                expr
+            } else {
+                ctx.add(Expr::Div(new_l, new_r))
+            }
+        }
+        Expr::Pow(b, e) => {
+            let new_b = resolve_with_mode_recursive(
+                ctx, b, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            let new_e = resolve_with_mode_recursive(
+                ctx, e, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            if new_b == b && new_e == e {
+                expr
+            } else {
+                ctx.add(Expr::Pow(new_b, new_e))
+            }
+        }
+
+        // Unary
+        Expr::Neg(e) => {
+            let new_e = resolve_with_mode_recursive(
+                ctx, e, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            if new_e == e {
+                expr
+            } else {
+                ctx.add(Expr::Neg(new_e))
+            }
+        }
+
+        // Function
+        Expr::Function(name, args) => {
+            let mut changed = false;
+            let mut new_args = Vec::with_capacity(args.len());
+            for arg in &args {
+                let new_arg = resolve_with_mode_recursive(
+                    ctx, *arg, store, mode, cache_key, memo, visiting, requires, used_cache,
+                    ref_chain,
+                )?;
+                if new_arg != *arg {
+                    changed = true;
+                }
+                new_args.push(new_arg);
+            }
+            if changed {
+                ctx.add(Expr::Function(name, new_args))
+            } else {
+                expr
+            }
+        }
+
+        // Matrix
+        Expr::Matrix { rows, cols, data } => {
+            let mut changed = false;
+            let mut new_data = Vec::with_capacity(data.len());
+            for elem in &data {
+                let new_elem = resolve_with_mode_recursive(
+                    ctx, *elem, store, mode, cache_key, memo, visiting, requires, used_cache,
+                    ref_chain,
+                )?;
+                if new_elem != *elem {
+                    changed = true;
+                }
+                new_data.push(new_elem);
+            }
+            if changed {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                expr
+            }
+        }
+
+        // Leaf nodes
+        Expr::Number(_) | Expr::Constant(_) => expr,
+    };
+
+    memo.insert(expr, result);
+    Ok(result)
+}
+
+/// Resolve a single entry ID using cache if available
+#[allow(clippy::too_many_arguments)]
+fn resolve_entry_with_mode(
+    ctx: &mut cas_ast::Context,
+    id: EntryId,
+    store: &SessionStore,
+    mode: RefMode,
+    cache_key: &SimplifyCacheKey,
+    memo: &mut HashMap<ExprId, ExprId>,
+    visiting: &mut Vec<EntryId>,
+    requires: &mut Vec<crate::diagnostics::RequiredItem>,
+    used_cache: &mut bool,
+    ref_chain: &mut smallvec::SmallVec<[EntryId; 4]>,
+) -> Result<ExprId, ResolveError> {
+    use cas_ast::Expr;
+
+    // Cycle detection
+    if visiting.contains(&id) {
+        return Err(ResolveError::CircularReference(id));
+    }
+
+    // Get entry
+    let entry = store.get(id).ok_or(ResolveError::NotFound(id))?;
+
+    // Track reference chain
+    ref_chain.push(id);
+
+    // 1) PreferSimplified: check cache first
+    if mode == RefMode::PreferSimplified {
+        if let Some(cache) = &entry.simplified {
+            if cache.key.is_compatible(cache_key) {
+                // Cache hit! Use cached expression and accumulate requires
+                *used_cache = true;
+                requires.extend(cache.requires.iter().cloned());
+                return Ok(cache.expr);
+            }
+        }
+    }
+
+    // 2) Fallback: use raw parsed expression
+    visiting.push(id);
+
+    // Inherit requires from entry's diagnostics (for SessionPropagated tracking)
+    for item in &entry.diagnostics.requires {
+        if !requires.iter().any(|r| r.cond == item.cond) {
+            let mut new_item = item.clone();
+            new_item.merge_origin(crate::diagnostics::RequireOrigin::SessionPropagated);
+            requires.push(new_item);
+        }
+    }
+
+    let resolved = match &entry.kind {
+        EntryKind::Expr(stored_expr) => {
+            // Recursively resolve (it may contain #refs too)
+            resolve_with_mode_recursive(
+                ctx,
+                *stored_expr,
+                store,
+                mode,
+                cache_key,
+                memo,
+                visiting,
+                requires,
+                used_cache,
+                ref_chain,
+            )?
+        }
+        EntryKind::Eq { lhs, rhs } => {
+            // Equation as expression: use residue form (lhs - rhs)
+            let resolved_lhs = resolve_with_mode_recursive(
+                ctx, *lhs, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            let resolved_rhs = resolve_with_mode_recursive(
+                ctx, *rhs, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            )?;
+            ctx.add(Expr::Sub(resolved_lhs, resolved_rhs))
+        }
+    };
+
+    visiting.pop();
+    Ok(resolved)
+}
+
 fn resolve_recursive(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
@@ -718,5 +1026,200 @@ mod tests {
             "Should contain multiplication: {}",
             display
         );
+    }
+
+    // ========== Phase 2: resolve_session_refs_with_mode Tests ==========
+
+    #[test]
+    fn test_resolve_with_mode_cache_hit() {
+        use cas_ast::{Context, Expr};
+
+        let mut ctx = Context::new();
+        let mut store = SessionStore::new();
+
+        // Store raw expr: 5*sqrt(x)/sqrt(x) as #1
+        let x = ctx.var("x");
+        let sqrt_x = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
+        let five = ctx.num(5);
+        let mul = ctx.add(Expr::Mul(five, sqrt_x));
+        let raw_expr = ctx.add(Expr::Div(mul, sqrt_x));
+        store.push(EntryKind::Expr(raw_expr), "5*sqrt(x)/sqrt(x)".to_string());
+
+        // Inject simplified cache: simplified = 5
+        let simplified_five = ctx.num(5);
+        let cache_key = SimplifyCacheKey::from_context(crate::domain::DomainMode::Generic);
+        let cache = SimplifiedCache {
+            key: cache_key.clone(),
+            expr: simplified_five,
+            requires: vec![],
+            steps: std::sync::Arc::new(vec![]),
+        };
+        store.update_simplified(1, cache);
+
+        // Resolve #1 + 3
+        let ref1 = ctx.add(Expr::SessionRef(1));
+        let three = ctx.num(3);
+        let input = ctx.add(Expr::Add(ref1, three));
+
+        let result = resolve_session_refs_with_mode(
+            &mut ctx,
+            input,
+            &store,
+            RefMode::PreferSimplified,
+            &cache_key,
+        )
+        .unwrap();
+
+        // Should use cache
+        assert!(result.used_cache, "Should have used cache");
+
+        // Result should be 5 + 3 (order may vary), not the raw fraction
+        if let Expr::Add(l, r) = ctx.get(result.expr) {
+            // Extract both operands as numbers
+            let left_num = match ctx.get(*l) {
+                Expr::Number(n) => n.to_integer(),
+                _ => panic!("Left should be Number"),
+            };
+            let right_num = match ctx.get(*r) {
+                Expr::Number(n) => n.to_integer(),
+                _ => panic!("Right should be Number"),
+            };
+            // Should contain 5 (from cache) and 3, order doesn't matter
+            let has_five = left_num == 5.into() || right_num == 5.into();
+            let has_three = left_num == 3.into() || right_num == 3.into();
+            assert!(
+                has_five,
+                "Should contain 5 from cache, got {} and {}",
+                left_num, right_num
+            );
+            assert!(
+                has_three,
+                "Should contain 3, got {} and {}",
+                left_num, right_num
+            );
+        } else {
+            panic!("Expected Add, got {:?}", ctx.get(result.expr));
+        }
+    }
+
+    #[test]
+    fn test_resolve_with_mode_cache_miss_key_mismatch() {
+        use cas_ast::{Context, Expr};
+
+        let mut ctx = Context::new();
+        let mut store = SessionStore::new();
+
+        // Store raw expr as #1
+        let x = ctx.var("x");
+        store.push(EntryKind::Expr(x), "x".to_string());
+
+        // Inject cache with different domain mode
+        let simplified = ctx.num(5);
+        let cache_key_strict = SimplifyCacheKey::from_context(crate::domain::DomainMode::Strict);
+        let cache = SimplifiedCache {
+            key: cache_key_strict,
+            expr: simplified,
+            requires: vec![],
+            steps: std::sync::Arc::new(vec![]),
+        };
+        store.update_simplified(1, cache);
+
+        // Resolve with Generic mode (different from Strict cache)
+        let ref1 = ctx.add(Expr::SessionRef(1));
+        let cache_key_generic = SimplifyCacheKey::from_context(crate::domain::DomainMode::Generic);
+
+        let result = resolve_session_refs_with_mode(
+            &mut ctx,
+            ref1,
+            &store,
+            RefMode::PreferSimplified,
+            &cache_key_generic,
+        )
+        .unwrap();
+
+        // Should NOT use cache (key mismatch)
+        assert!(
+            !result.used_cache,
+            "Should NOT have used cache due to key mismatch"
+        );
+
+        // Result should be raw x, not 5
+        assert!(matches!(ctx.get(result.expr), Expr::Variable(name) if name == "x"));
+    }
+
+    #[test]
+    fn test_resolve_with_mode_raw_mode() {
+        use cas_ast::{Context, Expr};
+
+        let mut ctx = Context::new();
+        let mut store = SessionStore::new();
+
+        // Store raw expr as #1
+        let x = ctx.var("x");
+        store.push(EntryKind::Expr(x), "x".to_string());
+
+        // Inject cache
+        let simplified = ctx.num(5);
+        let cache_key = SimplifyCacheKey::from_context(crate::domain::DomainMode::Generic);
+        let cache = SimplifiedCache {
+            key: cache_key.clone(),
+            expr: simplified,
+            requires: vec![],
+            steps: std::sync::Arc::new(vec![]),
+        };
+        store.update_simplified(1, cache);
+
+        // Resolve with Raw mode - should ignore cache
+        let ref1 = ctx.add(Expr::SessionRef(1));
+
+        let result = resolve_session_refs_with_mode(
+            &mut ctx,
+            ref1,
+            &store,
+            RefMode::Raw, // Force raw mode
+            &cache_key,
+        )
+        .unwrap();
+
+        // Should NOT use cache (Raw mode)
+        assert!(!result.used_cache, "Should NOT have used cache in Raw mode");
+
+        // Result should be raw x
+        assert!(matches!(ctx.get(result.expr), Expr::Variable(name) if name == "x"));
+    }
+
+    #[test]
+    fn test_resolve_with_mode_tracks_ref_chain() {
+        use cas_ast::{Context, Expr};
+
+        let mut ctx = Context::new();
+        let mut store = SessionStore::new();
+
+        // #1 = x
+        let x = ctx.var("x");
+        store.push(EntryKind::Expr(x), "x".to_string());
+
+        // #2 = #1 + 1
+        let ref1 = ctx.add(Expr::SessionRef(1));
+        let one = ctx.num(1);
+        let expr2 = ctx.add(Expr::Add(ref1, one));
+        store.push(EntryKind::Expr(expr2), "#1 + 1".to_string());
+
+        // Resolve #2
+        let ref2 = ctx.add(Expr::SessionRef(2));
+        let cache_key = SimplifyCacheKey::from_context(crate::domain::DomainMode::Generic);
+
+        let result = resolve_session_refs_with_mode(
+            &mut ctx,
+            ref2,
+            &store,
+            RefMode::PreferSimplified,
+            &cache_key,
+        )
+        .unwrap();
+
+        // Should track both #2 and #1 in ref chain
+        assert!(result.ref_chain.contains(&1), "Should track #1 in chain");
+        assert!(result.ref_chain.contains(&2), "Should track #2 in chain");
     }
 }
