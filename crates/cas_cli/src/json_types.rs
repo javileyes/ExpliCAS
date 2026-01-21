@@ -231,6 +231,9 @@ pub struct RequiredConditionJson {
 pub struct ExprStatsJson {
     pub node_count: usize,
     pub depth: usize,
+    /// Number of polynomial terms (for expanded polynomials)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub term_count: Option<usize>,
 }
 
 /// Timing breakdown in microseconds

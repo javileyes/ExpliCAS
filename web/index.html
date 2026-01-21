@@ -684,6 +684,8 @@
                     result: data.result || '',
                     result_latex: data.result_latex || data.result || '',
                     steps: data.steps || [],
+                    stats: data.stats || null,
+                    timings_us: data.timings_us || null,
                     time_ms: data.time_ms || 0,
                     error: data.error
                 };
@@ -740,7 +742,8 @@
                     <div class="result-section">
                         <div class="result-label">
                             ✨ Result
-                            ${isPolyResult ? `<span class="poly-badge">Large polynomial</span>` : ''}
+                            ${result.stats && result.stats.term_count ? `<span class="poly-badge">${result.stats.term_count.toLocaleString()} terms</span>` : ''}
+                            ${isPolyResult && (!result.stats || !result.stats.term_count) ? `<span class="poly-badge">Large polynomial</span>` : ''}
                         </div>
                         <div class="result-math">
                             ${isPolyResult

@@ -42,10 +42,42 @@ pub fn format_expr_limited(ctx: &Context, expr: ExprId, max_chars: usize) -> (St
     (format!("{truncated} … <truncated>"), true, len)
 }
 
-/// Compute expression statistics (node count and depth).
+/// Compute expression statistics (node count, depth, and term count).
 pub fn expr_stats(ctx: &Context, expr: ExprId) -> ExprStatsJson {
     let (node_count, depth) = count_nodes_and_depth(ctx, expr, 0);
-    ExprStatsJson { node_count, depth }
+
+    // Try to get term count - first check if it's a poly_result
+    let term_count =
+        cas_engine::poly_store::try_get_poly_result_term_count(ctx, expr).or_else(|| {
+            // For large Add chains, count additive terms (top-level + structure)
+            count_add_terms(ctx, expr)
+        });
+
+    ExprStatsJson {
+        node_count,
+        depth,
+        term_count,
+    }
+}
+
+/// Count additive terms in an expression (top-level Add/Sub chain).
+/// Returns Some(count) only if there are multiple terms, None for simple expressions.
+fn count_add_terms(ctx: &Context, expr: ExprId) -> Option<usize> {
+    fn count_recursive(ctx: &Context, expr: ExprId) -> usize {
+        match ctx.get(expr) {
+            Expr::Add(l, r) => count_recursive(ctx, *l) + count_recursive(ctx, *r),
+            Expr::Sub(l, r) => count_recursive(ctx, *l) + count_recursive(ctx, *r),
+            _ => 1, // Base case: not an add/sub, counts as 1 term
+        }
+    }
+
+    let count = count_recursive(ctx, expr);
+    // Only return count if expression has multiple terms
+    if count > 1 {
+        Some(count)
+    } else {
+        None
+    }
 }
 
 /// Compute nodes and max depth.

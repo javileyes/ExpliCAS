@@ -506,6 +506,27 @@ pub fn try_render_poly_result_latex(
     None
 }
 
+/// Get the term count from a poly_result expression.
+/// Returns None if not a poly_result or if the ID is invalid.
+pub fn try_get_poly_result_term_count(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<usize> {
+    use cas_ast::Expr;
+
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "poly_result" && args.len() == 1 {
+            if let Expr::Number(n) = ctx.get(args[0]) {
+                if let Ok(id) = n.to_integer().try_into() {
+                    let id: PolyId = id;
+                    return thread_local_meta(id).map(|m| m.n_terms);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
