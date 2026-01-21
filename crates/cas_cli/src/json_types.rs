@@ -19,9 +19,17 @@ pub struct EvalJsonOutput {
     pub result_truncated: bool,
     pub result_chars: usize,
 
+    /// LaTeX formatted result for rendering
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_latex: Option<String>,
+
     /// Steps mode used and count
     pub steps_mode: String,
     pub steps_count: usize,
+
+    /// Detailed steps when steps_mode is "on"
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<StepJson>,
 
     /// Domain warnings from simplification
     pub warnings: Vec<WarningJson>,
@@ -54,6 +62,35 @@ pub struct EvalJsonOutput {
 
     /// Complete semantics configuration
     pub semantics: SemanticsJson,
+}
+
+/// A simplification step for JSON output
+#[derive(Serialize, Debug, Clone)]
+pub struct StepJson {
+    /// Step index (1-based)
+    pub index: usize,
+    /// Rule name that was applied
+    pub rule: String,
+    /// Expression before transformation (plain text)
+    pub before: String,
+    /// Expression after transformation (plain text)
+    pub after: String,
+    /// LaTeX for before expression (for MathJax rendering)
+    pub before_latex: String,
+    /// LaTeX for after expression (for MathJax rendering)
+    pub after_latex: String,
+    /// Optional sub-steps for detailed explanations
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub substeps: Vec<SubStepJson>,
+}
+
+/// A sub-step within a step for detailed explanations
+#[derive(Serialize, Debug, Clone)]
+pub struct SubStepJson {
+    /// Title of the sub-step
+    pub title: String,
+    /// Explanation lines
+    pub lines: Vec<String>,
 }
 
 /// Budget configuration and status

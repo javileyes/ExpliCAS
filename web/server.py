@@ -120,9 +120,9 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
     def call_cas_cli(self, expression):
         """Call cas_cli eval-json and return parsed result"""
         try:
-            # Run cas_cli with the expression
+            # Run cas_cli with the expression and steps enabled
             result = subprocess.run(
-                [CAS_CLI, "eval", "--format", "json", "--max-chars", "500000"],
+                [CAS_CLI, "eval", "--format", "json", "--max-chars", "500000", "--steps", "on"],
                 input=expression,
                 capture_output=True,
                 text=True,

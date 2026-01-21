@@ -16,7 +16,7 @@ use cas_parser::parse;
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{
     BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, RequiredConditionJson,
-    SemanticsJson, TimingsJson, WarningJson,
+    SemanticsJson, StepJson, SubStepJson, TimingsJson, WarningJson,
 };
 
 /// Arguments for eval-json subcommand
@@ -169,8 +169,10 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 result: b.to_string(),
                 result_truncated: false,
                 result_chars: b.to_string().len(),
+                result_latex: None,
                 steps_mode: args.steps.clone(),
                 steps_count: output.steps.len(),
+                steps: collect_steps(&output, &engine.simplifier.context, &args.steps),
                 warnings: collect_warnings(&output),
                 required_conditions: collect_required_conditions(
                     &output,
@@ -209,6 +211,19 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
 
     let total_us = total_start.elapsed().as_micros() as u64;
 
+    // Generate LaTeX for result
+    let result_latex = if !truncated {
+        Some(
+            cas_ast::LaTeXExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+            .to_latex(),
+        )
+    } else {
+        None
+    };
+
     Ok(EvalJsonOutput {
         schema_version: 1,
         ok: true,
@@ -216,8 +231,10 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         result: result_str,
         result_truncated: truncated,
         result_chars: char_count,
+        result_latex,
         steps_mode: args.steps.clone(),
         steps_count: output.steps.len(),
+        steps: collect_steps(&output, &engine.simplifier.context, &args.steps),
         warnings: collect_warnings(&output),
         required_conditions: collect_required_conditions(&output, &engine.simplifier.context),
         required_display: collect_required_display(&output, &engine.simplifier.context),
@@ -438,4 +455,86 @@ fn save_session(
 ) {
     let snap = SessionSnapshot::new(&engine.simplifier.context, state.store(), key.clone());
     let _ = snap.save_atomic(path); // Ignore save errors in JSON mode
+}
+
+/// Convert engine steps to JSON format
+fn collect_steps(
+    output: &cas_engine::EvalOutput,
+    ctx: &cas_ast::Context,
+    steps_mode: &str,
+) -> Vec<StepJson> {
+    // Only include steps if steps_mode is "on"
+    if steps_mode != "on" {
+        return vec![];
+    }
+
+    output
+        .steps
+        .iter()
+        .enumerate()
+        .map(|(i, step)| {
+            // Format before/after expressions - use global if available
+            let before_expr = step.global_before.unwrap_or(step.before);
+            let after_expr = step.global_after.unwrap_or(step.after);
+
+            // Focus expressions (the parts that actually changed)
+            let focus_before = step.before_local.unwrap_or(step.before);
+            let focus_after = step.after_local.unwrap_or(step.after);
+
+            // Plain text format
+            let before_str = format!(
+                "{}",
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: before_expr
+                }
+            );
+            let after_str = format!(
+                "{}",
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: after_expr
+                }
+            );
+
+            // LaTeX with highlighting - red for before focus, green for after focus
+            let mut before_config = cas_ast::HighlightConfig::new();
+            before_config.add(focus_before, cas_ast::HighlightColor::Red);
+            let before_latex = cas_ast::LaTeXExprHighlighted {
+                context: ctx,
+                id: before_expr,
+                highlights: &before_config,
+            }
+            .to_latex();
+
+            let mut after_config = cas_ast::HighlightConfig::new();
+            after_config.add(focus_after, cas_ast::HighlightColor::Green);
+            let after_latex = cas_ast::LaTeXExprHighlighted {
+                context: ctx,
+                id: after_expr,
+                highlights: &after_config,
+            }
+            .to_latex();
+
+            // Convert substeps
+            let substeps: Vec<SubStepJson> = step
+                .substeps
+                .iter()
+                .map(|ss| SubStepJson {
+                    title: ss.title.clone(),
+                    lines: ss.lines.clone(),
+                })
+                .collect();
+
+            StepJson {
+                index: i + 1,
+                rule: step.rule_name.clone(),
+                before: before_str,
+                after: after_str,
+                before_latex,
+                after_latex,
+                substeps,
+            }
+        })
+        .collect()
 }

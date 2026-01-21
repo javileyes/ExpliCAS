@@ -361,18 +361,50 @@
 
         .step-before,
         .step-after {
-            font-size: 0.95em;
-            margin: 5px 0;
+            padding: 12px 15px;
+            margin: 8px 0;
+            border-radius: 6px;
+            font-size: 1.1em;
+            overflow-x: auto;
+        }
+
+        .step-before {
+            background: rgba(255, 152, 0, 0.1);
+            border-left: 4px solid #ff9800;
         }
 
         .step-before::before {
             content: "Before: ";
-            color: var(--text-secondary);
+            color: #ff9800;
+            font-weight: bold;
+            font-size: 0.8em;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .step-after {
+            background: rgba(76, 175, 80, 0.1);
+            border-left: 4px solid #4caf50;
         }
 
         .step-after::before {
             content: "After: ";
-            color: var(--success);
+            color: #4caf50;
+            font-weight: bold;
+            font-size: 0.8em;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .step-math {
+            font-size: 1.2em;
+        }
+
+        .step-arrow {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 1.5em;
+            margin: 5px 0;
         }
 
         /* Polynomial output */
@@ -765,6 +797,14 @@
                 const stepId = `step-${Date.now()}-${i}`;
                 const hasSubsteps = step.substeps && step.substeps.length > 0;
 
+                // Use LaTeX if available, otherwise fall back to plain text
+                const beforeContent = step.before_latex
+                    ? `<span class="step-math">$${step.before_latex}$</span>`
+                    : escapeHtml(step.before);
+                const afterContent = step.after_latex
+                    ? `<span class="step-math">$${step.after_latex}$</span>`
+                    : escapeHtml(step.after);
+
                 return `
                     <div class="step-item">
                         <div class="step-header">
@@ -775,15 +815,15 @@
                                 </button>
                             ` : ''}
                         </div>
-                        ${step.before ? `<div class="step-before">${escapeHtml(step.before)}</div>` : ''}
-                        ${step.after ? `<div class="step-after">${escapeHtml(step.after)}</div>` : ''}
+                        ${step.before ? `<div class="step-before">${beforeContent}</div>` : ''}
+                        <div class="step-arrow">↓</div>
+                        ${step.after ? `<div class="step-after">${afterContent}</div>` : ''}
                         ${hasSubsteps ? `
                             <div class="substeps-container" id="substeps-${stepId}">
                                 ${step.substeps.map((substep, j) => `
                                     <div class="substep-item">
-                                        <div class="step-rule">${i + 1}.${j + 1} ${escapeHtml(substep.rule || 'Sub-step')}</div>
-                                        ${substep.before ? `<div class="step-before">${escapeHtml(substep.before)}</div>` : ''}
-                                        ${substep.after ? `<div class="step-after">${escapeHtml(substep.after)}</div>` : ''}
+                                        <div class="step-rule">${i + 1}.${j + 1} ${escapeHtml(substep.title || 'Sub-step')}</div>
+                                        ${substep.lines ? `<ul>${substep.lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>` : ''}
                                     </div>
                                 `).join('')}
                             </div>
