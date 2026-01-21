@@ -199,6 +199,18 @@ fn clean_sign_patterns(s: String) -> String {
     result
 }
 
+/// Display an expression, automatically rendering poly_result as formatted polynomial.
+/// This is the preferred way to display expressions that might be poly_result.
+fn display_expr_or_poly(ctx: &Context, id: ExprId) -> String {
+    // Try to render as poly_result first (fast path for opaque polynomials)
+    if let Some(poly_str) = cas_engine::poly_store::try_render_poly_result(ctx, id) {
+        return poly_str;
+    }
+
+    // Fall back to standard display
+    clean_display_string(&format!("{}", DisplayExpr { context: ctx, id }))
+}
+
 /// Render an expression with scoped display transforms based on the rule name.
 /// Used for per-step rendering where certain rules (e.g., "Quadratic Formula")
 /// should display sqrt notation instead of ^(1/2).
@@ -5734,13 +5746,7 @@ impl Repl {
                                     }
                                 }
 
-                                println!(
-                                    "Result: {}",
-                                    clean_display_string(&format!(
-                                        "{}",
-                                        cas_ast::DisplayExprStyled::new(context, res, &style_prefs)
-                                    ))
-                                );
+                                println!("Result: {}", display_expr_or_poly(context, res));
                             }
                             EvalResult::SolutionSet(ref solution_set) => {
                                 // V2.0: Display full solution set

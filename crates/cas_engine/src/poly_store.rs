@@ -330,6 +330,96 @@ pub fn thread_local_get_for_materialize(id: PolyId) -> Option<(PolyMeta, MultiPo
     THREAD_POLY_STORE.with(|store| store.borrow().get(id).map(|(m, p)| (m.clone(), p.clone())))
 }
 
+/// Render a polynomial directly to string without AST construction.
+/// Used for auto-display of poly_result expressions.
+/// Returns None if id is invalid.
+pub fn render_poly_result(id: PolyId, max_terms: usize) -> Option<String> {
+    use crate::mono::Mono;
+    use std::fmt::Write;
+
+    let (meta, poly) = thread_local_get_for_materialize(id)?;
+
+    if poly.terms.is_empty() {
+        return Some("0".to_string());
+    }
+
+    // Sort terms by graded lex order
+    let mut sorted_terms: Vec<&(Mono, u64)> = poly.terms.iter().collect();
+    sorted_terms.sort_by(|a, b| {
+        let deg_cmp = b.0.total_degree().cmp(&a.0.total_degree());
+        if deg_cmp != std::cmp::Ordering::Equal {
+            return deg_cmp;
+        }
+        b.0.cmp(&a.0)
+    });
+
+    let total_terms = sorted_terms.len();
+    let show_terms = total_terms.min(max_terms);
+    let truncated = total_terms > max_terms;
+
+    let mut result = String::with_capacity(show_terms * 25);
+
+    for (i, (mono, coeff)) in sorted_terms.iter().take(show_terms).enumerate() {
+        let is_constant = mono.total_degree() == 0;
+
+        if i == 0 {
+            if is_constant {
+                write!(result, "{}", coeff).unwrap();
+            } else if *coeff == 1 {
+                // coefficient 1 is implicit
+            } else {
+                write!(result, "{}", coeff).unwrap();
+            }
+        } else if is_constant || *coeff != 1 {
+            write!(result, " + {}", coeff).unwrap();
+        } else {
+            result.push_str(" + ");
+        }
+
+        // Format monomial
+        let mut first_var = i == 0 && *coeff == 1 && !is_constant;
+        for (var_idx, &exp) in mono.0.iter().enumerate() {
+            if exp > 0 && var_idx < meta.var_names.len() {
+                if !first_var {
+                    result.push('·');
+                }
+                first_var = false;
+                result.push_str(&meta.var_names[var_idx]);
+                if exp > 1 {
+                    write!(result, "^{}", exp).unwrap();
+                }
+            }
+        }
+    }
+
+    if truncated {
+        let remaining = total_terms - max_terms;
+        write!(result, " + ... (+{} more terms)", remaining).unwrap();
+    }
+
+    Some(result)
+}
+
+/// Check if an expression is a poly_result and render it directly.
+/// Returns None if not a poly_result or if rendering fails.
+/// Default max_terms is 200 for auto-display.
+pub fn try_render_poly_result(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<String> {
+    use cas_ast::Expr;
+
+    if let Expr::Function(name, args) = ctx.get(expr) {
+        if name == "poly_result" && args.len() == 1 {
+            if let Expr::Number(n) = ctx.get(args[0]) {
+                if let Ok(id) = n.to_integer().try_into() {
+                    let id: PolyId = id;
+                    // Default limit for auto-display
+                    return render_poly_result(id, 200);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

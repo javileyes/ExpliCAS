@@ -534,13 +534,21 @@ fn run_eval_text(args: &EvalArgs) {
         Ok(output) => {
             let result_str = match &output.result {
                 EvalResult::Expr(e) => {
-                    format!(
-                        "{}",
-                        DisplayExpr {
-                            context: &engine.simplifier.context,
-                            id: *e
-                        }
-                    )
+                    // Try to render as poly_result first (fast path for large polynomials)
+                    if let Some(poly_str) = cas_engine::poly_store::try_render_poly_result(
+                        &engine.simplifier.context,
+                        *e,
+                    ) {
+                        poly_str
+                    } else {
+                        format!(
+                            "{}",
+                            DisplayExpr {
+                                context: &engine.simplifier.context,
+                                id: *e
+                            }
+                        )
+                    }
                 }
                 EvalResult::Set(v) if !v.is_empty() => {
                     format!(
