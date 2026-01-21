@@ -93,6 +93,16 @@ fn lower_recursive(
                     ));
 
                     return result;
+                } else {
+                    // Combination failed - likely due to incompatible var_names
+                    // Log warning (will be visible with RUST_LOG=warn)
+                    tracing::warn!(
+                        poly_lowering = "skipped",
+                        reason = "incompatible variable tables",
+                        left_id = id_l,
+                        right_id = id_r,
+                        "poly_lowering: Add skipped (Phase 3 will unify variable tables)"
+                    );
                 }
             }
 
@@ -127,6 +137,14 @@ fn lower_recursive(
                     ));
 
                     return result;
+                } else {
+                    tracing::warn!(
+                        poly_lowering = "skipped",
+                        reason = "incompatible variable tables",
+                        left_id = id_l,
+                        right_id = id_r,
+                        "poly_lowering: Sub skipped (Phase 3 will unify variable tables)"
+                    );
                 }
             }
 
@@ -160,6 +178,14 @@ fn lower_recursive(
                     ));
 
                     return result;
+                } else {
+                    tracing::warn!(
+                        poly_lowering = "skipped",
+                        reason = "incompatible variable tables",
+                        left_id = id_l,
+                        right_id = id_r,
+                        "poly_lowering: Mul skipped (Phase 3 will unify variable tables)"
+                    );
                 }
             }
 

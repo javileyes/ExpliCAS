@@ -37,20 +37,32 @@ impl SimpleRule for PolyStatsRule {
 
                         // Get metadata from thread-local store
                         if let Some(meta) = thread_local_meta(id) {
-                            // Build result: poly_meta(terms, degree, vars, modulus)
+                            // Build human-friendly result with clear labeling
+                            // Format: poly_info(id, terms, vars, repr)
+                            // where repr = "modp" indicates modular arithmetic
+                            let poly_id = ctx.num(id as i64);
                             let terms = ctx.num(meta.n_terms as i64);
-                            let degree = ctx.num(meta.max_total_degree as i64);
                             let nvars = ctx.num(meta.n_vars as i64);
-                            let modulus = ctx.num(meta.modulus as i64);
+
+                            // repr indicator: "modp" for modular, "exact" for exact
+                            let repr = ctx.var("modp");
 
                             let result = ctx.add(Expr::Function(
-                                "poly_meta".to_string(),
-                                vec![terms, degree, nvars, modulus],
+                                "poly_info".to_string(),
+                                vec![poly_id, terms, nvars, repr],
                             ));
 
+                            // Materialization threshold based on EXPAND_MATERIALIZE_LIMIT
+                            let can_materialize = meta.n_terms <= 50_000;
+                            let materialize_note = if can_materialize {
+                                format!("materializable via poly_to_expr(poly_result({}))", id)
+                            } else {
+                                "too large to materialize".to_string()
+                            };
+
                             return Some(Rewrite::new(result).desc(format!(
-                                "Poly stats: {} terms, degree {}, {} vars (mod {})",
-                                meta.n_terms, meta.max_total_degree, meta.n_vars, meta.modulus
+                                "Poly #{}: {} terms, {} vars, repr=modp, {}",
+                                id, meta.n_terms, meta.n_vars, materialize_note
                             )));
                         }
                     }
