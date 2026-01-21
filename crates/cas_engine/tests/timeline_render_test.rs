@@ -1,5 +1,8 @@
 //! Integration test to verify timeline step rendering
+use cas_engine::eval::{Engine, EvalAction, EvalRequest};
 use cas_engine::eval_step_pipeline::to_display_steps;
+use cas_engine::session::EntryKind;
+use cas_engine::session_state::SessionState;
 use cas_engine::step::ImportanceLevel;
 use cas_engine::timeline::{TimelineHtml, VerbosityLevel};
 use cas_engine::Simplifier;
@@ -67,5 +70,64 @@ fn test_timeline_renders_all_medium_importance_steps() {
         step_card_count, expected_count,
         "Timeline should render {} steps, but rendered {}",
         expected_count, step_card_count
+    );
+}
+
+/// V2.15.36: Verify that cache hit step appears in timeline HTML
+#[test]
+fn test_timeline_renders_cache_hit_step() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+
+    // Create an entry that simplifies
+    let expr1 = cas_parser::parse("sin(x)^2 + cos(x)^2", &mut engine.simplifier.context).unwrap();
+    let req1 = EvalRequest {
+        parsed: expr1,
+        kind: EntryKind::Expr(expr1),
+        raw_input: "sin(x)^2 + cos(x)^2".to_string(),
+        action: EvalAction::Simplify,
+        auto_store: true,
+    };
+    engine.eval(&mut state, req1).unwrap();
+
+    // Reference #1 to trigger cache hit
+    let expr2 = cas_parser::parse("#1 + 5", &mut engine.simplifier.context).unwrap();
+    let req2 = EvalRequest {
+        parsed: expr2,
+        kind: EntryKind::Expr(expr2),
+        raw_input: "#1 + 5".to_string(),
+        action: EvalAction::Simplify,
+        auto_store: true,
+    };
+    let output2 = engine.eval(&mut state, req2).unwrap();
+
+    // Verify the cache step is in the display steps (output2.steps is already DisplayEvalSteps)
+    let has_cache_step = output2
+        .steps
+        .iter()
+        .any(|s| s.rule_name == "Use cached result");
+    assert!(has_cache_step, "Cache step should be in output.steps");
+
+    // output2.steps is already DisplayEvalSteps, use directly
+
+    // Create timeline HTML
+    let mut timeline = TimelineHtml::new_with_result(
+        &mut engine.simplifier.context,
+        output2.steps.as_slice(),
+        expr2,
+        match output2.result {
+            cas_engine::eval::EvalResult::Expr(e) => Some(e),
+            _ => None,
+        },
+        VerbosityLevel::Normal,
+    );
+
+    let html = timeline.to_html();
+
+    // Verify "Use cached result" appears in HTML
+    assert!(
+        html.contains("Use cached result") || html.contains("cached simplified result"),
+        "Timeline HTML should mention cache hit. HTML snippet: {}",
+        &html[..html.len().min(500)]
     );
 }
