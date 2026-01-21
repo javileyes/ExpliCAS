@@ -1,7 +1,139 @@
 use crate::build::mul2_raw;
+use crate::Step;
 use cas_ast::{Context, Expr, ExprId};
 use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
+
+/// Threshold for using fast mod-p expansion in eager eval.
+/// Above this many estimated terms, use `expand_modp_safe`.
+pub const EAGER_EXPAND_MODP_THRESHOLD: u64 = 500;
+
+/// Eager evaluation pass for expand() calls.
+///
+/// This runs BEFORE the simplification pipeline to avoid budget exhaustion
+/// from processing large polynomial children.
+///
+/// Strategy:
+/// - For expand(arg) where estimated terms > threshold: use fast mod-p expansion
+/// - Converts directly to MultiPolyModP and back (O(output_terms))
+/// - Avoids the slow symbolic expand() + strip_all_holds() path
+pub fn eager_eval_expand_calls(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step>) {
+    let mut steps = Vec::new();
+    let result = eager_eval_expand_recursive(ctx, expr, &mut steps);
+    (result, steps)
+}
+
+fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<Step>) -> ExprId {
+    // Check if this is expand(...) that should use fast path
+    if let Expr::Function(name, args) = ctx.get(expr).clone() {
+        if name == "expand" && args.len() == 1 {
+            let arg = args[0];
+
+            // Estimate output terms
+            if let Some(est) = estimate_expand_terms(ctx, arg) {
+                // Use fast mod-p path for large expansions
+                if est > EAGER_EXPAND_MODP_THRESHOLD {
+                    if let Some(result) = expand_modp_safe(ctx, arg) {
+                        // Keep the __hold wrapper - it will prevent the simplifier from
+                        // reprocessing the huge expanded expression. The hold is stripped
+                        // only at the final output boundary (engine.rs::unwrap_hold_top).
+
+                        steps.push(Step::new(
+                            &format!("Eager expand (mod-p fast path, {} terms)", est),
+                            "Polynomial Expansion",
+                            expr,
+                            result,
+                            Vec::new(),
+                            Some(ctx),
+                        ));
+
+                        return result;
+                    }
+                }
+            }
+            // Fall through - let normal pipeline handle it
+        }
+
+        // For other functions, recurse into children
+        let new_args: Vec<ExprId> = args
+            .iter()
+            .map(|&arg| eager_eval_expand_recursive(ctx, arg, steps))
+            .collect();
+
+        if new_args
+            .iter()
+            .zip(args.iter())
+            .any(|(new, old)| new != old)
+        {
+            return ctx.add(Expr::Function(name.clone(), new_args));
+        }
+        return expr;
+    }
+
+    // Recurse into children for other expression types
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) => {
+            let nl = eager_eval_expand_recursive(ctx, l, steps);
+            let nr = eager_eval_expand_recursive(ctx, r, steps);
+            if nl != l || nr != r {
+                ctx.add(Expr::Add(nl, nr))
+            } else {
+                expr
+            }
+        }
+        Expr::Sub(l, r) => {
+            let nl = eager_eval_expand_recursive(ctx, l, steps);
+            let nr = eager_eval_expand_recursive(ctx, r, steps);
+            if nl != l || nr != r {
+                ctx.add(Expr::Sub(nl, nr))
+            } else {
+                expr
+            }
+        }
+        Expr::Mul(l, r) => {
+            let nl = eager_eval_expand_recursive(ctx, l, steps);
+            let nr = eager_eval_expand_recursive(ctx, r, steps);
+            if nl != l || nr != r {
+                ctx.add(Expr::Mul(nl, nr))
+            } else {
+                expr
+            }
+        }
+        Expr::Div(l, r) => {
+            let nl = eager_eval_expand_recursive(ctx, l, steps);
+            let nr = eager_eval_expand_recursive(ctx, r, steps);
+            if nl != l || nr != r {
+                ctx.add(Expr::Div(nl, nr))
+            } else {
+                expr
+            }
+        }
+        Expr::Pow(b, e) => {
+            let nb = eager_eval_expand_recursive(ctx, b, steps);
+            let ne = eager_eval_expand_recursive(ctx, e, steps);
+            if nb != b || ne != e {
+                ctx.add(Expr::Pow(nb, ne))
+            } else {
+                expr
+            }
+        }
+        Expr::Neg(e) => {
+            let ne = eager_eval_expand_recursive(ctx, e, steps);
+            if ne != e {
+                ctx.add(Expr::Neg(ne))
+            } else {
+                expr
+            }
+        }
+        // Leaves - no recursion needed
+        Expr::Number(_)
+        | Expr::Variable(_)
+        | Expr::Constant(_)
+        | Expr::Matrix { .. }
+        | Expr::SessionRef(_)
+        | Expr::Function(_, _) => expr,
+    }
+}
 
 /// Expand polynomial using fast mod-p arithmetic (MultiPolyModP).
 ///
@@ -13,8 +145,7 @@ use num_traits::{Signed, ToPrimitive};
 /// using symmetric representation via `modp_to_signed`.
 ///
 /// Returns Some(expanded) if successful, None if cannot convert to polynomial.
-#[allow(dead_code)] // Kept for potential future use in poly_gcd_modp eager eval
-fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
     use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
 
@@ -69,7 +200,15 @@ pub fn expand_with_stats(ctx: &mut Context, expr: ExprId) -> (ExprId, crate::bud
 
 /// Estimate number of terms that will be generated by expansion.
 /// Returns None if not an expandable pattern or unable to estimate.
-fn estimate_expand_terms(ctx: &Context, expr: ExprId) -> Option<u64> {
+pub fn estimate_expand_terms(ctx: &Context, expr: ExprId) -> Option<u64> {
+    estimate_expanded_term_count(ctx, expr)
+}
+
+/// Recursively estimate term count after expansion.
+/// For Pow(Add, n): multinomial count C(n+k-1, k-1)
+/// For Mul(a, b): product of expanded term counts
+/// For Add/Sub: sum of expanded term counts
+fn estimate_expanded_term_count(ctx: &Context, expr: ExprId) -> Option<u64> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
             // Extract exponent
@@ -86,7 +225,7 @@ fn estimate_expand_terms(ctx: &Context, expr: ExprId) -> Option<u64> {
             // Count base terms (flatten Add tree)
             let k = count_add_terms(ctx, *base);
             if k < 2 || n < 2 {
-                return None;
+                return Some(1); // Not expandable, counts as 1 term
             }
 
             // Multinomial term count: C(n+k-1, k-1)
@@ -94,16 +233,21 @@ fn estimate_expand_terms(ctx: &Context, expr: ExprId) -> Option<u64> {
                 .map(|c| c as u64)
         }
         Expr::Mul(l, r) => {
-            // For Mul, estimate as product of term counts
-            let lk = count_add_terms(ctx, *l);
-            let rk = count_add_terms(ctx, *r);
-            if lk > 1 && rk > 1 {
-                Some((lk * rk) as u64)
-            } else {
-                None
-            }
+            // For Mul, estimate as product of expanded term counts
+            let l_terms = estimate_expanded_term_count(ctx, *l).unwrap_or(1);
+            let r_terms = estimate_expanded_term_count(ctx, *r).unwrap_or(1);
+
+            // Overflow-safe multiplication
+            l_terms.checked_mul(r_terms)
         }
-        _ => None,
+        Expr::Add(l, r) | Expr::Sub(l, r) => {
+            // Sum of terms (with potential cancellation, so this is an upper bound)
+            let l_terms = estimate_expanded_term_count(ctx, *l).unwrap_or(1);
+            let r_terms = estimate_expanded_term_count(ctx, *r).unwrap_or(1);
+            l_terms.checked_add(r_terms)
+        }
+        Expr::Neg(e) => estimate_expanded_term_count(ctx, *e),
+        _ => Some(1), // Atoms count as 1 term
     }
 }
 

@@ -6,6 +6,15 @@ use cas_ast::Expr;
 
 use super::helpers::*;
 
+/// Maximum terms to materialize in expand().
+/// Above this, expand() is left unevaluated with a warning.
+/// Use poly_mul_modp() for large polynomial operations.
+pub const EXPAND_MAX_MATERIALIZE_TERMS: u64 = 200_000;
+
+/// Threshold for using fast mod-p expansion instead of symbolic.
+/// Above this many terms, use `expand_modp_safe` which is much faster.
+pub const EXPAND_MODP_THRESHOLD: u64 = 1_000;
+
 // ExpandRule: only runs in Transform phase
 define_rule!(
     ExpandRule,
@@ -16,6 +25,35 @@ define_rule!(
         if let Expr::Function(name, args) = ctx.get(expr) {
             if name == "expand" && args.len() == 1 {
                 let arg = args[0];
+
+                // Estimate output terms
+                let est = crate::expand::estimate_expand_terms(ctx, arg);
+
+                // Guard: abort if too large
+                if let Some(est) = est {
+                    if est > EXPAND_MAX_MATERIALIZE_TERMS {
+                        tracing::warn!(
+                            estimated_terms = est,
+                            limit = EXPAND_MAX_MATERIALIZE_TERMS,
+                            "expand() aborted: estimated {} terms exceeds limit {}. \
+                             Use poly_mul_modp() for large polynomial operations.",
+                            est,
+                            EXPAND_MAX_MATERIALIZE_TERMS
+                        );
+                        // Return None → leaves expand(...) unevaluated
+                        return None;
+                    }
+                }
+
+                // Strategy: use mod-p fast path for large polynomials (> 1000 terms)
+                if est.unwrap_or(0) > EXPAND_MODP_THRESHOLD {
+                    if let Some(result) = crate::expand::expand_modp_safe(ctx, arg) {
+                        let new_expr = crate::strip_all_holds(ctx, result);
+                        return Some(Rewrite::new(new_expr).desc("expand() [mod-p fast path]"));
+                    }
+                    // Fall through to slow path if mod-p fails
+                }
+
                 let expanded = crate::expand::expand(ctx, arg);
                 // Strip all nested __hold wrappers so user sees clean result
                 let new_expr = crate::strip_all_holds(ctx, expanded);

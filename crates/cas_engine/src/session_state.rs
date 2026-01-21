@@ -1,5 +1,6 @@
 use crate::env::Environment;
 use crate::options::EvalOptions;
+use crate::poly_store::PolyStore;
 use crate::profile_cache::ProfileCache;
 use crate::session::{resolve_session_refs, ResolveError, SessionStore};
 use cas_ast::{Context, ExprId};
@@ -14,6 +15,8 @@ pub struct SessionState {
     pub options: EvalOptions,
     /// Cached rule profiles for performance
     pub profile_cache: ProfileCache,
+    /// Opaque polynomial storage for fast mod-p operations
+    pub poly_store: PolyStore,
 }
 
 // Backwards compatibility: expose assumptions as alias
@@ -30,6 +33,7 @@ impl SessionState {
             env: Environment::new(),
             options: EvalOptions::default(),
             profile_cache: ProfileCache::new(),
+            poly_store: PolyStore::new(),
         }
     }
 
@@ -40,6 +44,7 @@ impl SessionState {
             env: Environment::new(),
             options: EvalOptions::default(),
             profile_cache: ProfileCache::new(),
+            poly_store: PolyStore::new(),
         }
     }
 

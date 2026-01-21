@@ -31,6 +31,8 @@ pub use poly_arith_modp::*;
 pub mod difference_of_cubes;
 pub use difference_of_cubes::*;
 
+pub mod poly_mul_modp;
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     // Pre-order: Cancel cube root difference pattern BEFORE GCD/fraction rules
     // (x - b³) / (x^(2/3) + b·x^(1/3) + b²) → x^(1/3) - b
@@ -93,6 +95,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Sum of three cubes identity: x³ + y³ + z³ = 3xyz when x + y + z = 0
     // Handles cyclic differences: (a-b)³ + (b-c)³ + (c-a)³ = 3(a-b)(b-c)(c-a)
     simplifier.add_rule(Box::new(SumThreeCubesZeroRule));
+    // Polynomial multiplication mod p: poly_mul_modp(a, b) → poly_result(...)
+    poly_mul_modp::register(simplifier);
     // simplifier.add_rule(Box::new(FactorDifferenceSquaresRule)); // Too aggressive for default, causes loops with DistributeRule
 }
 

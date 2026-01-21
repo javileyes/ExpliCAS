@@ -62,6 +62,11 @@ impl VarTable {
     pub fn is_empty(&self) -> bool {
         self.names.is_empty()
     }
+
+    /// Get variable names in index order
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
 }
 
 /// Error during conversion

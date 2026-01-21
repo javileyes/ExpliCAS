@@ -1,4 +1,5 @@
 use crate::best_so_far::{BestSoFar, BestSoFarBudget};
+use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
@@ -203,10 +204,14 @@ impl Orchestrator {
         // even after the sqrt witness is consumed.
         simplifier.set_sticky_implicit_domain(expr, self.options.value_domain);
 
-        // PRE-PASS: Eager eval for special functions (poly_gcd_modp)
+        // PRE-PASS 1: Eager eval for expand() calls using fast mod-p path
         // This runs BEFORE any simplification to avoid budget exhaustion on huge arguments
-        let (current, eager_steps) = eager_eval_poly_gcd_calls(&mut simplifier.context, expr);
-        let mut all_steps = eager_steps;
+        let (current, expand_steps) = eager_eval_expand_calls(&mut simplifier.context, expr);
+        let mut all_steps = expand_steps;
+
+        // PRE-PASS 2: Eager eval for special functions (poly_gcd_modp)
+        let (current, eager_steps) = eager_eval_poly_gcd_calls(&mut simplifier.context, current);
+        all_steps.extend(eager_steps);
 
         // Check for specialized strategies first
         if let Some(result) =
