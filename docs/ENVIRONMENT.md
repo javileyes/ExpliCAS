@@ -84,16 +84,38 @@ When you reference a previous result with `#N`, the engine uses **cached simplif
 
 ### Timeline Traceability
 
+When `#N` is resolved from cache, the timeline shows a **synthetic step** instead of repeating the full derivation:
+
 ```text
 > sin(x)^2 + cos(x)^2
-Result: 1
 #1: 1
+Steps:
+1. sin²(x) + cos²(x) = 1  [Pythagorean Chain Identity]
+Result: 1
 
 > #1 + 5
-Result: 6
 #2: 6
-Timeline: [Step 1] Used cached simplified result from #1
-          [Step 2] 1 + 5 → 6
+Steps:
+1. Used cached simplified result from #1  [Use cached result]
+   Before: 1 + 5
+   Rule: #1 + 5 -> 1 + 5
+Result: 6
+```
+
+**Multiple references** are listed together:
+
+```text
+> x^2 + 2*x + 1
+#1: x² + 2·x + 1
+
+> (x+1)^2
+#2: (x + 1)²
+
+> #1 + #2 + 10
+Steps:
+1. Used cached simplified result from #1, #2  [Use cached result]
+   ...
+Result: 2·x² + 4·x + 12
 ```
 
 ### Cache Invalidation
